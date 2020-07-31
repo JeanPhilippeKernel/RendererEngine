@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="src\Z_EngineDef.h" />
+    <ClInclude Include="src\EntryPoint.h" />
+    <ClInclude Include="src\Engine.h" />
+    <ClInclude Include="src\Z_Engine.h" />
+    <ClInclude Include="src\Event\CoreEvent.h" />
+    <ClInclude Include="src\Event\EventType.h" />
+    <ClInclude Include="src\Event\EventCategory.h" />
+    <ClInclude Include="src\Event\WindowResizeEvent.h" />
+    <ClInclude Include="src\Event\WindowClosedEvent.h" />
+    <ClInclude Include="src\Event\EventDispatcher.h" />
+    <ClInclude Include="src\Window\CoreWindow.h" />
+    <ClInclude Include="src\Window\WindowProperty.h" />
+    <ClInclude Include="src\Window\SDLWin\OpenGLWindow.h" />
+    <ClInclude Include="src\Layers\Layer.h" />
+    <ClInclude Include="src\LayerStack.h" />
+    <ClInclude Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.h" />
+    <ClInclude Include="src\Rendering\Graphics\GraphicContext.h" />
+    <ClInclude Include="src\Event\EngineClosedEvent.h" />
+    <ClInclude Include="src\Rendering\Shaders\Shader.h" />
+    <ClInclude Include="src\Rendering\Buffer\GraphicBuffer.h" />
+    <ClInclude Include="src\Rendering\Buffer\BufferLayout.h" />
+    <ClInclude Include="src\Rendering\Buffer\VertexBuffer.h" />
+    <ClInclude Include="src\Rendering\Buffer\IndexBuffer.h" />
+    <ClInclude Include="src\Rendering\Buffer\VertexArray.h" />
+    <ClInclude Include="src\Rendering\Renderer\GraphicRenderer.h" />
+    <ClInclude Include="src\Rendering\Renderer\RenderCommand.h" />
+    <ClInclude Include="src\Rendering\Cameras\Camera.h" />
+    <ClInclude Include="src\Rendering\Cameras\OrthographicCamera.h" />
+    <ClInclude Include="src\Rendering\Cameras\PerspectiveCamera.h" />
+    <ClInclude Include="src\Rendering\Renderer\GraphicScene.h" />
+    <ClInclude Include="src\Event\KeyEvent.h" />
+    <ClInclude Include="src\Event\KeyPressedEvent.h" />
+    <ClInclude Include="src\Event\KeyReleasedEvent.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Engine.cpp" />
+    <ClCompile Include="src\Window\CoreWindow.cpp" />
+    <ClCompile Include="src\Window\SDLWin\OpenGLWindow.cpp" />
+    <ClCompile Include="src\LayerStack.cpp" />
+    <ClCompile Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
+    <ClCompile Include="src\Rendering\Shaders\Shader.cpp" />
+    <ClCompile Include="src\Rendering\Renderer\GraphicScene.cpp" />
+    <ClCompile Include="src\Rendering\Cameras\OrthographicCamera.cpp" />
+  </ItemGroup>
+</Project>

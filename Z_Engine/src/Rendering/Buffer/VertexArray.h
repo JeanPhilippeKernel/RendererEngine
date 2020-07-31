@@ -1,0 +1,75 @@
+#pragma once
+#include <memory>
+#include <vector>
+#include <GL/glew.h>
+
+#include "VertexBuffer.h"
+#include "IndexBuffer.h"
+
+#include "../../Z_EngineDef.h"
+
+
+namespace Z_Engine::Rendering::Buffer {
+
+	template <typename T, typename K>
+	class Z_ENGINE_API VertexArray {
+	public:
+		VertexArray()
+		{
+			glCreateVertexArrays(1, &m_vertex_array_id);
+			glBindVertexArray(m_vertex_array_id);
+		}
+
+		~VertexArray() {
+			glDeleteVertexArrays(1, &m_vertex_array_id);
+		}
+
+		void Bind() const {
+			glBindVertexArray(m_vertex_array_id);
+		}
+		void Unbind() const {
+			glBindVertexArray(0);   
+		}
+
+		void AddVertexBuffer(const std::shared_ptr<VertexBuffer<T>>& vertex_buffer) {
+			
+			glBindVertexArray(m_vertex_array_id);
+
+			const Layout::BufferLayout<T>& buffer_layout = vertex_buffer->GetLayout();
+			const std::vector<Layout::ElementLayout<T>>& element_layouts = buffer_layout.GetElementLayout();
+			
+			int x = 0;
+			for (const auto& element : element_layouts)
+			{
+				glEnableVertexAttribArray(x);
+				glVertexAttribPointer(
+					x,
+					element.GetCount(),
+					GL_FLOAT,
+					element.GetNormalized() == false ? GL_FALSE : GL_TRUE,
+					buffer_layout.GetStride(),
+					reinterpret_cast<const void *>(element.GetOffset())
+				);
+				++x;
+			}
+			glBindVertexArray(0);
+
+			m_vertices_buffer.push_back(vertex_buffer);
+		}
+
+		void SetIndexBuffer(const std::shared_ptr<IndexBuffer<K>>& index_buffer) {
+			m_index_buffer = index_buffer;
+		}
+
+		const std::shared_ptr<IndexBuffer<K>>& GetIndexBuffer() const {
+			return m_index_buffer;
+		}
+
+	private:
+		std::vector<std::shared_ptr<VertexBuffer<T>>> m_vertices_buffer;
+		std::shared_ptr<IndexBuffer<K>> m_index_buffer;
+
+		GLuint m_vertex_array_id{ 0 };
+	};
+
+}

@@ -1,0 +1,2 @@
+D:\source\repos\3D_RENDERER_TWO\Z_Engine\bin\Debug-x64\Z_Engine.pdb
+D:\source\repos\3D_RENDERER_TWO\Z_Engine\bin-int\Debug-x64\Z_Engine.pdb
