@@ -42,7 +42,7 @@ namespace Z_Engine {
 							};
 							m_window->GetWindowProperty().CallbackFn(e);
 						}
-					}
+					}				
 				}
 				case SDL_KEYDOWN:
 				{
@@ -69,9 +69,6 @@ namespace Z_Engine {
 						m_window->GetWindowProperty().CallbackFn(e);
 					}
 				}
-
-				default:
-					break;
 			}
 		}
 	}

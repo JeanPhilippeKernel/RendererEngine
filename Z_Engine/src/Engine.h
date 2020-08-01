@@ -35,12 +35,12 @@ namespace Z_Engine {
 	
 	protected:
 		LayerStack m_layer_stack;
+		std::unique_ptr<SDL_Event, std::function<void(SDL_Event *)>> m_event;
 	
 	private:
 		bool m_running{ true };
 		
 		std::unique_ptr<Z_Engine::Window::CoreWindow>	m_window;
-		std::unique_ptr<SDL_Event, std::function<void(SDL_Event *)>> m_event;
 	};
 
 

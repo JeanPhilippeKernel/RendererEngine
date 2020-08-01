@@ -105,26 +105,26 @@ namespace Sandbox {
 
 				if(event->GetKeyCode() == KeyCode::RIGHT) {
 					auto pos = m_camera->GetPosition();
-					pos.x -= 0.1;
+					pos.x -= 0.1f;
 					m_camera->SetPosition(pos);
 				}
 
 				if (event->GetKeyCode() == KeyCode::LEFT) {
 					auto pos = m_camera->GetPosition();
-					pos.x += 0.1;
+					pos.x += 0.1f;
 					m_camera->SetPosition(pos);
 				}
 
 
 				if (event->GetKeyCode() == KeyCode::UP) {
 					auto pos = m_camera->GetPosition();
-					pos.y -= 0.1;
+					pos.y -= 0.1f;
 					m_camera->SetPosition(pos);
 				}
 
 				if (event->GetKeyCode() == KeyCode::DOWN) {
 					auto pos = m_camera->GetPosition();
-					pos.y += 0.1;
+					pos.y += 0.1f;
 					m_camera->SetPosition(pos);
 				}
 
@@ -164,6 +164,7 @@ namespace Sandbox {
 
 		std::shared_ptr<Z_Engine::Rendering::Renderer::GraphicRenderer> m_renderer;
 		std::shared_ptr<Z_Engine::Rendering::Cameras::Camera> m_camera;
+
 
 	};
 
