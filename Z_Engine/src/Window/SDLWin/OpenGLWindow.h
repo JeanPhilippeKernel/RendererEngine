@@ -48,11 +48,17 @@ namespace Z_Engine::Window::SDLWin {
 			Event::EventDispatcher event_dispatcher(event);
 			event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&OpenGLWindow::OnWindowClosed, this, std::placeholders::_1));
 			event_dispatcher.Dispatch<Event::WindowResizeEvent>(std::bind(&OpenGLWindow::OnWindowResized, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&OpenGLWindow::OnKeyPressed, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&OpenGLWindow::OnKeyReleased, this, std::placeholders::_1));
 		}
 
 	protected:
 		bool OnWindowClosed(WindowClosedEvent&) override;
 		bool OnWindowResized(WindowResizeEvent&) override;
+
+		
+		bool OnKeyPressed(KeyPressedEvent&) override;
+		bool OnKeyReleased(KeyReleasedEvent&) override;
 
 	private:
 		SDL_Window* m_native_window{ nullptr };

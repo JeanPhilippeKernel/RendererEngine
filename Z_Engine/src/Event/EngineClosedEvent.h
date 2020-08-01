@@ -22,7 +22,7 @@ namespace Z_Engine::Event {
 			return GetStaticType();
 		}
 
-		EventCategory GetCategory() const override {
+		int GetCategory() const override {
 			return GetStaticCategory();
 		}
 

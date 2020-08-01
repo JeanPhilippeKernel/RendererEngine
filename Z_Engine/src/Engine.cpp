@@ -1,4 +1,10 @@
+#include "Core/Input.h"
 #include "Engine.h"
+
+
+#ifdef _WIN32
+	#include <Windows.h>
+#endif // WIN32
 
 
 namespace Z_Engine {
@@ -38,10 +44,28 @@ namespace Z_Engine {
 						}
 					}
 				}
-				case SDL_KEYDOWN :
+				case SDL_KEYDOWN:
 				{
 					if (m_event->key.keysym.sym == SDLK_ESCAPE) {
 						Event::WindowClosedEvent e;
+						m_window->GetWindowProperty().CallbackFn(e);
+					}
+					else {
+						if(m_event->key.keysym.scancode != SDL_Scancode::SDL_SCANCODE_UNKNOWN) {
+							Event::KeyPressedEvent e {
+								static_cast<Core::Input::KeyCode>(m_event->key.keysym.scancode), 
+								m_event->key.repeat
+							};
+							m_window->GetWindowProperty().CallbackFn(e);
+						
+						}
+					}
+				}
+
+				case SDL_KEYUP:
+				{
+					if(m_event->key.keysym.scancode != SDL_Scancode::SDL_SCANCODE_UNKNOWN) {
+						Event::KeyReleasedEvent e { static_cast<Core::Input::KeyCode>(m_event->key.keysym.scancode)};
 						m_window->GetWindowProperty().CallbackFn(e);
 					}
 				}

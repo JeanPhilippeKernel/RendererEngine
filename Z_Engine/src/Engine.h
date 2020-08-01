@@ -6,6 +6,9 @@
 #include "Window/CoreWindow.h"
 #include "Event/EventDispatcher.h"
 #include "Event/EngineClosedEvent.h"
+#include "Event/KeyPressedEvent.h"
+#include "Event/KeyReleasedEvent.h"
+
 #include "LayerStack.h"
 
 
@@ -28,7 +31,7 @@ namespace Z_Engine {
 		bool OnEngineClosed(Event::EngineClosedEvent&);
 
 	public:
-		bool OnEvent(Event::CoreEvent&);
+		virtual bool OnEvent(Event::CoreEvent&);
 	
 	protected:
 		LayerStack m_layer_stack;

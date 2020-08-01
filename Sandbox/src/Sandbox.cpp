@@ -99,6 +99,41 @@ namespace Sandbox {
 			Engine::Update();
 		}
 
+		bool OnEvent(Event::CoreEvent& e) override {
+			KeyPressedEvent* event =  dynamic_cast<KeyPressedEvent*>(&e);
+			if(event != nullptr){
+
+				if(event->GetKeyCode() == KeyCode::RIGHT) {
+					auto pos = m_camera->GetPosition();
+					pos.x -= 0.1;
+					m_camera->SetPosition(pos);
+				}
+
+				if (event->GetKeyCode() == KeyCode::LEFT) {
+					auto pos = m_camera->GetPosition();
+					pos.x += 0.1;
+					m_camera->SetPosition(pos);
+				}
+
+
+				if (event->GetKeyCode() == KeyCode::UP) {
+					auto pos = m_camera->GetPosition();
+					pos.y -= 0.1;
+					m_camera->SetPosition(pos);
+				}
+
+				if (event->GetKeyCode() == KeyCode::DOWN) {
+					auto pos = m_camera->GetPosition();
+					pos.y += 0.1;
+					m_camera->SetPosition(pos);
+				}
+
+			   event->SetHandled(true);
+			}
+
+			return Engine::OnEvent(e);
+		}
+
 		void Render() override {
 		
 			RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });

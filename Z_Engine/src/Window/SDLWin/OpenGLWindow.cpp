@@ -102,4 +102,17 @@ namespace Z_Engine::Window::SDLWin {
 
 		return true;
 	}
+
+
+	bool OpenGLWindow::OnKeyPressed(KeyPressedEvent& event) {
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return true;
+	}
+	
+	bool OpenGLWindow::OnKeyReleased(KeyReleasedEvent& event) {
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return true;
+	}
 }

@@ -7,7 +7,7 @@
 namespace Z_Engine::Event {
 
 #define EVENT_TYPE(x) static EventType GetStaticType() { return EventType::x; }
-#define EVENT_CATEGORY(x) static EventCategory GetStaticCategory() { return EventCategory::x;  }
+#define EVENT_CATEGORY(x) static int GetStaticCategory() { return EventCategory::x;  }
 		
 	class Z_ENGINE_API CoreEvent {
 	public:
@@ -21,7 +21,7 @@ namespace Z_Engine::Event {
 		void SetName(const char* value) { m_name = std::string(value); }
 
 		virtual EventType GetType()			const = 0;
-		virtual EventCategory GetCategory() const = 0;
+		virtual int GetCategory() const = 0;
 		virtual std::string ToString()		const = 0;
 
 	protected:

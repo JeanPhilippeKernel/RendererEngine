@@ -25,6 +25,7 @@ namespace Z_Engine::Rendering::Buffer::Layout {
 		
 		public:
 			virtual const std::string& GetName() const { return m_name; }
+			virtual const std::string& GetDataType() const { return m_data_type; }
 			virtual bool GetNormalized() const { return m_normalized; }
 			
 			virtual size_t GetOffset() const { return m_offset; }
@@ -39,7 +40,7 @@ namespace Z_Engine::Rendering::Buffer::Layout {
 			size_t m_offset{ 0 };
 			size_t m_count{ 0 };
 			bool m_normalized{ false };
-			const char* m_data_type{ nullptr };
+			std::string m_data_type{};
 	};
 
 	template<typename T>

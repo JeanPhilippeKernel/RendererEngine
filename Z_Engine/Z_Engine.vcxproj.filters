@@ -34,6 +34,8 @@
     <ClInclude Include="src\Event\KeyEvent.h" />
     <ClInclude Include="src\Event\KeyPressedEvent.h" />
     <ClInclude Include="src\Event\KeyReleasedEvent.h" />
+    <ClInclude Include="src\Core\Utility.h" />
+    <ClInclude Include="src\Core\Input.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />

@@ -110,6 +110,8 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="src\Core\Input.h" />
+    <ClInclude Include="src\Core\Utility.h" />
     <ClInclude Include="src\EntryPoint.h" />
     <ClInclude Include="src\Engine.h" />
     <ClInclude Include="src\Event\CoreEvent.h" />

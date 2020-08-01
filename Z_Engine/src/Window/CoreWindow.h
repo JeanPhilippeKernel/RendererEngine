@@ -6,6 +6,8 @@
 #include "../Event/CoreEvent.h"
 #include "../Event/WindowClosedEvent.h"
 #include "../Event/WindowResizeEvent.h"
+#include "../Event/KeyPressedEvent.h"
+#include "../Event/KeyReleasedEvent.h"
 #include "../Event/EventDispatcher.h"
 
 
@@ -52,6 +54,9 @@ namespace Z_Engine::Window {
 	protected:
 		virtual bool OnWindowClosed(WindowClosedEvent&) = 0;
 		virtual bool OnWindowResized(WindowResizeEvent&) = 0;
+
+		virtual bool OnKeyPressed(KeyPressedEvent&) = 0;
+		virtual bool OnKeyReleased(KeyReleasedEvent&) = 0;
 
 	protected:
 		static const char* ATTACHED_PROPERTY;

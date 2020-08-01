@@ -3,6 +3,7 @@
 #include <vector>
 #include <GL/glew.h>
 
+#include "../../Core/Utility.h"
 #include "VertexBuffer.h"
 #include "IndexBuffer.h"
 
@@ -37,16 +38,16 @@ namespace Z_Engine::Rendering::Buffer {
 
 			const Layout::BufferLayout<T>& buffer_layout = vertex_buffer->GetLayout();
 			const std::vector<Layout::ElementLayout<T>>& element_layouts = buffer_layout.GetElementLayout();
-			
-			int x = 0;
+								  
+			int x = 0;		   
 			for (const auto& element : element_layouts)
 			{
 				glEnableVertexAttribArray(x);
 				glVertexAttribPointer(
 					x,
 					element.GetCount(),
-					GL_FLOAT,
-					element.GetNormalized() == false ? GL_FALSE : GL_TRUE,
+					Core::Utility::ToGraphicCardType(element.GetDataType()), //GL_FLOAT
+					static_cast<int>(element.GetNormalized()), // element.GetNormalized() == false ? GL_FALSE : GL_TRUE,
 					buffer_layout.GetStride(),
 					reinterpret_cast<const void *>(element.GetOffset())
 				);
