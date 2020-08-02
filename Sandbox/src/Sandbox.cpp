@@ -98,25 +98,25 @@ namespace Sandbox {
 			
 			if(Inputs::IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_LEFT)){
 				auto pos = m_camera->GetPosition();
-				pos.x += 0.01f;
+				pos.x -= 0.1f * delta_time;
 				m_camera->SetPosition(pos);
 			}
 			
 			if(Inputs::IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_RIGHT)){
 				auto pos = m_camera->GetPosition();
-				pos.x -= 0.01f;
+				pos.x += 0.1f * delta_time;
 				m_camera->SetPosition(pos);
 			}
 
 			if (Inputs::IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_UP)) {
 				auto pos = m_camera->GetPosition();
-				pos.y -= 0.01f;
+				pos.y += 0.1f * delta_time;
 				m_camera->SetPosition(pos);
 			}
 
 			if (Inputs::IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_DOWN)) {
 				auto pos = m_camera->GetPosition();
-				pos.y += 0.01f;
+				pos.y -= 0.1f * delta_time;
 				m_camera->SetPosition(pos);
 			}
 
@@ -158,7 +158,6 @@ namespace Sandbox {
 
 		std::shared_ptr<Z_Engine::Rendering::Renderer::GraphicRenderer> m_renderer;
 		std::shared_ptr<Z_Engine::Rendering::Cameras::Camera> m_camera;
-
 
 	};
 

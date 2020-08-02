@@ -8,9 +8,9 @@ namespace Z_Engine::Core {
 			: m_time(time)
 		{}
 		
-		operator float() { return m_time; }
+		operator float() const { return m_time; }
 
-		float GetSecond() const { return m_time / 1000.0f; }
+		float GetSecond() const { return m_time; }
 		float GetMillisecond() const { return m_time * 1000.0f; }	
 	
 	private:

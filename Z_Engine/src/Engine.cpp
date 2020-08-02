@@ -21,10 +21,9 @@ namespace Z_Engine {
 	}
 	
 	void Engine::Update(Core::TimeStep delta_time) {
-		//FPS stuff
 		m_window->Update(delta_time);
 		for (auto* const layer : m_layer_stack)
-			layer->Update(0.166f);
+			layer->Update(delta_time);
 	}
 	
 	void Engine::Render() {
@@ -62,17 +61,18 @@ namespace Z_Engine {
 
 
 	void Engine::Run() {
-
-		int frameCount = 0;
-
+		Core::TimeStep dt = 0.0f;
+		
 		while (m_running) {
 	
 			float time =  static_cast<float>(SDL_GetTicks()) / 1000.0f;
-			Core::TimeStep dt = time - m_last_frame_time;
-
+			dt = time - m_last_frame_time;
+			m_last_frame_time = (dt >= 1.0f) ? m_last_frame_time : time + 1.0f;	  // waiting 1s to update 
+										  		
 			ProcessEvent();
 			Update(dt);
 			Render();
+
 		}
 	}
 }

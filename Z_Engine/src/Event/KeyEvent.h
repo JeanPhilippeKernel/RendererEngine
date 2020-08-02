@@ -16,7 +16,6 @@ namespace Z_Engine::Event {
 		 EVENT_CATEGORY(Keyboard | EventCategory::Input)
 	
 	protected:
-
 		Inputs::KeyCode m_keycode;
 	};
 }
