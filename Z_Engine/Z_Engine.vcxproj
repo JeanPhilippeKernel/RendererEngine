@@ -110,7 +110,7 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="src\Core\Input.h" />
+    <ClInclude Include="src\Core\TimeStep.h" />
     <ClInclude Include="src\Core\Utility.h" />
     <ClInclude Include="src\EntryPoint.h" />
     <ClInclude Include="src\Engine.h" />
@@ -124,6 +124,10 @@
     <ClInclude Include="src\Event\KeyReleasedEvent.h" />
     <ClInclude Include="src\Event\WindowClosedEvent.h" />
     <ClInclude Include="src\Event\WindowResizeEvent.h" />
+    <ClInclude Include="src\Inputs\IDevice.h" />
+    <ClInclude Include="src\Inputs\Keyboard.h" />
+    <ClInclude Include="src\Inputs\KeyCode.h" />
+    <ClInclude Include="src\Inputs\Mouse.h" />
     <ClInclude Include="src\LayerStack.h" />
     <ClInclude Include="src\Layers\Layer.h" />
     <ClInclude Include="src\Rendering\Buffer\BufferLayout.h" />
@@ -148,6 +152,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
+    <ClCompile Include="src\Inputs\IDevice.cpp" />
     <ClCompile Include="src\LayerStack.cpp" />
     <ClCompile Include="src\Rendering\Cameras\OrthographicCamera.cpp" />
     <ClCompile Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />

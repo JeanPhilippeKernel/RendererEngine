@@ -38,13 +38,15 @@ namespace Z_Engine::Window::SDLWin {
 		virtual const WindowProperty& GetWindowProperty() const override { return m_property; }
 
 
-		virtual void Update(float delta_time) override;
+		virtual void PollEvent() override;
+		virtual void Update(Core::TimeStep delta_time) override;
 		virtual void Render() override;
 
 
 
 	public:
 		void OnEvent(Event::CoreEvent& event) override {
+
 			Event::EventDispatcher event_dispatcher(event);
 			event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&OpenGLWindow::OnWindowClosed, this, std::placeholders::_1));
 			event_dispatcher.Dispatch<Event::WindowResizeEvent>(std::bind(&OpenGLWindow::OnWindowResized, this, std::placeholders::_1));
@@ -63,6 +65,8 @@ namespace Z_Engine::Window::SDLWin {
 	private:
 		SDL_Window* m_native_window{ nullptr };
 		Rendering::Graphics::GraphicContext* m_context{ nullptr };
+		std::unique_ptr<SDL_Event, std::function<void(SDL_Event*)>> m_event;
+
 	};
 		
 }

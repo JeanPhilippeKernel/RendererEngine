@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <SDL2/SDL_events.h>
+#include <SDL2/SDL_timer.h>
 
 #include "Z_EngineDef.h"
 #include "Window/CoreWindow.h"
@@ -10,6 +11,7 @@
 #include "Event/KeyReleasedEvent.h"
 
 #include "LayerStack.h"
+#include "Core/TimeStep.h"
 
 
 namespace Z_Engine {
@@ -21,9 +23,13 @@ namespace Z_Engine {
 
 		void Run();
 
+		const std::unique_ptr<Z_Engine::Window::CoreWindow>& GetWindow() const { return m_window; }
+		void PushOverlayLayer(Layer* const layer) { m_layer_stack.PushOverlayLayer(layer); }
+		void PushLayer(Layer* const layer) { m_layer_stack.PushLayer(layer); }
+
 	protected:
 		virtual void ProcessEvent();
-		virtual void Update();
+		virtual void Update(Core::TimeStep delta_time);
 		virtual void Render();
 
 
@@ -35,11 +41,10 @@ namespace Z_Engine {
 	
 	protected:
 		LayerStack m_layer_stack;
-		std::unique_ptr<SDL_Event, std::function<void(SDL_Event *)>> m_event;
 	
 	private:
 		bool m_running{ true };
-		
+		float m_last_frame_time {0.0f};
 		std::unique_ptr<Z_Engine::Window::CoreWindow>	m_window;
 	};
 

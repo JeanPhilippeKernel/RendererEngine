@@ -1,6 +1,6 @@
-#include "Core/Input.h"
 #include "Engine.h"
 
+#include <iostream>
 
 #ifdef _WIN32
 	#include <Windows.h>
@@ -10,7 +10,6 @@
 namespace Z_Engine {
 
 	Engine::Engine()
-		: m_event(new SDL_Event{}, [](SDL_Event* e) { free(e); })
 	{
 		m_window.reset(Z_Engine::Window::Create());
 		m_window->SetAttachedEngine(this);
@@ -18,64 +17,12 @@ namespace Z_Engine {
 	}
 	
 	void Engine::ProcessEvent() {
-		const auto pending = SDL_PollEvent(m_event.get());
-		if (pending) 
-		{
-			switch (m_event->type)
-			{
-				case SDL_QUIT:
-				{
-					WindowClosedEvent e;
-					m_window->GetWindowProperty().CallbackFn(e);
-				}
-
-				case SDL_WINDOWEVENT:
-				{
-					switch (m_event->window.event)
-					{
-						case SDL_WINDOWEVENT_RESIZED:
-						{
-							Event::WindowResizeEvent e
-							{
-								static_cast<std::uint32_t>(m_event->window.data1), 
-								static_cast<std::uint32_t>(m_event->window.data2)
-							};
-							m_window->GetWindowProperty().CallbackFn(e);
-						}
-					}				
-				}
-				case SDL_KEYDOWN:
-				{
-					if (m_event->key.keysym.sym == SDLK_ESCAPE) {
-						Event::WindowClosedEvent e;
-						m_window->GetWindowProperty().CallbackFn(e);
-					}
-					else {
-						if(m_event->key.keysym.scancode != SDL_Scancode::SDL_SCANCODE_UNKNOWN) {
-							Event::KeyPressedEvent e {
-								static_cast<Core::Input::KeyCode>(m_event->key.keysym.scancode), 
-								m_event->key.repeat
-							};
-							m_window->GetWindowProperty().CallbackFn(e);
-						
-						}
-					}
-				}
-
-				case SDL_KEYUP:
-				{
-					if(m_event->key.keysym.scancode != SDL_Scancode::SDL_SCANCODE_UNKNOWN) {
-						Event::KeyReleasedEvent e { static_cast<Core::Input::KeyCode>(m_event->key.keysym.scancode)};
-						m_window->GetWindowProperty().CallbackFn(e);
-					}
-				}
-			}
-		}
+		m_window->PollEvent();
 	}
 	
-	void Engine::Update() {
+	void Engine::Update(Core::TimeStep delta_time) {
 		//FPS stuff
-		m_window->Update(0.1666f);
+		m_window->Update(delta_time);
 		for (auto* const layer : m_layer_stack)
 			layer->Update(0.166f);
 	}
@@ -116,9 +63,15 @@ namespace Z_Engine {
 
 	void Engine::Run() {
 
+		int frameCount = 0;
+
 		while (m_running) {
+	
+			float time =  static_cast<float>(SDL_GetTicks()) / 1000.0f;
+			Core::TimeStep dt = time - m_last_frame_time;
+
 			ProcessEvent();
-			Update();
+			Update(dt);
 			Render();
 		}
 	}

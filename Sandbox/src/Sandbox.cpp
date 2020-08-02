@@ -94,42 +94,36 @@ namespace Sandbox {
 		~Sandbox_One() = default;
 
 
-		void Update() override {
+		void Update(Core::TimeStep delta_time) override {
 			
-			Engine::Update();
+			if(Inputs::IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_LEFT)){
+				auto pos = m_camera->GetPosition();
+				pos.x += 0.01f;
+				m_camera->SetPosition(pos);
+			}
+			
+			if(Inputs::IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_RIGHT)){
+				auto pos = m_camera->GetPosition();
+				pos.x -= 0.01f;
+				m_camera->SetPosition(pos);
+			}
+
+			if (Inputs::IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_UP)) {
+				auto pos = m_camera->GetPosition();
+				pos.y -= 0.01f;
+				m_camera->SetPosition(pos);
+			}
+
+			if (Inputs::IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_DOWN)) {
+				auto pos = m_camera->GetPosition();
+				pos.y += 0.01f;
+				m_camera->SetPosition(pos);
+			}
+
+			Engine::Update(delta_time);
 		}
 
 		bool OnEvent(Event::CoreEvent& e) override {
-			KeyPressedEvent* event =  dynamic_cast<KeyPressedEvent*>(&e);
-			if(event != nullptr){
-
-				if(event->GetKeyCode() == KeyCode::RIGHT) {
-					auto pos = m_camera->GetPosition();
-					pos.x -= 0.1f;
-					m_camera->SetPosition(pos);
-				}
-
-				if (event->GetKeyCode() == KeyCode::LEFT) {
-					auto pos = m_camera->GetPosition();
-					pos.x += 0.1f;
-					m_camera->SetPosition(pos);
-				}
-
-
-				if (event->GetKeyCode() == KeyCode::UP) {
-					auto pos = m_camera->GetPosition();
-					pos.y -= 0.1f;
-					m_camera->SetPosition(pos);
-				}
-
-				if (event->GetKeyCode() == KeyCode::DOWN) {
-					auto pos = m_camera->GetPosition();
-					pos.y += 0.1f;
-					m_camera->SetPosition(pos);
-				}
-
-			   event->SetHandled(true);
-			}
 
 			return Engine::OnEvent(e);
 		}

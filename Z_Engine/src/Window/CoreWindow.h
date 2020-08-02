@@ -9,6 +9,10 @@
 #include "../Event/KeyPressedEvent.h"
 #include "../Event/KeyReleasedEvent.h"
 #include "../Event/EventDispatcher.h"
+#include "../Core/TimeStep.h"
+
+//#include <SDL2/SDL_keyboard.h>
+//#include <SDL2/SDL_events.h>
 
 
 namespace Z_Engine {
@@ -28,7 +32,7 @@ namespace Z_Engine::Window {
 
 	public:
 		CoreWindow() = default;
-		virtual ~CoreWindow() = default;
+		virtual ~CoreWindow() { delete m_last_raised_event; }
 
 		virtual unsigned int GetHeight()	const = 0;
 		virtual unsigned int GetWidth()		const = 0;
@@ -45,8 +49,24 @@ namespace Z_Engine::Window {
 			m_engine = engine;
 		}
 
-		virtual void Update(float delta_time) = 0;
+
+		const Event::CoreEvent* GetLastEvent() const { return m_last_raised_event; }
+
+		virtual void PollEvent() = 0;
+		virtual void Update(Core::TimeStep delta_time) = 0;
 		virtual void Render() = 0;
+
+
+	//public:
+	//	static bool IsKeyPressed(Z_Engine::Core::Input::KeyCode key) {
+	//		const auto* state = SDL_GetKeyboardState(NULL);
+	//		return state[(int)key] == SDL_PRESSED;			   
+	//	}
+
+	//	static bool IsKeyReleased(Z_Engine::Core::Input::KeyCode key) {
+	//		const auto* state = SDL_GetKeyboardState(NULL);
+	//		return state[(int)key] == SDL_RELEASED;
+	//	}
 
 	public:
 		virtual void OnEvent(Event::CoreEvent& event) = 0;
@@ -63,6 +83,7 @@ namespace Z_Engine::Window {
 
 		WindowProperty m_property;
 		Z_Engine::Engine* m_engine;
+		Event::CoreEvent* m_last_raised_event;
 	};
 		
 	CoreWindow* Create(WindowProperty prop = {});

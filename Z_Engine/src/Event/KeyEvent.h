@@ -1,23 +1,22 @@
 #pragma once
 
 #include "CoreEvent.h"
-#include "../Core/Input.h"
+#include "../Inputs/KeyCode.h"
 
 
-using namespace Z_Engine::Core::Input;
 
 namespace Z_Engine::Event {
 	
 	class KeyEvent : public CoreEvent {
 	public:
+		 KeyEvent(Inputs::KeyCode key) : m_keycode(key)	{}
+		
+		 Inputs::KeyCode GetKeyCode() const {  return m_keycode; }
 
-		KeyCode GetKeyCode() const {  return m_keycode; }
-
-		EVENT_CATEGORY(Keyboard | EventCategory::Input)
+		 EVENT_CATEGORY(Keyboard | EventCategory::Input)
 	
 	protected:
-		KeyEvent(KeyCode key) : m_keycode(key)	{}
 
-		KeyCode m_keycode;
+		Inputs::KeyCode m_keycode;
 	};
 }

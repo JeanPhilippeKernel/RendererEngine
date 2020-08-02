@@ -2,12 +2,14 @@
 
 #include <fmt/format.h>
 #include "KeyEvent.h"
+#include "../Inputs/KeyCode.h"
+
 
 namespace Z_Engine::Event {
 
 	class KeyReleasedEvent : public KeyEvent {
 	public:
-		 KeyReleasedEvent(KeyCode key)
+		 KeyReleasedEvent(Inputs::KeyCode key)
 			 : KeyEvent(key) 
 		 {
 		 }

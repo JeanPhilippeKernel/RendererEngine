@@ -2,12 +2,13 @@
 
 #include <fmt/format.h>
 #include "KeyEvent.h"
+#include "../Inputs/KeyCode.h"
 
 namespace Z_Engine::Event {
 
 	class KeyPressedEvent : public KeyEvent {
 	public:
-		KeyPressedEvent(KeyCode key, int repeat_count)
+		KeyPressedEvent(Inputs::KeyCode key, int repeat_count)
 			:KeyEvent(key), m_repeat_count(repeat_count)
 		{
 		}
@@ -21,7 +22,7 @@ namespace Z_Engine::Event {
 			return GetStaticCategory();
 		}
 		virtual std::string ToString() const override {
-			return fmt::format("KeyPressedEvent : {0}, repeated count : {1}", m_keycode, m_repeat_count);
+			return fmt::format("KeyPressedEvent : {0}, repeated count : {1}", this->m_keycode, m_repeat_count);
 		}
 
 	protected:

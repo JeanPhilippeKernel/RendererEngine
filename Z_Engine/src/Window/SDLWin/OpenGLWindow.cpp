@@ -2,6 +2,8 @@
 #include "../../Engine.h"
 #include <GL/glew.h>
 
+#include "../../Inputs/KeyCode.h"
+
 using namespace Z_Engine;
 using namespace Z_Engine::Rendering::Graphics;
 
@@ -20,6 +22,8 @@ namespace Z_Engine::Window {
 namespace Z_Engine::Window::SDLWin {
 
 	OpenGLWindow::OpenGLWindow(WindowProperty& prop)
+		: m_event(new SDL_Event{}, [](SDL_Event* e) { free(e); })
+
 	{
 		m_property = prop;
 
@@ -65,7 +69,65 @@ namespace Z_Engine::Window::SDLWin {
 	}
 
 
-	void OpenGLWindow::Update(float delta_time) {
+
+	void OpenGLWindow::PollEvent() {
+		const auto pending = SDL_PollEvent(m_event.get());
+		
+		if (pending)
+		{
+			switch (m_event->type)
+			{
+				case SDL_QUIT:
+				{
+					m_last_raised_event = new WindowClosedEvent;
+					m_property.CallbackFn(*m_last_raised_event);
+				}
+
+				case SDL_WINDOWEVENT:
+				{
+					switch (m_event->window.event)
+					{
+						case SDL_WINDOWEVENT_RESIZED:
+						{
+							m_last_raised_event = new Event::WindowResizeEvent {
+								static_cast<std::uint32_t>(m_event->window.data1),
+								static_cast<std::uint32_t>(m_event->window.data2)
+							};
+							m_property.CallbackFn(*m_last_raised_event);
+
+						}
+					}
+				}
+				case SDL_KEYDOWN:
+				{
+					if (m_event->key.keysym.sym == SDLK_ESCAPE) {
+						m_last_raised_event = new Event::WindowClosedEvent;
+						m_property.CallbackFn(*m_last_raised_event);
+					}
+					else {
+						if (m_event->key.keysym.scancode != SDL_Scancode::SDL_SCANCODE_UNKNOWN) {
+							m_last_raised_event = new Event::KeyPressedEvent {
+								static_cast<Inputs::KeyCode>(m_event->key.keysym.scancode),
+								m_event->key.repeat
+							};
+							m_property.CallbackFn(*m_last_raised_event);
+
+						}
+					}
+				}
+
+				case SDL_KEYUP:
+				{
+					if (m_event->key.keysym.scancode != SDL_Scancode::SDL_SCANCODE_UNKNOWN) {
+						m_last_raised_event = new Event::KeyReleasedEvent { static_cast<Inputs::KeyCode>(m_event->key.keysym.scancode) };
+						m_property.CallbackFn(*m_last_raised_event);
+					}
+				}
+			}
+		}
+	}
+
+	void OpenGLWindow::Update(Core::TimeStep delta_time) {
 
 	}
 
@@ -102,7 +164,6 @@ namespace Z_Engine::Window::SDLWin {
 
 		return true;
 	}
-
 
 	bool OpenGLWindow::OnKeyPressed(KeyPressedEvent& event) {
 		Event::EventDispatcher event_dispatcher(event);
