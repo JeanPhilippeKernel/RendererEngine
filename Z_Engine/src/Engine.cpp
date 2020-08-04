@@ -1,10 +1,5 @@
-#include "Engine.h"
-
 #include <iostream>
-
-#ifdef _WIN32
-	#include <Windows.h>
-#endif // WIN32
+#include "Engine.h"
 
 
 namespace Z_Engine {

@@ -2,6 +2,7 @@
 #include <string>
 #include "../Event/CoreEvent.h"
 #include "../Z_EngineDef.h"
+#include "Core/TimeStep.h"
 
 namespace Z_Engine::Layers {
 	class Z_ENGINE_API Layer {
@@ -17,14 +18,12 @@ namespace Z_Engine::Layers {
 			return m_name;
 		}
 
-		virtual void Initialize() {}
-		virtual void Update(float delta_time) {}
-		virtual void Render() {}
+		virtual void Initialize() = 0;
+		virtual void Update(Core::TimeStep dt) = 0;
+		virtual void Render()  = 0;
 
 	public:
-		virtual bool OnEvent(Event::CoreEvent&) {
-			return false;
-		}
+		virtual bool OnEvent(Event::CoreEvent&) = 0;
 
 	private:
 		std::string m_name;

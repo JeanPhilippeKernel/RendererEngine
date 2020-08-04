@@ -19,6 +19,9 @@
 #include "Inputs/Mouse.h"
 
 
+#include "Core/TimeStep.h"
+#include "Core/Utility.h"
 
 
-#include "EntryPoint.h"
+
+//#include "EntryPoint.h"

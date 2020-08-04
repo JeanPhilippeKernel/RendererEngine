@@ -2,22 +2,29 @@
 #include <typeinfo>
 #include <string>
 
-namespace Z_Engine::Core::Utility {
+namespace Z_Engine::Core {
 	
-	unsigned int ToGraphicCardType(const std::string& type_name) {
-		
-		if(strcmp(typeid(float).name(), type_name.c_str()) == 0 ) {
-			   return  0x1406;
-		}
+	struct Utility
+	{
+		Utility() =  delete;
+		Utility(const Utility&) =  default;
+		~Utility() =  delete;
 
-		else if (strcmp(typeid(int).name(), type_name.c_str()) == 0) {
-			return  0x1404;
-		}
+		static unsigned int ToGraphicCardType(const std::string& type_name) {
 
-		else if (strcmp(typeid(unsigned int).name(), type_name.c_str()) == 0) {
-			return  0x1405;
-		}
+			if (strcmp(typeid(float).name(), type_name.c_str()) == 0) {
+				return  0x1406;
+			}
 
-		throw std::exception("unrecognized type name");
-	}
+			else if (strcmp(typeid(int).name(), type_name.c_str()) == 0) {
+				return  0x1404;
+			}
+
+			else if (strcmp(typeid(unsigned int).name(), type_name.c_str()) == 0) {
+				return  0x1405;
+			}
+
+			throw std::exception("unrecognized type name");
+		}
+	};
 }

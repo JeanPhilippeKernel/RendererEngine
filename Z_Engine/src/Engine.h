@@ -24,6 +24,7 @@ namespace Z_Engine {
 		void Run();
 
 		const std::unique_ptr<Z_Engine::Window::CoreWindow>& GetWindow() const { return m_window; }
+		
 		void PushOverlayLayer(Layer* const layer) { m_layer_stack.PushOverlayLayer(layer); }
 		void PushLayer(Layer* const layer) { m_layer_stack.PushLayer(layer); }
 
