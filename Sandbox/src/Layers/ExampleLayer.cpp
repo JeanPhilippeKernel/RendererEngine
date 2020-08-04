@@ -10,11 +10,18 @@ using namespace Z_Engine::Inputs;
 
 namespace Sandbox::Layers {
 	
-	
 	void ExampleLayer::Initialize() {
 		m_camera.reset(new OrthographicCamera(-1.0f, 1.0f, -1.0f, 1.0f));
 		m_renderer.reset(new GraphicRenderer());
 
+		m_position_one = glm::vec3(0.1f, 0.1f, 0.0f);
+		m_position_two = glm::vec3(0.5f, 0.5f, 0.0f);
+		
+		m_scale =  glm::vec3(0.5f, 0.5f, 0.0f);
+
+		m_transformation_one =  glm::translate(glm::mat4(1.0f), m_position_one) * glm::scale(glm::mat4(1.0f), m_scale);
+		m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
+		
 		const char* v_source = R"(
 				#version 430 core
 
@@ -22,12 +29,13 @@ namespace Sandbox::Layers {
 				layout (location = 1) in vec4 a_Color;
 
 				uniform mat4 u_ViewProjectionMat;
+				uniform mat4 u_TransformMat;
 
 				out vec4 v_Color;
 
 				void main()
 				{	
-					gl_Position = u_ViewProjectionMat * vec4(a_Position, 1.0f);
+					gl_Position = u_ViewProjectionMat * u_TransformMat * vec4(a_Position, 1.0f);
 					v_Color = a_Color;
 				}
 			)";
@@ -46,9 +54,9 @@ namespace Sandbox::Layers {
 		m_shader.reset(new Shader(v_source, f_source));
 
 		std::vector<float> vertices{
-			0.5f, -0.5f, 1.0f, 1.0f, 0.5f, 0.3f, 1.0f,
-		  -0.5f, -0.5f, 1.0f, 0.5f, 0.1f, 0.6f, 1.0f,
-		   0.0f, 0.5f,	1.0f, 0.1f, 0.3f, 0.2f, 1.0f
+			 0.5f, -0.5f, 1.0f,	1.0f, 0.5f, 0.3f, 1.0f,
+			-0.5f, -0.5f, 1.0f,	0.5f, 0.1f, 0.6f, 1.0f,
+			 0.0f,	0.5f, 1.0f,	0.1f, 0.3f, 0.2f, 1.0f
 		};
 
 		std::vector<unsigned int> indices{ 0, 1, 2 };
@@ -65,11 +73,45 @@ namespace Sandbox::Layers {
 
 		// Drawing second mesh
 
+
+		const char* v_source_2 = R"(
+				#version 430 core
+
+				layout (location = 0) in vec3 a_Position;
+				layout (location = 1) in vec4 a_Color;
+
+				uniform mat4 u_ViewProjectionMat;
+				uniform mat4 u_TransformMat;
+
+				out vec4 v_Color;
+
+				void main()
+				{	
+					gl_Position = u_ViewProjectionMat * u_TransformMat * vec4(a_Position, 1.0f);
+					v_Color = a_Color;
+				}
+			)";
+
+		const char* f_source_2 = R"(
+				#version  430 core
+
+				in vec4 v_Color;
+				uniform vec3 u_Color;
+
+				void main()
+				{
+					//gl_FragColor = v_Color;
+					gl_FragColor = vec4(u_Color, 1.0f);
+				}
+			)";
+
+		m_shader_2.reset(new Shader(v_source_2, f_source_2));
+
 		std::vector<float> vertices_2{
-			-0.5f, 0.7f, 1.0f,	1.1f, 0.2f, 0.2f, 1.0f,
-			0.5f, 0.7f, 1.0f,	0.0f, 0.5f, 0.3f, 1.0f,
-			0.5f, -0.6f, 1.0f,	0.5f, 0.9f, 0.6f, 1.0f,
-			-0.5f, -0.6f, 1.0f, 0.3f, 0.2f, 0.2f, 1.0f
+			-0.5f,	0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,
+			 0.5f,	0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,
+			 0.5f, -0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,
+			-0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f
 		};
 
 		std::vector<unsigned int> indices_2{
@@ -112,17 +154,64 @@ namespace Sandbox::Layers {
 			m_camera->SetPosition(pos);
 		}
 
+
+		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_T)) {
+			m_position_two.y -= 0.1f * dt;
+			m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
+		}
+
+		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_B)) {
+			m_position_two.y += 0.1f * dt;
+			m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
+		}
+
+		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_F)) {
+			m_position_two.x += 0.1f * dt;
+			m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
+		}
+
+		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_G)) {
+			m_position_two.x -= 0.1f * dt;
+			m_transformation_two = 	glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
+		}
+
 	}
 
 	void ExampleLayer::Render() {
 		RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		RendererCommand::Clear();
 
-
 		m_renderer->BeginScene(m_camera);
-
+		
+		
 		m_shader->SetUniform("u_ViewProjectionMat", m_camera->GetViewProjectionMatrix());
-		m_renderer->Submit(m_shader, { m_vertex_array_2, m_vertex_array });
+		m_shader->SetUniform("u_TransformMat", m_transformation_two);
+		m_renderer->Submit(m_shader, m_vertex_array);
+		
+		
+		//m_shader_2->SetUniform("u_ViewProjectionMat", m_camera->GetViewProjectionMatrix());
+		//m_shader_2->SetUniform("u_TransformMat", m_transformation_two);
+		//m_renderer->Submit(m_shader_2, m_vertex_array_2);
+
+
+
+		 for (int y = 0; y < 15; ++y)
+		 {
+			for (int x = 0; x < 15; ++x)
+			{
+				m_shader_2->SetUniform("u_ViewProjectionMat", m_camera->GetViewProjectionMatrix());
+				m_shader_2->SetUniform("u_TransformMat",
+					glm::translate(glm::mat4(1.0f), glm::vec3(0.11f * x, 0.11f * y, 0.0f)) * 
+					glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.0f))
+				);
+
+				if(x % 2 == 0) m_shader_2->SetUniform("u_Color", glm::vec3(0.6f, 0.0, 1.0f));
+				else m_shader_2->SetUniform("u_Color", glm::vec3(1.0f, 0.5f, 0.0f));
+
+				m_renderer->Submit(m_shader_2, m_vertex_array_2);
+
+			}
+		 }
 
 		m_renderer->EndScene();
 	}

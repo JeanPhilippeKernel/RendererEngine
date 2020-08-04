@@ -33,10 +33,18 @@ namespace Sandbox::Layers {
 		std::shared_ptr<Z_Engine::Rendering::Buffer::VertexArray<float, unsigned int>> m_vertex_array_2;
 
 		std::shared_ptr<Z_Engine::Rendering::Shaders::Shader> m_shader;
+		std::shared_ptr<Z_Engine::Rendering::Shaders::Shader> m_shader_2;
 
 		std::shared_ptr<Z_Engine::Rendering::Renderer::GraphicRenderer> m_renderer;
 		std::shared_ptr<Z_Engine::Rendering::Cameras::OrthographicCamera> m_camera;
 
+
+		glm::mat4 m_transformation_one;
+		glm::mat4 m_transformation_two;
+		
+		glm::vec3 m_position_one;
+		glm::vec3 m_position_two;
+		glm::vec3 m_scale;
 	};
 
 }

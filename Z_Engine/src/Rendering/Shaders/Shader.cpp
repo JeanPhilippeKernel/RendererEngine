@@ -139,6 +139,7 @@ namespace Z_Engine::Rendering::Shaders {
 		if(it != std::end(m_uniform_location_map))
 			return it->second;
 
+		Bind();
 		GLint location = glGetUniformLocation(m_program, name);
 		if(location != -1) {
 			m_uniform_location_map[name] = location;
@@ -148,6 +149,7 @@ namespace Z_Engine::Rendering::Shaders {
 
 
 	void Shader::SetUniform(const char* name, int value) {
+		Bind();
 		auto location = GetLocationUniform(name);
 		if(location != -1){
 			glUniform1i(location, value);
@@ -155,6 +157,8 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 
 	void Shader::SetUniform(const char* name, float value) {
+		Bind();
+
 		auto location = GetLocationUniform(name);
 		if (location != -1) {
 			glUniform1f(location, value);
@@ -162,6 +166,8 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 
 	void Shader::SetUniform(const char* name, const glm::vec2& value) {
+		Bind();
+
 		auto location = GetLocationUniform(name);
 		if (location != -1) {
 			glUniform2d(location, value.x, value.y);
@@ -169,6 +175,8 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 	
 	void Shader::SetUniform(const char* name, const glm::vec3& value) {
+		Bind();
+
 		auto location = GetLocationUniform(name);
 		if (location != -1) {
 			glUniform3f(location, value.x, value.y, value.z);
@@ -176,6 +184,8 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 
 	void Shader::SetUniform(const char* name, const glm::vec4& value) {
+		Bind();
+
 		auto location = GetLocationUniform(name);
 		if (location != -1) {
 			glUniform4f(location, value.x, value.y, value.z, value.w);
@@ -184,6 +194,8 @@ namespace Z_Engine::Rendering::Shaders {
 
 
 	void Shader::SetUniform(const char* name, const glm::mat2& value) {
+		Bind();
+
 		auto location = GetLocationUniform(name);
 		if (location != -1) {
 			glUniformMatrix2fv(location, 1, GL_FALSE, glm::value_ptr(value));
@@ -191,6 +203,8 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 
 	void Shader::SetUniform(const char* name, const glm::mat3& value) {
+		Bind();
+
 		auto location = GetLocationUniform(name);
 		if (location != -1) {
 			glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(value));
@@ -198,6 +212,8 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 	
 	void Shader::SetUniform(const char* name, const glm::mat4& value) {
+		Bind();
+
 		auto location = GetLocationUniform(name);
 		if (location != -1) {
 			glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
