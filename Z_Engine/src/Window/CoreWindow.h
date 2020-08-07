@@ -79,7 +79,7 @@ namespace Z_Engine::Window {
 		static const char* ATTACHED_PROPERTY;
 
 		WindowProperty m_property;
-		Z_Engine::Engine* m_engine;
+		Z_Engine::Engine* m_engine { nullptr };
 	};
 		
 	CoreWindow* Create(WindowProperty prop = {});
