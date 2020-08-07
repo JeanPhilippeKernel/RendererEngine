@@ -3,8 +3,6 @@
 #include <fmt/format.h>
 #include "CoreEvent.h"
 
-#include <iostream>
-
 namespace Z_Engine::Event {
 
 	class TextInputEvent : public CoreEvent {
