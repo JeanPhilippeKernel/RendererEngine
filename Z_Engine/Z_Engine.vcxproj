@@ -68,6 +68,7 @@
       <PreprocessorDefinitions>Z_ENGINE_PLATFORM_WINDOW;Z_ENGINE_BUILD</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\vendor;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -87,6 +88,7 @@
       <PreprocessorDefinitions>Z_ENGINE_PLATFORM_WINDOW;Z_ENGINE_BUILD</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\vendor;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -122,6 +124,12 @@
     <ClInclude Include="src\Event\KeyEvent.h" />
     <ClInclude Include="src\Event\KeyPressedEvent.h" />
     <ClInclude Include="src\Event\KeyReleasedEvent.h" />
+    <ClInclude Include="src\Event\MouseButtonMovedEvent.h" />
+    <ClInclude Include="src\Event\MouseButtonPressedEvent.h" />
+    <ClInclude Include="src\Event\MouseButtonReleasedEvent.h" />
+    <ClInclude Include="src\Event\MouseButtonWheelEvent.h" />
+    <ClInclude Include="src\Event\MouseEvent.h" />
+    <ClInclude Include="src\Event\TextInputEvent.h" />
     <ClInclude Include="src\Event\WindowClosedEvent.h" />
     <ClInclude Include="src\Event\WindowResizeEvent.h" />
     <ClInclude Include="src\Inputs\IDevice.h" />
@@ -129,6 +137,7 @@
     <ClInclude Include="src\Inputs\KeyCode.h" />
     <ClInclude Include="src\Inputs\Mouse.h" />
     <ClInclude Include="src\LayerStack.h" />
+    <ClInclude Include="src\Layers\ImguiLayer.h" />
     <ClInclude Include="src\Layers\Layer.h" />
     <ClInclude Include="src\Rendering\Buffer\BufferLayout.h" />
     <ClInclude Include="src\Rendering\Buffer\GraphicBuffer.h" />
@@ -149,6 +158,14 @@
     <ClInclude Include="src\Window\WindowProperty.h" />
     <ClInclude Include="src\Z_Engine.h" />
     <ClInclude Include="src\Z_EngineDef.h" />
+    <ClInclude Include="vendor\imgui\examples\imgui_impl_opengl3.h" />
+    <ClInclude Include="vendor\imgui\examples\imgui_impl_sdl.h" />
+    <ClInclude Include="vendor\imgui\imconfig.h" />
+    <ClInclude Include="vendor\imgui\imgui.h" />
+    <ClInclude Include="vendor\imgui\imgui_internal.h" />
+    <ClInclude Include="vendor\imgui\imstb_rectpack.h" />
+    <ClInclude Include="vendor\imgui\imstb_textedit.h" />
+    <ClInclude Include="vendor\imgui\imstb_truetype.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -160,6 +177,12 @@
     <ClCompile Include="src\Rendering\Shaders\Shader.cpp" />
     <ClCompile Include="src\Window\CoreWindow.cpp" />
     <ClCompile Include="src\Window\SDLWin\OpenGLWindow.cpp" />
+    <ClCompile Include="vendor\imgui\examples\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="vendor\imgui\examples\imgui_impl_sdl.cpp" />
+    <ClCompile Include="vendor\imgui\imgui.cpp" />
+    <ClCompile Include="vendor\imgui\imgui_demo.cpp" />
+    <ClCompile Include="vendor\imgui\imgui_draw.cpp" />
+    <ClCompile Include="vendor\imgui\imgui_widgets.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

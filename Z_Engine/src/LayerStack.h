@@ -12,65 +12,17 @@ namespace Z_Engine {
 		LayerStack() = default;
 		~LayerStack() = default;
 
-		void PushLayer(Layer* const layer) {
-			if (m_layers.empty()) {
-				m_layers.emplace_back(layer);
-				current_it = std::begin(m_layers);
-			}
-			else {
-				current_it = m_layers.emplace(current_it, layer);
-			}
-	
-			layer->Initialize();
-		}
+		void PushLayer(Layer* const layer);
 
-		void PushOverlayLayer(Layer* const layer) {
-			m_layers.push_back(layer);
-			layer->Initialize();
-			
-			if (m_layers.size() == 1) {
-				current_it = std::begin(m_layers);
-			}
-		}
+		void PushOverlayLayer(Layer* const layer);
 		
-		void PopLayer(Layer* const layer) {
-			const auto it = std::find_if(
-				std::begin(m_layers), std::end(m_layers),
-				[layer](Layer* const x) { return x == layer; }
-			);
+		void PopLayer(Layer* const layer);
 
-			if (it != std::end(m_layers)) {
-				current_it = m_layers.erase(it);
-			}
-		}
+		void PopLayer();
 
-		void PopLayer() {
-			const auto it = std::begin(m_layers);
-			if (it != std::end(m_layers)) {
-				current_it = m_layers.erase(it);
-			}
-		}
+		void PopOverlayLayer();
 
-
-
-		void PopOverlayLayer() {
-			const auto it = std::end(m_layers) - 1;
-			if (it != std::end(m_layers)) {
-				m_layers.erase(it);
-			}
-		}
-
-
-		void PopOverlayLayer(Layer* const layer) {
-			const auto it = std::find_if(
-				std::begin(m_layers), std::end(m_layers),
-				[layer](Layer* const x) { return x == layer; }
-			);
-
-			if (it != std::end(m_layers)) {
-				m_layers.erase(it);
-			}
-		}
+		void PopOverlayLayer(Layer* const layer);
 
 	public:
 		std::vector<Layer*>::iterator begin() { return std::begin(m_layers); }

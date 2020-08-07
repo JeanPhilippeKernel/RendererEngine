@@ -23,7 +23,7 @@ namespace Z_Engine {
 
 		void Run();
 
-		const std::unique_ptr<Z_Engine::Window::CoreWindow>& GetWindow() const { return m_window; }
+		//const std::unique_ptr<Z_Engine::Window::CoreWindow>& GetWindow() const { return m_window; }
 		
 		void PushOverlayLayer(Layer* const layer) { m_layer_stack.PushOverlayLayer(layer); }
 		void PushLayer(Layer* const layer) { m_layer_stack.PushLayer(layer); }
@@ -34,10 +34,8 @@ namespace Z_Engine {
 		virtual void Render();
 
 
-	protected:
-		bool OnEngineClosed(Event::EngineClosedEvent&);
-
 	public:
+		bool OnEngineClosed(Event::EngineClosedEvent&);
 		virtual bool OnEvent(Event::CoreEvent&);
 	
 	protected:
@@ -46,7 +44,7 @@ namespace Z_Engine {
 	private:
 		bool m_running{ true };
 		float m_last_frame_time {0.0f};
-		std::unique_ptr<Z_Engine::Window::CoreWindow>	m_window;
+		Ref<Z_Engine::Window::CoreWindow>	m_window;
 	};
 
 

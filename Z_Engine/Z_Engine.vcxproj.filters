@@ -40,6 +40,21 @@
     <ClInclude Include="src\Inputs\IDevice.h" />
     <ClInclude Include="src\Inputs\Mouse.h" />
     <ClInclude Include="src\Core\TimeStep.h" />
+    <ClInclude Include="src\Layers\ImguiLayer.h" />
+    <ClInclude Include="vendor\imgui\imgui.h" />
+    <ClInclude Include="vendor\imgui\imconfig.h" />
+    <ClInclude Include="vendor\imgui\imgui_internal.h" />
+    <ClInclude Include="vendor\imgui\imstb_rectpack.h" />
+    <ClInclude Include="vendor\imgui\imstb_textedit.h" />
+    <ClInclude Include="vendor\imgui\imstb_truetype.h" />
+    <ClInclude Include="vendor\imgui\examples\imgui_impl_opengl3.h" />
+    <ClInclude Include="vendor\imgui\examples\imgui_impl_sdl.h" />
+    <ClInclude Include="src\Event\MouseEvent.h" />
+    <ClInclude Include="src\Event\MouseButtonPressedEvent.h" />
+    <ClInclude Include="src\Event\MouseButtonReleasedEvent.h" />
+    <ClInclude Include="src\Event\MouseButtonMovedEvent.h" />
+    <ClInclude Include="src\Event\MouseButtonWheelEvent.h" />
+    <ClInclude Include="src\Event\TextInputEvent.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -51,5 +66,11 @@
     <ClCompile Include="src\Rendering\Renderer\GraphicScene.cpp" />
     <ClCompile Include="src\Rendering\Cameras\OrthographicCamera.cpp" />
     <ClCompile Include="src\Inputs\IDevice.cpp" />
+    <ClCompile Include="vendor\imgui\imgui.cpp" />
+    <ClCompile Include="vendor\imgui\imgui_demo.cpp" />
+    <ClCompile Include="vendor\imgui\imgui_draw.cpp" />
+    <ClCompile Include="vendor\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="vendor\imgui\examples\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="vendor\imgui\examples\imgui_impl_sdl.cpp" />
   </ItemGroup>
 </Project>

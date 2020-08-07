@@ -2,9 +2,10 @@
 #include <string>
 #include <type_traits>
 #include <memory>
-#include "KeyCode.h"
-
 #include <unordered_map>
+
+#include "KeyCode.h"
+#include "../Z_EngineDef.h"
 
 namespace Z_Engine::Inputs {
 
@@ -18,8 +19,7 @@ namespace Z_Engine::Inputs {
 			 
 			const auto& type = typeid(T);		   
 			auto  it  =  std::find_if(std::begin(m_devices), std::end(m_devices), 
-				[&type] (const std::pair<const char *, std::shared_ptr<IDevice>>& item) 
-				{
+				[&type] (const std::pair<const char *, Ref<IDevice>>& item) {
 					return strcmp(item.first,  type.name()) == 0;
 				}
 			);
@@ -28,7 +28,7 @@ namespace Z_Engine::Inputs {
 				return dynamic_cast<T*>(it->second.get());
 			}
 
-			std::shared_ptr<IDevice> device_ptr;
+			Ref<IDevice> device_ptr;
 			device_ptr.reset(new T());
 
 			auto pair = m_devices.emplace(std::make_pair(type.name(), device_ptr));
@@ -44,7 +44,7 @@ namespace Z_Engine::Inputs {
 		 IDevice(const char * name =  "abstract_device")
 			 :m_name(name)
 		 {}
-		 static std::unordered_map<const char *, std::shared_ptr<IDevice>> m_devices;
+		 static std::unordered_map<const char *, Ref<IDevice>> m_devices;
 		 std::string m_name;
 	 };
 }

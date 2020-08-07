@@ -10,17 +10,17 @@ namespace  Z_Engine::Rendering::Renderer {
 	public:
 		explicit GraphicScene() =  default;
 	
-		explicit GraphicScene(const std::shared_ptr<Z_Engine::Rendering::Cameras::Camera>& camera)
+		explicit GraphicScene(const Ref<Z_Engine::Rendering::Cameras::Camera>& camera)
 			:m_camera(camera)
 		{}
 
 		~GraphicScene() = default;
 
-		std::shared_ptr<Z_Engine::Rendering::Cameras::Camera> GetCamera() const;
+		Ref<Z_Engine::Rendering::Cameras::Camera> GetCamera() const;
 
-		void SetCamera(const std::shared_ptr<Z_Engine::Rendering::Cameras::Camera>& camera);
+		void SetCamera(const Ref<Z_Engine::Rendering::Cameras::Camera>& camera);
 
 	private:
-		std::weak_ptr<Z_Engine::Rendering::Cameras::Camera> m_camera;
+		WeakRef<Z_Engine::Rendering::Cameras::Camera> m_camera;
 	};
 }

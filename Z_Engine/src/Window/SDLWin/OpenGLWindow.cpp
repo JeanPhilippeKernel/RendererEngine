@@ -1,8 +1,11 @@
 #include "OpenGLWindow.h"
 #include "../../Engine.h"
 #include <GL/glew.h>
+#include <cstdint>
 
 #include "../../Inputs/KeyCode.h"
+#include <imgui/imgui.h>
+
 
 using namespace Z_Engine;
 using namespace Z_Engine::Rendering::Graphics;
@@ -27,13 +30,11 @@ namespace Z_Engine::Window::SDLWin {
 	{
 		m_property = prop;
 
-
 		const int sdl_init = SDL_Init(SDL_INIT_EVERYTHING);
 		if (sdl_init != 0) {
 			SDL_Log("Unable to initialize SDL : %s", SDL_GetError());
 			exit(EXIT_FAILURE);
 		}
-
 
 		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
@@ -43,7 +44,6 @@ namespace Z_Engine::Window::SDLWin {
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-
 
 
 		m_native_window = SDL_CreateWindow(
@@ -66,65 +66,102 @@ namespace Z_Engine::Window::SDLWin {
 
 		glewExperimental = GL_TRUE;
 		glViewport(0, 0, m_property.Width, m_property.Height);
+
 	}
 
 
 
 	void OpenGLWindow::PollEvent() {
 		const auto pending = SDL_PollEvent(m_event.get());
-		
 		if (pending)
 		{
+			
 			switch (m_event->type)
 			{
-				case SDL_QUIT:
-				{
-					m_last_raised_event = new WindowClosedEvent;
-					m_property.CallbackFn(*m_last_raised_event);
+				case SDL_QUIT: {
+					WindowClosedEvent e;
+					m_property.CallbackFn(e);
+					break;
 				}
-
-				case SDL_WINDOWEVENT:
-				{
+			
+				case SDL_WINDOWEVENT: {
 					switch (m_event->window.event)
 					{
 						case SDL_WINDOWEVENT_RESIZED:
 						{
-							m_last_raised_event = new Event::WindowResizeEvent {
-								static_cast<std::uint32_t>(m_event->window.data1),
+							Event::WindowResizeEvent  e {
+								static_cast<uint32_t>(m_event->window.data1),
 								static_cast<std::uint32_t>(m_event->window.data2)
 							};
-							m_property.CallbackFn(*m_last_raised_event);
-
+							m_property.CallbackFn(e);
+							break;
 						}
 					}
 				}
-				case SDL_KEYDOWN:
+				case SDL_TEXTINPUT:
 				{
+					TextInputEvent e{m_event->text.text};
+					m_property.CallbackFn(e);
+					break;
+				}
+				case SDL_KEYDOWN: {
 					if (m_event->key.keysym.sym == SDLK_ESCAPE) {
-						m_last_raised_event = new Event::WindowClosedEvent;
-						m_property.CallbackFn(*m_last_raised_event);
+						Event::WindowClosedEvent e;
+						m_property.CallbackFn(e);
+						
 					}
 					else {
 						if (m_event->key.keysym.scancode != SDL_Scancode::SDL_SCANCODE_UNKNOWN) {
-							m_last_raised_event = new Event::KeyPressedEvent {
+							Event::KeyPressedEvent e {
 								static_cast<Inputs::KeyCode>(m_event->key.keysym.scancode),
 								m_event->key.repeat
 							};
-							m_property.CallbackFn(*m_last_raised_event);
+							m_property.CallbackFn(e);
 
 						}
 					}
+					break;
 				}
 
-				case SDL_KEYUP:
-				{
+				case SDL_KEYUP: {
 					if (m_event->key.keysym.scancode != SDL_Scancode::SDL_SCANCODE_UNKNOWN) {
-						m_last_raised_event = new Event::KeyReleasedEvent { static_cast<Inputs::KeyCode>(m_event->key.keysym.scancode) };
-						m_property.CallbackFn(*m_last_raised_event);
+						Event::KeyReleasedEvent e { static_cast<Inputs::KeyCode>(m_event->key.keysym.scancode) };
+						m_property.CallbackFn(e);
 					}
+					break;
+				}
+
+
+				case SDL_MOUSEBUTTONDOWN: {
+					MouseButtonPressedEvent e { m_event->button.button };
+					m_property.CallbackFn(e);
+					break;
+				}
+
+				case SDL_MOUSEBUTTONUP: { 
+					MouseButtonReleasedEvent e { m_event->button.button };
+					m_property.CallbackFn(e);
+					break;
+				}
+				
+				case SDL_MOUSEMOTION: {
+					MouseButtonMovedEvent e {  m_event->button.x , m_event->button.y };
+					m_property.CallbackFn(e);
+					break;
+				}		 
+				
+				case SDL_MOUSEWHEEL: {
+					MouseButtonWheelEvent e {
+						static_cast<std::uint32_t>(m_event->wheel.direction),
+						static_cast<int>(m_event->wheel.x),
+						static_cast<int>(m_event->wheel.y)
+					};
+					m_property.CallbackFn(e);
+					break;
 				}
 			}
 		}
+
 	}
 
 	void OpenGLWindow::Update(Core::TimeStep delta_time) {
@@ -150,7 +187,7 @@ namespace Z_Engine::Window::SDLWin {
 		Event::EngineClosedEvent e(event.GetName().c_str());
 
 		Event::EventDispatcher event_dispatcher(e);
-		event_dispatcher.Dispatch<Event::EngineClosedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.Dispatch<Event::EngineClosedEvent>(std::bind(&Engine::OnEngineClosed, m_engine, std::placeholders::_1));
 
 		return true;
 	}
@@ -160,8 +197,12 @@ namespace Z_Engine::Window::SDLWin {
 		m_property.Width = event.GetWidth();
 		m_property.Height = event.GetHeight();
 
-		glViewport(0, 0, m_property.Width, m_property.Height);
+		//ToDo : should be moved in ImguiLayer....
+		ImGuiIO& io = ImGui::GetIO();
+		io.DisplaySize = ImVec2(static_cast<float>(event.GetWidth()), static_cast<float>(event.GetHeight()));
+		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 
+		glViewport(0, 0, m_property.Width, m_property.Height);
 		return true;
 	}
 
@@ -176,4 +217,38 @@ namespace Z_Engine::Window::SDLWin {
 		event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
 		return true;
 	}
+
+
+
+	bool OpenGLWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event) {
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return true;
+	}
+
+	bool OpenGLWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event) {
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return true;
+	}
+
+	bool OpenGLWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event) {
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return true;
+	}
+
+	bool OpenGLWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event) {
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return true;
+	}
+
+	bool OpenGLWindow::OnTextInputRaised(TextInputEvent& event) {
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return true;
+	}
+
+
 }

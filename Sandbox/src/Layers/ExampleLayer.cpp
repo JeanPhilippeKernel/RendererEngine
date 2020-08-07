@@ -73,7 +73,6 @@ namespace Sandbox::Layers {
 
 		// Drawing second mesh
 
-
 		const char* v_source_2 = R"(
 				#version 430 core
 
@@ -183,32 +182,22 @@ namespace Sandbox::Layers {
 
 		m_renderer->BeginScene(m_camera);
 		
-		
-		m_shader->SetUniform("u_ViewProjectionMat", m_camera->GetViewProjectionMatrix());
-		m_shader->SetUniform("u_TransformMat", m_transformation_two);
-		m_renderer->Submit(m_shader, m_vertex_array);
-		
-		
-		//m_shader_2->SetUniform("u_ViewProjectionMat", m_camera->GetViewProjectionMatrix());
-		//m_shader_2->SetUniform("u_TransformMat", m_transformation_two);
-		//m_renderer->Submit(m_shader_2, m_vertex_array_2);
+		m_renderer->Submit(m_shader, m_vertex_array, m_transformation_one);
+		m_renderer->Submit(m_shader_2, m_vertex_array_2, m_transformation_two);
 
-
-
-		 for (int y = 0; y < 15; ++y)
+		 for (int y = 0; y < 20; ++y)
 		 {
 			for (int x = 0; x < 15; ++x)
 			{
-				m_shader_2->SetUniform("u_ViewProjectionMat", m_camera->GetViewProjectionMatrix());
-				m_shader_2->SetUniform("u_TransformMat",
-					glm::translate(glm::mat4(1.0f), glm::vec3(0.11f * x, 0.11f * y, 0.0f)) * 
-					glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.0f))
-				);
+				const auto tranform = glm::translate(glm::mat4(1.0f), glm::vec3(0.11f * x, 0.11f * y, 0.0f)) *
+					glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.0f));
 
-				if(x % 2 == 0) m_shader_2->SetUniform("u_Color", glm::vec3(0.6f, 0.0, 1.0f));
-				else m_shader_2->SetUniform("u_Color", glm::vec3(1.0f, 0.5f, 0.0f));
+				if(x % 2 == 0) 
+					m_shader_2->SetUniform("u_Color", glm::vec3(0.6f, 0.0, 1.0f));
+				else 
+					m_shader_2->SetUniform("u_Color", glm::vec3(1.0f, 0.5f, 0.0f));
 
-				m_renderer->Submit(m_shader_2, m_vertex_array_2);
+				m_renderer->Submit(m_shader_2, m_vertex_array_2, tranform);
 
 			}
 		 }

@@ -1,5 +1,6 @@
 #include <iostream>
 #include "Engine.h"
+#include "Layers/ImguiLayer.h"
 
 
 namespace Z_Engine {
@@ -8,7 +9,7 @@ namespace Z_Engine {
 	{
 		m_window.reset(Z_Engine::Window::Create());
 		m_window->SetAttachedEngine(this);
-
+		PushOverlayLayer(new Layers::ImguiLayer(m_window));
 	}
 	
 	void Engine::ProcessEvent() {

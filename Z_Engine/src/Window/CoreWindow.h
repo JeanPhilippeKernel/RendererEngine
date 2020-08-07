@@ -9,10 +9,12 @@
 #include "../Event/KeyPressedEvent.h"
 #include "../Event/KeyReleasedEvent.h"
 #include "../Event/EventDispatcher.h"
+#include "../Event/MouseButtonMovedEvent.h"
+#include "../Event/MouseButtonPressedEvent.h"
+#include "../Event/MouseButtonReleasedEvent.h"
+#include "../Event/MouseButtonWheelEvent.h"
+#include "../Event/TextInputEvent.h"
 #include "../Core/TimeStep.h"
-
-//#include <SDL2/SDL_keyboard.h>
-//#include <SDL2/SDL_events.h>
 
 
 namespace Z_Engine {
@@ -32,7 +34,7 @@ namespace Z_Engine::Window {
 
 	public:
 		CoreWindow() = default;
-		virtual ~CoreWindow() { delete m_last_raised_event; }
+		virtual ~CoreWindow() = default;
 
 		virtual unsigned int GetHeight()	const = 0;
 		virtual unsigned int GetWidth()		const = 0;
@@ -42,6 +44,7 @@ namespace Z_Engine::Window {
 		virtual void SetCallbackFunction(const EventCallbackFn& callback) = 0;
 
 		virtual void* GetNativeWindow() const = 0;
+		virtual void* GetNativeContext() const = 0;
 
 		virtual const WindowProperty& GetWindowProperty() const = 0;
 		
@@ -49,24 +52,10 @@ namespace Z_Engine::Window {
 			m_engine = engine;
 		}
 
-
-		const Event::CoreEvent* GetLastEvent() const { return m_last_raised_event; }
-
 		virtual void PollEvent() = 0;
 		virtual void Update(Core::TimeStep delta_time) = 0;
 		virtual void Render() = 0;
 
-
-	//public:
-	//	static bool IsKeyPressed(Z_Engine::Core::Input::KeyCode key) {
-	//		const auto* state = SDL_GetKeyboardState(NULL);
-	//		return state[(int)key] == SDL_PRESSED;			   
-	//	}
-
-	//	static bool IsKeyReleased(Z_Engine::Core::Input::KeyCode key) {
-	//		const auto* state = SDL_GetKeyboardState(NULL);
-	//		return state[(int)key] == SDL_RELEASED;
-	//	}
 
 	public:
 		virtual void OnEvent(Event::CoreEvent& event) = 0;
@@ -78,12 +67,19 @@ namespace Z_Engine::Window {
 		virtual bool OnKeyPressed(KeyPressedEvent&) = 0;
 		virtual bool OnKeyReleased(KeyReleasedEvent&) = 0;
 
+
+		virtual bool OnMouseButtonPressed(MouseButtonPressedEvent&) = 0;
+		virtual bool OnMouseButtonReleased(MouseButtonReleasedEvent&) = 0;
+		virtual bool OnMouseButtonMoved(MouseButtonMovedEvent&) = 0;
+		virtual bool OnMouseButtonWheelMoved(MouseButtonWheelEvent&) = 0;
+
+		virtual bool OnTextInputRaised(TextInputEvent&) = 0;
+
 	protected:
 		static const char* ATTACHED_PROPERTY;
 
 		WindowProperty m_property;
 		Z_Engine::Engine* m_engine;
-		Event::CoreEvent* m_last_raised_event;
 	};
 		
 	CoreWindow* Create(WindowProperty prop = {});

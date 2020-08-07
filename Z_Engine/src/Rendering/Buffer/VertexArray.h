@@ -32,7 +32,7 @@ namespace Z_Engine::Rendering::Buffer {
 			glBindVertexArray(0);   
 		}
 
-		void AddVertexBuffer(const std::shared_ptr<VertexBuffer<T>>& vertex_buffer) {
+		void AddVertexBuffer(const Ref<VertexBuffer<T>>& vertex_buffer) {
 			
 			glBindVertexArray(m_vertex_array_id);
 
@@ -58,17 +58,17 @@ namespace Z_Engine::Rendering::Buffer {
 			m_vertices_buffer.push_back(vertex_buffer);
 		}
 
-		void SetIndexBuffer(const std::shared_ptr<IndexBuffer<K>>& index_buffer) {
+		void SetIndexBuffer(const Ref<IndexBuffer<K>>& index_buffer) {
 			m_index_buffer = index_buffer;
 		}
 
-		const std::shared_ptr<IndexBuffer<K>>& GetIndexBuffer() const {
+		const Ref<IndexBuffer<K>>& GetIndexBuffer() const {
 			return m_index_buffer;
 		}
 
 	private:
-		std::vector<std::shared_ptr<VertexBuffer<T>>> m_vertices_buffer;
-		std::shared_ptr<IndexBuffer<K>> m_index_buffer;
+		std::vector<Ref<VertexBuffer<T>>> m_vertices_buffer;
+		Ref<IndexBuffer<K>> m_index_buffer;
 
 		GLuint m_vertex_array_id{ 0 };
 	};

@@ -8,7 +8,6 @@
 #include "../../Rendering/Graphics/GraphicContext.h"
 
 
-
 namespace Z_Engine::Window::SDLWin {
 
 	class OpenGLWindow : public CoreWindow {
@@ -34,6 +33,8 @@ namespace Z_Engine::Window::SDLWin {
 		void SetCallbackFunction(const EventCallbackFn& callback) override { m_property.CallbackFn = callback; }
 
 		void* GetNativeWindow() const override { return m_native_window; }
+		void* GetNativeContext() const override { return m_context->GetNativeContext(); }
+
 
 		virtual const WindowProperty& GetWindowProperty() const override { return m_property; }
 
@@ -48,10 +49,20 @@ namespace Z_Engine::Window::SDLWin {
 		void OnEvent(Event::CoreEvent& event) override {
 
 			Event::EventDispatcher event_dispatcher(event);
-			event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&OpenGLWindow::OnWindowClosed, this, std::placeholders::_1));
-			event_dispatcher.Dispatch<Event::WindowResizeEvent>(std::bind(&OpenGLWindow::OnWindowResized, this, std::placeholders::_1));
-			event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&OpenGLWindow::OnKeyPressed, this, std::placeholders::_1));
-			event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&OpenGLWindow::OnKeyReleased, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<WindowClosedEvent>(std::bind(&OpenGLWindow::OnWindowClosed, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<WindowResizeEvent>(std::bind(&OpenGLWindow::OnWindowResized, this, std::placeholders::_1));
+
+			event_dispatcher.Dispatch<KeyPressedEvent>(std::bind(&OpenGLWindow::OnKeyPressed, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<KeyReleasedEvent>(std::bind(&OpenGLWindow::OnKeyReleased, this, std::placeholders::_1));
+
+			event_dispatcher.Dispatch<MouseButtonPressedEvent>(std::bind(&OpenGLWindow::OnMouseButtonPressed, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<MouseButtonReleasedEvent>(std::bind(&OpenGLWindow::OnMouseButtonReleased, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<MouseButtonMovedEvent>(std::bind(&OpenGLWindow::OnMouseButtonMoved, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<MouseButtonWheelEvent>(std::bind(&OpenGLWindow::OnMouseButtonWheelMoved, this, std::placeholders::_1));
+			
+			event_dispatcher.Dispatch<TextInputEvent>(std::bind(&OpenGLWindow::OnTextInputRaised, this, std::placeholders::_1));
+
+
 		}
 
 	protected:
@@ -61,6 +72,14 @@ namespace Z_Engine::Window::SDLWin {
 		
 		bool OnKeyPressed(KeyPressedEvent&) override;
 		bool OnKeyReleased(KeyReleasedEvent&) override;
+
+		virtual bool OnMouseButtonPressed(MouseButtonPressedEvent&) override;
+		virtual bool OnMouseButtonReleased(MouseButtonReleasedEvent&) override;
+		virtual bool OnMouseButtonMoved(MouseButtonMovedEvent&) override;
+		virtual bool OnMouseButtonWheelMoved(MouseButtonWheelEvent&) override;
+
+		virtual bool OnTextInputRaised(TextInputEvent&) override;
+
 
 	private:
 		SDL_Window* m_native_window{ nullptr };

@@ -152,7 +152,7 @@ namespace Z_Engine::Rendering::Shaders {
 		Bind();
 		auto location = GetLocationUniform(name);
 		if(location != -1){
-			glUniform1i(location, value);
+			glUniform1i(location, value);																			   
 		}
 	}
 
@@ -178,7 +178,7 @@ namespace Z_Engine::Rendering::Shaders {
 		Bind();
 
 		auto location = GetLocationUniform(name);
-		if (location != -1) {
+		if (location != -1) {																															    
 			glUniform3f(location, value.x, value.y, value.z);
 		}
 	}

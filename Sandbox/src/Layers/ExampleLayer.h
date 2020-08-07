@@ -17,26 +17,23 @@ namespace Sandbox::Layers {
 
 		virtual void Render() override;
 						   
-		virtual bool OnEvent(Z_Engine::Event::CoreEvent& e) override {
-
-			return true;
-		}
+		virtual bool OnEvent(Z_Engine::Event::CoreEvent& e) override { return false; }
 
 
 	private:
-		std::shared_ptr<Z_Engine::Rendering::Buffer::VertexBuffer<float>> m_vertex_buffer;
-		std::shared_ptr<Z_Engine::Rendering::Buffer::IndexBuffer<unsigned int>> m_index_buffer;
-		std::shared_ptr<Z_Engine::Rendering::Buffer::VertexArray<float, unsigned int>> m_vertex_array;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffer::VertexBuffer<float>> m_vertex_buffer;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffer::IndexBuffer<unsigned int>> m_index_buffer;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffer::VertexArray<float, unsigned int>> m_vertex_array;
 
-		std::shared_ptr<Z_Engine::Rendering::Buffer::VertexBuffer<float>> m_vertex_buffer_2;
-		std::shared_ptr<Z_Engine::Rendering::Buffer::IndexBuffer<unsigned int>> m_index_buffer_2;
-		std::shared_ptr<Z_Engine::Rendering::Buffer::VertexArray<float, unsigned int>> m_vertex_array_2;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffer::VertexBuffer<float>> m_vertex_buffer_2;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffer::IndexBuffer<unsigned int>> m_index_buffer_2;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffer::VertexArray<float, unsigned int>> m_vertex_array_2;
 
-		std::shared_ptr<Z_Engine::Rendering::Shaders::Shader> m_shader;
-		std::shared_ptr<Z_Engine::Rendering::Shaders::Shader> m_shader_2;
+		Z_Engine::Ref<Z_Engine::Rendering::Shaders::Shader> m_shader;
+		Z_Engine::Ref<Z_Engine::Rendering::Shaders::Shader> m_shader_2;
 
-		std::shared_ptr<Z_Engine::Rendering::Renderer::GraphicRenderer> m_renderer;
-		std::shared_ptr<Z_Engine::Rendering::Cameras::OrthographicCamera> m_camera;
+		Z_Engine::Ref<Z_Engine::Rendering::Renderer::GraphicRenderer> m_renderer;
+		Z_Engine::Ref<Z_Engine::Rendering::Cameras::OrthographicCamera> m_camera;
 
 
 		glm::mat4 m_transformation_one;

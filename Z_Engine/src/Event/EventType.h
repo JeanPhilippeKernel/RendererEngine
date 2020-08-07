@@ -11,6 +11,8 @@ namespace Z_Engine::Event {
 		KeyPressed, KeyReleased,
 		MouseButtonPressed, MouseButtonReleased, MouseMoved, MouseWheel,
 
-		EngineClosed
+		EngineClosed,
+
+		TextInput
 	};
 }
