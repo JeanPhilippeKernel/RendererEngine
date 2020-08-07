@@ -1,7 +1,6 @@
 #pragma once
 #include <EntryPoint.h>
 #include "Layers/ExampleLayer.h"
-//#include "Layers/UILayer.h"
 
 using namespace Sandbox::Layers;
 
@@ -11,7 +10,6 @@ namespace Sandbox {
 	public:																																			  
 		Sandbox_One() {
 			PushLayer(new ExampleLayer());
-			//PushOverlayLayer(new UILayer());
 		}
 		
 		~Sandbox_One() = default;

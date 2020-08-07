@@ -14,16 +14,31 @@
 #include "Core/TimeStep.h"
 
 
+#include <imgui/imgui.h>
+#include <imgui/imconfig.h>
+#include <imgui/examples/imgui_impl_sdl.h>
+
+#define IMGUI_IMPL_OPENGL_LOADER_GLEW
+
+#include <imgui/examples/imgui_impl_opengl3.h>
+
 namespace Z_Engine {
 	
 	class Z_ENGINE_API Engine {
 	public:
 		Engine();
-		virtual ~Engine() = default;
+		virtual ~Engine() {
+			ImGui_ImplOpenGL3_Shutdown();
+			ImGui_ImplSDL2_Shutdown();
+			ImGui::DestroyContext();
 
+		}
+		
+		void InitializeComponents();
+		
 		void Run();
 
-		//const std::unique_ptr<Z_Engine::Window::CoreWindow>& GetWindow() const { return m_window; }
+		const Ref<Z_Engine::Window::CoreWindow>& GetWindow() const { return m_window; }
 		
 		void PushOverlayLayer(Layer* const layer) { m_layer_stack.PushOverlayLayer(layer); }
 		void PushLayer(Layer* const layer) { m_layer_stack.PushLayer(layer); }
@@ -44,7 +59,10 @@ namespace Z_Engine {
 	private:
 		bool m_running{ true };
 		float m_last_frame_time {0.0f};
-		Ref<Z_Engine::Window::CoreWindow>	m_window;
+		Ref<Z_Engine::Window::CoreWindow> m_window;
+
+
+		void _INITIALIZE_IMGUI_COMPONENT();
 	};
 
 

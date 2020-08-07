@@ -1,4 +1,5 @@
 #include "ExampleLayer.h"
+#include <glm/gtc/type_ptr.hpp>
 
 using namespace Z_Engine::Rendering::Renderer;
 using namespace Z_Engine::Rendering::Cameras;
@@ -18,6 +19,7 @@ namespace Sandbox::Layers {
 		m_position_two = glm::vec3(0.5f, 0.5f, 0.0f);
 		
 		m_scale =  glm::vec3(0.5f, 0.5f, 0.0f);
+		m_color =  glm::vec3(0.6f, 0.0, 1.0f);
 
 		m_transformation_one =  glm::translate(glm::mat4(1.0f), m_position_one) * glm::scale(glm::mat4(1.0f), m_scale);
 		m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
@@ -176,6 +178,13 @@ namespace Sandbox::Layers {
 
 	}
 
+	void ExampleLayer::ImGuiRender()
+	{
+		ImGui::Begin("Editor");
+		ImGui::ColorEdit3("Color", glm::value_ptr(m_color));
+		ImGui::End();
+	}
+
 	void ExampleLayer::Render() {
 		RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		RendererCommand::Clear();
@@ -185,17 +194,13 @@ namespace Sandbox::Layers {
 		m_renderer->Submit(m_shader, m_vertex_array, m_transformation_one);
 		m_renderer->Submit(m_shader_2, m_vertex_array_2, m_transformation_two);
 
+		m_shader_2->SetUniform("u_Color", m_color);
 		 for (int y = 0; y < 20; ++y)
 		 {
 			for (int x = 0; x < 15; ++x)
 			{
 				const auto tranform = glm::translate(glm::mat4(1.0f), glm::vec3(0.11f * x, 0.11f * y, 0.0f)) *
 					glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.0f));
-
-				if(x % 2 == 0) 
-					m_shader_2->SetUniform("u_Color", glm::vec3(0.6f, 0.0, 1.0f));
-				else 
-					m_shader_2->SetUniform("u_Color", glm::vec3(1.0f, 0.5f, 0.0f));
 
 				m_renderer->Submit(m_shader_2, m_vertex_array_2, tranform);
 

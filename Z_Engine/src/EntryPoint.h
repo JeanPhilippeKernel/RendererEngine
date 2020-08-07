@@ -10,6 +10,7 @@ using namespace Z_Engine;
 int main(int argc, char* argv[]) {
 
 	std::unique_ptr<Z_Engine::Engine> engine{ CreateEngine() };
+	engine->InitializeComponents();
 	engine->Run();
 
 	return 0;

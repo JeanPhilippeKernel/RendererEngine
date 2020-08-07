@@ -2,7 +2,9 @@
 #include <string>
 #include "../Event/CoreEvent.h"
 #include "../Z_EngineDef.h"
-#include "Core/TimeStep.h"
+#include "../Core/TimeStep.h"
+#include "../Window/CoreWindow.h"
+
 
 namespace Z_Engine::Layers {
 	class Z_ENGINE_API Layer {
@@ -21,11 +23,14 @@ namespace Z_Engine::Layers {
 		virtual void Initialize() = 0;
 		virtual void Update(Core::TimeStep dt) = 0;
 		virtual void Render()  = 0;
+		
+		virtual void ImGuiRender()  = 0;
 
 	public:
 		virtual bool OnEvent(Event::CoreEvent&) = 0;
 
 	private:
 		std::string m_name;
+
 	};
 }

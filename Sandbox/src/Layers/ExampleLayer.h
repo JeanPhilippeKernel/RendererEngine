@@ -15,6 +15,7 @@ namespace Sandbox::Layers {
 
 		virtual void Update(Z_Engine::Core::TimeStep dt) override;
 
+		virtual void ImGuiRender() override;
 		virtual void Render() override;
 						   
 		virtual bool OnEvent(Z_Engine::Event::CoreEvent& e) override { return false; }
@@ -42,6 +43,7 @@ namespace Sandbox::Layers {
 		glm::vec3 m_position_one;
 		glm::vec3 m_position_two;
 		glm::vec3 m_scale;
+		glm::vec3 m_color;
 	};
 
 }
