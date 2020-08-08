@@ -31,6 +31,13 @@ bld/
 Sandbox/[Bb]in-int/
 Z_Engine/[Bb]in-int/
 
+Sandbox/[Bb]in-int/Debug-x64/
+Z_Engine/[Bb]in-int/Debug-x64/
+
+Sandbox/[Bb]in-int/Debug-x86/
+Z_Engine/[Bb]in-int/Debug-x86/
+
+
 Sandbox/[Bb]in/
 Z_Engine/[Bb]in/
 
