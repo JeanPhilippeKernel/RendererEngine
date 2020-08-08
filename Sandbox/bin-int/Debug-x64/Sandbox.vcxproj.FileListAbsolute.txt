@@ -1,4 +1,0 @@
-D:\source\repos\3D_RENDERER_TWO\Sandbox\bin\Debug-x64\fmtd.dll
-D:\source\repos\3D_RENDERER_TWO\Sandbox\bin\Debug-x64\glew32d.dll
-D:\source\repos\3D_RENDERER_TWO\Sandbox\bin\Debug-x64\SDL2d.dll
-D:\source\repos\3D_RENDERER_TWO\Sandbox\bin-int\Debug-x64\Sandbox.vcxproj.CopyComplete
