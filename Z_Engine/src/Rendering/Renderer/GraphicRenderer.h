@@ -2,13 +2,13 @@
 #include <memory>
 
 #include "RenderCommand.h"
-#include "../Buffer/VertexArray.h"
+#include "../Buffers/VertexArray.h"
 #include "../Cameras/Camera.h"
 #include "GraphicScene.h"
 
 #include "../../Z_EngineDef.h"
 
-using namespace Z_Engine::Rendering::Buffer;
+using namespace Z_Engine::Rendering::Buffers;
 
 namespace Z_Engine::Rendering::Renderer {
 	

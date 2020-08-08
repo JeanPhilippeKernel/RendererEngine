@@ -22,13 +22,13 @@ namespace Sandbox::Layers {
 
 
 	private:
-		Z_Engine::Ref<Z_Engine::Rendering::Buffer::VertexBuffer<float>> m_vertex_buffer;
-		Z_Engine::Ref<Z_Engine::Rendering::Buffer::IndexBuffer<unsigned int>> m_index_buffer;
-		Z_Engine::Ref<Z_Engine::Rendering::Buffer::VertexArray<float, unsigned int>> m_vertex_array;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffers::VertexBuffer<float>> m_vertex_buffer;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffers::IndexBuffer<unsigned int>> m_index_buffer;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffers::VertexArray<float, unsigned int>> m_vertex_array;
 
-		Z_Engine::Ref<Z_Engine::Rendering::Buffer::VertexBuffer<float>> m_vertex_buffer_2;
-		Z_Engine::Ref<Z_Engine::Rendering::Buffer::IndexBuffer<unsigned int>> m_index_buffer_2;
-		Z_Engine::Ref<Z_Engine::Rendering::Buffer::VertexArray<float, unsigned int>> m_vertex_array_2;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffers::VertexBuffer<float>> m_vertex_buffer_2;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffers::IndexBuffer<unsigned int>> m_index_buffer_2;
+		Z_Engine::Ref<Z_Engine::Rendering::Buffers::VertexArray<float, unsigned int>> m_vertex_array_2;
 
 		Z_Engine::Ref<Z_Engine::Rendering::Shaders::Shader> m_shader;
 		Z_Engine::Ref<Z_Engine::Rendering::Shaders::Shader> m_shader_2;

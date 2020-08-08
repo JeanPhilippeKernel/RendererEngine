@@ -4,9 +4,9 @@
 
 
 #include "Rendering/Shaders/Shader.h"
-#include "Rendering/Buffer/VertexBuffer.h"
-#include "Rendering/Buffer/IndexBuffer.h"
-#include "Rendering/Buffer/VertexArray.h"
+#include "Rendering/Buffers/VertexBuffer.h"
+#include "Rendering/Buffers/IndexBuffer.h"
+#include "Rendering/Buffers/VertexArray.h"
 
 #include "Rendering/Renderer/GraphicRenderer.h"
 #include "Rendering/Cameras/OrthographicCamera.h"

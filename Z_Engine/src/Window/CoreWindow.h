@@ -6,15 +6,13 @@
 #include "../Event/CoreEvent.h"
 #include "../Event/WindowClosedEvent.h"
 #include "../Event/WindowResizeEvent.h"
-#include "../Event/KeyPressedEvent.h"
-#include "../Event/KeyReleasedEvent.h"
 #include "../Event/EventDispatcher.h"
-#include "../Event/MouseButtonMovedEvent.h"
-#include "../Event/MouseButtonPressedEvent.h"
-#include "../Event/MouseButtonReleasedEvent.h"
-#include "../Event/MouseButtonWheelEvent.h"
 #include "../Event/TextInputEvent.h"
 #include "../Core/TimeStep.h"
+
+#include "../Inputs/IKeyboardEventCallback.h"
+#include "../Inputs/IMouseEventCallback.h"
+#include "../Inputs/ITextInputEventCallback.h"
 
 
 namespace Z_Engine {
@@ -27,7 +25,9 @@ using namespace Z_Engine::Event;
 namespace Z_Engine::Window {
 
 
-	class CoreWindow {
+	class CoreWindow : public Inputs::IKeyboardEventCallback, 
+		Inputs::IMouseEventCallback, 
+		Inputs::ITextInputEventCallback {
 
 	public:
 		using EventCallbackFn = std::function<void(CoreEvent&)>;
@@ -64,16 +64,6 @@ namespace Z_Engine::Window {
 		virtual bool OnWindowClosed(WindowClosedEvent&) = 0;
 		virtual bool OnWindowResized(WindowResizeEvent&) = 0;
 
-		virtual bool OnKeyPressed(KeyPressedEvent&) = 0;
-		virtual bool OnKeyReleased(KeyReleasedEvent&) = 0;
-
-
-		virtual bool OnMouseButtonPressed(MouseButtonPressedEvent&) = 0;
-		virtual bool OnMouseButtonReleased(MouseButtonReleasedEvent&) = 0;
-		virtual bool OnMouseButtonMoved(MouseButtonMovedEvent&) = 0;
-		virtual bool OnMouseButtonWheelMoved(MouseButtonWheelEvent&) = 0;
-
-		virtual bool OnTextInputRaised(TextInputEvent&) = 0;
 
 	protected:
 		static const char* ATTACHED_PROPERTY;

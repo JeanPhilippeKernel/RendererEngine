@@ -3,7 +3,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 
-#include "../Buffer/VertexArray.h"
+#include "../Buffers/VertexArray.h"
 #include "../../Z_EngineDef.h"
 
 
@@ -25,13 +25,13 @@ namespace Z_Engine::Rendering::Renderer {
 		}
 
 		template<typename T, typename K>
-		static void DrawIndexed(const Ref<Buffer::VertexArray<T, K>>& vertex_array) {
+		static void DrawIndexed(const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
 			vertex_array->Bind();
 			glDrawElements(GL_TRIANGLES, vertex_array->GetIndexBuffer()->GetDataSize(), GL_UNSIGNED_INT, 0);
 		}
 
 		template<typename T, typename K>
-		static void DrawIndexed(const Ref<Shader>& shader, const Ref<Buffer::VertexArray<T, K>>& vertex_array) {
+		static void DrawIndexed(const Ref<Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
 			shader->Bind();
 			vertex_array->Bind();
 			glDrawElements(GL_TRIANGLES, vertex_array->GetIndexBuffer()->GetDataSize(), GL_UNSIGNED_INT, 0);
@@ -40,7 +40,7 @@ namespace Z_Engine::Rendering::Renderer {
 		template<typename T, typename K>
 		static void DrawIndexed(
 			const Ref<Shader>& shader, 
-			const std::vector<Ref<Buffer::VertexArray<T, K>>>& vertex_array_list
+			const std::vector<Ref<Buffers::VertexArray<T, K>>>& vertex_array_list
 		) {
 			shader->Bind();
 			for(const auto& vertex_array : vertex_array_list) {

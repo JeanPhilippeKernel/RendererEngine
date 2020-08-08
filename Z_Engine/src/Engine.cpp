@@ -5,11 +5,19 @@
 
 namespace Z_Engine {
 
-	Engine::Engine()
+	Engine::Engine() 
+		:m_running(true)
 	{
 		m_window.reset(Z_Engine::Window::Create());
 		m_window->SetAttachedEngine(this);
 		PushOverlayLayer(new Layers::ImguiLayer());
+	}
+
+	Engine::~Engine() {
+		ImGui_ImplOpenGL3_Shutdown();
+		ImGui_ImplSDL2_Shutdown();
+		ImGui::DestroyContext();
+
 	}
 	
 	void Engine::ProcessEvent() {
@@ -80,16 +88,15 @@ namespace Z_Engine {
 	}
 	
 	void Engine::Run() {
-		Core::TimeStep dt = 0.0f;
 		
 		while (m_running) {
 	
 			float time =  static_cast<float>(SDL_GetTicks()) / 1000.0f;
-			dt = time - m_last_frame_time;
-			m_last_frame_time = (dt >= 1.0f) ? m_last_frame_time : time + 1.0f;	  // waiting 1s to update 
+			m_delta_time = time - m_last_frame_time;
+			m_last_frame_time = (m_delta_time >= 1.0f) ? m_last_frame_time : time + 1.0f;	  // waiting 1s to update 
 										  		
 			ProcessEvent();
-			Update(dt);
+			Update(m_delta_time);
 			Render();
 
 		}

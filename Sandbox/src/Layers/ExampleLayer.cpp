@@ -4,7 +4,7 @@
 using namespace Z_Engine::Rendering::Renderer;
 using namespace Z_Engine::Rendering::Cameras;
 using namespace Z_Engine::Rendering::Shaders;
-using namespace Z_Engine::Rendering::Buffer;
+using namespace Z_Engine::Rendering::Buffers;
 using namespace Z_Engine::Window;
 using namespace Z_Engine::Core;
 using namespace Z_Engine::Inputs;
@@ -190,11 +190,11 @@ namespace Sandbox::Layers {
 		RendererCommand::Clear();
 
 		m_renderer->BeginScene(m_camera);
-		
-		m_renderer->Submit(m_shader, m_vertex_array, m_transformation_one);
-		m_renderer->Submit(m_shader_2, m_vertex_array_2, m_transformation_two);
-
 		m_shader_2->SetUniform("u_Color", m_color);
+
+		//m_renderer->Submit(m_shader_2, m_vertex_array_2, m_transformation_two);
+
+		
 		 for (int y = 0; y < 20; ++y)
 		 {
 			for (int x = 0; x < 15; ++x)
@@ -206,6 +206,7 @@ namespace Sandbox::Layers {
 
 			}
 		 }
+		m_renderer->Submit(m_shader, m_vertex_array, m_transformation_one);
 
 		m_renderer->EndScene();
 	}

@@ -27,12 +27,7 @@ namespace Z_Engine {
 	class Z_ENGINE_API Engine {
 	public:
 		Engine();
-		virtual ~Engine() {
-			ImGui_ImplOpenGL3_Shutdown();
-			ImGui_ImplSDL2_Shutdown();
-			ImGui::DestroyContext();
-
-		}
+		virtual ~Engine();
 		
 		void InitializeComponents();
 		
@@ -57,7 +52,8 @@ namespace Z_Engine {
 		LayerStack m_layer_stack;
 	
 	private:
-		bool m_running{ true };
+		bool m_running{ false };
+		Core::TimeStep m_delta_time {0.0f};
 		float m_last_frame_time {0.0f};
 		Ref<Z_Engine::Window::CoreWindow> m_window;
 

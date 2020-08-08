@@ -20,11 +20,6 @@
     <ClInclude Include="src\Rendering\Graphics\GraphicContext.h" />
     <ClInclude Include="src\Event\EngineClosedEvent.h" />
     <ClInclude Include="src\Rendering\Shaders\Shader.h" />
-    <ClInclude Include="src\Rendering\Buffer\GraphicBuffer.h" />
-    <ClInclude Include="src\Rendering\Buffer\BufferLayout.h" />
-    <ClInclude Include="src\Rendering\Buffer\VertexBuffer.h" />
-    <ClInclude Include="src\Rendering\Buffer\IndexBuffer.h" />
-    <ClInclude Include="src\Rendering\Buffer\VertexArray.h" />
     <ClInclude Include="src\Rendering\Renderer\GraphicRenderer.h" />
     <ClInclude Include="src\Rendering\Renderer\RenderCommand.h" />
     <ClInclude Include="src\Rendering\Cameras\Camera.h" />
@@ -55,6 +50,14 @@
     <ClInclude Include="src\Event\MouseButtonMovedEvent.h" />
     <ClInclude Include="src\Event\MouseButtonWheelEvent.h" />
     <ClInclude Include="src\Event\TextInputEvent.h" />
+    <ClInclude Include="src\Inputs\IKeyboardEventCallback.h" />
+    <ClInclude Include="src\Inputs\IMouseEventCallback.h" />
+    <ClInclude Include="src\Inputs\ITextInputEventCallback.h" />
+    <ClInclude Include="src\Rendering\Buffers\BufferLayout.h" />
+    <ClInclude Include="src\Rendering\Buffers\GraphicBuffer.h" />
+    <ClInclude Include="src\Rendering\Buffers\IndexBuffer.h" />
+    <ClInclude Include="src\Rendering\Buffers\VertexArray.h" />
+    <ClInclude Include="src\Rendering\Buffers\VertexBuffer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -72,6 +75,6 @@
     <ClCompile Include="vendor\imgui\imgui_widgets.cpp" />
     <ClCompile Include="vendor\imgui\examples\imgui_impl_opengl3.cpp" />
     <ClCompile Include="vendor\imgui\examples\imgui_impl_sdl.cpp" />
-    <ClCompile Include="src\Layers\Layer.cpp" />
+    <ClCompile Include="src\Layers\ImguiLayer.cpp" />
   </ItemGroup>
 </Project>
