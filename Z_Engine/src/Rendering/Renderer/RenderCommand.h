@@ -6,9 +6,6 @@
 #include "../Buffers/VertexArray.h"
 #include "../../Z_EngineDef.h"
 
-
-using namespace Z_Engine::Rendering::Shaders;
-
 namespace Z_Engine::Rendering::Renderer {
 	
 	class Z_ENGINE_API RendererCommand {
@@ -31,7 +28,7 @@ namespace Z_Engine::Rendering::Renderer {
 		}
 
 		template<typename T, typename K>
-		static void DrawIndexed(const Ref<Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
+		static void DrawIndexed(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
 			shader->Bind();
 			vertex_array->Bind();
 			glDrawElements(GL_TRIANGLES, vertex_array->GetIndexBuffer()->GetDataSize(), GL_UNSIGNED_INT, 0);
@@ -39,7 +36,7 @@ namespace Z_Engine::Rendering::Renderer {
 
 		template<typename T, typename K>
 		static void DrawIndexed(
-			const Ref<Shader>& shader, 
+			const Ref<Shaders::Shader>& shader, 
 			const std::vector<Ref<Buffers::VertexArray<T, K>>>& vertex_array_list
 		) {
 			shader->Bind();
