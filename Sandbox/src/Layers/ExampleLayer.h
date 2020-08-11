@@ -36,6 +36,8 @@ namespace Sandbox::Layers {
 		Z_Engine::Ref<Z_Engine::Rendering::Renderer::GraphicRenderer> m_renderer;
 		Z_Engine::Ref<Z_Engine::Rendering::Cameras::OrthographicCamera> m_camera;
 
+		Z_Engine::Ref<Z_Engine::Rendering::Textures::Texture> m_texture;
+
 
 		glm::mat4 m_transformation_one;
 		glm::mat4 m_transformation_two;

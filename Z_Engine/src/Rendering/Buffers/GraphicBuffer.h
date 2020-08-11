@@ -50,7 +50,7 @@ namespace Z_Engine::Rendering::Buffers {
 			while (start != end)
 			{
 				auto current = start - 1;
-				auto value = current->GetSize();
+				auto value = current->GetSize() + current->GetOffset();
 				start->SetOffset(value);
 
 				++start;

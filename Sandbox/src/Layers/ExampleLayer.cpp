@@ -9,20 +9,27 @@ using namespace Z_Engine::Window;
 using namespace Z_Engine::Core;
 using namespace Z_Engine::Inputs;
 
+using namespace Z_Engine::Rendering::Textures;
+
 namespace Sandbox::Layers {
 	
 	void ExampleLayer::Initialize() {
 		m_camera.reset(new OrthographicCamera(-1.0f, 1.0f, -1.0f, 1.0f));
 		m_renderer.reset(new GraphicRenderer());
+		m_renderer->Initialize();
+		
+		//m_texture.reset(CreateTexture("src/Assets/Images/free_image.png"));
+		m_texture.reset(CreateTexture("src/Assets/Images/ChernoLogo.png"));
 
 		m_position_one = glm::vec3(0.1f, 0.1f, 0.0f);
 		m_position_two = glm::vec3(0.5f, 0.5f, 0.0f);
 		
-		m_scale =  glm::vec3(0.5f, 0.5f, 0.0f);
+		m_scale =  glm::vec3(1.5f, 1.5f, 0.0f);
 		m_color =  glm::vec3(0.6f, 0.0, 1.0f);
 
 		m_transformation_one =  glm::translate(glm::mat4(1.0f), m_position_one) * glm::scale(glm::mat4(1.0f), m_scale);
 		m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
+
 		
 		const char* v_source = R"(
 				#version 430 core
@@ -80,16 +87,19 @@ namespace Sandbox::Layers {
 
 				layout (location = 0) in vec3 a_Position;
 				layout (location = 1) in vec4 a_Color;
+				layout (location = 2) in vec2 a_Texture;
 
 				uniform mat4 u_ViewProjectionMat;
 				uniform mat4 u_TransformMat;
 
 				out vec4 v_Color;
+				out vec2 v_Texture;
 
 				void main()
 				{	
 					gl_Position = u_ViewProjectionMat * u_TransformMat * vec4(a_Position, 1.0f);
-					v_Color = a_Color;
+					v_Color		= a_Color;
+					v_Texture	= a_Texture;
 				}
 			)";
 
@@ -97,37 +107,50 @@ namespace Sandbox::Layers {
 				#version  430 core
 
 				in vec4 v_Color;
+				in vec2 v_Texture;
+
+
+				out vec4 color;
+
 				uniform vec3 u_Color;
+				uniform sampler2D u_SamplerTex;
 
 				void main()
 				{
-					//gl_FragColor = v_Color;
-					gl_FragColor = vec4(u_Color, 1.0f);
+					//color =  vec4(v_Texture, 0.0f, 1.0f);
+					color =  texture(u_SamplerTex, v_Texture);  //vec4(u_Color, 1.0f);
 				}
 			)";
 
 		m_shader_2.reset(new Shader(v_source_2, f_source_2));
 
 		std::vector<float> vertices_2{
-			-0.5f,	0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,
-			 0.5f,	0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,
-			 0.5f, -0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,
-			-0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f
+			-0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,	0.0f, 0.0f,
+			 0.5f, -0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,	1.0f, 0.0f,
+			 0.5f,	0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,	1.0f, 1.0f,
+			-0.5f,	0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
 		};
 
 		std::vector<unsigned int> indices_2{
 			0, 1, 2,
-			0, 2, 3
+			2, 3, 0
 		};
 
-		m_vertex_buffer_2.reset(new VertexBuffer(vertices_2, layout));
+		Layout::BufferLayout<float> layout_2 {
+			Layout::ElementLayout<float>{3, "position"}, 
+			Layout::ElementLayout<float>{4, "color"}, 
+			Layout::ElementLayout<float>{2, "texture"}
+		};
+
+		
+		m_vertex_buffer_2.reset(new VertexBuffer(vertices_2, layout_2));
 
 		m_vertex_array_2.reset(new VertexArray<float, unsigned int>());
 		m_index_buffer_2.reset(new IndexBuffer(indices_2));
 
 		m_vertex_array_2->SetIndexBuffer(m_index_buffer_2);
 		m_vertex_array_2->AddVertexBuffer(m_vertex_buffer_2);
-
+		
 	}
 
 	void ExampleLayer::Update(Z_Engine::Core::TimeStep dt) {
@@ -191,11 +214,13 @@ namespace Sandbox::Layers {
 
 		m_renderer->BeginScene(m_camera);
 		m_shader_2->SetUniform("u_Color", m_color);
+		m_shader_2->SetUniform("u_SamplerTex", 0);
 
-		//m_renderer->Submit(m_shader_2, m_vertex_array_2, m_transformation_two);
+		m_texture->Bind();
+		m_renderer->Submit(m_shader_2, m_vertex_array_2, m_transformation_two);
 
 		
-		 for (int y = 0; y < 20; ++y)
+		/* for (int y = 0; y < 20; ++y)
 		 {
 			for (int x = 0; x < 15; ++x)
 			{
@@ -205,7 +230,7 @@ namespace Sandbox::Layers {
 				m_renderer->Submit(m_shader_2, m_vertex_array_2, tranform);
 
 			}
-		 }
+		 }*/
 		m_renderer->Submit(m_shader, m_vertex_array, m_transformation_one);
 
 		m_renderer->EndScene();

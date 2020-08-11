@@ -156,6 +156,8 @@
     <ClInclude Include="src\Rendering\Renderer\GraphicScene.h" />
     <ClInclude Include="src\Rendering\Renderer\RenderCommand.h" />
     <ClInclude Include="src\Rendering\Shaders\Shader.h" />
+    <ClInclude Include="src\Rendering\Textures\Texture.h" />
+    <ClInclude Include="src\Rendering\Textures\Texture2D.h" />
     <ClInclude Include="src\Window\CoreWindow.h" />
     <ClInclude Include="src\Window\SDLWin\OpenGLWindow.h" />
     <ClInclude Include="src\Window\WindowProperty.h" />
@@ -169,6 +171,7 @@
     <ClInclude Include="vendor\imgui\imstb_rectpack.h" />
     <ClInclude Include="vendor\imgui\imstb_textedit.h" />
     <ClInclude Include="vendor\imgui\imstb_truetype.h" />
+    <ClInclude Include="vendor\stb_image\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -179,6 +182,7 @@
     <ClCompile Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
     <ClCompile Include="src\Rendering\Renderer\GraphicScene.cpp" />
     <ClCompile Include="src\Rendering\Shaders\Shader.cpp" />
+    <ClCompile Include="src\Rendering\Textures\Texture2D.cpp" />
     <ClCompile Include="src\Window\CoreWindow.cpp" />
     <ClCompile Include="src\Window\SDLWin\OpenGLWindow.cpp" />
     <ClCompile Include="vendor\imgui\examples\imgui_impl_opengl3.cpp" />

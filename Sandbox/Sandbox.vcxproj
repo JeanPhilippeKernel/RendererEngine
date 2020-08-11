@@ -109,6 +109,10 @@
   <ItemGroup>
     <ClInclude Include="src\Layers\ExampleLayer.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Image Include="src\Assets\Images\ChernoLogo.png" />
+    <Image Include="src\Assets\Images\free_image.png" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

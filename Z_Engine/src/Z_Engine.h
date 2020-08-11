@@ -11,7 +11,9 @@
 #include "Rendering/Renderer/GraphicRenderer.h"
 #include "Rendering/Cameras/OrthographicCamera.h"
 #include "Rendering/Cameras/Camera.h"
-												
+										
+
+#include "Rendering/Textures/Texture.h"
 
 #include "Inputs/IDevice.h"
 #include "Inputs/Keyboard.h"

@@ -58,6 +58,9 @@
     <ClInclude Include="src\Rendering\Buffers\IndexBuffer.h" />
     <ClInclude Include="src\Rendering\Buffers\VertexArray.h" />
     <ClInclude Include="src\Rendering\Buffers\VertexBuffer.h" />
+    <ClInclude Include="src\Rendering\Textures\Texture.h" />
+    <ClInclude Include="src\Rendering\Textures\Texture2D.h" />
+    <ClInclude Include="vendor\stb_image\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -76,5 +79,6 @@
     <ClCompile Include="vendor\imgui\examples\imgui_impl_opengl3.cpp" />
     <ClCompile Include="vendor\imgui\examples\imgui_impl_sdl.cpp" />
     <ClCompile Include="src\Layers\ImguiLayer.cpp" />
+    <ClCompile Include="src\Rendering\Textures\Texture2D.cpp" />
   </ItemGroup>
 </Project>
