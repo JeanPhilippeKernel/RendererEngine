@@ -119,6 +119,10 @@ namespace Z_Engine::Rendering::Shaders {
 		glDetachShader(program, fragmentShader);
 	}
 
+	Shader::Shader(const char* filename) {
+		
+	}
+
 	Shader::~Shader() {
 		glDeleteProgram(m_program);
 	}
