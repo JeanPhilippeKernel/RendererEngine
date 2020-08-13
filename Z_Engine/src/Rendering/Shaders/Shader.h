@@ -1,3 +1,6 @@
+#pragma  once
+#include <string>
+
 #include <GL/glew.h>
 #include <unordered_map>
 #include <glm/glm.hpp>
@@ -26,11 +29,16 @@ namespace Z_Engine::Rendering::Shaders {
 		void SetUniform(const char* name, const glm::mat2& value);
 		void SetUniform(const char* name, const glm::mat3& value);
 		void SetUniform(const char* name, const glm::mat4& value);
-											  
+		
+	private:
+		GLint _GetLocationUniform(const char* name);
+		void _Compile();
+		void _Read(const char* filename);
+
+
 	private:
 		GLuint m_program{0};
-		std::unordered_map<const char *, GLint> m_uniform_location_map;
-
-		GLint GetLocationUniform(const char* name);
+		std::unordered_map<const char*, GLint> m_uniform_location_map;
+		std::unordered_map<GLenum, std::string> m_shader_source_map;
 	};
 }

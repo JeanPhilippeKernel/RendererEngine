@@ -18,8 +18,8 @@ namespace Sandbox::Layers {
 		m_renderer.reset(new GraphicRenderer());
 		m_renderer->Initialize();
 		
-		//m_texture.reset(CreateTexture("src/Assets/Images/free_image.png"));
-		m_texture.reset(CreateTexture("src/Assets/Images/ChernoLogo.png"));
+		m_texture.reset(CreateTexture("src/Assets/Images/free_image.png"));
+		//m_texture.reset(CreateTexture("src/Assets/Images/ChernoLogo.png"));
 
 		m_position_one = glm::vec3(0.1f, 0.1f, 0.0f);
 		m_position_two = glm::vec3(0.5f, 0.5f, 0.0f);
@@ -30,37 +30,8 @@ namespace Sandbox::Layers {
 		m_transformation_one =  glm::translate(glm::mat4(1.0f), m_position_one) * glm::scale(glm::mat4(1.0f), m_scale);
 		m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
 
-		
-		const char* v_source = R"(
-				#version 430 core
 
-				layout (location = 0) in vec3 a_Position;
-				layout (location = 1) in vec4 a_Color;
-
-				uniform mat4 u_ViewProjectionMat;
-				uniform mat4 u_TransformMat;
-
-				out vec4 v_Color;
-
-				void main()
-				{	
-					gl_Position = u_ViewProjectionMat * u_TransformMat * vec4(a_Position, 1.0f);
-					v_Color = a_Color;
-				}
-			)";
-
-		const char* f_source = R"(
-				#version  430 core
-
-				in vec4 v_Color;
-
-				void main()
-				{
-					gl_FragColor = v_Color;
-				}
-			)";
-
-		m_shader.reset(new Shader(v_source, f_source));
+		m_shader.reset(new Shader("src/Assets/Shaders/basic.glsl"));
 
 		std::vector<float> vertices{
 			 0.5f, -0.5f, 1.0f,	1.0f, 0.5f, 0.3f, 1.0f,
@@ -81,48 +52,7 @@ namespace Sandbox::Layers {
 
 
 		// Drawing second mesh
-
-		const char* v_source_2 = R"(
-				#version 430 core
-
-				layout (location = 0) in vec3 a_Position;
-				layout (location = 1) in vec4 a_Color;
-				layout (location = 2) in vec2 a_Texture;
-
-				uniform mat4 u_ViewProjectionMat;
-				uniform mat4 u_TransformMat;
-
-				out vec4 v_Color;
-				out vec2 v_Texture;
-
-				void main()
-				{	
-					gl_Position = u_ViewProjectionMat * u_TransformMat * vec4(a_Position, 1.0f);
-					v_Color		= a_Color;
-					v_Texture	= a_Texture;
-				}
-			)";
-
-		const char* f_source_2 = R"(
-				#version  430 core
-
-				in vec4 v_Color;
-				in vec2 v_Texture;
-
-
-				out vec4 color;
-
-				uniform vec3 u_Color;
-				uniform sampler2D u_SamplerTex;
-
-				void main()
-				{
-					//color =  vec4(v_Texture, 0.0f, 1.0f);
-					color =  texture(u_SamplerTex, v_Texture);  //vec4(u_Color, 1.0f);
-				}
-			)";
-
-		m_shader_2.reset(new Shader(v_source_2, f_source_2));
+		m_shader_2.reset(new Shader("src/Assets/Shaders/texture.glsl"));
 
 		std::vector<float> vertices_2{
 			-0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,	0.0f, 0.0f,

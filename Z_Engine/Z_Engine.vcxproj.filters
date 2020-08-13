@@ -61,6 +61,7 @@
     <ClInclude Include="src\Rendering\Textures\Texture.h" />
     <ClInclude Include="src\Rendering\Textures\Texture2D.h" />
     <ClInclude Include="vendor\stb_image\stb_image.h" />
+    <ClInclude Include="src\Rendering\Shaders\SourceTag.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
