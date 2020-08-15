@@ -13,20 +13,18 @@ namespace Z_Engine::Managers {
 		public IManager<std::string, Ref<Rendering::Textures::Texture>> 
 	{
 	public:
-		TextureManager()						=  delete;
-		TextureManager(const TextureManager&)	=  delete;
+		TextureManager()						= delete;
+		TextureManager(const TextureManager&)	= delete;
 		~TextureManager()						= delete;
 
 
 		static void Add(const char * name, const char * filename) {
 			const auto key = std::string(name).append(m_suffix); 
-			const auto res =  IManager::Exists(key);
-
-			if(res.first) return;
 
 			Z_Engine::Ref<Rendering::Textures::Texture> texture;
 			texture.reset(Rendering::Textures::CreateTexture(filename));
-			IManager::m_collection[key] = texture;
+
+			IManager::Add(key, texture);
 		}
 		
 		static void Load(const char * filename) {

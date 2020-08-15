@@ -41,4 +41,8 @@ namespace Z_Engine::Rendering::Shaders {
 		std::unordered_map<const char*, GLint> m_uniform_location_map;
 		std::unordered_map<GLenum, std::string> m_shader_source_map;
 	};
+
+
+	Shader* CreateShader(const char * vertexSrc, const char * fragmentSrc);
+	Shader* CreateShader(const char * filename);
 }

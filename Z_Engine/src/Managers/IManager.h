@@ -31,15 +31,15 @@ namespace Z_Engine::Managers {
 					return result;
 				}
 			);
-			const auto output =  std::make_pair(result, it);
-			return output;
+
+			return std::make_pair(result, it);
 		}
 
-		static constexpr void Add(const T key, const K val) {
-			const auto kv =  Exists(key);
+		static constexpr void Add(const T& key, const K& val) {
+			const auto& kv =  Exists(key);
 
-			if(kv.first == true) {
-				m_collection[key] = val;
+			if(kv.first) {
+				//m_collection[key] = val;
 				return;
 			}
 
@@ -49,8 +49,8 @@ namespace Z_Engine::Managers {
 	
 		static constexpr std::optional<std::reference_wrapper<K>> Get(const T& key) {
 
-			const auto kv = Exists(key);
-			if(kv.first == true) {
+			const auto& kv = Exists(key);
+			if(kv.first) {
 				return kv.second->second;
 			}
 			return std::nullopt;

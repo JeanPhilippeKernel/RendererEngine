@@ -20,13 +20,11 @@ namespace Z_Engine::Managers {
 
 		static void Add(const char* name, const char* filename) {
 			const auto key = std::string(name).append(m_suffix);
-			const auto res = IManager::Exists(key);
-
-			if (res.first) return;
 
 			Z_Engine::Ref<Rendering::Shaders::Shader> shader;
-			shader.reset(new Rendering::Shaders::Shader(filename));
-			IManager::m_collection[key] = shader;
+			shader.reset(Rendering::Shaders::CreateShader(filename));
+
+			IManager::Add(key, shader);
 		}
 
 		static void Load(const char* filename) {

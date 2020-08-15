@@ -10,6 +10,17 @@
 #include "glm/gtc/type_ptr.hpp"
 
 namespace Z_Engine::Rendering::Shaders {
+	Shader* CreateShader(const char* vertexSrc, const char* fragmentSrc) {
+		return new Shader(vertexSrc, fragmentSrc);
+	}
+	
+	Shader* CreateShader(const char* filename) {
+		return new Shader(filename);
+	}
+}
+
+
+namespace Z_Engine::Rendering::Shaders {
 	
 	Shader::Shader(const char* vertexSrc, const char* fragmentSrc) {
 		
