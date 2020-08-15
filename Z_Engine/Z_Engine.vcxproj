@@ -142,6 +142,9 @@
     <ClInclude Include="src\Layers\ImguiLayer.h" />
     <ClInclude Include="src\Inputs\IMouseEventCallback.h" />
     <ClInclude Include="src\Layers\Layer.h" />
+    <ClInclude Include="src\Managers\IManager.h" />
+    <ClInclude Include="src\Managers\ShaderManager.h" />
+    <ClInclude Include="src\Managers\TextureManager.h" />
     <ClInclude Include="src\Rendering\Buffers\BufferLayout.h" />
     <ClInclude Include="src\Rendering\Buffers\GraphicBuffer.h" />
     <ClInclude Include="src\Rendering\Buffers\IndexBuffer.h" />
@@ -156,7 +159,6 @@
     <ClInclude Include="src\Rendering\Renderer\GraphicScene.h" />
     <ClInclude Include="src\Rendering\Renderer\RenderCommand.h" />
     <ClInclude Include="src\Rendering\Shaders\Shader.h" />
-    <ClInclude Include="src\Rendering\Shaders\SourceTag.h" />
     <ClInclude Include="src\Rendering\Textures\Texture.h" />
     <ClInclude Include="src\Rendering\Textures\Texture2D.h" />
     <ClInclude Include="src\Window\CoreWindow.h" />
@@ -179,6 +181,8 @@
     <ClCompile Include="src\Inputs\IDevice.cpp" />
     <ClCompile Include="src\LayerStack.cpp" />
     <ClCompile Include="src\Layers\ImguiLayer.cpp" />
+    <ClCompile Include="src\Managers\ShaderManager.cpp" />
+    <ClCompile Include="src\Managers\TextureManager.cpp" />
     <ClCompile Include="src\Rendering\Cameras\OrthographicCamera.cpp" />
     <ClCompile Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
     <ClCompile Include="src\Rendering\Renderer\GraphicScene.cpp" />

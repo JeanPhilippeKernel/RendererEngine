@@ -21,6 +21,10 @@
 #include "Inputs/Mouse.h"
 
 
+#include "Managers/IManager.h"
+#include "Managers/ShaderManager.h"
+#include "Managers/TextureManager.h"
+
 #include "Core/TimeStep.h"
 #include "Core/Utility.h"
  

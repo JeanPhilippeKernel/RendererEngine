@@ -48,12 +48,12 @@ namespace  Z_Engine::Rendering::Textures {
 		  glDeleteTextures(1, &m_texture_id);
 	}
 
-	void Texture2D::Bind(int slot)
+	void Texture2D::Bind(int slot) const
 	{
 		glBindTextureUnit(slot, m_texture_id);
 	}
 
-	void Texture2D::Unbind(int slot)
+	void Texture2D::Unbind(int slot) const
 	{
 		glBindTextureUnit(slot, 0);
 	}

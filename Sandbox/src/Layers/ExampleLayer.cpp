@@ -1,5 +1,5 @@
 #include "ExampleLayer.h"
-#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/type_ptr.hpp>																																	 
 
 using namespace Z_Engine::Rendering::Renderer;
 using namespace Z_Engine::Rendering::Cameras;
@@ -9,6 +9,7 @@ using namespace Z_Engine::Window;
 using namespace Z_Engine::Core;
 using namespace Z_Engine::Inputs;
 
+using namespace Z_Engine::Managers;
 using namespace Z_Engine::Rendering::Textures;
 
 namespace Sandbox::Layers {
@@ -18,8 +19,12 @@ namespace Sandbox::Layers {
 		m_renderer.reset(new GraphicRenderer());
 		m_renderer->Initialize();
 		
-		m_texture.reset(CreateTexture("src/Assets/Images/free_image.png"));
-		//m_texture.reset(CreateTexture("src/Assets/Images/ChernoLogo.png"));
+
+		ShaderManager::Load("src/Assets/Shaders/basic.glsl");
+		ShaderManager::Load("src/Assets/Shaders/texture.glsl");
+		
+		TextureManager::Load("src/Assets/Images/free_image.png");
+		TextureManager::Load("src/Assets/Images/ChernoLogo.png");
 
 		m_position_one = glm::vec3(0.1f, 0.1f, 0.0f);
 		m_position_two = glm::vec3(0.5f, 0.5f, 0.0f);
@@ -31,9 +36,7 @@ namespace Sandbox::Layers {
 		m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
 
 
-		m_shader.reset(new Shader("src/Assets/Shaders/basic.glsl"));
-
-		std::vector<float> vertices{
+		std::vector<float> vertices {
 			 0.5f, -0.5f, 1.0f,	1.0f, 0.5f, 0.3f, 1.0f,
 			-0.5f, -0.5f, 1.0f,	0.5f, 0.1f, 0.6f, 1.0f,
 			 0.0f,	0.5f, 1.0f,	0.1f, 0.3f, 0.2f, 1.0f
@@ -52,8 +55,6 @@ namespace Sandbox::Layers {
 
 
 		// Drawing second mesh
-		m_shader_2.reset(new Shader("src/Assets/Shaders/texture.glsl"));
-
 		std::vector<float> vertices_2{
 			-0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,	0.0f, 0.0f,
 			 0.5f, -0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,	1.0f, 0.0f,
@@ -143,11 +144,12 @@ namespace Sandbox::Layers {
 		RendererCommand::Clear();
 
 		m_renderer->BeginScene(m_camera);
-		m_shader_2->SetUniform("u_Color", m_color);
-		m_shader_2->SetUniform("u_SamplerTex", 0);
 
-		m_texture->Bind();
-		m_renderer->Submit(m_shader_2, m_vertex_array_2, m_transformation_two);
+		auto& texture =  TextureManager::Get("ChernoLogo");
+		auto& texture_shader = ShaderManager::Get("texture");
+		texture->Bind();
+		texture_shader->SetUniform("u_SamplerTex", 0);
+		m_renderer->Submit(texture_shader, m_vertex_array_2, m_transformation_two);
 
 		
 		/* for (int y = 0; y < 20; ++y)
@@ -161,7 +163,8 @@ namespace Sandbox::Layers {
 
 			}
 		 }*/
-		m_renderer->Submit(m_shader, m_vertex_array, m_transformation_one);
+		auto& basic_shader = ShaderManager::Get("basic");
+		m_renderer->Submit(basic_shader, m_vertex_array, m_transformation_one);
 
 		m_renderer->EndScene();
 	}

@@ -30,13 +30,8 @@ namespace Sandbox::Layers {
 		Z_Engine::Ref<Z_Engine::Rendering::Buffers::IndexBuffer<unsigned int>> m_index_buffer_2;
 		Z_Engine::Ref<Z_Engine::Rendering::Buffers::VertexArray<float, unsigned int>> m_vertex_array_2;
 
-		Z_Engine::Ref<Z_Engine::Rendering::Shaders::Shader> m_shader;
-		Z_Engine::Ref<Z_Engine::Rendering::Shaders::Shader> m_shader_2;
-
 		Z_Engine::Ref<Z_Engine::Rendering::Renderer::GraphicRenderer> m_renderer;
 		Z_Engine::Ref<Z_Engine::Rendering::Cameras::OrthographicCamera> m_camera;
-
-		Z_Engine::Ref<Z_Engine::Rendering::Textures::Texture> m_texture;
 
 
 		glm::mat4 m_transformation_one;

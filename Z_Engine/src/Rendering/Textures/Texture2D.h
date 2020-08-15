@@ -9,7 +9,7 @@ namespace Z_Engine::Rendering::Textures {
 		Texture2D(const char * path);
 		~Texture2D();
 
-		void Bind(int slot = 0) override;
-		void Unbind(int slot = 0) override;
+		void Bind(int slot = 0) const override;
+		void Unbind(int slot = 0) const override;
 	};
 }

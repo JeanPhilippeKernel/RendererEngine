@@ -11,8 +11,9 @@ namespace Z_Engine::Rendering::Textures {
 
 		virtual ~Texture() =  default;
 
-		virtual void Bind(int slot = 0) = 0;
-		virtual void Unbind(int slot = 0) = 0;
+		virtual void Bind(int slot = 0) const = 0;
+		virtual void Unbind(int slot = 0) const = 0;
+
 
 	protected:
 		std::string m_path;
