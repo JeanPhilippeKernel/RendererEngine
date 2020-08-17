@@ -56,11 +56,11 @@ namespace Z_Engine::Rendering::Buffers::Layout {
 			: m_elements(collections)
 		{}
 
-		std::vector<ElementLayout<T>>& GetElementLayout() {
+		constexpr std::vector<ElementLayout<T>>& GetElementLayout() {
 			return m_elements;
 		}
 
-		const std::vector<ElementLayout<T>>& GetElementLayout() const {
+		constexpr const std::vector<ElementLayout<T>>& GetElementLayout() const {
 			return this->m_elements;
 		}
 

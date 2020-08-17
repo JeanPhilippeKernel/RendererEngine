@@ -15,6 +15,11 @@
 #include "../Inputs/ITextInputEventCallback.h"
 
 
+#include "../Core/IUpdatable.h"
+#include "../Core/IRenderable.h"
+#include "../Core/IEventable.h"
+
+
 namespace Z_Engine {
 	class Engine;
 }
@@ -25,9 +30,13 @@ using namespace Z_Engine::Event;
 namespace Z_Engine::Window {
 
 
-	class CoreWindow : public Inputs::IKeyboardEventCallback, 
-		Inputs::IMouseEventCallback, 
-		Inputs::ITextInputEventCallback {
+	class CoreWindow : 
+		public Inputs::IKeyboardEventCallback, 
+		public Inputs::IMouseEventCallback, 
+		public Inputs::ITextInputEventCallback, 
+		public Core::IUpdatable, 
+		public Core::IRenderable, 
+		public Core::IEventable  {
 
 	public:
 		using EventCallbackFn = std::function<void(CoreEvent&)>;
@@ -53,12 +62,6 @@ namespace Z_Engine::Window {
 		}
 
 		virtual void PollEvent() = 0;
-		virtual void Update(Core::TimeStep delta_time) = 0;
-		virtual void Render() = 0;
-
-
-	public:
-		virtual void OnEvent(Event::CoreEvent& event) = 0;
 
 	protected:
 		virtual bool OnWindowClosed(WindowClosedEvent&) = 0;
@@ -73,5 +76,4 @@ namespace Z_Engine::Window {
 	};
 		
 	CoreWindow* Create(WindowProperty prop = {});
-
 }

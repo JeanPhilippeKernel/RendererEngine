@@ -38,10 +38,7 @@ namespace Z_Engine::Managers {
 		static constexpr void Add(const T& key, const K& val) {
 			const auto& kv =  Exists(key);
 
-			if(kv.first) {
-				//m_collection[key] = val;
-				return;
-			}
+			if(kv.first) return;
 
 			m_collection.emplace(std::make_pair(key, val));
 

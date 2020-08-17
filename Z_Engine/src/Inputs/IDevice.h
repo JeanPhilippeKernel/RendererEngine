@@ -15,7 +15,7 @@ namespace Z_Engine::Inputs {
 
 		
 		 template<typename T, typename = std::enable_if_t<std::is_base_of_v<IDevice, T>>>
-		 static const T* As() noexcept {
+		 static constexpr const T* As() noexcept {
 			 
 			const auto& type = typeid(T);		   
 			auto  it  =  std::find_if(std::begin(m_devices), std::end(m_devices), 

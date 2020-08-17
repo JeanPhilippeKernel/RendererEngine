@@ -17,7 +17,7 @@ namespace Z_Engine::Rendering::Textures {
 
 	protected:
 		std::string m_path;
-		GLuint m_texture_id;
+		GLuint m_texture_id{0};
 
 		unsigned int m_width{0};
 		unsigned int m_height{0};

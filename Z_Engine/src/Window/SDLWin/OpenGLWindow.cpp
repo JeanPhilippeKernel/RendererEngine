@@ -98,12 +98,13 @@ namespace Z_Engine::Window::SDLWin {
 						}
 					}
 				}
-				case SDL_TEXTINPUT:
-				{
+
+				case SDL_TEXTINPUT: {
 					TextInputEvent e{m_event->text.text};
 					m_property.CallbackFn(e);
 					break;
 				}
+
 				case SDL_KEYDOWN: {
 					if (m_event->key.keysym.sym == SDLK_ESCAPE) {
 						Event::WindowClosedEvent e;

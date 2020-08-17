@@ -112,6 +112,12 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="src\Controllers\ICameraController.h" />
+    <ClInclude Include="src\Controllers\IController.h" />
+    <ClInclude Include="src\Core\IEventable.h" />
+    <ClInclude Include="src\Core\IInitializable.h" />
+    <ClInclude Include="src\Core\IRenderable.h" />
+    <ClInclude Include="src\Core\IUpdatable.h" />
     <ClInclude Include="src\Core\TimeStep.h" />
     <ClInclude Include="src\Core\Utility.h" />
     <ClInclude Include="src\EntryPoint.h" />

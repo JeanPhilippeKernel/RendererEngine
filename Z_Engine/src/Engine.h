@@ -13,6 +13,11 @@
 #include "LayerStack.h"
 #include "Core/TimeStep.h"
 
+#include "Core/IUpdatable.h"
+#include "Core/IRenderable.h"
+#include "Core/IEventable.h"
+#include "Core/IInitializable.h"
+
 
 #include <imgui/imgui.h>
 #include <imgui/imconfig.h>
@@ -24,41 +29,48 @@
 
 namespace Z_Engine {
 	
-	class Z_ENGINE_API Engine {
+	class Z_ENGINE_API Engine : 
+		public Core::IInitializable,
+		public Core::IUpdatable, 
+		public Core::IRenderable, 
+		public Core::IEventable {
+
 	public:
 		Engine();
 		virtual ~Engine();
+
+	public:
+		virtual void Initialize() override;
+		virtual void Update(Core::TimeStep delta_time) override;
+		virtual void Render() override;
+		virtual bool OnEvent(Event::CoreEvent&) override;
 		
-		void InitializeComponents();
-		
+	public:
 		void Run();
 
 		const Ref<Z_Engine::Window::CoreWindow>& GetWindow() const { return m_window; }
-		
 		void PushOverlayLayer(Layer* const layer) { m_layer_stack.PushOverlayLayer(layer); }
 		void PushLayer(Layer* const layer) { m_layer_stack.PushLayer(layer); }
 
 	protected:
 		virtual void ProcessEvent();
-		virtual void Update(Core::TimeStep delta_time);
-		virtual void Render();
 
 
 	public:
 		bool OnEngineClosed(Event::EngineClosedEvent&);
-		virtual bool OnEvent(Event::CoreEvent&);
 	
 	protected:
 		LayerStack m_layer_stack;
 	
 	private:
 		bool m_running{ false };
-		Core::TimeStep m_delta_time {0.0f};
-		float m_last_frame_time {0.0f};
+		Core::TimeStep m_delta_time { 0.0f };
+		float m_last_frame_time { 0.0f };
 		Ref<Z_Engine::Window::CoreWindow> m_window;
 
-
+	private:
 		void _INITIALIZE_IMGUI_COMPONENT();
+
 	};
 
 

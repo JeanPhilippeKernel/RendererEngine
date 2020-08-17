@@ -32,7 +32,7 @@ namespace Z_Engine::Rendering::Buffers {
 			glBindVertexArray(0);   
 		}
 
-		void AddVertexBuffer(const Ref<VertexBuffer<T>>& vertex_buffer) {
+		constexpr void AddVertexBuffer(const Ref<VertexBuffer<T>>& vertex_buffer) {
 			
 			glBindVertexArray(m_vertex_array_id);
 
@@ -58,11 +58,11 @@ namespace Z_Engine::Rendering::Buffers {
 			m_vertices_buffer.push_back(vertex_buffer);
 		}
 
-		void SetIndexBuffer(const Ref<IndexBuffer<K>>& index_buffer) {
+		constexpr void SetIndexBuffer(const Ref<IndexBuffer<K>>& index_buffer) {
 			m_index_buffer = index_buffer;
 		}
 
-		const Ref<IndexBuffer<K>>& GetIndexBuffer() const {
+		constexpr const Ref<IndexBuffer<K>>& GetIndexBuffer() const {
 			return m_index_buffer;
 		}
 

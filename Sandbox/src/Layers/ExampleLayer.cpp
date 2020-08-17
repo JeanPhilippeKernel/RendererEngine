@@ -145,8 +145,8 @@ namespace Sandbox::Layers {
 
 		m_renderer->BeginScene(m_camera);
 
-		auto& texture =  TextureManager::Get("ChernoLogo");
-		auto& texture_shader = ShaderManager::Get("texture");
+		auto& texture			= TextureManager::Get("ChernoLogo");
+		auto& texture_shader	= ShaderManager::Get("texture");
 		texture->Bind();
 		texture_shader->SetUniform("u_SamplerTex", 0);
 		m_renderer->Submit(texture_shader, m_vertex_array_2, m_transformation_two);

@@ -24,12 +24,12 @@ namespace Z_Engine::Rendering::Buffers {
 		virtual size_t GetByteSize() const { return m_byte_size; }
 		virtual size_t GetDataSize() const { return m_data_size; }
 
-		virtual void SetLayout(Layout::BufferLayout<T>& layout) {
+		virtual constexpr void SetLayout(Layout::BufferLayout<T>& layout) {
 			this->m_layout = layout;
 			UpdateLayout();
 		}
 
-		virtual const Layout::BufferLayout<T>& GetLayout() const { 
+		virtual constexpr const Layout::BufferLayout<T>& GetLayout() const { 
 			return this->m_layout; 
 		}
 

@@ -46,7 +46,7 @@ namespace Z_Engine::Window::SDLWin {
 
 
 	public:
-		void OnEvent(Event::CoreEvent& event) override {
+		bool OnEvent(Event::CoreEvent& event) override {
 
 			Event::EventDispatcher event_dispatcher(event);
 			event_dispatcher.Dispatch<WindowClosedEvent>(std::bind(&OpenGLWindow::OnWindowClosed, this, std::placeholders::_1));
@@ -62,7 +62,7 @@ namespace Z_Engine::Window::SDLWin {
 			
 			event_dispatcher.Dispatch<TextInputEvent>(std::bind(&OpenGLWindow::OnTextInputRaised, this, std::placeholders::_1));
 
-
+			 return true;
 		}
 
 	protected:

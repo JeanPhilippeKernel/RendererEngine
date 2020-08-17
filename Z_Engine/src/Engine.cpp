@@ -1,4 +1,3 @@
-#include <iostream>
 #include "Engine.h"
 #include "Layers/ImguiLayer.h"
 
@@ -17,7 +16,6 @@ namespace Z_Engine {
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplSDL2_Shutdown();
 		ImGui::DestroyContext();
-
 	}
 	
 	void Engine::ProcessEvent() {
@@ -71,10 +69,9 @@ namespace Z_Engine {
 	}
 
 
-	void Engine::InitializeComponents() {
+	void Engine::Initialize() {
 		_INITIALIZE_IMGUI_COMPONENT();
 	}
-
 
 	void Engine::_INITIALIZE_IMGUI_COMPONENT() {
 		IMGUI_CHECKVERSION();

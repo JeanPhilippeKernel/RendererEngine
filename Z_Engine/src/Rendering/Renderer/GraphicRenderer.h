@@ -31,18 +31,18 @@ namespace Z_Engine::Rendering::Renderer {
 		}
 
 		template<typename T, typename K>
-		void Submit(const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
+		constexpr void Submit(const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
 			RendererCommand::DrawIndexed(vertex_array);
 		}
 
 		template<typename T, typename K>
-		void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
+		constexpr void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
 			shader->SetUniform("u_ViewProjectionMat", m_scene.GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, vertex_array);
 		}
 
 		template<typename T, typename K>
-		void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list) {
+		constexpr void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list) {
 			std::vector<Ref<Buffers::VertexArray<T, K>>> list{vertex_array_list};
 			shader->SetUniform("u_ViewProjectionMat", m_scene.GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, list);
@@ -50,14 +50,14 @@ namespace Z_Engine::Rendering::Renderer {
 
 
 		template<typename T, typename K>
-		void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform) {
+		constexpr void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform) {
 			shader->SetUniform("u_TransformMat", transform);
 			shader->SetUniform("u_ViewProjectionMat", m_scene.GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, vertex_array);
 		}
 
 		template<typename T, typename K>
-		void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform) {
+		constexpr void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform) {
 			std::vector<Ref<Buffers::VertexArray<T, K>>> list{ vertex_array_list };
 			shader->SetUniform("u_TransformMat", transform);
 			shader->SetUniform("u_ViewProjectionMat", m_scene.GetCamera()->GetViewProjectionMatrix());

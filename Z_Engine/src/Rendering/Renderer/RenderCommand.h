@@ -22,20 +22,20 @@ namespace Z_Engine::Rendering::Renderer {
 		}
 
 		template<typename T, typename K>
-		static void DrawIndexed(const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
+		static constexpr void DrawIndexed(const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
 			vertex_array->Bind();
 			glDrawElements(GL_TRIANGLES, vertex_array->GetIndexBuffer()->GetDataSize(), GL_UNSIGNED_INT, 0);
 		}
 
 		template<typename T, typename K>
-		static void DrawIndexed(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
+		static constexpr void DrawIndexed(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
 			shader->Bind();
 			vertex_array->Bind();
 			glDrawElements(GL_TRIANGLES, vertex_array->GetIndexBuffer()->GetDataSize(), GL_UNSIGNED_INT, 0);
 		}
 
 		template<typename T, typename K>
-		static void DrawIndexed(
+		static constexpr void DrawIndexed(
 			const Ref<Shaders::Shader>& shader, 
 			const std::vector<Ref<Buffers::VertexArray<T, K>>>& vertex_array_list
 		) {
