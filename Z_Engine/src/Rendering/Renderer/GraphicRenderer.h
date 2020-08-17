@@ -7,17 +7,18 @@
 #include "GraphicScene.h"
 
 #include "../../Z_EngineDef.h"
+#include "../../Core/IInitializable.h"
 
 namespace Z_Engine::Rendering::Renderer {
 	
-	class Z_ENGINE_API GraphicRenderer {
+	class Z_ENGINE_API GraphicRenderer : public Core::IInitializable {
 	public:
 		GraphicRenderer() =  default;
 		~GraphicRenderer() = default;
 
 
-		void Initialize() {
-			// enable management of transparent background image (RGBA-8)
+		void Initialize() override {
+			//enable management of transparent background image (RGBA-8)
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		}

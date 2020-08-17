@@ -110,7 +110,6 @@
     <ClInclude Include="src\Layers\ExampleLayer.h" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="src\Assets\Images\ChernoLogo.png" />
     <Image Include="src\Assets\Images\free_image.png" />
   </ItemGroup>
   <ItemGroup>

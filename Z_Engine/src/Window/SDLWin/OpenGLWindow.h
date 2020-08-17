@@ -43,8 +43,6 @@ namespace Z_Engine::Window::SDLWin {
 		virtual void Update(Core::TimeStep delta_time) override;
 		virtual void Render() override;
 
-
-
 	public:
 		bool OnEvent(Event::CoreEvent& event) override {
 

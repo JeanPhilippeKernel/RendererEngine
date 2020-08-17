@@ -15,9 +15,9 @@ namespace Z_Engine::Window {
 
 	public:
 		WindowProperty(
-			unsigned int width = 1080,
+			unsigned int width	= 1080,
 			unsigned int height = 900,
-			const char* title = "Engine Window"
+			const char* title	= "Engine Window"
 		)
 			: Width(width), Height(height), Title(title)
 		{

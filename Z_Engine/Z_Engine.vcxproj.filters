@@ -70,6 +70,7 @@
     <ClInclude Include="src\Core\IInitializable.h" />
     <ClInclude Include="src\Core\IEventable.h" />
     <ClInclude Include="src\Controllers\ICameraController.h" />
+    <ClInclude Include="src\Controllers\OrthographicCameraController.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -91,5 +92,6 @@
     <ClCompile Include="src\Rendering\Textures\Texture2D.cpp" />
     <ClCompile Include="src\Managers\ShaderManager.cpp" />
     <ClCompile Include="src\Managers\TextureManager.cpp" />
+    <ClCompile Include="src\Controllers\OrthographicCameraController.cpp" />
   </ItemGroup>
 </Project>

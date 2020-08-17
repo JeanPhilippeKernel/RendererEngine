@@ -112,6 +112,7 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="src\Controllers\OrthographicCameraController.h" />
     <ClInclude Include="src\Controllers\ICameraController.h" />
     <ClInclude Include="src\Controllers\IController.h" />
     <ClInclude Include="src\Core\IEventable.h" />
@@ -183,6 +184,7 @@
     <ClInclude Include="vendor\stb_image\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Controllers\OrthographicCameraController.cpp" />
     <ClCompile Include="src\Engine.cpp" />
     <ClCompile Include="src\Inputs\IDevice.cpp" />
     <ClCompile Include="src\LayerStack.cpp" />
