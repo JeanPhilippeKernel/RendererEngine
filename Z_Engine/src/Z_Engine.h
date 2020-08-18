@@ -25,6 +25,10 @@
 #include "Managers/ShaderManager.h"
 #include "Managers/TextureManager.h"
 
+#include "Controllers/IController.h"
+#include "Controllers/ICameraController.h"
+#include "Controllers/OrthographicCameraController.h"
+
 #include "Core/TimeStep.h"
 #include "Core/Utility.h"
  

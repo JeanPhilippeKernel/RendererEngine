@@ -15,6 +15,8 @@ namespace Z_Engine::Rendering::Cameras
 
 		virtual const glm::vec3& GetPosition() const { return m_position;}
 		virtual void SetPosition(const glm::vec3 position) { m_position =  position; }
+		virtual void SetProjectionMatrix(const glm::mat4 projection) { m_projection =  projection; }
+
 		
 		virtual const glm::mat4& GetViewMatrix() const  { return  m_view_matrix; }
 		virtual const glm::mat4& GetProjectionMatrix() const  { return  m_projection; }

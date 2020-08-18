@@ -26,6 +26,11 @@ namespace Z_Engine::Rendering::Cameras {
 		UpdateViewMatrix();
 	}
 
+	void OrthographicCamera::SetProjectionMatrix(const glm::mat4 projection) {
+	  Camera::SetProjectionMatrix(projection);
+	  UpdateViewMatrix();
+	}
+
 
 	void OrthographicCamera::UpdateViewMatrix() {
 		const auto transform =

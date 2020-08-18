@@ -19,6 +19,7 @@ namespace Z_Engine::Rendering::Cameras
 		float GetRotation() const { return m_angle; }
 
 		void SetPosition(const glm::vec3 position) override;
+		void SetProjectionMatrix(const glm::mat4 projection) override;
 		
 	private:
 		float m_angle{0.0f};

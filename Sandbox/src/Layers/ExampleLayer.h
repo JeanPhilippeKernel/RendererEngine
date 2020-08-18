@@ -11,14 +11,13 @@ namespace Sandbox::Layers {
 
 		virtual ~ExampleLayer() =  default;
 
-		virtual void Initialize() override;
+		virtual void Initialize()							override;
+		virtual void Update(Z_Engine::Core::TimeStep dt)	override;
 
-		virtual void Update(Z_Engine::Core::TimeStep dt) override;
-
-		virtual void ImGuiRender() override;
-		virtual void Render() override;
+		virtual void ImGuiRender()							override;
+		virtual void Render()								override;
 						   
-		virtual bool OnEvent(Z_Engine::Event::CoreEvent& e) override { return false; }
+		virtual bool OnEvent(Z_Engine::Event::CoreEvent& e) override;
 
 
 	private:
@@ -31,7 +30,8 @@ namespace Sandbox::Layers {
 		Z_Engine::Ref<Z_Engine::Rendering::Buffers::VertexArray<float, unsigned int>> m_vertex_array_2;
 
 		Z_Engine::Ref<Z_Engine::Rendering::Renderer::GraphicRenderer> m_renderer;
-		Z_Engine::Ref<Z_Engine::Rendering::Cameras::OrthographicCamera> m_camera;
+
+		Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController> m_camera_controller;
 
 
 		glm::mat4 m_transformation_one;

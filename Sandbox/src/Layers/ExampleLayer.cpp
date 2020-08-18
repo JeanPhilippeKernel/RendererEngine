@@ -11,20 +11,24 @@ using namespace Z_Engine::Inputs;
 
 using namespace Z_Engine::Managers;
 using namespace Z_Engine::Rendering::Textures;
+using namespace Z_Engine::Controllers;
 
 namespace Sandbox::Layers {
 	
 	void ExampleLayer::Initialize() {
-		m_camera.reset(new OrthographicCamera(-1.0f, 1.0f, -1.0f, 1.0f));
+		m_camera_controller.reset(new OrthographicCameraController(1080/900));	  // ToDo replace fixed ratio by CoreWindows->GetAspectRatio
 		m_renderer.reset(new GraphicRenderer());
+		
+		m_camera_controller->Initialize();
 		m_renderer->Initialize();
+
 		
 
 		ShaderManager::Load("src/Assets/Shaders/basic.glsl");
 		ShaderManager::Load("src/Assets/Shaders/texture.glsl");
 		
 		TextureManager::Load("src/Assets/Images/free_image.png");
-		TextureManager::Load("src/Assets/Images/ChernoLogo.png");
+		//TextureManager::Load("src/Assets/Images/ChernoLogo.png");
 
 		m_position_one = glm::vec3(0.1f, 0.1f, 0.0f);
 		m_position_two = glm::vec3(0.5f, 0.5f, 0.0f);
@@ -85,30 +89,7 @@ namespace Sandbox::Layers {
 	}
 
 	void ExampleLayer::Update(Z_Engine::Core::TimeStep dt) {
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_LEFT)) {
-			auto pos = m_camera->GetPosition();
-			pos.x -= 0.1f * dt;
-			m_camera->SetPosition(pos);
-		}
-
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_RIGHT)) {
-			auto pos = m_camera->GetPosition();
-			pos.x += 0.1f * dt;
-			m_camera->SetPosition(pos);
-		}
-
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_UP)) {
-			auto pos = m_camera->GetPosition();
-			pos.y += 0.1f * dt;
-			m_camera->SetPosition(pos);
-		}
-
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_DOWN)) {
-			auto pos = m_camera->GetPosition();
-			pos.y -= 0.1f * dt;
-			m_camera->SetPosition(pos);
-		}
-
+		m_camera_controller->Update(dt);
 
 		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_T)) {
 			m_position_two.y -= 0.1f * dt;
@@ -132,6 +113,11 @@ namespace Sandbox::Layers {
 
 	}
 
+	bool ExampleLayer::OnEvent(Z_Engine::Event::CoreEvent& e) {
+		m_camera_controller->OnEvent(e);
+		return false;
+	}
+
 	void ExampleLayer::ImGuiRender()
 	{
 		ImGui::Begin("Editor");
@@ -143,9 +129,9 @@ namespace Sandbox::Layers {
 		RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		RendererCommand::Clear();
 
-		m_renderer->BeginScene(m_camera);
+		m_renderer->BeginScene(m_camera_controller->GetCamera());
 
-		auto& texture			= TextureManager::Get("ChernoLogo");
+		auto& texture			= TextureManager::Get("free_image");
 		auto& texture_shader	= ShaderManager::Get("texture");
 		texture->Bind();
 		texture_shader->SetUniform("u_SamplerTex", 0);
