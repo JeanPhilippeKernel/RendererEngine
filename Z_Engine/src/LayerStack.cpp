@@ -12,12 +12,12 @@ namespace Z_Engine {
 			current_it = m_layers.emplace(current_it, layer);
 		}
 
-		layer->Initialize();
+		//layer->Initialize();
 	}
 
 	void LayerStack::PushOverlayLayer(Layer* const layer) {
 		m_layers.push_back(layer);
-		layer->Initialize();
+		//layer->Initialize();
 
 		if (m_layers.size() == 1) {
 			current_it = std::begin(m_layers);

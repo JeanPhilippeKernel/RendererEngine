@@ -32,7 +32,19 @@ namespace Z_Engine::Layers {
 		
 		virtual void ImGuiRender()  = 0;
 
+		void SetAttachedWindow(const Z_Engine::Ref<Window::CoreWindow>& window) {
+			m_window = window;
+		}
+
+		Z_Engine::Ref<Z_Engine::Window::CoreWindow>	GetAttachedWindow() const  {
+			if(!m_window.expired())
+				return m_window.lock();
+			
+			return nullptr;
+		}
+
 	private:
 		std::string m_name;
+		Z_Engine::WeakRef<Z_Engine::Window::CoreWindow> m_window;
 	};
 }

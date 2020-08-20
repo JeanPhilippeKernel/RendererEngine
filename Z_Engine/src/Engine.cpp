@@ -17,6 +17,26 @@ namespace Z_Engine {
 		ImGui_ImplSDL2_Shutdown();
 		ImGui::DestroyContext();
 	}
+
+	void Engine::Initialize() {
+		for(auto layer : m_layer_stack) {
+			layer->SetAttachedWindow(m_window);
+			layer->Initialize();
+		}
+
+		_INITIALIZE_IMGUI_COMPONENT();
+	}
+
+	void Engine::_INITIALIZE_IMGUI_COMPONENT() {
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGui::StyleColorsDark();
+
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+		ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window*>(m_window->GetNativeWindow()), m_window->GetNativeContext());
+		ImGui_ImplOpenGL3_Init("#version 430");
+	}
 	
 	void Engine::ProcessEvent() {
 		m_window->PollEvent();
@@ -29,12 +49,11 @@ namespace Z_Engine {
 	}
 	
 	void Engine::Render() {
-
+		
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplSDL2_NewFrame(static_cast<SDL_Window*>(m_window->GetNativeWindow()));
 		ImGui::NewFrame();
 		for (auto* const layer : m_layer_stack) {
-
 			layer->ImGuiRender();
 			layer->Render();
 		}
@@ -42,6 +61,7 @@ namespace Z_Engine {
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		m_window->Render();
+
 	}
 
 
@@ -69,33 +89,21 @@ namespace Z_Engine {
 	}
 
 
-	void Engine::Initialize() {
-		_INITIALIZE_IMGUI_COMPONENT();
-	}
-
-	void Engine::_INITIALIZE_IMGUI_COMPONENT() {
-		IMGUI_CHECKVERSION();
-		ImGui::CreateContext();
-		ImGui::StyleColorsDark();
-
-		ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-		ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window*>(m_window->GetNativeWindow()), m_window->GetNativeContext());
-		ImGui_ImplOpenGL3_Init("#version 430");
-	}
 	
 	void Engine::Run() {
 		
 		while (m_running) {
-	
+
 			float time =  static_cast<float>(SDL_GetTicks()) / 1000.0f;
 			m_delta_time = time - m_last_frame_time;
 			m_last_frame_time = (m_delta_time >= 1.0f) ? m_last_frame_time : time + 1.0f;	  // waiting 1s to update 
 										  		
 			ProcessEvent();
-			Update(m_delta_time);
-			Render();
-
+			
+			if(!m_window->GetWindowProperty().IsMinimized) {
+				Update(m_delta_time);
+				Render();
+			}
 		}
 	}
 }

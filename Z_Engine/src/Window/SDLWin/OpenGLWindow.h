@@ -60,24 +60,32 @@ namespace Z_Engine::Window::SDLWin {
 			
 			event_dispatcher.Dispatch<TextInputEvent>(std::bind(&OpenGLWindow::OnTextInputRaised, this, std::placeholders::_1));
 
+			event_dispatcher.Dispatch<WindowMinimizedEvent>(std::bind(&OpenGLWindow::OnWindowMinimized, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<WindowMaximizedEvent>(std::bind(&OpenGLWindow::OnWindowMaximized, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<WindowRestoredEvent>(std::bind(&OpenGLWindow::OnWindowRestored, this, std::placeholders::_1));
+
+
 			 return true;
 		}
 
 	protected:
-		bool OnWindowClosed(WindowClosedEvent&) override;
-		bool OnWindowResized(WindowResizeEvent&) override;
+		virtual bool OnWindowClosed(WindowClosedEvent&)						override;
+		virtual bool OnWindowResized(WindowResizeEvent&)					override;
 
 		
-		bool OnKeyPressed(KeyPressedEvent&) override;
-		bool OnKeyReleased(KeyReleasedEvent&) override;
+		virtual bool OnKeyPressed(KeyPressedEvent&)							override;
+		virtual bool OnKeyReleased(KeyReleasedEvent&)						override;
 
-		virtual bool OnMouseButtonPressed(MouseButtonPressedEvent&) override;
-		virtual bool OnMouseButtonReleased(MouseButtonReleasedEvent&) override;
-		virtual bool OnMouseButtonMoved(MouseButtonMovedEvent&) override;
-		virtual bool OnMouseButtonWheelMoved(MouseButtonWheelEvent&) override;
+		virtual bool OnMouseButtonPressed(MouseButtonPressedEvent&)			override;
+		virtual bool OnMouseButtonReleased(MouseButtonReleasedEvent&)		override;
+		virtual bool OnMouseButtonMoved(MouseButtonMovedEvent&)				override;
+		virtual bool OnMouseButtonWheelMoved(MouseButtonWheelEvent&)		override;
 
-		virtual bool OnTextInputRaised(TextInputEvent&) override;
+		virtual bool OnTextInputRaised(TextInputEvent&)						override;
 
+		virtual bool OnWindowMinimized(Event::WindowMinimizedEvent&)		override;
+		virtual bool OnWindowMaximized(Event::WindowMaximizedEvent&)		override;
+		virtual bool OnWindowRestored(Event::WindowRestoredEvent&)			override;
 
 	private:
 		SDL_Window* m_native_window{ nullptr };

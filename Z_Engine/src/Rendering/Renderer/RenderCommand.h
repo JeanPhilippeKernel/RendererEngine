@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 
+#include "../Shaders/Shader.h"
 #include "../Buffers/VertexArray.h"
 #include "../../Z_EngineDef.h"
 
@@ -15,6 +16,10 @@ namespace Z_Engine::Rendering::Renderer {
 
 		static void SetClearColor(glm::vec4 color) {
 			glClearColor(color.r, color.g, color.b, color.a);
+		}
+
+		static void SetViewport(int x, int y, int width, int height) {
+			glViewport(x, y, width, height);
 		}
 
 		static void Clear() {

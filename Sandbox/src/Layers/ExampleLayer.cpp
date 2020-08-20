@@ -16,7 +16,14 @@ using namespace Z_Engine::Controllers;
 namespace Sandbox::Layers {
 	
 	void ExampleLayer::Initialize() {
-		m_camera_controller.reset(new OrthographicCameraController(1080/900));	  // ToDo replace fixed ratio by CoreWindows->GetAspectRatio
+
+		float aspect_ratio{0.0f};
+		auto current_window = GetAttachedWindow();
+		if(current_window != nullptr) {
+			aspect_ratio = current_window->GetWindowProperty().AspectRatio;
+		}
+
+		m_camera_controller.reset(new OrthographicCameraController(aspect_ratio));
 		m_renderer.reset(new GraphicRenderer());
 		
 		m_camera_controller->Initialize();
@@ -60,10 +67,10 @@ namespace Sandbox::Layers {
 
 		// Drawing second mesh
 		std::vector<float> vertices_2{
-			-0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,	0.0f, 0.0f,
-			 0.5f, -0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,	1.0f, 0.0f,
-			 0.5f,	0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f,	1.0f, 1.0f,
-			-0.5f,	0.5f, 1.0f,	0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
+			-0.75f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+			 0.75f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+			 0.75f,	 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+			-0.75f,	 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
 		};
 
 		std::vector<unsigned int> indices_2{

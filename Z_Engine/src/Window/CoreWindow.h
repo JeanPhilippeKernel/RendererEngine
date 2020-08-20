@@ -19,6 +19,7 @@
 #include "../Core/IRenderable.h"
 #include "../Core/IEventable.h"
 
+#include "ICoreWindowEventCallback.h"
 
 namespace Z_Engine {
 	class Engine;
@@ -36,7 +37,8 @@ namespace Z_Engine::Window {
 		public Inputs::ITextInputEventCallback, 
 		public Core::IUpdatable, 
 		public Core::IRenderable, 
-		public Core::IEventable  {
+		public Core::IEventable, 
+		public ICoreWindowEventCallback  {
 
 	public:
 		using EventCallbackFn = std::function<void(CoreEvent&)>;
@@ -62,11 +64,6 @@ namespace Z_Engine::Window {
 		}
 
 		virtual void PollEvent() = 0;
-
-	protected:
-		virtual bool OnWindowClosed(WindowClosedEvent&) = 0;
-		virtual bool OnWindowResized(WindowResizeEvent&) = 0;
-
 
 	protected:
 		static const char* ATTACHED_PROPERTY;

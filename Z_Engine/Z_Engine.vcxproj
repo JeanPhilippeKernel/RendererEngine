@@ -138,7 +138,10 @@
     <ClInclude Include="src\Event\MouseEvent.h" />
     <ClInclude Include="src\Event\TextInputEvent.h" />
     <ClInclude Include="src\Event\WindowClosedEvent.h" />
+    <ClInclude Include="src\Event\WindowMaximizedEvent.h" />
+    <ClInclude Include="src\Event\WindowMinimizedEvent.h" />
     <ClInclude Include="src\Event\WindowResizeEvent.h" />
+    <ClInclude Include="src\Event\WindowsRestoredEvent.h" />
     <ClInclude Include="src\Inputs\IDevice.h" />
     <ClInclude Include="src\Inputs\ITextInputEventCallback.h" />
     <ClInclude Include="src\Inputs\Keyboard.h" />
@@ -169,6 +172,7 @@
     <ClInclude Include="src\Rendering\Textures\Texture.h" />
     <ClInclude Include="src\Rendering\Textures\Texture2D.h" />
     <ClInclude Include="src\Window\CoreWindow.h" />
+    <ClInclude Include="src\Window\ICoreWindowEventCallback.h" />
     <ClInclude Include="src\Window\SDLWin\OpenGLWindow.h" />
     <ClInclude Include="src\Window\WindowProperty.h" />
     <ClInclude Include="src\Z_Engine.h" />

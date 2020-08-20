@@ -4,9 +4,6 @@
 #include "../Inputs/Keyboard.h"
 #include "../Event/EventDispatcher.h"
 
-#include <iostream>
-
-
 using namespace Z_Engine::Inputs;
 
 namespace Z_Engine::Controllers {
@@ -41,13 +38,21 @@ namespace Z_Engine::Controllers {
 	bool OrthographicCameraController::OnEvent(Event::CoreEvent& e) {
 		Event::EventDispatcher dispatcher(e);
 		dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&OrthographicCameraController::OnMouseButtonWheelMoved, this, std::placeholders::_1));
+		dispatcher.Dispatch<Event::WindowResizeEvent>(std::bind(&OrthographicCameraController::OnWindowResized, this, std::placeholders::_1));
 		return false;
 	}
 
-
-	bool OrthographicCameraController::OnMouseButtonWheelMoved(Z_Engine::Event::MouseButtonWheelEvent& e) {
-		m_zoom_factor -= static_cast<float>(m_move_speed * e.GetOffetY());
-		m_orthographic_camera->SetProjectionMatrix(glm::ortho(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor));
+								  
+	bool OrthographicCameraController::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e) {
+		m_zoom_factor -= m_move_speed * (float)e.GetOffetY();
+		m_orthographic_camera->SetProjectionMatrix(glm::ortho(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor));
 		return false;
 	}
+
+	bool OrthographicCameraController::OnWindowResized(Event::WindowResizeEvent& e) {
+		m_aspect_ratio = (float)e.GetWidth() / (float) e.GetHeight();
+		m_orthographic_camera->SetProjectionMatrix(glm::ortho(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor));
+		return false;
+	}
+
 }

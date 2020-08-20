@@ -4,11 +4,15 @@
 #include <cstdint>
 
 #include "../../Inputs/KeyCode.h"
+#include "../../Rendering/Renderer/RenderCommand.h"
+
 #include <imgui/imgui.h>
 
 
 using namespace Z_Engine;
 using namespace Z_Engine::Rendering::Graphics;
+using namespace Z_Engine::Rendering::Renderer;
+
 
 
 namespace Z_Engine::Window {
@@ -64,9 +68,8 @@ namespace Z_Engine::Window::SDLWin {
 			exit(EXIT_FAILURE);
 		}
 
-		glewExperimental = GL_TRUE;
-		glViewport(0, 0, m_property.Width, m_property.Height);
-
+		//glewExperimental = GL_TRUE;
+		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
 	}
 
 
@@ -93,6 +96,24 @@ namespace Z_Engine::Window::SDLWin {
 								static_cast<uint32_t>(m_event->window.data1),
 								static_cast<std::uint32_t>(m_event->window.data2)
 							};
+							m_property.CallbackFn(e);
+							break;
+						}
+
+						case SDL_WINDOWEVENT_MAXIMIZED: {
+							Event::WindowMaximizedEvent e;
+							m_property.CallbackFn(e);
+							break;
+						}
+
+						case SDL_WINDOWEVENT_MINIMIZED:{
+							Event::WindowMinimizedEvent e;
+							m_property.CallbackFn(e);
+							break;
+						}
+
+						case SDL_WINDOWEVENT_RESTORED: {
+							Event::WindowRestoredEvent e;
 							m_property.CallbackFn(e);
 							break;
 						}
@@ -195,16 +216,14 @@ namespace Z_Engine::Window::SDLWin {
 
 	bool OpenGLWindow::OnWindowResized(WindowResizeEvent& event)
 	{
-		m_property.Width = event.GetWidth();
-		m_property.Height = event.GetHeight();
+		m_property.SetWidth(event.GetWidth());
+		m_property.SetHeight(event.GetHeight());
 
-		//ToDo : should be moved in ImguiLayer....
-		ImGuiIO& io = ImGui::GetIO();
-		io.DisplaySize = ImVec2(static_cast<float>(event.GetWidth()), static_cast<float>(event.GetHeight()));
-		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
 
-		glViewport(0, 0, m_property.Width, m_property.Height);
-		return true;
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::WindowResizeEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return false;
 	}
 
 	bool OpenGLWindow::OnKeyPressed(KeyPressedEvent& event) {
@@ -251,5 +270,24 @@ namespace Z_Engine::Window::SDLWin {
 		return true;
 	}
 
+	bool OpenGLWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event) {
+		m_property.IsMinimized = true;
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return false;
+	}
+	
+	bool OpenGLWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event) {
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return false;
+	}
+	
+	bool OpenGLWindow::OnWindowRestored(Event::WindowRestoredEvent& event) {
+		m_property.IsMinimized = false;
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		return false;
+	}
 
 }

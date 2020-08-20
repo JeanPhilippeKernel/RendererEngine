@@ -33,11 +33,13 @@ namespace  Z_Engine::Rendering::Textures {
 			glCreateTextures(GL_TEXTURE_2D, 1, &m_texture_id);
 			glTextureStorage2D(m_texture_id, 1, internal_format, width, height);
 
-			m_height	= height;
 			m_width		= width;
+			m_height	= height;
 
-			glTextureParameteri(m_texture_id, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTextureParameteri(m_texture_id, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+			glTextureParameteri(m_texture_id, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTextureParameteri(m_texture_id, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
 			glTextureSubImage2D(m_texture_id, 0, 0, 0, width, height, data_format, GL_UNSIGNED_BYTE, (const void *)(image_data));
 		}
 

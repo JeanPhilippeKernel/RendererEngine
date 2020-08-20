@@ -71,6 +71,10 @@
     <ClInclude Include="src\Core\IEventable.h" />
     <ClInclude Include="src\Controllers\ICameraController.h" />
     <ClInclude Include="src\Controllers\OrthographicCameraController.h" />
+    <ClInclude Include="src\Window\ICoreWindowEventCallback.h" />
+    <ClInclude Include="src\Event\WindowMaximizedEvent.h" />
+    <ClInclude Include="src\Event\WindowMinimizedEvent.h" />
+    <ClInclude Include="src\Event\WindowsRestoredEvent.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />

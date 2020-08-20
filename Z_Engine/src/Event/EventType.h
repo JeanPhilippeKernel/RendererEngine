@@ -5,7 +5,7 @@ namespace Z_Engine::Event {
 		None = 0,
 
 		WindowShown, WindowHidden, WindowMoved, WindowResized, WindowClosed,
-		WindowSizeChanged, WindowMinized, WindowMaximized,
+		WindowSizeChanged, WindowMinimized, WindowMaximized,
 		WindowRestored, WindowFocusLost, WindowFocusGained,
 
 		KeyPressed, KeyReleased,
