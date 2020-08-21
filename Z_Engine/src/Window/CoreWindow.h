@@ -5,7 +5,7 @@
 #include "WindowProperty.h"
 #include "../Event/CoreEvent.h"
 #include "../Event/WindowClosedEvent.h"
-#include "../Event/WindowResizeEvent.h"
+#include "../Event/WindowResizedEvent.h"
 #include "../Event/EventDispatcher.h"
 #include "../Event/TextInputEvent.h"
 #include "../Core/TimeStep.h"

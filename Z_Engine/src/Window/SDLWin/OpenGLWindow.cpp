@@ -92,7 +92,7 @@ namespace Z_Engine::Window::SDLWin {
 					{
 						case SDL_WINDOWEVENT_RESIZED:
 						{
-							Event::WindowResizeEvent  e {
+							Event::WindowResizedEvent  e {
 								static_cast<uint32_t>(m_event->window.data1),
 								static_cast<std::uint32_t>(m_event->window.data2)
 							};
@@ -214,7 +214,7 @@ namespace Z_Engine::Window::SDLWin {
 		return true;
 	}
 
-	bool OpenGLWindow::OnWindowResized(WindowResizeEvent& event)
+	bool OpenGLWindow::OnWindowResized(WindowResizedEvent& event)
 	{
 		m_property.SetWidth(event.GetWidth());
 		m_property.SetHeight(event.GetHeight());
@@ -222,7 +222,7 @@ namespace Z_Engine::Window::SDLWin {
 		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
 
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::WindowResizeEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
 		return false;
 	}
 

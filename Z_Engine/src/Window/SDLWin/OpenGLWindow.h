@@ -48,7 +48,7 @@ namespace Z_Engine::Window::SDLWin {
 
 			Event::EventDispatcher event_dispatcher(event);
 			event_dispatcher.Dispatch<WindowClosedEvent>(std::bind(&OpenGLWindow::OnWindowClosed, this, std::placeholders::_1));
-			event_dispatcher.Dispatch<WindowResizeEvent>(std::bind(&OpenGLWindow::OnWindowResized, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<WindowResizedEvent>(std::bind(&OpenGLWindow::OnWindowResized, this, std::placeholders::_1));
 
 			event_dispatcher.Dispatch<KeyPressedEvent>(std::bind(&OpenGLWindow::OnKeyPressed, this, std::placeholders::_1));
 			event_dispatcher.Dispatch<KeyReleasedEvent>(std::bind(&OpenGLWindow::OnKeyReleased, this, std::placeholders::_1));
@@ -70,7 +70,7 @@ namespace Z_Engine::Window::SDLWin {
 
 	protected:
 		virtual bool OnWindowClosed(WindowClosedEvent&)						override;
-		virtual bool OnWindowResized(WindowResizeEvent&)					override;
+		virtual bool OnWindowResized(WindowResizedEvent&)					override;
 
 		
 		virtual bool OnKeyPressed(KeyPressedEvent&)							override;

@@ -3,15 +3,15 @@
 #include <fmt/format.h>
 
 namespace Z_Engine::Event {
-	class WindowResizeEvent : public CoreEvent {
+	class WindowResizedEvent : public CoreEvent {
 	public:
-		WindowResizeEvent(unsigned int width, unsigned int height)
+		WindowResizedEvent(unsigned int width, unsigned int height)
 			:m_width(width), m_height(height)
 		{
 			m_name = "WindowResized";
 		}
 
-		~WindowResizeEvent() = default;
+		~WindowResizedEvent() = default;
 
 
 		unsigned int GetWidth() const { return m_width; }

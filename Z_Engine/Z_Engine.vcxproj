@@ -140,7 +140,7 @@
     <ClInclude Include="src\Event\WindowClosedEvent.h" />
     <ClInclude Include="src\Event\WindowMaximizedEvent.h" />
     <ClInclude Include="src\Event\WindowMinimizedEvent.h" />
-    <ClInclude Include="src\Event\WindowResizeEvent.h" />
+    <ClInclude Include="src\Event\WindowResizedEvent.h" />
     <ClInclude Include="src\Event\WindowsRestoredEvent.h" />
     <ClInclude Include="src\Inputs\IDevice.h" />
     <ClInclude Include="src\Inputs\ITextInputEventCallback.h" />

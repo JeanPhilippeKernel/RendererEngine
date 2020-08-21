@@ -8,7 +8,6 @@
     <ClInclude Include="src\Event\CoreEvent.h" />
     <ClInclude Include="src\Event\EventType.h" />
     <ClInclude Include="src\Event\EventCategory.h" />
-    <ClInclude Include="src\Event\WindowResizeEvent.h" />
     <ClInclude Include="src\Event\WindowClosedEvent.h" />
     <ClInclude Include="src\Event\EventDispatcher.h" />
     <ClInclude Include="src\Window\CoreWindow.h" />
@@ -75,6 +74,7 @@
     <ClInclude Include="src\Event\WindowMaximizedEvent.h" />
     <ClInclude Include="src\Event\WindowMinimizedEvent.h" />
     <ClInclude Include="src\Event\WindowsRestoredEvent.h" />
+    <ClInclude Include="src\Event\WindowResizedEvent.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />

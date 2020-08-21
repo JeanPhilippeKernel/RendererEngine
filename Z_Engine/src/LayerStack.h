@@ -10,7 +10,7 @@ namespace Z_Engine {
 	class Z_ENGINE_API LayerStack {
 	public:
 		LayerStack() = default;
-		~LayerStack() = default;
+		~LayerStack();
 
 		void PushLayer(Layer* const layer);
 

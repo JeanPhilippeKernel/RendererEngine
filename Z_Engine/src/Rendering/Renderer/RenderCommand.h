@@ -11,8 +11,9 @@ namespace Z_Engine::Rendering::Renderer {
 	
 	class Z_ENGINE_API RendererCommand {
 	public:
-		RendererCommand() = delete;
-		~RendererCommand() = delete;
+		RendererCommand()						= delete;
+		RendererCommand(const RendererCommand&) = delete;
+		~RendererCommand()						= delete;
 
 		static void SetClearColor(glm::vec4 color) {
 			glClearColor(color.r, color.g, color.b, color.a);

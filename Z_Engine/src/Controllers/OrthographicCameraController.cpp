@@ -38,7 +38,7 @@ namespace Z_Engine::Controllers {
 	bool OrthographicCameraController::OnEvent(Event::CoreEvent& e) {
 		Event::EventDispatcher dispatcher(e);
 		dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&OrthographicCameraController::OnMouseButtonWheelMoved, this, std::placeholders::_1));
-		dispatcher.Dispatch<Event::WindowResizeEvent>(std::bind(&OrthographicCameraController::OnWindowResized, this, std::placeholders::_1));
+		dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&OrthographicCameraController::OnWindowResized, this, std::placeholders::_1));
 		return false;
 	}
 
@@ -49,7 +49,7 @@ namespace Z_Engine::Controllers {
 		return false;
 	}
 
-	bool OrthographicCameraController::OnWindowResized(Event::WindowResizeEvent& e) {
+	bool OrthographicCameraController::OnWindowResized(Event::WindowResizedEvent& e) {
 		m_aspect_ratio = (float)e.GetWidth() / (float) e.GetHeight();
 		m_orthographic_camera->SetProjectionMatrix(glm::ortho(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor));
 		return false;

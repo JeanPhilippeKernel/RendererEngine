@@ -3,6 +3,12 @@
 
 namespace Z_Engine {
 	
+	LayerStack::~LayerStack() {
+		for(auto layer : m_layers)
+			delete layer;
+	}
+
+
 	void LayerStack::PushLayer(Layer* const layer) {
 		if (m_layers.empty()) {
 			m_layers.emplace_back(layer);

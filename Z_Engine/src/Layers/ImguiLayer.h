@@ -43,7 +43,7 @@ namespace Z_Engine::Layers {
 			event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&ImguiLayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
 			event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
 			
-			event_dispatcher.Dispatch<Event::WindowResizeEvent>(std::bind(&ImguiLayer::OnWindowResized, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&ImguiLayer::OnWindowResized, this, std::placeholders::_1));
 
 			return false;
 		}
@@ -68,7 +68,7 @@ namespace Z_Engine::Layers {
 		bool OnTextInputRaised(Event::TextInputEvent&)					override;
 
 		bool OnWindowClosed(Event::WindowClosedEvent&)					override { return false; }
-		bool OnWindowResized(Event::WindowResizeEvent&)					override;
+		bool OnWindowResized(Event::WindowResizedEvent&)					override;
 		bool OnWindowMinimized(Event::WindowMinimizedEvent&)			override { return false; }
 		bool OnWindowMaximized(Event::WindowMaximizedEvent&)			override { return false; }
 		bool OnWindowRestored(Event::WindowRestoredEvent&)				override { return false; }

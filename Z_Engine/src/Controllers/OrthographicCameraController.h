@@ -39,7 +39,7 @@ namespace Z_Engine::Controllers {
 		bool OnMouseButtonWheelMoved(Z_Engine::Event::MouseButtonWheelEvent&)	override;
 
 		bool OnWindowClosed(Event::WindowClosedEvent&)							override { return false; }
-		bool OnWindowResized(Event::WindowResizeEvent&)							override;
+		bool OnWindowResized(Event::WindowResizedEvent&)							override;
 		bool OnWindowMinimized(Event::WindowMinimizedEvent&)					override { return false; }
 		bool OnWindowMaximized(Event::WindowMaximizedEvent&)					override { return false; }
 		bool OnWindowRestored(Event::WindowRestoredEvent&)						override { return false; }
