@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Z_Engine", "Z_Engine\Z_Engi
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Sandbox", "Sandbox\Sandbox.vcxproj", "{C03DFF2C-7934-496B-BB06-AC14B019D096}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Sandbox3D", "Sandbox3D\Sandbox3D.vcxproj", "{D4707250-42AD-4415-BCE4-DC1A0FCE72D3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -29,6 +31,14 @@ Global
 		{C03DFF2C-7934-496B-BB06-AC14B019D096}.Release|x64.ActiveCfg = Release|x64
 		{C03DFF2C-7934-496B-BB06-AC14B019D096}.Release|x64.Build.0 = Release|x64
 		{C03DFF2C-7934-496B-BB06-AC14B019D096}.Release|x86.ActiveCfg = Release|x64
+		{D4707250-42AD-4415-BCE4-DC1A0FCE72D3}.Debug|x64.ActiveCfg = Debug|x64
+		{D4707250-42AD-4415-BCE4-DC1A0FCE72D3}.Debug|x64.Build.0 = Debug|x64
+		{D4707250-42AD-4415-BCE4-DC1A0FCE72D3}.Debug|x86.ActiveCfg = Debug|Win32
+		{D4707250-42AD-4415-BCE4-DC1A0FCE72D3}.Debug|x86.Build.0 = Debug|Win32
+		{D4707250-42AD-4415-BCE4-DC1A0FCE72D3}.Release|x64.ActiveCfg = Release|x64
+		{D4707250-42AD-4415-BCE4-DC1A0FCE72D3}.Release|x64.Build.0 = Release|x64
+		{D4707250-42AD-4415-BCE4-DC1A0FCE72D3}.Release|x86.ActiveCfg = Release|Win32
+		{D4707250-42AD-4415-BCE4-DC1A0FCE72D3}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
