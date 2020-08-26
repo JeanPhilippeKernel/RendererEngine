@@ -24,18 +24,17 @@ namespace Sandbox::Layers {
 		}
 
 		m_camera_controller.reset(new OrthographicCameraController(aspect_ratio));
-		m_renderer.reset(new GraphicRenderer());
+		m_renderer.reset(new GraphicRenderer2D());
 		
 		m_camera_controller->Initialize();
 		m_renderer->Initialize();
 
 		
 
-		ShaderManager::Load("src/Assets/Shaders/basic.glsl");
+		//ShaderManager::Load("src/Assets/Shaders/basic.glsl");
 		ShaderManager::Load("src/Assets/Shaders/texture.glsl");
 		
-		TextureManager::Load("src/Assets/Images/free_image.png");
-		//TextureManager::Load("src/Assets/Images/ChernoLogo.png");
+		//TextureManager::Load("src/Assets/Images/free_image.png");
 
 		m_position_one = glm::vec3(0.1f, 0.1f, 0.0f);
 		m_position_two = glm::vec3(0.5f, 0.5f, 0.0f);
@@ -47,51 +46,51 @@ namespace Sandbox::Layers {
 		m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
 
 
-		std::vector<float> vertices {
-			 0.5f, -0.5f, 1.0f,	1.0f, 0.5f, 0.3f, 1.0f,
-			-0.5f, -0.5f, 1.0f,	0.5f, 0.1f, 0.6f, 1.0f,
-			 0.0f,	0.5f, 1.0f,	0.1f, 0.3f, 0.2f, 1.0f
-		};
+		//std::vector<float> vertices {
+		//	 0.5f, -0.5f, 1.0f,	1.0f, 0.5f, 0.3f, 1.0f,
+		//	-0.5f, -0.5f, 1.0f,	0.5f, 0.1f, 0.6f, 1.0f,
+		//	 0.0f,	0.5f, 1.0f,	0.1f, 0.3f, 0.2f, 1.0f
+		//};
 
-		std::vector<unsigned int> indices{ 0, 1, 2 };
+		//std::vector<unsigned int> indices{ 0, 1, 2 };
 
-		Layout::BufferLayout<float> layout{ Layout::ElementLayout<float>{3, "position"}, Layout::ElementLayout<float>{4, "color"} };
-		m_vertex_buffer.reset(new VertexBuffer(vertices, layout));
+		//Layout::BufferLayout<float> layout{ Layout::ElementLayout<float>{3, "position"}, Layout::ElementLayout<float>{4, "color"} };
+		//m_vertex_buffer.reset(new VertexBuffer(vertices, layout));
 
-		m_vertex_array.reset(new VertexArray<float, unsigned int>());
-		m_index_buffer.reset(new IndexBuffer(indices));
+		//m_vertex_array.reset(new VertexArray<float, unsigned int>());
+		//m_index_buffer.reset(new IndexBuffer(indices));
 
-		m_vertex_array->SetIndexBuffer(m_index_buffer);
-		m_vertex_array->AddVertexBuffer(m_vertex_buffer);
+		//m_vertex_array->SetIndexBuffer(m_index_buffer);
+		//m_vertex_array->AddVertexBuffer(m_vertex_buffer);
 
 
-		// Drawing second mesh
-		std::vector<float> vertices_2{
-			-0.75f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-			 0.75f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-			 0.75f,	 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-			-0.75f,	 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
-		};
+		//// Drawing second mesh
+		//std::vector<float> vertices_2{
+		//	-0.75f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+		//	 0.75f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+		//	 0.75f,	 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+		//	-0.75f,	 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
+		//};
 
-		std::vector<unsigned int> indices_2{
-			0, 1, 2,
-			2, 3, 0
-		};
+		//std::vector<unsigned int> indices_2{
+		//	0, 1, 2,
+		//	2, 3, 0
+		//};
 
-		Layout::BufferLayout<float> layout_2 {
-			Layout::ElementLayout<float>{3, "position"}, 
-			Layout::ElementLayout<float>{4, "color"}, 
-			Layout::ElementLayout<float>{2, "texture"}
-		};
+		//Layout::BufferLayout<float> layout_2 {
+		//	Layout::ElementLayout<float>{3, "position"}, 
+		//	Layout::ElementLayout<float>{4, "color"}, 
+		//	Layout::ElementLayout<float>{2, "texture"}
+		//};
 
-		
-		m_vertex_buffer_2.reset(new VertexBuffer(vertices_2, layout_2));
+		//
+		//m_vertex_buffer_2.reset(new VertexBuffer(vertices_2, layout_2));
 
-		m_vertex_array_2.reset(new VertexArray<float, unsigned int>());
-		m_index_buffer_2.reset(new IndexBuffer(indices_2));
+		//m_vertex_array_2.reset(new VertexArray<float, unsigned int>());
+		//m_index_buffer_2.reset(new IndexBuffer(indices_2));
 
-		m_vertex_array_2->SetIndexBuffer(m_index_buffer_2);
-		m_vertex_array_2->AddVertexBuffer(m_vertex_buffer_2);
+		//m_vertex_array_2->SetIndexBuffer(m_index_buffer_2);
+		//m_vertex_array_2->AddVertexBuffer(m_vertex_buffer_2);
 		
 	}
 
@@ -137,29 +136,34 @@ namespace Sandbox::Layers {
 		RendererCommand::Clear();
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-
-		auto& texture			= TextureManager::Get("free_image");
-		auto& texture_shader	= ShaderManager::Get("texture");
-		texture->Bind();
-		texture_shader->SetUniform("u_SamplerTex", 0);
-		m_renderer->Submit(texture_shader, m_vertex_array_2, m_transformation_two);
-
-		
-		/* for (int y = 0; y < 20; ++y)
-		 {
-			for (int x = 0; x < 15; ++x)
-			{
-				const auto tranform = glm::translate(glm::mat4(1.0f), glm::vec3(0.11f * x, 0.11f * y, 0.0f)) *
-					glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.0f));
-
-				m_renderer->Submit(m_shader_2, m_vertex_array_2, tranform);
-
-			}
-		 }*/
-		auto& basic_shader = ShaderManager::Get("basic");
-		m_renderer->Submit(basic_shader, m_vertex_array, m_transformation_one);
-
+		m_renderer->DrawRect({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 0.0f});
+		m_renderer->DrawTriangle({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 0.0f});
 		m_renderer->EndScene();
+
+		//m_renderer->BeginScene(m_camera_controller->GetCamera());
+
+		//auto& texture			= TextureManager::Get("free_image");
+		//auto& texture_shader	= ShaderManager::Get("texture");
+		//texture->Bind();
+		//texture_shader->SetUniform("u_SamplerTex", 0);
+		//m_renderer->Submit(texture_shader, m_vertex_array_2, m_transformation_two);
+
+		//
+		///* for (int y = 0; y < 20; ++y)
+		// {
+		//	for (int x = 0; x < 15; ++x)
+		//	{
+		//		const auto tranform = glm::translate(glm::mat4(1.0f), glm::vec3(0.11f * x, 0.11f * y, 0.0f)) *
+		//			glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.0f));
+
+		//		m_renderer->Submit(m_shader_2, m_vertex_array_2, tranform);
+		//																	  
+		//	}
+		// }*/
+		//auto& basic_shader = ShaderManager::Get("basic");
+		//m_renderer->Submit(basic_shader, m_vertex_array, m_transformation_one);
+
+		//m_renderer->EndScene();
 	}
 
 }

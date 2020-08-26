@@ -33,13 +33,13 @@ namespace Z_Engine::Controllers {
 
 
 	public:
-		bool OnMouseButtonPressed(Z_Engine::Event::MouseButtonPressedEvent&)	override { return false; }
-		bool OnMouseButtonReleased(Z_Engine::Event::MouseButtonReleasedEvent&)  override { return false; }
-		bool OnMouseButtonMoved(Z_Engine::Event::MouseButtonMovedEvent&)		override { return false; }
-		bool OnMouseButtonWheelMoved(Z_Engine::Event::MouseButtonWheelEvent&)	override;
+		bool OnMouseButtonPressed(Event::MouseButtonPressedEvent&)				override { return false; }
+		bool OnMouseButtonReleased(Event::MouseButtonReleasedEvent&)			override { return false; }
+		bool OnMouseButtonMoved(Event::MouseButtonMovedEvent&)					override { return false; }
+		bool OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent&)				override;
 
+		bool OnWindowResized(Event::WindowResizedEvent&)						override;
 		bool OnWindowClosed(Event::WindowClosedEvent&)							override { return false; }
-		bool OnWindowResized(Event::WindowResizedEvent&)							override;
 		bool OnWindowMinimized(Event::WindowMinimizedEvent&)					override { return false; }
 		bool OnWindowMaximized(Event::WindowMaximizedEvent&)					override { return false; }
 		bool OnWindowRestored(Event::WindowRestoredEvent&)						override { return false; }

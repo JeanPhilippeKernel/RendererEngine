@@ -8,13 +8,15 @@
 
 #include "../../Z_EngineDef.h"
 #include "../../Core/IInitializable.h"
+#include "GraphicRendererStorage.h"
+
 
 namespace Z_Engine::Rendering::Renderer {
 	
 	class Z_ENGINE_API GraphicRenderer : public Core::IInitializable {
 	public:
-		GraphicRenderer() =  default;
-		~GraphicRenderer() = default;
+		GraphicRenderer()	= default;
+		~GraphicRenderer()	= default;
 
 
 		void Initialize() override {
@@ -23,13 +25,12 @@ namespace Z_Engine::Rendering::Renderer {
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		}
 
+	protected:
 		void BeginScene(const Ref<Cameras::Camera>& camera) {
 			  m_scene.SetCamera(camera);
 		}
 
-		void EndScene() {
-
-		}
+		virtual void EndScene() = 0;
 
 		template<typename T, typename K>
 		constexpr void Submit(const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
@@ -65,7 +66,8 @@ namespace Z_Engine::Rendering::Renderer {
 			RendererCommand::DrawIndexed(shader, list);
 		}
 
-	private:
+	protected:
 		GraphicScene m_scene;
+		//GraphicRendererStorage<float, unsigned int> m_graphic_storage;
 	};
 }

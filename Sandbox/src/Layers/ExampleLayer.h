@@ -29,7 +29,7 @@ namespace Sandbox::Layers {
 		Z_Engine::Ref<Z_Engine::Rendering::Buffers::IndexBuffer<unsigned int>> m_index_buffer_2;
 		Z_Engine::Ref<Z_Engine::Rendering::Buffers::VertexArray<float, unsigned int>> m_vertex_array_2;
 
-		Z_Engine::Ref<Z_Engine::Rendering::Renderer::GraphicRenderer> m_renderer;
+		Z_Engine::Ref<Z_Engine::Rendering::Renderer::GraphicRenderer2D> m_renderer;
 
 		Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController> m_camera_controller;
 
