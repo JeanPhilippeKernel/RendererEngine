@@ -17,80 +17,20 @@ namespace Sandbox::Layers {
 	
 	void ExampleLayer::Initialize() {
 
-		float aspect_ratio{0.0f};
-		auto current_window = GetAttachedWindow();
-		if(current_window != nullptr) {
-			aspect_ratio = current_window->GetWindowProperty().AspectRatio;
-		}
-
-		m_camera_controller.reset(new OrthographicCameraController(aspect_ratio));
+		m_camera_controller.reset(new OrthographicCameraController(GetAttachedWindow()));
 		m_renderer.reset(new GraphicRenderer2D());
 		
 		m_camera_controller->Initialize();
 		m_renderer->Initialize();
 
-		
-
-		//ShaderManager::Load("src/Assets/Shaders/basic.glsl");
-		ShaderManager::Load("src/Assets/Shaders/texture.glsl");
-		
-		//TextureManager::Load("src/Assets/Images/free_image.png");
-
 		m_position_one = glm::vec3(0.1f, 0.1f, 0.0f);
 		m_position_two = glm::vec3(0.5f, 0.5f, 0.0f);
 		
-		m_scale =  glm::vec3(1.5f, 1.5f, 0.0f);
-		m_color =  glm::vec3(0.6f, 0.0, 1.0f);
+		m_scale = glm::vec3(1.5f, 1.5f, 0.0f);
+		m_color = glm::vec3(0.6f, 0.0, 1.0f);
 
-		m_transformation_one =  glm::translate(glm::mat4(1.0f), m_position_one) * glm::scale(glm::mat4(1.0f), m_scale);
+		m_transformation_one = glm::translate(glm::mat4(1.0f), m_position_one) * glm::scale(glm::mat4(1.0f), m_scale);
 		m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
-
-
-		//std::vector<float> vertices {
-		//	 0.5f, -0.5f, 1.0f,	1.0f, 0.5f, 0.3f, 1.0f,
-		//	-0.5f, -0.5f, 1.0f,	0.5f, 0.1f, 0.6f, 1.0f,
-		//	 0.0f,	0.5f, 1.0f,	0.1f, 0.3f, 0.2f, 1.0f
-		//};
-
-		//std::vector<unsigned int> indices{ 0, 1, 2 };
-
-		//Layout::BufferLayout<float> layout{ Layout::ElementLayout<float>{3, "position"}, Layout::ElementLayout<float>{4, "color"} };
-		//m_vertex_buffer.reset(new VertexBuffer(vertices, layout));
-
-		//m_vertex_array.reset(new VertexArray<float, unsigned int>());
-		//m_index_buffer.reset(new IndexBuffer(indices));
-
-		//m_vertex_array->SetIndexBuffer(m_index_buffer);
-		//m_vertex_array->AddVertexBuffer(m_vertex_buffer);
-
-
-		//// Drawing second mesh
-		//std::vector<float> vertices_2{
-		//	-0.75f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-		//	 0.75f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-		//	 0.75f,	 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-		//	-0.75f,	 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
-		//};
-
-		//std::vector<unsigned int> indices_2{
-		//	0, 1, 2,
-		//	2, 3, 0
-		//};
-
-		//Layout::BufferLayout<float> layout_2 {
-		//	Layout::ElementLayout<float>{3, "position"}, 
-		//	Layout::ElementLayout<float>{4, "color"}, 
-		//	Layout::ElementLayout<float>{2, "texture"}
-		//};
-
-		//
-		//m_vertex_buffer_2.reset(new VertexBuffer(vertices_2, layout_2));
-
-		//m_vertex_array_2.reset(new VertexArray<float, unsigned int>());
-		//m_index_buffer_2.reset(new IndexBuffer(indices_2));
-
-		//m_vertex_array_2->SetIndexBuffer(m_index_buffer_2);
-		//m_vertex_array_2->AddVertexBuffer(m_vertex_buffer_2);
 		
 	}
 
@@ -135,13 +75,17 @@ namespace Sandbox::Layers {
 		RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		RendererCommand::Clear();
 
+
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-		m_renderer->DrawRect({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 0.0f});
-		m_renderer->DrawTriangle({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 0.0f});
+		
+		m_renderer->DrawRect({ 0.5f, 0.5f }, { 1.0f, 1.0f }, { 1.0f, 0.5f, 0.2f}, glm::half_pi<float>());
+		m_renderer->DrawRect({ -0.5f, -0.5f }, { 1.0f, 1.0f }, { 0.0f, 1.0f, 0.0f}, glm::half_pi<float>());
+		m_renderer->DrawTriangle({ 0.0f, 0.0f }, { 1.5f, 1.0f}, {1.0f, 1.0f, 0.0f});
+		
 		m_renderer->EndScene();
 
-		//m_renderer->BeginScene(m_camera_controller->GetCamera());
 
+		//m_renderer->BeginScene(m_camera_controller->GetCamera());
 		//auto& texture			= TextureManager::Get("free_image");
 		//auto& texture_shader	= ShaderManager::Get("texture");
 		//texture->Bind();

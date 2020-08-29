@@ -78,6 +78,10 @@
     <ClInclude Include="src\Rendering\Renderer\GraphicRenderer2D.h" />
     <ClInclude Include="src\Rendering\Renderer\GraphicRenderer3D.h" />
     <ClInclude Include="src\Rendering\Renderer\GraphicRendererStorage.h" />
+    <ClInclude Include="src\Rendering\Meshes\IMesh.h" />
+    <ClInclude Include="src\Rendering\Meshes\Mesh2D.h" />
+    <ClInclude Include="src\Rendering\Meshes\Rectangle.h" />
+    <ClInclude Include="src\Rendering\Meshes\Triangle.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
