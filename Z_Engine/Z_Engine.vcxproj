@@ -166,6 +166,9 @@
     <ClInclude Include="src\Rendering\Graphics\GraphicContext.h" />
     <ClInclude Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.h" />
     <ClInclude Include="src\Rendering\Renderer\GraphicRenderer.h" />
+    <ClInclude Include="src\Rendering\Renderer\GraphicRenderer2D.h" />
+    <ClInclude Include="src\Rendering\Renderer\GraphicRenderer3D.h" />
+    <ClInclude Include="src\Rendering\Renderer\GraphicRendererStorage.h" />
     <ClInclude Include="src\Rendering\Renderer\GraphicScene.h" />
     <ClInclude Include="src\Rendering\Renderer\RenderCommand.h" />
     <ClInclude Include="src\Rendering\Shaders\Shader.h" />
@@ -196,7 +199,11 @@
     <ClCompile Include="src\Managers\ShaderManager.cpp" />
     <ClCompile Include="src\Managers\TextureManager.cpp" />
     <ClCompile Include="src\Rendering\Cameras\OrthographicCamera.cpp" />
+    <ClCompile Include="src\Rendering\Cameras\PerspectiveCamera.cpp" />
     <ClCompile Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
+    <ClCompile Include="src\Rendering\Renderer\GraphicRenderer2D.cpp" />
+    <ClCompile Include="src\Rendering\Renderer\GraphicRenderer3D.cpp" />
+    <ClCompile Include="src\Rendering\Renderer\GraphicRendererStorage.cpp" />
     <ClCompile Include="src\Rendering\Renderer\GraphicScene.cpp" />
     <ClCompile Include="src\Rendering\Shaders\Shader.cpp" />
     <ClCompile Include="src\Rendering\Textures\Texture2D.cpp" />

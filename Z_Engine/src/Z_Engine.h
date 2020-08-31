@@ -9,6 +9,8 @@
 #include "Rendering/Buffers/VertexArray.h"
 
 #include "Rendering/Renderer/GraphicRenderer.h"
+#include "Rendering/Renderer/GraphicRenderer2D.h"
+#include "Rendering/Renderer/GraphicRenderer3D.h"
 #include "Rendering/Cameras/OrthographicCamera.h"
 #include "Rendering/Cameras/Camera.h"
 										

@@ -75,6 +75,9 @@
     <ClInclude Include="src\Event\WindowMinimizedEvent.h" />
     <ClInclude Include="src\Event\WindowsRestoredEvent.h" />
     <ClInclude Include="src\Event\WindowResizedEvent.h" />
+    <ClInclude Include="src\Rendering\Renderer\GraphicRenderer2D.h" />
+    <ClInclude Include="src\Rendering\Renderer\GraphicRenderer3D.h" />
+    <ClInclude Include="src\Rendering\Renderer\GraphicRendererStorage.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -97,5 +100,9 @@
     <ClCompile Include="src\Managers\ShaderManager.cpp" />
     <ClCompile Include="src\Managers\TextureManager.cpp" />
     <ClCompile Include="src\Controllers\OrthographicCameraController.cpp" />
+    <ClCompile Include="src\Rendering\Renderer\GraphicRenderer2D.cpp" />
+    <ClCompile Include="src\Rendering\Renderer\GraphicRenderer3D.cpp" />
+    <ClCompile Include="src\Rendering\Cameras\PerspectiveCamera.cpp" />
+    <ClCompile Include="src\Rendering\Renderer\GraphicRendererStorage.cpp" />
   </ItemGroup>
 </Project>
