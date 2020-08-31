@@ -1,6 +1,8 @@
 #pragma once
 #include "Texture2D.h"
 
+#include <iostream>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image/stb_image.h>
 
@@ -8,6 +10,10 @@
 namespace Z_Engine::Rendering::Textures {
 	Texture* CreateTexture(const char* path) {
 		return new Texture2D(path);
+	}
+
+	Texture* CreateTexture(unsigned int width, unsigned int height) {
+		return new Texture2D(width, height);
 	}
 
 }
@@ -38,12 +44,42 @@ namespace  Z_Engine::Rendering::Textures {
 
 
 			glTextureParameteri(m_texture_id, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTextureParameteri(m_texture_id, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTextureParameteri(m_texture_id, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
 			glTextureSubImage2D(m_texture_id, 0, 0, 0, width, height, data_format, GL_UNSIGNED_BYTE, (const void *)(image_data));
 		}
 
 		stbi_image_free(image_data);
+	}
+
+	Texture2D::Texture2D(unsigned int width, unsigned int height)
+		:Texture(width, height)
+	{
+		m_internal_format	= GL_RGBA8;
+		m_data_format		= GL_RGBA;
+
+		glCreateTextures(GL_TEXTURE_2D, 1, &m_texture_id);
+		glTextureStorage2D(m_texture_id, 1, m_internal_format, width, height);
+
+		glTextureParameteri(m_texture_id, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTextureParameteri(m_texture_id, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+		const char * data = "\x00\x00\xff\xff";	   //R:255 G: 255 B: 255 A: 255
+		SetImageData(data);
+	}
+
+	void Texture2D::SetImageData(const void * data) {
+		glTextureSubImage2D(m_texture_id, 0, 0, 0, m_width, m_height, m_data_format, GL_UNSIGNED_BYTE, data);
+	}
+
+	void Texture2D::SetImageData(float r, float g, float b, float a) {
+		unsigned char data[5] = {0, 0, 0, 0, '\0'};
+		data[0] = static_cast<unsigned char>(r * 255);
+		data[1] = static_cast<unsigned char>(g * 255);
+		data[2] = static_cast<unsigned char>(b * 255);
+		data[3] = a;
+
+		SetImageData(data);
 	}
 
 	Texture2D::~Texture2D() {
