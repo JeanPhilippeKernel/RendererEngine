@@ -15,22 +15,27 @@ namespace Z_Engine::Controllers {
 
 	public:
 		OrthographicCameraController() = default;
-		OrthographicCameraController(float aspect_ratio) 
-			:ICameraController()
+		OrthographicCameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window) 
+			:
+			ICameraController(window), 
+			m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor))
 		{
-			m_aspect_ratio =  aspect_ratio;
-			m_orthographic_camera.reset(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio* m_zoom_factor, -m_zoom_factor, m_zoom_factor));
+		} 
+
+		OrthographicCameraController(float aspect_ratio) 
+			:
+			ICameraController(aspect_ratio),
+			m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor))
+		{
 		}
 
-		virtual ~OrthographicCameraController() =  default;
+		virtual ~OrthographicCameraController() = default;
 
 		void Initialize()				override;
-		void Update(Core::TimeStep dt)	override;
+		void Update(Core::TimeStep)		override;
 		bool OnEvent(Event::CoreEvent&) override;
 
-
 		Z_Engine::Ref<Rendering::Cameras::Camera> GetCamera() override { return m_orthographic_camera; }
-
 
 	public:
 		bool OnMouseButtonPressed(Event::MouseButtonPressedEvent&)				override { return false; }

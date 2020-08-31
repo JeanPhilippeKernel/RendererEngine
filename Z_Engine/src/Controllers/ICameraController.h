@@ -1,12 +1,21 @@
 #pragma once
 #include "IController.h"
 #include "../Rendering/Cameras/Camera.h"
+#include "../Window/CoreWindow.h"
 
 namespace Z_Engine::Controllers {
 
 	struct ICameraController : public IController {
 		
 		ICameraController() = default;
+		ICameraController(float aspect_ratio)
+			:m_aspect_ratio(aspect_ratio)
+		{}
+
+		ICameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window) {
+			m_aspect_ratio = window->GetWindowProperty().AspectRatio;
+		}
+
 		~ICameraController() = default;
 
 		const glm::vec3& GetPosition()	const { return m_position; }
@@ -35,5 +44,6 @@ namespace Z_Engine::Controllers {
 		float m_move_speed				{ 0.05f };
 		float m_rotation_speed			{ 0.05f };
 		float m_aspect_ratio			{ 0.0f };
+
 	};
 }

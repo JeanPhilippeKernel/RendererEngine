@@ -52,10 +52,6 @@ namespace Z_Engine::Rendering::Buffers::Layout {
 			: m_elements(collections)
 		{}
 
-		explicit BufferLayout(std::initializer_list<ElementLayout<T>> collections)
-			: m_elements(collections)
-		{}
-
 		constexpr std::vector<ElementLayout<T>>& GetElementLayout() {
 			return m_elements;
 		}

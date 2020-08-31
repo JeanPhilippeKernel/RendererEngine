@@ -26,6 +26,15 @@ namespace Z_Engine::Managers {
 
 			IManager::Add(key, texture);
 		}
+
+		static void Add(const char* name, unsigned int width, unsigned int height) {
+			const auto key = std::string(name).append(m_suffix);
+
+			Z_Engine::Ref<Rendering::Textures::Texture> texture;
+			texture.reset(Rendering::Textures::CreateTexture(width, height));
+
+			IManager::Add(key, texture);
+		}
 		
 		static void Load(const char * filename) {
 			const auto path = std::string(filename);
