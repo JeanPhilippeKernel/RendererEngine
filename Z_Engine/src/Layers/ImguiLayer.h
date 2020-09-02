@@ -68,13 +68,13 @@ namespace Z_Engine::Layers {
 		bool OnTextInputRaised(Event::TextInputEvent&)					override;
 
 		bool OnWindowClosed(Event::WindowClosedEvent&)					override { return false; }
-		bool OnWindowResized(Event::WindowResizedEvent&)					override;
+		bool OnWindowResized(Event::WindowResizedEvent&)				override;
 		bool OnWindowMinimized(Event::WindowMinimizedEvent&)			override { return false; }
 		bool OnWindowMaximized(Event::WindowMaximizedEvent&)			override { return false; }
 		bool OnWindowRestored(Event::WindowRestoredEvent&)				override { return false; }
 
 	private:
-		  bool m_show{true};
+		  bool m_show{false};
 	};
 }
 						  

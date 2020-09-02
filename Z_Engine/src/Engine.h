@@ -29,7 +29,7 @@
 
 namespace Z_Engine {
 	
-	class Z_ENGINE_API Engine : 
+	class Engine : 
 		public Core::IInitializable,
 		public Core::IUpdatable, 
 		public Core::IRenderable, 

@@ -14,7 +14,7 @@ namespace Z_Engine::Rendering::Textures {
 		void Bind(int slot = 0) const override;
 		void Unbind(int slot = 0) const override;
 
-		void SetImageData(const void * data) override;
-		void SetImageData(float r, float g, float b, float a) override;
+		void SetData(const void * data) override;
+		void SetData(float r, float g, float b, float a) override;
 	};
 }

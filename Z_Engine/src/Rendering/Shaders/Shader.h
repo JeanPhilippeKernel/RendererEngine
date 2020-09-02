@@ -9,7 +9,7 @@
 
 
 namespace Z_Engine::Rendering::Shaders {
-	class Z_ENGINE_API Shader {
+	class Shader {
 	public:
 		Shader(const char * vertexSrc, const char * fragmentSrc);
 		Shader(const char * filename);

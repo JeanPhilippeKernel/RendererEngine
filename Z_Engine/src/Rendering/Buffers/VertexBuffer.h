@@ -10,7 +10,7 @@
 namespace Z_Engine::Rendering::Buffers {
 
 	template<typename T>
-	class Z_ENGINE_API VertexBuffer : public GraphicBuffer<T> {
+	class VertexBuffer : public GraphicBuffer<T> {
 	public:
 		explicit VertexBuffer(const std::vector<T>& data) 
 			:GraphicBuffer<T>(data)

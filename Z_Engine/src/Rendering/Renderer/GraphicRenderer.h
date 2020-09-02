@@ -15,7 +15,7 @@
 
 namespace Z_Engine::Rendering::Renderer {
 	
-	class Z_ENGINE_API GraphicRenderer : public Core::IInitializable {
+	class GraphicRenderer : public Core::IInitializable {
 	public:
 		GraphicRenderer()	= default;
 		~GraphicRenderer()	= default;

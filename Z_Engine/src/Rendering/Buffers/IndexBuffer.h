@@ -8,7 +8,7 @@
 namespace Z_Engine::Rendering::Buffers {
 
 	template <typename T>
-	class Z_ENGINE_API IndexBuffer : public GraphicBuffer<T> {
+	class IndexBuffer : public GraphicBuffer<T> {
 	public:
 
 		IndexBuffer(const std::vector<T>& indices)

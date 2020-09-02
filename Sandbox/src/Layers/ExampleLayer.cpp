@@ -86,7 +86,6 @@ namespace Sandbox::Layers {
 		m_renderer->DrawRect({ -0.6f, -0.75f }, { 1.0f, 1.0f }, TextureManager::Get("Crate"));
 		m_renderer->DrawRect({ -0.9f, -0.4f }, { 1.0f, 1.0f }, m_color);
 		
-		m_renderer->DrawTriangle({ -0.5f, 0.6f }, {.5f, .5f }, m_color);
 		m_renderer->DrawTriangle({ 0.0f, 0.0f }, { 1.5f, 1.0f}, TextureManager::Get("Crate"));
 		
 		m_renderer->EndScene();

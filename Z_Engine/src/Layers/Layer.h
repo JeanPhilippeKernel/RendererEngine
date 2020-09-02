@@ -14,11 +14,11 @@
 
 
 namespace Z_Engine::Layers {
-	class Z_ENGINE_API Layer : 
+	class Layer : 
 		public Core::IInitializable, 
 		public Core::IUpdatable, 
 		public Core::IEventable, 
-		public Core::IRenderable  {
+		public Core::IRenderable {
 	
 	public:
 		Layer(const char* name = "default_layer")
@@ -36,7 +36,7 @@ namespace Z_Engine::Layers {
 			m_window = window;
 		}
 
-		Z_Engine::Ref<Z_Engine::Window::CoreWindow>	GetAttachedWindow() const  {
+		Z_Engine::Ref<Z_Engine::Window::CoreWindow>	GetAttachedWindow() const {
 			if(!m_window.expired())
 				return m_window.lock();
 			
