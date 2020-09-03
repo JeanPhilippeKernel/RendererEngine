@@ -5,7 +5,7 @@
 
 
 namespace Z_Engine::Event {
-	class Z_ENGINE_API EventDispatcher {
+	class EventDispatcher {
 	public:
 		template<typename T, typename = std::enable_if_t<std::is_base_of_v<CoreEvent, T>>>
 		using EventFn = std::function<bool(T&)>;

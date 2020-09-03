@@ -7,7 +7,7 @@ using namespace Z_Engine::Layers;
 
 namespace Z_Engine {
 	
-	class Z_ENGINE_API LayerStack {
+	class LayerStack {
 	public:
 		LayerStack() = default;
 		~LayerStack();

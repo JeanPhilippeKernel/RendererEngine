@@ -14,7 +14,7 @@ namespace Z_Engine::Rendering::Buffers::Layout {
 	template<
 		typename T,
 		typename = std::enable_if_t<std::is_integral_v<T> || std::is_floating_point_v<T>>>
-		class Z_ENGINE_API ElementLayout {
+		class ElementLayout {
 		public:
 			explicit ElementLayout(size_t Count = 0, std::string name = "", bool normalized = false)
 				: m_name(name), m_count(Count), m_size(Count * sizeof(T)), m_normalized(normalized), m_data_type(typeid(T).name())

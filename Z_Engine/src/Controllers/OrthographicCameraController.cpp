@@ -33,6 +33,18 @@ namespace Z_Engine::Controllers {
 			m_position.y += m_move_speed * dt;
 			m_orthographic_camera->SetPosition(m_position);
 		}
+
+		if(m_can_rotate) {
+			if(IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Q)) {
+				m_rotation_angle -= m_rotation_speed * dt;
+			}
+
+			if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_D)) {
+				m_rotation_angle += m_rotation_speed * dt;
+			}
+
+			m_orthographic_camera->SetRotation(m_rotation_angle);
+		}
 	}
 	
 	bool OrthographicCameraController::OnEvent(Event::CoreEvent& e) {

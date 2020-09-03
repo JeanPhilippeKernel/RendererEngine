@@ -9,7 +9,7 @@ namespace Z_Engine::Event {
 #define EVENT_TYPE(x) static EventType GetStaticType() { return EventType::x; }
 #define EVENT_CATEGORY(x) static int GetStaticCategory() { return EventCategory::x;  }
 		
-	class Z_ENGINE_API CoreEvent {
+	class CoreEvent {
 	public:
 		CoreEvent() = default;
 		virtual ~CoreEvent() = default;

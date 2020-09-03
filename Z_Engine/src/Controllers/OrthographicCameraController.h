@@ -15,9 +15,9 @@ namespace Z_Engine::Controllers {
 
 	public:
 		OrthographicCameraController() = default;
-		OrthographicCameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window) 
+		OrthographicCameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, bool can_rotate = false) 
 			:
-			ICameraController(window), 
+			ICameraController(window, can_rotate), 
 			m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor))
 		{
 		} 

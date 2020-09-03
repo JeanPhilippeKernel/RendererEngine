@@ -8,11 +8,12 @@ namespace Z_Engine::Controllers {
 	struct ICameraController : public IController {
 		
 		ICameraController() = default;
-		ICameraController(float aspect_ratio)
-			:m_aspect_ratio(aspect_ratio)
+		ICameraController(float aspect_ratio, bool can_rotate = false)
+			:m_aspect_ratio(aspect_ratio), m_can_rotate(false)
 		{}
 
-		ICameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window) {
+		ICameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, bool can_rotate) 
+			: m_can_rotate(can_rotate) {
 			m_aspect_ratio = window->GetWindowProperty().AspectRatio;
 		}
 
@@ -44,6 +45,8 @@ namespace Z_Engine::Controllers {
 		float m_move_speed				{ 0.05f };
 		float m_rotation_speed			{ 0.05f };
 		float m_aspect_ratio			{ 0.0f };
+
+		bool m_can_rotate				{ false };
 
 	};
 }

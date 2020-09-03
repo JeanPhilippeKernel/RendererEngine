@@ -15,8 +15,8 @@ namespace Z_Engine::Rendering::Textures {
 		virtual void Bind(int slot = 0) const = 0;
 		virtual void Unbind(int slot = 0) const = 0;
 
-		virtual void SetImageData(const void* data) = 0;
-		virtual void SetImageData(float r, float g, float b, float a) = 0;
+		virtual void SetData(const void* data) = 0;
+		virtual void SetData(float r, float g, float b, float a) = 0;
 
 
 	protected:

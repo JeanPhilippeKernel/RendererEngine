@@ -5,7 +5,7 @@
 
 
 namespace  Z_Engine::Rendering::Renderer {
-	class Z_ENGINE_API GraphicScene
+	class GraphicScene
 	{
 	public:
 		explicit GraphicScene() =  default;

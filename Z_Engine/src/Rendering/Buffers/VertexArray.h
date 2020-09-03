@@ -13,7 +13,7 @@
 namespace Z_Engine::Rendering::Buffers {
 
 	template <typename T, typename K>
-	class Z_ENGINE_API VertexArray {
+	class VertexArray {
 	public:
 		VertexArray()
 		{

@@ -5,7 +5,7 @@
 
 namespace Z_Engine::Rendering::Cameras
 {
-	class Z_ENGINE_API OrthographicCamera: public Camera
+	class OrthographicCamera: public Camera
 	{
 	public:
 		OrthographicCamera(float left, float right, float bottom, float top);

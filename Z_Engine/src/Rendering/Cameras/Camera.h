@@ -4,7 +4,7 @@
 
 namespace Z_Engine::Rendering::Cameras
 {
-	class Z_ENGINE_API Camera
+	class Camera
 	{
 	public:
 		Camera()

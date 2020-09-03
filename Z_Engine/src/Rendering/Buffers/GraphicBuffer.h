@@ -8,7 +8,7 @@
 namespace Z_Engine::Rendering::Buffers {
 
 	template<typename T>
-	class Z_ENGINE_API GraphicBuffer {
+	class GraphicBuffer {
 	public:
 		explicit GraphicBuffer(const std::vector<T>& data)
 			: m_data(data), m_data_size(data.size()) 

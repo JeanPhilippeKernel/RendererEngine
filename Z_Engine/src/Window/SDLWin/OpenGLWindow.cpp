@@ -139,7 +139,6 @@ namespace Z_Engine::Window::SDLWin {
 								m_event->key.repeat
 							};
 							m_property.CallbackFn(e);
-
 						}
 					}
 					break;

@@ -9,7 +9,7 @@
 
 namespace Z_Engine::Rendering::Renderer {
 	
-	class Z_ENGINE_API RendererCommand {
+	class RendererCommand {
 	public:
 		RendererCommand()						= delete;
 		RendererCommand(const RendererCommand&) = delete;

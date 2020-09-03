@@ -85,7 +85,7 @@ namespace Z_Engine::Rendering::Renderer {
 			glm::scale(glm::mat4(1.0f), { size.x, size.y, 0.0f });
 
 		auto& texture = TextureManager::Get("default_texture");
-		texture->SetImageData(color.r, color.g, color.b, color.a);
+		texture->SetData(color.r, color.g, color.b, color.a);
 		GraphicRenderer::Submit(m_mesh_map["rectangle"].GetStorage()->GetShader(), m_mesh_map["rectangle"].GetStorage()->GetVertexArray(), transform, texture);
 	}
 
@@ -106,7 +106,7 @@ namespace Z_Engine::Rendering::Renderer {
 			glm::scale(glm::mat4(1.0f), { size.x, size.y, 0.0f });
 
 		auto& texture = TextureManager::Get("default_texture");
-		texture->SetImageData(color.r, color.g, color.b, color.a);
+		texture->SetData(color.r, color.g, color.b, color.a);
 		GraphicRenderer::Submit(m_mesh_map["triangle"].GetStorage()->GetShader(), m_mesh_map["triangle"].GetStorage()->GetVertexArray(), transform, texture);
 	}
 
