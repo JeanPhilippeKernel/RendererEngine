@@ -10,6 +10,7 @@
   <ItemGroup>
     <Image Include="src\Assets\Images\free_image.png" />
     <Image Include="src\Assets\Images\Crate.png" />
+    <Image Include="src\Assets\Images\Checkerboard.png" />
   </ItemGroup>
   <ItemGroup>
     <None Include="src\Assets\Shaders\texture.glsl" />

@@ -29,7 +29,7 @@ namespace  Z_Engine::Rendering::Textures {
 		if(image_data != nullptr) {
 
 			unsigned int data_format{0};
-			int internal_format{0};
+			unsigned int internal_format{0};
 
 			internal_format = (channel == 3) ? GL_RGB8	: GL_RGBA8;
 			data_format		= (channel == 3) ? GL_RGB	: GL_RGBA;
@@ -42,6 +42,9 @@ namespace  Z_Engine::Rendering::Textures {
 
 			glTextureParameteri(m_texture_id, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTextureParameteri(m_texture_id, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+			glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
 			glTextureSubImage2D(m_texture_id, 0, 0, 0, width, height, data_format, GL_UNSIGNED_BYTE, (const void *)(image_data));
 		}
@@ -60,6 +63,9 @@ namespace  Z_Engine::Rendering::Textures {
 
 		glTextureParameteri(m_texture_id, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTextureParameteri(m_texture_id, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+		glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
 		const char * data = "\x00\x00\xff\xff";	   //R:255 G: 255 B: 255 A: 255
 		SetData(data);
@@ -83,13 +89,11 @@ namespace  Z_Engine::Rendering::Textures {
 		  glDeleteTextures(1, &m_texture_id);
 	}
 
-	void Texture2D::Bind(int slot) const
-	{
+	void Texture2D::Bind(int slot) const {
 		glBindTextureUnit(slot, m_texture_id);
 	}
 
-	void Texture2D::Unbind(int slot) const
-	{
+	void Texture2D::Unbind(int slot) const {
 		glBindTextureUnit(slot, 0);
 	}
 
