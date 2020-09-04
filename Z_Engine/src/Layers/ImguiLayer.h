@@ -52,7 +52,7 @@ namespace Z_Engine::Layers {
 
 		virtual void ImGuiRender() override {
 
-			ImGui::ShowDemoWindow(&m_show);
+			//ImGui::ShowDemoWindow(&m_show);
 		}
 
 		void Render() override {}

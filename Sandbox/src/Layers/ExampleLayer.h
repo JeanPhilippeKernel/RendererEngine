@@ -24,13 +24,9 @@ namespace Sandbox::Layers {
 		Z_Engine::Ref<Z_Engine::Rendering::Renderer::GraphicRenderer2D>		m_renderer;
 		Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController>	m_camera_controller;
 
-		/*glm::mat4 m_transformation_one;
-		glm::mat4 m_transformation_two;
-		
-		glm::vec3 m_position_one;
-		glm::vec3 m_position_two;
-		glm::vec3 m_scale;
-		glm::vec3 m_color;*/
+		glm::vec2 m_rect_1_pos;
+		glm::vec2 m_rect_2_pos;
+		glm::vec2 m_rect_3_pos;
 	};
 
 }
