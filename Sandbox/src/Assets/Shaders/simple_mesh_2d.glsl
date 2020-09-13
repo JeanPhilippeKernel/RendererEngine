@@ -24,18 +24,17 @@ void main()
 in vec2 texture_coord;
 
 //uniform variables
-uniform vec4 		uniform_color;
 uniform sampler2D 	uniform_texture;
-float 		uniform_tiling_factor;
+uniform vec4 		uniform_tex_tint_color;
+uniform float 		uniform_tex_tiling_factor;
 
 // output variables
 out vec4 output_color;
 
 void main()
 {
-	uniform_tiling_factor = 10.f;
-	output_color = texture(uniform_texture, texture_coord * uniform_tiling_factor);
+	output_color = texture(uniform_texture, texture_coord * uniform_tex_tiling_factor) * uniform_tex_tint_color;
 }
 
 
-
+ 

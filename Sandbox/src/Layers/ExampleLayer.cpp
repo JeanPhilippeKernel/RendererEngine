@@ -17,27 +17,25 @@ namespace Sandbox::Layers {
 	
 	void ExampleLayer::Initialize() {
 
-		TextureManager::Load("src/Assets/Images/free_image.png");
-		TextureManager::Load("src/Assets/Images/Checkerboard_2.png");
-		TextureManager::Load("src/Assets/Images/Crate.png");
+		m_texture_manager.reset(new Z_Engine::Managers::TextureManager());
+		
 
-		TextureManager::Add("custom", 1, 1);
+		m_texture_manager->Load("src/Assets/Images/free_image.png");
+		m_texture_manager->Load("src/Assets/Images/Checkerboard_2.png");
+		m_texture_manager->Load("src/Assets/Images/Crate.png");
 
-		m_camera_controller.reset(new OrthographicCameraController(GetAttachedWindow()));
+		m_texture_manager->Add("custom", 1, 1);
+
+		m_camera_controller.reset(new OrthographicCameraController(GetAttachedWindow(), true));
 		m_renderer.reset(new GraphicRenderer2D());
 		
 		m_camera_controller->Initialize();
 		m_renderer->Initialize();
-
-		//m_position_one = glm::vec3(0.1f, 0.1f, 0.0f);
-		//m_position_two = glm::vec3(0.5f, 0.5f, 0.0f);
-		//
-		//m_scale = glm::vec3(1.5f, 1.5f, 0.0f);
-		//m_color = glm::vec3(1, 1, 1);
-
-		//m_transformation_one = glm::translate(glm::mat4(1.0f), m_position_one) * glm::scale(glm::mat4(1.0f), m_scale);
-		//m_transformation_two = glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
 		
+
+		m_rect_1_pos = {-0.5f, 0.2f};
+		m_rect_2_pos = {0.5f, 0.2f};
+		m_rect_3_pos = {0.5f, -0.5f};
 	}
 
 	void ExampleLayer::Update(Z_Engine::Core::TimeStep dt) {
@@ -72,9 +70,11 @@ namespace Sandbox::Layers {
 
 	void ExampleLayer::ImGuiRender()
 	{
-		/*ImGui::Begin("Editor");
-		ImGui::ColorEdit3("Color", glm::value_ptr(m_color));
-		ImGui::End();*/
+		ImGui::Begin("Editor");
+		ImGui::DragFloat2("Rectangle_one", glm::value_ptr(m_rect_1_pos), .001f);
+		ImGui::DragFloat2("Rectangle_two", glm::value_ptr(m_rect_2_pos), .001f);
+		ImGui::DragFloat2("Rectangle_three", glm::value_ptr(m_rect_3_pos), .001f);
+		ImGui::End();
 	}
 
 	void ExampleLayer::Render() {
@@ -83,11 +83,11 @@ namespace Sandbox::Layers {
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-		m_renderer->DrawRect({ -0.6f, 0.6f }, { 1.0f, 1.0f }, TextureManager::Get("Crate"));
-		/*m_renderer->DrawRect({ -0.6f, -0.75f }, { 1.0f, 1.0f }, TextureManager::Get("Crate"));
-		m_renderer->DrawRect({ -0.9f, -0.4f }, { 1.0f, 1.0f }, m_color);
+		m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"), {1, 255, 1, 255}, 2.0f);
+		m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"));
+		m_renderer->DrawRect(m_rect_3_pos, { 1.0f, 1.0f }, {12, 44, 45}, 0.0f);
 		
-		m_renderer->DrawTriangle({ 0.0f, 0.0f }, { 1.5f, 1.0f}, TextureManager::Get("Crate"));*/
+		m_renderer->DrawTriangle({ 0.5f, -0.7f }, { 1.5f, 1.0f}, 0.0f, m_texture_manager->Obtains("Crate"), {25, 56, 89, 255}, 60);
 		
 		m_renderer->EndScene();
 	}
