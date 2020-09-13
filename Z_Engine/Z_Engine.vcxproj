@@ -152,6 +152,7 @@
     <ClInclude Include="src\Layers\ImguiLayer.h" />
     <ClInclude Include="src\Inputs\IMouseEventCallback.h" />
     <ClInclude Include="src\Layers\Layer.h" />
+    <ClInclude Include="src\Managers\IAssetManager.h" />
     <ClInclude Include="src\Managers\IManager.h" />
     <ClInclude Include="src\Managers\ShaderManager.h" />
     <ClInclude Include="src\Managers\TextureManager.h" />
@@ -205,6 +206,7 @@
     <ClCompile Include="src\Rendering\Cameras\OrthographicCamera.cpp" />
     <ClCompile Include="src\Rendering\Cameras\PerspectiveCamera.cpp" />
     <ClCompile Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
+    <ClCompile Include="src\Rendering\Renderer\GraphicRenderer.cpp" />
     <ClCompile Include="src\Rendering\Renderer\GraphicRenderer2D.cpp" />
     <ClCompile Include="src\Rendering\Renderer\GraphicRenderer3D.cpp" />
     <ClCompile Include="src\Rendering\Renderer\GraphicRendererStorage.cpp" />
