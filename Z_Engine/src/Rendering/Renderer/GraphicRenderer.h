@@ -12,12 +12,15 @@
 #include "../../Core/IInitializable.h"
 #include "../Textures/Texture.h"
 
+#include "../../Managers/ShaderManager.h"
+#include "../../Managers/TextureManager.h"
+
 
 namespace Z_Engine::Rendering::Renderer {
 	
 	class GraphicRenderer : public Core::IInitializable {
 	public:
-		GraphicRenderer()	= default;
+		GraphicRenderer();
 		~GraphicRenderer()	= default;
 
 
@@ -140,5 +143,7 @@ namespace Z_Engine::Rendering::Renderer {
 																 
 	protected:
 		GraphicScene m_scene;
+		Z_Engine::Ref<Managers::TextureManager> m_texture_manager;
+		Z_Engine::Ref<Managers::ShaderManager> m_shader_manager;
 	};
 }

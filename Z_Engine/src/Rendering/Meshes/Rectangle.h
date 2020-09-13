@@ -8,7 +8,7 @@ namespace Z_Engine::Rendering::Meshes {
 	struct Rectangle2D : public Mesh2D
 	{
 		Rectangle2D() : Mesh2D (
-				Z_Engine::Managers::ShaderManager::Get("simple_mesh_2d"), 
+				"simple_mesh_2d", 
 				{ 
 					-0.75f, -0.5f, 1.0f, 0.0f, 0.0f, 
 					 0.75f, -0.5f, 1.0f, 1.0f, 0.0f,

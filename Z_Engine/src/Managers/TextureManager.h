@@ -1,61 +1,26 @@
 #pragma once
-#include <string>
-#include <algorithm>
-#include "IManager.h"
+#include "IAssetManager.h"
 #include "../Rendering/Textures/Texture.h"
 #include "../Z_EngineDef.h"
 
 #include <assert.h>
+#include <filesystem>
+
 
 namespace Z_Engine::Managers {
 	
-	struct TextureManager : 
-		public IManager<std::string, Ref<Rendering::Textures::Texture>> 
+	class TextureManager : 
+		public IAssetManager<Rendering::Textures::Texture>
 	{
 	public:
-		TextureManager()						= delete;
-		TextureManager(const TextureManager&)	= delete;
-		~TextureManager()						= delete;
+		TextureManager();
+		virtual ~TextureManager()	= default;
 
-
-		static void Add(const char * name, const char * filename) {
-			const auto key = std::string(name).append(m_suffix); 
-
-			Z_Engine::Ref<Rendering::Textures::Texture> texture;
-			texture.reset(Rendering::Textures::CreateTexture(filename));
-
-			IManager::Add(key, texture);
-		}
-
-		static void Add(const char* name, unsigned int width, unsigned int height) {
-			const auto key = std::string(name).append(m_suffix);
-
-			Z_Engine::Ref<Rendering::Textures::Texture> texture;
-			texture.reset(Rendering::Textures::CreateTexture(width, height));
-
-			IManager::Add(key, texture);
-		}
+		void Add(const char* name, const char* filename) override;
+		void Load(const char* filename) override;
 		
-		static void Load(const char * filename) {
-			const auto path = std::string(filename);
-			auto pos = path.find_last_of('/');
-			auto rpos =  path.rfind('.');
-			
-			auto name = path.substr(pos + 1, (rpos - pos) - 1);
-			Add(name.c_str(), filename);
-		}
+		void Add(const char* name, unsigned int width, unsigned int height);
 
-		static Ref<Rendering::Textures::Texture>& Get(const char * name) {
-			
-			const auto key = std::string(name).append(m_suffix);
-			const auto result  = IManager::Get(key);
-			assert(result.has_value() == true);
-			
-			return result->get();
-		}
-
-	private:
-		static std::string m_suffix;
 	};
 
 }

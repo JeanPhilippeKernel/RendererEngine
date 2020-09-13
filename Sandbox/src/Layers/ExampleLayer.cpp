@@ -17,11 +17,14 @@ namespace Sandbox::Layers {
 	
 	void ExampleLayer::Initialize() {
 
-		TextureManager::Load("src/Assets/Images/free_image.png");
-		TextureManager::Load("src/Assets/Images/Checkerboard_2.png");
-		TextureManager::Load("src/Assets/Images/Crate.png");
+		m_texture_manager.reset(new Z_Engine::Managers::TextureManager());
+		
 
-		TextureManager::Add("custom", 1, 1);
+		m_texture_manager->Load("src/Assets/Images/free_image.png");
+		m_texture_manager->Load("src/Assets/Images/Checkerboard_2.png");
+		m_texture_manager->Load("src/Assets/Images/Crate.png");
+
+		m_texture_manager->Add("custom", 1, 1);
 
 		m_camera_controller.reset(new OrthographicCameraController(GetAttachedWindow(), true));
 		m_renderer.reset(new GraphicRenderer2D());
@@ -80,11 +83,11 @@ namespace Sandbox::Layers {
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-		m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, 0.0f, TextureManager::Get("Crate"), {1, 255, 1, 255}, 2.0f);
-		m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, TextureManager::Get("Crate"));
+		m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"), {1, 255, 1, 255}, 2.0f);
+		m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"));
 		m_renderer->DrawRect(m_rect_3_pos, { 1.0f, 1.0f }, {12, 44, 45}, 0.0f);
 		
-		m_renderer->DrawTriangle({ 0.5f, -0.7f }, { 1.5f, 1.0f}, 0.0f, TextureManager::Get("Crate"), {25, 56, 89, 255}, 60);
+		m_renderer->DrawTriangle({ 0.5f, -0.7f }, { 1.5f, 1.0f}, 0.0f, m_texture_manager->Obtains("Crate"), {25, 56, 89, 255}, 60);
 		
 		m_renderer->EndScene();
 	}

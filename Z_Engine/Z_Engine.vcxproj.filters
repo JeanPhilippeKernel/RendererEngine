@@ -82,6 +82,7 @@
     <ClInclude Include="src\Rendering\Meshes\Mesh2D.h" />
     <ClInclude Include="src\Rendering\Meshes\Rectangle.h" />
     <ClInclude Include="src\Rendering\Meshes\Triangle.h" />
+    <ClInclude Include="src\Managers\IAssetManager.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -108,5 +109,6 @@
     <ClCompile Include="src\Rendering\Renderer\GraphicRenderer3D.cpp" />
     <ClCompile Include="src\Rendering\Cameras\PerspectiveCamera.cpp" />
     <ClCompile Include="src\Rendering\Renderer\GraphicRendererStorage.cpp" />
+    <ClCompile Include="src\Rendering\Renderer\GraphicRenderer.cpp" />
   </ItemGroup>
 </Project>

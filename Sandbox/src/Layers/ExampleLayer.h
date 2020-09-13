@@ -21,6 +21,8 @@ namespace Sandbox::Layers {
 
 
 	private:
+		Z_Engine::Ref<Z_Engine::Managers::TextureManager> m_texture_manager;
+
 		Z_Engine::Ref<Z_Engine::Rendering::Renderer::GraphicRenderer2D>		m_renderer;
 		Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController>	m_camera_controller;
 
