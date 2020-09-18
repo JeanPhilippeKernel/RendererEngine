@@ -1,7 +1,7 @@
 #include "ExampleLayer.h"
 #include <glm/gtc/type_ptr.hpp>																																	 
 
-using namespace Z_Engine::Rendering::Renderer;
+using namespace Z_Engine::Rendering::Renderers;
 using namespace Z_Engine::Rendering::Cameras;
 using namespace Z_Engine::Rendering::Shaders;
 using namespace Z_Engine::Rendering::Buffers;
@@ -60,7 +60,6 @@ namespace Sandbox::Layers {
 			m_position_two.x -= 0.1f * dt;
 			m_transformation_two = 	glm::translate(glm::mat4(1.0f), m_position_two) * glm::scale(glm::mat4(1.0f), m_scale);
 		}*/
-
 	}
 
 	bool ExampleLayer::OnEvent(Z_Engine::Event::CoreEvent& e) {
@@ -83,11 +82,13 @@ namespace Sandbox::Layers {
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-		m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"), {1, 255, 1, 255}, 2.0f);
-		m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"));
-		m_renderer->DrawRect(m_rect_3_pos, { 1.0f, 1.0f }, {12, 44, 45}, 0.0f);
+		//m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"), {1, 255, 1, 255}, 2.0f);
+		//m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"));
+		m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, {120, 44, 45}, 0.0f);
+		m_renderer->DrawTriangle(m_rect_2_pos, { 0.3f, 0.3f }, {200, 0, 0}, 0.0f);
+		//m_renderer->DrawRect(m_rect_3_pos, { .5f, 0.5f }, {255, 44, 45}, 0.0f);
 		
-		m_renderer->DrawTriangle({ 0.5f, -0.7f }, { 1.5f, 1.0f}, 0.0f, m_texture_manager->Obtains("Crate"), {25, 56, 89, 255}, 60);
+		//m_renderer->DrawTriangle({ 0.5f, -0.7f }, { 1.5f, 1.0f}, 0.0f, m_texture_manager->Obtains("Crate"), {25, 56, 89, 255}, 60);
 		
 		m_renderer->EndScene();
 	}

@@ -2,7 +2,7 @@
 #include "../Cameras/PerspectiveCamera.h"
 
 
-namespace Z_Engine::Rendering::Renderer {
+namespace Z_Engine::Rendering::Renderers {
 
 	class GraphicRenderer3D : public GraphicRenderer {
 	public:

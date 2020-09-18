@@ -11,23 +11,29 @@ namespace Z_Engine::Rendering::Buffers {
 	class IndexBuffer : public GraphicBuffer<T> {
 	public:
 
-		IndexBuffer(const std::vector<T>& indices)
-			: GraphicBuffer<T>(indices)
+		IndexBuffer()
+			:GraphicBuffer<T>()
 		{
 			glCreateBuffers(1, &m_element_buffer_id);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_element_buffer_id);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->m_byte_size, this->m_data.data(), GL_STATIC_DRAW);
 		}
-
-		//IndexBuffer(const std::vector<T>& indices, Layout::BufferLayout<T> layout) 
+		
+		//IndexBuffer(const std::vector<T>& indices)
 		//	: GraphicBuffer<T>(indices)
 		//{
 		//	glCreateBuffers(1, &m_element_buffer_id);
 		//	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_element_buffer_id);
-		//	glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->m_byte_size, this->m_data.data(), GL_STATIC_DRAW);
-
-		//	this->SetLayout(layout);
+		//	glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->m_byte_size, this->m_data.data(), GL_DYNAMIC_DRAW);
 		//}
+
+
+		void SetData(const std::vector<T>& data) override {
+			GraphicBuffer<T>::SetData(std::move(data));
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_element_buffer_id);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->m_byte_size, nullptr, GL_STATIC_DRAW);
+
+			glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, this->m_byte_size, this->m_data.data());
+		}
+
 
 		~IndexBuffer() {
 			glDeleteBuffers(1, &m_element_buffer_id);

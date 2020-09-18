@@ -7,7 +7,7 @@
 #include "../Buffers/VertexArray.h"
 #include "../../Z_EngineDef.h"
 
-namespace Z_Engine::Rendering::Renderer {
+namespace Z_Engine::Rendering::Renderers {
 	
 	class RendererCommand {
 	public:

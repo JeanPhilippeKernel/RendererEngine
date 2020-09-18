@@ -18,8 +18,16 @@ namespace Z_Engine::Rendering::Shaders {
 		void Bind() const;
 		void Unbind() const;
 						   
+
 		void SetUniform(const char* name, int value);
+		void SetUniform(const char* name, int value_one, int value_two);
+		void SetUniform(const char* name, int value_one, int value_two, int value_three);
+		void SetUniform(const char* name, int value_one, int value_two, int value_three, int value_four);
+
 		void SetUniform(const char* name, float value);
+		void SetUniform(const char* name, float value_one, float value_two);
+		void SetUniform(const char* name, float value_one, float value_two, float value_three);
+		void SetUniform(const char* name, float value_one, float value_two, float value_three, float value_four);
 
 		void SetUniform(const char* name, const glm::vec2& value);
 		void SetUniform(const char* name, const glm::vec3& value);
