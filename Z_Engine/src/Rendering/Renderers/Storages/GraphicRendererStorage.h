@@ -1,13 +1,13 @@
 #pragma once
+#include <vector>
+#include <algorithm>
+
+#include "GraphicVertex.h"
 #include "../../Buffers/VertexArray.h"
 #include "../../Buffers/VertexBuffer.h"
 #include "../../Buffers/IndexBuffer.h"
 #include "../../Shaders/Shader.h"
 
-
-#include <vector>
-#include <algorithm>
-#include "GraphicVertex.h"
 
 
 namespace Z_Engine::Rendering::Renderers::Storages {

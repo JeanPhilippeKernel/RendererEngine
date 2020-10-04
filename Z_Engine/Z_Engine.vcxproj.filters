@@ -87,6 +87,7 @@
     <ClInclude Include="src\Rendering\Materials\IMaterial.h" />
     <ClInclude Include="src\Rendering\Materials\SimpleMaterial2D.h" />
     <ClInclude Include="src\Rendering\Renderers\Storages\IVertex.h" />
+    <ClInclude Include="src\Rendering\Geometries\IGeometry.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />

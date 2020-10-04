@@ -8,7 +8,7 @@ namespace Z_Engine::Rendering::Materials {
 		SimpleMaterial2D();
 		~SimpleMaterial2D() = default;
 
-		void UpdateUniforms() override;
+		void UpdateUniforms(int texture_id = 0) override;
 
 
 	private:

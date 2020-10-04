@@ -3,24 +3,28 @@
 
 namespace Z_Engine::Rendering::Renderers::Storages {
 	GraphicVertex::GraphicVertex()
-		:IVertex(), m_buffer(10)
+		:IVertex(), m_buffer()
 	{
+		std::memset(&m_buffer[0], 0, m_buffer.size());
 		_UpdateBuffer();
 	}
 
-	GraphicVertex::GraphicVertex(const glm::vec3 & position, const glm::vec4 & color, const glm::vec3 & texture)
-		:IVertex(), m_buffer(10) 
+	GraphicVertex::GraphicVertex(const glm::vec3& position, const glm::vec4& color, const glm::vec2& texture_coord, float texture_id)
+		:IVertex() 
 	{
-		m_position	= position; 
-		m_color		= color; 
-		m_texture	= texture;
+		m_position		= position; 
+		m_color			= color; 
+		m_texture_coord	= texture_coord;
+		m_texture_id	= texture_id;
 
 		_UpdateBuffer();
 	}
 
 	glm::vec3 GraphicVertex::GetPosition() const { return m_position; }
 	glm::vec4 GraphicVertex::GetColor() const { return m_color; }
-	glm::vec3 GraphicVertex::GetTexture() const { return m_texture; }
+	glm::vec2 GraphicVertex::GetTextureCoord() const { return m_texture_coord; }
+
+	float GraphicVertex::GetTextureId() const { return m_texture_id; }
 
 
 	void GraphicVertex::SetPosition(const glm::vec3& value) { 
@@ -37,11 +41,15 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_buffer[5] = m_color.z;
 		m_buffer[6] = m_color.w;
 	}
-	void GraphicVertex::SetTexture(const glm::vec3& value) { 
-		m_texture = value; 
-		m_buffer[7] = m_texture.x;
-		m_buffer[8] = m_texture.y;
-		m_buffer[9] = m_texture.z;
+	void GraphicVertex::SetTextureCoord(const glm::vec2& value) { 
+		m_texture_coord = value; 
+		m_buffer[7] = m_texture_coord.x;
+		m_buffer[8] = m_texture_coord.y;
+	}
+
+	void GraphicVertex::SetTextureId(float value) { 
+		m_texture_id =  value;
+		m_buffer[9] = m_texture_id;
 	}
 
 	void GraphicVertex::_UpdateBuffer() {
@@ -54,9 +62,9 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_buffer[5] = m_color.z;
 		m_buffer[6] = m_color.w;
 		
-		m_buffer[7] = m_texture.x;
-		m_buffer[8] = m_texture.y;
-		m_buffer[9] = m_texture.z;
+		m_buffer[7] = m_texture_coord.x;
+		m_buffer[8] = m_texture_coord.y;
+		m_buffer[9] = m_texture_id;
 	}
 
 }

@@ -7,11 +7,10 @@ namespace Z_Engine::Rendering::Materials {
 	{
 	}
 
-	void SimpleMaterial2D::UpdateUniforms()
+	void SimpleMaterial2D::UpdateUniforms(int texture_id)
 	{	
-		m_owner_mesh->
-		m_texture->Bind();
-		m_shader->SetUniform("uniform_texture", 0, 1); //sampler[0] = 0, sampler[1] = 1
+		//m_shader->SetUniform("uniform_texture", 0, 1); //sampler[0] = 0, sampler[1] = 1
+		m_texture->Bind(texture_id);
 		m_shader->SetUniform("uniform_tex_tint_color", m_texture_tint_color);
 		m_shader->SetUniform("uniform_tex_tiling_factor", m_texture_tiling_factor);
 	}

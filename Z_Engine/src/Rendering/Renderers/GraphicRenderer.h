@@ -31,7 +31,7 @@ namespace Z_Engine::Rendering::Renderers {
 		}
 
 	protected:
-		void BeginScene(const Ref<Cameras::Camera>& camera) {
+		virtual void BeginScene(const Ref<Cameras::Camera>& camera) {
 			  m_scene->SetCamera(camera);
 		}
 

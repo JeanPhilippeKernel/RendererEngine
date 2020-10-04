@@ -16,23 +16,8 @@ namespace Z_Engine::Rendering::Renderers {
 
 		void Initialize() override;
 
-		void BeginScene(const Ref<Cameras::Camera>& camera) {
-			GraphicRenderer::BeginScene(camera);
-			m_graphic_storage->SetShader(m_shader_manager->Obtains("simple_mesh_2d"));
-			m_graphic_storage->SetVertexBufferLayout(
-				{
-					Rendering::Buffers::Layout::ElementLayout<float>(3,"position"), 
-					Rendering::Buffers::Layout::ElementLayout<float>(4,"color"),
-					Rendering::Buffers::Layout::ElementLayout<float>(3,"texture")
-				});
-
-		}
-
-		void EndScene() override {
-			  m_graphic_storage->UpdateBuffers();
-			  GraphicRenderer::Submit(m_graphic_storage->GetShader(), m_graphic_storage->GetVertexArray());
-			  m_graphic_storage->FlushBuffers();
-		}
+		void BeginScene(const Ref<Cameras::Camera>& camera) override;
+		void EndScene() override;
 
 		void DrawRect(const glm::vec2& position, const glm::vec2& size, const glm::vec3& color, float angle = 0.0f);  
 		void DrawRect(const glm::vec3& position, const glm::vec2& size, const glm::vec3& color, float angle = 0.0f);

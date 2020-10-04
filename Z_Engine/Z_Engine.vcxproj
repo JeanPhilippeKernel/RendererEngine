@@ -164,6 +164,7 @@
     <ClInclude Include="src\Rendering\Cameras\Camera.h" />
     <ClInclude Include="src\Rendering\Cameras\OrthographicCamera.h" />
     <ClInclude Include="src\Rendering\Cameras\PerspectiveCamera.h" />
+    <ClInclude Include="src\Rendering\Geometries\IGeometry.h" />
     <ClInclude Include="src\Rendering\Graphics\GraphicContext.h" />
     <ClInclude Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.h" />
     <ClInclude Include="src\Rendering\Materials\SimpleMaterial2D.h" />
