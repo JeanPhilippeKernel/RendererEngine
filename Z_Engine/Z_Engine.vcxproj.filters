@@ -74,8 +74,6 @@
     <ClInclude Include="src\Event\WindowResizedEvent.h" />
     <ClInclude Include="src\Rendering\Meshes\IMesh.h" />
     <ClInclude Include="src\Rendering\Meshes\Mesh2D.h" />
-    <ClInclude Include="src\Rendering\Meshes\Rectangle.h" />
-    <ClInclude Include="src\Rendering\Meshes\Triangle.h" />
     <ClInclude Include="src\Managers\IAssetManager.h" />
     <ClInclude Include="src\Rendering\Scenes\GraphicScene.h" />
     <ClInclude Include="src\Rendering\Renderers\Storages\GraphicRendererStorage.h" />
@@ -88,6 +86,8 @@
     <ClInclude Include="src\Rendering\Materials\SimpleMaterial2D.h" />
     <ClInclude Include="src\Rendering\Renderers\Storages\IVertex.h" />
     <ClInclude Include="src\Rendering\Geometries\IGeometry.h" />
+    <ClInclude Include="src\Rendering\Geometries\SquareGeometry.h" />
+    <ClInclude Include="src\Rendering\Geometries\QuadGeometry.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -117,5 +117,7 @@
     <ClCompile Include="src\Rendering\Renderers\GraphicRenderer2D.cpp" />
     <ClCompile Include="src\Rendering\Renderers\GraphicRenderer3D.cpp" />
     <ClCompile Include="src\Rendering\Materials\SimpleMaterial2D.cpp" />
+    <ClCompile Include="src\Rendering\Geometries\SquareGeometry.cpp" />
+    <ClCompile Include="src\Rendering\Geometries\QuadGeometry.cpp" />
   </ItemGroup>
 </Project>

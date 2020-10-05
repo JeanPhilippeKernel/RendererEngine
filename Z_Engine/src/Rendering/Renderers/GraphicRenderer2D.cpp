@@ -4,8 +4,9 @@
 #include "../../Managers/ShaderManager.h"
 #include "../../Managers/TextureManager.h"
 
-#include "../Meshes/Rectangle.h"
-#include "../Meshes/Triangle.h"
+#include "../Materials/SimpleMaterial2D.h"
+#include "../Geometries/SquareGeometry.h"
+#include "../Geometries/QuadGeometry.h"
 
 #include <memory>
 
@@ -23,23 +24,28 @@ namespace Z_Engine::Rendering::Renderers {
 		m_shader_manager->Load("src/Assets/Shaders/simple_mesh_2d.glsl");
 		m_texture_manager->Add("default_texture", 1, 1);
 		m_texture_manager->Add("default_texture_2", 1, 1);
+
+		auto& shader = m_shader_manager->Obtains("simple_mesh_2d");
+		shader->SetUniform("uniform_texture", 0, 1);
+		m_graphic_storage->SetShader(shader);
+		m_graphic_storage->SetVertexBufferLayout(
+			{
+				Rendering::Buffers::Layout::ElementLayout<float>(3,	"position"),
+				Rendering::Buffers::Layout::ElementLayout<float>(4,	"color"),
+
+				Rendering::Buffers::Layout::ElementLayout<float>(1,	"texture_id"),
+				Rendering::Buffers::Layout::ElementLayout<float>(2,	"texture_coord"),
+				Rendering::Buffers::Layout::ElementLayout<float>(1,	"texture_tiling_factor"),
+				Rendering::Buffers::Layout::ElementLayout<float>(4,	"texture_tint_color"),
+
+			});
 	}
 
 
 
 	void GraphicRenderer2D::BeginScene(const Ref<Cameras::Camera>& camera) {
 		GraphicRenderer::BeginScene(camera);
-		m_graphic_storage->SetShader(m_shader_manager->Obtains("simple_mesh_2d"));
-		m_graphic_storage->GetShader()->SetUniform("uniform_texture", 0, 1);
-
-		m_graphic_storage->SetVertexBufferLayout(
-			{
-				Rendering::Buffers::Layout::ElementLayout<float>(3,	"position"),
-				Rendering::Buffers::Layout::ElementLayout<float>(4,	"color"),
-				Rendering::Buffers::Layout::ElementLayout<float>(2,	"texture"),
-				Rendering::Buffers::Layout::ElementLayout<float>(1,	"texture_id"),
-			});
-
+		
 	}
 
 	void GraphicRenderer2D::EndScene() {
@@ -162,14 +168,14 @@ namespace Z_Engine::Rendering::Renderers {
 		auto& texture = m_texture_manager->Obtains("default_texture");
 		texture->SetData(color.r, color.g, color.b, color.a);
 		
-		Rectangle2D rect{};
-		rect.GetGeometry()->ApplyTransform(transform);
-		rect.GetMaterial()->SetTexture(texture);
-		rect.GetMaterial()->SetShader(m_shader_manager->Obtains("simple_mesh_2d"));
-		
-		rect.GetMaterial()->UpdateUniforms(rect.GetGeometry()->GetVertices().at(0).GetTextureId());
+		Ref<Geometries::QuadGeometry> quad_geometry(new Geometries::QuadGeometry());
+		Ref<Materials::SimpleMaterial2D> simple_material(new Materials::SimpleMaterial2D()); 
 
-		m_graphic_storage->AddVertices(rect.GetGeometry()->GetVertices());
+		quad_geometry->ApplyTransform(transform);
+		simple_material->SetTexture(texture);
+		simple_material->UpdateUniforms(quad_geometry->GetVertices().at(0).GetTextureId());
+
+		m_graphic_storage->AddVertices(quad_geometry->GetVertices());
 
 	}
 
@@ -199,10 +205,14 @@ namespace Z_Engine::Rendering::Renderers {
 		auto& texture = m_texture_manager->Obtains("default_texture_2");
 		texture->SetData(color.r, color.g, color.b, color.a);
 
-		Triangle2D triangle{};
+
+		Mesh2D triangle {
+			Ref<Geometries::SquareGeometry>(new Geometries::SquareGeometry()), 
+			Ref<Materials::SimpleMaterial2D>(new Materials::SimpleMaterial2D())
+		};
+
 		triangle.GetGeometry()->ApplyTransform(transform);
 		triangle.GetMaterial()->SetTexture(texture);
-		triangle.GetMaterial()->SetShader(m_shader_manager->Obtains("simple_mesh_2d"));
 
 		triangle.GetMaterial()->UpdateUniforms(triangle.GetGeometry()->GetVertices().at(0).GetTextureId());
 

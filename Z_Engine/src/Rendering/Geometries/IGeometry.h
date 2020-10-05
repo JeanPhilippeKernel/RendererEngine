@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <algorithm>
 #include <glm/glm.hpp>
 
 #include "../Renderers/Storages/GraphicVertex.h"
@@ -27,10 +28,7 @@ namespace Z_Engine::Rendering::Geometries {
 		virtual void ApplyTransform(const glm::mat4& transform) {
 			std::for_each(std::begin(m_vertices), std::end(m_vertices), 
 				[&](Renderers::Storages::GraphicVertex& vertex) {
-					glm::vec4 position = glm::vec4(vertex.GetPosition(), 1.0f);
-					position = transform * position;
-
-					vertex.SetPosition(position);
+					vertex.ApplyMatrixToPosition(transform);
 				}
 			);
 		}
@@ -38,6 +36,6 @@ namespace Z_Engine::Rendering::Geometries {
 		virtual std::vector<Renderers::Storages::GraphicVertex>& GetVertices() { return m_vertices; }
 	
 	protected:
-		std::vector<Renderers::Storages::GraphicVertex> m_vertices;
+		std::vector<Renderers::Storages::GraphicVertex> m_vertices{};
 	};
 }

@@ -62,6 +62,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		}
 
 		void FlushBuffers() {
+			
 			m_internal_vertices.clear();
 			m_internal_raw_vertices.clear();
 			m_internal_index.clear();
