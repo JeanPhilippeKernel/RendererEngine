@@ -12,13 +12,14 @@ namespace Z_Engine::Rendering::Geometries {
 	{
 		explicit IGeometry() = default;
 		explicit IGeometry(std::vector<Renderers::Storages::GraphicVertex>&& vertices) 
-			: m_vertices(vertices) 
-		{}
+			: m_vertices(std::move(vertices)) 
+		{
+		}
 
 		virtual ~IGeometry() = default;
 
 		virtual void SetVertices(std::vector<Renderers::Storages::GraphicVertex>&& vertices) {
-			m_vertices = vertices;
+			m_vertices = std::move(vertices);
 		}
 
 		virtual void ApplyTranslation(const glm::vec3& translation) = delete;

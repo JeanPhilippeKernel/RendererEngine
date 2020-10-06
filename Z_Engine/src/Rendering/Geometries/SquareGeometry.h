@@ -3,8 +3,7 @@
 
 namespace Z_Engine::Rendering::Geometries {
 	
-	class SquareGeometry : public IGeometry {
-	public: 
+	struct SquareGeometry : public IGeometry {
 		  explicit SquareGeometry();
 		  ~SquareGeometry() =  default;
 	}; 

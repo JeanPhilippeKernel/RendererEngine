@@ -26,7 +26,9 @@ namespace Z_Engine::Rendering::Buffers {
 		virtual void Unbind() const = 0;
 
 		virtual void SetData(const std::vector<T>& data) {
-			std::transform(std::begin(data), std::end(data), std::back_inserter(m_data), [](const T& x) { return x; } );
+			if(this->m_data_size > 0) m_data.clear();
+			
+			std::for_each(std::begin(data), std::end(data), [this](const T& x) { m_data.emplace_back(x); } );
 			this->m_data_size	= data.size();
 			this->m_byte_size	= m_data_size * sizeof(T);
 		}
@@ -36,6 +38,11 @@ namespace Z_Engine::Rendering::Buffers {
 
 		virtual void SetLayout(Layout::BufferLayout<T>& layout) {
 			this->m_layout = layout;
+			UpdateLayout();
+		}
+
+		virtual void SetLayout(Layout::BufferLayout<T>&& layout) {
+			this->m_layout = std::move(layout);
 			UpdateLayout();
 		}
 

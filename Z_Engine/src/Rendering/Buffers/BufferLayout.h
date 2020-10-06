@@ -49,14 +49,15 @@ namespace Z_Engine::Rendering::Buffers::Layout {
 		explicit BufferLayout() = default;
 
 		explicit BufferLayout(std::initializer_list<ElementLayout<T>>& collections)
-			: m_elements(collections)
-		{}
+			: m_elements(std::move(collections))
+		{
+		}
 
-		constexpr std::vector<ElementLayout<T>>& GetElementLayout() {
+		std::vector<ElementLayout<T>>& GetElementLayout() {
 			return m_elements;
 		}
 
-		constexpr const std::vector<ElementLayout<T>>& GetElementLayout() const {
+		const std::vector<ElementLayout<T>>& GetElementLayout() const {
 			return this->m_elements;
 		}
 

@@ -65,7 +65,7 @@ namespace Z_Engine::Rendering::Buffers {
 	private:
 		GLuint m_vertex_buffer_id{ 0 };
 		Layout::BufferLayout<T> m_layout;
-
+		
 		size_t m_max_vertices{ 1000 };
 	};
 }

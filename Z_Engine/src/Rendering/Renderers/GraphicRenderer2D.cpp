@@ -45,7 +45,6 @@ namespace Z_Engine::Rendering::Renderers {
 
 	void GraphicRenderer2D::BeginScene(const Ref<Cameras::Camera>& camera) {
 		GraphicRenderer::BeginScene(camera);
-		
 	}
 
 	void GraphicRenderer2D::EndScene() {
@@ -173,10 +172,11 @@ namespace Z_Engine::Rendering::Renderers {
 
 		quad_geometry->ApplyTransform(transform);
 		simple_material->SetTexture(texture);
-		simple_material->UpdateUniforms(quad_geometry->GetVertices().at(0).GetTextureId());
 
-		m_graphic_storage->AddVertices(quad_geometry->GetVertices());
 
+		auto& vertices = quad_geometry->GetVertices();
+		simple_material->UpdateUniforms(vertices.at(0).GetTextureId());
+		m_graphic_storage->AddVertices(vertices);
 	}
 
 	void GraphicRenderer2D::_DrawRect(const glm::vec4& position, const glm::vec2& size, float angle, const Z_Engine::Ref<Z_Engine::Rendering::Textures::Texture2D>& texture) {

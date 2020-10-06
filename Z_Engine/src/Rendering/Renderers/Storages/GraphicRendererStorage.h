@@ -24,7 +24,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		
 		void SetVertexBufferLayout(std::initializer_list<Buffers::Layout::ElementLayout<T>>&& element_layout ) {
 			Buffers::Layout::BufferLayout<T> buffer_layout{element_layout};
-			m_vertex_buffer->SetLayout(buffer_layout);
+			m_vertex_buffer->SetLayout(std::move(buffer_layout));
 		}
 
 		void AddVertices(const std::vector<GraphicVertex>& vertices) {

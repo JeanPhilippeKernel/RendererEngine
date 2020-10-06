@@ -5,7 +5,6 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 	GraphicVertex::GraphicVertex()
 		:IVertex(), m_buffer()
 	{
-		std::memset(&m_buffer[0], 0, m_buffer.size());
 		_UpdateBuffer();
 	}
 

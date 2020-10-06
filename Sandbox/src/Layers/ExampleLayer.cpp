@@ -65,6 +65,9 @@ namespace Sandbox::Layers {
 
 	void ExampleLayer::Render() {
 
+		static float a = 0.0f;
+		a += 0.5f;
+
 		RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		RendererCommand::Clear();
 
@@ -72,13 +75,13 @@ namespace Sandbox::Layers {
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
 		m_renderer->DrawRect({-0.5f, 0.5f}, { 0.5f, 0.5f }, {120, 44, 45}, 0.0f);
 		
-		m_renderer->DrawRect({0.5f, -0.5f}, { 0.5f, 0.5f }, {120, 44, 45}, 0.0f);
+		m_renderer->DrawRect(m_rect_1_pos, { 0.5f, 0.5f }, {120, 44, 45}, a);
 		m_renderer->DrawRect({-0.5f, -0.5f}, { 0.3f, 0.3f }, {120, 44, 45}, 5.0f);
-		m_renderer->DrawRect({-0.8f, -0.8f}, { 0.3f, 0.3f }, {120, 44, 45}, 5.0f);
+		m_renderer->DrawRect({-0.8f, -0.8f}, { 0.3f, 0.3f }, {120, 44, 45}, a);
 
 		m_renderer->DrawTriangle({-0.8f, -0.8f}, { 0.5f, 0.5f }, {255, 165, 0}, 0.0f);
 		m_renderer->DrawTriangle({0.8f, 0.8f}, { 0.5f, 0.5f }, {255, 165, 0}, 0.0f);
-		m_renderer->DrawTriangle({0.5f, 0.5f}, { 0.5f, 0.5f }, {25, 165, 0}, 0.0f);
+		m_renderer->DrawTriangle({0.5f, 0.5f}, { 0.5f, 0.5f }, {25, 165, 0}, a);
 		m_renderer->EndScene();
 		//m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"), {1, 255, 1, 255}, 2.0f);
 		//m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"));

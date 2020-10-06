@@ -15,7 +15,7 @@ namespace Z_Engine::Rendering::Meshes {
 	{
 		explicit IMesh() = default;
 		explicit IMesh(Ref<Geometries::IGeometry>&& geometry, Ref<Materials::IMaterial>&& material)
-			:m_geometry(geometry), m_material(material) 
+			:m_geometry(std::move(geometry)), m_material(std::move(material)) 
 		{
 		}
 
@@ -33,7 +33,7 @@ namespace Z_Engine::Rendering::Meshes {
 		Ref<Geometries::IGeometry>& GetGeometry() { return m_geometry; }
 
 	protected:
-	   Ref<Materials::IMaterial> m_material;
-	   Ref<Geometries::IGeometry> m_geometry;
+		Ref<Materials::IMaterial> m_material {nullptr};
+		Ref<Geometries::IGeometry> m_geometry {nullptr};
 	};
 }
