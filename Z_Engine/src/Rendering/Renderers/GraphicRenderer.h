@@ -142,9 +142,9 @@ namespace Z_Engine::Rendering::Renderers {
 		//}
 																 
 	protected:
-		Ref<Scenes::GraphicScene>									m_scene;
-		Ref<Managers::TextureManager>								m_texture_manager;
-		Ref<Managers::ShaderManager>								m_shader_manager;
+		Ref<Scenes::GraphicScene>												m_scene;
+		Ref<Managers::TextureManager>											m_texture_manager;
+		Ref<Managers::ShaderManager>											m_shader_manager;
 
 		Ref<Storages::GraphicRendererStorage<float, unsigned int>>	m_graphic_storage;
 

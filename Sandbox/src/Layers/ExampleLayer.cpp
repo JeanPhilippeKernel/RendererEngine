@@ -1,5 +1,5 @@
 #include "ExampleLayer.h"
-#include <glm/gtc/type_ptr.hpp>																																	 
+#include <glm/gtc/type_ptr.hpp>	
 
 using namespace Z_Engine::Rendering::Renderers;
 using namespace Z_Engine::Rendering::Cameras;
@@ -19,7 +19,7 @@ namespace Sandbox::Layers {
 
 		m_texture_manager.reset(new Z_Engine::Managers::TextureManager());
 		
-
+													   
 		m_texture_manager->Load("src/Assets/Images/free_image.png");
 		m_texture_manager->Load("src/Assets/Images/Checkerboard_2.png");
 		m_texture_manager->Load("src/Assets/Images/Crate.png");
@@ -75,13 +75,13 @@ namespace Sandbox::Layers {
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
 		m_renderer->DrawRect({-0.5f, 0.5f}, { 0.5f, 0.5f }, {120, 44, 45}, 0.0f);
 		
-		m_renderer->DrawRect(m_rect_1_pos, { 0.5f, 0.5f }, {120, 44, 45}, a);
-		m_renderer->DrawRect({-0.5f, -0.5f}, { 0.3f, 0.3f }, {120, 44, 45}, 5.0f);
+		m_renderer->DrawRect(m_rect_1_pos, { 0.5f, 0.5f }, {120, 44, 45}, -a);
+		m_renderer->DrawRect({-0.5f, -0.5f}, { 0.3f, 0.3f }, {120, 44, 45}, a);
 		m_renderer->DrawRect({-0.8f, -0.8f}, { 0.3f, 0.3f }, {120, 44, 45}, a);
 
 		m_renderer->DrawTriangle({-0.8f, -0.8f}, { 0.5f, 0.5f }, {255, 165, 0}, 0.0f);
 		m_renderer->DrawTriangle({0.8f, 0.8f}, { 0.5f, 0.5f }, {255, 165, 0}, 0.0f);
-		m_renderer->DrawTriangle({0.5f, 0.5f}, { 0.5f, 0.5f }, {25, 165, 0}, a);
+		m_renderer->DrawTriangle({0.5f, 0.5f}, { 0.5f, 0.5f }, {25, 165, 0}, 0.0f);
 		m_renderer->EndScene();
 		//m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"), {1, 255, 1, 255}, 2.0f);
 		//m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"));

@@ -61,8 +61,8 @@ namespace Z_Engine::Rendering::Buffers {
 		virtual void UpdateLayout() {
 			auto& elements = m_layout.GetElementLayout();
 
-			auto start = elements.begin() + 1;
-			auto end = elements.end();
+			auto start = std::begin(elements) + 1;
+			auto end = std::end(elements);
 
 			while (start != end)
 			{
