@@ -45,12 +45,11 @@ namespace Z_Engine::Rendering::Renderers {
 
 	void GraphicRenderer2D::BeginScene(const Ref<Cameras::Camera>& camera) {
 		GraphicRenderer::BeginScene(camera);
+		m_graphic_storage->StartBacth();
 	}
 
 	void GraphicRenderer2D::EndScene() {
-		m_graphic_storage->UpdateBuffers();
-		GraphicRenderer::Submit(m_graphic_storage->GetShader(), m_graphic_storage->GetVertexArray());
-		m_graphic_storage->FlushBuffers();
+		m_graphic_storage->EndBatch();
 	}
 
 
@@ -185,6 +184,16 @@ namespace Z_Engine::Rendering::Renderers {
 			glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 0.0f, 1.0f)) *
 			glm::scale(glm::mat4(1.0f), { size.x, size.y, 0.0f });
 
+		Ref<Geometries::QuadGeometry> quad_geometry(new Geometries::QuadGeometry());
+		Ref<Materials::SimpleMaterial2D> simple_material(new Materials::SimpleMaterial2D());
+
+		quad_geometry->ApplyTransform(transform);
+		simple_material->SetTexture(texture);
+
+
+		auto& vertices = quad_geometry->GetVertices();
+		simple_material->UpdateUniforms(vertices.at(0).GetTextureId());
+		m_graphic_storage->AddVertices(vertices);
 	}
 
 	void GraphicRenderer2D::_DrawRect(const glm::vec4& position, const glm::vec2& size, float angle, const Z_Engine::Ref<Z_Engine::Rendering::Textures::Texture2D>& texture, const glm::vec4& tint_color, float tiling_factor) {

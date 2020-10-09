@@ -11,9 +11,11 @@ namespace Z_Engine::Rendering::Buffers {
 	class IndexBuffer : public GraphicBuffer<T> {
 	public:
 
-		IndexBuffer()
-			:GraphicBuffer<T>()
+		IndexBuffer(unsigned int  indice_count = 0) :GraphicBuffer<T>()
 		{
+			//this->m_data = std::vector<T>(indice_count, 0.0f);
+
+//			this->m_data.reserve(indice_count);
 			glCreateBuffers(1, &m_element_buffer_id);
 		}
 		
@@ -29,8 +31,8 @@ namespace Z_Engine::Rendering::Buffers {
 		void SetData(const std::vector<T>& data) override {
 			GraphicBuffer<T>::SetData(std::move(data));
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_element_buffer_id);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->m_byte_size, nullptr, GL_STATIC_DRAW);
 
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->m_byte_size, nullptr, GL_STATIC_DRAW);
 			glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, this->m_byte_size, this->m_data.data());
 		}
 

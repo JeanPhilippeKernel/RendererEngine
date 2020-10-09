@@ -33,6 +33,7 @@ namespace Z_Engine::Rendering::Renderers {
 	protected:
 		virtual void BeginScene(const Ref<Cameras::Camera>& camera) {
 			  m_scene->SetCamera(camera);
+			  m_graphic_storage->SetViewProjectionMatrix(m_scene->GetCamera()->GetViewProjectionMatrix());
 		}
 
 		virtual void EndScene() = 0;
@@ -42,11 +43,11 @@ namespace Z_Engine::Rendering::Renderers {
 			RendererCommand::DrawIndexed(vertex_array);
 		}
 
-		template<typename T, typename K>
-		void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
-			shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
-			RendererCommand::DrawIndexed(shader, vertex_array);
-		}
+		//template<typename T, typename K>
+		//void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
+		//	shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
+		//	RendererCommand::DrawIndexed(shader, vertex_array);
+		//}
 
 		template<typename T, typename K>
 		void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list) {
@@ -146,7 +147,7 @@ namespace Z_Engine::Rendering::Renderers {
 		Ref<Managers::TextureManager>											m_texture_manager;
 		Ref<Managers::ShaderManager>											m_shader_manager;
 
-		Ref<Storages::GraphicRendererStorage<float, unsigned int>>	m_graphic_storage;
+		Ref<Storages::GraphicRendererStorage<float, unsigned int>>				m_graphic_storage;
 
 	};
 }

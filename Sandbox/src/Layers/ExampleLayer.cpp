@@ -73,18 +73,26 @@ namespace Sandbox::Layers {
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-		m_renderer->DrawRect({-0.5f, 0.5f}, { 0.5f, 0.5f }, {120, 44, 45}, 0.0f);
+
+
 		
+		m_renderer->DrawRect({0.5f, 0.5f}, { 0.1f, 0.9f }, {120, 44, 45}, 0.0f);
 		m_renderer->DrawRect(m_rect_1_pos, { 0.5f, 0.5f }, {120, 44, 45}, -a);
 		m_renderer->DrawRect({-0.5f, -0.5f}, { 0.3f, 0.3f }, {120, 44, 45}, a);
-		m_renderer->DrawRect({-0.8f, -0.8f}, { 0.3f, 0.3f }, {120, 44, 45}, a);
+		m_renderer->DrawRect({-0.8f, -0.8f}, { 0.3f, 0.3f }, {120, 44, 45}, -a);
 
+		m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"));
+		
 		m_renderer->DrawTriangle({-0.8f, -0.8f}, { 0.5f, 0.5f }, {255, 165, 0}, 0.0f);
 		m_renderer->DrawTriangle({0.8f, 0.8f}, { 0.5f, 0.5f }, {255, 165, 0}, 0.0f);
 		m_renderer->DrawTriangle({0.5f, 0.5f}, { 0.5f, 0.5f }, {25, 165, 0}, 0.0f);
+		
+		m_renderer->DrawTriangle({0.6f, 0.30f}, { 0.5f, 0.5f }, {25, 165, 0}, -glm::half_pi<float>());
+		m_renderer->DrawTriangle({0.2f, 0.69f}, { 0.5f, 0.5f }, {25, 165, 0}, -glm::half_pi<float>());
+		m_renderer->DrawTriangle({0.4f, 0.5f}, { 0.5f, 0.5f }, {25, 165, 0}, -glm::half_pi<float>());
+
 		m_renderer->EndScene();
 		//m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"), {1, 255, 1, 255}, 2.0f);
-		//m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"));
 	
 		
 
