@@ -23,6 +23,8 @@ namespace Sandbox::Layers {
 		m_texture_manager->Load("src/Assets/Images/free_image.png");
 		m_texture_manager->Load("src/Assets/Images/Checkerboard_2.png");
 		m_texture_manager->Load("src/Assets/Images/Crate.png");
+		m_texture_manager->Load("src/Assets/Images/Flying_Mario.png");
+		m_texture_manager->Load("src/Assets/Images/mario_and_sonic.png");
 
 		m_texture_manager->Add("custom", 1, 1);
 
@@ -32,21 +34,30 @@ namespace Sandbox::Layers {
 		m_camera_controller->Initialize();
 		m_renderer->Initialize();
 		
+		m_rect_1_pos = {-0.7, 0.7};
 	}
 
 	void ExampleLayer::Update(Z_Engine::Core::TimeStep dt) {
 		m_camera_controller->Update(dt);
 
-		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_T)) {
-			m_rect_1_pos.y -= 0.1f * dt;
+		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
+			//m_rect_1_pos.y -= 0.1f * dt;
 			m_rect_1_pos.x -= 0.1f * dt;
+		}
+
+		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_F)) {
+			//m_rect_1_pos.y += 0.1f * dt;
+			m_rect_1_pos.x += 0.1f * dt;
 		}
 
 		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_B)) {
 			m_rect_1_pos.y += 0.1f * dt;
-			m_rect_1_pos.x += 0.1f * dt;
+			//m_rect_1_pos.x += 0.1f * dt;
 		}
-
+		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Y)) {
+			m_rect_1_pos.y -= 0.1f * dt;
+			//m_rect_1_pos.x += 0.1f * dt;
+		}
 	}
 
 	bool ExampleLayer::OnEvent(Z_Engine::Event::CoreEvent& e) {
@@ -56,49 +67,31 @@ namespace Sandbox::Layers {
 
 	void ExampleLayer::ImGuiRender()
 	{
-		//ImGui::Begin("Editor");
-		//ImGui::DragFloat2("Rectangle_one", glm::value_ptr(m_rect_1_pos), .5f);
-		//ImGui::DragFloat2("Rectangle_two", glm::value_ptr(m_rect_2_pos), .5f);
-		//ImGui::DragFloat2("Rectangle_three", glm::value_ptr(m_rect_3_pos), .5f);
-		//ImGui::End();
+		/*ImGui::Begin("Editor");
+		ImGui::DragFloat2("Rectangle_one", glm::value_ptr(m_rect_1_pos), .5f);
+		ImGui::DragFloat2("Rectangle_two", glm::value_ptr(m_rect_2_pos), .05f);
+		ImGui::DragFloat2("Rectangle_three", glm::value_ptr(m_rect_3_pos), .5f);
+		ImGui::End();*/
 	}
 
 	void ExampleLayer::Render() {
 
-		static float a = 0.0f;
-		a += 0.5f;
+		static float a = 0.0f, tint = 1;
+		a += 0.3f;
+		//tint += 0.05f;
+
+		if(tint >= 1.f) tint -= sin(tint);
+		else if(tint < 1.f) tint += sin(tint);
 
 		RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		RendererCommand::Clear();
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-
-
-		
-		m_renderer->DrawRect({0.5f, 0.5f}, { 0.1f, 0.9f }, {120, 44, 45}, 0.0f);
-		m_renderer->DrawRect(m_rect_1_pos, { 0.5f, 0.5f }, {120, 44, 45}, -a);
-		m_renderer->DrawRect({-0.5f, -0.5f}, { 0.3f, 0.3f }, {120, 44, 45}, a);
-		m_renderer->DrawRect({-0.8f, -0.8f}, { 0.3f, 0.3f }, {120, 44, 45}, -a);
-
-		m_renderer->DrawRect(m_rect_2_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"));
-		
-		m_renderer->DrawTriangle({-0.8f, -0.8f}, { 0.5f, 0.5f }, {255, 165, 0}, 0.0f);
-		m_renderer->DrawTriangle({0.8f, 0.8f}, { 0.5f, 0.5f }, {255, 165, 0}, 0.0f);
-		m_renderer->DrawTriangle({0.5f, 0.5f}, { 0.5f, 0.5f }, {25, 165, 0}, 0.0f);
-		
-		m_renderer->DrawTriangle({0.6f, 0.30f}, { 0.5f, 0.5f }, {25, 165, 0}, -glm::half_pi<float>());
-		m_renderer->DrawTriangle({0.2f, 0.69f}, { 0.5f, 0.5f }, {25, 165, 0}, -glm::half_pi<float>());
-		m_renderer->DrawTriangle({0.4f, 0.5f}, { 0.5f, 0.5f }, {25, 165, 0}, -glm::half_pi<float>());
-
+		m_renderer->DrawRect(m_rect_1_pos, { 0.5f, 0.5f }, 0.0f, m_texture_manager->Obtains("Flying_Mario"), {1, 1, 1, 1}, 1);
+		m_renderer->DrawRect({0.f, 0.f}, { 0.5f, 0.5f }, 0.0f, m_texture_manager->Obtains("mario_and_sonic"), {1, 1, 1, 1}, 1);
 		m_renderer->EndScene();
-		//m_renderer->DrawRect(m_rect_1_pos, { 1.0f, 1.0f }, 0.0f, m_texture_manager->Obtains("Crate"), {1, 255, 1, 255}, 2.0f);
-	
 		
-
-		//m_renderer->DrawRect(m_rect_3_pos, { .5f, 0.5f }, {255, 44, 45}, 0.0f);
-		
-		//m_renderer->DrawTriangle({ 0.5f, -0.7f }, { 1.5f, 1.0f}, 0.0f, m_texture_manager->Obtains("Crate"), {25, 56, 89, 255}, 60);
 		
 	}
 

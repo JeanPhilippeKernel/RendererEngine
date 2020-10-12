@@ -329,6 +329,14 @@ namespace Z_Engine::Rendering::Shaders {
 		}
 	}
 	
+	void Shader::SetUniform(const char* name, int* arr, size_t size) {
+		Bind();
+		auto location = _GetLocationUniform(name);
+		if (location != -1) {
+			glUniform1iv(location, size, arr);
+		}
+	}
+
 	void Shader::SetUniform(const char* name, int value_one, int value_two, int value_three) {
 		Bind();
 		auto location = _GetLocationUniform(name);

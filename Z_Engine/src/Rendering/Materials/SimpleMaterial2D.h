@@ -8,11 +8,5 @@ namespace Z_Engine::Rendering::Materials {
 		SimpleMaterial2D();
 		~SimpleMaterial2D() = default;
 
-		void UpdateUniforms(int texture_id = 0) override;
-
-
-	private:
-		glm::vec4 m_texture_tint_color;
-		int m_texture_tiling_factor;
 	};
 }

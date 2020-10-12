@@ -172,6 +172,7 @@
     <ClInclude Include="src\Rendering\Materials\SimpleMaterial2D.h" />
     <ClInclude Include="src\Rendering\Materials\IMaterial.h" />
     <ClInclude Include="src\Rendering\Meshes\IMesh.h" />
+    <ClInclude Include="src\Rendering\Meshes\Mesh.h" />
     <ClInclude Include="src\Rendering\Meshes\Mesh2D.h" />
     <ClInclude Include="src\Rendering\Renderers\GraphicRenderer.h" />
     <ClInclude Include="src\Rendering\Renderers\GraphicRenderer2D.h" />
@@ -214,6 +215,7 @@
     <ClCompile Include="src\Rendering\Geometries\SquareGeometry.cpp" />
     <ClCompile Include="src\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
     <ClCompile Include="src\Rendering\Materials\SimpleMaterial2D.cpp" />
+    <ClCompile Include="src\Rendering\Meshes\Mesh.cpp" />
     <ClCompile Include="src\Rendering\Renderers\GraphicRenderer.cpp" />
     <ClCompile Include="src\Rendering\Renderers\GraphicRenderer2D.cpp" />
     <ClCompile Include="src\Rendering\Renderers\GraphicRenderer3D.cpp" />

@@ -39,7 +39,7 @@ in vec4		texture_tint_color;
 
 
 //uniform variables
-uniform sampler2D	uniform_texture[2];
+uniform sampler2D	uniform_texture[32];
 
 // output variables
 out vec4 output_color;

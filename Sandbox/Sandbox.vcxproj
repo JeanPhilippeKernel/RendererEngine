@@ -111,7 +111,9 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="src\Assets\Images\Checkerboard.png" />
+    <Image Include="src\Assets\Images\Checkerboard_2.png" />
     <Image Include="src\Assets\Images\Crate.png" />
+    <Image Include="src\Assets\Images\Flying_Mario.png" />
     <Image Include="src\Assets\Images\free_image.png" />
   </ItemGroup>
   <ItemGroup>

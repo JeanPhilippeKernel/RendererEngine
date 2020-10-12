@@ -88,6 +88,7 @@
     <ClInclude Include="src\Rendering\Geometries\IGeometry.h" />
     <ClInclude Include="src\Rendering\Geometries\SquareGeometry.h" />
     <ClInclude Include="src\Rendering\Geometries\QuadGeometry.h" />
+    <ClInclude Include="src\Rendering\Meshes\Mesh.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -119,5 +120,6 @@
     <ClCompile Include="src\Rendering\Materials\SimpleMaterial2D.cpp" />
     <ClCompile Include="src\Rendering\Geometries\SquareGeometry.cpp" />
     <ClCompile Include="src\Rendering\Geometries\QuadGeometry.cpp" />
+    <ClCompile Include="src\Rendering\Meshes\Mesh.cpp" />
   </ItemGroup>
 </Project>

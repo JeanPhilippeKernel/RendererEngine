@@ -47,7 +47,9 @@ namespace  Z_Engine::Rendering::Textures {
 			glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
 			glTextureSubImage2D(m_texture_id, 0, 0, 0, width, height, data_format, GL_UNSIGNED_BYTE, (const void *)(image_data));
+
 		}
+		
 
 		stbi_image_free(image_data);
 	}
