@@ -82,7 +82,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 			m_vertex_buffer->SetData(m_internal_raw_vertices);
 			m_vertex_array->AddVertexBuffer(m_vertex_buffer);
 
-			for (size_t x = 0; x < m_texture_slot_unit_cursor; ++x) {
+			for (int x = 0; x < m_texture_slot_unit_cursor; ++x) {
 				m_texture_slot_unit[x]->Bind(x);
 			}
 
@@ -157,7 +157,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		:		
 		m_texture_manager(texture_manager),
 
-		M_MAX_QUAD(100),
+		M_MAX_QUAD(10),	// this value, when higher drop the framerate... need to investigate 
 		M_MAX_VERTICES_PER_QUAD(4),
 		M_MAX_INDEX_PER_QUAD(6),
 		M_MAX_INDICES(M_MAX_INDEX_PER_QUAD * M_MAX_QUAD),

@@ -1,6 +1,8 @@
 #include "ExampleLayer.h"
 #include <glm/gtc/type_ptr.hpp>	
 
+#include <thread>
+
 using namespace Z_Engine::Rendering::Renderers;
 using namespace Z_Engine::Rendering::Cameras;
 using namespace Z_Engine::Rendering::Shaders;
@@ -76,22 +78,32 @@ namespace Sandbox::Layers {
 
 	void ExampleLayer::Render() {
 
-		static float a = 0.0f, tint = 1;
-		a += 0.3f;
-		//tint += 0.05f;
+		static float angle = 0.0f;
+		++angle;
 
-		if(tint >= 1.f) tint -= sin(tint);
-		else if(tint < 1.f) tint += sin(tint);
+		  //if(angle >= 360.f) angle = 0.0f;
 
 		RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		RendererCommand::Clear();
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-		m_renderer->DrawRect(m_rect_1_pos, { 0.5f, 0.5f }, 0.0f, m_texture_manager->Obtains("Flying_Mario"), {1, 1, 1, 1}, 1);
-		m_renderer->DrawRect({0.f, 0.f}, { 0.5f, 0.5f }, 0.0f, m_texture_manager->Obtains("mario_and_sonic"), {1, 1, 1, 1}, 1);
-		m_renderer->EndScene();
+
+		for (float x = 0.0f; x < 2.f; x += 0.17f) {
+			for (float y = 0.0f; y < 2.f; y += 0.12f) {
+				m_renderer->DrawRect({ x , y }, { 0.1f, 0.1f }, { angle * x , angle * y , (angle * x * y) }, glm::radians(angle) * 10);
+			}
+		}
+
+
+		for (float x = 2.0f; x < 4.f; x += 0.17f) {
+			for (float y = 0.0f; y < 4.f; y += 0.12f) {
+				m_renderer->DrawTriangle({ x , y }, { 0.1f, 0.1f }, { angle * x , angle , (20 * x * y) }, -glm::radians(angle) * 10);
+			}
+		}
 		
+		m_renderer->EndScene();
+
 		
 	}
 
