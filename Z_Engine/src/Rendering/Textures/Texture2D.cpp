@@ -47,7 +47,9 @@ namespace  Z_Engine::Rendering::Textures {
 			glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
 			glTextureSubImage2D(m_texture_id, 0, 0, 0, width, height, data_format, GL_UNSIGNED_BYTE, (const void *)(image_data));
+
 		}
+		
 
 		stbi_image_free(image_data);
 	}
@@ -77,10 +79,10 @@ namespace  Z_Engine::Rendering::Textures {
 
 	void Texture2D::SetData(float r, float g, float b, float a) {
 		unsigned char data[5] = {0, 0, 0, 0, '\0'};
-		data[0] = static_cast<unsigned char>(r * 255);
-		data[1] = static_cast<unsigned char>(g * 255);
-		data[2] = static_cast<unsigned char>(b * 255);
-		data[3] = static_cast<unsigned char>(a);
+		data[0] = static_cast<unsigned char>(std::min(r, 255.0f));
+		data[1] = static_cast<unsigned char>(std::min(g, 255.0f));
+		data[2] = static_cast<unsigned char>(std::min(b, 255.0f));
+		data[3] = static_cast<unsigned char>(std::min(a, 255.0f));
 
 		SetData(data);
 	}

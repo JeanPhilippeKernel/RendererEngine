@@ -4,14 +4,14 @@
 #include <cstdint>
 
 #include "../../Inputs/KeyCode.h"
-#include "../../Rendering/Renderer/RenderCommand.h"
+#include "../../Rendering/Renderers/RenderCommand.h"
 
 #include <imgui/imgui.h>
 
 
 using namespace Z_Engine;
 using namespace Z_Engine::Rendering::Graphics;
-using namespace Z_Engine::Rendering::Renderer;
+using namespace Z_Engine::Rendering::Renderers;
 
 
 

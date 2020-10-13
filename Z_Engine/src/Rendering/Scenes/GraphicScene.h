@@ -4,7 +4,7 @@
 #include "../../Z_EngineDef.h"
 
 
-namespace  Z_Engine::Rendering::Renderer {
+namespace  Z_Engine::Rendering::Scenes {
 	class GraphicScene
 	{
 	public:

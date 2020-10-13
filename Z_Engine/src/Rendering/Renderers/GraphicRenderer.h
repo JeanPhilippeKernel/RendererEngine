@@ -2,8 +2,8 @@
 #include <memory>
 
 #include "RenderCommand.h"
-#include "GraphicRendererStorage.h"
-#include "GraphicScene.h"		
+#include "Storages/GraphicRendererStorage.h"
+#include "../Scenes/GraphicScene.h"		
 
 #include "../Buffers/VertexArray.h"
 #include "../Cameras/Camera.h"
@@ -16,7 +16,7 @@
 #include "../../Managers/TextureManager.h"
 
 
-namespace Z_Engine::Rendering::Renderer {
+namespace Z_Engine::Rendering::Renderers {
 	
 	class GraphicRenderer : public Core::IInitializable {
 	public:
@@ -31,110 +31,111 @@ namespace Z_Engine::Rendering::Renderer {
 		}
 
 	protected:
-		void BeginScene(const Ref<Cameras::Camera>& camera) {
-			  m_scene.SetCamera(camera);
+		virtual void BeginScene(const Ref<Cameras::Camera>& camera) {
+			  m_scene->SetCamera(camera);
+			  m_graphic_storage->SetViewProjectionMatrix(m_scene->GetCamera()->GetViewProjectionMatrix());
 		}
 
 		virtual void EndScene() = 0;
 
 		template<typename T, typename K>
-		constexpr void Submit(const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
+		 void Submit(const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
 			RendererCommand::DrawIndexed(vertex_array);
 		}
 
-		template<typename T, typename K>
-		constexpr void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
-			shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
-			RendererCommand::DrawIndexed(shader, vertex_array);
-		}
+		//template<typename T, typename K>
+		//void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
+		//	shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
+		//	RendererCommand::DrawIndexed(shader, vertex_array);
+		//}
 
 		template<typename T, typename K>
-		constexpr void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list) {
+		void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list) {
 			std::vector<Ref<Buffers::VertexArray<T, K>>> list{vertex_array_list};
-			shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
+			shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, list);
 		}
 
 
 		template<typename T, typename K>
-		constexpr void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform) {
+		void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform) {
 			shader->SetUniform("uniform_transform", transform);
-			shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
+			shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, vertex_array);
 		}
 
 		template<typename T, typename K>
-		constexpr void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform) {
+		void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform) {
 			std::vector<Ref<Buffers::VertexArray<T, K>>> list{ vertex_array_list };
 			shader->SetUniform("uniform_transform", transform);
-			shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
+			shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, list);
 		}
 
 
 		template<typename T, typename K>
-		constexpr void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform, const Ref<Textures::Texture>& texture) {
+		void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform, const Ref<Textures::Texture>& texture) {
 			shader->SetUniform("uniform_transform", transform);
 			texture->Bind();
 			shader->SetUniform("uniform_texture", 0); //0 means GL_TEXTURE0
 			shader->SetUniform("uniform_tex_tint_color", glm::vec4(1.0f));
 			shader->SetUniform("uniform_tex_tiling_factor", 1.0f);
-			shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
+			shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, vertex_array);
 
 			texture->Unbind();
 		}
 
 		template<typename T, typename K>
-		constexpr void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform, const Ref<Textures::Texture>& texture, const glm::vec4& tint_color, float tiling_factor) {
+		 void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform, const Ref<Textures::Texture>& texture, const glm::vec4& tint_color, float tiling_factor) {
 			shader->SetUniform("uniform_transform", transform);
 			texture->Bind();
 			shader->SetUniform("uniform_texture", 0); //0 means GL_TEXTURE0
 			shader->SetUniform("uniform_tex_tint_color", tint_color);
 			shader->SetUniform("uniform_tex_tiling_factor", tiling_factor); 
-			shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
+			shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, vertex_array);
 
 			texture->Unbind();
 		}
 
 		template<typename T, typename K>
-		constexpr void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform, const Ref<Textures::Texture>& texture) {
+		 void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform, const Ref<Textures::Texture>& texture) {
 			std::vector<Ref<Buffers::VertexArray<T, K>>> list{ vertex_array_list };
 			shader->SetUniform("uniform_transform", transform);
 			texture->Bind();
 			shader->SetUniform("uniform_texture", 0); //0 means GL_TEXTURE0
 			shader->SetUniform("uniform_tex_tint_color", glm::vec4(1.0f));
 			shader->SetUniform("uniform_tex_tiling_factor", 1.0f);
-			shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
+			shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, list);
 
 			texture->Unbind();
 		}
 
 		template<typename T, typename K>
-		constexpr void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform, const Ref<Textures::Texture>& texture, const glm::vec4& tint_color, float tiling_factor) {
+		 void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform, const Ref<Textures::Texture>& texture, const glm::vec4& tint_color, float tiling_factor) {
 			std::vector<Ref<Buffers::VertexArray<T, K>>> list{ vertex_array_list };
 			shader->SetUniform("uniform_transform", transform);
 			texture->Bind();
 			shader->SetUniform("uniform_texture", 0); //0 means GL_TEXTURE0
 			shader->SetUniform("uniform_tex_tint_color", tint_color);
 			shader->SetUniform("uniform_tex_tiling_factor", tiling_factor);
-			shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
+			shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, list);
 
 			texture->Unbind();
 		}
 
 		/*template<typename T, typename K>
-		constexpr void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform, const glm::vec4& color) {
+		 void Submit(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array, const glm::mat4& transform, const glm::vec4& color) {
 			shader->SetUniform("uniform_transform", transform);
 			shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
 			RendererCommand::DrawIndexed(shader, vertex_array);
 		}*/
 
 		//template<typename T, typename K>
-		//constexpr void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform, const glm::vec4& color) {
+		// void Submit(const Ref<Shaders::Shader>& shader, const std::initializer_list<Ref<Buffers::VertexArray<T, K>>> vertex_array_list, const glm::mat4& transform, const glm::vec4& color) {
 		//	std::vector<Ref<Buffers::VertexArray<T, K>>> list{ vertex_array_list };
 		//	shader->SetUniform("uniform_transform", transform);
 		//	shader->SetUniform("uniform_viewprojection", m_scene.GetCamera()->GetViewProjectionMatrix());
@@ -142,8 +143,11 @@ namespace Z_Engine::Rendering::Renderer {
 		//}
 																 
 	protected:
-		GraphicScene m_scene;
-		Z_Engine::Ref<Managers::TextureManager> m_texture_manager;
-		Z_Engine::Ref<Managers::ShaderManager> m_shader_manager;
+		Ref<Scenes::GraphicScene>												m_scene;
+		Ref<Managers::TextureManager>											m_texture_manager;
+		Ref<Managers::ShaderManager>											m_shader_manager;
+
+		Ref<Storages::GraphicRendererStorage<float, unsigned int>>				m_graphic_storage;
+
 	};
 }
