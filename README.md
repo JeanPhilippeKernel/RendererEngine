@@ -173,6 +173,7 @@ All packages can be installed from [Vcpkg](https://docs.microsoft.com/en-us/cpp/
 This link show how to build and setup [Vcpkg](https://docs.microsoft.com/en-us/cpp/build/vcpkg?view=vs-2019#installation) on Windows.
 
 After installing Vcpkg Package Manager, run these following commands :
+
 `vcpkg install sdl2:x64-windows-static`
 
 `vcpkg install glew:x64-windows-static`
