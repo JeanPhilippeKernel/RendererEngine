@@ -4,8 +4,6 @@
 #include <unordered_map>
 #include <optional>
 
-#include <assert.h>
-
 
 namespace Z_Engine::Managers {
 	
@@ -24,7 +22,7 @@ namespace Z_Engine::Managers {
 			bool result{false};
 			typename std::unordered_map<T, K>::iterator it = std::find_if(std::begin(m_collection), std::end(m_collection),
 				[&](const std::pair<T, K>& item) {
-					if constexpr (std::is_arithmetic_v<T>) {
+					if (std::is_arithmetic_v<T>) {
 						result = item.first == key;
 					}
 					

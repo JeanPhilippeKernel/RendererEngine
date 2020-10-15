@@ -3,7 +3,7 @@
 using namespace Z_Engine::Rendering::Cameras;
 
 
-namespace Z_Engine::Rendering::Renderer {
+namespace  Z_Engine::Rendering::Scenes {
 
 	Ref<Camera> GraphicScene::GetCamera() const {
 		return m_camera.lock();

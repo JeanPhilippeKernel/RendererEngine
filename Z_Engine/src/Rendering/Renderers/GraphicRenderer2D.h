@@ -1,13 +1,13 @@
 #include "GraphicRenderer.h"
 #include "../Cameras/OrthographicCamera.h"
 #include "../Textures/Texture2D.h"																																   
-#include "../Meshes/Mesh2D.h"
+//#include "../Meshes/Mesh2D.h"
 
 
 #include <unordered_map>
 #include <string>
 
-namespace Z_Engine::Rendering::Renderer {
+namespace Z_Engine::Rendering::Renderers {
 
 	class GraphicRenderer2D : public GraphicRenderer {
 	public:
@@ -16,13 +16,8 @@ namespace Z_Engine::Rendering::Renderer {
 
 		void Initialize() override;
 
-		void BeginScene(const Ref<Cameras::Camera>& camera) {
-			GraphicRenderer::BeginScene(camera);
-		}
-
-		void EndScene() override {
-											
-		}
+		void BeginScene(const Ref<Cameras::Camera>& camera) override;
+		void EndScene() override;
 
 		void DrawRect(const glm::vec2& position, const glm::vec2& size, const glm::vec3& color, float angle = 0.0f);  
 		void DrawRect(const glm::vec3& position, const glm::vec2& size, const glm::vec3& color, float angle = 0.0f);
@@ -69,10 +64,6 @@ namespace Z_Engine::Rendering::Renderer {
 		void _DrawTriangle(const glm::vec4& position, const glm::vec2& size, const glm::vec4& color, float angle);
 		void _DrawTriangle(const glm::vec4& position, const glm::vec2& size, float angle, const Ref<Rendering::Textures::Texture2D>& texture);
 		void _DrawTriangle(const glm::vec4& position, const glm::vec2& size, float angle, const Ref<Rendering::Textures::Texture2D>& texture, const glm::vec4& tint_color, float tiling_factor);
-
-
-	private:
-		 std::unordered_map<std::string, Meshes::Mesh2D> m_mesh_map;
 	};
 }
 	

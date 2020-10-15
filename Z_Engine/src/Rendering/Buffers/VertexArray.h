@@ -18,7 +18,7 @@ namespace Z_Engine::Rendering::Buffers {
 		VertexArray()
 		{
 			glCreateVertexArrays(1, &m_vertex_array_id);
-			glBindVertexArray(m_vertex_array_id);
+			//glBindVertexArray(m_vertex_array_id);
 		}
 
 		~VertexArray() {
@@ -32,37 +32,42 @@ namespace Z_Engine::Rendering::Buffers {
 			glBindVertexArray(0);   
 		}
 
-		constexpr void AddVertexBuffer(const Ref<VertexBuffer<T>>& vertex_buffer) {
+		void AddVertexBuffer(const Ref<VertexBuffer<T>>& vertex_buffer) {
 			
 			glBindVertexArray(m_vertex_array_id);
 
-			const Layout::BufferLayout<T>& buffer_layout = vertex_buffer->GetLayout();
-			const std::vector<Layout::ElementLayout<T>>& element_layouts = buffer_layout.GetElementLayout();
-								  
-			int x = 0;		   
-			for (const auto& element : element_layouts)
-			{
-				glEnableVertexAttribArray(x);
-				glVertexAttribPointer(
-					x,
-					element.GetCount(),
-					Core::Utility::ToGraphicCardType(element.GetDataType()), //GL_FLOAT
-					static_cast<int>(element.GetNormalized()), // element.GetNormalized() == false ? GL_FALSE : GL_TRUE,
-					buffer_layout.GetStride(),
-					reinterpret_cast<const void *>(element.GetOffset())
-				);
-				++x;
-			}
+				const Layout::BufferLayout<T>& buffer_layout = vertex_buffer->GetLayout();
+				const std::vector<Layout::ElementLayout<T>>& element_layouts = buffer_layout.GetElementLayout();
+									  
+				int x = 0;		   
+				for (const auto& element : element_layouts)
+				{
+					glEnableVertexAttribArray(x);
+					glVertexAttribPointer(
+						x,
+						element.GetCount(),
+						Core::Utility::ToGraphicCardType(element.GetDataType()), //GL_FLOAT
+						static_cast<int>(element.GetNormalized()), // element.GetNormalized() == false ? GL_FALSE : GL_TRUE,
+						buffer_layout.GetStride(),
+						reinterpret_cast<const void *>(element.GetOffset())
+					);
+					++x;
+				}
 			glBindVertexArray(0);
 
 			m_vertices_buffer.push_back(vertex_buffer);
 		}
 
-		constexpr void SetIndexBuffer(const Ref<IndexBuffer<K>>& index_buffer) {
+		void SetIndexBuffer(const Ref<IndexBuffer<K>>& index_buffer) {
 			m_index_buffer = index_buffer;
+		
+			glBindVertexArray(m_vertex_array_id);
+				m_index_buffer->Bind();
+			glBindVertexArray(0);
+
 		}
 
-		constexpr const Ref<IndexBuffer<K>>& GetIndexBuffer() const {
+		const Ref<IndexBuffer<K>>& GetIndexBuffer() const {
 			return m_index_buffer;
 		}
 

@@ -19,6 +19,14 @@ namespace Z_Engine::Rendering::Textures {
 		virtual void SetData(float r, float g, float b, float a) = 0;
 
 
+		virtual bool operator==(const Texture& right) {
+			return m_texture_id == right.m_texture_id;
+		}
+
+		virtual bool operator!=(const Texture& right) {
+			return m_texture_id != right.m_texture_id;
+		}
+
 	protected:
 		std::string m_path;
 		GLuint m_texture_id{0};

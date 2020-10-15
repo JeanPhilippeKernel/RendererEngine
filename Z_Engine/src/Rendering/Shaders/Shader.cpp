@@ -7,6 +7,8 @@
 #include <regex>
 #include <sstream>
 
+#include <array>
+
 #include "glm/gtc/type_ptr.hpp"
 
 namespace Z_Engine::Rendering::Shaders {
@@ -318,14 +320,77 @@ namespace Z_Engine::Rendering::Shaders {
 		}
 	}
 
+	void Shader::SetUniform(const char* name, int value_one, int value_two) {
+		Bind();
+		auto location = _GetLocationUniform(name);
+		if (location != -1) {
+			int arr[2] =  {value_one, value_two};
+			glUniform1iv(location, 2, arr);
+		}
+	}
+	
+	void Shader::SetUniform(const char* name, int* arr, unsigned int size) {
+		Bind();
+		auto location = _GetLocationUniform(name);
+		if (location != -1) {
+			glUniform1iv(location, size, arr);
+		}
+	}
+
+	void Shader::SetUniform(const char* name, int value_one, int value_two, int value_three) {
+		Bind();
+		auto location = _GetLocationUniform(name);
+		if (location != -1) {
+			int arr[3] = { value_one, value_two, value_three};
+			glUniform1iv(location, 3, arr);
+		}
+	}
+	
+	void Shader::SetUniform(const char* name, int value_one, int value_two, int value_three, int value_four){
+		Bind();
+		auto location = _GetLocationUniform(name);
+		if (location != -1) {
+			int arr[4] = {value_one, value_two, value_three, value_four};
+			glUniform1iv(location, 4, arr);
+		}
+	}
+
 	void Shader::SetUniform(const char* name, float value) {
 		Bind();
-
 		auto location = _GetLocationUniform(name);
 		if (location != -1) {
 			glUniform1f(location, value);
 		}
 	}
+
+	void Shader::SetUniform(const char* name, float value_one, float value_two) {
+		Bind();
+		auto location = _GetLocationUniform(name);
+		if (location != -1) {
+			float arr[2] = {value_one, value_two};
+			glUniform1fv(location, 2,  arr);
+		}
+	}
+	
+	void Shader::SetUniform(const char* name, float value_one, float value_two, float value_three) {
+		Bind();
+		auto location = _GetLocationUniform(name);
+		if (location != -1) {
+			float arr[3] = { value_one, value_two, value_three };
+			glUniform1fv(location, 3, arr);
+		}
+	}
+	
+	void Shader::SetUniform(const char* name, float value_one, float value_two, float value_three, float value_four) {
+		Bind();
+		auto location = _GetLocationUniform(name);
+		if (location != -1) {
+			float arr[4] = { value_one, value_two, value_three, value_four };
+			glUniform1fv(location, 4, arr);
+		}
+	}
+
+
 
 	void Shader::SetUniform(const char* name, const glm::vec2& value) {
 		Bind();

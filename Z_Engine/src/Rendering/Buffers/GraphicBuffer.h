@@ -1,5 +1,7 @@
 #pragma once
 #include <vector>
+#include <algorithm>
+#include <iterator>
 
 #include "BufferLayout.h"
 #include "../../Z_EngineDef.h"
@@ -10,6 +12,8 @@ namespace Z_Engine::Rendering::Buffers {
 	template<typename T>
 	class GraphicBuffer {
 	public:
+		explicit GraphicBuffer();
+
 		explicit GraphicBuffer(const std::vector<T>& data)
 			: m_data(data), m_data_size(data.size()) 
 		{
@@ -21,20 +25,33 @@ namespace Z_Engine::Rendering::Buffers {
 		virtual void Bind() const = 0;
 		virtual void Unbind() const = 0;
 
+		virtual void SetData(const std::vector<T>& data) {
+			if(this->m_data_size > 0) m_data.clear();
+			
+			std::for_each(std::begin(data), std::end(data), [this](const T& x) { m_data.emplace_back(x); } );
+			this->m_data_size	= data.size();
+			this->m_byte_size	= m_data_size * sizeof(T);
+		}
+
 		virtual size_t GetByteSize() const { return m_byte_size; }
 		virtual size_t GetDataSize() const { return m_data_size; }
 
-		virtual constexpr void SetLayout(Layout::BufferLayout<T>& layout) {
+		virtual void SetLayout(Layout::BufferLayout<T>& layout) {
 			this->m_layout = layout;
 			UpdateLayout();
 		}
 
-		virtual constexpr const Layout::BufferLayout<T>& GetLayout() const { 
+		virtual void SetLayout(Layout::BufferLayout<T>&& layout) {
+			this->m_layout = std::move(layout);
+			UpdateLayout();
+		}
+
+		virtual const Layout::BufferLayout<T>& GetLayout() const { 
 			return this->m_layout; 
 		}
 
 	protected:
-		const std::vector<T>& m_data;
+		std::vector<T> m_data;
 		Layout::BufferLayout<T> m_layout;
 
 		size_t m_byte_size{ 0 };
@@ -44,8 +61,8 @@ namespace Z_Engine::Rendering::Buffers {
 		virtual void UpdateLayout() {
 			auto& elements = m_layout.GetElementLayout();
 
-			auto start = elements.begin() + 1;
-			auto end = elements.end();
+			auto start = std::begin(elements) + 1;
+			auto end = std::end(elements);
 
 			while (start != end)
 			{
@@ -57,4 +74,10 @@ namespace Z_Engine::Rendering::Buffers {
 			}
 		}
 	};
+
+	template<typename T>
+	inline GraphicBuffer<T>::GraphicBuffer()
+		:m_data()
+	{
+	}
 }
