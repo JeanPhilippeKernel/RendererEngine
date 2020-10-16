@@ -16,6 +16,8 @@
     <ProjectGuid>{c03dff2c-7934-496b-bb06-ac14b019d096}</ProjectGuid>
     <RootNamespace>Sandbox</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <VcpkgTriplet Condition="'$(Platform)'=='Win32'">x86-windows-static</VcpkgTriplet>
+    <VcpkgTriplet Condition="'$(Platform)'=='x64'">x64-windows-static</VcpkgTriplet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -53,6 +55,12 @@
     <OutDir>$(SolutionDir)$(ProjectName)\bin\$(Configuration)-$(Platform)\</OutDir>
     <IntDir>$(SolutionDir)$(ProjectName)\bin-int\$(Configuration)-$(Platform)\</IntDir>
   </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -61,13 +69,15 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(SolutionDir)Z_Engine\src;$(SolutionDir)Z_Engine\vendor;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\bin\$(Configuration)-$(Platform)\</AdditionalLibraryDirectories>
-      <AdditionalDependencies>Z_Engine.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <LinkStatus>true</LinkStatus>
+      <AdditionalDependencies>Z_Engine.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <LinkStatus>false</LinkStatus>
+      <ShowProgress>LinkVerbose</ShowProgress>
     </Link>
     <ProjectReference>
       <UseLibraryDependencyInputs>true</UseLibraryDependencyInputs>
@@ -83,6 +93,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(SolutionDir)Z_Engine\src;$(SolutionDir)Z_Engine\vendor;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -90,8 +101,9 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\bin\$(Configuration)-$(Platform)\</AdditionalLibraryDirectories>
-      <AdditionalDependencies>Z_Engine.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <LinkStatus>true</LinkStatus>
+      <AdditionalDependencies>Z_Engine.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <LinkStatus>false</LinkStatus>
+      <ShowProgress>LinkVerbose</ShowProgress>
     </Link>
     <ProjectReference>
       <UseLibraryDependencyInputs>true</UseLibraryDependencyInputs>

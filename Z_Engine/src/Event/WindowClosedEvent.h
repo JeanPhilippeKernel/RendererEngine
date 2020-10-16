@@ -2,6 +2,7 @@
 #include "CoreEvent.h"
 #include <fmt/format.h>
 
+
 namespace Z_Engine::Event {
 	class WindowClosedEvent : public CoreEvent {
 	public:
