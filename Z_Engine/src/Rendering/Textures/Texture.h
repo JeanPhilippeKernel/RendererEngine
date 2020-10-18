@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include <GL/glew.h>
+#include "../../dependencies/glew/include/GL/glew.h"
 
 
 namespace Z_Engine::Rendering::Textures {

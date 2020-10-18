@@ -1,6 +1,6 @@
 #pragma once
 #include "IDevice.h"
-#include <SDL2/SDL_keyboard.h>
+#include "../dependencies/SDL2/include/SDL_keyboard.h"
 
 namespace Z_Engine::Inputs {
 

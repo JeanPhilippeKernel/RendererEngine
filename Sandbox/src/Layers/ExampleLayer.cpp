@@ -1,7 +1,6 @@
 #include "ExampleLayer.h"
-#include <glm/gtc/type_ptr.hpp>	
+#include "dependencies/glm/gtc/type_ptr.hpp"	
 
-#include <thread>
 
 using namespace Z_Engine::Rendering::Renderers;
 using namespace Z_Engine::Rendering::Cameras;

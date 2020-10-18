@@ -1,6 +1,6 @@
 #pragma once
 
-#include <fmt/format.h>
+#include "../dependencies/fmt/include/fmt/format.h"
 #include "KeyEvent.h"
 #include "../Inputs/KeyCode.h"
 

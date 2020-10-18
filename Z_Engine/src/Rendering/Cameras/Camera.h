@@ -1,5 +1,5 @@
 #pragma once
-#include <glm/glm.hpp>
+#include "../../dependencies/glm/glm.hpp"
 #include "../../Z_EngineDef.h"
 
 namespace Z_Engine::Rendering::Cameras

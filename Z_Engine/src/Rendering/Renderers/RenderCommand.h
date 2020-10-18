@@ -1,6 +1,6 @@
 #pragma once
-#include <GL/glew.h>
-#include <glm/glm.hpp>
+#include "../../dependencies/glew/include/GL/glew.h"
+#include "../../dependencies/glm/glm.hpp"
 #include <memory>
 
 #include "../Shaders/Shader.h"

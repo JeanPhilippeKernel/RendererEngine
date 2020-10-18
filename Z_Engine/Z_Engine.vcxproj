@@ -16,8 +16,8 @@
     <ProjectGuid>{dc9f5e6b-8b7b-43b5-97b3-89d07452ed49}</ProjectGuid>
     <RootNamespace>ZEngine</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <VcpkgTriplet Condition="'$(Platform)'=='Win32'">x86-windows-static</VcpkgTriplet>
-    <VcpkgTriplet Condition="'$(Platform)'=='x64'">x64-windows-static</VcpkgTriplet>
+    <!--<VcpkgTriplet Condition="'$(Platform)'=='Win32'">x86-windows-static</VcpkgTriplet>
+    <VcpkgTriplet Condition="'$(Platform)'=='x64'">x64-windows-static</VcpkgTriplet>-->
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -63,16 +63,16 @@
     <OutDir>$(SolutionDir)$(ProjectName)\bin\$(Configuration)-$(Platform)\</OutDir>
     <IntDir>$(SolutionDir)$(ProjectName)\bin-int\$(Configuration)-$(Platform)\</IntDir>
   </PropertyGroup>
-  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+  <!--<PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <VcpkgUseStatic>true</VcpkgUseStatic>
     <VcpkgEnabled>true</VcpkgEnabled>
     <VcpkgAutoLink>true</VcpkgAutoLink>
   </PropertyGroup>
   <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <VcpkgUseStatic>true</VcpkgUseStatic>
-    <VcpkgEnabled>true</VcpkgEnabled>
-    <VcpkgAutoLink>true</VcpkgAutoLink>
-  </PropertyGroup>
+    <VcpkgUseStatic>false</VcpkgUseStatic>
+    <VcpkgEnabled>false</VcpkgEnabled>
+    <VcpkgAutoLink>false</VcpkgAutoLink>
+  </PropertyGroup>-->
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -80,7 +80,7 @@
       <PreprocessorDefinitions>Z_ENGINE_PLATFORM_WINDOW;Z_ENGINE_BUILD</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\vendor;$(SolutionDir)$(ProjectName)\vendor\SDL2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\vendor;$(SolutionDir)$(ProjectName)\vendor\SDL2;$(SolutionDir)$(ProjectName)\src\dependencies\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\include\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\GL\;$(SolutionDir)$(ProjectName)\src\dependencies\stb\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -93,8 +93,8 @@
 COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ </Command>
     </PostBuildEvent>
     <Lib>
-      <AdditionalDependencies>SDL2.lib;fmt.lib;opengl32.lib;glew32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(VcpkgCurrentInstalledDir)lib;$(SolutionDir)$(ProjectName)\vendor\SDL2\$(Configuration)-$(Platform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;glew32s.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\vendor\SDL2\$(Configuration)-$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
     <ProjectReference>
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
@@ -109,7 +109,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.
       <PreprocessorDefinitions>Z_ENGINE_PLATFORM_WINDOW;Z_ENGINE_BUILD</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\vendor;$(SolutionDir)$(ProjectName)\vendor\SDL2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\vendor;$(SolutionDir)$(ProjectName)\vendor\SDL2;$(SolutionDir)$(ProjectName)\src\dependencies\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\include\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\GL\;$(SolutionDir)$(ProjectName)\src\dependencies\stb\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -124,8 +124,8 @@ COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.
 COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ </Command>
     </PostBuildEvent>
     <Lib>
-      <AdditionalDependencies>SDL2.lib;fmt.lib;opengl32.lib;glew32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(VcpkgCurrentInstalledDir)lib;$(SolutionDir)$(ProjectName)\vendor\SDL2\$(Configuration)-$(Platform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;glew32s.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\vendor\SDL2\$(Configuration)-$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
     <ProjectReference>
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
@@ -229,7 +229,6 @@ COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.
     <ClInclude Include="vendor\imgui\imstb_rectpack.h" />
     <ClInclude Include="vendor\imgui\imstb_textedit.h" />
     <ClInclude Include="vendor\imgui\imstb_truetype.h" />
-    <ClInclude Include="vendor\stb_image\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Controllers\OrthographicCameraController.cpp" />

@@ -1,7 +1,5 @@
 #pragma once
 #include <memory>
-//#include <SDL2/SDL_events.h>
-//#include <SDL2/SDL_timer.h>
 
 #include "Z_EngineDef.h"
 #include "Window/CoreWindow.h"
@@ -19,13 +17,13 @@
 #include "Core/IInitializable.h"
 
 
-#include <imgui/imgui.h>
-#include <imgui/imconfig.h>
-#include <imgui/examples/imgui_impl_sdl.h>
+#include "../vendor/imgui/imgui.h"
+#include "../vendor/imgui/imconfig.h"
+#include "../vendor/imgui/examples/imgui_impl_sdl.h"
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
-#include <imgui/examples/imgui_impl_opengl3.h>
+#include "../vendor/imgui/examples/imgui_impl_opengl3.h"
 
 namespace Z_Engine {
 	

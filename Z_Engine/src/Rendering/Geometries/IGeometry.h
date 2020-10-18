@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 #include <algorithm>
-#include <glm/glm.hpp>
+#include "../../dependencies/glm/glm.hpp"
 
 #include "../Renderers/Storages/GraphicVertex.h"
 

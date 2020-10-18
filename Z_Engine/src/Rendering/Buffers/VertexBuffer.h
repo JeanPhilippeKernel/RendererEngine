@@ -1,11 +1,10 @@
 #pragma once
-#include <GL/glew.h>
 
 #include "GraphicBuffer.h"
 #include "BufferLayout.h"
 
 #include "../../Z_EngineDef.h"
-
+#include "../../dependencies/glew/include/GL/glew.h"
 #include "../Renderers/Storages/IVertex.h"
 
 namespace Z_Engine::Rendering::Buffers {

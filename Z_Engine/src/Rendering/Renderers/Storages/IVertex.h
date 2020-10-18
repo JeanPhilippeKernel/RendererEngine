@@ -1,5 +1,5 @@
 #pragma once
-#include <glm/glm.hpp>
+#include "../../../dependencies/glm/glm.hpp"
 
 namespace Z_Engine::Rendering::Renderers::Storages {
 

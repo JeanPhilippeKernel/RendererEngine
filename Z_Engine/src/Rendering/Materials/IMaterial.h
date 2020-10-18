@@ -1,5 +1,5 @@
 #pragma once
-#include <glm/glm.hpp>
+#include "../../dependencies/glm/glm.hpp"
 #include "../Textures/Texture.h"
 #include "../Shaders/Shader.h"
 #include "../../Z_EngineDef.h"

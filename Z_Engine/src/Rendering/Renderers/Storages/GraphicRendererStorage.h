@@ -14,7 +14,6 @@
 #include "../../Meshes/Mesh.h"
 #include "../../../Managers/TextureManager.h"
 
-
 namespace Z_Engine::Rendering::Renderers::Storages {
 	
 	template <typename T, typename K>

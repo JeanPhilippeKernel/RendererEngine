@@ -9,7 +9,7 @@
 
 #include <array>
 
-#include "glm/gtc/type_ptr.hpp"
+#include "../../dependencies/glm/gtc/type_ptr.hpp"
 
 namespace Z_Engine::Rendering::Shaders {
 	Shader* CreateShader(const char* vertexSrc, const char* fragmentSrc) {

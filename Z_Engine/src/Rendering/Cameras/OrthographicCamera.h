@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "Camera.h"
-#include <glm/gtc/matrix_transform.hpp>
+#include "../../dependencies/glm/gtc/matrix_transform.hpp"
 
 namespace Z_Engine::Rendering::Cameras
 {

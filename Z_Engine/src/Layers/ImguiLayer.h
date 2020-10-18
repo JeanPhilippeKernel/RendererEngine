@@ -9,9 +9,6 @@
 #include "../Inputs/ITextInputEventCallback.h"
 #include "../Window/ICoreWindowEventCallback.h"
 
-#include <imgui/imgui.h>
-
-//#include <SDL2/SDL_cpuinfo.h>
 
 
 namespace Z_Engine::Layers {

@@ -1,11 +1,11 @@
 #pragma  once
 #include <string>
-
-#include <GL/glew.h>
 #include <unordered_map>
-#include <glm/glm.hpp>
+
 
 #include "../../Z_EngineDef.h"
+#include "../../dependencies/glm/glm.hpp"
+#include "../../dependencies/glew/include/GL/glew.h"
 
 
 namespace Z_Engine::Rendering::Shaders {

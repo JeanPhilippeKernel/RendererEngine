@@ -1,6 +1,6 @@
 #pragma once
 #include <array>
-#include <glm/glm.hpp>
+#include "../../../dependencies/glm/glm.hpp"
 
 #include "IVertex.h"
 

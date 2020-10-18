@@ -1,7 +1,7 @@
 #pragma once
-#include "IDevice.h"
-#include <SDL2/SDL_mouse.h>
 #include <array>
+#include "IDevice.h"
+#include "../dependencies/SDL2/include/SDL_mouse.h"
 
 namespace Z_Engine::Inputs {
 
