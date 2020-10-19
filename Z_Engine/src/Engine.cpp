@@ -1,7 +1,7 @@
 #include "Engine.h"
 #include "Layers/ImguiLayer.h"
 
-#include <SDL2/SDL_timer.h>
+#include "dependencies/SDL2/include/SDL_timer.h"
 
 namespace Z_Engine {
 

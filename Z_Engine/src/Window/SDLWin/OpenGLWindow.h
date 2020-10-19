@@ -2,7 +2,7 @@
 #include <memory>
 
 #define SDL_MAIN_HANDLED
-#include <SDL2/SDL.h>
+#include "../../dependencies/SDL2/include/SDL.h"
 
 #include "../CoreWindow.h"
 #include "../../Rendering/Graphics/GraphicContext.h"

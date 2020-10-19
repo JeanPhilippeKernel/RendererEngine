@@ -32,14 +32,6 @@
     <ClInclude Include="src\Inputs\Mouse.h" />
     <ClInclude Include="src\Core\TimeStep.h" />
     <ClInclude Include="src\Layers\ImguiLayer.h" />
-    <ClInclude Include="vendor\imgui\imgui.h" />
-    <ClInclude Include="vendor\imgui\imconfig.h" />
-    <ClInclude Include="vendor\imgui\imgui_internal.h" />
-    <ClInclude Include="vendor\imgui\imstb_rectpack.h" />
-    <ClInclude Include="vendor\imgui\imstb_textedit.h" />
-    <ClInclude Include="vendor\imgui\imstb_truetype.h" />
-    <ClInclude Include="vendor\imgui\examples\imgui_impl_opengl3.h" />
-    <ClInclude Include="vendor\imgui\examples\imgui_impl_sdl.h" />
     <ClInclude Include="src\Event\MouseEvent.h" />
     <ClInclude Include="src\Event\MouseButtonPressedEvent.h" />
     <ClInclude Include="src\Event\MouseButtonReleasedEvent.h" />
@@ -88,6 +80,14 @@
     <ClInclude Include="src\Rendering\Geometries\SquareGeometry.h" />
     <ClInclude Include="src\Rendering\Geometries\QuadGeometry.h" />
     <ClInclude Include="src\Rendering\Meshes\Mesh.h" />
+    <ClInclude Include="src\dependencies\imgui\imconfig.h" />
+    <ClInclude Include="src\dependencies\imgui\imgui.h" />
+    <ClInclude Include="src\dependencies\imgui\imgui_internal.h" />
+    <ClInclude Include="src\dependencies\imgui\imstb_rectpack.h" />
+    <ClInclude Include="src\dependencies\imgui\imstb_textedit.h" />
+    <ClInclude Include="src\dependencies\imgui\imstb_truetype.h" />
+    <ClInclude Include="src\dependencies\imgui\examples\imgui_impl_opengl3.h" />
+    <ClInclude Include="src\dependencies\imgui\examples\imgui_impl_sdl.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine.cpp" />
@@ -98,12 +98,6 @@
     <ClCompile Include="src\Rendering\Shaders\Shader.cpp" />
     <ClCompile Include="src\Rendering\Cameras\OrthographicCamera.cpp" />
     <ClCompile Include="src\Inputs\IDevice.cpp" />
-    <ClCompile Include="vendor\imgui\imgui.cpp" />
-    <ClCompile Include="vendor\imgui\imgui_demo.cpp" />
-    <ClCompile Include="vendor\imgui\imgui_draw.cpp" />
-    <ClCompile Include="vendor\imgui\imgui_widgets.cpp" />
-    <ClCompile Include="vendor\imgui\examples\imgui_impl_opengl3.cpp" />
-    <ClCompile Include="vendor\imgui\examples\imgui_impl_sdl.cpp" />
     <ClCompile Include="src\Layers\ImguiLayer.cpp" />
     <ClCompile Include="src\Rendering\Textures\Texture2D.cpp" />
     <ClCompile Include="src\Managers\ShaderManager.cpp" />
@@ -120,5 +114,11 @@
     <ClCompile Include="src\Rendering\Geometries\SquareGeometry.cpp" />
     <ClCompile Include="src\Rendering\Geometries\QuadGeometry.cpp" />
     <ClCompile Include="src\Rendering\Meshes\Mesh.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui_demo.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui_draw.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="src\dependencies\imgui\examples\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="src\dependencies\imgui\examples\imgui_impl_sdl.cpp" />
   </ItemGroup>
 </Project>

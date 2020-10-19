@@ -1,3 +1,0 @@
-[submodule "Z_Engine/vendor/imgui"]
-	path = Z_Engine/vendor/imgui
-	url = https://github.com/ocornut/imgui

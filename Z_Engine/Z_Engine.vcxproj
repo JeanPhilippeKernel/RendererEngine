@@ -80,7 +80,7 @@
       <PreprocessorDefinitions>Z_ENGINE_PLATFORM_WINDOW;Z_ENGINE_BUILD</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\vendor;$(SolutionDir)$(ProjectName)\vendor\SDL2;$(SolutionDir)$(ProjectName)\src\dependencies\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\include\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\GL\;$(SolutionDir)$(ProjectName)\src\dependencies\stb\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\src\dependencies\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\include\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\GL\;$(SolutionDir)$(ProjectName)\src\dependencies\stb\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -90,11 +90,12 @@
     </Link>
     <PostBuildEvent>
       <Command>COPY /Y /V $(SolutionDir)Z_Engine\bin\$(Configuration)-$(Platform)\$(ProjectName).lib $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\
-COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ </Command>
+COPY /Y /V $(SolutionDir)Z_Engine\src\dependencies\SDL2\lib\$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ 
+COPY /Y /V $(SolutionDir)Z_Engine\src\dependencies\glew\bin\Release\$(Platform)\glew32.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ </Command>
     </PostBuildEvent>
     <Lib>
-      <AdditionalDependencies>glew32.lib;glew32s.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\vendor\SDL2\$(Configuration)-$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\src\dependencies\SDL2\lib\$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
     <ProjectReference>
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
@@ -109,7 +110,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.
       <PreprocessorDefinitions>Z_ENGINE_PLATFORM_WINDOW;Z_ENGINE_BUILD</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\vendor;$(SolutionDir)$(ProjectName)\vendor\SDL2;$(SolutionDir)$(ProjectName)\src\dependencies\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\include\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\GL\;$(SolutionDir)$(ProjectName)\src\dependencies\stb\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)$(ProjectName)\src\dependencies\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\include\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\GL\;$(SolutionDir)$(ProjectName)\src\dependencies\stb\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -121,11 +122,12 @@ COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.
     </Link>
     <PostBuildEvent>
       <Command>COPY /Y /V $(SolutionDir)Z_Engine\bin\$(Configuration)-$(Platform)\$(ProjectName).lib $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\
-COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ </Command>
+COPY /Y /V $(SolutionDir)Z_Engine\src\dependencies\SDL2\lib\$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ 
+COPY /Y /V $(SolutionDir)Z_Engine\src\dependencies\glew\bin\Release\$(Platform)\glew32.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ </Command>
     </PostBuildEvent>
     <Lib>
-      <AdditionalDependencies>glew32.lib;glew32s.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\vendor\SDL2\$(Configuration)-$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\src\dependencies\SDL2\lib\$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\src\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
     <ProjectReference>
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
@@ -151,6 +153,14 @@ COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.
     <ClInclude Include="src\Core\IUpdatable.h" />
     <ClInclude Include="src\Core\TimeStep.h" />
     <ClInclude Include="src\Core\Utility.h" />
+    <ClInclude Include="src\dependencies\imgui\examples\imgui_impl_opengl3.h" />
+    <ClInclude Include="src\dependencies\imgui\examples\imgui_impl_sdl.h" />
+    <ClInclude Include="src\dependencies\imgui\imconfig.h" />
+    <ClInclude Include="src\dependencies\imgui\imgui.h" />
+    <ClInclude Include="src\dependencies\imgui\imgui_internal.h" />
+    <ClInclude Include="src\dependencies\imgui\imstb_rectpack.h" />
+    <ClInclude Include="src\dependencies\imgui\imstb_textedit.h" />
+    <ClInclude Include="src\dependencies\imgui\imstb_truetype.h" />
     <ClInclude Include="src\EntryPoint.h" />
     <ClInclude Include="src\Engine.h" />
     <ClInclude Include="src\Event\CoreEvent.h" />
@@ -221,17 +231,15 @@ COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.
     <ClInclude Include="src\Window\WindowProperty.h" />
     <ClInclude Include="src\Z_Engine.h" />
     <ClInclude Include="src\Z_EngineDef.h" />
-    <ClInclude Include="vendor\imgui\examples\imgui_impl_opengl3.h" />
-    <ClInclude Include="vendor\imgui\examples\imgui_impl_sdl.h" />
-    <ClInclude Include="vendor\imgui\imconfig.h" />
-    <ClInclude Include="vendor\imgui\imgui.h" />
-    <ClInclude Include="vendor\imgui\imgui_internal.h" />
-    <ClInclude Include="vendor\imgui\imstb_rectpack.h" />
-    <ClInclude Include="vendor\imgui\imstb_textedit.h" />
-    <ClInclude Include="vendor\imgui\imstb_truetype.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Controllers\OrthographicCameraController.cpp" />
+    <ClCompile Include="src\dependencies\imgui\examples\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="src\dependencies\imgui\examples\imgui_impl_sdl.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui_demo.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui_draw.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui_widgets.cpp" />
     <ClCompile Include="src\Engine.cpp" />
     <ClCompile Include="src\Inputs\IDevice.cpp" />
     <ClCompile Include="src\LayerStack.cpp" />
@@ -255,12 +263,6 @@ COPY /Y /V $(SolutionDir)Z_Engine\vendor\SDL2\$(Configuration)-$(Platform)\SDL2.
     <ClCompile Include="src\Rendering\Textures\Texture2D.cpp" />
     <ClCompile Include="src\Window\CoreWindow.cpp" />
     <ClCompile Include="src\Window\SDLWin\OpenGLWindow.cpp" />
-    <ClCompile Include="vendor\imgui\examples\imgui_impl_opengl3.cpp" />
-    <ClCompile Include="vendor\imgui\examples\imgui_impl_sdl.cpp" />
-    <ClCompile Include="vendor\imgui\imgui.cpp" />
-    <ClCompile Include="vendor\imgui\imgui_demo.cpp" />
-    <ClCompile Include="vendor\imgui\imgui_draw.cpp" />
-    <ClCompile Include="vendor\imgui\imgui_widgets.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -17,13 +17,13 @@
 #include "Core/IInitializable.h"
 
 
-#include "../vendor/imgui/imgui.h"
-#include "../vendor/imgui/imconfig.h"
-#include "../vendor/imgui/examples/imgui_impl_sdl.h"
+#include "dependencies/imgui/imgui.h"
+#include "dependencies/imgui/imconfig.h"
+#include "dependencies/imgui/examples/imgui_impl_sdl.h"
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
-#include "../vendor/imgui/examples/imgui_impl_opengl3.h"
+#include "dependencies/imgui/examples/imgui_impl_opengl3.h"
 
 namespace Z_Engine {
 	

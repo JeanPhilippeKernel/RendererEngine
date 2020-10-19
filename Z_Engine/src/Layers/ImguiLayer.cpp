@@ -1,5 +1,5 @@
 #include "ImguiLayer.h"
-#include "../../vendor/imgui/imgui.h"
+#include "../dependencies/imgui/imgui.h"
 
 namespace Z_Engine::Layers {
 
