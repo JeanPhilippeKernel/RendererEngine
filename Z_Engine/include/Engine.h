@@ -21,7 +21,7 @@
 #include "dependencies/imgui/imconfig.h"
 #include "dependencies/imgui/examples/imgui_impl_sdl.h"
 
-#define IMGUI_IMPL_OPENGL_LOADER_GLEW
+
 
 #include "dependencies/imgui/examples/imgui_impl_opengl3.h"
 

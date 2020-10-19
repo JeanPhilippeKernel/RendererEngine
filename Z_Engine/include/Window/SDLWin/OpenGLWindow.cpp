@@ -1,12 +1,12 @@
 #include "OpenGLWindow.h"
 #include "../../Engine.h"
-#include "../../../dependencies/glew/include/GL/glew.h"
+#include "../../dependencies/glew/include/GL/glew.h"
 #include <cstdint>
 
 #include "../../Inputs/KeyCode.h"
 #include "../../Rendering/Renderers/RenderCommand.h"
 
-#include "../../../dependencies/imgui/imgui.h"
+#include "../../dependencies/imgui/imgui.h"
 
 
 using namespace Z_Engine;
