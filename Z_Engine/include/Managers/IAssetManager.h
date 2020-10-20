@@ -11,8 +11,8 @@ namespace Z_Engine::Managers {
 		IAssetManager() =  default;
 		virtual ~IAssetManager() =  default;
 		
-		virtual void Add(const char* name, const char* filename) = 0;
-		virtual void Load(const char* filename) = 0;
+		virtual Ref<T>& Add(const char* name, const char* filename) = 0;
+		virtual Ref<T>& Load(const char* filename) = 0;
 
 		Z_Engine::Ref<T>& Obtains(const char* name) {
 			const auto key = std::string(name).append(this->m_suffix);

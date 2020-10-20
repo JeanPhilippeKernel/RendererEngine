@@ -16,10 +16,10 @@ namespace Z_Engine::Managers {
 		TextureManager();
 		virtual ~TextureManager()	= default;
 
-		void Add(const char* name, const char* filename) override;
-		void Load(const char* filename) override;
+		Ref<Rendering::Textures::Texture>& Add(const char* name, const char* filename) override;
+		Ref<Rendering::Textures::Texture>& Load(const char* filename) override;
 		
-		void Add(const char* name, unsigned int width, unsigned int height);
+		Ref<Rendering::Textures::Texture>& Add(const char* name, unsigned int width, unsigned int height);
 
 	};
 

@@ -213,6 +213,8 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Rendering\Graphics\SDLGraphic\OpenGLContext.h" />
     <ClInclude Include="include\Rendering\Materials\SimpleMaterial2D.h" />
     <ClInclude Include="include\Rendering\Materials\IMaterial.h" />
+    <ClInclude Include="include\Rendering\Materials\ShaderMaterial.h" />
+    <ClInclude Include="include\Rendering\Materials\StandardMaterial.h" />
     <ClInclude Include="src\Rendering\Meshes\IMesh.h" />
     <ClInclude Include="include\Rendering\Meshes\Mesh.h" />
     <ClInclude Include="src\Rendering\Meshes\Mesh2D.h" />
@@ -254,6 +256,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Rendering\Geometries\SquareGeometry.cpp" />
     <ClCompile Include="include\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
     <ClCompile Include="include\Rendering\Materials\SimpleMaterial2D.cpp" />
+    <ClCompile Include="include\Rendering\Materials\StandardMaterial.cpp" />
     <ClCompile Include="include\Rendering\Meshes\Mesh.cpp" />
     <ClCompile Include="include\Rendering\Renderers\GraphicRenderer.cpp" />
     <ClCompile Include="include\Rendering\Renderers\GraphicRenderer2D.cpp" />
@@ -265,6 +268,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Rendering\Textures\Texture2D.cpp" />
     <ClCompile Include="include\Window\CoreWindow.cpp" />
     <ClCompile Include="include\Window\SDLWin\OpenGLWindow.cpp" />
+    <ClCompile Include="include\Rendering\Materials\ShaderMaterial.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

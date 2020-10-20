@@ -37,7 +37,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 		void AddMesh(const Rendering::Meshes::Mesh& mesh) {
 
-			 const auto& material =  mesh.GetMaterial();
+			 const auto& material =  mesh.GetMaterial();																					                                                                                                        
 			 const auto& texture =  material->GetTexture();
 
 			 bool already_in_slot =  false;

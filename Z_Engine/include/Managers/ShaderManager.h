@@ -12,9 +12,9 @@ namespace Z_Engine::Managers {
 	{
 	public:
 		ShaderManager();
-		virtual ~ShaderManager()	= default;
+		virtual ~ShaderManager() = default;
 
-		void Add(const char* name, const char* filename) override;
-		void Load(const char* filename) override;
+		Ref<Rendering::Shaders::Shader>& Add(const char* name, const char* filename) override;
+		Ref<Rendering::Shaders::Shader>& Load(const char* filename) override;
 	};
 }

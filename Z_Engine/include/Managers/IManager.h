@@ -37,14 +37,14 @@ namespace Z_Engine::Managers {
 			return std::make_pair(result, it);
 		}
 
-		void Add(const T& key, const K& val) {
+		std::optional<std::reference_wrapper<K>> Add(const T& key, const K& val) {
 			const auto& kv =  Exists(key);
 
-			if(kv.first) return;
+			if(kv.first) return std::nullopt;
 
-			m_collection.emplace(std::make_pair(key, val));
-
-		 }
+			auto pair  = m_collection.emplace(std::make_pair(key, val));
+			return pair.first->second;
+		}
 	
 		std::optional<std::reference_wrapper<K>> Get(const T& key) {
 

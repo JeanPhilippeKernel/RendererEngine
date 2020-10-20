@@ -6,18 +6,22 @@ namespace Z_Engine::Managers {
 		this->m_suffix = "_shader";
 	}
 
-	void ShaderManager::Add(const char* name, const char* filename) {
+	Ref<Rendering::Shaders::Shader>& ShaderManager::Add(const char* name, const char* filename) {
 		const auto key = std::string(name).append(m_suffix);
 		
 		Ref<Rendering::Shaders::Shader> shader;
 		shader.reset(Rendering::Shaders::CreateShader(filename));
-		IManager::Add(key, shader);
+		const auto result = IManager::Add(key, shader);
+		
+		assert(result.has_value() == true);
+		return result->get();
 	}
 
-	void ShaderManager::Load(const char* filename) {
+	Ref<Rendering::Shaders::Shader>& ShaderManager::Load(const char* filename) {
 		std::filesystem::path p(filename);
 		const auto name = p.stem();
-		Add(name.u8string().c_str(), filename);
+		
+		return Add(name.u8string().c_str(), filename);
 	}
 }
 

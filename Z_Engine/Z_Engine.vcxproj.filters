@@ -88,6 +88,8 @@
     <ClInclude Include="include\LayerStack.h" />
     <ClInclude Include="include\Z_Engine.h" />
     <ClInclude Include="include\Z_EngineDef.h" />
+    <ClInclude Include="include\Rendering\Materials\ShaderMaterial.h" />
+    <ClInclude Include="include\Rendering\Materials\StandardMaterial.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />
@@ -120,5 +122,7 @@
     <ClCompile Include="include\Window\CoreWindow.cpp" />
     <ClCompile Include="include\Engine.cpp" />
     <ClCompile Include="include\LayerStack.cpp" />
+    <ClCompile Include="include\Rendering\Materials\ShaderMaterial.cpp" />
+    <ClCompile Include="include\Rendering\Materials\StandardMaterial.cpp" />
   </ItemGroup>
 </Project>
