@@ -1,5 +1,5 @@
 #pragma once
-#include "../Materials/IMaterial.h"
+#include "../Materials/ShaderMaterial.h"
 #include "../Geometries/IGeometry.h"
 
 #include "../../Z_EngineDef.h"
@@ -10,22 +10,26 @@ namespace Z_Engine::Rendering::Meshes {
 	{
 	public:
 		explicit Mesh();
-		explicit Mesh(Ref<Geometries::IGeometry>&& geometry, Ref<Materials::IMaterial>&& material);
-		explicit Mesh(Ref<Geometries::IGeometry>& geometry, Ref<Materials::IMaterial>& material);
+		explicit Mesh(Ref<Geometries::IGeometry>&& geometry, Ref<Materials::ShaderMaterial>&& material);
+		explicit Mesh(Ref<Geometries::IGeometry>& geometry, Ref<Materials::ShaderMaterial>& material);
 
 		virtual ~Mesh() = default;
 
-		void SetMaterial(const Ref<Materials::IMaterial>& material);
+		void SetIdentifier(unsigned int value);
+		void SetMaterial(const Ref<Materials::ShaderMaterial>& material);
 		void SetGeometry(const Ref<Geometries::IGeometry>& geometry);
 
-		const Ref<Materials::IMaterial>& GetMaterial() const;
+		unsigned int GetIdentifier() const;
+		const Ref<Materials::ShaderMaterial>& GetMaterial() const;
 		const Ref<Geometries::IGeometry>& GetGeometry() const;
 
 	private:
 		virtual void OnSetMaterialEvent();
+		virtual void OnSetIdentifierEvent();
 
 	private:
-		Ref<Materials::IMaterial> m_material {nullptr};
+		unsigned int m_unique_identifier;
+		Ref<Materials::ShaderMaterial> m_material {nullptr};
 		Ref<Geometries::IGeometry> m_geometry {nullptr};
 
 	};

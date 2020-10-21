@@ -13,6 +13,11 @@
 #include "Rendering/Renderers/GraphicRenderer3D.h"
 #include "Rendering/Cameras/OrthographicCamera.h"
 #include "Rendering/Cameras/Camera.h"
+
+#include "Rendering/Geometries/QuadGeometry.h"
+#include "Rendering/Geometries/SquareGeometry.h"
+#include "Rendering/Materials/ShaderMaterial.h"
+#include "Rendering/Materials/StandardMaterial.h"
 										
 
 #include "Rendering/Textures/Texture.h"
@@ -30,6 +35,9 @@
 #include "Controllers/IController.h"
 #include "Controllers/ICameraController.h"
 #include "Controllers/OrthographicCameraController.h"
+
+
+
 
 #include "Core/TimeStep.h"
 #include "Core/Utility.h"

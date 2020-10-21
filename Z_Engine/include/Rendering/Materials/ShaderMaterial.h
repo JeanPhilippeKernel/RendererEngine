@@ -5,7 +5,6 @@
 #include <any>
 
 #include "IMaterial.h"
-#include "../../Managers/ShaderManager.h"
 
 
 namespace Z_Engine::Rendering::Materials {
@@ -27,7 +26,6 @@ namespace Z_Engine::Rendering::Materials {
 
 	protected:
 		std::unordered_map<std::string, std::any>	m_uniform_collection {};
-		Ref<Managers::ShaderManager>				m_shader_manager {nullptr};
 	};
 }
 

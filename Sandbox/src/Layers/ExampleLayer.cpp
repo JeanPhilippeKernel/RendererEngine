@@ -1,6 +1,10 @@
 #include "ExampleLayer.h"
 #include "dependencies/glm/gtc/type_ptr.hpp"	
+using namespace Z_Engine::Rendering::Materials;
 
+
+using namespace Z_Engine;
+using namespace Z_Engine::Rendering::Geometries;
 
 using namespace Z_Engine::Rendering::Renderers;
 using namespace Z_Engine::Rendering::Cameras;
@@ -13,6 +17,8 @@ using namespace Z_Engine::Inputs;
 using namespace Z_Engine::Managers;
 using namespace Z_Engine::Rendering::Textures;
 using namespace Z_Engine::Controllers;
+
+using namespace Z_Engine::Rendering::Meshes;
 
 namespace Sandbox::Layers {
 	
@@ -35,30 +41,46 @@ namespace Sandbox::Layers {
 		m_camera_controller->Initialize();
 		m_renderer->Initialize();
 		
-		m_rect_1_pos = {-0.7, 0.7};
+
+		Ref<QuadGeometry> quad_geometry(new QuadGeometry());
+		Ref<QuadGeometry> quad_geometry1(new QuadGeometry());
+		Ref<QuadGeometry> quad_geometry2(new QuadGeometry());
+		
+		Ref<StandardMaterial> simple_material(new StandardMaterial());
+		Ref<StandardMaterial> simple_material1(new StandardMaterial());
+		//Ref<StandardMaterial> simple_material2(new StandardMaterial());
+
+		quad_mesh.SetGeometry(quad_geometry);
+		quad_mesh.SetMaterial(simple_material);
+
+		quad_mesh1.SetGeometry(quad_geometry1);
+		quad_mesh1.SetMaterial(simple_material1);
+
+		quad_mesh2.SetGeometry(quad_geometry2);
+		quad_mesh2.SetMaterial(simple_material);
 	}
 
 	void ExampleLayer::Update(Z_Engine::Core::TimeStep dt) {
 		m_camera_controller->Update(dt);
 
-		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
-			//m_rect_1_pos.y -= 0.1f * dt;
-			m_rect_1_pos.x -= 0.1f * dt;
-		}
+		//if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
+		//	//m_rect_1_pos.y -= 0.1f * dt;
+		//	m_rect_1_pos.x -= 0.1f * dt;
+		//}
 
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_F)) {
-			//m_rect_1_pos.y += 0.1f * dt;
-			m_rect_1_pos.x += 0.1f * dt;
-		}
+		//if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_F)) {
+		//	//m_rect_1_pos.y += 0.1f * dt;
+		//	m_rect_1_pos.x += 0.1f * dt;
+		//}
 
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_B)) {
-			m_rect_1_pos.y += 0.1f * dt;
-			//m_rect_1_pos.x += 0.1f * dt;
-		}
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Y)) {
-			m_rect_1_pos.y -= 0.1f * dt;
-			//m_rect_1_pos.x += 0.1f * dt;
-		}
+		//if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_B)) {
+		//	m_rect_1_pos.y += 0.1f * dt;
+		//	//m_rect_1_pos.x += 0.1f * dt;
+		//}
+		//if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Y)) {
+		//	m_rect_1_pos.y -= 0.1f * dt;
+		//	//m_rect_1_pos.x += 0.1f * dt;
+		//}
 	}
 
 	bool ExampleLayer::OnEvent(Z_Engine::Event::CoreEvent& e) {
@@ -68,11 +90,11 @@ namespace Sandbox::Layers {
 
 	void ExampleLayer::ImGuiRender()
 	{
-		ImGui::Begin("Editor");
+		/*ImGui::Begin("Editor");
 		ImGui::DragFloat2("Rectangle_one", glm::value_ptr(m_rect_1_pos), .5f);
 		ImGui::DragFloat2("Rectangle_two", glm::value_ptr(m_rect_2_pos), .05f);
 		ImGui::DragFloat2("Rectangle_three", glm::value_ptr(m_rect_3_pos), .5f);
-		ImGui::End();
+		ImGui::End();*/
 	}
 
 	void ExampleLayer::Render() {
@@ -87,19 +109,25 @@ namespace Sandbox::Layers {
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
+		m_renderer->DrawRect(quad_mesh, { 0.0f , 0.0f}, { 0.3f, 0.3f }, {122.0f, 122.0f, 1.0f});
+		//m_renderer->DrawRect(quad_mesh1, { 0.5f , 0.5f}, { 0.5f, 0.5f }, {30.0f, 12.0f, 1.0f});
+		//m_renderer->DrawRect(quad_mesh2, { 0.8f , 0.8f}, { 0.5f, 0.5f }, {20.0f, 20.0f, 20.0f});
+		//m_renderer->DrawRect({ 0.0f , 0.0f}, { 0.1f, 0.1f }, { angle  , angle * 0.5f , (angle * 0.2f * 0.3f) }, glm::radians(angle) * 10);
+		//m_renderer->DrawRect({ 0.5f , 0.5f}, { 0.1f, 0.1f }, { angle  , angle * 0.6f , (angle * 3.0f * 0.21f) }, glm::radians(angle) * 10);
+		//m_renderer->DrawRect({ 0.8f , 0.8f}, { 0.1f, 0.1f }, { angle  , angle * 0.3f , (angle * 1.0f * 0.1f) }, glm::radians(angle) * 10);
 
-		for (float x = 0.0f; x < 2.f; x += 0.17f) {
+		/*for (float x = 0.0f; x < 2.f; x += 0.17f) {
 			for (float y = 0.0f; y < 2.f; y += 0.12f) {
 				m_renderer->DrawRect({ x , y }, { 0.1f, 0.1f }, { angle * x , angle * y , (angle * x * y) }, glm::radians(angle) * 10);
 			}
-		}
+		}*/
 
 
-		for (float x = 2.0f; x < 4.f; x += 0.17f) {
+	/*	for (float x = 2.0f; x < 4.f; x += 0.17f) {
 			for (float y = 0.0f; y < 4.f; y += 0.12f) {
 				m_renderer->DrawTriangle({ x , y }, { 0.1f, 0.1f }, { angle * x , angle , (20 * x * y) }, -glm::radians(angle) * 10);
 			}
-		}
+		}*/
 		
 		m_renderer->EndScene();
 

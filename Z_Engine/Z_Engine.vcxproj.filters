@@ -90,6 +90,7 @@
     <ClInclude Include="include\Z_EngineDef.h" />
     <ClInclude Include="include\Rendering\Materials\ShaderMaterial.h" />
     <ClInclude Include="include\Rendering\Materials\StandardMaterial.h" />
+    <ClInclude Include="include\Rendering\Meshes\MeshBuilder.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />

@@ -5,25 +5,37 @@ using namespace Z_Engine::Rendering::Renderers::Storages;
 
 namespace Z_Engine::Rendering::Meshes {
 
-	Mesh::Mesh() : m_geometry(nullptr), m_material(nullptr) {}
+	Mesh::Mesh() 
+		:
+		m_unique_identifier(0),
+		m_geometry(nullptr), m_material(nullptr) 
+	{}
 
-	Mesh::Mesh(Ref<Geometries::IGeometry>&& geometry, Ref<Materials::IMaterial>&& material)
-		:m_geometry(std::move(geometry)), m_material(std::move(material))
+	Mesh::Mesh(Ref<Geometries::IGeometry>&& geometry, Ref<Materials::ShaderMaterial>&& material)
+		:
+		m_unique_identifier(0),
+		m_geometry(std::move(geometry)), 
+		m_material(std::move(material))
 	{
 		if (m_material != nullptr)
 			OnSetMaterialEvent();
 	}
 
-	Mesh::Mesh(Ref<Geometries::IGeometry>& geometry, Ref<Materials::IMaterial>& material) 
-		:m_geometry(geometry), m_material(material)
+	Mesh::Mesh(Ref<Geometries::IGeometry>& geometry, Ref<Materials::ShaderMaterial>& material) 
+		:
+		m_unique_identifier(0),
+		m_geometry(geometry), m_material(material)
 	{
 		if (m_material != nullptr)
 			OnSetMaterialEvent();
 	}
 
 
+	unsigned int Mesh::GetIdentifier() const {
+		return m_unique_identifier;
+	}
 
-	const Ref<Materials::IMaterial>& Mesh::GetMaterial() const { 
+	const Ref<Materials::ShaderMaterial>& Mesh::GetMaterial() const { 
 		return m_material; 
 	}
 	
@@ -31,9 +43,14 @@ namespace Z_Engine::Rendering::Meshes {
 		return m_geometry; 
 	}
 
-
-	void Mesh::SetMaterial(const Ref<Materials::IMaterial>& material) {
-		m_material = m_material;
+	void Mesh::SetIdentifier(unsigned int  value) {
+		if(m_unique_identifier != value) {
+			m_unique_identifier = value;
+			OnSetIdentifierEvent();
+		}
+	}
+	void Mesh::SetMaterial(const Ref<Materials::ShaderMaterial>& material) {
+		m_material = material;
 		OnSetMaterialEvent();
 	}
 
@@ -42,11 +59,15 @@ namespace Z_Engine::Rendering::Meshes {
 	}
 	
 	void Mesh::OnSetMaterialEvent() {
-		   auto& vertices = m_geometry->GetVertices();
-		   std::for_each(std::begin(vertices), std::end(vertices), [this]( GraphicVertex& vertex) {
-			   vertex.SetTextureTilingFactor(m_material->GetTextureTilingFactor());
-			   vertex.SetTextureTintColor(m_material->GetTextureTintColor());
-			   });
+		m_material->SetAttributes();
+	}
+
+	void Mesh::OnSetIdentifierEvent() {
+		 auto& vertices = m_geometry->GetVertices();
+		 std::for_each(
+			 std::begin(vertices), std::end(vertices), 
+			 [this](GraphicVertex& vertex) { vertex.SetIndex(m_unique_identifier); }
+		 );
 	}
 
 }

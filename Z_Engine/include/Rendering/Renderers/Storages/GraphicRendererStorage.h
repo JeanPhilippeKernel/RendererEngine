@@ -35,45 +35,68 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 			m_vertex_buffer->SetLayout(std::move(buffer_layout));
 		}
 
-		void AddMesh(const Rendering::Meshes::Mesh& mesh) {
+		void AddMesh(Rendering::Meshes::Mesh& mesh) {
+			const auto& material	= mesh.GetMaterial();																					                                                                                                        
 
-			 const auto& material =  mesh.GetMaterial();																					                                                                                                        
-			 const auto& texture =  material->GetTexture();
+			//CHECKING CURRENT MATERIAL AND END BATCH IF DIFFERENT MATERIAL DETECTED
+			 if(m_current_used_material == nullptr) {
+				m_current_used_material = material;
+				m_shader = material->GetShader();
+			 }
 
-			 bool already_in_slot =  false;
-			 int found_at_slot = 0;
+			 else if(m_current_used_material->GetName() != material->GetName()) {
+				EndBatch();
+				StartBacth();
+
+				m_current_used_material = material;
+				m_shader = material->GetShader();
+			 }
+
+
+
+			mesh.SetIdentifier(m_quad_index);
+				
+			const auto& texture		= material->GetTexture();
+
+			bool already_in_slot	= false;
+			int found_at_slot		= 0;
 			 
-			 for(size_t x = 0 ; x < m_texture_slot_unit_cursor; ++x) {
+			for(int x = 0 ; x < m_texture_slot_unit_cursor; ++x) {
 				already_in_slot = (*m_texture_slot_unit[x] == *texture);
 				if(already_in_slot) {
 					found_at_slot = x;	
 					break;
 				}
-			 }
+			}
 
-			 if(!already_in_slot) 
-			 { 
-				 m_texture_slot_unit[m_texture_slot_unit_cursor] = texture;
-				 found_at_slot = m_texture_slot_unit_cursor; 
-				 m_texture_slot_unit_cursor++;
-			 } 
+			if(!already_in_slot) 
+			{ 
+				m_texture_slot_unit[m_texture_slot_unit_cursor] = texture;
+				found_at_slot									= m_texture_slot_unit_cursor; 
+				m_texture_slot_unit_cursor++;
+			} 
 
 
-			 const auto& geometry =  mesh.GetGeometry();
-			 auto& vertices = geometry->GetVertices();
+			const auto& geometry	= mesh.GetGeometry();
+			auto& vertices			= geometry->GetVertices();
 
-			 std::for_each(std::begin(vertices), std::end(vertices), 
-				 [this, &found_at_slot] (Renderers::Storages::GraphicVertex& vertex) {
-					vertex.SetTextureId((float)found_at_slot);
-				 });
+			std::for_each(
+				std::begin(vertices), std::end(vertices), 
+				[this, &found_at_slot] (GraphicVertex& vertex) {
+					vertex.SetTextureSlotId((float)found_at_slot);
+				}
+			);
+
+			m_quad_collection[m_quad_index] = mesh;
+			m_quad_index++;
 
 			AddVertices(vertices);
-
 		}
 
 		void StartBacth() {			
 			m_internal_raw_vertices_buffer_cursor	= &m_internal_raw_vertices[0]; // reset the position of the cursor
-			m_texture_slot_unit_cursor = 1; // slot 0 is reserved;
+			m_texture_slot_unit_cursor				= 1; // slot 0 is reserved;
+			m_quad_index							= 0;
 			std::memset(&m_internal_raw_vertices[0], 0, m_internal_raw_vertices.size() * sizeof(T));
 		}
 
@@ -85,7 +108,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 				m_texture_slot_unit[x]->Bind(x);
 			}
 
-			this->Flush(m_shader, m_vertex_array);
+			this->Flush();
 		}
 
 
@@ -99,34 +122,39 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 
 	private:
-		unsigned int					M_MAX_QUAD;
-		unsigned int					M_MAX_VERTICES_PER_QUAD;
-		unsigned int					M_MAX_INDEX_PER_QUAD;
-		unsigned int					M_MAX_INDICES;
+		unsigned int							M_MAX_QUAD;
+		unsigned int							M_MAX_VERTICES_PER_QUAD;
+		unsigned int							M_MAX_INDEX_PER_QUAD;
+		unsigned int							M_MAX_INDICES;
 		
-		glm::mat4						m_view_projection;
+		glm::mat4								m_view_projection;
 
-		std::vector<T>					m_internal_raw_vertices;
-		T*								m_internal_raw_vertices_buffer_cursor;
+		std::vector<T>							m_internal_raw_vertices;
+		T*										m_internal_raw_vertices_buffer_cursor;
 		
-		std::vector<K>					m_internal_index;
+		std::vector<K>							m_internal_index;
 
 		std::array<Ref<Textures::Texture>, 32>	m_texture_slot_unit;
-		int								m_texture_slot_unit_cursor;
+		int										m_texture_slot_unit_cursor;
 
-		Ref<Shaders::Shader>			m_shader;
-		Ref<Buffers::VertexBuffer<T>>	m_vertex_buffer;
-		Ref<Buffers::VertexArray<T, K>> m_vertex_array;
-		Ref<Buffers::IndexBuffer<K>>	m_index_buffer;
+		unsigned int							m_quad_index;
+		std::vector<Meshes::Mesh>				m_quad_collection;
 
-		Ref<Managers::TextureManager>&	m_texture_manager;
+		Ref<Shaders::Shader>					m_shader;
+		Ref<Materials::IMaterial>				m_current_used_material;
+
+		Ref<Buffers::VertexBuffer<T>>			m_vertex_buffer;
+		Ref<Buffers::VertexArray<T, K>>			m_vertex_array;
+		Ref<Buffers::IndexBuffer<K>>			m_index_buffer;
+
+		Ref<Managers::TextureManager>&			m_texture_manager;
 
 
 	private:
 		void AddVertices(const std::vector<GraphicVertex>& vertices) {
 			
-			const auto distance = std::distance(&m_internal_raw_vertices[0], m_internal_raw_vertices_buffer_cursor);
-			if(
+			const ptrdiff_t distance = std::distance(&m_internal_raw_vertices[0], m_internal_raw_vertices_buffer_cursor);
+			if(											  
 				(distance >= m_internal_raw_vertices.size())  
 				|| (m_texture_slot_unit_cursor >= m_texture_slot_unit.size())
 				) 
@@ -135,17 +163,40 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 				EndBatch();
 				StartBacth();
 			}
+			
+			//std::array<float, 11>	raw_buffer{};
+			size_t					buffer_size{0};
 
-			std::for_each(std::begin(vertices), std::end(vertices), [this](const GraphicVertex& vertex) {
-				const auto& raw_buffer	=  vertex.GetData();
-				size_t buffer_size		=  raw_buffer.size();
+			const auto& v_0	= vertices[0].GetData();
+			buffer_size = v_0.size();
 
-				std::memcpy(m_internal_raw_vertices_buffer_cursor, &raw_buffer[0], buffer_size * sizeof(T));
-				m_internal_raw_vertices_buffer_cursor += buffer_size;
-			});
+			std::memcpy(m_internal_raw_vertices_buffer_cursor, &v_0[0], buffer_size * sizeof(T));
+			m_internal_raw_vertices_buffer_cursor += buffer_size;
+
+
+			const auto& v_1	= vertices[1].GetData();
+			buffer_size = v_1.size();
+
+			std::memcpy(m_internal_raw_vertices_buffer_cursor, &v_1[0], buffer_size * sizeof(T));
+			m_internal_raw_vertices_buffer_cursor += buffer_size;
+
+
+			const auto& v_2	= vertices[2].GetData();
+			buffer_size = v_2.size();
+
+			std::memcpy(m_internal_raw_vertices_buffer_cursor, &v_2[0], buffer_size * sizeof(T));
+			m_internal_raw_vertices_buffer_cursor += buffer_size;
+
+
+			const auto& v_3	= vertices[3].GetData();
+			buffer_size = v_3.size();
+
+			std::memcpy(m_internal_raw_vertices_buffer_cursor, &v_3[0], buffer_size * sizeof(T));
+			m_internal_raw_vertices_buffer_cursor += buffer_size;
 
 		}
 		
+		void Flush();
 		void Flush(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array);
 
 	};
@@ -156,7 +207,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		:		
 		m_texture_manager(texture_manager),
 
-		M_MAX_QUAD(10),	// this value, when higher drop the framerate... need to investigate 
+		M_MAX_QUAD(4),	// this value, when higher drop the framerate... need to investigate 
 		M_MAX_VERTICES_PER_QUAD(4),
 		M_MAX_INDEX_PER_QUAD(6),
 		M_MAX_INDICES(M_MAX_INDEX_PER_QUAD * M_MAX_QUAD),
@@ -166,7 +217,10 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_internal_index(M_MAX_INDICES, 0),
 		m_texture_slot_unit(),
 		m_texture_slot_unit_cursor(0),
+		m_quad_collection(M_MAX_QUAD),
+		m_quad_index(0),
 		m_shader(nullptr),
+		m_current_used_material(nullptr),
 		m_vertex_buffer(new Buffers::VertexBuffer<T>(M_MAX_VERTICES_PER_QUAD * M_MAX_QUAD)),
 		m_index_buffer(new Buffers::IndexBuffer<K>()), 
 		m_vertex_array(new Buffers::VertexArray<T, K>())
@@ -195,6 +249,12 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_vertex_array->SetIndexBuffer(m_index_buffer);
 	}		
 
+
+	template<typename T, typename K>
+	inline void  GraphicRendererStorage<T, K>::Flush() {
+		m_current_used_material->GetShader()->SetUniform("uniform_viewprojection", m_view_projection);
+		RendererCommand::DrawIndexed(m_current_used_material->GetShader(), m_vertex_array);
+	}
 
 	template<typename T, typename K>
 	inline void  GraphicRendererStorage<T, K>::Flush(const Ref<Shaders::Shader>& shader, const Ref<Buffers::VertexArray<T, K>>& vertex_array) {

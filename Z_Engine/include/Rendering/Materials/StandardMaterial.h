@@ -10,5 +10,8 @@ namespace Z_Engine::Rendering::Materials {
 		virtual ~StandardMaterial() =  default;
 
 		virtual void SetAttributes() override;
+
+	protected: 
+		static bool m_already_initialized;
 	};
 } 

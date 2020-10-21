@@ -15,6 +15,7 @@ namespace Z_Engine::Rendering::Shaders {
 		Shader(const char * filename);
 		~Shader();
 
+		bool IsActive() const;
 		void Bind() const;
 		void Unbind() const;
 						   

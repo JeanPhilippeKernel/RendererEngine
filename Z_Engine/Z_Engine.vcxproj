@@ -215,6 +215,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Rendering\Materials\IMaterial.h" />
     <ClInclude Include="include\Rendering\Materials\ShaderMaterial.h" />
     <ClInclude Include="include\Rendering\Materials\StandardMaterial.h" />
+    <ClInclude Include="include\Rendering\Meshes\MeshBuilder.h" />
     <ClInclude Include="src\Rendering\Meshes\IMesh.h" />
     <ClInclude Include="include\Rendering\Meshes\Mesh.h" />
     <ClInclude Include="src\Rendering\Meshes\Mesh2D.h" />

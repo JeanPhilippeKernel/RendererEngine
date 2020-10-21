@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <typeinfo>
 
 #include "../Textures/Texture.h"
 #include "../Shaders/Shader.h"
@@ -11,25 +12,35 @@ namespace Z_Engine::Rendering::Materials {
 	struct IMaterial 
 	{
 	public:
-		explicit IMaterial() = default; 
+		explicit IMaterial() {
+			m_material_name = typeid(*this).name();
+		} 
+
 		explicit IMaterial(const Ref<Textures::Texture>& texture) 
 			: m_texture(texture)
 		{
+			m_material_name = typeid(*this).name();
 		}
 
 		explicit IMaterial(const Ref<Shaders::Shader>& shader) 
 			: m_shader(shader)
 		{
+			m_shader->Bind();
+			m_material_name = typeid(*this).name();
 		}
 		
 		explicit IMaterial(const Ref<Textures::Texture>& texture, const Ref<Shaders::Shader>& shader) 
 			: m_texture(texture), m_shader(shader)
 		{
+			m_material_name = typeid(*this).name();
+			m_shader->Bind();
 		}
 
 		explicit IMaterial(Ref<Textures::Texture>&& texture, Ref<Shaders::Shader>&& shader)
 			: m_texture(texture), m_shader(shader)
 		{
+			m_material_name = typeid(*this).name();
+			m_shader->Bind();
 		}
 
 		virtual ~IMaterial() = default;
@@ -42,6 +53,10 @@ namespace Z_Engine::Rendering::Materials {
 			m_shader = shader; 
 		}
 
+		virtual const std::string& GetName() const {
+			return m_material_name;
+		}
+
 		virtual const Ref<Textures::Texture>& GetTexture() const { 
 			return m_texture; 
 		}	
@@ -50,29 +65,10 @@ namespace Z_Engine::Rendering::Materials {
 			return m_shader;
 		}
 
-		virtual void SetTextureTilingFactor(float value) {
-			m_texture_tiling_factor = value;
-		}
-
-		virtual void SetTextureTintColor(const glm::vec4& value) {
-			m_texture_tint_color = value;
-		}
-
-
-		virtual float GetTextureTilingFactor() {
-			return m_texture_tiling_factor;
-		}
-
-		virtual glm::vec4 GetTextureTintColor() {
-			return m_texture_tint_color;
-		}
-
 	protected:
-		float m_texture_tiling_factor		{0.0f};
-		glm::vec4 m_texture_tint_color		{0.0f, 0.0f, 0.0f, 0.0f};
-		
+		std::string					m_material_name{};
+
 		Ref<Textures::Texture>		m_texture	{nullptr};
 		Ref<Shaders::Shader>		m_shader	{nullptr};
-
 	};
 }

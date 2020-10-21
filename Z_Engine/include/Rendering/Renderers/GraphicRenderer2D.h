@@ -1,7 +1,8 @@
 #include "GraphicRenderer.h"
 #include "../Cameras/OrthographicCamera.h"
 #include "../Textures/Texture2D.h"																																   
-//#include "../Meshes/Mesh2D.h"
+
+#include "../Meshes/Mesh.h"
 
 
 #include <unordered_map>
@@ -19,6 +20,10 @@ namespace Z_Engine::Rendering::Renderers {
 		void BeginScene(const Ref<Cameras::Camera>& camera) override;
 		void EndScene() override;
 
+		void DrawRect(Meshes::Mesh& mesh, const glm::vec2& position, const glm::vec2& size, const glm::vec3& color, float angle = 0.0f);  
+		
+		
+		
 		void DrawRect(const glm::vec2& position, const glm::vec2& size, const glm::vec3& color, float angle = 0.0f);  
 		void DrawRect(const glm::vec3& position, const glm::vec2& size, const glm::vec3& color, float angle = 0.0f);
 		void DrawRect(const glm::vec2& position, const glm::vec2& size, float angle, const Ref<Rendering::Textures::Texture>& texture);
