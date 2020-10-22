@@ -21,13 +21,13 @@ namespace Z_Engine::Rendering::Renderers {
 	void GraphicRenderer2D::Initialize() {
 		GraphicRenderer::Initialize();
 	
-		m_shader_manager->Load("src/Assets/Shaders/simple_mesh_2d.glsl");
+		m_shader_manager->Load("src/Assets/Shaders/simple_mesh.glsl");
 
-		auto& shader = m_shader_manager->Obtains("simple_mesh_2d");
+		auto& shader = m_shader_manager->Obtains("simple_mesh");
 
 		std::array<int, 32> texture_slot;
 		for(int x = 0; x < 32; ++x) texture_slot[x] = x;
-		shader->SetUniform("uniform_texture", texture_slot.data() , texture_slot.size());
+		shader->SetUniform("uniform_texture_slot", texture_slot.data() , texture_slot.size());
 
 		m_graphic_storage->SetShader(shader);
 		m_graphic_storage->SetVertexBufferLayout(

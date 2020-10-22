@@ -18,5 +18,6 @@
     <None Include="src\Assets\Shaders\texture.glsl" />
     <None Include="src\Assets\Shaders\basic.glsl" />
     <None Include="src\Assets\Shaders\simple_mesh_2d.glsl" />
+    <None Include="src\Assets\Shaders\simple_mesh.glsl" />
   </ItemGroup>
 </Project>
