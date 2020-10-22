@@ -125,5 +125,6 @@
     <ClCompile Include="include\LayerStack.cpp" />
     <ClCompile Include="include\Rendering\Materials\ShaderMaterial.cpp" />
     <ClCompile Include="include\Rendering\Materials\StandardMaterial.cpp" />
+    <ClCompile Include="include\Rendering\Meshes\MeshBuilder.cpp" />
   </ItemGroup>
 </Project>

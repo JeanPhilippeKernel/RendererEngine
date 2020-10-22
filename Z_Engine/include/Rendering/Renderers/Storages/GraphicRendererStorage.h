@@ -4,12 +4,12 @@
 #include <algorithm>
 
 #include "GraphicVertex.h"
+#include "../RenderCommand.h"
 #include "../../Buffers/VertexArray.h"
 #include "../../Buffers/VertexBuffer.h"
 #include "../../Buffers/IndexBuffer.h"
 #include "../../Shaders/Shader.h"
 
-#include "../RenderCommand.h"
 #include "../../Textures/Texture.h"
 #include "../../Meshes/Mesh.h"
 #include "../../../Managers/TextureManager.h"

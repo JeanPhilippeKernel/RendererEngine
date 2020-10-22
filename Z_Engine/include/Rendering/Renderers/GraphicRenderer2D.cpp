@@ -46,7 +46,17 @@ namespace Z_Engine::Rendering::Renderers {
 		m_graphic_storage->EndBatch();
 	}
 
-	
+	void GraphicRenderer2D::DrawRect(Meshes::Mesh& mesh, const glm::vec3& color) {
+		
+		Ref<Textures::Texture> texture(Textures::CreateTexture(1, 1));
+		texture->SetData(color.x, color.y, color.z, 255.f);
+		mesh.GetMaterial()->SetTexture(texture);
+
+		m_graphic_storage->AddMesh(mesh);
+	}
+
+
+
 	void GraphicRenderer2D::DrawRect(Meshes::Mesh& mesh, const glm::vec2& position, const glm::vec2& size, const glm::vec3& color, float angle) {
 		glm::mat4 transform =
 			glm::translate(glm::mat4(1.0f), { position.x, position.y, 0.0f }) *

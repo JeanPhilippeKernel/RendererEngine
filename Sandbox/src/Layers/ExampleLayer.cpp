@@ -40,24 +40,19 @@ namespace Sandbox::Layers {
 		
 		m_camera_controller->Initialize();
 		m_renderer->Initialize();
-		
-
-		Ref<QuadGeometry> quad_geometry(new QuadGeometry());
-		Ref<QuadGeometry> quad_geometry1(new QuadGeometry());
-		Ref<QuadGeometry> quad_geometry2(new QuadGeometry());
-		
+	
 		Ref<StandardMaterial> simple_material(new StandardMaterial());
-		Ref<StandardMaterial> simple_material1(new StandardMaterial());
-		//Ref<StandardMaterial> simple_material2(new StandardMaterial());
+		Ref<StandardMaterial> simple_material_1(new StandardMaterial());
+		Ref<StandardMaterial> simple_material_2(new StandardMaterial());
 
-		quad_mesh.SetGeometry(quad_geometry);
-		quad_mesh.SetMaterial(simple_material);
+		quad_mesh_ptr = MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f}, glm::radians(45.0f));
+		quad_mesh_ptr->SetMaterial(simple_material);
 
-		quad_mesh1.SetGeometry(quad_geometry1);
-		quad_mesh1.SetMaterial(simple_material1);
+		quad_mesh_ptr_1 = MeshBuilder::CreateQuad({1.5f, 1.5f}, {0.5f, 0.5f}, 0.0f);
+		quad_mesh_ptr_1->SetMaterial(simple_material_1);
 
-		quad_mesh2.SetGeometry(quad_geometry2);
-		quad_mesh2.SetMaterial(simple_material);
+		quad_mesh_ptr_2 = MeshBuilder::CreateQuad({1.0f, 1.0f}, {0.5f, 0.5f}, 0.0f);
+		quad_mesh_ptr_2->SetMaterial(simple_material_2);
 	}
 
 	void ExampleLayer::Update(Z_Engine::Core::TimeStep dt) {
@@ -101,6 +96,7 @@ namespace Sandbox::Layers {
 
 		static float angle = 0.0f;
 		++angle;
+		if(angle >= 255.0) angle = 0.0f;
 
 		  //if(angle >= 360.f) angle = 0.0f;
 
@@ -109,7 +105,10 @@ namespace Sandbox::Layers {
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-		m_renderer->DrawRect(quad_mesh, { 0.0f , 0.0f}, { 0.3f, 0.3f }, {122.0f, 122.0f, 1.0f});
+		m_renderer->DrawRect(*quad_mesh_ptr, {angle, 30.0f, 10.f});
+		m_renderer->DrawRect(*quad_mesh_ptr_1, {1.0f, angle, 120.0f});
+		m_renderer->DrawRect(*quad_mesh_ptr_2, {12.0f, 220.0f, angle});
+		//m_renderer->DrawRect(quad_mesh, { 0.0f , 0.0f}, { 0.3f, 0.3f }, {122.0f, 122.0f, 1.0f});
 		//m_renderer->DrawRect(quad_mesh1, { 0.5f , 0.5f}, { 0.5f, 0.5f }, {30.0f, 12.0f, 1.0f});
 		//m_renderer->DrawRect(quad_mesh2, { 0.8f , 0.8f}, { 0.5f, 0.5f }, {20.0f, 20.0f, 20.0f});
 		//m_renderer->DrawRect({ 0.0f , 0.0f}, { 0.1f, 0.1f }, { angle  , angle * 0.5f , (angle * 0.2f * 0.3f) }, glm::radians(angle) * 10);

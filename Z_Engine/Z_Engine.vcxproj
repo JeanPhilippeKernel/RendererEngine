@@ -259,6 +259,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Rendering\Materials\SimpleMaterial2D.cpp" />
     <ClCompile Include="include\Rendering\Materials\StandardMaterial.cpp" />
     <ClCompile Include="include\Rendering\Meshes\Mesh.cpp" />
+    <ClCompile Include="include\Rendering\Meshes\MeshBuilder.cpp" />
     <ClCompile Include="include\Rendering\Renderers\GraphicRenderer.cpp" />
     <ClCompile Include="include\Rendering\Renderers\GraphicRenderer2D.cpp" />
     <ClCompile Include="include\Rendering\Renderers\GraphicRenderer3D.cpp" />

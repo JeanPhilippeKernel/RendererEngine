@@ -18,8 +18,11 @@
 #include "Rendering/Geometries/SquareGeometry.h"
 #include "Rendering/Materials/ShaderMaterial.h"
 #include "Rendering/Materials/StandardMaterial.h"
-										
 
+
+#include "Rendering/Meshes/Mesh.h"
+#include "Rendering/Meshes/MeshBuilder.h"
+										
 #include "Rendering/Textures/Texture.h"
 
 #include "Inputs/IDevice.h"

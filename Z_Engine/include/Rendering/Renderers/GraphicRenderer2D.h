@@ -20,6 +20,7 @@ namespace Z_Engine::Rendering::Renderers {
 		void BeginScene(const Ref<Cameras::Camera>& camera) override;
 		void EndScene() override;
 
+		void DrawRect(Meshes::Mesh& mesh, const glm::vec3& color);  
 		void DrawRect(Meshes::Mesh& mesh, const glm::vec2& position, const glm::vec2& size, const glm::vec3& color, float angle = 0.0f);  
 		
 		
