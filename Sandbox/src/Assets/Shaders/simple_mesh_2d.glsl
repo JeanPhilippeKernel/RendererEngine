@@ -30,6 +30,8 @@ void main()
 #type fragment
 #version  440 core
 
+#define MAX_SIZE 32
+
 in float	mesh_index;
 in float 	texture_slot_id;
 in vec2 	texture_coord;
@@ -45,7 +47,6 @@ out vec4 output_color;
 
 void main()
 {
-	//output_color = vec4(texture_coord.x, texture_coord.y, 1.0f, 1.0f);
 	output_color = 
 		texture(uniform_texture_slot[int(texture_slot_id)],  texture_coord * 1.0f) * 
 		vec4(1.0f, 1.0f, 1.0f, 1.0f);

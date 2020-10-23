@@ -5,7 +5,6 @@ namespace Z_Engine::Rendering::Materials {
 	bool StandardMaterial::m_already_initialized =  false;
 
 
-
 	StandardMaterial::StandardMaterial() 
 		:
 		ShaderMaterial("src/Assets/Shaders/simple_mesh_2d.glsl", {"texture_tiling_factor", "texture_tint_color"})

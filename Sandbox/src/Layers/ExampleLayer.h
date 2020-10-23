@@ -9,7 +9,14 @@ namespace Sandbox::Layers {
 		{
 		}
 
-		virtual ~ExampleLayer() =  default;
+		virtual ~ExampleLayer() {
+			delete quad_mesh_ptr;
+			delete quad_mesh_ptr_1;
+			delete quad_mesh_ptr_2;
+			delete quad_mesh_ptr_3;
+		}
+
+		//virtual ~ExampleLayer() =  default;
 
 		virtual void Initialize()							override;
 		virtual void Update(Z_Engine::Core::TimeStep dt)	override;

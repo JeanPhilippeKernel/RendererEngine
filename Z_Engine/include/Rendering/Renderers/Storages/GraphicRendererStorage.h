@@ -19,12 +19,12 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 	template <typename T, typename K>
 	class GraphicRendererStorage {
 	public:
-		GraphicRendererStorage(Ref<Managers::TextureManager>& texture_manager);
+		GraphicRendererStorage();
 		~GraphicRendererStorage() = default;
 
-		void SetShader(const Ref<Shaders::Shader>& shader) { 
-			m_shader = shader; 
-		}
+		//void SetShader(const Ref<Shaders::Shader>& shader) { 
+		//	m_shader = shader; 
+		//}
 		
 		void SetViewProjectionMatrix(const glm::mat4& matrix)  {
 			m_view_projection = matrix;
@@ -40,16 +40,16 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 			//CHECKING CURRENT MATERIAL AND END BATCH IF DIFFERENT MATERIAL DETECTED
 			 if(m_current_used_material == nullptr) {
-				m_current_used_material = material;
-				m_shader = material->GetShader();
+				m_current_used_material = dynamic_cast<Materials::IMaterial*>(material.get());
+				//m_shader = material->GetShader();
 			 }
 
 			 else if(m_current_used_material->GetName() != material->GetName()) {
 				EndBatch();
 				StartBacth();
 
-				m_current_used_material = material;
-				m_shader = material->GetShader();
+				m_current_used_material = dynamic_cast<Materials::IMaterial*>(material.get());
+				//m_shader = material->GetShader();
 			 }
 
 
@@ -61,7 +61,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 			bool already_in_slot	= false;
 			int found_at_slot		= 0;
 			 
-			for(int x = 0 ; x < m_texture_slot_unit_cursor; ++x) {
+			for(int x = 1 ; x < m_texture_slot_unit_cursor; ++x) {
 				already_in_slot = (*m_texture_slot_unit[x] == *texture);
 				if(already_in_slot) {
 					found_at_slot = x;	
@@ -71,7 +71,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 			if(!already_in_slot) 
 			{ 
-				m_texture_slot_unit[m_texture_slot_unit_cursor] = texture;
+				m_texture_slot_unit[m_texture_slot_unit_cursor] = texture.get();
 				found_at_slot									= m_texture_slot_unit_cursor; 
 				m_texture_slot_unit_cursor++;
 			} 
@@ -87,7 +87,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 				}
 			);
 
-			m_quad_collection[m_quad_index] = mesh;
+			//m_quad_collection[m_quad_index] = mesh;
 			m_quad_index++;
 
 			AddVertices(vertices);
@@ -104,7 +104,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 			m_vertex_buffer->SetData(m_internal_raw_vertices);
 			m_vertex_array->AddVertexBuffer(m_vertex_buffer);
 
-			for (int x = 0; x < m_texture_slot_unit_cursor; ++x) {
+			for (int x = 1; x < m_texture_slot_unit_cursor; ++x) {
 				m_texture_slot_unit[x]->Bind(x);
 			}
 
@@ -116,9 +116,9 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 			return m_vertex_array; 
 		}
 
-		Ref<Shaders::Shader>& GetShader() { 
-			return m_shader; 
-		}
+		//Ref<Shaders::Shader>& GetShader() { 
+		//	return m_shader; 
+		//}
 
 
 	private:
@@ -134,20 +134,18 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		
 		std::vector<K>							m_internal_index;
 
-		std::array<Ref<Textures::Texture>, 32>	m_texture_slot_unit;
+		std::array<Textures::Texture*, 32>		m_texture_slot_unit;
 		int										m_texture_slot_unit_cursor;
 
 		unsigned int							m_quad_index;
-		std::vector<Meshes::Mesh>				m_quad_collection;
 
-		Ref<Shaders::Shader>					m_shader;
-		Ref<Materials::IMaterial>				m_current_used_material;
+		//Ref<Shaders::Shader>					m_shader;
+		Materials::IMaterial*					m_current_used_material;
 
 		Ref<Buffers::VertexBuffer<T>>			m_vertex_buffer;
 		Ref<Buffers::VertexArray<T, K>>			m_vertex_array;
 		Ref<Buffers::IndexBuffer<K>>			m_index_buffer;
 
-		Ref<Managers::TextureManager>&			m_texture_manager;
 
 
 	private:
@@ -203,9 +201,8 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 
 	template<typename T, typename K>
-	inline GraphicRendererStorage<T, K>::GraphicRendererStorage(Ref<Managers::TextureManager>& texture_manager)
+	inline GraphicRendererStorage<T, K>::GraphicRendererStorage()
 		:		
-		m_texture_manager(texture_manager),
 
 		M_MAX_QUAD(4),	// this value, when higher drop the framerate... need to investigate 
 		M_MAX_VERTICES_PER_QUAD(4),
@@ -217,9 +214,8 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_internal_index(M_MAX_INDICES, 0),
 		m_texture_slot_unit(),
 		m_texture_slot_unit_cursor(0),
-		m_quad_collection(M_MAX_QUAD),
 		m_quad_index(0),
-		m_shader(nullptr),
+		//m_shader(nullptr),
 		m_current_used_material(nullptr),
 		m_vertex_buffer(new Buffers::VertexBuffer<T>(M_MAX_VERTICES_PER_QUAD * M_MAX_QUAD)),
 		m_index_buffer(new Buffers::IndexBuffer<K>()), 
@@ -228,9 +224,8 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 		m_internal_raw_vertices_buffer_cursor = m_internal_raw_vertices.data();
 
-		texture_manager->Add("__reserved_texture__", 1, 1);
-		m_texture_slot_unit[m_texture_slot_unit_cursor] = texture_manager->Obtains("__reserved_texture__");
-		  
+		m_texture_slot_unit[m_texture_slot_unit_cursor] = Textures::CreateTexture(1, 1);
+		m_texture_slot_unit_cursor++;  
 
 		size_t offset = 0;
 		for (size_t i = 0; i < M_MAX_INDICES; i += 6)
@@ -252,8 +247,9 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 	template<typename T, typename K>
 	inline void  GraphicRendererStorage<T, K>::Flush() {
-		m_current_used_material->GetShader()->SetUniform("uniform_viewprojection", m_view_projection);
-		RendererCommand::DrawIndexed(m_current_used_material->GetShader(), m_vertex_array);
+		const auto&  shader = m_current_used_material->GetShader();
+		shader->SetUniform("uniform_viewprojection", m_view_projection);
+		RendererCommand::DrawIndexed(shader, m_vertex_array);
 	}
 
 	template<typename T, typename K>

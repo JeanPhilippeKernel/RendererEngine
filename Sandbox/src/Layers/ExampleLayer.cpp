@@ -28,31 +28,23 @@ namespace Sandbox::Layers {
 		
 													   
 		m_texture_manager->Load("src/Assets/Images/free_image.png");
-		m_texture_manager->Load("src/Assets/Images/Checkerboard_2.png");
-		m_texture_manager->Load("src/Assets/Images/Crate.png");
+		//m_texture_manager->Load("src/Assets/Images/Checkerboard_2.png");
+		//m_texture_manager->Load("src/Assets/Images/Crate.png");
 		m_texture_manager->Load("src/Assets/Images/Flying_Mario.png");
 		m_texture_manager->Load("src/Assets/Images/mario_and_sonic.png");
 
-		m_texture_manager->Add("custom", 1, 1);
+		//m_texture_manager->Add("custom", 1, 1);
 
 		m_camera_controller.reset(new OrthographicCameraController(GetAttachedWindow(), true));
 		m_renderer.reset(new GraphicRenderer2D());
 		
 		m_camera_controller->Initialize();
 		m_renderer->Initialize();
-	
-		Ref<StandardMaterial> simple_material(new StandardMaterial());
-		Ref<StandardMaterial> simple_material_1(new StandardMaterial());
-		Ref<StandardMaterial> simple_material_2(new StandardMaterial());
 
-		quad_mesh_ptr = MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f}, glm::radians(45.0f));
-		quad_mesh_ptr->SetMaterial(simple_material);
 
-		quad_mesh_ptr_1 = MeshBuilder::CreateQuad({1.5f, 1.5f}, {0.5f, 0.5f}, 0.0f);
-		quad_mesh_ptr_1->SetMaterial(simple_material_1);
-
-		quad_mesh_ptr_2 = MeshBuilder::CreateQuad({1.0f, 1.0f}, {0.5f, 0.5f}, 0.0f);
-		quad_mesh_ptr_2->SetMaterial(simple_material_2);
+		quad_mesh_ptr_1 = MeshBuilder::CreateQuad({1.0f, 1.0f}, {0.5f, 0.5f},  glm::radians(45.0f), m_texture_manager->Obtains("Flying_Mario"));
+		quad_mesh_ptr_3 = MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f},  glm::radians(30.0f), m_texture_manager->Obtains("free_image"));
+		quad_mesh_ptr_2 = MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f},  glm::radians(60.0f), m_texture_manager->Obtains("mario_and_sonic"));
 	}
 
 	void ExampleLayer::Update(Z_Engine::Core::TimeStep dt) {
@@ -105,9 +97,13 @@ namespace Sandbox::Layers {
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-		m_renderer->DrawRect(*quad_mesh_ptr, {angle, 30.0f, 10.f});
-		m_renderer->DrawRect(*quad_mesh_ptr_1, {1.0f, angle, 120.0f});
-		m_renderer->DrawRect(*quad_mesh_ptr_2, {12.0f, 220.0f, angle});
+		m_renderer->Draw(*quad_mesh_ptr_2);
+		m_renderer->Draw(*quad_mesh_ptr_3);
+		m_renderer->Draw(*quad_mesh_ptr_1);
+
+
+		//m_renderer->DrawRect(*quad_mesh_ptr, {angle, 30.0f, 10.f});
+		//m_renderer->DrawRect(*quad_mesh_ptr_1, {1.0f, angle, 120.0f});
 		//m_renderer->DrawRect(quad_mesh, { 0.0f , 0.0f}, { 0.3f, 0.3f }, {122.0f, 122.0f, 1.0f});
 		//m_renderer->DrawRect(quad_mesh1, { 0.5f , 0.5f}, { 0.5f, 0.5f }, {30.0f, 12.0f, 1.0f});
 		//m_renderer->DrawRect(quad_mesh2, { 0.8f , 0.8f}, { 0.5f, 0.5f }, {20.0f, 20.0f, 20.0f});

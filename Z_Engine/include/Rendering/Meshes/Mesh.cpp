@@ -11,23 +11,30 @@ namespace Z_Engine::Rendering::Meshes {
 		m_geometry(nullptr), m_material(nullptr) 
 	{}
 
+	Mesh::Mesh(Geometries::IGeometry* const geometry, Materials::ShaderMaterial* const material)
+		:
+		m_unique_identifier(0),
+		m_geometry(geometry), 
+		m_material(material)
+	{
+		if (m_material != nullptr) OnSetMaterialEvent();
+	}
+
 	Mesh::Mesh(Ref<Geometries::IGeometry>&& geometry, Ref<Materials::ShaderMaterial>&& material)
 		:
 		m_unique_identifier(0),
 		m_geometry(std::move(geometry)), 
 		m_material(std::move(material))
 	{
-		if (m_material != nullptr)
-			OnSetMaterialEvent();
+		if (m_material != nullptr) OnSetMaterialEvent();
 	}
 
 	Mesh::Mesh(Ref<Geometries::IGeometry>& geometry, Ref<Materials::ShaderMaterial>& material) 
 		:
 		m_unique_identifier(0),
-		m_geometry(geometry), m_material(material)
+		m_geometry(std::move(geometry)), m_material(std::move(material))
 	{
-		if (m_material != nullptr)
-			OnSetMaterialEvent();
+		if (m_material != nullptr) OnSetMaterialEvent();
 	}
 
 
@@ -49,9 +56,28 @@ namespace Z_Engine::Rendering::Meshes {
 			OnSetIdentifierEvent();
 		}
 	}
+
+	void Mesh::SetMaterial(Materials::ShaderMaterial* const material) {
+		m_material.reset(material);
+		OnSetMaterialEvent();
+	}
+
+	void Mesh::SetMaterial(Ref<Materials::ShaderMaterial>& material) {
+		m_material = std::move(material);
+		OnSetMaterialEvent();
+	}
+
 	void Mesh::SetMaterial(const Ref<Materials::ShaderMaterial>& material) {
 		m_material = material;
 		OnSetMaterialEvent();
+	}
+	
+	void Mesh::SetGeometry(Geometries::IGeometry* const geometry) {
+		m_geometry.reset(geometry);
+	}
+
+	void Mesh::SetGeometry(Ref<Geometries::IGeometry>& geometry) {
+		m_geometry = std::move(geometry);
 	}
 
 	void Mesh::SetGeometry(const Ref<Geometries::IGeometry>& geometry) {

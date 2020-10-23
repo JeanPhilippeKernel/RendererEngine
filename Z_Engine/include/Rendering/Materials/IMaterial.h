@@ -49,6 +49,14 @@ namespace Z_Engine::Rendering::Materials {
 			m_texture = texture; 
 		}
 
+		virtual void SetTexture(Textures::Texture* const texture) { 
+			m_texture.reset(texture); 
+		}
+
+		virtual void SetShader(Shaders::Shader* const shader) { 
+			m_shader.reset(shader); 
+		}
+
 		virtual void SetShader(const Ref<Shaders::Shader>& shader) { 
 			m_shader = shader; 
 		}
@@ -66,9 +74,9 @@ namespace Z_Engine::Rendering::Materials {
 		}
 
 	protected:
-		std::string					m_material_name{};
+		std::string				m_material_name{};
 
-		Ref<Textures::Texture>		m_texture	{nullptr};
-		Ref<Shaders::Shader>		m_shader	{nullptr};
+		Ref<Textures::Texture>	m_texture	{nullptr};
+		Ref<Shaders::Shader>	m_shader	{nullptr};
 	};
 }
