@@ -8,10 +8,15 @@ namespace Z_Engine::Rendering::Materials {
 	public:
 		StandardMaterial();
 		virtual ~StandardMaterial() =  default;
-
+	
 		virtual void SetAttributes() override;
 
-	protected: 
-		static bool m_already_initialized;
+		void SetTileFactor(float value);
+		void SetTintColor(const glm::vec4& value);
+
+	private: 
+		float		m_tile_factor;
+		glm::vec4	m_tint_color;
+
 	};
 } 

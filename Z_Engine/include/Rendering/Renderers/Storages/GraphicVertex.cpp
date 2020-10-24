@@ -18,7 +18,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_index				= index;
 		m_position			= position; 
 		m_color				= color; 
-		
+
 		m_texture_slot_id	= texture_slot_id;
 		m_texture_coord		= texture_coord;
 

@@ -66,7 +66,7 @@ namespace Z_Engine::Rendering::Materials {
 		}
 
 		virtual const Ref<Textures::Texture>& GetTexture() const { 
-			return m_texture; 
+			return m_texture;
 		}	
 
 		virtual const Ref<Shaders::Shader>& GetShader() const {

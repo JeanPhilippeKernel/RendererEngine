@@ -14,6 +14,8 @@
 #include "../../Meshes/Mesh.h"
 #include "../../../Managers/TextureManager.h"
 
+#include "../../Materials/StandardMaterial.h"
+
 namespace Z_Engine::Rendering::Renderers::Storages {
 	
 	template <typename T, typename K>
@@ -22,9 +24,6 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		GraphicRendererStorage();
 		~GraphicRendererStorage() = default;
 
-		//void SetShader(const Ref<Shaders::Shader>& shader) { 
-		//	m_shader = shader; 
-		//}
 		
 		void SetViewProjectionMatrix(const glm::mat4& matrix)  {
 			m_view_projection = matrix;
@@ -37,11 +36,18 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 		void AddMesh(Rendering::Meshes::Mesh& mesh) {
 			const auto& material	= mesh.GetMaterial();																					                                                                                                        
+			
+			//ADD DEFAULT MATERIAL IT ISNT DEFINED
+			 if(material == nullptr) {
+				Materials::StandardMaterial *default_material  = new Materials::StandardMaterial{};
+				default_material->SetTexture(m_texture_slot_unit[0]);
+				
+				mesh.SetMaterial(default_material);
+			 }
 
 			//CHECKING CURRENT MATERIAL AND END BATCH IF DIFFERENT MATERIAL DETECTED
 			 if(m_current_used_material == nullptr) {
 				m_current_used_material = dynamic_cast<Materials::IMaterial*>(material.get());
-				//m_shader = material->GetShader();
 			 }
 
 			 else if(m_current_used_material->GetName() != material->GetName()) {
@@ -49,7 +55,6 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 				StartBacth();
 
 				m_current_used_material = dynamic_cast<Materials::IMaterial*>(material.get());
-				//m_shader = material->GetShader();
 			 }
 
 
@@ -87,7 +92,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 				}
 			);
 
-			//m_quad_collection[m_quad_index] = mesh;
+			m_quad_collection[m_quad_index] = &mesh;
 			m_quad_index++;
 
 			AddVertices(vertices);
@@ -108,6 +113,11 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 				m_texture_slot_unit[x]->Bind(x);
 			}
 
+			for (int x = 0; x < m_quad_index; ++x) {
+				auto& material  = m_quad_collection[x]->GetMaterial();
+				material->SetAttributes();
+			}			
+
 			this->Flush();
 		}
 
@@ -115,11 +125,6 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		Ref<Buffers::VertexArray<T, K>>& GetVertexArray() { 
 			return m_vertex_array; 
 		}
-
-		//Ref<Shaders::Shader>& GetShader() { 
-		//	return m_shader; 
-		//}
-
 
 	private:
 		unsigned int							M_MAX_QUAD;
@@ -134,12 +139,12 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		
 		std::vector<K>							m_internal_index;
 
-		std::array<Textures::Texture*, 32>		m_texture_slot_unit;
+		std::array<Textures::Texture*, 10>		m_texture_slot_unit;
 		int										m_texture_slot_unit_cursor;
 
+		std::vector<Meshes::Mesh*>				m_quad_collection;
 		unsigned int							m_quad_index;
 
-		//Ref<Shaders::Shader>					m_shader;
 		Materials::IMaterial*					m_current_used_material;
 
 		Ref<Buffers::VertexBuffer<T>>			m_vertex_buffer;
@@ -162,7 +167,6 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 				StartBacth();
 			}
 			
-			//std::array<float, 11>	raw_buffer{};
 			size_t					buffer_size{0};
 
 			const auto& v_0	= vertices[0].GetData();
@@ -204,7 +208,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 	inline GraphicRendererStorage<T, K>::GraphicRendererStorage()
 		:		
 
-		M_MAX_QUAD(4),	// this value, when higher drop the framerate... need to investigate 
+		M_MAX_QUAD(10),	// this value, when higher drop the framerate... need to investigate 
 		M_MAX_VERTICES_PER_QUAD(4),
 		M_MAX_INDEX_PER_QUAD(6),
 		M_MAX_INDICES(M_MAX_INDEX_PER_QUAD * M_MAX_QUAD),
@@ -214,8 +218,8 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_internal_index(M_MAX_INDICES, 0),
 		m_texture_slot_unit(),
 		m_texture_slot_unit_cursor(0),
+		m_quad_collection(M_MAX_QUAD),
 		m_quad_index(0),
-		//m_shader(nullptr),
 		m_current_used_material(nullptr),
 		m_vertex_buffer(new Buffers::VertexBuffer<T>(M_MAX_VERTICES_PER_QUAD * M_MAX_QUAD)),
 		m_index_buffer(new Buffers::IndexBuffer<K>()), 

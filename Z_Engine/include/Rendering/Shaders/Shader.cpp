@@ -140,6 +140,7 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 
 	Shader::~Shader() {
+		Unbind();
 		glDeleteProgram(m_program);
 	}
 

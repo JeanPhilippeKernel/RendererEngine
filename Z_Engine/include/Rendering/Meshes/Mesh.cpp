@@ -17,7 +17,6 @@ namespace Z_Engine::Rendering::Meshes {
 		m_geometry(geometry), 
 		m_material(material)
 	{
-		if (m_material != nullptr) OnSetMaterialEvent();
 	}
 
 	Mesh::Mesh(Ref<Geometries::IGeometry>&& geometry, Ref<Materials::ShaderMaterial>&& material)
@@ -26,7 +25,6 @@ namespace Z_Engine::Rendering::Meshes {
 		m_geometry(std::move(geometry)), 
 		m_material(std::move(material))
 	{
-		if (m_material != nullptr) OnSetMaterialEvent();
 	}
 
 	Mesh::Mesh(Ref<Geometries::IGeometry>& geometry, Ref<Materials::ShaderMaterial>& material) 
@@ -34,7 +32,6 @@ namespace Z_Engine::Rendering::Meshes {
 		m_unique_identifier(0),
 		m_geometry(std::move(geometry)), m_material(std::move(material))
 	{
-		if (m_material != nullptr) OnSetMaterialEvent();
 	}
 
 
@@ -59,17 +56,17 @@ namespace Z_Engine::Rendering::Meshes {
 
 	void Mesh::SetMaterial(Materials::ShaderMaterial* const material) {
 		m_material.reset(material);
-		OnSetMaterialEvent();
+		m_material->SetMeshOwner(this);
 	}
 
 	void Mesh::SetMaterial(Ref<Materials::ShaderMaterial>& material) {
 		m_material = std::move(material);
-		OnSetMaterialEvent();
+		m_material->SetMeshOwner(this);
 	}
 
 	void Mesh::SetMaterial(const Ref<Materials::ShaderMaterial>& material) {
 		m_material = material;
-		OnSetMaterialEvent();
+		m_material->SetMeshOwner(this);
 	}
 	
 	void Mesh::SetGeometry(Geometries::IGeometry* const geometry) {
@@ -92,7 +89,7 @@ namespace Z_Engine::Rendering::Meshes {
 		 auto& vertices = m_geometry->GetVertices();
 		 std::for_each(
 			 std::begin(vertices), std::end(vertices), 
-			 [this](GraphicVertex& vertex) { vertex.SetIndex(m_unique_identifier); }
+			 [this](GraphicVertex& vertex) { vertex.SetIndex(static_cast<float>(m_unique_identifier)); }
 		 );
 	}
 

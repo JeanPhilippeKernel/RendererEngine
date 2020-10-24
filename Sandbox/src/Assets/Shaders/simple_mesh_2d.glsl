@@ -1,6 +1,7 @@
 #type vertex
-#version 440 core
+#version 450 core
 
+precision mediump float;
 
 layout (location = 0) in float 	a_index;
 layout (location = 1) in vec3 	a_position;
@@ -28,33 +29,29 @@ void main()
 }
 
 #type fragment
-#version  440 core
+#version  450 core
 
-#define MAX_SIZE 32
+precision mediump float;
+#define MAX_SIZE 10
 
 in float	mesh_index;
 in float 	texture_slot_id;
 in vec2 	texture_coord;
 
 
-uniform sampler2D	uniform_texture_slot[32];
+uniform sampler2D	uniform_texture_slot[MAX_SIZE];
 
-uniform float		texture_tiling_factor;
-uniform float		texture_tint_color;
+uniform float		texture_tiling_factor[MAX_SIZE];
+uniform vec4		texture_tint_color[MAX_SIZE];
 
 // output variables
 out vec4 output_color;
 
 void main()
 {
-	output_color = 
-		texture(uniform_texture_slot[int(texture_slot_id)],  texture_coord * 1.0f) * 
-		vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	output_color = texture2D(uniform_texture_slot[int(texture_slot_id)],  texture_coord * texture_tiling_factor[int(mesh_index)]) * texture_tint_color[int(mesh_index)];
 }
 
-//	output_color = 
-//		texture(uniform_texture_slot[int(texture_slot_id)],  texture_coord * texture_tiling_factor[int(mesh_index)]) * 
-//		texture_tint_color[int(mesh_index)];
 
 
  

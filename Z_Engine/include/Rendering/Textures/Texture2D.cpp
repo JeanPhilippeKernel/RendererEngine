@@ -69,7 +69,7 @@ namespace  Z_Engine::Rendering::Textures {
 		glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		const char * data = "\x00\x00\xff\xff";	   //R:255 G: 255 B: 255 A: 255
+		const char * data = "\xff\xff\xff\xff";	   //R:255 G: 255 B: 255 A: 255
 		SetData(data);
 	}
 
