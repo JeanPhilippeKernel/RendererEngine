@@ -43,7 +43,7 @@ namespace Sandbox::Layers {
 
 
 		quad_mesh_ptr_3.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f},  glm::radians(30.0f), m_texture_manager->Obtains("free_image")));
-		quad_mesh_ptr_2.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f},  glm::radians(60.0f), m_texture_manager->Obtains("mario_and_sonic")));
+		quad_mesh_ptr_2.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f}, {25.f, 10.f, 60.f},  glm::radians(60.0f)));
 
 		
 		auto material  = new StandardMaterial();
