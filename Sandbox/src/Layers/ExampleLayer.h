@@ -9,6 +9,7 @@ namespace Sandbox::Layers {
 		{
 		}
 
+
 		virtual ~ExampleLayer() =  default;
 
 		virtual void Initialize()							override;
@@ -21,14 +22,14 @@ namespace Sandbox::Layers {
 
 
 	private:
-		Z_Engine::Ref<Z_Engine::Managers::TextureManager> m_texture_manager;
-
+		Z_Engine::Ref<Z_Engine::Managers::TextureManager>						m_texture_manager;
 		Z_Engine::Ref<Z_Engine::Rendering::Renderers::GraphicRenderer2D>		m_renderer;
-		Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController>	m_camera_controller;
+		Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController>		m_camera_controller;
 
-		glm::vec2 m_rect_1_pos;
-		glm::vec2 m_rect_2_pos;
-		glm::vec2 m_rect_3_pos;
+		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh> quad_mesh_ptr;
+		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh> quad_mesh_ptr_1;
+		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh> quad_mesh_ptr_2;
+		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh> quad_mesh_ptr_3;
 	};
 
 }

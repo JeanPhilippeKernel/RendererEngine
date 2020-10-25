@@ -40,7 +40,11 @@ namespace Z_Engine::Managers {
 		std::optional<std::reference_wrapper<K>> Add(const T& key, const K& val) {
 			const auto& kv =  Exists(key);
 
-			if(kv.first) return std::nullopt;
+			if(kv.first) {
+				auto it  =  kv.second;
+				return it->second;
+				//return val;
+			}
 
 			auto pair  = m_collection.emplace(std::make_pair(key, val));
 			return pair.first->second;

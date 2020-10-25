@@ -23,7 +23,7 @@ namespace  Z_Engine::Rendering::Textures {
 		:Texture(path)
 	{
 		int width = 0, height = 0, channel = 0;
-		stbi_set_flip_vertically_on_load(true);
+		stbi_set_flip_vertically_on_load(1);
 		stbi_uc* image_data =  stbi_load(path, &width, &height, &channel, 0);
 
 		if(image_data != nullptr) {
@@ -69,7 +69,7 @@ namespace  Z_Engine::Rendering::Textures {
 		glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		const char * data = "\x00\x00\xff\xff";	   //R:255 G: 255 B: 255 A: 255
+		const char * data = "\xff\xff\xff\xff";	   //R:255 G: 255 B: 255 A: 255
 		SetData(data);
 	}
 

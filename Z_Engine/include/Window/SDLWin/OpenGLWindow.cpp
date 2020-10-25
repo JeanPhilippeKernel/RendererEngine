@@ -118,6 +118,7 @@ namespace Z_Engine::Window::SDLWin {
 							break;
 						}
 					}
+					break;
 				}
 
 				case SDL_TEXTINPUT: {

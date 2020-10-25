@@ -3,17 +3,14 @@
 
 #include "RenderCommand.h"
 #include "Storages/GraphicRendererStorage.h"
-#include "../Scenes/GraphicScene.h"		
 
+#include "../Scenes/GraphicScene.h"		
 #include "../Buffers/VertexArray.h"
 #include "../Cameras/Camera.h"
-
-#include "../../Z_EngineDef.h"
-#include "../../Core/IInitializable.h"
 #include "../Textures/Texture.h"
 
-#include "../../Managers/ShaderManager.h"
-#include "../../Managers/TextureManager.h"
+#include "../../Core/IInitializable.h"
+#include "../../Z_EngineDef.h"
 
 
 namespace Z_Engine::Rendering::Renderers {
@@ -23,7 +20,6 @@ namespace Z_Engine::Rendering::Renderers {
 		GraphicRenderer();
 		~GraphicRenderer()	= default;
 
-
 		void Initialize() override {
 			//enable management of transparent background image (RGBA-8)
 			glEnable(GL_BLEND);
@@ -31,7 +27,7 @@ namespace Z_Engine::Rendering::Renderers {
 		}
 
 	protected:
-		virtual void BeginScene(const Ref<Cameras::Camera>& camera) {
+		virtual void StartScene(const Ref<Cameras::Camera>& camera) {
 			  m_scene->SetCamera(camera);
 			  m_graphic_storage->SetViewProjectionMatrix(m_scene->GetCamera()->GetViewProjectionMatrix());
 		}
@@ -144,10 +140,6 @@ namespace Z_Engine::Rendering::Renderers {
 																 
 	protected:
 		Ref<Scenes::GraphicScene>												m_scene;
-		Ref<Managers::TextureManager>											m_texture_manager;
-		Ref<Managers::ShaderManager>											m_shader_manager;
-
 		Ref<Storages::GraphicRendererStorage<float, unsigned int>>				m_graphic_storage;
-
 	};
 }

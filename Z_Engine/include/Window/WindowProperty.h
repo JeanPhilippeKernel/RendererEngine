@@ -11,7 +11,7 @@ namespace Z_Engine::Window {
 		std::string Title{};
 		bool VSync{ true };
 		float AspectRatio{ 0.0f };
-		float IsMinimized{false};
+		bool IsMinimized{false};
 
 		std::function<void(Event::CoreEvent&)> CallbackFn;
 
