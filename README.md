@@ -32,10 +32,10 @@ public:
 
 	virtual ~MainLayer() =  default;
 
-	virtual void Initialize()							override;
+	virtual void Initialize()				override;
 	virtual void Update(Z_Engine::Core::TimeStep dt)	override;
-	virtual void Render()								override;
-	virtual bool OnEvent(Z_Engine::Event::CoreEvent& e) override;
+	virtual void Render()					override;
+	virtual bool OnEvent(Z_Engine::Event::CoreEvent& e) 	override;
 
 private:
 	Z_Engine::Ref<Z_Engine::Rendering::Renderers::GraphicRenderer2D> 	m_renderer;
@@ -61,7 +61,7 @@ void MainLayer::Initialize() {
 
 	m_camera_controller.reset(new OrthographicCameraController(GetAttachedWindow(), true));
 	
-    m_renderer.reset(new GraphicRenderer2D());
+    	m_renderer.reset(new GraphicRenderer2D());
 		
 	m_camera_controller->Initialize();
 	m_renderer->Initialize();
@@ -71,9 +71,7 @@ void MainLayer::Initialize() {
 
 void MainLayer::Update(Z_Engine::Core::TimeStep dt) {
 	m_camera_controller->Update(dt);
-
-    // Your logic here
-    
+	// Your logic here
 }
 
 bool MainLayer::OnEvent(Z_Engine::Event::CoreEvent& e) {
@@ -87,8 +85,10 @@ void MainLayer::Render() {
 	RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 	//clear the screen
 	RendererCommand::Clear();
-	
+
 	//Prepare the renderer to batch all geometry we can to render
+	m_renderer->StartScene(m_camera_controller->GetCamera());
+	
 	m_renderer->Draw(quad_mesh_ptr);
 	
 	//Send object to GPU to effectively rendere them on the screen
@@ -102,13 +102,12 @@ Let's create an instance of engine and add our main layer : ***my_engine.cpp***
 #include "MainLayer.h"
 
 class my_engine : public Z_Engine::Engine {
-	public:																																			  
-		my_engine() {
-			PushLayer(new MainLayer());
-		}
-		
-		~my_engine() = default;
-	};
+public:	
+	my_engine() {
+		PushLayer(new MainLayer());
+	}
+	~my_engine() = default;
+};
 
 Z_Engine::Engine* CreateEngine() { return new my_engine::my_engine(); } 
 ```
