@@ -32,15 +32,16 @@ public:
 
 	virtual ~MainLayer() =  default;
 
-	virtual void Initialize()							override;
+	virtual void Initialize()				override;
 	virtual void Update(Z_Engine::Core::TimeStep dt)	override;
-	virtual void Render()								override;
-	virtual bool OnEvent(Z_Engine::Event::CoreEvent& e) override;
+	virtual void Render()					override;
+	virtual bool OnEvent(Z_Engine::Event::CoreEvent& e) 	override;
 
 private:
-	Z_Engine::Ref<Z_Engine::Rendering::Renderers::GraphicRenderer2D> m_renderer;
-    Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController>	m_camera_controller;
-	glm::vec2 m_rect_1_pos;
+	Z_Engine::Ref<Z_Engine::Rendering::Renderers::GraphicRenderer2D> 	m_renderer;
+	Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController> 	m_camera_controller;
+	Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh> 			m_quad_mesh_ptr;
+
 };
 ```
 then here is our content of ***MainLayer.cpp***
@@ -60,33 +61,17 @@ void MainLayer::Initialize() {
 
 	m_camera_controller.reset(new OrthographicCameraController(GetAttachedWindow(), true));
 	
-    m_renderer.reset(new GraphicRenderer2D());
+    	m_renderer.reset(new GraphicRenderer2D());
 		
 	m_camera_controller->Initialize();
 	m_renderer->Initialize();
 		
-	m_rect_1_pos = {-0.7, 0.7};
+	quad_mesh_ptr.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f}, {25.f, 10.f, 60.f},  glm::radians(60.0f)));
 }
 
 void MainLayer::Update(Z_Engine::Core::TimeStep dt) {
 	m_camera_controller->Update(dt);
-
-    // Your logic here
-	if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
-			m_rect_1_pos.x -= 0.1f * dt;
-	}
-
-	if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_F)) {
-		m_rect_1_pos.x += 0.1f * dt;
-	}
-
-	if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_B)) {
-		m_rect_1_pos.y += 0.1f * dt;
-	}
-
-	if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Y)) {
-		m_rect_1_pos.y -= 0.1f * dt;
-	}
+	// Your logic here
 }
 
 bool MainLayer::OnEvent(Z_Engine::Event::CoreEvent& e) {
@@ -95,33 +80,18 @@ bool MainLayer::OnEvent(Z_Engine::Event::CoreEvent& e) {
 }
 
 void MainLayer::Render() {
-
-    // your drawing logic here
-	
-    //Set the color you want to use to clear the screen window
-    RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
-    //clear the screen
+	// your drawing logic here
+	//Set the color you want to use to clear the screen window
+	RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
+	//clear the screen
 	RendererCommand::Clear();
 
-	static float angle = 0.0f;
-	++angle;
-
-    //Prepare the renderer to batch all geometry we can to render
-	m_renderer->BeginScene(m_camera_controller->GetCamera());
-
-	for (float x = 0.0f; x < 2.f; x += 0.17f) {
-		for (float y = 0.0f; y < 2.f; y += 0.12f) {
-			m_renderer->DrawRect({ x , y }, { 0.1f, 0.1f }, { angle * x , angle * y , (angle * x * y) }, glm::radians(angle) * 10);
-		}
-	}
-
-	for (float x = 2.0f; x < 4.f; x += 0.17f) {
-		for (float y = 0.0f; y < 4.f; y += 0.12f) {
-			m_renderer->DrawTriangle({ x , y }, { 0.1f, 0.1f }, { angle * x , angle , (20 * x * y) }, -glm::radians(angle) * 10);
-		}
-	}
+	//Prepare the renderer to batch all geometry we can to render
+	m_renderer->StartScene(m_camera_controller->GetCamera());
 	
-    // Send object to GPU to effectively rendere them on the screen
+	m_renderer->Draw(quad_mesh_ptr);
+	
+	//Send object to GPU to effectively rendere them on the screen
 	m_renderer->EndScene();
 }
 ```
@@ -132,13 +102,12 @@ Let's create an instance of engine and add our main layer : ***my_engine.cpp***
 #include "MainLayer.h"
 
 class my_engine : public Z_Engine::Engine {
-	public:																																			  
-		my_engine() {
-			PushLayer(new MainLayer());
-		}
-		
-		~my_engine() = default;
-	};
+public:	
+	my_engine() {
+		PushLayer(new MainLayer());
+	}
+	~my_engine() = default;
+};
 
 Z_Engine::Engine* CreateEngine() { return new my_engine::my_engine(); } 
 ```
@@ -164,23 +133,6 @@ The project uses the following dependancies :
  - [ImGUI](https://github.com/ocornut/imgui) for GUI components and interaction.
 
 
-
-
 ### Building
 
-This project has been configured to use the Vcpkg package manager, which provides a flexibility to update them.
-All packages can be installed from [Vcpkg](https://docs.microsoft.com/en-us/cpp/build/vcpkg?view=vs-2019).
-This link show how to build and setup [Vcpkg](https://docs.microsoft.com/en-us/cpp/build/vcpkg?view=vs-2019#installation) on Windows.
-
-After installing Vcpkg Package Manager, run these following commands :
-
-`vcpkg install sdl2:x64-windows-static`
-
-`vcpkg install glew:x64-windows-static`
-
-`vcpkg install stb:x64-windows-static`
-
-`vcpkg install glm:x64-windows-static`
-
-then clone the repository with `git clone --recursive https://github.com/JeanPhilippeKernel/RendererEngine`.
-If the repository was cloned non-recursively previously, use `git submodule update --init` to clone the necessary submodules.
+You have just to clone the repository and build it
