@@ -22,7 +22,9 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 	class GraphicRendererStorage {
 	public:
 		GraphicRendererStorage();
-		~GraphicRendererStorage() = default;
+		~GraphicRendererStorage() {
+			delete m_texture_slot_unit[0];
+		}
 
 		
 		void SetViewProjectionMatrix(const glm::mat4& matrix)  {
@@ -39,29 +41,29 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 			
 			//ADD DEFAULT MATERIAL IT ISNT DEFINED
 			 if(material == nullptr) {
-				Materials::StandardMaterial *default_material  = new Materials::StandardMaterial{};
+				Materials::StandardMaterial* default_material  = new Materials::StandardMaterial{};
 				default_material->SetTexture(m_texture_slot_unit[0]);
 				
 				mesh.SetMaterial(default_material);
 			 }
 
 			//CHECKING CURRENT MATERIAL AND END BATCH IF DIFFERENT MATERIAL DETECTED
-			 if(m_current_used_material == nullptr) {
-				m_current_used_material = dynamic_cast<Materials::IMaterial*>(material.get());
+			 if(m_current_used_material.lock() == nullptr) {
+				m_current_used_material = mesh.GetMaterial();
 			 }
 
-			 else if(m_current_used_material->GetName() != material->GetName()) {
+			 else if(m_current_used_material.lock()->GetName() != mesh.GetMaterial()->GetName()) {
 				EndBatch();
 				StartBacth();
 
-				m_current_used_material = dynamic_cast<Materials::IMaterial*>(material.get());
+				m_current_used_material = material;
 			 }
 
 
 
 			mesh.SetIdentifier(m_quad_index);
 				
-			const auto& texture		= material->GetTexture();
+			const auto& texture		= mesh.GetMaterial()->GetTexture();
 
 			bool already_in_slot	= false;
 			int found_at_slot		= 0;
@@ -145,7 +147,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		std::vector<Meshes::Mesh*>				m_quad_collection;
 		unsigned int							m_quad_index;
 
-		Materials::IMaterial*					m_current_used_material;
+		WeakRef<Materials::IMaterial>			m_current_used_material;
 
 		Ref<Buffers::VertexBuffer<T>>			m_vertex_buffer;
 		Ref<Buffers::VertexArray<T, K>>			m_vertex_array;
@@ -220,7 +222,6 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_texture_slot_unit_cursor(0),
 		m_quad_collection(M_MAX_QUAD),
 		m_quad_index(0),
-		m_current_used_material(nullptr),
 		m_vertex_buffer(new Buffers::VertexBuffer<T>(M_MAX_VERTICES_PER_QUAD * M_MAX_QUAD)),
 		m_index_buffer(new Buffers::IndexBuffer<K>()), 
 		m_vertex_array(new Buffers::VertexArray<T, K>())
@@ -251,7 +252,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 	template<typename T, typename K>
 	inline void  GraphicRendererStorage<T, K>::Flush() {
-		const auto&  shader = m_current_used_material->GetShader();
+		const auto&  shader = m_current_used_material.lock()->GetShader();
 		shader->SetUniform("uniform_viewprojection", m_view_projection);
 		RendererCommand::DrawIndexed(shader, m_vertex_array);
 	}

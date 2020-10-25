@@ -6,7 +6,7 @@ namespace Z_Engine::Rendering::Materials {
 	
 	class StandardMaterial : public ShaderMaterial {
 	public:
-		StandardMaterial();
+		explicit StandardMaterial();
 		virtual ~StandardMaterial() =  default;
 	
 		virtual void SetAttributes() override;
@@ -17,6 +17,5 @@ namespace Z_Engine::Rendering::Materials {
 	private: 
 		float		m_tile_factor;
 		glm::vec4	m_tint_color;
-
 	};
 } 

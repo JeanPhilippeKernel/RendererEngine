@@ -1,7 +1,7 @@
 #include "ExampleLayer.h"
 #include "dependencies/glm/gtc/type_ptr.hpp"	
-using namespace Z_Engine::Rendering::Materials;
 
+using namespace Z_Engine::Rendering::Materials;
 
 using namespace Z_Engine;
 using namespace Z_Engine::Rendering::Geometries;
@@ -41,8 +41,8 @@ namespace Sandbox::Layers {
 		m_renderer->Initialize();
 
 
-		quad_mesh_ptr_3 = MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f},  glm::radians(30.0f), m_texture_manager->Obtains("free_image"));
-		quad_mesh_ptr_2 = MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f},  glm::radians(60.0f), m_texture_manager->Obtains("mario_and_sonic"));
+		quad_mesh_ptr_3.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f},  glm::radians(30.0f), m_texture_manager->Obtains("free_image")));
+		quad_mesh_ptr_2.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f},  glm::radians(60.0f), m_texture_manager->Obtains("mario_and_sonic")));
 
 		
 		auto material  = new Z_Engine::Rendering::Materials::StandardMaterial();
@@ -50,7 +50,7 @@ namespace Sandbox::Layers {
 		material->SetTileFactor(5.f);
 		material->SetTintColor({0.5f, 1.0f, 0.0f, 1.0f});
 
-		quad_mesh_ptr_1 = MeshBuilder::CreateQuad({1.0f, 1.0f}, {0.5f, 0.5f},  glm::radians(45.0f), material);
+		quad_mesh_ptr_1.reset(MeshBuilder::CreateQuad({1.0f, 1.0f}, {0.5f, 0.5f},  glm::radians(45.0f), material));
 		
 	}
 
@@ -104,9 +104,9 @@ namespace Sandbox::Layers {
 
 
 		m_renderer->BeginScene(m_camera_controller->GetCamera());
-		m_renderer->Draw(*quad_mesh_ptr_1);
-		m_renderer->Draw(*quad_mesh_ptr_2);
-		m_renderer->Draw(*quad_mesh_ptr_3);
+		m_renderer->Draw(quad_mesh_ptr_1);
+		m_renderer->Draw(quad_mesh_ptr_2);
+		m_renderer->Draw(quad_mesh_ptr_3);
 
 
 		//m_renderer->DrawRect(*quad_mesh_ptr, {angle, 30.0f, 10.f});

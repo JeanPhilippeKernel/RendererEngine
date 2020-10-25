@@ -211,7 +211,6 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Rendering\Geometries\SquareGeometry.h" />
     <ClInclude Include="include\Rendering\Graphics\GraphicContext.h" />
     <ClInclude Include="include\Rendering\Graphics\SDLGraphic\OpenGLContext.h" />
-    <ClInclude Include="include\Rendering\Materials\SimpleMaterial2D.h" />
     <ClInclude Include="include\Rendering\Materials\IMaterial.h" />
     <ClInclude Include="include\Rendering\Materials\ShaderMaterial.h" />
     <ClInclude Include="include\Rendering\Materials\StandardMaterial.h" />
@@ -256,7 +255,6 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Rendering\Geometries\QuadGeometry.cpp" />
     <ClCompile Include="include\Rendering\Geometries\SquareGeometry.cpp" />
     <ClCompile Include="include\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
-    <ClCompile Include="include\Rendering\Materials\SimpleMaterial2D.cpp" />
     <ClCompile Include="include\Rendering\Materials\StandardMaterial.cpp" />
     <ClCompile Include="include\Rendering\Meshes\Mesh.cpp" />
     <ClCompile Include="include\Rendering\Meshes\MeshBuilder.cpp" />

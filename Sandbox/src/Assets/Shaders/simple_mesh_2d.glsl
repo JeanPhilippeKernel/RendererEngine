@@ -1,5 +1,5 @@
 #type vertex
-#version 450 core
+#version 330 core
 
 precision mediump float;
 
@@ -29,7 +29,7 @@ void main()
 }
 
 #type fragment
-#version  450 core
+#version  330 core
 
 precision mediump float;
 #define MAX_SIZE 10
@@ -41,7 +41,7 @@ in vec2 	texture_coord;
 
 uniform sampler2D	uniform_texture_slot[MAX_SIZE];
 
-uniform float		texture_tiling_factor[MAX_SIZE];
+uniform  float		texture_tiling_factor[MAX_SIZE];
 uniform vec4		texture_tint_color[MAX_SIZE];
 
 // output variables
@@ -49,6 +49,7 @@ out vec4 output_color;
 
 void main()
 {
+	//output_color = texture2D(uniform_texture_slot[int(texture_slot_id)],  texture_coord * texture_tiling_factor[int(mesh_index)]);
 	output_color = texture2D(uniform_texture_slot[int(texture_slot_id)],  texture_coord * texture_tiling_factor[int(mesh_index)]) * texture_tint_color[int(mesh_index)];
 }
 

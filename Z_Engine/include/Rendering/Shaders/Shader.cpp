@@ -310,9 +310,8 @@ namespace Z_Engine::Rendering::Shaders {
 		if(it != std::end(m_uniform_location_map))
 			return it->second;
 
-		
 		GLint location = glGetUniformLocation(m_program, name);
-		assert(location != -1, "shader uniform not found");
+		assert(location != -1);
 		m_uniform_location_map[name] = location;
 		return location;
 	}

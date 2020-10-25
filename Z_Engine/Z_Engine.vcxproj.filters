@@ -66,7 +66,6 @@
     <ClInclude Include="include\Rendering\Graphics\SDLGraphic\OpenGLContext.h" />
     <ClInclude Include="include\Rendering\Graphics\GraphicContext.h" />
     <ClInclude Include="include\Rendering\Materials\IMaterial.h" />
-    <ClInclude Include="include\Rendering\Materials\SimpleMaterial2D.h" />
     <ClInclude Include="include\Rendering\Meshes\Mesh.h" />
     <ClInclude Include="include\Rendering\Renderers\Storages\GraphicRendererStorage.h" />
     <ClInclude Include="include\Rendering\Renderers\Storages\GraphicVertex.h" />
@@ -109,7 +108,6 @@
     <ClCompile Include="include\Rendering\Geometries\QuadGeometry.cpp" />
     <ClCompile Include="include\Rendering\Geometries\SquareGeometry.cpp" />
     <ClCompile Include="include\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
-    <ClCompile Include="include\Rendering\Materials\SimpleMaterial2D.cpp" />
     <ClCompile Include="include\Rendering\Meshes\Mesh.cpp" />
     <ClCompile Include="include\Rendering\Renderers\Storages\GraphicRendererStorage.cpp" />
     <ClCompile Include="include\Rendering\Renderers\Storages\GraphicVertex.cpp" />

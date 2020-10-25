@@ -23,7 +23,7 @@ namespace  Z_Engine::Rendering::Textures {
 		:Texture(path)
 	{
 		int width = 0, height = 0, channel = 0;
-		stbi_set_flip_vertically_on_load(true);
+		stbi_set_flip_vertically_on_load(1);
 		stbi_uc* image_data =  stbi_load(path, &width, &height, &channel, 0);
 
 		if(image_data != nullptr) {

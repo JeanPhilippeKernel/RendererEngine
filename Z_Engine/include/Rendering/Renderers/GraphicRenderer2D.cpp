@@ -1,17 +1,15 @@
 #pragma once
+#include <memory>
 #include "GraphicRenderer2D.h"
 #include "../Buffers/BufferLayout.h"
 #include "../../Managers/ShaderManager.h"
 #include "../../Managers/TextureManager.h"
 
-#include "../Materials/SimpleMaterial2D.h"
 #include "../Materials/StandardMaterial.h"
-
 
 #include "../Geometries/SquareGeometry.h"
 #include "../Geometries/QuadGeometry.h"
 
-#include <memory>
 
 using namespace Z_Engine::Rendering::Meshes;
 
@@ -49,5 +47,19 @@ namespace Z_Engine::Rendering::Renderers {
 
 	void GraphicRenderer2D::Draw(Meshes::Mesh& mesh) {
 		m_graphic_storage->AddMesh(mesh);
+	}
+
+	void GraphicRenderer2D::Draw(Ref<Meshes::Mesh>& mesh) {
+		m_graphic_storage->AddMesh(*mesh);
+	}
+	
+	void GraphicRenderer2D::Draw(std::vector<Meshes::Mesh>& meshes) {
+		for(auto& mesh : meshes)
+			this->Draw(mesh);
+	}  
+	
+	void GraphicRenderer2D::Draw(std::vector<Ref<Meshes::Mesh>>& meshes) {
+		for(auto& mesh : meshes)
+			this->Draw(mesh);
 	}
 }

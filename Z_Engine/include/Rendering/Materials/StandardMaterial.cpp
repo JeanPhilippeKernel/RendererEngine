@@ -4,7 +4,6 @@
 
 namespace Z_Engine::Rendering::Materials {
 
-
 	StandardMaterial::StandardMaterial() 
 		:
 		ShaderMaterial(
@@ -48,9 +47,9 @@ namespace Z_Engine::Rendering::Materials {
 			auto _tile_factor	=  std::any_cast<float>(m_uniform_collection["texture_tiling_factor"]);
 			auto _tint_color	=  std::any_cast<glm::vec4>(m_uniform_collection["texture_tint_color"]);
 
-			unsigned int index =  m_owner_mesh->GetIdentifier();
-			auto uniform_array_name =  fmt::format("texture_tiling_factor[{0}]", index);
-			auto uniform_array_name_1 =  fmt::format("texture_tint_color[{0}]", index);
+			unsigned int index			= m_owner_mesh->GetIdentifier();
+			auto uniform_array_name		= fmt::format("texture_tiling_factor[{0}]", index);
+			auto uniform_array_name_1	= fmt::format("texture_tint_color[{0}]", index);
 
 			m_shader->SetUniform(uniform_array_name.c_str(), _tile_factor);
 			m_shader->SetUniform(uniform_array_name_1.c_str(), _tint_color);

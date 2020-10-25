@@ -1,12 +1,7 @@
 #include "GraphicRenderer.h"
 #include "../Cameras/OrthographicCamera.h"
 #include "../Textures/Texture2D.h"																																   
-
 #include "../Meshes/Mesh.h"
-
-
-#include <unordered_map>
-#include <string>
 
 namespace Z_Engine::Rendering::Renderers {
 
@@ -21,12 +16,9 @@ namespace Z_Engine::Rendering::Renderers {
 		void EndScene() override;
 
 		void Draw(Meshes::Mesh& mesh);  
-		void Draw(const Ref<Meshes::Mesh>& mesh) = delete;  
-		void Draw(const std::vector<Meshes::Mesh>& meshes) = delete;  
-		void Draw(const std::vector<Ref<Meshes::Mesh>>& meshes) = delete;  
-
-	private:
-
+		void Draw(Ref<Meshes::Mesh>& mesh);
+		void Draw(std::vector<Meshes::Mesh>& meshes);  
+		void Draw(std::vector<Ref<Meshes::Mesh>>& meshes);  
 
 	};
 }

@@ -36,8 +36,8 @@ namespace Z_Engine::Rendering::Materials {
 		bool m_attribute_already_set;
 		static bool m_default_uniform_initialized;
 
-		std::unordered_map<std::string, std::any> m_uniform_collection {};
 		Meshes::Mesh* m_owner_mesh;
+		std::unordered_map<std::string, std::any> m_uniform_collection {};
 		Ref<Managers::ShaderManager> m_shader_manager;
 	
 		void InitDefaultUniforms(const std::function<void()>& function);

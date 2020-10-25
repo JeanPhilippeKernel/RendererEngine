@@ -10,10 +10,10 @@ namespace Sandbox::Layers {
 		}
 
 		virtual ~ExampleLayer() {
-			delete quad_mesh_ptr;
-			delete quad_mesh_ptr_1;
-			delete quad_mesh_ptr_2;
-			delete quad_mesh_ptr_3;
+			//delete quad_mesh_ptr;
+			//delete quad_mesh_ptr_1;
+			//delete quad_mesh_ptr_2;
+			//delete quad_mesh_ptr_3;
 		}
 
 		//virtual ~ExampleLayer() =  default;
@@ -32,10 +32,10 @@ namespace Sandbox::Layers {
 		Z_Engine::Ref<Z_Engine::Rendering::Renderers::GraphicRenderer2D>		m_renderer;
 		Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController>		m_camera_controller;
 
-		Z_Engine::Rendering::Meshes::Mesh*  quad_mesh_ptr;
-		Z_Engine::Rendering::Meshes::Mesh*  quad_mesh_ptr_1;
-		Z_Engine::Rendering::Meshes::Mesh*  quad_mesh_ptr_2;
-		Z_Engine::Rendering::Meshes::Mesh*  quad_mesh_ptr_3;
+		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh> quad_mesh_ptr;
+		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh> quad_mesh_ptr_1;
+		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh> quad_mesh_ptr_2;
+		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh> quad_mesh_ptr_3;
 	};
 
 }
