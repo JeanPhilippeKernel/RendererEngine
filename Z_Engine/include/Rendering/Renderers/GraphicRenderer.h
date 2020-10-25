@@ -27,7 +27,7 @@ namespace Z_Engine::Rendering::Renderers {
 		}
 
 	protected:
-		virtual void BeginScene(const Ref<Cameras::Camera>& camera) {
+		virtual void StartScene(const Ref<Cameras::Camera>& camera) {
 			  m_scene->SetCamera(camera);
 			  m_graphic_storage->SetViewProjectionMatrix(m_scene->GetCamera()->GetViewProjectionMatrix());
 		}

@@ -35,8 +35,8 @@ namespace Z_Engine::Rendering::Renderers {
 
 
 
-	void GraphicRenderer2D::BeginScene(const Ref<Cameras::Camera>& camera) {
-		GraphicRenderer::BeginScene(camera);
+	void GraphicRenderer2D::StartScene(const Ref<Cameras::Camera>& camera) {
+		GraphicRenderer::StartScene(camera);
 		m_graphic_storage->StartBacth();
 	}
 

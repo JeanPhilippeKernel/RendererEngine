@@ -12,7 +12,7 @@ namespace Z_Engine::Rendering::Renderers {
 
 		void Initialize() override;
 
-		void BeginScene(const Ref<Cameras::Camera>& camera) override;
+		void StartScene(const Ref<Cameras::Camera>& camera) override;
 		void EndScene() override;
 
 		void Draw(Meshes::Mesh& mesh);  
