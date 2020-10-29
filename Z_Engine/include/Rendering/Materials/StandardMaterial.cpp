@@ -18,7 +18,7 @@ namespace Z_Engine::Rendering::Materials {
 		m_uniform_collection["texture_tint_color"]		= m_tint_color;
 		
 		std::function<void()> fn = [this]() {
-			const int array_size =  10;
+			const int array_size =  32;
 			int texture_slot[array_size] = {0};
 			for(int x = 0; x < array_size; ++x) texture_slot[x] = x;
 			
@@ -48,8 +48,8 @@ namespace Z_Engine::Rendering::Materials {
 			auto _tint_color	=  std::any_cast<glm::vec4>(m_uniform_collection["texture_tint_color"]);
 
 			unsigned int index			= m_owner_mesh->GetIdentifier();
-			auto uniform_array_name		= fmt::format("texture_tiling_factor[{0}]", index);
-			auto uniform_array_name_1	= fmt::format("texture_tint_color[{0}]", index);
+			auto uniform_array_name		= fmt::format("texture_tiling_factor_{0}", index);
+			auto uniform_array_name_1	= fmt::format("texture_tint_color_{0}", index);
 
 			m_shader->SetUniform(uniform_array_name.c_str(), _tile_factor);
 			m_shader->SetUniform(uniform_array_name_1.c_str(), _tint_color);

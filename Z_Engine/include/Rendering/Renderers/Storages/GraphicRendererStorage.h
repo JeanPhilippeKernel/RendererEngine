@@ -22,11 +22,8 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 	class GraphicRendererStorage {
 	public:
 		GraphicRendererStorage();
-		~GraphicRendererStorage() {
-			delete m_texture_slot_unit[0];
-		}
+		~GraphicRendererStorage() = default;
 
-		
 		void SetViewProjectionMatrix(const glm::mat4& matrix)  {
 			m_view_projection = matrix;
 		}
@@ -42,7 +39,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 			//ADD DEFAULT MATERIAL IT ISNT DEFINED
 			 if(material == nullptr) {
 				Materials::StandardMaterial* default_material  = new Materials::StandardMaterial{};
-				default_material->SetTexture(m_texture_slot_unit[0]);
+				default_material->SetTexture(Textures::CreateTexture(1, 1));
 				
 				mesh.SetMaterial(default_material);
 			 }
@@ -102,7 +99,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 		void StartBacth() {			
 			m_internal_raw_vertices_buffer_cursor	= &m_internal_raw_vertices[0]; // reset the position of the cursor
-			m_texture_slot_unit_cursor				= 1; // slot 0 is reserved;
+			m_texture_slot_unit_cursor				= 0;  // we need to change this
 			m_quad_index							= 0;
 			std::memset(&m_internal_raw_vertices[0], 0, m_internal_raw_vertices.size() * sizeof(T));
 		}
@@ -111,7 +108,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 			m_vertex_buffer->SetData(m_internal_raw_vertices);
 			m_vertex_array->AddVertexBuffer(m_vertex_buffer);
 
-			for (int x = 1; x < m_texture_slot_unit_cursor; ++x) {
+			for (int x = 0; x < m_texture_slot_unit_cursor; ++x) {
 				m_texture_slot_unit[x]->Bind(x);
 			}
 
@@ -141,7 +138,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		
 		std::vector<K>							m_internal_index;
 
-		std::array<Textures::Texture*, 10>		m_texture_slot_unit;
+		std::array<Textures::Texture*, 32>		m_texture_slot_unit;
 		int										m_texture_slot_unit_cursor;
 
 		std::vector<Meshes::Mesh*>				m_quad_collection;
@@ -228,9 +225,6 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 	{
 
 		m_internal_raw_vertices_buffer_cursor = m_internal_raw_vertices.data();
-
-		m_texture_slot_unit[m_texture_slot_unit_cursor] = Textures::CreateTexture(1, 1);
-		m_texture_slot_unit_cursor++;  
 
 		size_t offset = 0;
 		for (size_t i = 0; i < M_MAX_INDICES; i += 6)

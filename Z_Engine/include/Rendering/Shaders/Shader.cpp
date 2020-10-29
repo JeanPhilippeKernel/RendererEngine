@@ -386,7 +386,7 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 	
 	void Shader::SetUniform(const char* name, float value_one, float value_two, float value_three) {
-
+				   
 		if(IsActive()) {
 			auto location = _GetLocationUniform(name);
 			if (location != -1) {
