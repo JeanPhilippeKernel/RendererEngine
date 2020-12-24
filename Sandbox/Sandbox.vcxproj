@@ -121,8 +121,7 @@
     <Image Include="src\Assets\Images\free_image.png" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="src\Assets\Shaders\basic.glsl" />
-    <None Include="src\Assets\Shaders\simple_mesh.glsl" />
+    <None Include="src\Assets\Shaders\mixed_texture.glsl" />
     <None Include="src\Assets\Shaders\simple_mesh_2d.glsl" />
     <None Include="src\Assets\Shaders\texture.glsl" />
   </ItemGroup>

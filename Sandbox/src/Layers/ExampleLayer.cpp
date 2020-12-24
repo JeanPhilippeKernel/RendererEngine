@@ -30,7 +30,7 @@ namespace Sandbox::Layers {
 													   
 		m_texture_manager->Load("src/Assets/Images/free_image.png");
 		//m_texture_manager->Load("src/Assets/Images/Checkerboard_2.png");
-		//m_texture_manager->Load("src/Assets/Images/Crate.png");
+		m_texture_manager->Load("src/Assets/Images/Crate.png");
 		m_texture_manager->Load("src/Assets/Images/Flying_Mario.png");
 		m_texture_manager->Load("src/Assets/Images/mario_and_sonic.png");
 
@@ -43,16 +43,16 @@ namespace Sandbox::Layers {
 
 
 		quad_mesh_ptr_3.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f},  glm::radians(30.0f), m_texture_manager->Obtains("free_image")));
-		quad_mesh_ptr_2.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f},  glm::radians(60.0f)));
-
 		
-		auto material  = new StandardMaterial();
-		material->SetTexture(m_texture_manager->Obtains("Flying_Mario"));
-		material->SetTileFactor(5.f);
-		material->SetTintColor({0.5f, 1.0f, 0.0f, 1.0f});
 
+		auto material  = new MixedTextureMaterial();
+		material->SetTexture(m_texture_manager->Obtains("Flying_Mario"));
 		quad_mesh_ptr_1.reset(MeshBuilder::CreateQuad({1.0f, 1.0f}, {0.5f, 0.5f},  glm::radians(45.0f), material));
 		
+		auto material_1 = new StandardMaterial();
+		material_1->SetTintColor({1.f, 0.0f , 0.0f, 1.0f});
+		material_1->SetTexture(m_texture_manager->Obtains("Crate"));
+		quad_mesh_ptr_2.reset(MeshBuilder::CreateSquare({0.0f, 0.0f}, {0.5f, 0.5f},  glm::radians(60.0f), material_1));
 	}
 
 	void ExampleLayer::Update(TimeStep dt) {
@@ -99,8 +99,8 @@ namespace Sandbox::Layers {
 
 
 		m_renderer->StartScene(m_camera_controller->GetCamera());
-		m_renderer->Draw(quad_mesh_ptr_1);
 		m_renderer->Draw(quad_mesh_ptr_2);
+		m_renderer->Draw(quad_mesh_ptr_1);
 		m_renderer->Draw(quad_mesh_ptr_3);
 
 		m_renderer->EndScene();

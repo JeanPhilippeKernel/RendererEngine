@@ -32,7 +32,6 @@ void main()
 #version  450 core
 
 precision mediump float;
-//#define MAX_SIZE 10
 
 in float	mesh_index;
 in float 	texture_slot_id;
@@ -112,12 +111,10 @@ out vec4 output_color;
 
 void main()
 {
-	int tex_slot_id = int(texture_slot_id);
-	int mesh_id = int(mesh_index);
 
 	vec4 color =  vec4(1.0f, 1.0f, 1.0f, 1.0f);
 
-	switch(tex_slot_id) 
+	switch(int(texture_slot_id)) 
 	{
 		case 0: color = texture(uniform_texture_slot[0], texture_coord * texture_tiling_factor_0); break;
 		case 1: color = texture(uniform_texture_slot[1], texture_coord * texture_tiling_factor_1); break;
@@ -154,7 +151,7 @@ void main()
 	}
 
 
-	switch(mesh_id) 
+	switch(int(mesh_index)) 
 	{
 		case 0:		color = color * texture_tint_color_0; break; 
 		case 1: 	color = color * texture_tint_color_1; break;

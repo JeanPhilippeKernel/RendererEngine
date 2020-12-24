@@ -90,6 +90,7 @@
     <ClInclude Include="include\Rendering\Materials\ShaderMaterial.h" />
     <ClInclude Include="include\Rendering\Materials\StandardMaterial.h" />
     <ClInclude Include="include\Rendering\Meshes\MeshBuilder.h" />
+    <ClInclude Include="include\Rendering\Materials\MixedTextureMaterial.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />
@@ -124,5 +125,10 @@
     <ClCompile Include="include\Rendering\Materials\ShaderMaterial.cpp" />
     <ClCompile Include="include\Rendering\Materials\StandardMaterial.cpp" />
     <ClCompile Include="include\Rendering\Meshes\MeshBuilder.cpp" />
+    <ClCompile Include="include\Rendering\Materials\MixedTextureMaterial.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ClassDiagram.cd" />
+    <None Include="ClassDiagram1.cd" />
   </ItemGroup>
 </Project>

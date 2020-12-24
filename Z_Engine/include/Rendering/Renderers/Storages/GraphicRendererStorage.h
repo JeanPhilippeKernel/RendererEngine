@@ -34,15 +34,19 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		}
 
 		void AddMesh(Rendering::Meshes::Mesh& mesh) {
-			const auto& material	= mesh.GetMaterial();																					                                                                                                        
+
+			{
+				const auto& material	= mesh.GetMaterial();																					                                                                                                        
 			
-			//ADD DEFAULT MATERIAL IT ISNT DEFINED
-			 if(material == nullptr) {
-				Materials::StandardMaterial* default_material  = new Materials::StandardMaterial{};
-				default_material->SetTexture(Textures::CreateTexture(1, 1));
+				//ADD DEFAULT MATERIAL IT ISNT DEFINED
+				 if(material == nullptr) {
+					Materials::StandardMaterial* default_material  = new Materials::StandardMaterial{};
+					default_material->SetTexture(Textures::CreateTexture(1, 1));
 				
-				mesh.SetMaterial(default_material);
-			 }
+					mesh.SetMaterial(default_material);
+				 }
+			
+			}
 
 			//CHECKING CURRENT MATERIAL AND END BATCH IF DIFFERENT MATERIAL DETECTED
 			 if(m_current_used_material.lock() == nullptr) {
@@ -53,7 +57,8 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 				EndBatch();
 				StartBacth();
 
-				m_current_used_material = material;
+				//UPDATE WITH THE NEW MATERIAL
+				m_current_used_material = mesh.GetMaterial();
 			 }
 
 
@@ -101,6 +106,7 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 			m_internal_raw_vertices_buffer_cursor	= &m_internal_raw_vertices[0]; // reset the position of the cursor
 			m_texture_slot_unit_cursor				= 0;  // we need to change this
 			m_quad_index							= 0;
+			m_current_used_material.reset();
 			std::memset(&m_internal_raw_vertices[0], 0, m_internal_raw_vertices.size() * sizeof(T));
 		}
 
@@ -161,12 +167,12 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 				|| (m_texture_slot_unit_cursor >= m_texture_slot_unit.size())
 				) 
 			{
-				// Todo :  Flush buffer and immediate draw...
+				// Flush buffer and immediate draw...
 				EndBatch();
 				StartBacth();
 			}
 			
-			size_t					buffer_size{0};
+			size_t	buffer_size{0};
 
 			const auto& v_0	= vertices[0].GetData();
 			buffer_size = v_0.size();
