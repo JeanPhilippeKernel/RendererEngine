@@ -4,7 +4,6 @@
 namespace Z_Engine::Rendering::Geometries {
 
 	struct QuadGeometry : public IGeometry {
-		
 		explicit QuadGeometry();
 		~QuadGeometry() = default;
 	};

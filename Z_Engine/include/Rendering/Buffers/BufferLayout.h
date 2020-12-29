@@ -53,6 +53,11 @@ namespace Z_Engine::Rendering::Buffers::Layout {
 		{
 		}
 
+		explicit BufferLayout(std::initializer_list<ElementLayout<T>> collections)
+			: m_elements(std::move(collections))
+		{
+		}
+
 		std::vector<ElementLayout<T>>& GetElementLayout() {
 			return m_elements;
 		}

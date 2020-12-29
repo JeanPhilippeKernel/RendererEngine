@@ -1,10 +1,11 @@
 #pragma once
 #include <string>
 #include "../../dependencies/glew/include/GL/glew.h"
+#include "../../Core/IGraphicObject.h"
 
 
 namespace Z_Engine::Rendering::Textures {
-	class Texture {
+	class Texture : public Core::IGraphicObject {
 	public:
 
 		Texture(const char* path) : m_path(path) {}
@@ -25,6 +26,10 @@ namespace Z_Engine::Rendering::Textures {
 
 		virtual bool operator!=(const Texture& right) {
 			return m_texture_id != right.m_texture_id;
+		}
+
+		GLuint GetIdentifier() const override {
+			return m_texture_id;
 		}
 
 	protected:

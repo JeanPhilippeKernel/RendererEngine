@@ -9,7 +9,9 @@ namespace Z_Engine::Rendering::Materials {
 		explicit MixedTextureMaterial();
 		virtual ~MixedTextureMaterial() =  default;
 	
-		virtual void SetAttributes() override;
+		unsigned int GetHashCode() override;
+
+		void Apply() override;
 
 		void SetSecondTexture(Ref<Textures::Texture>& texture);
 		void SetSecondTexture(Textures::Texture*  const texture);

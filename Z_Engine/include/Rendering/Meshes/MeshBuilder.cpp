@@ -15,8 +15,10 @@ using namespace Z_Engine::Rendering::Materials;
 namespace Z_Engine::Rendering::Meshes {
 
 	Mesh* MeshBuilder::CreateQuad(const glm::vec2& position, const glm::vec2& size, float angle) {
-		Mesh*			mesh			= new Mesh{};
-		QuadGeometry*	quad_geometry	= new QuadGeometry{};
+		Mesh*				mesh			= new Mesh{};
+		QuadGeometry*		quad_geometry	= new QuadGeometry{};
+		Texture*			texture			= CreateTexture(1, 1);
+		StandardMaterial*	material		= new StandardMaterial{};
 		
 		glm::mat4 transform =
 			glm::translate(glm::mat4(1.0f), { position.x, position.y, 0.0f }) *
@@ -24,8 +26,10 @@ namespace Z_Engine::Rendering::Meshes {
 			glm::scale(glm::mat4(1.0f), { size.x, size.y, 0.0f });
 		
 		quad_geometry->ApplyTransform(transform);
+		material->SetTexture(texture);
 		
 		mesh->SetGeometry(quad_geometry);
+		mesh->SetMaterial(material);
 		return mesh;
 	}
 
@@ -161,8 +165,10 @@ namespace Z_Engine::Rendering::Meshes {
 	}
 
 	Mesh* MeshBuilder::CreateSquare(const glm::vec2& position, const glm::vec2& size, float angle) {
-		Mesh*			mesh			= new Mesh{};
-		SquareGeometry*	quad_geometry	= new SquareGeometry{};
+		Mesh*				mesh			= new Mesh{};
+		SquareGeometry*		quad_geometry	= new SquareGeometry{};
+		Texture*			texture			= CreateTexture(1, 1);
+		StandardMaterial*	material		= new StandardMaterial{};
 		
 		glm::mat4 transform =
 			glm::translate(glm::mat4(1.0f), { position.x, position.y, 0.0f }) *
@@ -170,8 +176,10 @@ namespace Z_Engine::Rendering::Meshes {
 			glm::scale(glm::mat4(1.0f), { size.x, size.y, 0.0f });
 		
 		quad_geometry->ApplyTransform(transform);
-		
+		material->SetTexture(texture);
 		mesh->SetGeometry(quad_geometry);
+		mesh->SetMaterial(material);
+
 		return mesh;
 	}
 

@@ -151,7 +151,9 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 
 	void Shader::Bind() const {
-		glUseProgram(m_program);
+		if (!IsActive()) {
+			glUseProgram(m_program);
+		}
 	}
 
 	void Shader::Unbind() const {
@@ -210,6 +212,11 @@ namespace Z_Engine::Rendering::Shaders {
 		}
 
 		input.close();
+	}
+
+	GLuint Shader::GetIdentifier() const
+	{
+		return m_program;
 	}
 
 	void Shader::_Compile() {

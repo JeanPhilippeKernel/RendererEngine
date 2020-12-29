@@ -16,16 +16,12 @@ uniform mat4 uniform_viewprojection;
 
 
 //output variables
-out float	mesh_index;
-out float 	texture_slot_id;
-out vec2 	texture_coord;
+out vec2 texture_coord;
 
 void main()
 {	
-	gl_Position 			= uniform_viewprojection * vec4(a_position, 1.0f);
-	mesh_index				= a_index;
-	texture_slot_id			= a_texture_slot_id;
-	texture_coord 			= a_texture_coord;
+	gl_Position 	= uniform_viewprojection * vec4(a_position, 1.0f);
+	texture_coord 	= a_texture_coord;
 }
 
 
@@ -34,52 +30,22 @@ void main()
 
 precision mediump float;
 
-in float	mesh_index;
-in float 	texture_slot_id;
-in vec2 	texture_coord;
+in vec2 texture_coord;
 
+struct MixedMaterial 
+{
+	float interpolation_factor;
+};
 
-uniform sampler2D	uniform_texture_slot[32];
-
-uniform float		interpolation_factor_0;
-uniform float		interpolation_factor_1;
-uniform float		interpolation_factor_2;
-uniform float		interpolation_factor_3;
-uniform float		interpolation_factor_4;
-uniform float		interpolation_factor_5;
-uniform float		interpolation_factor_6;
-uniform float		interpolation_factor_7;
-uniform float		interpolation_factor_8;
-uniform float		interpolation_factor_9;
-uniform float		interpolation_factor_10;
-uniform float		interpolation_factor_11;
-uniform float		interpolation_factor_12;
-uniform float		interpolation_factor_13;
-uniform float		interpolation_factor_14;
-uniform float		interpolation_factor_15;
-uniform float		interpolation_factor_16;
-uniform float		interpolation_factor_17;
-uniform float		interpolation_factor_18;
-uniform float		interpolation_factor_19;
-uniform float		interpolation_factor_20;
-uniform float		interpolation_factor_21;
-uniform float		interpolation_factor_22;
-uniform float		interpolation_factor_23;
-uniform float		interpolation_factor_24;
-uniform float		interpolation_factor_25;
-uniform float		interpolation_factor_26;
-uniform float		interpolation_factor_27;
-uniform float		interpolation_factor_28;
-uniform float		interpolation_factor_29;
-uniform float		interpolation_factor_30;
-uniform float		interpolation_factor_31;
+uniform MixedMaterial 	material;
+uniform sampler2D 		uniform_texture_0;
+uniform sampler2D 		uniform_texture_1;
 
 out vec4 output_color;
 
 void main() 
 {
-	output_color = vec4(1.0f, 1.0f, 1.0f, 1.0f);
-//    output_color = mix(
-//	texture(uniform_texture_slot[0], texture_coord), 
-//	texture(uniform_texture_slot[0 + 16], texture_coord), interpolation_factor_0);
+   output_color = mix(
+	texture(uniform_texture_0, texture_coord), 
+	texture(uniform_texture_1, texture_coord), material.interpolation_factor);
 }

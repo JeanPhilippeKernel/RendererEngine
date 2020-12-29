@@ -91,4 +91,16 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		
 	}
 
+
+	Buffers::Layout::BufferLayout<float> GraphicVertex::Descriptor::m_internal_layout {
+		{
+			Buffers::Layout::ElementLayout<float>(1, "mesh_index"),
+			Buffers::Layout::ElementLayout<float>(3, "position"),
+			Buffers::Layout::ElementLayout<float>(4, "color"),
+
+			Buffers::Layout::ElementLayout<float>(1, "texture_id"),
+			Buffers::Layout::ElementLayout<float>(2, "texture_coord")
+		}
+	};
+
 }

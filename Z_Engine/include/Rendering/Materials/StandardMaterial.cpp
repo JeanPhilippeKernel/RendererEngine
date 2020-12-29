@@ -5,56 +5,37 @@
 namespace Z_Engine::Rendering::Materials {
 
 	StandardMaterial::StandardMaterial() 
-		:
-		ShaderMaterial(
-			"src/Assets/Shaders/simple_mesh_2d.glsl", 
-			{"texture_tiling_factor", "texture_tint_color"}
-		), 
+		: 
+		ShaderMaterial("src/Assets/Shaders/simple_mesh_2d.glsl"), 
 		m_tile_factor(1.0f),
 		m_tint_color(glm::vec4(1.0f))
 	{
+		m_unique_identifier = "3460B305-3F25-493E-961B-9C837F00369E";
 		m_material_name =  typeid(*this).name();
-		m_uniform_collection["texture_tiling_factor"]	= m_tile_factor;
-		m_uniform_collection["texture_tint_color"]		= m_tint_color;
-		
-		std::function<void()> fn = [this]() {
-			const int array_size =  32;
-			int texture_slot[array_size] = {0};
-			for(int x = 0; x < array_size; ++x) texture_slot[x] = x;
-			
-			m_shader->SetUniform("uniform_texture_slot", texture_slot , array_size);
-		};
+	}
 
-		InitDefaultUniforms(fn);
+	unsigned int StandardMaterial::GetHashCode()
+	{
+		auto hash = static_cast<unsigned int>(m_tile_factor) 
+			^ static_cast<unsigned int>(m_tint_color.x)
+			^ static_cast<unsigned int>(m_tint_color.y)
+			^ static_cast<unsigned int>(m_tint_color.z);
+
+		return hash ^ ShaderMaterial::GetHashCode();
 	}
 
 	void StandardMaterial::SetTileFactor(float value) {
-		m_tile_factor									= value;
-		m_uniform_collection["texture_tiling_factor"]	= m_tile_factor;
+		m_tile_factor = value;
 	}
 	
 	void StandardMaterial::SetTintColor(const glm::vec4& value) {
-		m_tint_color								= value;
-		m_uniform_collection["texture_tint_color"]	= m_tint_color;
+		m_tint_color = value;
 	}
 
 
-	void StandardMaterial::SetAttributes() {
-
-		if(!m_attribute_already_set) {
-			assert(m_owner_mesh != nullptr);
-
-			auto _tile_factor	=  std::any_cast<float>(m_uniform_collection["texture_tiling_factor"]);
-			auto _tint_color	=  std::any_cast<glm::vec4>(m_uniform_collection["texture_tint_color"]);
-
-			unsigned int index			= m_owner_mesh->GetIdentifier();
-			auto uniform_array_name		= fmt::format("texture_tiling_factor_{0}", index);
-			auto uniform_array_name_1	= fmt::format("texture_tint_color_{0}", index);
-
-			m_shader->SetUniform(uniform_array_name.c_str(), _tile_factor);
-			m_shader->SetUniform(uniform_array_name_1.c_str(), _tint_color);
-
-			m_attribute_already_set = true;
-		}
+	void StandardMaterial::Apply() {
+		m_shader->SetUniform("material.tiling_factor", m_tile_factor);
+		m_shader->SetUniform("material.tint_color", m_tint_color);
+		m_texture->Bind();
 	}
 } 

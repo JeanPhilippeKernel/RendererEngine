@@ -35,7 +35,7 @@ namespace Z_Engine::Rendering::Meshes {
 	}
 
 
-	unsigned int Mesh::GetIdentifier() const {
+	unsigned int Mesh::GetUniqueIdentifier() const {
 		return m_unique_identifier;
 	}
 
@@ -47,10 +47,10 @@ namespace Z_Engine::Rendering::Meshes {
 		return m_geometry; 
 	}
 
-	void Mesh::SetIdentifier(unsigned int  value) {
+	void Mesh::SetUniqueIdentifier(unsigned int  value) {
 		if(m_unique_identifier != value) {
 			m_unique_identifier = value;
-			OnSetIdentifierEvent();
+			OnSetUniqueIdentifierEvent();
 		}
 	}
 
@@ -80,17 +80,15 @@ namespace Z_Engine::Rendering::Meshes {
 	void Mesh::SetGeometry(const Ref<Geometries::IGeometry>& geometry) {
 		m_geometry = geometry;
 	}
-	
-	void Mesh::OnSetMaterialEvent() {
-		m_material->SetAttributes();
-	}
 
-	void Mesh::OnSetIdentifierEvent() {
+	void Mesh::OnSetUniqueIdentifierEvent() {
 		 auto& vertices = m_geometry->GetVertices();
 		 std::for_each(
 			 std::begin(vertices), std::end(vertices), 
 			 [this](GraphicVertex& vertex) { vertex.SetIndex(static_cast<float>(m_unique_identifier)); }
 		 );
+
+		 m_geometry->Update();
 	}
 
 }

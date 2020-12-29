@@ -91,6 +91,7 @@
     <ClInclude Include="include\Rendering\Materials\StandardMaterial.h" />
     <ClInclude Include="include\Rendering\Meshes\MeshBuilder.h" />
     <ClInclude Include="include\Rendering\Materials\MixedTextureMaterial.h" />
+    <ClInclude Include="include\Core\IGraphicObject.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />

@@ -16,7 +16,7 @@ namespace Z_Engine::Rendering::Meshes {
 
 		virtual ~Mesh() = default;
 
-		void SetIdentifier(unsigned int value);
+		void SetUniqueIdentifier(unsigned int value);
 		void SetMaterial(const Ref<Materials::ShaderMaterial>& material);
 		void SetMaterial(Ref<Materials::ShaderMaterial>& material);
 		void SetMaterial(Materials::ShaderMaterial* const material);
@@ -25,18 +25,16 @@ namespace Z_Engine::Rendering::Meshes {
 		void SetGeometry(Ref<Geometries::IGeometry>& geometry);
 		void SetGeometry(Geometries::IGeometry* const geometry);
 
-		unsigned int GetIdentifier() const;
+		unsigned int GetUniqueIdentifier() const;
 		const Ref<Materials::ShaderMaterial>& GetMaterial() const;
 		const Ref<Geometries::IGeometry>& GetGeometry() const;
 
 	private:
-		virtual void OnSetMaterialEvent();
-		virtual void OnSetIdentifierEvent();
+		virtual void OnSetUniqueIdentifierEvent();
 
 	private:
-		unsigned int m_unique_identifier;
-		Ref<Materials::ShaderMaterial> m_material {nullptr};
-		Ref<Geometries::IGeometry> m_geometry {nullptr};
-
+		unsigned int					m_unique_identifier;
+		Ref<Materials::ShaderMaterial>	m_material {nullptr};
+		Ref<Geometries::IGeometry>		m_geometry {nullptr};
 	};
 }

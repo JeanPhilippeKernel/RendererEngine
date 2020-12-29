@@ -25,7 +25,6 @@ namespace Z_Engine::Rendering::Materials {
 		explicit IMaterial(const Ref<Shaders::Shader>& shader) 
 			: m_shader(shader)
 		{
-			m_shader->Bind();
 			m_material_name = typeid(*this).name();
 		}
 		
@@ -33,14 +32,12 @@ namespace Z_Engine::Rendering::Materials {
 			: m_texture(texture), m_shader(shader)
 		{
 			m_material_name = typeid(*this).name();
-			m_shader->Bind();
 		}
 
 		explicit IMaterial(Ref<Textures::Texture>&& texture, Ref<Shaders::Shader>&& shader)
 			: m_texture(texture), m_shader(shader)
 		{
 			m_material_name = typeid(*this).name();
-			m_shader->Bind();
 		}
 
 		virtual ~IMaterial() = default;
@@ -65,15 +62,28 @@ namespace Z_Engine::Rendering::Materials {
 			return m_material_name;
 		}
 
+		const std::string& GetUniqueIdentifier() const {
+			return m_unique_identifier;
+		}
+
 		virtual const Ref<Textures::Texture>& GetTexture() const { 
 			return m_texture;
 		}	
 
-		virtual const Ref<Shaders::Shader>& GetShader() const {
+		virtual const Ref<Shaders::Shader>& GetShader() const  {
 			return m_shader;
+		}
+		
+		//THIS PART NEED TO BE MOVED TO AN INTERFACE....
+		virtual unsigned int GetHashCode() {
+			auto texture_id = m_texture->GetIdentifier();
+			auto shader_id = m_shader->GetIdentifier();
+
+			return static_cast<unsigned int>(texture_id ^ shader_id);
 		}
 
 	protected:
+		std::string				m_unique_identifier{};
 		std::string				m_material_name{};
 
 		Ref<Textures::Texture>	m_texture	{nullptr};
