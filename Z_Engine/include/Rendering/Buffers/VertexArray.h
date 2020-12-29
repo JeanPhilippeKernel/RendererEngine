@@ -1,7 +1,6 @@
 #pragma once
 #include <memory>
 #include <vector>
-#include "../../dependencies/glew/include/GL/glew.h"
 
 #include "../../Core/Utility.h"
 #include "VertexBuffer.h"
@@ -9,16 +8,18 @@
 
 #include "../../Z_EngineDef.h"
 
+#include "../../Core/IGraphicObject.h"
+
 
 namespace Z_Engine::Rendering::Buffers {
 
 	template <typename T, typename K>
-	class VertexArray {
+	class VertexArray : public Core::IGraphicObject {
+
 	public:
 		VertexArray()
 		{
 			glCreateVertexArrays(1, &m_vertex_array_id);
-			//glBindVertexArray(m_vertex_array_id);
 		}
 
 		~VertexArray() {
@@ -69,6 +70,10 @@ namespace Z_Engine::Rendering::Buffers {
 
 		const Ref<IndexBuffer<K>>& GetIndexBuffer() const {
 			return m_index_buffer;
+		}
+
+		GLuint GetIdentifier() const override {
+			return m_vertex_array_id;
 		}
 
 	private:

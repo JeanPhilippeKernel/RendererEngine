@@ -3,10 +3,14 @@
 #include "../../../dependencies/glm/glm.hpp"
 
 #include "IVertex.h"
+#include "../../Buffers/BufferLayout.h"
 
 namespace Z_Engine::Rendering::Renderers::Storages {
 
 	class GraphicVertex : public IVertex {
+	public:
+		struct Descriptor;
+
 	public:
 		explicit GraphicVertex();
 		explicit GraphicVertex(
@@ -44,5 +48,14 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 	private:
 		std::array<float, 11> m_buffer;
+	};
+
+	struct GraphicVertex::Descriptor
+	{
+	public:
+		static Buffers::Layout::BufferLayout<float>& GetLayout() { return m_internal_layout; }
+
+	private:
+		static Buffers::Layout::BufferLayout<float> m_internal_layout;
 	};
 }

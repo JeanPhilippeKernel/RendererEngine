@@ -24,6 +24,7 @@ void main()
 	texture_coord 	= a_texture_coord;
 }
 
+
 #type fragment
 #version  450 core
 
@@ -31,23 +32,20 @@ precision mediump float;
 
 in vec2 texture_coord;
 
-struct StandardMaterial 
+struct MixedMaterial 
 {
-	float tiling_factor;
-	vec4 tint_color;
+	float interpolation_factor;
 };
 
-uniform StandardMaterial 	material;
-uniform sampler2D 			uniform_texture;
+uniform MixedMaterial 	material;
+uniform sampler2D 		uniform_texture_0;
+uniform sampler2D 		uniform_texture_1;
 
-// output variables
 out vec4 output_color;
 
-void main()
+void main() 
 {
-	output_color = texture(uniform_texture, texture_coord * material.tiling_factor) * material.tint_color;
+   output_color = mix(
+	texture(uniform_texture_0, texture_coord), 
+	texture(uniform_texture_1, texture_coord), material.interpolation_factor);
 }
-
-
-
- 

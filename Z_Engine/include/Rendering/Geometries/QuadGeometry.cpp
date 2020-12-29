@@ -9,7 +9,7 @@ namespace Z_Engine::Rendering::Geometries
 		: IGeometry(
 			{
 					GraphicVertex(0.0f, {-0.75f, -0.5f, 1.0f},	{0.0f, 0.0f, 0.0f, 0.0f},	0.0f, {0.0f, 0.0f}),
-					GraphicVertex(0.0f, {0.75f, -0.5f, 1.0f,},	{0.0f, 0.0f, 0.0f, 0.0f},	0.0f, {1.0f, 0.0f}),
+					GraphicVertex(0.0f, {0.75f, -0.5f, 1.0f},	{0.0f, 0.0f, 0.0f, 0.0f},	0.0f, {1.0f, 0.0f}),
 					GraphicVertex(0.0f, {0.75f, 0.5f, 1.0f},	{0.0f, 0.0f, 0.0f, 0.0f},	0.0f, {1.0f, 1.0f}),
 					GraphicVertex(0.0f, {-0.75f, 0.5f, 1.0f},	{0.0f, 0.0f, 0.0f, 0.0f},	0.0f, {0.0f, 1.0f})
 			})

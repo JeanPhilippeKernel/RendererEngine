@@ -33,6 +33,10 @@ namespace Z_Engine::Rendering::Buffers {
 			this->m_byte_size	= m_data_size * sizeof(T);
 		}
 
+		virtual const std::vector<T>& GetData() const {
+			return m_data;
+		}
+
 		virtual size_t GetByteSize() const { return m_byte_size; }
 		virtual size_t GetDataSize() const { return m_data_size; }
 

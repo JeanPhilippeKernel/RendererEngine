@@ -7,9 +7,11 @@
 #include "../../dependencies/glm/glm.hpp"
 #include "../../dependencies/glew/include/GL/glew.h"
 
+#include "../../Core/IGraphicObject.h"
+
 
 namespace Z_Engine::Rendering::Shaders {
-	class Shader {
+	class Shader : public Core::IGraphicObject {
 	public:
 		Shader(const char * vertexSrc, const char * fragmentSrc);
 		Shader(const char * filename);
@@ -42,6 +44,8 @@ namespace Z_Engine::Rendering::Shaders {
 		void SetUniform(const char* name, const glm::mat3& value);
 		void SetUniform(const char* name, const glm::mat4& value);
 		
+		GLuint GetIdentifier() const override;
+
 	private:
 		GLint _GetLocationUniform(const char* name);
 		void _Compile();
@@ -52,6 +56,8 @@ namespace Z_Engine::Rendering::Shaders {
 		GLuint m_program{0};
 		std::unordered_map<const char*, GLint> m_uniform_location_map;
 		std::unordered_map<GLenum, std::string> m_shader_source_map;
+
+		// Inherited via IGraphicObject
 	};
 
 

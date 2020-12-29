@@ -27,10 +27,9 @@ namespace Sandbox::Layers {
 
 		m_texture_manager.reset(new Z_Engine::Managers::TextureManager());
 		
-													   
 		m_texture_manager->Load("src/Assets/Images/free_image.png");
-		//m_texture_manager->Load("src/Assets/Images/Checkerboard_2.png");
-		//m_texture_manager->Load("src/Assets/Images/Crate.png");
+		m_texture_manager->Load("src/Assets/Images/Checkerboard_2.png");
+		m_texture_manager->Load("src/Assets/Images/Crate.png");
 		m_texture_manager->Load("src/Assets/Images/Flying_Mario.png");
 		m_texture_manager->Load("src/Assets/Images/mario_and_sonic.png");
 
@@ -41,41 +40,38 @@ namespace Sandbox::Layers {
 		m_camera_controller->Initialize();
 		m_renderer->Initialize();
 
+		quad_mesh_ptr.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f}, glm::radians(30.0f), m_texture_manager->Obtains("Flying_Mario")));
 
-		quad_mesh_ptr_3.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f},  glm::radians(30.0f), m_texture_manager->Obtains("free_image")));
-		quad_mesh_ptr_2.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5f}, {25.f, 10.f, 60.f},  glm::radians(60.0f)));
-
+		quad_mesh_ptr_1.reset(MeshBuilder::CreateQuad({0.5f, 0.5f}, {0.5f, 0.5}, glm::radians(90.0f), m_texture_manager->Obtains("Checkerboard_2")));
 		
-		auto material  = new StandardMaterial();
-		material->SetTexture(m_texture_manager->Obtains("Flying_Mario"));
-		material->SetTileFactor(5.f);
-		material->SetTintColor({0.5f, 1.0f, 0.0f, 1.0f});
+		Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
+		material->SetInterpolateFactor(0.8f);
+		material->SetTexture(m_texture_manager->Load("free_image"));
+		material->SetSecondTexture(m_texture_manager->Obtains("Crate"));
 
-		quad_mesh_ptr_1.reset(MeshBuilder::CreateQuad({1.0f, 1.0f}, {0.5f, 0.5f},  glm::radians(45.0f), material));
-		
+		quad_mesh_ptr_2.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5}, 0.0f));
+		quad_mesh_ptr_2->SetMaterial(material);
+	
 	}
 
 	void ExampleLayer::Update(TimeStep dt) {
 		m_camera_controller->Update(dt);
 
-		//if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
-		//	//m_rect_1_pos.y -= 0.1f * dt;
-		//	m_rect_1_pos.x -= 0.1f * dt;
-		//}
+		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
+		
+		}
 
-		//if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_F)) {
-		//	//m_rect_1_pos.y += 0.1f * dt;
-		//	m_rect_1_pos.x += 0.1f * dt;
-		//}
+		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_F)) {
+			
+		}
 
-		//if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_B)) {
-		//	m_rect_1_pos.y += 0.1f * dt;
-		//	//m_rect_1_pos.x += 0.1f * dt;
-		//}
-		//if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Y)) {
-		//	m_rect_1_pos.y -= 0.1f * dt;
-		//	//m_rect_1_pos.x += 0.1f * dt;
-		//}
+		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_B)) {
+			
+		}
+
+		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Y)) {
+			
+		}
 	}
 
 	bool ExampleLayer::OnEvent(CoreEvent& e) {
@@ -97,16 +93,10 @@ namespace Sandbox::Layers {
 		RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		RendererCommand::Clear();
 
-
+		std::vector<Ref<Mesh>> meshes{ quad_mesh_ptr_2, quad_mesh_ptr_1, quad_mesh_ptr };
 		m_renderer->StartScene(m_camera_controller->GetCamera());
-		m_renderer->Draw(quad_mesh_ptr_1);
-		m_renderer->Draw(quad_mesh_ptr_2);
-		m_renderer->Draw(quad_mesh_ptr_3);
-
-		m_renderer->EndScene();
-		
-
-		
+		m_renderer->AddMesh(meshes);
+		m_renderer->EndScene();	
 	}
 
 }

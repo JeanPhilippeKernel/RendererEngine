@@ -150,6 +150,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Controllers\ICameraController.h" />
     <ClInclude Include="include\Controllers\IController.h" />
     <ClInclude Include="include\Core\IEventable.h" />
+    <ClInclude Include="include\Core\IGraphicObject.h" />
     <ClInclude Include="include\Core\IInitializable.h" />
     <ClInclude Include="include\Core\IRenderable.h" />
     <ClInclude Include="include\Core\IUpdatable.h" />
@@ -212,6 +213,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Rendering\Graphics\GraphicContext.h" />
     <ClInclude Include="include\Rendering\Graphics\SDLGraphic\OpenGLContext.h" />
     <ClInclude Include="include\Rendering\Materials\IMaterial.h" />
+    <ClInclude Include="include\Rendering\Materials\MixedTextureMaterial.h" />
     <ClInclude Include="include\Rendering\Materials\ShaderMaterial.h" />
     <ClInclude Include="include\Rendering\Materials\StandardMaterial.h" />
     <ClInclude Include="include\Rendering\Meshes\MeshBuilder.h" />
@@ -255,6 +257,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Rendering\Geometries\QuadGeometry.cpp" />
     <ClCompile Include="include\Rendering\Geometries\SquareGeometry.cpp" />
     <ClCompile Include="include\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
+    <ClCompile Include="include\Rendering\Materials\MixedTextureMaterial.cpp" />
     <ClCompile Include="include\Rendering\Materials\StandardMaterial.cpp" />
     <ClCompile Include="include\Rendering\Meshes\Mesh.cpp" />
     <ClCompile Include="include\Rendering\Meshes\MeshBuilder.cpp" />
@@ -269,6 +272,10 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Window\CoreWindow.cpp" />
     <ClCompile Include="include\Window\SDLWin\OpenGLWindow.cpp" />
     <ClCompile Include="include\Rendering\Materials\ShaderMaterial.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ClassDiagram.cd" />
+    <None Include="ClassDiagram1.cd" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
