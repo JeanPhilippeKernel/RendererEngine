@@ -121,8 +121,8 @@
     <Image Include="src\Assets\Images\free_image.png" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="src\Assets\Shaders\mixed_texture.glsl" />
-    <None Include="src\Assets\Shaders\simple_mesh_2d.glsl" />
+    <None Include="src\Assets\Shaders\mixed_texture_shader.glsl" />
+    <None Include="src\Assets\Shaders\standard_shader.glsl" />
     <None Include="src\Assets\Shaders\texture.glsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

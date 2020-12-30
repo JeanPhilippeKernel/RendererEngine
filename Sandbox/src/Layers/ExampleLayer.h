@@ -22,9 +22,8 @@ namespace Sandbox::Layers {
 
 
 	private:
-		Z_Engine::Ref<Z_Engine::Managers::TextureManager>						m_texture_manager;
-		Z_Engine::Ref<Z_Engine::Rendering::Renderers::GraphicRenderer2D>		m_renderer;
-		Z_Engine::Ref<Z_Engine::Controllers::OrthographicCameraController>		m_camera_controller;
+		Z_Engine::Ref<Z_Engine::Managers::TextureManager>						m_texture_manager; 
+		Z_Engine::Ref<Z_Engine::Rendering::Scenes::GraphicScene>				m_scene;
 
 		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh>						quad_mesh_ptr;
 		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh>						quad_mesh_ptr_1;

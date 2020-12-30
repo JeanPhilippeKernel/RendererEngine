@@ -4,7 +4,7 @@
 namespace Z_Engine::Rendering::Renderers {
    GraphicRenderer::GraphicRenderer()
 	   :
-	   m_scene(new Rendering::Scenes::GraphicScene()),
+	   m_view_projection_matrix(glm::mat4(1.0f)),
 	   m_mesh_map(),
 	   m_graphic_storage_list()
    {
@@ -52,8 +52,8 @@ namespace Z_Engine::Rendering::Renderers {
    }
 
 
-   void GraphicRenderer::StartScene(const Ref<Cameras::Camera>& camera) {
-	   m_scene->SetCamera(camera);
+   void GraphicRenderer::StartScene(const glm::mat4& view_projection_matrix) {
+	   m_view_projection_matrix = view_projection_matrix;
    }
 
    void GraphicRenderer::EndScene() {

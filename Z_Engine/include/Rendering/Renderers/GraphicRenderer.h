@@ -5,7 +5,6 @@
 #include "RenderCommand.h"
 #include "Storages/GraphicRendererStorage.h"
 
-#include "../Scenes/GraphicScene.h"		
 #include "../Buffers/VertexArray.h"
 #include "../Cameras/Camera.h"
 #include "../Textures/Texture.h"
@@ -36,7 +35,7 @@ namespace Z_Engine::Rendering::Renderers {
 
 
 	public:
-		virtual void StartScene(const Ref<Cameras::Camera>& camera); 
+		virtual void StartScene(const glm::mat4& m_view_projection_matrix);
 		virtual void EndScene();
 
 	protected:
@@ -49,12 +48,13 @@ namespace Z_Engine::Rendering::Renderers {
 			shader->Bind();
 			material->Apply();
 
-			shader->SetUniform("uniform_viewprojection", m_scene->GetCamera()->GetViewProjectionMatrix());
+			shader->SetUniform("uniform_viewprojection", m_view_projection_matrix);
 			RendererCommand::DrawIndexed(shader, vertex_array);
 		}
 																 
 	protected:
-		Ref<Scenes::GraphicScene>												m_scene;
+		glm::mat4 																m_view_projection_matrix;
+		
 		std::unordered_map<unsigned int, std::vector<Rendering::Meshes::Mesh>>	m_mesh_map;
 		std::queue<Ref<Storages::GraphicRendererStorage<float, unsigned int>>>	m_graphic_storage_list;
 	};

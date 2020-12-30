@@ -1,15 +1,12 @@
 #include "ExampleLayer.h"
 #include "dependencies/glm/gtc/type_ptr.hpp"	
 
-using namespace Z_Engine::Rendering::Materials;
 
 using namespace Z_Engine;
-using namespace Z_Engine::Rendering::Geometries;
 
+using namespace Z_Engine::Rendering::Materials;
+using namespace Z_Engine::Rendering::Scenes;
 using namespace Z_Engine::Rendering::Renderers;
-using namespace Z_Engine::Rendering::Cameras;
-using namespace Z_Engine::Rendering::Shaders;
-using namespace Z_Engine::Rendering::Buffers;
 using namespace Z_Engine::Window;
 using namespace Z_Engine::Core;
 using namespace Z_Engine::Inputs;
@@ -33,29 +30,23 @@ namespace Sandbox::Layers {
 		m_texture_manager->Load("src/Assets/Images/Flying_Mario.png");
 		m_texture_manager->Load("src/Assets/Images/mario_and_sonic.png");
 
-
-		m_camera_controller.reset(new OrthographicCameraController(GetAttachedWindow(), true));
-		m_renderer.reset(new GraphicRenderer2D());
-		
-		m_camera_controller->Initialize();
-		m_renderer->Initialize();
+		m_scene.reset(new GraphicScene(new OrthographicCameraController(GetAttachedWindow(), true)));
+		m_scene->Initialize();
 
 		quad_mesh_ptr.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f}, glm::radians(30.0f), m_texture_manager->Obtains("Flying_Mario")));
-
-		quad_mesh_ptr_1.reset(MeshBuilder::CreateQuad({0.5f, 0.5f}, {0.5f, 0.5}, glm::radians(90.0f), m_texture_manager->Obtains("Checkerboard_2")));
+		quad_mesh_ptr_1.reset(MeshBuilder::CreateQuad({0.5f, 0.5f}, {0.5f, 0.5}, glm::radians(90.0f), m_texture_manager->Obtains("mario_and_sonic")));
 		
 		Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
-		material->SetInterpolateFactor(0.8f);
+		material->SetInterpolateFactor(0.5f);
 		material->SetTexture(m_texture_manager->Load("free_image"));
 		material->SetSecondTexture(m_texture_manager->Obtains("Crate"));
 
 		quad_mesh_ptr_2.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5}, 0.0f));
 		quad_mesh_ptr_2->SetMaterial(material);
-	
 	}
 
 	void ExampleLayer::Update(TimeStep dt) {
-		m_camera_controller->Update(dt);
+		m_scene->GetCameraController()->Update(dt);
 
 		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
 		
@@ -75,7 +66,7 @@ namespace Sandbox::Layers {
 	}
 
 	bool ExampleLayer::OnEvent(CoreEvent& e) {
-		m_camera_controller->OnEvent(e);
+		m_scene->GetCameraController()->OnEvent(e);
 		return false;
 	}
 
@@ -94,9 +85,8 @@ namespace Sandbox::Layers {
 		RendererCommand::Clear();
 
 		std::vector<Ref<Mesh>> meshes{ quad_mesh_ptr_2, quad_mesh_ptr_1, quad_mesh_ptr };
-		m_renderer->StartScene(m_camera_controller->GetCamera());
-		m_renderer->AddMesh(meshes);
-		m_renderer->EndScene();	
+		m_scene->Add(meshes);
+		m_scene->Render();
 	}
 
 }

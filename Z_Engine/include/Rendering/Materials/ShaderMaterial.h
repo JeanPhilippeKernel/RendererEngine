@@ -1,13 +1,7 @@
 #pragma once
 #include <string>
-
 #include "IMaterial.h"
 #include "../../Managers/ShaderManager.h"
-
-namespace Z_Engine::Rendering::Meshes {
-	class Mesh;
-}
-
 
 namespace Z_Engine::Rendering::Materials {
 
@@ -18,12 +12,10 @@ namespace Z_Engine::Rendering::Materials {
 
 		virtual ~ShaderMaterial() = default;
 
-		virtual void SetMeshOwner(Meshes::Mesh* const mesh);
 
 		virtual void Apply() = 0;
 
 	protected:
-		Meshes::Mesh* m_owner_mesh;
 		Ref<Managers::ShaderManager> m_shader_manager;
 	};
 }

@@ -57,7 +57,6 @@ namespace Z_Engine::Rendering::Geometries {
 		void _FillVertexBuffers() {
 			if (m_internal_geometry_buffer == nullptr) {
 				m_internal_geometry_buffer.reset(new Buffers::VertexBuffer<float>(m_vertices.size()));
-				m_internal_geometry_buffer->SetLayout(Renderers::Storages::GraphicVertex::Descriptor::GetLayout());
 			}
 
 			std::vector<float> internal_float_representation;

@@ -1,11 +1,9 @@
 #pragma once
 #include <vector>
-#include <array>
 #include <algorithm>
 #include <numeric>
 
 #include "GraphicVertex.h"
-#include "../RenderCommand.h"
 #include "../../Buffers/VertexArray.h"
 #include "../../Buffers/VertexBuffer.h"
 #include "../../Buffers/IndexBuffer.h"
