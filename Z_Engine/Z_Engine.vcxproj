@@ -95,6 +95,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <Lib>
       <AdditionalDependencies>glew32.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\include\dependencies\SDL2\lib\$(Platform)\;$(SolutionDir)$(ProjectName)\include\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\include\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <Verbose>false</Verbose>
     </Lib>
     <ProjectReference>
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
@@ -128,6 +129,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <Lib>
       <AdditionalDependencies>glew32.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\include\dependencies\SDL2\lib\$(Platform)\;$(SolutionDir)$(ProjectName)\include\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\include\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <Verbose>false</Verbose>
     </Lib>
     <ProjectReference>
       <LinkLibraryDependencies>true</LinkLibraryDependencies>

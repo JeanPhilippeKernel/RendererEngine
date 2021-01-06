@@ -68,8 +68,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\bin\$(Configuration)-$(Platform)\</AdditionalLibraryDirectories>
       <AdditionalDependencies>Z_Engine.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <LinkStatus>true</LinkStatus>
-      <ShowProgress>LinkVerbose</ShowProgress>
     </Link>
     <ProjectReference>
       <UseLibraryDependencyInputs>true</UseLibraryDependencyInputs>
@@ -94,8 +92,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\bin\$(Configuration)-$(Platform)\</AdditionalLibraryDirectories>
       <AdditionalDependencies>Z_Engine.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <LinkStatus>true</LinkStatus>
-      <ShowProgress>LinkVerbose</ShowProgress>
     </Link>
     <ProjectReference>
       <UseLibraryDependencyInputs>true</UseLibraryDependencyInputs>
