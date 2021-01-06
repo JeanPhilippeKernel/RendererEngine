@@ -1,5 +1,4 @@
 ﻿#pragma once
-#include <memory>
 #include <vector>
 
 #include "../Cameras/Camera.h"
@@ -28,7 +27,6 @@ namespace  Z_Engine::Rendering::Scenes {
 		}
 
 		~GraphicScene() = default;
-
 
 		void Initialize() override;
 		void Render() override;

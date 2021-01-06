@@ -4,7 +4,7 @@ namespace Z_Engine::Rendering::Materials {
 
 	StandardMaterial::StandardMaterial() 
 		: 
-		ShaderMaterial("src/Assets/Shaders/standard_shader.glsl"), 
+		ShaderMaterial("Assets/Shaders/standard_shader.glsl"), 
 		m_tile_factor(1.0f),
 		m_tint_color(glm::vec4(1.0f))
 	{

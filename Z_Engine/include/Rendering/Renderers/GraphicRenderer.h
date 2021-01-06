@@ -42,9 +42,9 @@ namespace Z_Engine::Rendering::Renderers {
 
 		void Submit(const Ref<Storages::GraphicRendererStorage<float, unsigned int>>& graphic_storage) {
 			
-			const auto& shader = graphic_storage->GetShader();
-			const auto& vertex_array = graphic_storage->GetVertexArray();
-			const auto& material = graphic_storage->GetMaterial();
+			const auto& shader			= graphic_storage->GetShader();
+			const auto& vertex_array	= graphic_storage->GetVertexArray();
+			const auto& material		= graphic_storage->GetMaterial();
 			shader->Bind();
 			material->Apply();
 

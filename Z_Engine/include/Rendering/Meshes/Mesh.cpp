@@ -31,7 +31,6 @@ namespace Z_Engine::Rendering::Meshes {
 	{
 	}
 
-
 	unsigned int Mesh::GetUniqueIdentifier() const {
 		return m_unique_identifier;
 	}

@@ -11,7 +11,7 @@ namespace Sandbox::Layers {
 
 
 		virtual ~ExampleLayer() =  default;
-
+		 
 		virtual void Initialize()							override;
 		virtual void Update(Z_Engine::Core::TimeStep dt)	override;
 

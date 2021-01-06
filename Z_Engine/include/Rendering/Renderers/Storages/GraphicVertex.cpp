@@ -20,8 +20,13 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		_UpdateBuffer();
 	}
 
-	glm::vec3 GraphicVertex::GetPosition() const { return m_position; }
-	glm::vec2 GraphicVertex::GetTextureCoord() const { return m_texture_coord; }
+	glm::vec3 GraphicVertex::GetPosition() const { 
+		return m_position; 
+	}
+	
+	glm::vec2 GraphicVertex::GetTextureCoord() const { 
+		return m_texture_coord; 
+	}
 
 	void GraphicVertex::SetPosition(const glm::vec3& value) { 
 		m_position	= value; 
