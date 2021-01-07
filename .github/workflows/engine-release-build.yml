@@ -1,4 +1,4 @@
-name: Z-Engine Build
+name: Z-Engine Release Build
 
 on: [push]
 
