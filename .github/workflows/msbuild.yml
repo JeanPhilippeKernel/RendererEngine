@@ -1,4 +1,4 @@
-name: MSBuild
+name: Z-Engine Build
 
 on: [push]
 
