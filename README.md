@@ -1,4 +1,4 @@
-![MSBuild](https://github.com/JeanPhilippeKernel/RendererEngine/workflows/MSBuild/badge.svg?event=pull_request)
+![MSBuild](https://github.com/JeanPhilippeKernel/RendererEngine/workflows/MSBuild/badge.svg?branch=develop)
 
 # Z-Engine
 
