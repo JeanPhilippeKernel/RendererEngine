@@ -22,13 +22,11 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
@@ -91,12 +89,20 @@
     </Link>
     <PostBuildEvent>
       <Command>COPY /Y /V $(SolutionDir)Z_Engine\bin\$(Configuration)-$(Platform)\$(ProjectName).lib $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\
-COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\SDL2\lib\$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ 
-COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platform)\glew32.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ </Command>
+
+COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\SDL2\lib\$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\
+
+COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platform)\glew32.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ 
+COPY /Y /V $(SolutionDir)Z_Engine\bin\$(Configuration)-$(Platform)\$(ProjectName).lib $(SolutionDir)Sandbox3D\bin\$(Configuration)-$(Platform)\
+
+COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\SDL2\lib\$(Platform)\SDL2.dll $(SolutionDir)Sandbox3D\bin\$(Configuration)-$(Platform)\
+
+COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platform)\glew32.dll $(SolutionDir)Sandbox3D\bin\$(Configuration)-$(Platform)\ </Command>
     </PostBuildEvent>
     <Lib>
       <AdditionalDependencies>glew32.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\include\dependencies\SDL2\lib\$(Platform)\;$(SolutionDir)$(ProjectName)\include\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\include\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <Verbose>false</Verbose>
     </Lib>
     <ProjectReference>
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
@@ -124,12 +130,20 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     </Link>
     <PostBuildEvent>
       <Command>COPY /Y /V $(SolutionDir)Z_Engine\bin\$(Configuration)-$(Platform)\$(ProjectName).lib $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\
-COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\SDL2\lib\$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ 
-COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platform)\glew32.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ </Command>
+
+COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\SDL2\lib\$(Platform)\SDL2.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\
+
+COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platform)\glew32.dll $(SolutionDir)Sandbox\bin\$(Configuration)-$(Platform)\ 
+COPY /Y /V $(SolutionDir)Z_Engine\bin\$(Configuration)-$(Platform)\$(ProjectName).lib $(SolutionDir)Sandbox3D\bin\$(Configuration)-$(Platform)\
+
+COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\SDL2\lib\$(Platform)\SDL2.dll $(SolutionDir)Sandbox3D\bin\$(Configuration)-$(Platform)\
+
+COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platform)\glew32.dll $(SolutionDir)Sandbox3D\bin\$(Configuration)-$(Platform)\ </Command>
     </PostBuildEvent>
     <Lib>
       <AdditionalDependencies>glew32.lib;SDL2.lib;opengl32.lib;fmt.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)$(ProjectName)\include\dependencies\SDL2\lib\$(Platform)\;$(SolutionDir)$(ProjectName)\include\dependencies\glew\lib\Release\$(Platform)\;$(SolutionDir)$(ProjectName)\include\dependencies\fmt\lib\$(Platform)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <Verbose>false</Verbose>
     </Lib>
     <ProjectReference>
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
@@ -149,6 +163,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Controllers\OrthographicCameraController.h" />
     <ClInclude Include="include\Controllers\ICameraController.h" />
     <ClInclude Include="include\Controllers\IController.h" />
+    <ClInclude Include="include\Controllers\PerspectiveCameraController.h" />
     <ClInclude Include="include\Core\IEventable.h" />
     <ClInclude Include="include\Core\IGraphicObject.h" />
     <ClInclude Include="include\Core\IInitializable.h" />
@@ -240,6 +255,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />
+    <ClCompile Include="include\Controllers\PerspectiveCameraController.cpp" />
     <ClCompile Include="include\dependencies\imgui\examples\imgui_impl_opengl3.cpp" />
     <ClCompile Include="include\dependencies\imgui\examples\imgui_impl_sdl.cpp" />
     <ClCompile Include="include\dependencies\imgui\imgui.cpp" />
@@ -272,10 +288,6 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Window\CoreWindow.cpp" />
     <ClCompile Include="include\Window\SDLWin\OpenGLWindow.cpp" />
     <ClCompile Include="include\Rendering\Materials\ShaderMaterial.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="ClassDiagram.cd" />
-    <None Include="ClassDiagram1.cd" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

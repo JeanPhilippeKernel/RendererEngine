@@ -1,7 +1,4 @@
 #include "Mesh.h"
-#include "../Renderers/Storages/GraphicVertex.h"
-
-using namespace Z_Engine::Rendering::Renderers::Storages;
 
 namespace Z_Engine::Rendering::Meshes {
 
@@ -34,7 +31,6 @@ namespace Z_Engine::Rendering::Meshes {
 	{
 	}
 
-
 	unsigned int Mesh::GetUniqueIdentifier() const {
 		return m_unique_identifier;
 	}
@@ -50,23 +46,19 @@ namespace Z_Engine::Rendering::Meshes {
 	void Mesh::SetUniqueIdentifier(unsigned int  value) {
 		if(m_unique_identifier != value) {
 			m_unique_identifier = value;
-			OnSetUniqueIdentifierEvent();
 		}
 	}
 
 	void Mesh::SetMaterial(Materials::ShaderMaterial* const material) {
 		m_material.reset(material);
-		m_material->SetMeshOwner(this);
 	}
 
 	void Mesh::SetMaterial(Ref<Materials::ShaderMaterial>& material) {
 		m_material = std::move(material);
-		m_material->SetMeshOwner(this);
 	}
 
 	void Mesh::SetMaterial(const Ref<Materials::ShaderMaterial>& material) {
 		m_material = material;
-		m_material->SetMeshOwner(this);
 	}
 	
 	void Mesh::SetGeometry(Geometries::IGeometry* const geometry) {
@@ -80,15 +72,4 @@ namespace Z_Engine::Rendering::Meshes {
 	void Mesh::SetGeometry(const Ref<Geometries::IGeometry>& geometry) {
 		m_geometry = geometry;
 	}
-
-	void Mesh::OnSetUniqueIdentifierEvent() {
-		 auto& vertices = m_geometry->GetVertices();
-		 std::for_each(
-			 std::begin(vertices), std::end(vertices), 
-			 [this](GraphicVertex& vertex) { vertex.SetIndex(static_cast<float>(m_unique_identifier)); }
-		 );
-
-		 m_geometry->Update();
-	}
-
 }

@@ -7,13 +7,13 @@ namespace Z_Engine::Rendering::Renderers {
 	class GraphicRenderer3D : public GraphicRenderer {
 	public:
 
-		void StartScene(const Ref<Cameras::PerspectiveCamera>& camera) {
-			GraphicRenderer::StartScene(camera);
-		}
+		//void StartScene(const Ref<Cameras::PerspectiveCamera>& camera) {
+		//	GraphicRenderer::StartScene(camera);
+		//}
 
 
-		void EndScene() override {
-			/*GraphicRenderer::EndScene();*/
-		}
+		//void EndScene() override {
+		//	/*GraphicRenderer::EndScene();*/
+		//}
 	};
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "Z_EngineDef.h"
+
 #include "Engine.h"
 
 
@@ -8,11 +9,14 @@
 #include "Rendering/Buffers/IndexBuffer.h"
 #include "Rendering/Buffers/VertexArray.h"
 
+
+#include "Rendering/Scenes/GraphicScene.h"
 #include "Rendering/Renderers/GraphicRenderer.h"
 #include "Rendering/Renderers/GraphicRenderer2D.h"
 #include "Rendering/Renderers/GraphicRenderer3D.h"
-#include "Rendering/Cameras/OrthographicCamera.h"
 #include "Rendering/Cameras/Camera.h"
+#include "Rendering/Cameras/OrthographicCamera.h"
+#include "Rendering/Cameras/PerspectiveCamera.h"
 
 #include "Rendering/Geometries/QuadGeometry.h"
 #include "Rendering/Geometries/SquareGeometry.h"
@@ -39,9 +43,7 @@
 #include "Controllers/IController.h"
 #include "Controllers/ICameraController.h"
 #include "Controllers/OrthographicCameraController.h"
-
-
-
+#include "Controllers/PerspectiveCameraController.h"
 
 #include "Core/TimeStep.h"
 #include "Core/Utility.h"

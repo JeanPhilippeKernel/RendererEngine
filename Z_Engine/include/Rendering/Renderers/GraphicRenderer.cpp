@@ -4,7 +4,7 @@
 namespace Z_Engine::Rendering::Renderers {
    GraphicRenderer::GraphicRenderer()
 	   :
-	   m_scene(new Rendering::Scenes::GraphicScene()),
+	   m_view_projection_matrix(glm::mat4(1.0f)),
 	   m_mesh_map(),
 	   m_graphic_storage_list()
    {
@@ -52,8 +52,8 @@ namespace Z_Engine::Rendering::Renderers {
    }
 
 
-   void GraphicRenderer::StartScene(const Ref<Cameras::Camera>& camera) {
-	   m_scene->SetCamera(camera);
+   void GraphicRenderer::StartScene(const glm::mat4& view_projection_matrix) {
+	   m_view_projection_matrix = view_projection_matrix;
    }
 
    void GraphicRenderer::EndScene() {
@@ -62,18 +62,16 @@ namespace Z_Engine::Rendering::Renderers {
 		   [this](const std::pair<unsigned int, std::vector<Meshes::Mesh>>& value) {
 
 			   const auto& material = value.second.at(0).GetMaterial();
-			   const Ref<Shaders::Shader>& shader = material->GetShader();
+			   const auto& shader	= material->GetShader();
 
-			   std::vector<Ref<Buffers::VertexBuffer<float>>> buffers;
-			   
-			   std::transform(
-				   std::begin(value.second), std::end(value.second),
-				   std::back_inserter(buffers),
-				   [](const Meshes::Mesh& mesh) { return mesh.GetGeometry()->GetBuffer(); }
-			   );
+			   std::vector<Storages::GraphicVertex> vertices;
+			   std::for_each(std::begin(value.second), std::end(value.second), [&vertices](const Meshes::Mesh& mesh) {
+				   const auto& mesh_vertices = mesh.GetGeometry()->GetVertices();
+				   std::copy(std::begin(mesh_vertices), std::end(mesh_vertices), std::back_inserter(vertices));
+				});
 
 			   Ref<Storages::GraphicRendererStorage<float, unsigned int>> graphic_storage;
-			   graphic_storage.reset(new Storages::GraphicRendererStorage<float, unsigned int>{ shader, buffers, material });
+			   graphic_storage.reset(new Storages::GraphicRendererStorage<float, unsigned int>{ shader, vertices, material });
 			   m_graphic_storage_list.emplace(graphic_storage);
 		   }
 	   );
