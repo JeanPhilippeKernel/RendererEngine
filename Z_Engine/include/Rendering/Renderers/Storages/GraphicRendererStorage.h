@@ -1,11 +1,9 @@
 #pragma once
 #include <vector>
-#include <array>
 #include <algorithm>
 #include <numeric>
 
 #include "GraphicVertex.h"
-#include "../RenderCommand.h"
 #include "../../Buffers/VertexArray.h"
 #include "../../Buffers/VertexBuffer.h"
 #include "../../Buffers/IndexBuffer.h"
@@ -23,6 +21,12 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		explicit GraphicRendererStorage(
 			const Ref<Shaders::Shader>& shader, 
 			const std::vector<Ref<Buffers::VertexBuffer<T>>>& vertex_buffer_list,
+			const Ref<Materials::ShaderMaterial>& material
+		);
+
+		explicit GraphicRendererStorage(
+			const Ref<Shaders::Shader>& shader,
+			const std::vector<Renderers::Storages::GraphicVertex>& vertices_list,
 			const Ref<Materials::ShaderMaterial>& material
 		);
 		~GraphicRendererStorage() = default;
@@ -45,70 +49,115 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 	private:
 
-		Ref<Materials::ShaderMaterial>			m_shader_material;
-
-		std::vector<T>							m_internal_raw_vertices;
-		std::vector<K>							m_internal_index;
-
-		Ref<Shaders::Shader>					m_shader;
-		Ref<Buffers::VertexBuffer<T>>			m_vertex_buffer;
-		Ref<Buffers::VertexArray<T, K>>			m_vertex_array;
-		Ref<Buffers::IndexBuffer<K>>			m_index_buffer;
+		Ref<Shaders::Shader>					m_shader			{ nullptr };
+		Ref<Materials::ShaderMaterial>			m_shader_material	{ nullptr };
+		
+		Ref<Buffers::VertexBuffer<T>>			m_vertex_buffer		{ nullptr };
+		Ref<Buffers::IndexBuffer<K>>			m_index_buffer		{ nullptr };
+		Ref<Buffers::VertexArray<T, K>>			m_vertex_array		{ nullptr };
 	};
 
 	template<typename T, typename K>
 	inline GraphicRendererStorage<T, K>::GraphicRendererStorage(
 		const Ref<Shaders::Shader>& shader,
 		const std::vector<Ref<Buffers::VertexBuffer<T>>>& vertex_buffer_list,
-		const Ref<Materials::ShaderMaterial>& material)
+		const Ref<Materials::ShaderMaterial>& material
+	)
 		:
 		m_shader(shader),
-		m_shader_material(material),
-		m_vertex_buffer(nullptr),
-		m_index_buffer(nullptr),
-		m_vertex_array(nullptr)
+		m_shader_material(material)
 	{
 		unsigned int vertex_count = std::accumulate(
 			std::begin(vertex_buffer_list), std::end(vertex_buffer_list),
 			0, [](unsigned int init, const Ref<Buffers::VertexBuffer<T>>& buffer) { return std::move(init) + buffer->GetVertexCount(); });
 
-		m_internal_raw_vertices						= std::vector<T>(vertex_count * (sizeof(Renderers::Storages::IVertex) / sizeof(float)), 0.0f);
-		T* m_internal_raw_vertices_buffer_cursor	= m_internal_raw_vertices.data();
+		std::vector<T> raw_vertices		= std::vector<T>(vertex_count * (sizeof(IVertex) / sizeof(float)), 0.0f);
+		T* raw_vertices_buffer_cursor	= raw_vertices.data();
 
-		std::for_each(std::begin(vertex_buffer_list), std::end(vertex_buffer_list), [this, &m_internal_raw_vertices_buffer_cursor](const Ref<Buffers::VertexBuffer<T>>& buffer) {
+		std::for_each(std::begin(vertex_buffer_list), std::end(vertex_buffer_list), [&raw_vertices_buffer_cursor](const Ref<Buffers::VertexBuffer<T>>& buffer) {
 			const std::vector<T>& data	= buffer->GetData();
 			const size_t byte_size		= buffer->GetByteSize();
 
-			std::memcpy(m_internal_raw_vertices_buffer_cursor, &data[0], byte_size);
-			m_internal_raw_vertices_buffer_cursor += data.size();
+			std::memcpy(raw_vertices_buffer_cursor, &data[0], byte_size);
+			raw_vertices_buffer_cursor += data.size();
 		});
 
 
 		m_vertex_buffer.reset(new Buffers::VertexBuffer<T>(vertex_count));
 		m_vertex_buffer->SetLayout(Renderers::Storages::GraphicVertex::Descriptor::GetLayout());
-		m_vertex_buffer->SetData(m_internal_raw_vertices);
+		m_vertex_buffer->SetData(raw_vertices);
 
 		unsigned int index_count	= (vertex_count * 6) / 4;  // As 4-vertices means 6 indices
-		m_internal_index			= std::vector<K>(index_count, 0);
+		std::vector<K> raw_indexes	= std::vector<K>(index_count, 0);
 
 		size_t offset = 0;
 		for (size_t i = 0; i < index_count; i += 6) 
 		{
-			m_internal_index[i + 0] = 0 + offset;
-			m_internal_index[i + 1] = 1 + offset;
-			m_internal_index[i + 2] = 2 + offset;
-			m_internal_index[i + 3] = 2 + offset;
-			m_internal_index[i + 4] = 3 + offset;
-			m_internal_index[i + 5] = 0 + offset;
+			raw_indexes[i + 0] = 0 + offset;
+			raw_indexes[i + 1] = 1 + offset;
+			raw_indexes[i + 2] = 2 + offset;
+			raw_indexes[i + 3] = 2 + offset;
+			raw_indexes[i + 4] = 3 + offset;
+			raw_indexes[i + 5] = 0 + offset;
 
 			offset += 4;
 		}
 		m_index_buffer.reset(new Buffers::IndexBuffer<K>());
-		m_index_buffer->SetData(m_internal_index);
+		m_index_buffer->SetData(raw_indexes);
 
 
 		m_vertex_array.reset(new Buffers::VertexArray<T, K>());
 		m_vertex_array->AddVertexBuffer(m_vertex_buffer);
 		m_vertex_array->SetIndexBuffer(m_index_buffer);
 	}
+
+
+	template<typename T, typename K>
+	inline GraphicRendererStorage<T, K>::GraphicRendererStorage(
+		const Ref<Shaders::Shader>& shader,
+		const std::vector<GraphicVertex>& vertices_list,
+		const Ref<Materials::ShaderMaterial>& material
+	)
+		:
+		m_shader(shader),
+		m_shader_material(material)
+	{
+
+		unsigned int vertex_count = static_cast<unsigned int>(vertices_list.size());
+		std::vector<T> raw_vertices;
+
+		std::for_each(std::begin(vertices_list), std::end(vertices_list), [&raw_vertices](const GraphicVertex& vertex) {
+			const auto& data = vertex.GetData();
+			std::copy(std::begin(data), std::end(data), std::back_inserter(raw_vertices));
+		});
+
+		m_vertex_buffer.reset(new Buffers::VertexBuffer<T>(vertex_count));
+		m_vertex_buffer->SetLayout(GraphicVertex::Descriptor::GetLayout());
+		m_vertex_buffer->SetData(raw_vertices);
+
+		unsigned int index_count = (vertex_count * 6) / 4;  // As 4-vertices means 6 indices
+		std::vector<K> raw_indexes = std::vector<K>(index_count, 0);
+
+		size_t offset = 0;
+		for (size_t i = 0; i < index_count; i += 6)
+		{
+			raw_indexes[i + 0] = 0 + offset;
+			raw_indexes[i + 1] = 1 + offset;
+			raw_indexes[i + 2] = 2 + offset;
+			raw_indexes[i + 3] = 2 + offset;
+			raw_indexes[i + 4] = 3 + offset;
+			raw_indexes[i + 5] = 0 + offset;
+
+			offset += 4;
+		}
+		m_index_buffer.reset(new Buffers::IndexBuffer<K>());
+		m_index_buffer->SetData(raw_indexes);
+
+
+		m_vertex_array.reset(new Buffers::VertexArray<T, K>());
+		m_vertex_array->AddVertexBuffer(m_vertex_buffer);
+		m_vertex_array->SetIndexBuffer(m_index_buffer);
+	}
+
+
 }

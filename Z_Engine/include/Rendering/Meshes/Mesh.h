@@ -30,9 +30,6 @@ namespace Z_Engine::Rendering::Meshes {
 		const Ref<Geometries::IGeometry>& GetGeometry() const;
 
 	private:
-		virtual void OnSetUniqueIdentifierEvent();
-
-	private:
 		unsigned int					m_unique_identifier;
 		Ref<Materials::ShaderMaterial>	m_material {nullptr};
 		Ref<Geometries::IGeometry>		m_geometry {nullptr};

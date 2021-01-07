@@ -17,19 +17,17 @@ namespace Z_Engine::Rendering::Geometries {
 		explicit IGeometry(std::vector<Renderers::Storages::GraphicVertex>&& vertices) 
 			: m_vertices(std::move(vertices)) 
 		{
-			Update();
 		}
 
 		virtual ~IGeometry() = default;
 
 		virtual void SetVertices(std::vector<Renderers::Storages::GraphicVertex>&& vertices) {
 			m_vertices = std::move(vertices);
-			Update();
 		}
 
 
 		virtual void Update() {
-			_FillVertexBuffers();
+		
 		}
 
 		virtual void ApplyTranslation(const glm::vec3& translation) = delete;
@@ -42,32 +40,11 @@ namespace Z_Engine::Rendering::Geometries {
 					vertex.ApplyMatrixToPosition(transform);
 				}
 			);
-
-			Update();
 		}
 
 		virtual std::vector<Renderers::Storages::GraphicVertex>& GetVertices() { return m_vertices; }
-		virtual const Ref<Buffers::VertexBuffer<float>>& GetBuffer() const { return m_internal_geometry_buffer; }
 	
 	protected:
-		Ref<Buffers::VertexBuffer<float>> m_internal_geometry_buffer	{ nullptr };
-
 		std::vector<Renderers::Storages::GraphicVertex> m_vertices		{};
-
-		void _FillVertexBuffers() {
-			if (m_internal_geometry_buffer == nullptr) {
-				m_internal_geometry_buffer.reset(new Buffers::VertexBuffer<float>(m_vertices.size()));
-				m_internal_geometry_buffer->SetLayout(Renderers::Storages::GraphicVertex::Descriptor::GetLayout());
-			}
-
-			std::vector<float> internal_float_representation;
-
-			std::for_each(std::begin(m_vertices), std::end(m_vertices), [&internal_float_representation](const Renderers::Storages::GraphicVertex& vertex) {
-				const auto& data = vertex.GetData();
-				std::copy(std::begin(data), std::end(data), std::back_inserter(internal_float_representation));
-			});
-
-			m_internal_geometry_buffer->SetData(internal_float_representation);
-		}
 	};
 }

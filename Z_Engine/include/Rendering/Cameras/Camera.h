@@ -8,14 +8,19 @@ namespace Z_Engine::Rendering::Cameras
 	{
 	public:
 		Camera()
-			: m_position({0.0f, 0.0f, 0.5f})
+			:
+			m_position({ 0.0f, 0.0f, 0.5f }),
+			m_projection(glm::mat4(1.0f)),
+			m_view_matrix(glm::mat4(1.0f)),
+			m_view_projection(glm::mat4(1.0f))
 		{
 		}
+
 		virtual ~Camera() =  default;
 
 		virtual const glm::vec3& GetPosition() const { return m_position;}
-		virtual void SetPosition(const glm::vec3 position) { m_position =  position; }
-		virtual void SetProjectionMatrix(const glm::mat4 projection) { m_projection =  projection; }
+		virtual void SetPosition(const glm::vec3& position) { m_position =  position; }
+		virtual void SetProjectionMatrix(const glm::mat4& projection) { m_projection =  projection; }
 
 		
 		virtual const glm::mat4& GetViewMatrix() const  { return  m_view_matrix; }

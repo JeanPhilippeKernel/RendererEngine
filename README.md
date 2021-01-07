@@ -1,3 +1,5 @@
+![MSBuild](https://github.com/JeanPhilippeKernel/RendererEngine/workflows/MSBuild/badge.svg?branch=develop)
+
 # Z-Engine
 
 Z-Engine is an open-source 2D - 3D rendering engine written in C ++.

@@ -92,6 +92,7 @@
     <ClInclude Include="include\Rendering\Meshes\MeshBuilder.h" />
     <ClInclude Include="include\Rendering\Materials\MixedTextureMaterial.h" />
     <ClInclude Include="include\Core\IGraphicObject.h" />
+    <ClInclude Include="include\Controllers\PerspectiveCameraController.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />
@@ -127,9 +128,6 @@
     <ClCompile Include="include\Rendering\Materials\StandardMaterial.cpp" />
     <ClCompile Include="include\Rendering\Meshes\MeshBuilder.cpp" />
     <ClCompile Include="include\Rendering\Materials\MixedTextureMaterial.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="ClassDiagram.cd" />
-    <None Include="ClassDiagram1.cd" />
+    <ClCompile Include="include\Controllers\PerspectiveCameraController.cpp" />
   </ItemGroup>
 </Project>
