@@ -26,9 +26,6 @@ namespace  Z_Engine::Rendering::Scenes {
 
 	void GraphicScene::Render() {
 
-		Renderers::RendererCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
-		Renderers::RendererCommand::Clear();
-
 		m_renderer->StartScene(m_camera_controller->GetCamera()->GetViewProjectionMatrix());
 		m_renderer->AddMesh(m_mesh_list);
 		m_renderer->EndScene();

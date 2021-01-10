@@ -11,15 +11,23 @@
 
 
 #include "Rendering/Scenes/GraphicScene.h"
+#include "Rendering/Scenes/GraphicScene2D.h"
+#include "Rendering/Scenes/GraphicScene3D.h"
+
 #include "Rendering/Renderers/GraphicRenderer.h"
 #include "Rendering/Renderers/GraphicRenderer2D.h"
 #include "Rendering/Renderers/GraphicRenderer3D.h"
+
 #include "Rendering/Cameras/Camera.h"
 #include "Rendering/Cameras/OrthographicCamera.h"
 #include "Rendering/Cameras/PerspectiveCamera.h"
 
+
+#include "Rendering/Geometries/IGeometry.h"
+#include "Rendering/Geometries/CubeGeometry.h"
 #include "Rendering/Geometries/QuadGeometry.h"
 #include "Rendering/Geometries/SquareGeometry.h"
+
 #include "Rendering/Materials/ShaderMaterial.h"
 #include "Rendering/Materials/StandardMaterial.h"
 #include "Rendering/Materials/MixedTextureMaterial.h"

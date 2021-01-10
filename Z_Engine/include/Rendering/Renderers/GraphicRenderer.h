@@ -13,20 +13,12 @@
 #include "../Meshes/Mesh.h"
 #include "../../Z_EngineDef.h"
 
-
 namespace Z_Engine::Rendering::Renderers {
 	
 	class GraphicRenderer : public Core::IInitializable {
 	public:
 		GraphicRenderer();
-		~GraphicRenderer()	= default;
-
-		void Initialize() override {
-			//enable management of transparent background image (RGBA-8)
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		}
-
+		virtual ~GraphicRenderer()	= default;
 
 		virtual void AddMesh(Meshes::Mesh& mesh);
 		virtual void AddMesh(Ref<Meshes::Mesh>& mesh);
@@ -57,5 +49,6 @@ namespace Z_Engine::Rendering::Renderers {
 		
 		std::unordered_map<unsigned int, std::vector<Rendering::Meshes::Mesh>>	m_mesh_map;
 		std::queue<Ref<Storages::GraphicRendererStorage<float, unsigned int>>>	m_graphic_storage_list;
+		Storages::GraphicRendererStorageType									m_storage_type;
 	};
 }

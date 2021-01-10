@@ -4,6 +4,9 @@
 #include "dependencies/SDL2/include/SDL_timer.h"
 
 namespace Z_Engine {
+	
+	Core::TimeStep Engine::m_delta_time = { 0.0f };
+
 
 	Engine::Engine() 
 		:m_running(true)

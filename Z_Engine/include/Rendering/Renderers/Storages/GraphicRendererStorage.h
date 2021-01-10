@@ -14,21 +14,32 @@
 
 
 namespace Z_Engine::Rendering::Renderers::Storages {
+
+
+	enum class GraphicRendererStorageType
+	{
+		GRAPHIC_2D_STORAGE_TYPE,
+		GRAPHIC_3D_STORAGE_TYPE
+	};
+
 	
 	template <typename T, typename K>
 	class GraphicRendererStorage {
 	public:
 		explicit GraphicRendererStorage(
-			const Ref<Shaders::Shader>& shader, 
-			const std::vector<Ref<Buffers::VertexBuffer<T>>>& vertex_buffer_list,
-			const Ref<Materials::ShaderMaterial>& material
+			const Ref<Shaders::Shader>&							shader, 
+			const std::vector<Ref<Buffers::VertexBuffer<T>>>&	vertex_buffer_list,
+			const Ref<Materials::ShaderMaterial>&				material,
+			GraphicRendererStorageType							storage_type
 		);
 
 		explicit GraphicRendererStorage(
-			const Ref<Shaders::Shader>& shader,
-			const std::vector<Renderers::Storages::GraphicVertex>& vertices_list,
-			const Ref<Materials::ShaderMaterial>& material
+			const Ref<Shaders::Shader>&								shader,
+			const std::vector<Renderers::Storages::GraphicVertex>&	vertices_list,
+			const Ref<Materials::ShaderMaterial>&					material,
+			GraphicRendererStorageType								storage_type
 		);
+
 		~GraphicRendererStorage() = default;
 
 		void SetShader(const Ref<Shaders::Shader>& shader) {
@@ -59,9 +70,10 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 	template<typename T, typename K>
 	inline GraphicRendererStorage<T, K>::GraphicRendererStorage(
-		const Ref<Shaders::Shader>& shader,
-		const std::vector<Ref<Buffers::VertexBuffer<T>>>& vertex_buffer_list,
-		const Ref<Materials::ShaderMaterial>& material
+		const Ref<Shaders::Shader>&							shader,
+		const std::vector<Ref<Buffers::VertexBuffer<T>>>&	vertex_buffer_list,
+		const Ref<Materials::ShaderMaterial>&				material,
+		GraphicRendererStorageType							storage_type
 	)
 		:
 		m_shader(shader),
@@ -87,21 +99,39 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_vertex_buffer->SetLayout(Renderers::Storages::GraphicVertex::Descriptor::GetLayout());
 		m_vertex_buffer->SetData(raw_vertices);
 
-		unsigned int index_count	= (vertex_count * 6) / 4;  // As 4-vertices means 6 indices
-		std::vector<K> raw_indexes	= std::vector<K>(index_count, 0);
-
+		unsigned int index_count{ 0 };
+		std::vector<K> raw_indexes;
 		size_t offset = 0;
-		for (size_t i = 0; i < index_count; i += 6) 
-		{
-			raw_indexes[i + 0] = 0 + offset;
-			raw_indexes[i + 1] = 1 + offset;
-			raw_indexes[i + 2] = 2 + offset;
-			raw_indexes[i + 3] = 2 + offset;
-			raw_indexes[i + 4] = 3 + offset;
-			raw_indexes[i + 5] = 0 + offset;
 
-			offset += 4;
+
+		if (storage_type == GraphicRendererStorageType::GRAPHIC_2D_STORAGE_TYPE) {
+			index_count = (vertex_count * 6) / 4;  // As 4-vertices means 6 indices
+			raw_indexes = std::vector<K>(index_count, 0);
+
+			for (size_t i = 0; i < index_count; i += 6) {
+				raw_indexes[i + 0] = 0 + offset;
+				raw_indexes[i + 1] = 1 + offset;
+				raw_indexes[i + 2] = 2 + offset;
+				raw_indexes[i + 3] = 2 + offset;
+				raw_indexes[i + 4] = 3 + offset;
+				raw_indexes[i + 5] = 0 + offset;
+
+				offset += 4;
+			}
 		}
+
+		else {
+			index_count = (vertex_count * 3) / 3;  // As 3-vertices means 3 indices
+			raw_indexes = std::vector<K>(index_count, 0);
+			for (size_t i = 0; i < index_count; i += 3) {
+				raw_indexes[i + 0] = 0 + offset;
+				raw_indexes[i + 1] = 1 + offset;
+				raw_indexes[i + 2] = 2 + offset;
+
+				offset += 3;
+			}
+		}
+
 		m_index_buffer.reset(new Buffers::IndexBuffer<K>());
 		m_index_buffer->SetData(raw_indexes);
 
@@ -114,9 +144,10 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 
 	template<typename T, typename K>
 	inline GraphicRendererStorage<T, K>::GraphicRendererStorage(
-		const Ref<Shaders::Shader>& shader,
-		const std::vector<GraphicVertex>& vertices_list,
-		const Ref<Materials::ShaderMaterial>& material
+		const Ref<Shaders::Shader>&				shader,
+		const std::vector<GraphicVertex>&		vertices_list,
+		const Ref<Materials::ShaderMaterial>&	material,
+		GraphicRendererStorageType				storage_type
 	)
 		:
 		m_shader(shader),
@@ -135,24 +166,41 @@ namespace Z_Engine::Rendering::Renderers::Storages {
 		m_vertex_buffer->SetLayout(GraphicVertex::Descriptor::GetLayout());
 		m_vertex_buffer->SetData(raw_vertices);
 
-		unsigned int index_count = (vertex_count * 6) / 4;  // As 4-vertices means 6 indices
-		std::vector<K> raw_indexes = std::vector<K>(index_count, 0);
-
+		unsigned int index_count{ 0 };
+		std::vector<K> raw_indexes;
 		size_t offset = 0;
-		for (size_t i = 0; i < index_count; i += 6)
-		{
-			raw_indexes[i + 0] = 0 + offset;
-			raw_indexes[i + 1] = 1 + offset;
-			raw_indexes[i + 2] = 2 + offset;
-			raw_indexes[i + 3] = 2 + offset;
-			raw_indexes[i + 4] = 3 + offset;
-			raw_indexes[i + 5] = 0 + offset;
 
-			offset += 4;
+
+		if (storage_type == GraphicRendererStorageType::GRAPHIC_2D_STORAGE_TYPE) {
+			index_count = (vertex_count * 6) / 4;  // As 4-vertices means 6 indices
+			raw_indexes = std::vector<K>(index_count, 0);
+
+			for (size_t i = 0; i < index_count; i += 6) {
+				raw_indexes[i + 0] = 0 + offset;
+				raw_indexes[i + 1] = 1 + offset;
+				raw_indexes[i + 2] = 2 + offset;
+				raw_indexes[i + 3] = 2 + offset;
+				raw_indexes[i + 4] = 3 + offset;
+				raw_indexes[i + 5] = 0 + offset;
+
+				offset += 4;
+			}
 		}
+
+		else {
+			index_count = (vertex_count * 3) / 3;  // As 3-vertices means 3 indices
+			raw_indexes = std::vector<K>(index_count, 0);
+			for (size_t i = 0; i < index_count; i += 3) {
+				raw_indexes[i + 0] = 0 + offset;
+				raw_indexes[i + 1] = 1 + offset;
+				raw_indexes[i + 2] = 2 + offset;
+
+				offset += 3;
+			}
+		}
+
 		m_index_buffer.reset(new Buffers::IndexBuffer<K>());
 		m_index_buffer->SetData(raw_indexes);
-
 
 		m_vertex_array.reset(new Buffers::VertexArray<T, K>());
 		m_vertex_array->AddVertexBuffer(m_vertex_buffer);

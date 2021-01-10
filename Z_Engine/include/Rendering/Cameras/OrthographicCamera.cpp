@@ -35,12 +35,13 @@ namespace Z_Engine::Rendering::Cameras {
 	void OrthographicCamera::UpdateViewMatrix() {
 		const auto transform =
 			glm::translate(glm::mat4(1.0f), m_position) *
-			glm::rotate(glm::mat4(1.0f), m_angle, glm::vec3(0, 0, 1));
+			glm::rotate(glm::mat4(1.0f), m_angle, glm::vec3(0.f, 0.f, 1.f));
 
-		//we default use right handed coordinate system
-		//inversing operation is to switch left-handed coordinate system
-		m_view_matrix = (m_position.z > 0) ? glm::inverse(transform) : transform;
-
-		m_view_projection = m_projection * m_view_matrix;
+		//we default use left-handed coordinate system
+		//inversing operation is to switch right-handed coordinate system
+		//m_view_matrix = (m_position.z > 0) ? glm::inverse(transform) : transform;
+		
+		m_view_matrix		= glm::inverse(transform);
+		m_view_projection	= m_projection * m_view_matrix;
 	}
 }

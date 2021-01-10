@@ -26,6 +26,10 @@ namespace Z_Engine::Rendering::Renderers {
 			glClear(GL_COLOR_BUFFER_BIT);
 		}
 
+		static void Clear(unsigned int graphic_card_bit) {
+			glClear(graphic_card_bit);
+		}
+
 		template<typename T, typename K>
 		static void DrawIndexed(const Ref<Buffers::VertexArray<T, K>>& vertex_array) {
 			vertex_array->Bind();

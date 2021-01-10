@@ -27,7 +27,10 @@ namespace Z_Engine::Rendering::Cameras
 		virtual const glm::mat4& GetProjectionMatrix() const  { return  m_projection; }
 		virtual const glm::mat4& GetViewProjectionMatrix() const { return  m_view_projection; }
 
- 									    
+ 									
+	protected:
+		virtual void UpdateViewMatrix() = 0;
+
 	protected:
 		glm::vec3 m_position;
 		glm::mat4 m_view_matrix;

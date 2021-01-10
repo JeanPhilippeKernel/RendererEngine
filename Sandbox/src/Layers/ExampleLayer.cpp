@@ -30,7 +30,7 @@ namespace Sandbox::Layers {
 		m_texture_manager->Load("Assets/Images/Flying_Mario.png");
 		m_texture_manager->Load("Assets/Images/mario_and_sonic.png");
 
-		m_scene.reset(new GraphicScene(new OrthographicCameraController(GetAttachedWindow(), true)));
+		m_scene.reset(new GraphicScene2D(new OrthographicCameraController(GetAttachedWindow(), true)));
 		m_scene->Initialize();
 
 		quad_mesh_ptr.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f}, glm::radians(30.0f), m_texture_manager->Obtains("Flying_Mario")));

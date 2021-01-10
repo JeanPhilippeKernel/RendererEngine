@@ -71,7 +71,7 @@ namespace Z_Engine::Rendering::Renderers {
 				});
 
 			   Ref<Storages::GraphicRendererStorage<float, unsigned int>> graphic_storage;
-			   graphic_storage.reset(new Storages::GraphicRendererStorage<float, unsigned int>{ shader, vertices, material });
+			   graphic_storage.reset(new Storages::GraphicRendererStorage<float, unsigned int>{ shader, vertices, material, m_storage_type });
 			   m_graphic_storage_list.emplace(graphic_storage);
 		   }
 	   );
