@@ -25,6 +25,7 @@ namespace Sandbox3D::Layers {
 		Z_Engine::Ref<Z_Engine::Managers::TextureManager>						m_texture_manager; 
 		Z_Engine::Ref<Z_Engine::Rendering::Scenes::GraphicScene>				m_scene;
 		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh>						quad_mesh_ptr;
+		Z_Engine::Ref<Z_Engine::Rendering::Meshes::Mesh>						quad_mesh_ptr_2;
 	
 	};
 

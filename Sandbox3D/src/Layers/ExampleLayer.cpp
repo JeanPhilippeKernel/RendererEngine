@@ -25,26 +25,31 @@ namespace Sandbox3D::Layers {
 		m_texture_manager.reset(new Z_Engine::Managers::TextureManager());
 		m_texture_manager->Load("Assets/Images/free_image.png");
 		m_texture_manager->Load("Assets/Images/Crate.png");
+		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
 
 		m_scene.reset(new GraphicScene3D(new PerspectiveCameraController(GetAttachedWindow(), true)));
 		m_scene->Initialize();
 		
+		quad_mesh_ptr.reset(MeshBuilder::CreateCube({ 0.f, 0.f, 0.0f }, { 50.f, .0f, 20.f }, glm::radians(30.f),  glm::vec3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
+		
+		
 		Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
 		material->SetInterpolateFactor(0.5f);
-		material->SetTexture(m_texture_manager->Load("free_image"));
+		material->SetTexture(m_texture_manager->Obtains("free_image"));
 		material->SetSecondTexture(m_texture_manager->Obtains("Crate"));
+		
+		quad_mesh_ptr_2.reset(MeshBuilder::CreateCube({ 0.f, 1.f, 0.0f }, { 1.f, 1.0f, 1.f }, 0.0f, glm::vec3(0.f, 1.0f, 0.0f)));
+		quad_mesh_ptr_2->SetMaterial(material);
 
-		quad_mesh_ptr.reset(MeshBuilder::CreateCube({0.f, 0.f, 0.0f}, {1.f, 1.f}, glm::radians(45.f)));
-		quad_mesh_ptr->SetMaterial(material);
 	}
 
 	void ExampleLayer::Update(TimeStep dt) {
 		m_scene->GetCameraController()->Update(dt);
 
-		quad_mesh_ptr
+		quad_mesh_ptr_2
 			->GetGeometry()
 			->ApplyTransform(
-				glm::rotate(glm::mat4(1.0f), glm::sin((float)dt) * 0.005f, glm::vec3(0.f, 0.0f, 1.0f)) 
+				glm::rotate(glm::mat4(1.0f), glm::sin((float)dt) * 0.005f, glm::vec3(0.f, 1.0f, 0.0f)) 
 			);
 
 		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
@@ -80,6 +85,8 @@ namespace Sandbox3D::Layers {
 
 	void ExampleLayer::Render() {
 		m_scene->Add(quad_mesh_ptr);
+		m_scene->Add(quad_mesh_ptr_2);
+
 		m_scene->Render();
 	}
 
