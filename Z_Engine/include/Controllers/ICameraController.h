@@ -15,11 +15,19 @@ namespace Z_Engine::Controllers {
 
 		ICameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, bool can_rotate) 
 			: 
-			m_can_rotate(can_rotate) {
+			m_can_rotate(can_rotate) 
+		{
 			m_aspect_ratio = window->GetWindowProperty().AspectRatio;
 		}
 
-		~ICameraController() = default;
+		ICameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window)
+			:
+			m_can_rotate(false) 
+		{
+			m_aspect_ratio = window->GetWindowProperty().AspectRatio;
+		}
+
+		virtual ~ICameraController() = default;
 
 		const glm::vec3& GetPosition()	const { return m_position; }
 		float GetRotationAngle()		const { return m_rotation_angle; }
@@ -37,7 +45,7 @@ namespace Z_Engine::Controllers {
 		void SetRotationSpeed(float speed)		{ m_rotation_speed = speed; }
 		void SetAspectRatio(float ar)			{ m_aspect_ratio = ar; }
 
-		virtual const Z_Engine::Ref<Rendering::Cameras::Camera>& GetCamera() const =  0;
+		virtual const Z_Engine::Ref<Rendering::Cameras::Camera> GetCamera() const =  0;
 
 	protected:
 		glm::vec3 m_position			{ 0.0f, 0.0f, 0.0f };

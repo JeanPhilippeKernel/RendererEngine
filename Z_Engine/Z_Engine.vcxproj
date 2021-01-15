@@ -160,6 +160,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="include\Controllers\OrbitCameraController.h" />
     <ClInclude Include="include\Controllers\OrthographicCameraController.h" />
     <ClInclude Include="include\Controllers\ICameraController.h" />
     <ClInclude Include="include\Controllers\IController.h" />
@@ -220,6 +221,8 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Rendering\Buffers\VertexArray.h" />
     <ClInclude Include="include\Rendering\Buffers\VertexBuffer.h" />
     <ClInclude Include="include\Rendering\Cameras\Camera.h" />
+    <ClInclude Include="include\Rendering\Cameras\FirstPersonShooterCamera.h" />
+    <ClInclude Include="include\Rendering\Cameras\OrbitCamera.h" />
     <ClInclude Include="include\Rendering\Cameras\OrthographicCamera.h" />
     <ClInclude Include="include\Rendering\Cameras\PerspectiveCamera.h" />
     <ClInclude Include="include\Rendering\Geometries\CubeGeometry.h" />
@@ -257,6 +260,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Z_EngineDef.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="include\Controllers\OrbitCameraController.cpp" />
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />
     <ClCompile Include="include\Controllers\PerspectiveCameraController.cpp" />
     <ClCompile Include="include\dependencies\imgui\examples\imgui_impl_opengl3.cpp" />
@@ -271,6 +275,8 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Layers\ImguiLayer.cpp" />
     <ClCompile Include="include\Managers\ShaderManager.cpp" />
     <ClCompile Include="include\Managers\TextureManager.cpp" />
+    <ClCompile Include="include\Rendering\Cameras\FirstPersonShooterCamera.cpp" />
+    <ClCompile Include="include\Rendering\Cameras\OrbitCamera.cpp" />
     <ClCompile Include="include\Rendering\Cameras\OrthographicCamera.cpp" />
     <ClCompile Include="include\Rendering\Cameras\PerspectiveCamera.cpp" />
     <ClCompile Include="include\Rendering\Geometries\CubeGeometry.cpp" />

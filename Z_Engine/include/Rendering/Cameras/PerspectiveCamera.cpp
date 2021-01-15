@@ -31,6 +31,11 @@ namespace Z_Engine::Rendering::Cameras {
 	}
 
 	void PerspectiveCamera::UpdateViewMatrix() {
+
+		const auto forward	= glm::normalize(m_position - m_target);
+		const auto right	= glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), forward));
+		m_up				= glm::cross(forward, right);
+		
 		m_view_matrix		= glm::lookAt(m_position, m_target, m_up);
 		m_view_projection	= m_projection * m_view_matrix;
 	}
