@@ -19,38 +19,59 @@ namespace Z_Engine::Rendering::Cameras {
 
 	void FirstPersonShooterCamera::SetPitchAngle(float degree) {
 		auto rad = glm::radians(degree);
-		m_pitch_angle = glm::clamp(rad, -glm::half_pi<float>() + 0.1f, glm::half_pi<float>() - 0.1f);
+		m_pitch_angle = glm::clamp(rad, -glm::pi<float>() / 2.f + 0.1f, glm::pi<float>() /2.0f - 0.1f);
 	}
-
-	void FirstPersonShooterCamera::SetRadius(float value) {
-		m_radius = glm::clamp(value, 1.5f, 100.f);
-	}
-
-
+	
 	void FirstPersonShooterCamera::SetTarget(const glm::vec3& target) {
-		PerspectiveCamera::SetTarget(target);
-		const glm::vec3 direction = m_position - m_target;
-		m_radius = glm::sqrt((direction.x * direction.x) + (direction.y * direction.y) + (direction.z * direction.z));
-
+		Camera::SetTarget(target);
+		PerspectiveCamera::UpdateCoordinateVectors();
+		PerspectiveCamera::UpdateViewMatrix();
 	}
-
-
 
 	void FirstPersonShooterCamera::SetPosition(const glm::vec3& position) {
-		PerspectiveCamera::SetPosition(position);
-		const glm::vec3 direction = m_position - m_target;
-		m_radius = glm::sqrt((direction.x * direction.x) + (direction.y * direction.y) + (direction.z * direction.z));
+		Camera::SetPosition(position);
+		PerspectiveCamera::UpdateCoordinateVectors();
+		PerspectiveCamera::UpdateViewMatrix();
+	}
+
+
+	void FirstPersonShooterCamera::Move(const glm::vec3& offset_position) {
+		m_position += offset_position;
+		
+		// We don't want the camera to fall down outside the ground plane position
+		// ToDo : we need to revisit this part to provide better approach
+		if (m_position.y <= 1.0f) m_position.y = 1.0f;
+
+		this->UpdateCoordinateVectors();
+		PerspectiveCamera::UpdateViewMatrix();
+	}
+
+
+	void FirstPersonShooterCamera::UpdateCoordinateVectors() {
+		glm::vec3 forward_ = { 0.f, 0.0f, 0.0f };
+		forward_.x = glm::cos(m_pitch_angle) * glm::sin(m_yaw_angle);
+		forward_.y = glm::sin(m_pitch_angle);
+		forward_.z = glm::cos(m_pitch_angle) * glm::cos(m_yaw_angle);
+
+		m_forward	= glm::normalize(forward_);
+		m_right		= glm::normalize(glm::cross(m_world_up, m_forward));
+		m_up		= glm::normalize(glm::cross(m_forward, m_right));
+		
+		m_target = m_forward + m_position;
 	}
 
 	void FirstPersonShooterCamera::SetPosition(float yaw_degree, float pitch_degree) {
 
-		this->SetYawAngle(yaw_degree);
-		this->SetPitchAngle(pitch_degree);
+		float current_yaw = glm::degrees(m_yaw_angle);
+		float current_pitch = glm::degrees(m_pitch_angle);
 
-		m_position.x = m_target.x + (m_radius * glm::cos(m_pitch_angle) * glm::sin(m_yaw_angle));
-		m_position.y = m_target.y + (m_radius * glm::sin(m_pitch_angle));
-		m_position.z = m_target.z + (m_radius * glm::cos(m_pitch_angle) * glm::cos(m_yaw_angle));
+		current_yaw		+= yaw_degree;
+		current_pitch	+= pitch_degree;
 
+		this->SetPitchAngle(current_pitch);
+		this->SetYawAngle(current_yaw);
+
+		this->UpdateCoordinateVectors();
 		PerspectiveCamera::UpdateViewMatrix();
 	}
 }

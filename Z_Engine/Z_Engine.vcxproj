@@ -160,6 +160,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="include\Controllers\FirstPersonShooterCameraController.h" />
     <ClInclude Include="include\Controllers\OrbitCameraController.h" />
     <ClInclude Include="include\Controllers\OrthographicCameraController.h" />
     <ClInclude Include="include\Controllers\ICameraController.h" />
@@ -260,6 +261,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Z_EngineDef.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="include\Controllers\FirstPersonShooterCameraController.cpp" />
     <ClCompile Include="include\Controllers\OrbitCameraController.cpp" />
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />
     <ClCompile Include="include\Controllers\PerspectiveCameraController.cpp" />

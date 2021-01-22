@@ -27,6 +27,14 @@ namespace Z_Engine::Rendering::Cameras
 		virtual const glm::mat4& GetProjectionMatrix() const  { return  m_projection; }
 		virtual const glm::mat4& GetViewProjectionMatrix() const { return  m_view_projection; }
 
+
+		virtual const glm::vec3& GetUp() const { return m_up; }
+		virtual const glm::vec3& GetForward() const { return m_forward; }
+		virtual const glm::vec3& GetRight() const { return m_right; }
+		
+		virtual void SetTarget(const glm::vec3& target) { m_target = target; }
+		virtual const glm::vec3& GetTarget() const { return m_target; }
+
  									
 	protected:
 		virtual void UpdateViewMatrix() = 0;
@@ -36,5 +44,13 @@ namespace Z_Engine::Rendering::Cameras
 		glm::mat4 m_view_matrix;
 		glm::mat4 m_projection;
 		glm::mat4 m_view_projection;
+
+
+		glm::vec3 m_target;
+		glm::vec3 m_up;
+		glm::vec3 m_forward;
+		glm::vec3 m_right;
+
+		const glm::vec3 m_world_up{0.0f, 1.0f, 0.0f };
 	};
 }

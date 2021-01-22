@@ -1,0 +1,79 @@
+#include "FirstPersonShooterCameraController.h"
+#include "../Inputs/KeyCode.h"
+#include "../Inputs/IDevice.h"
+#include "../Inputs/Keyboard.h"
+#include "../Inputs/Mouse.h"
+#include "../Event/EventDispatcher.h"
+
+#include "../Engine.h"
+
+using namespace Z_Engine::Inputs;
+
+namespace Z_Engine::Controllers {
+
+
+	void FirstPersonShooterCameraController::Initialize() {
+		PerspectiveCameraController::Initialize();
+		m_move_speed = 0.2f;
+		m_rotation_speed = 0.0999f;
+
+		SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
+	}
+
+	void FirstPersonShooterCameraController::Update(Core::TimeStep dt) {
+		
+		auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
+		
+		SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
+
+
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_W)) {
+			camera->Move(m_move_speed * dt * -camera->GetForward());
+		}
+
+		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_S)) {
+			camera->Move(m_move_speed * dt * camera->GetForward());
+		}
+
+
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_A)) {
+			camera->Move(m_move_speed * dt * -camera->GetRight());
+		}
+
+		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_D)) {
+			camera->Move(m_move_speed * dt * camera->GetRight());
+		}
+
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Z)) {
+			camera->Move(m_move_speed * dt * camera->GetUp());
+		}
+
+		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_X)) {
+			camera->Move(m_move_speed * dt * -camera->GetUp());
+		}
+
+	}
+
+
+	bool FirstPersonShooterCameraController::OnEvent(Event::CoreEvent& e) {
+		Event::EventDispatcher dispatcher(e);
+		dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&FirstPersonShooterCameraController::OnMouseButtonMoved, this, std::placeholders::_1));
+		return PerspectiveCameraController::OnEvent(e);
+	}
+
+
+	bool FirstPersonShooterCameraController::OnMouseButtonMoved(Event::MouseButtonMovedEvent& e) {
+		m_mouse_cursor_pos.x = static_cast<float>(e.GetPosX());
+		m_mouse_cursor_pos.y = static_cast<float>(e.GetPosY());
+
+
+		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(Z_ENGINE_KEY_MOUSE_RIGHT)) {
+			auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
+			camera->SetPosition(
+				static_cast<float>(((m_window.lock()->GetWidth() / 2.0f) - m_mouse_cursor_pos.x) * m_rotation_speed * Engine::GetDeltaTime()),
+				static_cast<float>(((m_window.lock()->GetHeight() / 2.0f) - m_mouse_cursor_pos.y) * m_rotation_speed * Engine::GetDeltaTime())
+			);
+		}
+		return false;
+	}
+}

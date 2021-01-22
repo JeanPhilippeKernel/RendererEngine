@@ -15,16 +15,24 @@ namespace Z_Engine::Controllers {
 
 		ICameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, bool can_rotate) 
 			: 
-			m_can_rotate(can_rotate) 
+			m_can_rotate(can_rotate),
+			m_window(window)
 		{
-			m_aspect_ratio = window->GetWindowProperty().AspectRatio;
+			const auto window_ptr = m_window.lock();
+			assert(window_ptr != nullptr);
+
+			m_aspect_ratio = window_ptr->GetWindowProperty().AspectRatio;
 		}
 
 		ICameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window)
 			:
-			m_can_rotate(false) 
+			m_can_rotate(false),
+			m_window(window)
 		{
-			m_aspect_ratio = window->GetWindowProperty().AspectRatio;
+			const auto window_ptr = m_window.lock();
+			assert(window_ptr != nullptr);
+
+			m_aspect_ratio = window_ptr->GetWindowProperty().AspectRatio;
 		}
 
 		virtual ~ICameraController() = default;
@@ -58,5 +66,7 @@ namespace Z_Engine::Controllers {
 
 		bool m_can_rotate				{ false };
 
+
+		Z_Engine::WeakRef<Z_Engine::Window::CoreWindow> m_window;
 	};
 }
