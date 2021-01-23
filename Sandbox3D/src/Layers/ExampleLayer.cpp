@@ -23,30 +23,34 @@ namespace Sandbox3D::Layers {
 	void ExampleLayer::Initialize() {
 
 		m_texture_manager.reset(new Z_Engine::Managers::TextureManager());
-		
 		m_texture_manager->Load("Assets/Images/free_image.png");
-		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
 		m_texture_manager->Load("Assets/Images/Crate.png");
-		m_texture_manager->Load("Assets/Images/Flying_Mario.png");
-		m_texture_manager->Load("Assets/Images/mario_and_sonic.png");
+		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
 
-		m_scene.reset(new GraphicScene(new PerspectiveCameraController(GetAttachedWindow(), true)));
+		m_scene.reset(new GraphicScene3D(new PerspectiveCameraController(GetAttachedWindow(), true)));
 		m_scene->Initialize();
-
-		quad_mesh_ptr.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f}, glm::radians(30.0f), m_texture_manager->Obtains("Flying_Mario")));
-		quad_mesh_ptr_1.reset(MeshBuilder::CreateQuad({0.5f, 0.5f}, {0.5f, 0.5}, glm::radians(0.0f), m_texture_manager->Obtains("mario_and_sonic")));
+		
+		quad_mesh_ptr.reset(MeshBuilder::CreateCube({ 0.f, 0.f, 0.0f }, { 50.f, .0f, 20.f }, glm::radians(30.f),  glm::vec3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
+		
 		
 		Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
 		material->SetInterpolateFactor(0.5f);
-		material->SetTexture(m_texture_manager->Load("free_image"));
+		material->SetTexture(m_texture_manager->Obtains("free_image"));
 		material->SetSecondTexture(m_texture_manager->Obtains("Crate"));
-
-		quad_mesh_ptr_2.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5}, 0.0f));
+		
+		quad_mesh_ptr_2.reset(MeshBuilder::CreateCube({ 0.f, 1.f, 0.0f }, { 1.f, 1.0f, 1.f }, 0.0f, glm::vec3(0.f, 1.0f, 0.0f)));
 		quad_mesh_ptr_2->SetMaterial(material);
+
 	}
 
 	void ExampleLayer::Update(TimeStep dt) {
 		m_scene->GetCameraController()->Update(dt);
+
+		quad_mesh_ptr_2
+			->GetGeometry()
+			->ApplyTransform(
+				glm::rotate(glm::mat4(1.0f), glm::sin((float)dt) * 0.005f, glm::vec3(0.f, 1.0f, 0.0f)) 
+			);
 
 		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
 		
@@ -80,9 +84,9 @@ namespace Sandbox3D::Layers {
 	}
 
 	void ExampleLayer::Render() {
+		m_scene->Add(quad_mesh_ptr);
+		m_scene->Add(quad_mesh_ptr_2);
 
-		std::vector<Ref<Mesh>> meshes{ quad_mesh_ptr_2, quad_mesh_ptr_1, quad_mesh_ptr };
-		m_scene->Add(meshes);
 		m_scene->Render();
 	}
 

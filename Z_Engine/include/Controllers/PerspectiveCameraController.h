@@ -19,7 +19,7 @@ namespace Z_Engine::Controllers {
 			:
 			ICameraController(window, can_rotate),
 			m_camera_fov(glm::half_pi<float>()),
-			m_camera_near(1.0f),
+			m_camera_near(0.1f),
 			m_camera_far(150.0f),
 			m_perspective_camera(new Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far))
 		{
@@ -30,7 +30,7 @@ namespace Z_Engine::Controllers {
 			:
 			ICameraController(aspect_ratio),
 			m_camera_fov(glm::half_pi<float>()),
-			m_camera_near(1.0f),
+			m_camera_near(0.1f),
 			m_camera_far(150.0f),
 			m_perspective_camera(new Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far))
 		{

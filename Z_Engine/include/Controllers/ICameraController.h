@@ -9,11 +9,13 @@ namespace Z_Engine::Controllers {
 		
 		ICameraController() = default;
 		ICameraController(float aspect_ratio, bool can_rotate = false)
-			:m_aspect_ratio(aspect_ratio), m_can_rotate(false)
+			:
+			m_aspect_ratio(aspect_ratio), m_can_rotate(false)
 		{}
 
 		ICameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, bool can_rotate) 
-			: m_can_rotate(can_rotate) {
+			: 
+			m_can_rotate(can_rotate) {
 			m_aspect_ratio = window->GetWindowProperty().AspectRatio;
 		}
 

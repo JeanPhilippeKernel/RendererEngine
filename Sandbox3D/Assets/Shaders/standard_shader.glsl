@@ -16,7 +16,7 @@ out vec2 texture_coord;
 
 void main()
 {	
-	gl_Position 	= uniform_viewprojection * vec4(a_position, 1.0f);
+	gl_Position 	= uniform_viewprojection *  vec4(a_position, 1.0f);
 	texture_coord 	= a_texture_coord;
 }
 

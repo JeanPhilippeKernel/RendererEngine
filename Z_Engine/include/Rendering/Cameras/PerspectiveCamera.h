@@ -13,15 +13,16 @@ namespace Z_Engine::Rendering::Cameras {
 		void SetTarget(const glm::vec3& target);
 		void SetFieldOfView(float rad_angle);
 
-		void SetPosition(const glm::vec3& position) override;
-		void SetProjectionMatrix(const glm::mat4& projection) override;
+		void SetPosition(const glm::vec3& position)				override;
+		void SetProjectionMatrix(const glm::mat4& projection)	override;
+
+	protected:
+		void UpdateViewMatrix()									override;
 
 	private:
 		float m_field_of_view{ 0.0f };
 
 		glm::vec3 m_target;
 		glm::vec3 m_up;
-
-		void UpdateViewMatrix();
 	};
 }

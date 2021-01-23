@@ -1,5 +1,4 @@
 #pragma once
-#include <memory>
 
 #include "Z_EngineDef.h"
 #include "Window/CoreWindow.h"
@@ -20,9 +19,6 @@
 #include "dependencies/imgui/imgui.h"
 #include "dependencies/imgui/imconfig.h"
 #include "dependencies/imgui/examples/imgui_impl_sdl.h"
-
-
-
 #include "dependencies/imgui/examples/imgui_impl_opengl3.h"
 
 namespace Z_Engine {
@@ -50,6 +46,8 @@ namespace Z_Engine {
 		void PushOverlayLayer(Layer* const layer) { m_layer_stack.PushOverlayLayer(layer); }
 		void PushLayer(Layer* const layer) { m_layer_stack.PushLayer(layer); }
 
+		static Core::TimeStep GetDeltaTime() { return m_delta_time; }
+
 	protected:
 		virtual void ProcessEvent();
 
@@ -61,8 +59,9 @@ namespace Z_Engine {
 		LayerStack m_layer_stack;
 	
 	private:
+		static Core::TimeStep m_delta_time;
+		
 		bool m_running{ false };
-		Core::TimeStep m_delta_time { 0.0f };
 		float m_last_frame_time { 0.0f };
 		Ref<Z_Engine::Window::CoreWindow> m_window;
 
