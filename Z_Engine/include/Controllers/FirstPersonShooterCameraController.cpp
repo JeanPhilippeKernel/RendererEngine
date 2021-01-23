@@ -1,3 +1,5 @@
+#pragma once
+
 #include "FirstPersonShooterCameraController.h"
 #include "../Inputs/KeyCode.h"
 #include "../Inputs/IDevice.h"
@@ -25,7 +27,6 @@ namespace Z_Engine::Controllers {
 		auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
 		
 		SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
-
 
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_W)) {
 			camera->Move(m_move_speed * dt * -camera->GetForward());
@@ -63,16 +64,15 @@ namespace Z_Engine::Controllers {
 
 
 	bool FirstPersonShooterCameraController::OnMouseButtonMoved(Event::MouseButtonMovedEvent& e) {
-		m_mouse_cursor_pos.x = static_cast<float>(e.GetPosX());
-		m_mouse_cursor_pos.y = static_cast<float>(e.GetPosY());
-
+		const float x_pos = static_cast<float>(e.GetPosX());
+		const float y_pos = static_cast<float>(e.GetPosY());
 
 		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(Z_ENGINE_KEY_MOUSE_RIGHT)) {
 			auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
-			camera->SetPosition(
-				static_cast<float>(((m_window.lock()->GetWidth() / 2.0f) - m_mouse_cursor_pos.x) * m_rotation_speed * Engine::GetDeltaTime()),
-				static_cast<float>(((m_window.lock()->GetHeight() / 2.0f) - m_mouse_cursor_pos.y) * m_rotation_speed * Engine::GetDeltaTime())
-			);
+			const float yaw_angle	= static_cast<float>(((m_window.lock()->GetWidth() / 2.0f) - x_pos) * m_rotation_speed * Engine::GetDeltaTime());
+			const float pitch_angle = static_cast<float>(((m_window.lock()->GetHeight() / 2.0f) - y_pos) * m_rotation_speed * Engine::GetDeltaTime());
+				
+			camera->SetPosition(yaw_angle, pitch_angle);
 		}
 		return false;
 	}

@@ -9,8 +9,8 @@ namespace Z_Engine::Controllers {
 		public PerspectiveCameraController {
 
 	public:
-		FirstPersonShooterCameraController() = default;
-		FirstPersonShooterCameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, glm::vec3 position, float yaw_angle_degree, float pitch_angle_degree)
+		explicit FirstPersonShooterCameraController() = default;
+		explicit FirstPersonShooterCameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, glm::vec3 position, float yaw_angle_degree, float pitch_angle_degree)
 			:
 			PerspectiveCameraController(window)
 		{
@@ -31,8 +31,5 @@ namespace Z_Engine::Controllers {
 	public:
 		bool OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent&)				override { return false; }
 		bool OnMouseButtonMoved(Event::MouseButtonMovedEvent&)					override;
-
-	protected:
-		glm::vec2 m_mouse_cursor_pos{ 0.f, 0.0f };
 	};
 }
