@@ -1,0 +1,56 @@
+#pragma once
+#include "OrbitCamera.h"
+
+namespace Z_Engine::Rendering::Cameras {
+
+	OrbitCamera::OrbitCamera(float field_of_view, float aspect_ratio, float near, float far, float yaw_rad, float pitch_rad)
+		: 
+		PerspectiveCamera(field_of_view, aspect_ratio, near, far),
+		m_yaw_angle(yaw_rad),
+		m_pitch_angle(pitch_rad),
+		m_radius(0.0f)
+	{
+	}
+
+
+	void OrbitCamera::SetYawAngle(float degree) {
+		m_yaw_angle = glm::radians(degree);
+	}
+	
+	void OrbitCamera::SetPitchAngle(float degree) {
+		auto rad = glm::radians(degree);
+		m_pitch_angle = glm::clamp(rad, -glm::half_pi<float>() + 0.1f, glm::half_pi<float>() - 0.1f);
+	}
+
+	void OrbitCamera::SetRadius(float value) {
+		m_radius = glm::clamp(value, 1.5f, 100.f);
+	}
+
+
+	void OrbitCamera::SetTarget(const glm::vec3& target) {
+		PerspectiveCamera::SetTarget(target);
+		const glm::vec3 direction	= m_position - m_target;
+		m_radius					= glm::sqrt((direction.x * direction.x) + (direction.y * direction.y) + (direction.z * direction.z));
+		
+	}
+
+
+
+	void OrbitCamera::SetPosition(const glm::vec3& position) {
+		PerspectiveCamera::SetPosition(position);
+		const glm::vec3 direction	= m_position - m_target;
+		m_radius					= glm::sqrt((direction.x * direction.x) + (direction.y * direction.y) + (direction.z * direction.z));
+	}
+
+	void OrbitCamera::SetPosition(float yaw_degree, float pitch_degree) {
+		
+		this->SetYawAngle(yaw_degree);
+		this->SetPitchAngle(pitch_degree);
+
+		m_position.x = m_target.x + (m_radius * std::cos(m_pitch_angle) * std::sin(m_yaw_angle));
+		m_position.y = m_target.y + (m_radius * std::sin(m_pitch_angle));
+		m_position.z = m_target.z + (m_radius * std::cos(m_pitch_angle) * std::cos(m_yaw_angle));
+
+		PerspectiveCamera::UpdateViewMatrix();
+	}
+}

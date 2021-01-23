@@ -96,6 +96,9 @@
     <ClInclude Include="include\Rendering\Geometries\CubeGeometry.h" />
     <ClInclude Include="include\Rendering\Scenes\GraphicScene2D.h" />
     <ClInclude Include="include\Rendering\Scenes\GraphicScene3D.h" />
+    <ClInclude Include="include\Rendering\Cameras\OrbitCamera.h" />
+    <ClInclude Include="include\Controllers\OrbitCameraController.h" />
+    <ClInclude Include="include\Rendering\Cameras\FirstPersonShooterCamera.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />
@@ -135,5 +138,8 @@
     <ClCompile Include="include\Rendering\Geometries\CubeGeometry.cpp" />
     <ClCompile Include="include\Rendering\Scenes\GraphicScene2D.cpp" />
     <ClCompile Include="include\Rendering\Scenes\GraphicScene3D.cpp" />
+    <ClCompile Include="include\Rendering\Cameras\OrbitCamera.cpp" />
+    <ClCompile Include="include\Controllers\OrbitCameraController.cpp" />
+    <ClCompile Include="include\Rendering\Cameras\FirstPersonShooterCamera.cpp" />
   </ItemGroup>
 </Project>

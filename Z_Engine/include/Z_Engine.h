@@ -21,6 +21,8 @@
 #include "Rendering/Cameras/Camera.h"
 #include "Rendering/Cameras/OrthographicCamera.h"
 #include "Rendering/Cameras/PerspectiveCamera.h"
+#include "Rendering/Cameras/OrbitCamera.h"
+#include "Rendering/Cameras/FirstPersonShooterCamera.h"
 
 
 #include "Rendering/Geometries/IGeometry.h"
@@ -52,6 +54,9 @@
 #include "Controllers/ICameraController.h"
 #include "Controllers/OrthographicCameraController.h"
 #include "Controllers/PerspectiveCameraController.h"
+#include "Controllers/OrbitCameraController.h"
+#include "Controllers/FirstPersonShooterCameraController.h"
+
 
 #include "Core/TimeStep.h"
 #include "Core/Utility.h"

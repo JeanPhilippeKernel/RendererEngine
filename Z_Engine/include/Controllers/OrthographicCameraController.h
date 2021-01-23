@@ -35,7 +35,7 @@ namespace Z_Engine::Controllers {
 		void Update(Core::TimeStep)		override;
 		bool OnEvent(Event::CoreEvent&) override;
 
-		const Z_Engine::Ref<Rendering::Cameras::Camera>& GetCamera() const override { return m_orthographic_camera; }
+		const Z_Engine::Ref<Rendering::Cameras::Camera> GetCamera() const override { return m_orthographic_camera; }
 
 	public:
 		bool OnMouseButtonPressed(Event::MouseButtonPressedEvent&)				override { return false; }
