@@ -36,11 +36,12 @@ namespace Z_Engine::Rendering::Cameras {
 
 
 	void FirstPersonShooterCamera::Move(const glm::vec3& offset_position) {
-		m_position += offset_position;
+		m_position.x += offset_position.x;
+		m_position.y += offset_position.y;
+		m_position.z += offset_position.z;
 		
 		// We don't want the camera to fall down outside the ground plane position
-		// ToDo : we need to revisit this part to provide better approach
-		if (m_position.y <= 1.0f) m_position.y = 1.0f;
+		if (m_position.y <= 0.0f) m_position.y = 0.0f;
 
 		this->UpdateCoordinateVectors();
 		PerspectiveCamera::UpdateViewMatrix();
@@ -62,14 +63,10 @@ namespace Z_Engine::Rendering::Cameras {
 
 	void FirstPersonShooterCamera::SetPosition(float yaw_degree, float pitch_degree) {
 
-		float current_yaw = glm::degrees(m_yaw_angle);
-		float current_pitch = glm::degrees(m_pitch_angle);
-
-		current_yaw		+= yaw_degree;
-		current_pitch	+= pitch_degree;
-
-		this->SetPitchAngle(current_pitch);
-		this->SetYawAngle(current_yaw);
+		//We don't need to convert from degree to radian as these values aren't greater than 0.2
+		// and we can consider them as already in radian
+		m_yaw_angle += yaw_degree;
+		m_pitch_angle += pitch_degree;
 
 		this->UpdateCoordinateVectors();
 		PerspectiveCamera::UpdateViewMatrix();

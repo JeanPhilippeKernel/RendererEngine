@@ -13,20 +13,18 @@ using namespace Z_Engine::Inputs;
 
 namespace Z_Engine::Controllers {
 
-
 	void FirstPersonShooterCameraController::Initialize() {
 		PerspectiveCameraController::Initialize();
-		m_move_speed = 0.2f;
-		m_rotation_speed = 0.0999f;
+		m_move_speed		= 0.2f;
+		m_rotation_speed	= 0.0005f;
 
 		SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
 	}
 
 	void FirstPersonShooterCameraController::Update(Core::TimeStep dt) {
+		SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
 		
 		auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
-		
-		SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
 
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_W)) {
 			camera->Move(m_move_speed * dt * -camera->GetForward());
@@ -71,7 +69,7 @@ namespace Z_Engine::Controllers {
 			auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
 			const float yaw_angle	= static_cast<float>(((m_window.lock()->GetWidth() / 2.0f) - x_pos) * m_rotation_speed * Engine::GetDeltaTime());
 			const float pitch_angle = static_cast<float>(((m_window.lock()->GetHeight() / 2.0f) - y_pos) * m_rotation_speed * Engine::GetDeltaTime());
-				
+		
 			camera->SetPosition(yaw_angle, pitch_angle);
 		}
 		return false;
