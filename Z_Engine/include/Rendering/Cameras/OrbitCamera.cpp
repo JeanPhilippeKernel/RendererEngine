@@ -47,9 +47,9 @@ namespace Z_Engine::Rendering::Cameras {
 		this->SetYawAngle(yaw_degree);
 		this->SetPitchAngle(pitch_degree);
 
-		m_position.x = m_target.x + (m_radius * std::cos(m_pitch_angle) * std::sin(m_yaw_angle));
-		m_position.y = m_target.y + (m_radius * std::sin(m_pitch_angle));
-		m_position.z = m_target.z + (m_radius * std::cos(m_pitch_angle) * std::cos(m_yaw_angle));
+		m_position.x = m_target.x + (m_radius * glm::cos(m_pitch_angle) * glm::sin(m_yaw_angle));
+		m_position.y = m_target.y + (m_radius * glm::sin(m_pitch_angle));
+		m_position.z = m_target.z + (m_radius * glm::cos(m_pitch_angle) * glm::cos(m_yaw_angle));
 
 		PerspectiveCamera::UpdateViewMatrix();
 	}

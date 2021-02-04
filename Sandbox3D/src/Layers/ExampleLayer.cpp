@@ -1,5 +1,4 @@
 #include "ExampleLayer.h"
-#include "dependencies/glm/gtc/type_ptr.hpp"	
 
 
 using namespace Z_Engine;
