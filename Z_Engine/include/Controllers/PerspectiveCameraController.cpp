@@ -54,7 +54,7 @@ namespace Z_Engine::Controllers {
 	}
 
 	bool PerspectiveCameraController::OnWindowResized(Event::WindowResizedEvent& e) {
-		m_aspect_ratio = (float)e.GetWidth() / (float)e.GetHeight();
+		m_aspect_ratio = static_cast<float>(e.GetWidth()) / static_cast<float>(e.GetHeight());
 		m_perspective_camera->SetProjectionMatrix(glm::perspective(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far));
 		return false;
 	}
