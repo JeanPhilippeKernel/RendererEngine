@@ -18,16 +18,11 @@ namespace Z_Engine::Rendering::Cameras {
 		float GetPitchAngle()	const { return glm::degrees(m_pitch_angle); }
 		float GetRadius()		const { return m_radius; }
 
-
 		void SetTarget(const glm::vec3& target) override;
 
 		void SetPosition(float yaw, float pitch);
 		void SetPosition(const glm::vec3& position) override;
 
-	protected:
-		float m_radius;
-		float m_yaw_angle;
-		float m_pitch_angle;
 	};
 
 }

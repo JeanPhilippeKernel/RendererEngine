@@ -15,40 +15,46 @@ namespace Z_Engine::Controllers {
 
 	void FirstPersonShooterCameraController::Initialize() {
 		PerspectiveCameraController::Initialize();
-		m_move_speed		= 0.2f;
-		m_rotation_speed	= 0.0005f;
+		m_move_speed		= 0.05f;
+		m_rotation_speed	= 0.05f;
 
-		SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
+		SDL_WarpMouseInWindow(
+			NULL,
+			m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f
+		);
 	}
 
 	void FirstPersonShooterCameraController::Update(Core::TimeStep dt) {
-		SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
+		SDL_WarpMouseInWindow(
+			NULL,
+			m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f
+		);
 		
 		auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
 
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_W)) {
-			camera->Move(m_move_speed * dt * -camera->GetForward());
+			camera->Move(m_move_speed * dt * camera->GetForward());
 		}
 
 		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_S)) {
-			camera->Move(m_move_speed * dt * camera->GetForward());
+			camera->Move(m_move_speed * dt * -camera->GetForward());
 		}
 
 
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_A)) {
-			camera->Move(m_move_speed * dt * -camera->GetRight());
-		}
-
-		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_D)) {
 			camera->Move(m_move_speed * dt * camera->GetRight());
 		}
 
+		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_D)) {
+			camera->Move(m_move_speed * dt * -camera->GetRight());
+		}
+
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Z)) {
-			camera->Move(m_move_speed * dt * camera->GetUp());
+			camera->Move(m_move_speed * dt * -camera->GetUp());
 		}
 
 		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_X)) {
-			camera->Move(m_move_speed * dt * -camera->GetUp());
+			camera->Move(m_move_speed * dt * camera->GetUp());
 		}
 
 	}
@@ -65,11 +71,12 @@ namespace Z_Engine::Controllers {
 		const float x_pos = static_cast<float>(e.GetPosX());
 		const float y_pos = static_cast<float>(e.GetPosY());
 
+		auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
+		
 		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(Z_ENGINE_KEY_MOUSE_RIGHT)) {
-			auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
 			const float yaw_angle	= static_cast<float>(((m_window.lock()->GetWidth() / 2.0f) - x_pos) * m_rotation_speed * Engine::GetDeltaTime());
 			const float pitch_angle = static_cast<float>(((m_window.lock()->GetHeight() / 2.0f) - y_pos) * m_rotation_speed * Engine::GetDeltaTime());
-		
+	
 			camera->SetPosition(yaw_angle, pitch_angle);
 		}
 		return false;

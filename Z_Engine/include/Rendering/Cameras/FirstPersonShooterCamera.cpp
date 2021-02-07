@@ -1,15 +1,17 @@
 #pragma once
 #include "FirstPersonShooterCamera.h"
 
+#include "../../dependencies/glm/gtx/quaternion.hpp"
+
+
 namespace Z_Engine::Rendering::Cameras {
 
 	FirstPersonShooterCamera::FirstPersonShooterCamera(float field_of_view, float aspect_ratio, float near, float far, float yaw_rad, float pitch_rad)
 		:
-		PerspectiveCamera(field_of_view, aspect_ratio, near, far),
-		m_yaw_angle(yaw_rad),
-		m_pitch_angle(pitch_rad),
-		m_radius(0.0f)
+		PerspectiveCamera(field_of_view, aspect_ratio, near, far)
 	{
+		m_yaw_angle = yaw_rad;
+		m_pitch_angle = pitch_rad;
 	}
 
 
@@ -19,56 +21,65 @@ namespace Z_Engine::Rendering::Cameras {
 
 	void FirstPersonShooterCamera::SetPitchAngle(float degree) {
 		auto rad = glm::radians(degree);
-		m_pitch_angle = glm::clamp(rad, -glm::pi<float>() / 2.f + 0.1f, glm::pi<float>() /2.0f - 0.1f);
+		m_pitch_angle = glm::clamp(rad, -glm::pi<float>() + 0.1f, glm::pi<float>() - 0.1f);
 	}
 	
 	void FirstPersonShooterCamera::SetTarget(const glm::vec3& target) {
 		Camera::SetTarget(target);
-		PerspectiveCamera::UpdateCoordinateVectors();
-		PerspectiveCamera::UpdateViewMatrix();
+		m_forward = glm::normalize(m_position - m_target);
+		m_radius = glm::length(m_forward);
 	}
 
 	void FirstPersonShooterCamera::SetPosition(const glm::vec3& position) {
 		Camera::SetPosition(position);
-		PerspectiveCamera::UpdateCoordinateVectors();
+		glm::vec3 direction = m_position - m_target;
+		m_radius			= glm::length(direction);
+
+		glm::quat quat_around_y	= glm::angleAxis(m_yaw_angle, glm::vec3(0.0f, 1.0f, 0.0f));
+		glm::quat quat_around_x = glm::angleAxis(m_pitch_angle, glm::vec3(1.0f, 0.0f, 0.0f));
+		glm::quat quat_around_yx = quat_around_y * quat_around_x;
+
+		direction	= glm::rotate(glm::normalize(quat_around_yx), glm::normalize(direction));
+		m_position	= m_target + (m_radius * direction);
+		m_forward	= glm::normalize(m_position - m_target);
+
+		UpdateCoordinateVectors();
 		PerspectiveCamera::UpdateViewMatrix();
 	}
 
 
-	void FirstPersonShooterCamera::Move(const glm::vec3& offset_position) {
-		m_position.x += offset_position.x;
-		m_position.y += offset_position.y;
-		m_position.z += offset_position.z;
-		
-		// We don't want the camera to fall down outside the ground plane position
-		if (m_position.y <= 0.0f) m_position.y = 0.0f;
+	void FirstPersonShooterCamera::Move(const glm::vec3& offset) {
 
-		this->UpdateCoordinateVectors();
+		m_position = glm::translate(glm::mat4(1.0f), offset) * glm::vec4(m_position, 1.0f);
+		
+		if (m_position.y <= 0.0f) {
+			m_position.y = 0.0f;
+		}
+		
+		UpdateCoordinateVectors();
 		PerspectiveCamera::UpdateViewMatrix();
 	}
 
 
 	void FirstPersonShooterCamera::UpdateCoordinateVectors() {
-		glm::vec3 forward_ = { 0.f, 0.0f, 0.0f };
-		forward_.x = glm::cos(m_pitch_angle) * glm::sin(m_yaw_angle);
-		forward_.y = glm::sin(m_pitch_angle);
-		forward_.z = glm::cos(m_pitch_angle) * glm::cos(m_yaw_angle);
-
-		m_forward	= glm::normalize(forward_);
-		m_right		= glm::normalize(glm::cross(m_world_up, m_forward));
-		m_up		= glm::normalize(glm::cross(m_forward, m_right));
-		
-		m_target = m_forward + m_position;
+		m_right		= glm::cross(m_world_up, m_forward);
+		m_up		= glm::cross(m_forward, m_right);
+		m_target 	= m_position - (m_radius * m_forward);
 	}
 
 	void FirstPersonShooterCamera::SetPosition(float yaw_degree, float pitch_degree) {
 
-		//We don't need to convert from degree to radian as these values aren't greater than 0.2
-		// and we can consider them as already in radian
-		m_yaw_angle += yaw_degree;
-		m_pitch_angle += pitch_degree;
+		float yaw_radians	= glm::radians(yaw_degree);
+		float pitch_radians = glm::radians(pitch_degree);
 
-		this->UpdateCoordinateVectors();
+
+		glm::quat quat_around_y		= glm::angleAxis(yaw_radians, m_up);
+		glm::quat quat_around_x		= glm::angleAxis(pitch_radians, m_right);
+		glm::quat quat_around_yx	= quat_around_y * quat_around_x;
+		
+		m_forward = glm::rotate(glm::normalize(quat_around_yx), glm::normalize(m_forward));
+
+		UpdateCoordinateVectors();
 		PerspectiveCamera::UpdateViewMatrix();
 	}
 }

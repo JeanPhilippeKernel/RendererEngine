@@ -1,5 +1,4 @@
 #include "ExampleLayer.h"
-#include "dependencies/glm/gtc/type_ptr.hpp"	
 
 
 using namespace Z_Engine;
@@ -28,7 +27,7 @@ namespace Sandbox3D::Layers {
 		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
 
 
-		m_scene.reset(new GraphicScene3D(new FirstPersonShooterCameraController(GetAttachedWindow(), glm::vec3(0.0f, 0.0f, 50.f), 180.0f, 0.0f)));
+		m_scene.reset(new GraphicScene3D(new OrbitCameraController(GetAttachedWindow(), glm::vec3(0.0f, 20.0f, 50.f), 10.0f, -20.0f)));
 		m_scene->Initialize();
 		
 		quad_mesh_ptr.reset(MeshBuilder::CreateCube({ 0.f, -0.5f, 0.0f }, { 100.f, .0f, 100.f }, 0.0f,  glm::vec3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));

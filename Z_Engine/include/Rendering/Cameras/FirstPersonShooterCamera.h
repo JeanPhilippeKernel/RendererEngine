@@ -10,7 +10,6 @@ namespace Z_Engine::Rendering::Cameras {
 		~FirstPersonShooterCamera() = default;
 
 		float GetRadius() const { return m_radius; }
-		//void SetRadius(float value);
 
 		void SetYawAngle(float value);
 		void SetPitchAngle(float value);
@@ -23,15 +22,10 @@ namespace Z_Engine::Rendering::Cameras {
 		void SetPosition(const glm::vec3& position) override;
 
 		void SetPosition(float yaw, float pitch);
-		void Move(const glm::vec3& offset_position);
+		void Move(const glm::vec3& offset);
 
 	protected:
 		virtual void UpdateCoordinateVectors() override;
-
-	protected:
-		float m_radius;
-		float m_yaw_angle;
-		float m_pitch_angle;
 
 	};
 
