@@ -12,8 +12,8 @@ using namespace Z_Engine::Inputs;
 namespace Z_Engine::Controllers {
 
 	void PerspectiveCameraController::Initialize() {
-		m_perspective_camera->SetPosition(m_position);
 		m_perspective_camera->SetTarget(m_camera_target);
+		m_perspective_camera->SetPosition(m_position);
 	}
 
 	void PerspectiveCameraController::Update(Core::TimeStep dt) {

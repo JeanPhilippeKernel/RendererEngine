@@ -7,6 +7,8 @@
 
 #include "../Engine.h"
 
+#include <iostream>
+
 using namespace Z_Engine::Inputs;
 
 namespace Z_Engine::Controllers {
@@ -15,25 +17,21 @@ namespace Z_Engine::Controllers {
 	void OrbitCameraController::Initialize() {
 		PerspectiveCameraController::Initialize();
 		m_move_speed		= 1.f;
-		m_rotation_speed	= 0.5f;
+		m_rotation_speed	= 0.2f;
 	}
 
 	void OrbitCameraController::Update(Core::TimeStep dt) {
 		static glm::vec2 last_mouse_cursor_pos;
 
-		auto camera = std::dynamic_pointer_cast<Rendering::Cameras::OrbitCamera>(m_perspective_camera);
-
-		float current_yaw = camera->GetYawAngle();
-		float current_pitch = camera->GetPitchAngle();
-
-		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(Z_ENGINE_KEY_MOUSE_RIGHT))
-		{
-			current_yaw		+= (m_mouse_cursor_pos.x - last_mouse_cursor_pos.x) * m_rotation_speed * dt;
-			current_pitch	-= (m_mouse_cursor_pos.y - last_mouse_cursor_pos.y) * m_rotation_speed * dt;
+		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(Z_ENGINE_KEY_MOUSE_RIGHT)) {
+			auto camera = std::dynamic_pointer_cast<Rendering::Cameras::OrbitCamera>(m_perspective_camera);
+			float yaw_angle_degree		= (m_mouse_cursor_pos.x - last_mouse_cursor_pos.x) * m_rotation_speed * dt;
+			float pitch_angle_degree	= (m_mouse_cursor_pos.y - last_mouse_cursor_pos.y) * m_rotation_speed * dt;
+			
+			camera->SetPosition(yaw_angle_degree, pitch_angle_degree);
 		}
-
+		
 		last_mouse_cursor_pos = m_mouse_cursor_pos;
-		camera->SetPosition(current_yaw, current_pitch);
 	}
 
 
@@ -58,10 +56,6 @@ namespace Z_Engine::Controllers {
 		radius += e.GetOffetY() * m_move_speed * Engine::GetDeltaTime();
 
 		camera->SetRadius(radius);
-
-		float current_yaw	= camera->GetYawAngle();
-		float current_pitch = camera->GetPitchAngle();
-		camera->SetPosition(current_yaw, current_pitch);
 		return false;
 	}
 }

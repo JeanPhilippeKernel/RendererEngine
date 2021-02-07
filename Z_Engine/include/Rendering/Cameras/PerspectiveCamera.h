@@ -22,5 +22,9 @@ namespace Z_Engine::Rendering::Cameras {
 
 	protected:
 		float m_field_of_view{ 0.0f };
+
+		float m_radius;
+		float m_yaw_angle;
+		float m_pitch_angle;
 	};
 }

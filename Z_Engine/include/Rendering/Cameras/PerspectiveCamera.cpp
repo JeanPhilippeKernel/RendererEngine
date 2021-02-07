@@ -4,6 +4,10 @@
 namespace Z_Engine::Rendering::Cameras {
 
 	PerspectiveCamera::PerspectiveCamera(float field_of_view, float aspect_ratio, float near, float far) 
+		:
+		m_yaw_angle(0.0f),
+		m_pitch_angle(0.0f),
+		m_radius(0.0f)
 	{
 		m_projection = glm::perspective(field_of_view, aspect_ratio, near, far);
 		UpdateCoordinateVectors();
@@ -42,6 +46,7 @@ namespace Z_Engine::Rendering::Cameras {
 
 
 	void PerspectiveCamera::UpdateViewMatrix() {
+		
 		m_view_matrix		= glm::lookAt(m_position, m_target, m_up);
 		m_view_projection	= m_projection * m_view_matrix;
 	}
