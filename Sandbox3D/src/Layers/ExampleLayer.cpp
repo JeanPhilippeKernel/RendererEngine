@@ -16,6 +16,7 @@ using namespace Z_Engine::Rendering::Textures;
 using namespace Z_Engine::Controllers;
 
 using namespace Z_Engine::Rendering::Meshes;
+using namespace Z_Engine::Maths;
 
 namespace Sandbox3D::Layers {
 	
@@ -25,21 +26,22 @@ namespace Sandbox3D::Layers {
 		m_texture_manager->Load("Assets/Images/free_image.png");
 		m_texture_manager->Load("Assets/Images/Crate.png");
 		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
+		m_texture_manager->Load("Assets/Images/zota.jpg");
 
 
-		m_scene.reset(new GraphicScene3D(new OrbitCameraController(GetAttachedWindow(), glm::vec3(0.0f, 20.0f, 50.f), 10.0f, -20.0f)));
+		m_scene.reset(new GraphicScene3D(new OrbitCameraController(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f)));
 		m_scene->Initialize();
 		
-		quad_mesh_ptr.reset(MeshBuilder::CreateCube({ 0.f, -0.5f, 0.0f }, { 100.f, .0f, 100.f }, 0.0f,  glm::vec3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
+		quad_mesh_ptr.reset(MeshBuilder::CreateCube({ 0.f, -0.5f, 0.0f }, { 100.f, .0f, 100.f }, 0.0f, Vector3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
 		
-		quad_mesh_ptr_3.reset(MeshBuilder::CreateCube({ -20.f, 10.f, 0.0f }, { 5.f, 5.0f, 5.f }, {45.0f, 120.0f, 30.0f}, 0.0f, glm::vec3(0.f, 1.0f, 0.0f)));
+		quad_mesh_ptr_3.reset(MeshBuilder::CreateCube({ -20.f, 10.f, 0.0f }, { 5.f, 5.0f, 5.f }, {45.0f, 120.0f, 30.0f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
 		
 		Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
-		material->SetInterpolateFactor(0.5f);
-		material->SetTexture(m_texture_manager->Obtains("free_image"));
+		material->SetInterpolateFactor(1.0f);
+		material->SetTexture(m_texture_manager->Obtains("zota"));
 		material->SetSecondTexture(m_texture_manager->Obtains("Crate"));
 		
-		quad_mesh_ptr_2.reset(MeshBuilder::CreateCube({ 0.f, 10.f, 0.0f }, { 10.f, 10.0f, 10.f }, 0.0f, glm::vec3(0.f, 1.0f, 0.0f)));
+		quad_mesh_ptr_2.reset(MeshBuilder::CreateCube({ 0.f, 10.f, 0.0f }, { 10.f, 10.0f, 10.f }, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
 		quad_mesh_ptr_2->SetMaterial(material);
 
 	}
@@ -50,24 +52,8 @@ namespace Sandbox3D::Layers {
 		quad_mesh_ptr_2
 			->GetGeometry()
 			->ApplyTransform(
-				glm::rotate(glm::mat4(1.0f), glm::sin((float)dt) * 0.005f, glm::vec3(0.f, 1.0f, 0.0f)) 
+				glm::rotate(Matrix4(1.0f), glm::sin((float)dt) * 0.005f, Vector3(0.f, 1.0f, 0.0f))
 			);
-
-		if(IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
-		
-		}
-
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_F)) {
-			
-		}
-
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_B)) {
-			
-		}
-
-		if (IDevice::As<Z_Engine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Y)) {
-			
-		}
 	}
 
 	bool ExampleLayer::OnEvent(CoreEvent& e) {
