@@ -65,10 +65,10 @@ namespace Z_Engine::Controllers {
 		bool OnWindowRestored(Event::WindowRestoredEvent&)						override { return false; }
 
 	protected:
-		float m_camera_fov			{ glm::half_pi<float>() };
+		float m_camera_fov			{ Maths::half_pi<float>() };
 		float m_camera_near			{ 0.1f };
 		float m_camera_far			{ 300.0f };
-		glm::vec3 m_camera_target	{ 0.0f, 0.0f, 0.0f };
+		Maths::Vector3 m_camera_target	{ 0.0f, 0.0f, 0.0f };
 
 
 		Z_Engine::Ref<Rendering::Cameras::PerspectiveCamera> m_perspective_camera;

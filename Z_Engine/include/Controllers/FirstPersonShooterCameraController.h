@@ -10,14 +10,14 @@ namespace Z_Engine::Controllers {
 
 	public:
 		explicit FirstPersonShooterCameraController() = default;
-		explicit FirstPersonShooterCameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, glm::vec3 position, float yaw_angle_degree, float pitch_angle_degree)
+		explicit FirstPersonShooterCameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, Maths::Vector3 position, float yaw_angle_degree, float pitch_angle_degree)
 			:
 			PerspectiveCameraController(window)
 		{
 			m_perspective_camera.reset(new Rendering::Cameras::FirstPersonShooterCamera(
 				m_camera_fov, m_aspect_ratio,
 				m_camera_near, m_camera_far,
-				glm::radians(yaw_angle_degree), glm::radians(pitch_angle_degree)
+				Maths::radians(yaw_angle_degree), Maths::radians(pitch_angle_degree)
 			));
 			m_position = position;
 		}

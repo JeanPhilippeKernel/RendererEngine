@@ -14,15 +14,15 @@ namespace Z_Engine::Rendering::Cameras {
 		void SetYawAngle(float value);
 		void SetPitchAngle(float value);
 
-		float GetYawAngle()		const { return glm::degrees(m_yaw_angle); }
-		float GetPitchAngle()	const { return glm::degrees(m_pitch_angle); }
+		float GetYawAngle()		const { return Maths::degrees(m_yaw_angle); }
+		float GetPitchAngle()	const { return Maths::degrees(m_pitch_angle); }
 
 
-		void SetTarget(const glm::vec3& target) override;
-		void SetPosition(const glm::vec3& position) override;
+		void SetTarget(const Maths::Vector3& target) override;
+		void SetPosition(const Maths::Vector3& position) override;
 
 		void SetPosition(float yaw, float pitch);
-		void Move(const glm::vec3& offset);
+		void Move(const Maths::Vector3& offset);
 
 	protected:
 		virtual void UpdateCoordinateVectors() override;

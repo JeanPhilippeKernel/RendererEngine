@@ -10,11 +10,11 @@ namespace Z_Engine::Rendering::Cameras {
 		PerspectiveCamera(float field_of_view, float aspect_ratio, float near, float far);
 		virtual ~PerspectiveCamera() = default;
 
-		virtual void SetTarget(const glm::vec3& target)					override;
+		virtual void SetTarget(const Maths::Vector3& target)					override;
 		virtual void SetFieldOfView(float rad_angle);
 
-		virtual void SetPosition(const glm::vec3& position)				override;
-		virtual void SetProjectionMatrix(const glm::mat4& projection)	override;
+		virtual void SetPosition(const Maths::Vector3& position)				override;
+		virtual void SetProjectionMatrix(const Maths::Matrix4& projection)	override;
 
 	protected:
 		virtual void UpdateCoordinateVectors();

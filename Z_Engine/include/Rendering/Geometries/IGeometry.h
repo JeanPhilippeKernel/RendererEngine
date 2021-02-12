@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 #include <algorithm>
-#include "../../dependencies/glm/glm.hpp"
+#include "../../Maths/Math.h"
 
 #include "../Renderers/Storages/GraphicVertex.h"
 #include "../Buffers/VertexBuffer.h"
@@ -29,12 +29,8 @@ namespace Z_Engine::Rendering::Geometries {
 		virtual void Update() {
 		
 		}
-
-		virtual void ApplyTranslation(const glm::vec3& translation) = delete;
-		virtual void ApplyRotation(const glm::vec3& axis, float rad_angle) = delete;
-		virtual void ApplyScaling(const glm::vec3& size) = delete;
 		
-		virtual void ApplyTransform(const glm::mat4& transform) {
+		virtual void ApplyTransform(const Maths::Matrix4& transform) {
 			std::for_each(std::begin(m_vertices), std::end(m_vertices), 
 				[&](Renderers::Storages::GraphicVertex& vertex) {
 					vertex.ApplyMatrixToPosition(transform);

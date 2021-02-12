@@ -9,7 +9,6 @@
 
 #include <array>
 
-#include "../../dependencies/glm/gtc/type_ptr.hpp"
 
 namespace Z_Engine::Rendering::Shaders {
 	Shader* CreateShader(const char* vertexSrc, const char* fragmentSrc) {
@@ -415,7 +414,7 @@ namespace Z_Engine::Rendering::Shaders {
 
 
 
-	void Shader::SetUniform(const char* name, const glm::vec2& value) {
+	void Shader::SetUniform(const char* name, const Maths::Vector2& value) {
 		if(IsActive()) {
 			auto location = _GetLocationUniform(name);
 			if (location != -1) {
@@ -424,7 +423,7 @@ namespace Z_Engine::Rendering::Shaders {
 		}
 	}
 	
-	void Shader::SetUniform(const char* name, const glm::vec3& value) {
+	void Shader::SetUniform(const char* name, const Maths::Vector3& value) {
 		
 		if(IsActive()) {
 			auto location = _GetLocationUniform(name);
@@ -434,7 +433,7 @@ namespace Z_Engine::Rendering::Shaders {
 		}
 	}
 
-	void Shader::SetUniform(const char* name, const glm::vec4& value) {
+	void Shader::SetUniform(const char* name, const Maths::Vector4& value) {
 		if(IsActive()) {
 			auto location = _GetLocationUniform(name);
 			if (location != -1) {
@@ -444,29 +443,29 @@ namespace Z_Engine::Rendering::Shaders {
 	}
 
 
-	void Shader::SetUniform(const char* name, const glm::mat2& value) {
+	void Shader::SetUniform(const char* name, const Maths::Matrix2& value) {
 		if(IsActive()) {
 			auto location = _GetLocationUniform(name);
 			if (location != -1) {
-				glUniformMatrix2fv(location, 1, GL_FALSE, glm::value_ptr(value));
+				glUniformMatrix2fv(location, 1, GL_FALSE, Maths::value_ptr(value));
 			}
 		}
 	}
 
-	void Shader::SetUniform(const char* name, const glm::mat3& value) {
+	void Shader::SetUniform(const char* name, const Maths::Matrix3& value) {
 		if(IsActive()) {
 			auto location = _GetLocationUniform(name);
 			if (location != -1) {
-				glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(value));
+				glUniformMatrix3fv(location, 1, GL_FALSE, Maths::value_ptr(value));
 			}
 		}
 	}
 	
-	void Shader::SetUniform(const char* name, const glm::mat4& value) {
+	void Shader::SetUniform(const char* name, const Maths::Matrix4& value) {
 		if(IsActive()) {
 			auto location = _GetLocationUniform(name);
 			if (location != -1) {
-				glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+				glUniformMatrix4fv(location, 1, GL_FALSE, Maths::value_ptr(value));
 			}
 		}
 	}

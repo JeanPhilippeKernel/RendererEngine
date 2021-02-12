@@ -7,8 +7,6 @@
 
 #include "../Engine.h"
 
-#include <iostream>
-
 using namespace Z_Engine::Inputs;
 
 namespace Z_Engine::Controllers {
@@ -21,16 +19,14 @@ namespace Z_Engine::Controllers {
 	}
 
 	void OrbitCameraController::Update(Core::TimeStep dt) {
-		static glm::vec2 last_mouse_cursor_pos;
+		static Maths::Vector2 last_mouse_cursor_pos;
 
 		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(Z_ENGINE_KEY_MOUSE_RIGHT)) {
 			auto camera = std::dynamic_pointer_cast<Rendering::Cameras::OrbitCamera>(m_perspective_camera);
 			float yaw_angle_degree		= (m_mouse_cursor_pos.x - last_mouse_cursor_pos.x) * m_rotation_speed * dt;
 			float pitch_angle_degree	= (m_mouse_cursor_pos.y - last_mouse_cursor_pos.y) * m_rotation_speed * dt;
-			
 			camera->SetPosition(yaw_angle_degree, pitch_angle_degree);
 		}
-		
 		last_mouse_cursor_pos = m_mouse_cursor_pos;
 	}
 
@@ -49,12 +45,9 @@ namespace Z_Engine::Controllers {
 	}
 
 	bool OrbitCameraController::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e) {
-
 		auto camera = std::dynamic_pointer_cast<Rendering::Cameras::OrbitCamera>(m_perspective_camera);
 		auto radius = camera->GetRadius();
-
 		radius += e.GetOffetY() * m_move_speed * Engine::GetDeltaTime();
-
 		camera->SetRadius(radius);
 		return false;
 	}

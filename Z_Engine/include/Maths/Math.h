@@ -4,6 +4,8 @@
 #include "../dependencies/glm/gtc/quaternion.hpp"
 #include "../dependencies/glm/gtx/quaternion.hpp"
 
+#include "../dependencies/glm/gtc/matrix_transform.hpp"
+#include "../dependencies/glm/gtc/type_ptr.hpp"
 
 
 namespace Z_Engine::Maths {

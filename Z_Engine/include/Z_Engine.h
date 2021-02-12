@@ -58,6 +58,10 @@
 #include "Controllers/FirstPersonShooterCameraController.h"
 
 
+#include "Maths/Math.h"
+
+
+
 #include "Core/TimeStep.h"
 #include "Core/Utility.h"
  

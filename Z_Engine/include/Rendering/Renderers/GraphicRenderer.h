@@ -27,7 +27,7 @@ namespace Z_Engine::Rendering::Renderers {
 
 
 	public:
-		virtual void StartScene(const glm::mat4& m_view_projection_matrix);
+		virtual void StartScene(const Maths::Matrix4& m_view_projection_matrix);
 		virtual void EndScene();
 
 	protected:
@@ -45,7 +45,7 @@ namespace Z_Engine::Rendering::Renderers {
 		}
 																 
 	protected:
-		glm::mat4 																m_view_projection_matrix;
+		Maths::Matrix4 															m_view_projection_matrix;
 		
 		std::unordered_map<unsigned int, std::vector<Rendering::Meshes::Mesh>>	m_mesh_map;
 		std::queue<Ref<Storages::GraphicRendererStorage<float, unsigned int>>>	m_graphic_storage_list;

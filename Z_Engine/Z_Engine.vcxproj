@@ -216,6 +216,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Managers\IManager.h" />
     <ClInclude Include="include\Managers\ShaderManager.h" />
     <ClInclude Include="include\Managers\TextureManager.h" />
+    <ClInclude Include="include\Maths\Math.h" />
     <ClInclude Include="include\Rendering\Buffers\BufferLayout.h" />
     <ClInclude Include="include\Rendering\Buffers\GraphicBuffer.h" />
     <ClInclude Include="include\Rendering\Buffers\IndexBuffer.h" />
@@ -277,6 +278,7 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Layers\ImguiLayer.cpp" />
     <ClCompile Include="include\Managers\ShaderManager.cpp" />
     <ClCompile Include="include\Managers\TextureManager.cpp" />
+    <ClCompile Include="include\Maths\Math.cpp" />
     <ClCompile Include="include\Rendering\Cameras\FirstPersonShooterCamera.cpp" />
     <ClCompile Include="include\Rendering\Cameras\OrbitCamera.cpp" />
     <ClCompile Include="include\Rendering\Cameras\OrthographicCamera.cpp" />

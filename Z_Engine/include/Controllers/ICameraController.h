@@ -37,7 +37,7 @@ namespace Z_Engine::Controllers {
 
 		virtual ~ICameraController() = default;
 
-		const glm::vec3& GetPosition()	const { return m_position; }
+		const Maths::Vector3& GetPosition()	const { return m_position; }
 		float GetRotationAngle()		const { return m_rotation_angle; }
 		float GetZoomFactor()			const { return m_zoom_factor; }
 		
@@ -45,7 +45,7 @@ namespace Z_Engine::Controllers {
 		float GetRotationSpeed()		const { return m_rotation_speed; }
 		float GetAspectRatio()			const { return m_aspect_ratio; }
 
-		void SetPosition(glm::vec3 position)	{ m_position = position; }
+		void SetPosition(Maths::Vector3 position)	{ m_position = position; }
 		void SetRotationAngle(float angle)		{ m_rotation_angle =  angle; }
 		void SetZoomFactor(float factor)		{ m_zoom_factor = factor; }
 
@@ -56,7 +56,7 @@ namespace Z_Engine::Controllers {
 		virtual const Z_Engine::Ref<Rendering::Cameras::Camera> GetCamera() const =  0;
 
 	protected:
-		glm::vec3 m_position			{ 0.0f, 0.0f, 0.0f };
+		Maths::Vector3 m_position			{ 0.0f, 0.0f, 0.0f };
 		float m_rotation_angle			{ 0.0f };
 		float m_zoom_factor				{ 1.0f };
 

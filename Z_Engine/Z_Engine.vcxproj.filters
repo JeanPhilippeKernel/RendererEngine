@@ -100,6 +100,7 @@
     <ClInclude Include="include\Controllers\OrbitCameraController.h" />
     <ClInclude Include="include\Rendering\Cameras\FirstPersonShooterCamera.h" />
     <ClInclude Include="include\Controllers\FirstPersonShooterCameraController.h" />
+    <ClInclude Include="include\Maths\Math.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />
@@ -143,5 +144,6 @@
     <ClCompile Include="include\Controllers\OrbitCameraController.cpp" />
     <ClCompile Include="include\Rendering\Cameras\FirstPersonShooterCamera.cpp" />
     <ClCompile Include="include\Controllers\FirstPersonShooterCameraController.cpp" />
+    <ClCompile Include="include\Maths\Math.cpp" />
   </ItemGroup>
 </Project>

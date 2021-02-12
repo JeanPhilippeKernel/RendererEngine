@@ -1,6 +1,6 @@
 #pragma once
 #include "../../dependencies/glew/include/GL/glew.h"
-#include "../../dependencies/glm/glm.hpp"
+#include "../../Maths/Math.h"
 
 #include "../Shaders/Shader.h"
 #include "../Buffers/VertexArray.h"
@@ -14,7 +14,7 @@ namespace Z_Engine::Rendering::Renderers {
 		RendererCommand(const RendererCommand&) = delete;
 		~RendererCommand()						= delete;
 
-		static void SetClearColor(const glm::vec4& color) {
+		static void SetClearColor(const Maths::Vector4& color) {
 			glClearColor(color.r, color.g, color.b, color.a);
 		}
 
