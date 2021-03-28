@@ -15,32 +15,32 @@ namespace Z_Engine::Controllers {
 
 	void OrthographicCameraController::Update(Core::TimeStep dt) {
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_LEFT)) {
-			m_position.x += m_move_speed * dt;
-			m_orthographic_camera->SetPosition(m_position);
-		}
-
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_RIGHT)) {
 			m_position.x -= m_move_speed * dt;
 			m_orthographic_camera->SetPosition(m_position);
 		}
 
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_RIGHT)) {
+			m_position.x += m_move_speed * dt;
+			m_orthographic_camera->SetPosition(m_position);
+		}
+
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_UP)) {
-			m_position.y -= m_move_speed * dt;
+			m_position.y += m_move_speed * dt;
 			m_orthographic_camera->SetPosition(m_position);
 		}
 
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_DOWN)) {
-			m_position.y += m_move_speed * dt;
+			m_position.y -= m_move_speed * dt;
 			m_orthographic_camera->SetPosition(m_position);
 		}
 
 		if(m_can_rotate) {
 			if(IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Q)) {
-				m_rotation_angle -= m_rotation_speed * dt;
+				m_rotation_angle += m_rotation_speed * dt;
 			}
 
 			if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_D)) {
-				m_rotation_angle += m_rotation_speed * dt;
+				m_rotation_angle -= m_rotation_speed * dt;
 			}
 
 			m_orthographic_camera->SetRotation(m_rotation_angle);
@@ -62,7 +62,7 @@ namespace Z_Engine::Controllers {
 	}
 
 	bool OrthographicCameraController::OnWindowResized(Event::WindowResizedEvent& e) {
-		m_aspect_ratio = (float)e.GetWidth() / (float) e.GetHeight();
+		m_aspect_ratio = (float) e.GetWidth() / (float) e.GetHeight();
 		m_orthographic_camera->SetProjectionMatrix(glm::ortho(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor));
 		return false;
 	}

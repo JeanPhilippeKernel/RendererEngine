@@ -4,7 +4,7 @@
 
 
 #include "../../Z_EngineDef.h"
-#include "../../dependencies/glm/glm.hpp"
+#include "../../Maths/Math.h"
 #include "../../dependencies/glew/include/GL/glew.h"
 
 #include "../../Core/IGraphicObject.h"
@@ -35,14 +35,14 @@ namespace Z_Engine::Rendering::Shaders {
 
 		void SetUniform(const char* name, int* arr, unsigned int size);
 
-		void SetUniform(const char* name, const glm::vec2& value);
-		void SetUniform(const char* name, const glm::vec3& value);
-		void SetUniform(const char* name, const glm::vec4& value);
+		void SetUniform(const char* name, const Maths::Vector2& value);
+		void SetUniform(const char* name, const Maths::Vector3& value);
+		void SetUniform(const char* name, const Maths::Vector4& value);
 
 
-		void SetUniform(const char* name, const glm::mat2& value);
-		void SetUniform(const char* name, const glm::mat3& value);
-		void SetUniform(const char* name, const glm::mat4& value);
+		void SetUniform(const char* name, const Maths::Matrix2& value);
+		void SetUniform(const char* name, const Maths::Matrix3& value);
+		void SetUniform(const char* name, const Maths::Matrix4& value);
 		
 		GLuint GetIdentifier() const override;
 

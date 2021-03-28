@@ -14,24 +14,31 @@ namespace Z_Engine::Controllers {
 		public Window::ICoreWindowEventCallback {
 
 	public:
-		PerspectiveCameraController() = default;
-		PerspectiveCameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, bool can_rotate = false)
+		explicit PerspectiveCameraController() = default;
+		explicit PerspectiveCameraController(const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window)
 			:
-			ICameraController(window, can_rotate),
-			m_camera_fov(glm::half_pi<float>()),
-			m_camera_near(1.0f),
-			m_camera_far(150.0f),
+			ICameraController(window),
 			m_perspective_camera(new Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far))
 		{
 			m_position = { 0.0f, 0.0f, 1.5f };
 		}
 
-		PerspectiveCameraController(float aspect_ratio)
+
+		explicit PerspectiveCameraController(
+			const Z_Engine::Ref<Z_Engine::Window::CoreWindow>& window, 
+			Rendering::Cameras::PerspectiveCamera* const camera
+		)
+			:
+			ICameraController(window),
+			m_perspective_camera(camera)
+		{
+			m_position = { 0.0f, 0.0f, 1.5f };
+		}
+
+
+		explicit PerspectiveCameraController(float aspect_ratio)
 			:
 			ICameraController(aspect_ratio),
-			m_camera_fov(glm::half_pi<float>()),
-			m_camera_near(1.0f),
-			m_camera_far(150.0f),
 			m_perspective_camera(new Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far))
 		{
 			m_position = { 0.0f, 0.0f, 1.5f };
@@ -43,7 +50,7 @@ namespace Z_Engine::Controllers {
 		void Update(Core::TimeStep)		override;
 		bool OnEvent(Event::CoreEvent&) override;
 
-		const Z_Engine::Ref<Rendering::Cameras::Camera>& GetCamera() const override { return m_perspective_camera; }
+		const Z_Engine::Ref<Rendering::Cameras::Camera> GetCamera() const override { return m_perspective_camera; }
 
 	public:
 		bool OnMouseButtonPressed(Event::MouseButtonPressedEvent&)				override { return false; }
@@ -57,11 +64,11 @@ namespace Z_Engine::Controllers {
 		bool OnWindowMaximized(Event::WindowMaximizedEvent&)					override { return false; }
 		bool OnWindowRestored(Event::WindowRestoredEvent&)						override { return false; }
 
-	private:
-		float m_camera_fov			{ 0.0f };
-		float m_camera_near			{ 0.0f };
-		float m_camera_far			{ 0.0f };
-		glm::vec3 m_camera_target	{ 0.0f, 0.0f, 0.0f };
+	protected:
+		float m_camera_fov			{ Maths::half_pi<float>() };
+		float m_camera_near			{ 0.1f };
+		float m_camera_far			{ 300.0f };
+		Maths::Vector3 m_camera_target	{ 0.0f, 0.0f, 0.0f };
 
 
 		Z_Engine::Ref<Rendering::Cameras::PerspectiveCamera> m_perspective_camera;

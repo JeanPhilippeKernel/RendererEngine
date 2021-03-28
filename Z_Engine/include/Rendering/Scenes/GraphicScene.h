@@ -18,25 +18,25 @@ namespace  Z_Engine::Rendering::Scenes {
 		public Core::IRenderable {
 
 	public:
-		explicit GraphicScene() =  default;
 		explicit GraphicScene(Controllers::ICameraController* const controller) 
-			: m_camera_controller(nullptr)
+			: 
+			m_camera_controller(nullptr),
+			m_renderer(nullptr)
 		{
 			m_camera_controller.reset(controller);
-			m_renderer.reset(new Renderers::GraphicRenderer());
 		}
 
-		~GraphicScene() = default;
+		virtual ~GraphicScene() = default;
 
 		void Initialize() override;
-		void Render() override;
+		virtual void Render() override;
 
 		void Add(Ref<Meshes::Mesh>& mesh);
 		void Add(const std::vector<Ref<Meshes::Mesh>>& meshes);
 
-		const Scope<Controllers::ICameraController>& GetCameraController() const;
+		virtual const Scope<Controllers::ICameraController>& GetCameraController() const;
 
-	private:
+	protected:
 		Scope<Controllers::ICameraController>	m_camera_controller;
 		Scope<Renderers::GraphicRenderer>		m_renderer;
 

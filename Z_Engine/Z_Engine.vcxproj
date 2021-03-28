@@ -160,6 +160,8 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="include\Controllers\FirstPersonShooterCameraController.h" />
+    <ClInclude Include="include\Controllers\OrbitCameraController.h" />
     <ClInclude Include="include\Controllers\OrthographicCameraController.h" />
     <ClInclude Include="include\Controllers\ICameraController.h" />
     <ClInclude Include="include\Controllers\IController.h" />
@@ -214,14 +216,18 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Managers\IManager.h" />
     <ClInclude Include="include\Managers\ShaderManager.h" />
     <ClInclude Include="include\Managers\TextureManager.h" />
+    <ClInclude Include="include\Maths\Math.h" />
     <ClInclude Include="include\Rendering\Buffers\BufferLayout.h" />
     <ClInclude Include="include\Rendering\Buffers\GraphicBuffer.h" />
     <ClInclude Include="include\Rendering\Buffers\IndexBuffer.h" />
     <ClInclude Include="include\Rendering\Buffers\VertexArray.h" />
     <ClInclude Include="include\Rendering\Buffers\VertexBuffer.h" />
     <ClInclude Include="include\Rendering\Cameras\Camera.h" />
+    <ClInclude Include="include\Rendering\Cameras\FirstPersonShooterCamera.h" />
+    <ClInclude Include="include\Rendering\Cameras\OrbitCamera.h" />
     <ClInclude Include="include\Rendering\Cameras\OrthographicCamera.h" />
     <ClInclude Include="include\Rendering\Cameras\PerspectiveCamera.h" />
+    <ClInclude Include="include\Rendering\Geometries\CubeGeometry.h" />
     <ClInclude Include="include\Rendering\Geometries\QuadGeometry.h" />
     <ClInclude Include="include\Rendering\Geometries\IGeometry.h" />
     <ClInclude Include="include\Rendering\Geometries\SquareGeometry.h" />
@@ -232,6 +238,8 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Rendering\Materials\ShaderMaterial.h" />
     <ClInclude Include="include\Rendering\Materials\StandardMaterial.h" />
     <ClInclude Include="include\Rendering\Meshes\MeshBuilder.h" />
+    <ClInclude Include="include\Rendering\Scenes\GraphicScene2D.h" />
+    <ClInclude Include="include\Rendering\Scenes\GraphicScene3D.h" />
     <ClInclude Include="src\Rendering\Meshes\IMesh.h" />
     <ClInclude Include="include\Rendering\Meshes\Mesh.h" />
     <ClInclude Include="src\Rendering\Meshes\Mesh2D.h" />
@@ -254,6 +262,8 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClInclude Include="include\Z_EngineDef.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="include\Controllers\FirstPersonShooterCameraController.cpp" />
+    <ClCompile Include="include\Controllers\OrbitCameraController.cpp" />
     <ClCompile Include="include\Controllers\OrthographicCameraController.cpp" />
     <ClCompile Include="include\Controllers\PerspectiveCameraController.cpp" />
     <ClCompile Include="include\dependencies\imgui\examples\imgui_impl_opengl3.cpp" />
@@ -268,8 +278,12 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Layers\ImguiLayer.cpp" />
     <ClCompile Include="include\Managers\ShaderManager.cpp" />
     <ClCompile Include="include\Managers\TextureManager.cpp" />
+    <ClCompile Include="include\Maths\Math.cpp" />
+    <ClCompile Include="include\Rendering\Cameras\FirstPersonShooterCamera.cpp" />
+    <ClCompile Include="include\Rendering\Cameras\OrbitCamera.cpp" />
     <ClCompile Include="include\Rendering\Cameras\OrthographicCamera.cpp" />
     <ClCompile Include="include\Rendering\Cameras\PerspectiveCamera.cpp" />
+    <ClCompile Include="include\Rendering\Geometries\CubeGeometry.cpp" />
     <ClCompile Include="include\Rendering\Geometries\QuadGeometry.cpp" />
     <ClCompile Include="include\Rendering\Geometries\SquareGeometry.cpp" />
     <ClCompile Include="include\Rendering\Graphics\SDLGraphic\OpenGLContext.cpp" />
@@ -283,6 +297,8 @@ COPY /Y /V $(SolutionDir)Z_Engine\include\dependencies\glew\bin\Release\$(Platfo
     <ClCompile Include="include\Rendering\Renderers\Storages\GraphicRendererStorage.cpp" />
     <ClCompile Include="include\Rendering\Scenes\GraphicScene.cpp" />
     <ClCompile Include="include\Rendering\Renderers\Storages\GraphicVertex.cpp" />
+    <ClCompile Include="include\Rendering\Scenes\GraphicScene2D.cpp" />
+    <ClCompile Include="include\Rendering\Scenes\GraphicScene3D.cpp" />
     <ClCompile Include="include\Rendering\Shaders\Shader.cpp" />
     <ClCompile Include="include\Rendering\Textures\Texture2D.cpp" />
     <ClCompile Include="include\Window\CoreWindow.cpp" />

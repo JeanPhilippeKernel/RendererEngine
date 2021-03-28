@@ -4,14 +4,14 @@
 namespace Z_Engine::Rendering::Cameras {
 	
 	OrthographicCamera::OrthographicCamera(float left, float right, float bottom, float top) {
-		m_projection = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
+		m_projection = Maths::ortho(left, right, bottom, top, -1.0f, 1.0f);
 		UpdateViewMatrix();
 	}
 
 	OrthographicCamera::OrthographicCamera(float left, float right, float bottom, float top, float degree_angle)
 	{
-		m_projection = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
-		m_angle = glm::radians(degree_angle);
+		m_projection = Maths::ortho(left, right, bottom, top, -1.0f, 1.0f);
+		m_angle = Maths::radians(degree_angle);
 		UpdateViewMatrix();
 	}
 
@@ -21,12 +21,12 @@ namespace Z_Engine::Rendering::Cameras {
 	}
 
 
-	void OrthographicCamera::SetPosition(const glm::vec3& position) {
+	void OrthographicCamera::SetPosition(const Maths::Vector3& position) {
 		Camera::SetPosition(position);
 		UpdateViewMatrix();
 	}
 
-	void OrthographicCamera::SetProjectionMatrix(const glm::mat4& projection) {
+	void OrthographicCamera::SetProjectionMatrix(const Maths::Matrix4& projection) {
 		Camera::SetProjectionMatrix(projection);
 		UpdateViewMatrix();
 	}
@@ -34,13 +34,14 @@ namespace Z_Engine::Rendering::Cameras {
 
 	void OrthographicCamera::UpdateViewMatrix() {
 		const auto transform =
-			glm::translate(glm::mat4(1.0f), m_position) *
-			glm::rotate(glm::mat4(1.0f), m_angle, glm::vec3(0, 0, 1));
+			Maths::translate(Maths::Matrix4(1.0f), m_position) *
+			Maths::rotate(Maths::Matrix4(1.0f), m_angle, Maths::Vector3(0.f, 0.f, 1.f));
 
-		//we default use right handed coordinate system
-		//inversing operation is to switch left-handed coordinate system
-		m_view_matrix = (m_position.z > 0) ? glm::inverse(transform) : transform;
-
-		m_view_projection = m_projection * m_view_matrix;
+		//we default use left-handed coordinate system
+		//inversing operation is to switch right-handed coordinate system
+		//m_view_matrix = (m_position.z > 0) ? Maths::inverse(transform) : transform;
+		
+		m_view_matrix		= Maths::inverse(transform);
+		m_view_projection	= m_projection * m_view_matrix;
 	}
 }

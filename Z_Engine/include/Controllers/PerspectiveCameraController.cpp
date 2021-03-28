@@ -5,24 +5,26 @@
 #include "../Inputs/Mouse.h"
 #include "../Event/EventDispatcher.h"
 
+#include "../Engine.h"
+
 using namespace Z_Engine::Inputs;
 
 namespace Z_Engine::Controllers {
 
 	void PerspectiveCameraController::Initialize() {
-		m_perspective_camera->SetPosition(m_position);
 		m_perspective_camera->SetTarget(m_camera_target);
+		m_perspective_camera->SetPosition(m_position);
 	}
 
 	void PerspectiveCameraController::Update(Core::TimeStep dt) {
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_LEFT)) {
-			m_position.x += m_move_speed * dt;
-			m_perspective_camera->SetPosition(m_position);
+			m_camera_target.x -= m_move_speed * dt;
+			m_perspective_camera->SetTarget(m_camera_target);
 		}
 
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_RIGHT)) {
-			m_position.x -= m_move_speed * dt;
-			m_perspective_camera->SetPosition(m_position);
+			m_camera_target.x += m_move_speed * dt;
+			m_perspective_camera->SetTarget(m_camera_target);
 		}
 
 		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_UP)) {
@@ -34,18 +36,6 @@ namespace Z_Engine::Controllers {
 			m_position.z += m_move_speed * dt;
 			m_perspective_camera->SetPosition(m_position);
 		}
-		
-		//if (m_can_rotate) {
-		//	if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Q)) {
-		//		m_rotation_angle -= m_rotation_speed * dt;
-		//	}
-
-		//	if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_D)) {
-		//		m_rotation_angle += m_rotation_speed * dt;
-		//	}
-
-		//	m_Perspective_camera->SetRotation(m_rotation_angle);
-		//}
 	}
 
 	bool PerspectiveCameraController::OnEvent(Event::CoreEvent& e) {
@@ -57,14 +47,14 @@ namespace Z_Engine::Controllers {
 
 
 	bool PerspectiveCameraController::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e) {
-		m_zoom_factor	-= m_move_speed * (float)e.GetOffetY();
+		m_zoom_factor	-= m_move_speed * static_cast<float>(e.GetOffetY()) * Engine::GetDeltaTime();
 		m_camera_fov	= m_zoom_factor;
 		m_perspective_camera->SetProjectionMatrix(glm::perspective(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far));
 		return false;
 	}
 
 	bool PerspectiveCameraController::OnWindowResized(Event::WindowResizedEvent& e) {
-		m_aspect_ratio = (float)e.GetWidth() / (float)e.GetHeight();
+		m_aspect_ratio = static_cast<float>(e.GetWidth()) / static_cast<float>(e.GetHeight());
 		m_perspective_camera->SetProjectionMatrix(glm::perspective(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far));
 		return false;
 	}

@@ -53,7 +53,7 @@ namespace Z_Engine::Window::SDLWin {
 		m_native_window = SDL_CreateWindow(
 			m_property.Title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 			m_property.Width, m_property.Height,
-			SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL | SDL_WINDOW_INPUT_FOCUS
+			SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL | SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_MOUSE_CAPTURE
 		);
 
 		SetVSync(true);

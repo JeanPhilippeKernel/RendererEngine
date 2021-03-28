@@ -3,6 +3,7 @@
 #include "IDevice.h"
 #include "../dependencies/SDL2/include/SDL_mouse.h"
 
+
 namespace Z_Engine::Inputs {
 
 	class Mouse : public IDevice {
@@ -13,13 +14,31 @@ namespace Z_Engine::Inputs {
 		}
 
 		virtual bool IsKeyPressed(KeyCode key) const override {
-			const auto state  =  SDL_GetMouseState(NULL, NULL);
-			return (state  & SDL_BUTTON(((int)key))) == 1;
+			bool is_pressed{ false };
+			const uint32_t	state = SDL_GetMouseState(NULL, NULL);
+			unsigned int	mask = 0;
+
+			switch (key)
+			{
+				case KeyCode::MOUSE_LEFT:
+					mask = SDL_BUTTON_LMASK; 
+					break;
+				case KeyCode::MOUSE_WHEEL:
+					mask = SDL_BUTTON_MMASK;
+					break;
+				case KeyCode::MOUSE_RIGHT:
+					mask = SDL_BUTTON_RMASK;
+					break;
+				default:
+					break;
+			}
+
+			is_pressed = (state & mask) >= 1 ? true : false;
+			return is_pressed;
 		}
 
 		virtual bool IsKeyReleased(KeyCode key) const override {
-			const auto state = SDL_GetMouseState(NULL, NULL);
-			return (state & SDL_BUTTON(((int)key))) == 0;
+			return !IsKeyPressed(key);
 		}
 
 		std::array<int, 2> GetMousePosition() const {

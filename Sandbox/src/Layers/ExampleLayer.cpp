@@ -1,6 +1,4 @@
 #include "ExampleLayer.h"
-#include "dependencies/glm/gtc/type_ptr.hpp"	
-
 
 using namespace Z_Engine;
 
@@ -17,6 +15,7 @@ using namespace Z_Engine::Rendering::Textures;
 using namespace Z_Engine::Controllers;
 
 using namespace Z_Engine::Rendering::Meshes;
+using namespace Z_Engine::Maths;
 
 namespace Sandbox::Layers {
 	
@@ -30,15 +29,15 @@ namespace Sandbox::Layers {
 		m_texture_manager->Load("Assets/Images/Flying_Mario.png");
 		m_texture_manager->Load("Assets/Images/mario_and_sonic.png");
 
-		m_scene.reset(new GraphicScene(new OrthographicCameraController(GetAttachedWindow(), true)));
+		m_scene.reset(new GraphicScene2D(new OrthographicCameraController(GetAttachedWindow(), true)));
 		m_scene->Initialize();
 
-		quad_mesh_ptr.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f}, glm::radians(30.0f), m_texture_manager->Obtains("Flying_Mario")));
-		quad_mesh_ptr_1.reset(MeshBuilder::CreateQuad({0.5f, 0.5f}, {0.5f, 0.5}, glm::radians(0.0f), m_texture_manager->Obtains("mario_and_sonic")));
+		quad_mesh_ptr.reset(MeshBuilder::CreateQuad({-0.8f, -0.8f}, {0.5f, 0.5f}, radians(30.0f), m_texture_manager->Obtains("Flying_Mario")));
+		quad_mesh_ptr_1.reset(MeshBuilder::CreateQuad({0.5f, 0.5f}, {0.5f, 0.5}, radians(0.0f), m_texture_manager->Obtains("mario_and_sonic")));
 		
 		Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
 		material->SetInterpolateFactor(0.5f);
-		material->SetTexture(m_texture_manager->Load("free_image"));
+		material->SetTexture(m_texture_manager->Obtains("free_image"));
 		material->SetSecondTexture(m_texture_manager->Obtains("Crate"));
 
 		quad_mesh_ptr_2.reset(MeshBuilder::CreateQuad({0.0f, 0.0f}, {0.5f, 0.5}, 0.0f));
