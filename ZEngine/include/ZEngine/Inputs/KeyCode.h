@@ -1,0 +1,481 @@
+#pragma  once
+#include <cstdint>
+
+namespace ZEngine::Inputs {
+	
+	typedef enum class KeyCode : std::int32_t {
+
+		A				   = 0x004,
+		B				   = 0x005,
+		C				   = 0x006,
+		D				   = 0x007,
+		E				   = 0x008,
+		F				   = 0x009,
+		G				   = 0x00A,
+		H				   = 0x00B,
+		I				   = 0x00C,
+		J				   = 0x00D,
+		K				   = 0x00E,
+		L				   = 0x00F,
+		M				   = 0x010,
+		N				   = 0x011,
+		O				   = 0x012,
+		P				   = 0x013,
+		Q				   = 0x014,
+		R				   = 0x015,
+		S				   = 0x016,
+		T				   = 0x017,
+		U				   = 0x018,
+		V				   = 0x019,
+		W				   = 0x01A,
+		X				   = 0x01B,
+		Y				   = 0x01C,
+		Z				   = 0x01D,
+		RETURN			   = 0x028,
+		ESCAPE			   = 0x029,
+		BACKSPACE		   = 0x02A,
+		TAB				   = 0x02B,
+		SPACE			   = 0x02C,
+		MINUS			   = 0x02D,
+		EQUALS			   = 0x02E,
+		LEFTBRACKET		   = 0x02F,
+		RIGHTBRACKET	   = 0x030,
+		BACKSLASH		   = 0x031,
+		NONUSHASH		   = 0x032,
+		SEMICOLON		   = 0x033,
+		APOSTROPHE		   = 0x034,
+		GRAVE			   = 0x035,
+		COMMA			   = 0x036,
+		PERIOD			   = 0x037,
+		SLASH			   = 0x038,
+		CAPSLOCK		   = 0x039,
+		F1				   = 0x03A,
+		F2				   = 0x03B,
+		F3				   = 0x03C,
+		F4				   = 0x03D,
+		F5				   = 0x03E,
+		F6				   = 0x03F,
+		F7				   = 0x040,
+		F8				   = 0x041,
+		F9				   = 0x042,
+		F10				   = 0x043,
+		F11				   = 0x044,
+		F12				   = 0x045,
+		PRINTSCREEN		   = 0x046,
+		SCROLLLOCK		   = 0x047,
+		PAUSE			   = 0x048,
+		INSERT			   = 0x049,
+		HOME			   = 0x04A,
+		PAGEUP			   = 0x04B,
+		DELETE			   = 0x04C,
+		END				   = 0x04D,
+		PAGEDOWN		   = 0x04E,
+		RIGHT			   = 0x04F,
+		LEFT			   = 0x050,
+		DOWN			   = 0x051,
+		UP				   = 0x052,
+		NUMLOCKCLEAR	   = 0x053,
+		KP_DIVIDE		   = 0x054,
+		KP_MULTIPLY		   = 0x055,
+		KP_MINUS		   = 0x056,
+		KP_PLUS			   = 0x057,
+		KP_ENTER		   = 0x058,
+		KP_1			   = 0x059,
+		KP_2			   = 0x05A,
+		KP_3			   = 0x05B,
+		KP_4			   = 0x05C,
+		KP_5			   = 0x05D,
+		KP_6			   = 0x05E,
+		KP_7			   = 0x05F,
+		KP_8			   = 0x060,
+		KP_9			   = 0x061,
+		KP_0			   = 0x062,
+		KP_PERIOD		   = 0x063,
+		NONUSBACKSLASH	   = 0x064,
+		APPLICATION		   = 0x065,
+		POWER			   = 0x066,
+		KP_EQUALS		   = 0x067,
+		F13				   = 0x068,
+		F14				   = 0x069,
+		F15				   = 0x06A,
+		F16				   = 0x06B,
+		F17				   = 0x06C,
+		F18				   = 0x06D,
+		F19				   = 0x06E,
+		F20				   = 0x06F,
+		F21				   = 0x070,
+		F22				   = 0x071,
+		F23				   = 0x072,
+		F24				   = 0x073,
+		EXECUTE			   = 0x074,
+		HELP			   = 0x075,
+		MENU			   = 0x076,
+		SELECT			   = 0x077,
+		STOP			   = 0x078,
+		AGAIN			   = 0x079,
+		UNDO			   = 0x07A,
+		CUT				   = 0x07B,
+		COPY			   = 0x07C,
+		PASTE			   = 0x07D,
+		FIND			   = 0x07E,
+		MUTE			   = 0x07F,
+		VOLUMEUP		   = 0x080,
+		VOLUMEDOWN		   = 0x081,
+		KP_COMMA		   = 0x085,
+		KP_EQUALSAS400	   = 0x086,
+		INTERNATIONAL1	   = 0x087,
+		INTERNATIONAL2	   = 0x088,
+		INTERNATIONAL3	   = 0x089,
+		INTERNATIONAL4	   = 0x08A,
+		INTERNATIONAL5	   = 0x08B,
+		INTERNATIONAL6	   = 0x08C,
+		INTERNATIONAL7	   = 0x08D,
+		INTERNATIONAL8	   = 0x08E,
+		INTERNATIONAL9	   = 0x08F,
+		LANG1			   = 0x090,
+		LANG2			   = 0x091,
+		LANG3			   = 0x092,
+		LANG4			   = 0x093,
+		LANG5			   = 0x094,
+		LANG6			   = 0x095,
+		LANG7			   = 0x096,
+		LANG8			   = 0x097,
+		LANG9			   = 0x098,
+		ALTERASE		   = 0x099,
+		SYSREQ			   = 0x09A,
+		CANCEL			   = 0x09B,
+		CLEAR			   = 0x09C,
+		PRIOR			   = 0x09D,
+		RETURN2			   = 0x09E,
+		SEPARATOR		   = 0x09F,
+		OUT				   = 0x0A0,
+		OPER			   = 0x0A1,
+		CLEARAGAIN		   = 0x0A2,
+		CRSEL			   = 0x0A3,
+		EXSEL			   = 0x0A4,
+		KP_00			   = 0x0B0,
+		KP_000			   = 0x0B1,
+		THOUSANDSSEPARATOR = 0x0B2,
+		DECIMALSEPARATOR   = 0x0B3,
+		CURRENCYUNIT       = 0x0B4,
+		CURRENCYSUBUNIT    = 0x0B5,
+		KP_LEFTPAREN       = 0x0B6,
+		KP_RIGHTPAREN      = 0x0B7,
+		KP_LEFTBRACE       = 0x0B8,
+		KP_RIGHTBRACE      = 0x0B9,
+		KP_TAB             = 0x0BA,
+		KP_BACKSPACE       = 0x0BB,
+		KP_A			   = 0x0BC,
+		KP_B			   = 0x0BD,
+		KP_C			   = 0x0BE,
+		KP_D			   = 0x0BF,
+		KP_E			   = 0x0C0,
+		KP_F			   = 0x0C1,
+		KP_XOR			   = 0x0C2,
+		KP_POWER		   = 0x0C3,
+		KP_PERCENT		   = 0x0C4,
+		KP_LESS			   = 0x0C5,
+		KP_GREATER		   = 0x0C6,
+		KP_AMPERSAND       = 0x0C7,
+		KP_DBLAMPERSAND    = 0x0C8,
+		KP_VERTICALBAR     = 0x0C9,
+		KP_DBLVERTICALBAR  = 0x0CA,
+		KP_COLON		   = 0x0CB,
+		KP_HASH			   = 0x0CC,
+		KP_SPACE		   = 0x0CD,
+		KP_AT			   = 0x0CE,
+		KP_EXCLAM		   = 0x0CF,
+		KP_MEMSTORE		   = 0x0D0,
+		KP_MEMRECALL	   = 0x0D1,
+		KP_MEMCLEAR		   = 0x0D2,
+		KP_MEMADD		   = 0x0D3,
+		KP_MEMSUBTRACT	   = 0x0D4,
+		KP_MEMMULTIPLY	   = 0x0D5,
+		KP_MEMDIVIDE	   = 0x0D6,
+		KP_PLUSMINUS	   = 0x0D7,
+		KP_CLEAR		   = 0x0D8,
+		KP_CLEARENTRY	   = 0x0D9,
+		KP_BINARY		   = 0x0DA,
+		KP_OCTAL		   = 0x0DB,
+		KP_DECIMAL		   = 0x0DC,
+		KP_HEXADECIMAL	   = 0x0DD,
+		LCTRL			   = 0x0E0,
+		LSHIFT			   = 0x0E1,
+		LALT			   = 0x0E2,
+		LGUI			   = 0x0E3,
+		RCTRL			   = 0x0E4,
+		RSHIFT			   = 0x0E5,
+		RALT			   = 0x0E6,
+		RGUI			   = 0x0E7,
+		MODE			   = 0x101,
+		AUDIONEXT		   = 0x102,
+		AUDIOPREV		   = 0x103,
+		AUDIOSTOP		   = 0x104,
+		AUDIOPLAY		   = 0x105,
+		AUDIOMUTE		   = 0x106,
+		MEDIASELECT		   = 0x107,
+		WWW				   = 0x108,
+		MAIL			   = 0x109,
+		CALCULATOR		   = 0x10A,
+		COMPUTER		   = 0x10B,
+		AC_SEARCH		   = 0x10C,
+		AC_HOME			   = 0x10D,
+		AC_BACK			   = 0x10E,
+		AC_FORWARD		   = 0x10F,
+		AC_STOP			   = 0x110,
+		AC_REFRESH		   = 0x111,
+		AC_BOOKMARKS	   = 0x112,
+		BRIGHTNESSDOWN	   = 0x113,
+		BRIGHTNESSUP	   = 0x114,
+		DISPLAYSWITCH	   = 0x115,
+		KBDILLUMTOGGLE	   = 0x116,
+		KBDILLUMDOWN	   = 0x117,
+		KBDILLUMUP		   = 0x118,
+		EJECT			   = 0x119,
+		SLEEP			   = 0x11A,
+		APP1			   = 0x11B,
+		APP2			   = 0x11C,
+
+		MOUSE_LEFT  = 1,
+		MOUSE_WHEEL = 2,
+		MOUSE_RIGHT = 3,
+
+	} Key;
+
+}
+
+#define Z_ENGINE_KEY_A							ZEngine::Inputs::Key::A
+#define Z_ENGINE_KEY_B							ZEngine::Inputs::Key::B
+#define Z_ENGINE_KEY_C							ZEngine::Inputs::Key::C
+#define Z_ENGINE_KEY_D							ZEngine::Inputs::Key::D
+#define Z_ENGINE_KEY_E							ZEngine::Inputs::Key::E
+#define Z_ENGINE_KEY_F							ZEngine::Inputs::Key::F
+#define Z_ENGINE_KEY_G							ZEngine::Inputs::Key::G
+#define Z_ENGINE_KEY_H							ZEngine::Inputs::Key::H
+#define Z_ENGINE_KEY_I							ZEngine::Inputs::Key::I
+#define Z_ENGINE_KEY_J							ZEngine::Inputs::Key::J
+#define Z_ENGINE_KEY_K							ZEngine::Inputs::Key::K
+#define Z_ENGINE_KEY_L							ZEngine::Inputs::Key::L
+#define Z_ENGINE_KEY_M							ZEngine::Inputs::Key::M
+#define Z_ENGINE_KEY_N							ZEngine::Inputs::Key::N
+#define Z_ENGINE_KEY_O							ZEngine::Inputs::Key::O
+#define Z_ENGINE_KEY_P							ZEngine::Inputs::Key::P
+#define Z_ENGINE_KEY_Q							ZEngine::Inputs::Key::Q
+#define Z_ENGINE_KEY_R							ZEngine::Inputs::Key::R
+#define Z_ENGINE_KEY_S							ZEngine::Inputs::Key::S
+#define Z_ENGINE_KEY_T							ZEngine::Inputs::Key::T
+#define Z_ENGINE_KEY_U							ZEngine::Inputs::Key::U
+#define Z_ENGINE_KEY_V							ZEngine::Inputs::Key::V
+#define Z_ENGINE_KEY_W							ZEngine::Inputs::Key::W
+#define Z_ENGINE_KEY_X							ZEngine::Inputs::Key::X
+#define Z_ENGINE_KEY_Y							ZEngine::Inputs::Key::Y
+#define Z_ENGINE_KEY_Z							ZEngine::Inputs::Key::Z
+#define Z_ENGINE_KEY_RETURN						ZEngine::Inputs::Key::RETURN
+#define Z_ENGINE_KEY_ESCAPE						ZEngine::Inputs::Key::ESCAPE
+#define Z_ENGINE_KEY_BACKSPACE					ZEngine::Inputs::Key::BACKSPACE
+#define Z_ENGINE_KEY_TAB						ZEngine::Inputs::Key::TAB
+#define Z_ENGINE_KEY_SPACE						ZEngine::Inputs::Key::SPACE
+#define Z_ENGINE_KEY_MINUS						ZEngine::Inputs::Key::MINUS
+#define Z_ENGINE_KEY_EQUALS						ZEngine::Inputs::Key::EQUALS
+#define Z_ENGINE_KEY_LEFTBRACKET				ZEngine::Inputs::Key::LEFTBRACKET
+#define Z_ENGINE_KEY_RIGHTBRACKET				ZEngine::Inputs::Key::RIGHTBRACKET
+#define Z_ENGINE_KEY_BACKSLASH					ZEngine::Inputs::Key::BACKSLASH
+#define Z_ENGINE_KEY_NONUSHASH					ZEngine::Inputs::Key::NONUSHASH
+#define Z_ENGINE_KEY_SEMICOLON					ZEngine::Inputs::Key::SEMICOLON
+#define Z_ENGINE_KEY_APOSTROPHE					ZEngine::Inputs::Key::APOSTROPHE
+#define Z_ENGINE_KEY_GRAVE						ZEngine::Inputs::Key::GRAVE
+#define Z_ENGINE_KEY_COMMA						ZEngine::Inputs::Key::COMMA
+#define Z_ENGINE_KEY_PERIOD						ZEngine::Inputs::Key::PERIOD
+#define Z_ENGINE_KEY_SLASH						ZEngine::Inputs::Key::SLASH
+#define Z_ENGINE_KEY_CAPSLOCK					ZEngine::Inputs::Key::CAPSLOCK
+#define Z_ENGINE_KEY_F1							ZEngine::Inputs::Key::F1
+#define Z_ENGINE_KEY_F2							ZEngine::Inputs::Key::F2
+#define Z_ENGINE_KEY_F3							ZEngine::Inputs::Key::F3
+#define Z_ENGINE_KEY_F4							ZEngine::Inputs::Key::F4
+#define Z_ENGINE_KEY_F5							ZEngine::Inputs::Key::F5
+#define Z_ENGINE_KEY_F6							ZEngine::Inputs::Key::F6
+#define Z_ENGINE_KEY_F7							ZEngine::Inputs::Key::F7
+#define Z_ENGINE_KEY_F8							ZEngine::Inputs::Key::F8
+#define Z_ENGINE_KEY_F9							ZEngine::Inputs::Key::F9
+#define Z_ENGINE_KEY_F10						ZEngine::Inputs::Key::F10
+#define Z_ENGINE_KEY_F11						ZEngine::Inputs::Key::F11
+#define Z_ENGINE_KEY_F12						ZEngine::Inputs::Key::F12
+#define Z_ENGINE_KEY_PRINTSCREEN				ZEngine::Inputs::Key::PRINTSCREEN
+#define Z_ENGINE_KEY_SCROLLLOCK					ZEngine::Inputs::Key::SCROLLLOCK
+#define Z_ENGINE_KEY_PAUSE						ZEngine::Inputs::Key::PAUSE
+#define Z_ENGINE_KEY_INSERT						ZEngine::Inputs::Key::INSERT
+#define Z_ENGINE_KEY_HOME						ZEngine::Inputs::Key::HOME
+#define Z_ENGINE_KEY_PAGEUP						ZEngine::Inputs::Key::PAGEUP
+#define Z_ENGINE_KEY_DELETE						ZEngine::Inputs::Key::DELETE
+#define Z_ENGINE_KEY_END						ZEngine::Inputs::Key::END
+#define Z_ENGINE_KEY_PAGEDOWN					ZEngine::Inputs::Key::PAGEDOWN
+#define Z_ENGINE_KEY_RIGHT						ZEngine::Inputs::Key::RIGHT
+#define Z_ENGINE_KEY_LEFT						ZEngine::Inputs::Key::LEFT
+#define Z_ENGINE_KEY_DOWN						ZEngine::Inputs::Key::DOWN
+#define Z_ENGINE_KEY_UP							ZEngine::Inputs::Key::UP
+#define Z_ENGINE_KEY_NUMLOCKCLEAR				ZEngine::Inputs::Key::NUMLOCKCLEAR
+#define Z_ENGINE_KEY_KP_DIVIDE					ZEngine::Inputs::Key::KP_DIVIDE
+#define Z_ENGINE_KEY_KP_MULTIPLY				ZEngine::Inputs::Key::KP_MULTIPLY
+#define Z_ENGINE_KEY_KP_MINUS					ZEngine::Inputs::Key::KP_MINUS
+#define Z_ENGINE_KEY_KP_PLUS					ZEngine::Inputs::Key::KP_PLUS
+#define Z_ENGINE_KEY_KP_ENTER					ZEngine::Inputs::Key::KP_ENTER
+#define Z_ENGINE_KEY_KP_1						ZEngine::Inputs::Key::KP_1
+#define Z_ENGINE_KEY_KP_2						ZEngine::Inputs::Key::KP_2
+#define Z_ENGINE_KEY_KP_3						ZEngine::Inputs::Key::KP_3
+#define Z_ENGINE_KEY_KP_4						ZEngine::Inputs::Key::KP_4
+#define Z_ENGINE_KEY_KP_5						ZEngine::Inputs::Key::KP_5
+#define Z_ENGINE_KEY_KP_6						ZEngine::Inputs::Key::KP_6
+#define Z_ENGINE_KEY_KP_7						ZEngine::Inputs::Key::KP_7
+#define Z_ENGINE_KEY_KP_8						ZEngine::Inputs::Key::KP_8
+#define Z_ENGINE_KEY_KP_9						ZEngine::Inputs::Key::KP_9
+#define Z_ENGINE_KEY_KP_0						ZEngine::Inputs::Key::KP_0
+#define Z_ENGINE_KEY_KP_PERIOD					ZEngine::Inputs::Key::KP_PERIOD
+#define Z_ENGINE_KEY_NONUSBACKSLASH				ZEngine::Inputs::Key::NONUSBACKSLASH
+#define Z_ENGINE_KEY_APPLICATION				ZEngine::Inputs::Key::APPLICATION
+#define Z_ENGINE_KEY_POWER						ZEngine::Inputs::Key::POWER
+#define Z_ENGINE_KEY_KP_EQUALS					ZEngine::Inputs::Key::KP_EQUALS
+#define Z_ENGINE_KEY_F13						ZEngine::Inputs::Key::F13
+#define Z_ENGINE_KEY_F14						ZEngine::Inputs::Key::F14
+#define Z_ENGINE_KEY_F15						ZEngine::Inputs::Key::F15
+#define Z_ENGINE_KEY_F16						ZEngine::Inputs::Key::F16
+#define Z_ENGINE_KEY_F17						ZEngine::Inputs::Key::F17
+#define Z_ENGINE_KEY_F18						ZEngine::Inputs::Key::F18
+#define Z_ENGINE_KEY_F19						ZEngine::Inputs::Key::F19
+#define Z_ENGINE_KEY_F20						ZEngine::Inputs::Key::F20
+#define Z_ENGINE_KEY_F21						ZEngine::Inputs::Key::F21
+#define Z_ENGINE_KEY_F22						ZEngine::Inputs::Key::F22
+#define Z_ENGINE_KEY_F23						ZEngine::Inputs::Key::F23
+#define Z_ENGINE_KEY_F24						ZEngine::Inputs::Key::F24
+#define Z_ENGINE_KEY_EXECUTE					ZEngine::Inputs::Key::EXECUTE
+#define Z_ENGINE_KEY_HELP						ZEngine::Inputs::Key::HELP
+#define Z_ENGINE_KEY_MENU						ZEngine::Inputs::Key::MENU
+#define Z_ENGINE_KEY_SELECT						ZEngine::Inputs::Key::SELECT
+#define Z_ENGINE_KEY_STOP						ZEngine::Inputs::Key::STOP
+#define Z_ENGINE_KEY_AGAIN						ZEngine::Inputs::Key::AGAIN
+#define Z_ENGINE_KEY_UNDO						ZEngine::Inputs::Key::UNDO
+#define Z_ENGINE_KEY_CUT						ZEngine::Inputs::Key::CUT
+#define Z_ENGINE_KEY_COPY						ZEngine::Inputs::Key::COPY
+#define Z_ENGINE_KEY_PASTE						ZEngine::Inputs::Key::PASTE
+#define Z_ENGINE_KEY_FIND						ZEngine::Inputs::Key::FIND
+#define Z_ENGINE_KEY_MUTE						ZEngine::Inputs::Key::MUTE
+#define Z_ENGINE_KEY_VOLUMEUP					ZEngine::Inputs::Key::VOLUMEUP
+#define Z_ENGINE_KEY_VOLUMEDOWN					ZEngine::Inputs::Key::VOLUMEDOWN
+#define Z_ENGINE_KEY_KP_COMMA					ZEngine::Inputs::Key::KP_COMMA
+#define Z_ENGINE_KEY_KP_EQUALSAS400				ZEngine::Inputs::Key::KP_EQUALSAS400
+#define Z_ENGINE_KEY_INTERNATIONAL1				ZEngine::Inputs::Key::INTERNATIONAL1
+#define Z_ENGINE_KEY_INTERNATIONAL2				ZEngine::Inputs::Key::INTERNATIONAL2
+#define Z_ENGINE_KEY_INTERNATIONAL3				ZEngine::Inputs::Key::INTERNATIONAL3
+#define Z_ENGINE_KEY_INTERNATIONAL4				ZEngine::Inputs::Key::INTERNATIONAL4
+#define Z_ENGINE_KEY_INTERNATIONAL5				ZEngine::Inputs::Key::INTERNATIONAL5
+#define Z_ENGINE_KEY_INTERNATIONAL6				ZEngine::Inputs::Key::INTERNATIONAL6
+#define Z_ENGINE_KEY_INTERNATIONAL7				ZEngine::Inputs::Key::INTERNATIONAL7
+#define Z_ENGINE_KEY_INTERNATIONAL8				ZEngine::Inputs::Key::INTERNATIONAL8
+#define Z_ENGINE_KEY_INTERNATIONAL9				ZEngine::Inputs::Key::INTERNATIONAL9
+#define Z_ENGINE_KEY_LANG1						ZEngine::Inputs::Key::LANG1
+#define Z_ENGINE_KEY_LANG2						ZEngine::Inputs::Key::LANG2
+#define Z_ENGINE_KEY_LANG3						ZEngine::Inputs::Key::LANG3
+#define Z_ENGINE_KEY_LANG4						ZEngine::Inputs::Key::LANG4
+#define Z_ENGINE_KEY_LANG5						ZEngine::Inputs::Key::LANG5
+#define Z_ENGINE_KEY_LANG6						ZEngine::Inputs::Key::LANG6
+#define Z_ENGINE_KEY_LANG7						ZEngine::Inputs::Key::LANG7
+#define Z_ENGINE_KEY_LANG8						ZEngine::Inputs::Key::LANG8
+#define Z_ENGINE_KEY_LANG9						ZEngine::Inputs::Key::LANG9
+#define Z_ENGINE_KEY_ALTERASE					ZEngine::Inputs::Key::ALTERASE
+#define Z_ENGINE_KEY_SYSREQ						ZEngine::Inputs::Key::SYSREQ
+#define Z_ENGINE_KEY_CANCEL						ZEngine::Inputs::Key::CANCEL
+#define Z_ENGINE_KEY_CLEAR						ZEngine::Inputs::Key::CLEAR
+#define Z_ENGINE_KEY_PRIOR						ZEngine::Inputs::Key::PRIOR
+#define Z_ENGINE_KEY_RETURN2					ZEngine::Inputs::Key::RETURN2
+#define Z_ENGINE_KEY_SEPARATOR					ZEngine::Inputs::Key::SEPARATOR
+#define Z_ENGINE_KEY_OUT						ZEngine::Inputs::Key::OUT
+#define Z_ENGINE_KEY_OPER						ZEngine::Inputs::Key::OPER
+#define Z_ENGINE_KEY_CLEARAGAIN					ZEngine::Inputs::Key::CLEARAGAIN
+#define Z_ENGINE_KEY_CRSEL						ZEngine::Inputs::Key::CRSEL
+#define Z_ENGINE_KEY_EXSEL						ZEngine::Inputs::Key::EXSEL
+#define Z_ENGINE_KEY_KP_00						ZEngine::Inputs::Key::KP_00
+#define Z_ENGINE_KEY_KP_000						ZEngine::Inputs::Key::KP_000
+#define Z_ENGINE_KEY_THOUSANDSSEPARATOR			ZEngine::Inputs::Key::THOUSANDSSEPARATOR
+#define Z_ENGINE_KEY_DECIMALSEPARATOR			ZEngine::Inputs::Key::DECIMALSEPARATOR
+#define Z_ENGINE_KEY_CURRENCYUNIT				ZEngine::Inputs::Key::CURRENCYUNIT
+#define Z_ENGINE_KEY_CURRENCYSUBUNIT			ZEngine::Inputs::Key::CURRENCYSUBUNIT
+#define Z_ENGINE_KEY_KP_LEFTPAREN				ZEngine::Inputs::Key::KP_LEFTPAREN
+#define Z_ENGINE_KEY_KP_RIGHTPAREN				ZEngine::Inputs::Key::KP_RIGHTPAREN
+#define Z_ENGINE_KEY_KP_LEFTBRACE				ZEngine::Inputs::Key::KP_LEFTBRACE
+#define Z_ENGINE_KEY_KP_RIGHTBRACE				ZEngine::Inputs::Key::KP_RIGHTBRACE
+#define Z_ENGINE_KEY_KP_TAB						ZEngine::Inputs::Key::KP_TAB
+#define Z_ENGINE_KEY_KP_BACKSPACE				ZEngine::Inputs::Key::KP_BACKSPACE
+#define Z_ENGINE_KEY_KP_A						ZEngine::Inputs::Key::KP_A
+#define Z_ENGINE_KEY_KP_B						ZEngine::Inputs::Key::KP_B
+#define Z_ENGINE_KEY_KP_C						ZEngine::Inputs::Key::KP_C
+#define Z_ENGINE_KEY_KP_D						ZEngine::Inputs::Key::KP_D
+#define Z_ENGINE_KEY_KP_E						ZEngine::Inputs::Key::KP_E
+#define Z_ENGINE_KEY_KP_F						ZEngine::Inputs::Key::KP_F
+#define Z_ENGINE_KEY_KP_XOR						ZEngine::Inputs::Key::KP_XOR
+#define Z_ENGINE_KEY_KP_POWER					ZEngine::Inputs::Key::KP_POWER
+#define Z_ENGINE_KEY_KP_PERCENT					ZEngine::Inputs::Key::KP_PERCENT
+#define Z_ENGINE_KEY_KP_LESS					ZEngine::Inputs::Key::KP_LESS
+#define Z_ENGINE_KEY_KP_GREATER					ZEngine::Inputs::Key::KP_GREATER
+#define Z_ENGINE_KEY_KP_AMPERSAND				ZEngine::Inputs::Key::KP_AMPERSAND
+#define Z_ENGINE_KEY_KP_DBLAMPERSAND			ZEngine::Inputs::Key::KP_DBLAMPERSAND
+#define Z_ENGINE_KEY_KP_VERTICALBAR				ZEngine::Inputs::Key::KP_VERTICALBAR
+#define Z_ENGINE_KEY_KP_DBLVERTICALBAR			ZEngine::Inputs::Key::KP_DBLVERTICALBAR
+#define Z_ENGINE_KEY_KP_COLON					ZEngine::Inputs::Key::KP_COLON
+#define Z_ENGINE_KEY_KP_HASH					ZEngine::Inputs::Key::KP_HASH
+#define Z_ENGINE_KEY_KP_SPACE					ZEngine::Inputs::Key::KP_SPACE
+#define Z_ENGINE_KEY_KP_AT						ZEngine::Inputs::Key::KP_AT
+#define Z_ENGINE_KEY_KP_EXCLAM					ZEngine::Inputs::Key::KP_EXCLAM
+#define Z_ENGINE_KEY_KP_MEMSTORE				ZEngine::Inputs::Key::KP_MEMSTORE
+#define Z_ENGINE_KEY_KP_MEMRECALL				ZEngine::Inputs::Key::KP_MEMRECALL
+#define Z_ENGINE_KEY_KP_MEMCLEAR				ZEngine::Inputs::Key::KP_MEMCLEAR
+#define Z_ENGINE_KEY_KP_MEMADD					ZEngine::Inputs::Key::KP_MEMADD
+#define Z_ENGINE_KEY_KP_MEMSUBTRACT				ZEngine::Inputs::Key::KP_MEMSUBTRACT
+#define Z_ENGINE_KEY_KP_MEMMULTIPLY				ZEngine::Inputs::Key::KP_MEMMULTIPLY
+#define Z_ENGINE_KEY_KP_MEMDIVIDE				ZEngine::Inputs::Key::KP_MEMDIVIDE
+#define Z_ENGINE_KEY_KP_PLUSMINUS				ZEngine::Inputs::Key::KP_PLUSMINUS
+#define Z_ENGINE_KEY_KP_CLEAR					ZEngine::Inputs::Key::KP_CLEAR
+#define Z_ENGINE_KEY_KP_CLEARENTRY				ZEngine::Inputs::Key::KP_CLEARENTRY
+#define Z_ENGINE_KEY_KP_BINARY					ZEngine::Inputs::Key::KP_BINARY
+#define Z_ENGINE_KEY_KP_OCTAL					ZEngine::Inputs::Key::KP_OCTAL
+#define Z_ENGINE_KEY_KP_DECIMAL					ZEngine::Inputs::Key::KP_DECIMAL
+#define Z_ENGINE_KEY_KP_HEXADECIMAL				ZEngine::Inputs::Key::KP_HEXADECIMAL
+#define Z_ENGINE_KEY_LCTRL						ZEngine::Inputs::Key::LCTRL
+#define Z_ENGINE_KEY_LSHIFT						ZEngine::Inputs::Key::LSHIFT
+#define Z_ENGINE_KEY_LALT						ZEngine::Inputs::Key::LALT
+#define Z_ENGINE_KEY_LGUI						ZEngine::Inputs::Key::LGUI
+#define Z_ENGINE_KEY_RCTRL						ZEngine::Inputs::Key::RCTRL
+#define Z_ENGINE_KEY_RSHIFT						ZEngine::Inputs::Key::RSHIFT
+#define Z_ENGINE_KEY_RALT						ZEngine::Inputs::Key::RALT
+#define Z_ENGINE_KEY_RGUI						ZEngine::Inputs::Key::RGUI
+#define Z_ENGINE_KEY_MODE						ZEngine::Inputs::Key::MODE
+#define Z_ENGINE_KEY_AUDIONEXT					ZEngine::Inputs::Key::AUDIONEXT
+#define Z_ENGINE_KEY_AUDIOPREV					ZEngine::Inputs::Key::AUDIOPREV
+#define Z_ENGINE_KEY_AUDIOSTOP					ZEngine::Inputs::Key::AUDIOSTOP
+#define Z_ENGINE_KEY_AUDIOPLAY					ZEngine::Inputs::Key::AUDIOPLAY
+#define Z_ENGINE_KEY_AUDIOMUTE					ZEngine::Inputs::Key::AUDIOMUTE
+#define Z_ENGINE_KEY_MEDIASELECT				ZEngine::Inputs::Key::MEDIASELECT
+#define Z_ENGINE_KEY_WWW						ZEngine::Inputs::Key::WWW
+#define Z_ENGINE_KEY_MAIL						ZEngine::Inputs::Key::MAIL
+#define Z_ENGINE_KEY_CALCULATOR					ZEngine::Inputs::Key::CALCULATOR
+#define Z_ENGINE_KEY_COMPUTER					ZEngine::Inputs::Key::COMPUTER
+#define Z_ENGINE_KEY_AC_SEARCH					ZEngine::Inputs::Key::AC_SEARCH
+#define Z_ENGINE_KEY_AC_HOME					ZEngine::Inputs::Key::AC_HOME
+#define Z_ENGINE_KEY_AC_BACK					ZEngine::Inputs::Key::AC_BACK
+#define Z_ENGINE_KEY_AC_FORWARD					ZEngine::Inputs::Key::AC_FORWARD
+#define Z_ENGINE_KEY_AC_STOP					ZEngine::Inputs::Key::AC_STOP
+#define Z_ENGINE_KEY_AC_REFRESH					ZEngine::Inputs::Key::AC_REFRESH
+#define Z_ENGINE_KEY_AC_BOOKMARKS				ZEngine::Inputs::Key::AC_BOOKMARKS
+#define Z_ENGINE_KEY_BRIGHTNESSDOWN				ZEngine::Inputs::Key::BRIGHTNESSDOWN
+#define Z_ENGINE_KEY_BRIGHTNESSUP				ZEngine::Inputs::Key::BRIGHTNESSUP
+#define Z_ENGINE_KEY_DISPLAYSWITCH				ZEngine::Inputs::Key::DISPLAYSWITCH
+#define Z_ENGINE_KEY_KBDILLUMTOGGLE				ZEngine::Inputs::Key::KBDILLUMTOGGLE
+#define Z_ENGINE_KEY_KBDILLUMDOWN				ZEngine::Inputs::Key::KBDILLUMDOWN
+#define Z_ENGINE_KEY_KBDILLUMUP					ZEngine::Inputs::Key::KBDILLUMUP
+#define Z_ENGINE_KEY_EJECT						ZEngine::Inputs::Key::EJECT
+#define Z_ENGINE_KEY_SLEEP						ZEngine::Inputs::Key::SLEEP
+#define Z_ENGINE_KEY_APP1						ZEngine::Inputs::Key::APP1
+#define Z_ENGINE_KEY_APP2						ZEngine::Inputs::Key::APP2
+
+
+#define Z_ENGINE_KEY_MOUSE_LEFT		ZEngine::Inputs::Key::MOUSE_LEFT
+#define Z_ENGINE_KEY_MOUSE_RIGHT	ZEngine::Inputs::Key::MOUSE_RIGHT
+#define Z_ENGINE_KEY_MOUSE_WHEEL	ZEngine::Inputs::Key::MOUSE_WHEEL
