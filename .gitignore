@@ -28,23 +28,6 @@ bld/
 [Ll]og/
 [Bb]in-int/
 
-Sandbox/[Bb]in-int/
-Sandbox3D/[Bb]in-int/
-Z_Engine/[Bb]in-int/
-
-Sandbox/[Bb]in-int/Debug-x64/
-Sandbox3D/[Bb]in-int/Debug-x64/
-Z_Engine/[Bb]in-int/Debug-x64/
-
-Sandbox/[Bb]in-int/Debug-x86/
-Sandbox3D/[Bb]in-int/Debug-x86/
-Z_Engine/[Bb]in-int/Debug-x86/
-
-
-Sandbox/[Bb]in/
-Sandbox3D/[Bb]in/
-Z_Engine/[Bb]in/
-
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 # Uncomment if you have tasks that create the project's static files in wwwroot
@@ -369,6 +352,7 @@ compile_commands.json
 CTestTestfile.cmake
 build/
 bin/
+out/
 
 ## Cpp
 
