@@ -7,7 +7,7 @@
 #include <Inputs/KeyCode.h>
 #include <Rendering/Renderers/RenderCommand.h>
 
-#include <imgui/imgui.h>
+#include <imgui.h>
 
 
 using namespace ZEngine;

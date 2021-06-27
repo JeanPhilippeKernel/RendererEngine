@@ -16,10 +16,10 @@
 #include <Core/IInitializable.h>
 
 
-#include <imgui/imgui.h>
-#include <imgui/imconfig.h>
-#include <imgui/backends/imgui_impl_sdl.h>
-#include <imgui/backends/imgui_impl_opengl3.h>
+#include <imgui.h>
+#include <imconfig.h>
+#include <backends/imgui_impl_sdl.h>
+#include <backends/imgui_impl_opengl3.h>
 
 namespace ZEngine {
 	

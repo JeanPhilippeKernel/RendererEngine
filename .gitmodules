@@ -10,3 +10,6 @@
 [submodule "__externals/SDL2"]
 	path = __externals/SDL2
 	url = https://github.com/libsdl-org/SDL
+[submodule "__externals/imgui/src"]
+	path = __externals/imgui/src
+	url = https://github.com/ocornut/imgui
