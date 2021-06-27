@@ -1,15 +1,12 @@
-[submodule "__externals/stb"]
-	path = __externals/stb
-	url = https://github.com/nothings/stb
-[submodule "__externals/imgui"]
-	path = __externals/imgui
-	url = https://github.com/ocornut/imgui
 [submodule "__externals/glm"]
 	path = __externals/glm
 	url = https://github.com/g-truc/glm
-[submodule "__externals/SDL2"]
-	path = __externals/SDL2
-	url = https://github.com/libsdl-org/SDL
 [submodule "__externals/fmt"]
 	path = __externals/fmt
 	url = https://github.com/fmtlib/fmt
+[submodule "__externals/stb"]
+	path = __externals/stb
+	url = https://github.com/nothings/stb
+[submodule "__externals/SDL2"]
+	path = __externals/SDL2
+	url = https://github.com/libsdl-org/SDL
