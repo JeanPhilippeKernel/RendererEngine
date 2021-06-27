@@ -6,7 +6,7 @@ using namespace Sandbox3D::Layers;
 
 namespace Sandbox3D {
 
-	class Sandbox : public Z_Engine::Engine {
+	class Sandbox : public ZEngine::Engine {
 	public:
 		Sandbox() {
 			PushLayer(new ExampleLayer());
@@ -17,6 +17,6 @@ namespace Sandbox3D {
 
 }
 
-namespace Z_Engine {
+namespace ZEngine {
 	Engine* CreateEngine() { return new Sandbox3D::Sandbox(); }
 }

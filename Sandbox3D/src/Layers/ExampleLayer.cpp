@@ -1,28 +1,28 @@
 #include "ExampleLayer.h"
 
 
-using namespace Z_Engine;
+using namespace ZEngine;
 
-using namespace Z_Engine::Rendering::Materials;
-using namespace Z_Engine::Rendering::Scenes;
-using namespace Z_Engine::Rendering::Renderers;
-using namespace Z_Engine::Window;
-using namespace Z_Engine::Core;
-using namespace Z_Engine::Inputs;
-using namespace Z_Engine::Event;
+using namespace ZEngine::Rendering::Materials;
+using namespace ZEngine::Rendering::Scenes;
+using namespace ZEngine::Rendering::Renderers;
+using namespace ZEngine::Window;
+using namespace ZEngine::Core;
+using namespace ZEngine::Inputs;
+using namespace ZEngine::Event;
 
-using namespace Z_Engine::Managers;
-using namespace Z_Engine::Rendering::Textures;
-using namespace Z_Engine::Controllers;
+using namespace ZEngine::Managers;
+using namespace ZEngine::Rendering::Textures;
+using namespace ZEngine::Controllers;
 
-using namespace Z_Engine::Rendering::Meshes;
-using namespace Z_Engine::Maths;
+using namespace ZEngine::Rendering::Meshes;
+using namespace ZEngine::Maths;
 
 namespace Sandbox3D::Layers {
 	
 	void ExampleLayer::Initialize() {
 
-		m_texture_manager.reset(new Z_Engine::Managers::TextureManager());
+		m_texture_manager.reset(new ZEngine::Managers::TextureManager());
 		m_texture_manager->Load("Assets/Images/free_image.png");
 		m_texture_manager->Load("Assets/Images/Crate.png");
 		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
@@ -33,9 +33,9 @@ namespace Sandbox3D::Layers {
 		m_scene->Initialize();
 		
 
-		Ref<Z_Engine::Rendering::Meshes::Mesh> mesh_one;
-		Ref<Z_Engine::Rendering::Meshes::Mesh> mesh_two;
-		Ref<Z_Engine::Rendering::Meshes::Mesh> mesh_three;
+		Ref<ZEngine::Rendering::Meshes::Mesh> mesh_one;
+		Ref<ZEngine::Rendering::Meshes::Mesh> mesh_two;
+		Ref<ZEngine::Rendering::Meshes::Mesh> mesh_three;
 
 		mesh_one.reset(MeshBuilder::CreateCube({ 0.f, -0.5f, 0.0f }, { 100.f, .0f, 100.f }, 0.0f, Vector3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
 		mesh_three.reset(MeshBuilder::CreateCube({ -20.f, 10.f, 0.0f }, { 5.f, 5.0f, 5.f }, {45.0f, 120.0f, 30.0f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
