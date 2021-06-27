@@ -20,6 +20,7 @@ target_include_directories (zEngineLib
 	PUBLIC 
 		../include/ZEngine
 		../../__externals
+		../../__externals/imgui/src
 )
 
 target_compile_definitions (zEngineLib
