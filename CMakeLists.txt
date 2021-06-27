@@ -1,9 +1,9 @@
-cmake_minimum_required (VERSION 3.17)
+cmake_minimum_required (VERSION 3.17 FATAL_ERROR)
 
 project (RendererEngine 
 	VERSION 1.0
 	DESCRIPTION "Renderer Engine is an open-source 2D - 3D rendering engine written in C/C++"
-	LANGUAGES CXX
+	LANGUAGES CXX C
 )
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -13,10 +13,13 @@ get_filename_component (ENLISTMENT_ROOT "." ABSOLUTE CACHE)
 get_filename_component (EXTERNAL_DIR "${ENLISTMENT_ROOT}/__externals" ABSOLUTE CACHE)
 
 option (BUILD_SANDBOX "build example projects that show how to use core engine" ON)
+
 # Externals dependencies
 add_subdirectory (${EXTERNAL_DIR}/fmt)
-
 add_subdirectory (${EXTERNAL_DIR}/SDL2)
+add_subdirectory (${EXTERNAL_DIR}/glad)
+add_subdirectory (${EXTERNAL_DIR}/imgui)
+
 
 set (BUILD_STATIC_LIBS ON)
 add_subdirectory (${EXTERNAL_DIR}/glm)

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <glad/include/glad/gl.h>
+#include <glad/include/glad/glad.h>
 
 namespace ZEngine::Core {
 	

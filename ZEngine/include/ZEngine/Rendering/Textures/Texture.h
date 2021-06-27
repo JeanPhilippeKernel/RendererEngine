@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include <glad/include/glad/gl.h>
+#include <glad/include/glad/glad.h>
 #include <Core/IGraphicObject.h>
 
 

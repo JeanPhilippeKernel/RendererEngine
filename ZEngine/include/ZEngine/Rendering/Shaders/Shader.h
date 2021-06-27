@@ -5,7 +5,7 @@
 
 #include <Z_EngineDef.h>
 #include <Maths/Math.h>
-#include <glad/include/glad/gl.h>
+#include <glad/include/glad/glad.h>
 
 #include <Core/IGraphicObject.h>
 

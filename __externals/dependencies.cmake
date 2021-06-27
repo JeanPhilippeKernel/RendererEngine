@@ -9,7 +9,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL Windows)
 	)
 	target_link_libraries (imported::sdl2 
 		INTERFACE
-			debug ${ENLISTMENT_ROOT}/out/build/__externals/SDL2/Debug/SDL2-staticd.lib
+			debug ${ENLISTMENT_ROOT}/out/build/__externals/SDL2/Debug/SDL2d.lib
 	)
 endif ()
 

@@ -1,7 +1,8 @@
 #include <cstdint>
 #include <Window/SDLWin/OpenGLWindow.h>
 #include <Engine.h>
-#include <glad/include/glad/gl.h>
+
+#include <glad/include/glad/glad.h>
 
 #include <Inputs/KeyCode.h>
 #include <Rendering/Renderers/RenderCommand.h>
@@ -47,7 +48,7 @@ namespace ZEngine::Window::SDLWin {
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 
 
 		m_native_window = SDL_CreateWindow(
@@ -62,7 +63,7 @@ namespace ZEngine::Window::SDLWin {
 		m_context = CreateContext(this);
 		m_context->MarkActive();
 
-		int glad_init = gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress);
+		int glad_init = gladLoadGLLoader(SDL_GL_GetProcAddress);
 		if (glad_init == 0) {
 			SDL_LogError(SDL_LOG_PRIORITY_CRITICAL, "unable to initialize glad library...");
 			exit(EXIT_FAILURE);
