@@ -19,8 +19,8 @@ target_include_directories (zEngineLib
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 	PUBLIC 
 		../include/ZEngine
-		../../__externals
-		../../__externals/imgui/src
+		${EXTERNAL_DIR}
+		${EXTERNAL_DIR}/imgui/src
 )
 
 target_compile_definitions (zEngineLib

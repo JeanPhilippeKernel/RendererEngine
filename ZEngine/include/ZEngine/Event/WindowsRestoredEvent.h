@@ -17,7 +17,7 @@ namespace ZEngine::Event {
 			return GetStaticCategory();
 		}
 
-		std::string ToString() const {
+		std::string ToString() const override {
 			return fmt::format("WindowRestoredEvent");
 		}
 

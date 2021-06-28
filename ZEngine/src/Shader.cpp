@@ -161,7 +161,11 @@ namespace ZEngine::Rendering::Shaders {
 
 	void Shader::_Read(const char* filename) {
 		std::regex reg{"#type[\\s][a-zA-Z]+"};
+#ifdef MSVC
 		std::ifstream input(filename, std::ios::_Nocreate | std::ios::_Noreplace);
+#else
+	std::ifstream input(filename);
+#endif
 		if(input) {
 			input.seekg(std::ios::beg);
 			
