@@ -22,8 +22,3 @@ target_include_directories (imgui
         ${EXTERNAL_DIR}/glad/include/KHR
 )
 
-target_compile_definitions (imgui
-	PUBLIC
-		IMGUI_IMPL_OPENGL_LOADER_GLAD
-)
-

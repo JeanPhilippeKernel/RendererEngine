@@ -1,5 +1,4 @@
-include(${EXTERNAL_DIR}/external.cmake)
-include(${EXTERNAL_DIR}/dependencies.cmake)
+include(${EXTERNAL_DIR}/externals.cmake)
 
 file (GLOB_RECURSE HEADER_FILES_LIST CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../include/ZEngine/*.h)
 file (GLOB CPP_FILES_LIST CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
@@ -15,12 +14,10 @@ add_library (zEngineLib
 
 target_include_directories (zEngineLib
 	PUBLIC 
-        $<INSTALL_INTERFACE:include>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-	PUBLIC 
-		../include/ZEngine
-		../../__externals
-		../../__externals/imgui/src
+		${PROJECT_SOURCE_DIR}/include
+		${PROJECT_SOURCE_DIR}/include/ZEngine
+		${EXTERNAL_DIR}
+		${EXTERNAL_INCLUDE_DIRS}
 )
 
 target_compile_definitions (zEngineLib
@@ -30,11 +27,11 @@ target_compile_definitions (zEngineLib
 
 target_link_libraries (zEngineLib
 	PUBLIC
-		imported::sdl2
 		imported::fmt
+		imported::glad
 		imported::glm
+		imported::imgui
+		imported::sdl2
 		OpenGL::GL
-		glad
-		imgui
 )
 

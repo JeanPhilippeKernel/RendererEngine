@@ -1,6 +1,6 @@
 #pragma once
 
-#include <fmt/include/fmt/format.h>
+#include <fmt/format.h>
 #include <Event/CoreEvent.h>
 
 namespace ZEngine::Event {

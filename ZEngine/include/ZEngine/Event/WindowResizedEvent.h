@@ -1,6 +1,6 @@
 #pragma once
 #include <Event/CoreEvent.h>
-#include <fmt/include/fmt/format.h>
+#include <fmt/format.h>
 
 namespace ZEngine::Event {
 	class WindowResizedEvent : public CoreEvent {
@@ -33,7 +33,7 @@ namespace ZEngine::Event {
 			return GetStaticCategory();
 		}
 
-		std::string ToString() const {
+		std::string ToString() const override {
 			return fmt::format("WindowResizeEvent X: {0}, Y: {1}", m_width, m_height);
 		}
 
