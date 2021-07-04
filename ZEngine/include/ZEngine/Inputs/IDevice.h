@@ -3,6 +3,7 @@
 #include <type_traits>
 #include <memory>
 #include <unordered_map>
+#include <algorithm>
 
 #include <Inputs/KeyCode.h>
 #include <Z_EngineDef.h>

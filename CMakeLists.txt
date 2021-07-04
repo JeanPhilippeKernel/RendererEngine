@@ -11,14 +11,16 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # Core invariants
 get_filename_component (ENLISTMENT_ROOT "." ABSOLUTE CACHE)
 get_filename_component (EXTERNAL_DIR "${ENLISTMENT_ROOT}/__externals" ABSOLUTE CACHE)
+get_filename_component (OUTPUT_BUILD_DIR "${ENLISTMENT_ROOT}/out/build" ABSOLUTE CACHE)
+get_filename_component (EXAMPLE_DIR "${ENLISTMENT_ROOT}/Examples" ABSOLUTE CACHE)
 
 option (BUILD_SANDBOX "build example projects that show how to use core engine" ON)
 
 # Externals dependencies
 add_subdirectory (${EXTERNAL_DIR}/fmt)
-add_subdirectory (${EXTERNAL_DIR}/SDL2)
 add_subdirectory (${EXTERNAL_DIR}/glad)
 add_subdirectory (${EXTERNAL_DIR}/imgui)
+add_subdirectory (${EXTERNAL_DIR}/SDL2)
 
 
 set (BUILD_STATIC_LIBS ON)
@@ -29,6 +31,6 @@ add_subdirectory(ZEngine)
 
 # examples
 if (BUILD_SANDBOX)
-	add_subdirectory(Sandbox)
-	add_subdirectory(Sandbox3D)
+	add_subdirectory(${EXAMPLE_DIR}/Sandbox)
+	add_subdirectory(${EXAMPLE_DIR}/Sandbox3D)
 endif ()

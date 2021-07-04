@@ -1,6 +1,6 @@
 #pragma once
 #include <Event/CoreEvent.h>
-#include <fmt/include/fmt/format.h>
+#include <fmt/format.h>
 
 namespace ZEngine::Event {
 	class WindowRestoredEvent : public CoreEvent {

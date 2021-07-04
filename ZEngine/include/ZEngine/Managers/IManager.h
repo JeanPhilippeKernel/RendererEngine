@@ -3,7 +3,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <optional>
-
+#include <algorithm>
 
 namespace ZEngine::Managers {
 	

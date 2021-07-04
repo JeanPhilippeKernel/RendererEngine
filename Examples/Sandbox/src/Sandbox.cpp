@@ -1,6 +1,6 @@
 #pragma once
-#include <EntryPoint.h>
-#include "Layers/ExampleLayer.h"
+#include <ZEngine/EntryPoint.h>
+#include <ExampleLayer.h>
 
 using namespace Sandbox::Layers;
 
