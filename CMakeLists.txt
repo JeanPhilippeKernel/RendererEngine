@@ -1,3 +1,10 @@
+# Selecting Compiler 
+#
+if (UNIX)
+	set (CMAKE_CXX_COMPILER "/usr/bin/clang++")
+	set (CMAKE_C_COMPILER 	"/usr/bin/clang")
+endif ()
+
 cmake_minimum_required (VERSION 3.17 FATAL_ERROR)
 
 project (RendererEngine 
@@ -7,6 +14,16 @@ project (RendererEngine
 )
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+set (CMAKE_CXX_STANDARD_REQUIRED ON) 
+
+if (MSVC)
+	set(CMAKE_CXX_STANDARD 17)
+else ()
+	set(CMAKE_CXX_STANDARD 20)
+endif ()
+
+set(CMAKE_C_STANDARD 11)
 
 # Core invariants
 get_filename_component (ENLISTMENT_ROOT "." ABSOLUTE CACHE)

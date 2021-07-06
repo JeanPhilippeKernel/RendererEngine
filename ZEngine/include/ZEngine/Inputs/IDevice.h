@@ -8,6 +8,8 @@
 #include <Inputs/KeyCode.h>
 #include <Z_EngineDef.h>
 
+#include <string.h>
+
 namespace ZEngine::Inputs {
 
 	 struct IDevice {

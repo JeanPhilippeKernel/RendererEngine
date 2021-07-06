@@ -25,6 +25,11 @@ target_compile_definitions (zEngineLib
 		Z_ENGINE_PLATFORM
 )
 
+target_link_libraries(zEngineLib
+	PRIVATE
+		stdc++fs
+)
+
 target_link_libraries (zEngineLib
 	PUBLIC
 		imported::fmt
@@ -34,4 +39,3 @@ target_link_libraries (zEngineLib
 		imported::sdl2
 		OpenGL::GL
 )
-
