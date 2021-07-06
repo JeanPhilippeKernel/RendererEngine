@@ -25,10 +25,9 @@ target_compile_definitions (zEngineLib
 		Z_ENGINE_PLATFORM
 )
 
-target_link_libraries(zEngineLib
-	PRIVATE
-		stdc++fs
-)
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	target_link_libraries(zEngineLib PRIVATE stdc++fs)
+endif ()
 
 target_link_libraries (zEngineLib
 	PUBLIC
