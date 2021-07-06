@@ -1,4 +1,3 @@
-#pragma once
 #include <Rendering/Textures/Texture2D.h>
 
 #define STB_IMAGE_IMPLEMENTATION

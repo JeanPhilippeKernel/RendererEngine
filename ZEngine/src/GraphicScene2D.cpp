@@ -1,4 +1,3 @@
-#pragma once
 #include <Rendering/Scenes/GraphicScene2D.h>
 
 

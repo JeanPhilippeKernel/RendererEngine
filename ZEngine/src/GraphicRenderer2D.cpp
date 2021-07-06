@@ -1,4 +1,3 @@
-#pragma once
 #include <Rendering/Renderers/GraphicRenderer2D.h>
 
 namespace ZEngine::Rendering::Renderers {

@@ -1,4 +1,3 @@
-#pragma once
 #include <Rendering/Cameras/FirstPersonShooterCamera.h>
 
 namespace ZEngine::Rendering::Cameras {
