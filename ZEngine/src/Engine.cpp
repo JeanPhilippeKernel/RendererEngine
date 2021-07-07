@@ -1,7 +1,7 @@
 #include <Engine.h>
 #include <Layers/ImguiLayer.h>
 
-#include <SDL2/include/SDL_timer.h>
+#include <SDL_timer.h>
 
 namespace ZEngine {
 	

@@ -16,7 +16,7 @@ You can download the engine by using cloning the repository or downloading it as
 
 ## Usage
 If you want to use Z-Engine in your application, you will need to include the **Z_Engine.lib** library
-and the **#include <Z_Engine.h>** and  **#include <EntryPoint.h>** header in your code then create an engine's instance and a main layer
+and the **#include <ZEngine.h>** and  **#include <EntryPoint.h>** header in your code then create an engine's instance and a main layer
 
 
 Let's create a layer that will be our main layer: ***MainLayer.h*** and ***MainLayer.cpp***
@@ -24,7 +24,7 @@ Let's create a layer that will be our main layer: ***MainLayer.h*** and ***MainL
 Here is our content of ***MainLayer.h***
 ```CPP
 #pragma once
-#include <Z_Engine.h>
+#include <ZEngine.h>
 
 class MainLayer : public Z_Engine::Layers::Layer {
 public:

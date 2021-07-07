@@ -35,7 +35,7 @@ set (SDL2_INCLUDE_PATH ${EXTERNAL_DIR}/SDL2/include)
 set_target_properties(imported::sdl2 PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${SDL2_INCLUDE_PATH}")
 target_link_libraries(imported::sdl2 INTERFACE SDL2)
 
-# Exporting all externas include directories 
+# Exporting all externals include directories 
 list (APPEND EXTERNAL_INCLUDE_DIRS 
 	${FMT_INCLUDE_PATH} ${GLAD_INCLUDE_PATH} ${GLM_INCLUDE_PATH} ${IMGUI_INCLUDE_PATH} ${SDL2_INCLUDE_PATH}
 )

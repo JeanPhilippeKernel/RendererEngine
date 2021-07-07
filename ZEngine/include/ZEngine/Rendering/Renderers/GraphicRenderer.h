@@ -11,7 +11,7 @@
 
 #include <Core/IInitializable.h>
 #include <Rendering/Meshes/Mesh.h>
-#include <Z_EngineDef.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Renderers {
 	

@@ -2,7 +2,7 @@
 #include <Rendering/Materials/ShaderMaterial.h>
 #include <Rendering/Geometries/IGeometry.h>
 
-#include <Z_EngineDef.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Meshes {
 

@@ -1,4 +1,3 @@
-#pragma once
 #include <Rendering/Cameras/OrbitCamera.h>
 
 namespace ZEngine::Rendering::Cameras {

@@ -1,5 +1,3 @@
-#pragma once
-
 #include <Rendering/Shaders/Shader.h>
 #include <vector>
 #include <fstream>

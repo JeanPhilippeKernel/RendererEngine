@@ -25,6 +25,10 @@ target_compile_definitions (zEngineLib
 		Z_ENGINE_PLATFORM
 )
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	target_link_libraries(zEngineLib PRIVATE stdc++fs)
+endif ()
+
 target_link_libraries (zEngineLib
 	PUBLIC
 		imported::fmt
@@ -34,4 +38,3 @@ target_link_libraries (zEngineLib
 		imported::sdl2
 		OpenGL::GL
 )
-
