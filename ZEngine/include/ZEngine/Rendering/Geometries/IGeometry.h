@@ -6,7 +6,7 @@
 #include <Rendering/Renderers/Storages/GraphicVertex.h>
 #include <Rendering/Buffers/VertexBuffer.h>
 
-#include <Z_EngineDef.h>
+#include <ZEngineDef.h>
 
 
 namespace ZEngine::Rendering::Geometries {

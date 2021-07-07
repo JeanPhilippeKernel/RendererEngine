@@ -4,7 +4,7 @@
 
 #include <Rendering/Shaders/Shader.h>
 #include <Rendering/Buffers/VertexArray.h>
-#include <Z_EngineDef.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Renderers {
 	

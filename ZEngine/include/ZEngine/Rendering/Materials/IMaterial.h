@@ -5,7 +5,7 @@
 #include <Rendering/Textures/Texture.h>
 #include <Rendering/Shaders/Shader.h>
 #include <glm/glm/glm.hpp>
-#include <Z_EngineDef.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Materials {
 

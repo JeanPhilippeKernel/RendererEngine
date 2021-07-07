@@ -6,7 +6,7 @@
 #include <Rendering/Buffers/VertexBuffer.h>
 #include <Rendering/Buffers/IndexBuffer.h>
 
-#include <Z_EngineDef.h>
+#include <ZEngineDef.h>
 
 #include <Core/IGraphicObject.h>
 

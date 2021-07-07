@@ -1,7 +1,7 @@
 #pragma once
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Textures/Texture2D.h>
-#include <Z_EngineDef.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Meshes {
 	
