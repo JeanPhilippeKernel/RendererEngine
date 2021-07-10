@@ -35,7 +35,14 @@ set (SDL2_INCLUDE_PATH ${EXTERNAL_DIR}/SDL2/include)
 set_target_properties(imported::sdl2 PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${SDL2_INCLUDE_PATH}")
 target_link_libraries(imported::sdl2 INTERFACE SDL2)
 
+# spdlog
+add_library (imported::spdlog INTERFACE IMPORTED)
+set (SPDLOG_INCLUDE_PATH ${EXTERNAL_DIR}/spdlog/include)
+set_target_properties(imported::spdlog PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${SPDLOG_INCLUDE_PATH}")
+target_link_libraries(imported::spdlog INTERFACE spdlog)
+
 # Exporting all externals include directories 
 list (APPEND EXTERNAL_INCLUDE_DIRS 
-	${FMT_INCLUDE_PATH} ${GLAD_INCLUDE_PATH} ${GLM_INCLUDE_PATH} ${IMGUI_INCLUDE_PATH} ${SDL2_INCLUDE_PATH}
+	${FMT_INCLUDE_PATH} ${GLAD_INCLUDE_PATH} ${GLM_INCLUDE_PATH}
+	${IMGUI_INCLUDE_PATH} ${SDL2_INCLUDE_PATH} ${SPDLOG_INCLUDE_PATH}
 )

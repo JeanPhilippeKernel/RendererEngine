@@ -13,3 +13,6 @@
 [submodule "__externals/imgui/src"]
 	path = __externals/imgui/src
 	url = https://github.com/ocornut/imgui
+[submodule ".\\__externals\\spdlog"]
+	path = .\\__externals\\spdlog
+	url = https://github.com/gabime/spdlog

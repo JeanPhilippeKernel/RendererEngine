@@ -35,6 +35,7 @@ __externals/glm
 __externals/imgui/src
 __externals/SDL2
 __externals/stb
+__externals/spdlog
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/

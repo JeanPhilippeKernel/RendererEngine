@@ -38,6 +38,7 @@ add_subdirectory (${EXTERNAL_DIR}/fmt)
 add_subdirectory (${EXTERNAL_DIR}/glad)
 add_subdirectory (${EXTERNAL_DIR}/imgui)
 add_subdirectory (${EXTERNAL_DIR}/SDL2)
+add_subdirectory (${EXTERNAL_DIR}/spdlog)
 
 
 set (BUILD_STATIC_LIBS ON)
