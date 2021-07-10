@@ -4,7 +4,7 @@ namespace ZEngine::Rendering::Materials {
 
 	StandardMaterial::StandardMaterial() 
 		: 
-		ShaderMaterial("Assets/Shaders/standard_shader.glsl"), 
+		ShaderMaterial("Resources/Shaders/standard_shader.glsl"), 
 		m_tile_factor(1.0f),
 		m_tint_color(glm::vec4(1.0f))
 	{

@@ -3,7 +3,7 @@
 namespace ZEngine::Rendering::Materials {
 
 	MixedTextureMaterial::MixedTextureMaterial() 
-		: ShaderMaterial("Assets/Shaders/mixed_texture_shader.glsl")
+		: ShaderMaterial("Resources/Shaders/mixed_texture_shader.glsl")
 	{
 		m_unique_identifier = "CA36ABA0-B4D4-4CBF-BDE8-BBBC15872091";
 		m_material_name = typeid(*(this)).name();

@@ -23,11 +23,11 @@ namespace Sandbox::Layers {
 
 		m_texture_manager.reset(new ZEngine::Managers::TextureManager());
 		
-		m_texture_manager->Load("Assets/Images/free_image.png");
-		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
-		m_texture_manager->Load("Assets/Images/Crate.png");
-		m_texture_manager->Load("Assets/Images/Flying_Mario.png");
-		m_texture_manager->Load("Assets/Images/mario_and_sonic.png");
+		m_texture_manager->Load("Images/free_image.png");
+		m_texture_manager->Load("Images/Checkerboard_2.png");
+		m_texture_manager->Load("Images/Crate.png");
+		m_texture_manager->Load("Images/Flying_Mario.png");
+		m_texture_manager->Load("Images/mario_and_sonic.png");
 
 		m_scene.reset(new GraphicScene2D(new OrthographicCameraController(GetAttachedWindow(), true)));
 		m_scene->Initialize();
