@@ -1,8 +1,8 @@
 # Selecting Compiler 
 #
 if (UNIX)
-	set (CMAKE_CXX_COMPILER "/usr/bin/clang++")
-	set (CMAKE_C_COMPILER 	"/usr/bin/clang")
+	set (CMAKE_CXX_COMPILER "/usr/bin/clang++-7") # Todo : need to detect the compiler before generation...
+	set (CMAKE_C_COMPILER 	"/usr/bin/clang-7")
 endif ()
 
 cmake_minimum_required (VERSION 3.17 FATAL_ERROR)
@@ -39,7 +39,6 @@ add_subdirectory (${EXTERNAL_DIR}/glad)
 add_subdirectory (${EXTERNAL_DIR}/imgui)
 add_subdirectory (${EXTERNAL_DIR}/SDL2)
 add_subdirectory (${EXTERNAL_DIR}/spdlog)
-
 
 set (BUILD_STATIC_LIBS ON)
 add_subdirectory (${EXTERNAL_DIR}/glm)
