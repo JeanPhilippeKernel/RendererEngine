@@ -1,9 +1,4 @@
-# Selecting Compiler 
-#
-if (UNIX)
-	set (CMAKE_CXX_COMPILER "/usr/bin/clang++-7") # Todo : need to detect the compiler before generation...
-	set (CMAKE_C_COMPILER 	"/usr/bin/clang-7")
-endif ()
+include (toolchain.cmake)
 
 cmake_minimum_required (VERSION 3.17 FATAL_ERROR)
 
