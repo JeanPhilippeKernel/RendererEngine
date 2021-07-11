@@ -6,4 +6,11 @@ project (ZEngine
 	LANGUAGES CXX C
 )
 
+# Compiler verification
+#
+if ((${CMAKE_SYSTEM_NAME} STREQUAL "Linux") 
+	AND (NOT ${CMAKE_CXX_COMPILER_VERSION} MATCHES "7.0.*"))
+	message(FATAL_ERROR "CLANG compiler version should be 7.0.* !")
+endif ()
+
 add_subdirectory (src)

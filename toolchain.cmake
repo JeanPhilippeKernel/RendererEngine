@@ -1,10 +1,6 @@
-# Selecting Compiler 
+# Select Compiler 
 #
-if (APPLE)
-	set (CMAKE_CXX_COMPILER "/usr/bin/clang++")
-	set (CMAKE_C_COMPILER 	"/usr/bin/clang")
-    return()
-elseif (UNIX)
-    set (CMAKE_CXX_COMPILER "/usr/bin/clang++-7")
-    set (CMAKE_C_COMPILER 	"/usr/bin/clang-7")
+if (UNIX)
+    set (CLANG_C_COMPILER   "/usr/bin/clang")
+    set (CLANG_CXX_COMPILER "/usr/bin/clang++")
 endif ()
