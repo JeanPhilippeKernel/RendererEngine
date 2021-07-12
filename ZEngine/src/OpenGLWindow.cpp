@@ -63,13 +63,13 @@ namespace ZEngine::Window::SDLWin {
 		m_context = CreateContext(this);
 		m_context->MarkActive();
 
+#ifdef WIN32
 		int glad_init = gladLoadGLLoader(SDL_GL_GetProcAddress);
 		if (glad_init == 0) {
 			SDL_LogError(SDL_LOG_PRIORITY_CRITICAL, "unable to initialize glad library...");
 			exit(EXIT_FAILURE);
 		}
-
-		//glewExperimental = GL_TRUE;
+#endif
 		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
 	}
 
