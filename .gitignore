@@ -409,3 +409,6 @@ out/
 
 # Visual Studio CMake settings files
 CMakeSettings.json
+
+# MacOS files
+.DS_Store
