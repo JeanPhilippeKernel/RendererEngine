@@ -67,5 +67,6 @@
  
 #include "Layers/ImguiLayer.h"
 
+#include "Components/UIComponent.h"
 
 //#include "EntryPoint.h"

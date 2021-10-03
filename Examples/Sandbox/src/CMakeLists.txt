@@ -3,12 +3,15 @@ include (${ENLISTMENT_ROOT}/dependencies.cmake)
 add_executable (sandbox2d 
     Layers/ExampleLayer.h
     Layers/ExampleLayer.cpp
+    Components/AboutUIComponent.h
+    Components/DemoUIComponent.h
     Sandbox.cpp
 )
 
 target_include_directories (sandbox2d
 	PRIVATE 
 		Layers
+        Components
 )
 
 target_compile_definitions (sandbox2d

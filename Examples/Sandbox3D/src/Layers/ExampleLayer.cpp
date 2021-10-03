@@ -23,10 +23,10 @@ namespace Sandbox3D::Layers {
 	void ExampleLayer::Initialize() {
 
 		m_texture_manager.reset(new ZEngine::Managers::TextureManager());
-		m_texture_manager->Load("Assets/Images/free_image.png");
-		m_texture_manager->Load("Assets/Images/Crate.png");
-		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
-		m_texture_manager->Load("Assets/Images/zota.jpg");
+		m_texture_manager->Load("Images/free_image.png");
+		m_texture_manager->Load("Images/Crate.png");
+		m_texture_manager->Load("Images/Checkerboard_2.png");
+		m_texture_manager->Load("Images/zota.jpg");
 
 
 		m_scene.reset(new GraphicScene3D(new OrbitCameraController(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f)));
@@ -42,7 +42,7 @@ namespace Sandbox3D::Layers {
 		
 		Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
 		material->SetInterpolateFactor(.5f);
-		material->SetTexture(m_texture_manager->Obtains("zota"));
+		material->SetTexture(m_texture_manager->Obtains("free_image"));
 		material->SetSecondTexture(m_texture_manager->Obtains("Crate"));
 		
 		mesh_two.reset(MeshBuilder::CreateCube({ 0.f, 10.f, 0.0f }, { 10.f, 10.0f, 10.f }, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
@@ -68,15 +68,6 @@ namespace Sandbox3D::Layers {
 	bool ExampleLayer::OnEvent(CoreEvent& e) {
 		m_scene->GetCameraController()->OnEvent(e);
 		return false;
-	}
-
-	void ExampleLayer::ImGuiRender()
-	{
-		/*ImGui::Begin("Editor");
-		ImGui::DragFloat2("Rectangle_one", glm::value_ptr(m_rect_1_pos), .5f);
-		ImGui::DragFloat2("Rectangle_two", glm::value_ptr(m_rect_2_pos), .05f);
-		ImGui::DragFloat2("Rectangle_three", glm::value_ptr(m_rect_3_pos), .5f);
-		ImGui::End();*/
 	}
 
 	void ExampleLayer::Render() {

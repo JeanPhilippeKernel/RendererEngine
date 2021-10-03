@@ -15,7 +15,6 @@ namespace Sandbox::Layers {
 		virtual void Initialize()							override;
 		virtual void Update(ZEngine::Core::TimeStep dt)	override;
 
-		virtual void ImGuiRender()							override;
 		virtual void Render()								override;
 						   
 		virtual bool OnEvent(ZEngine::Event::CoreEvent& e) override;
