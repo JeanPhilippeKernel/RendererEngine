@@ -1,15 +1,22 @@
 #pragma once
 #include <Layers/Layer.h>
-#include <Core/TimeStep.h>
 
+#include <imgui.h>
+#include <imconfig.h>
+#include <backends/imgui_impl_sdl.h>
+#include <backends/imgui_impl_opengl3.h>
+
+#include <Core/TimeStep.h>
 #include <Inputs/KeyCode.h>
 
 #include <Inputs/IKeyboardEventCallback.h>
 #include <Inputs/IMouseEventCallback.h>
 #include <Inputs/ITextInputEventCallback.h>
 #include <Window/ICoreWindowEventCallback.h>
+#include <Components/UIComponent.h>
 
-
+#include <functional>
+#include <vector>
 
 namespace ZEngine::Layers {
 	class ImguiLayer : public Layer, 
@@ -24,9 +31,9 @@ namespace ZEngine::Layers {
 		{
 		}
 
-		~ImguiLayer() = default;
+		virtual ~ImguiLayer();
 
-		void Initialize() override {}
+		void Initialize() override;
 
 		bool OnEvent(Event::CoreEvent& event) override {
 			EventDispatcher event_dispatcher(event);
@@ -46,13 +53,12 @@ namespace ZEngine::Layers {
 		}
 
 		void Update(Core::TimeStep dt) override { }
-
-		virtual void ImGuiRender() override {
-
-			//ImGui::ShowDemoWindow(&m_show);
-		}
-
-		void Render() override {}
+		
+		virtual void AddUIComponent(const Ref<Components::UI::UIComponent>& component);
+		virtual void AddUIComponent(Ref<Components::UI::UIComponent>&& component);
+		virtual void AddUIComponent(std::vector<Ref<Components::UI::UIComponent>>&& components);
+		
+		void Render() override;
 
 	protected:
 		bool OnKeyPressed(Event::KeyPressedEvent&)						override;
@@ -71,7 +77,8 @@ namespace ZEngine::Layers {
 		bool OnWindowRestored(Event::WindowRestoredEvent&)				override { return false; }
 
 	private:
-		  bool m_show{false};
+		static bool m_initialized;
+		std::vector<Ref<Components::UI::UIComponent>> m_ui_components;	  
 	};
 }
 						  

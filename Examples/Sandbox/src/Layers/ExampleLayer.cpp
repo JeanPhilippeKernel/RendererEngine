@@ -69,15 +69,6 @@ namespace Sandbox::Layers {
 		return false;
 	}
 
-	void ExampleLayer::ImGuiRender()
-	{
-		/*ImGui::Begin("Editor");
-		ImGui::DragFloat2("Rectangle_one", glm::value_ptr(m_rect_1_pos), .5f);
-		ImGui::DragFloat2("Rectangle_two", glm::value_ptr(m_rect_2_pos), .05f);
-		ImGui::DragFloat2("Rectangle_three", glm::value_ptr(m_rect_3_pos), .5f);
-		ImGui::End();*/
-	}
-
 	void ExampleLayer::Render() {
 
 		std::vector<Ref<Mesh>> meshes{ quad_mesh_ptr_2, quad_mesh_ptr_1, quad_mesh_ptr };

@@ -13,13 +13,10 @@ namespace ZEngine {
 	{
 		m_window.reset(ZEngine::Window::Create());
 		m_window->SetAttachedEngine(this);
-		PushOverlayLayer(new Layers::ImguiLayer());
 	}
 
 	Engine::~Engine() {
-		ImGui_ImplOpenGL3_Shutdown();
-		ImGui_ImplSDL2_Shutdown();
-		ImGui::DestroyContext();
+		
 	}
 
 	void Engine::Initialize() {
@@ -27,21 +24,8 @@ namespace ZEngine {
 			layer->SetAttachedWindow(m_window);
 			layer->Initialize();
 		}
-
-		_INITIALIZE_IMGUI_COMPONENT();
 	}
 
-	void Engine::_INITIALIZE_IMGUI_COMPONENT() {
-		IMGUI_CHECKVERSION();
-		ImGui::CreateContext();
-		ImGui::StyleColorsDark();
-
-		ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-		ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window*>(m_window->GetNativeWindow()), m_window->GetNativeContext());
-		ImGui_ImplOpenGL3_Init("#version 430");
-	}
-	
 	void Engine::ProcessEvent() {
 		m_window->PollEvent();
 	}
@@ -53,19 +37,11 @@ namespace ZEngine {
 	}
 	
 	void Engine::Render() {
-		
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplSDL2_NewFrame(static_cast<SDL_Window*>(m_window->GetNativeWindow()));
-		ImGui::NewFrame();
 		for (auto* const layer : m_layer_stack) {
-			layer->ImGuiRender();
 			layer->Render();
 		}
-		ImGui::Render();
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		m_window->Render();
-
 	}
 
 

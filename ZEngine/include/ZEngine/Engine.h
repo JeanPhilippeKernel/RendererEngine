@@ -16,11 +16,6 @@
 #include <Core/IInitializable.h>
 
 
-#include <imgui.h>
-#include <imconfig.h>
-#include <backends/imgui_impl_sdl.h>
-#include <backends/imgui_impl_opengl3.h>
-
 namespace ZEngine {
 	
 	class Engine : 
@@ -64,9 +59,6 @@ namespace ZEngine {
 		bool m_running{ false };
 		float m_last_frame_time { 0.0f };
 		Ref<ZEngine::Window::CoreWindow> m_window;
-
-	private:
-		void _INITIALIZE_IMGUI_COMPONENT();
 
 	};
 
