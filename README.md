@@ -1,16 +1,16 @@
-![MSBuild](https://github.com/JeanPhilippeKernel/RendererEngine/workflows/MSBuild/badge.svg?branch=develop)
+![build](https://github.com/JeanPhilippeKernel/RendererEngine/workflows/MSBuild/badge.svg?branch=develop)
 
 # Z-Engine
 
-Z-Engine is an open-source 2D - 3D rendering engine written in C ++.
+Z-Engine is an open-source 2D - 3D rendering engine written in C++ and using OpenGL as graphic API.
 It can be used for activities such as:
   - game prototyping
   - scientific calculation and visualization in the plane and space
 
-You can download the engine by using cloning the repository or downloading it as zip.
-
 ### Supported Platforms:
-- Windows 10 Desktop (x64) [Visual Studio 2019 +]
+- Windows
+- Linux
+- MacOS (coming soon)
 
 
 
@@ -55,7 +55,6 @@ then here is our content of ***MainLayer.cpp***
 #include "MainLayer.h"
 
 using namespace Z_Engine;
-
 using namespace Z_Engine::Rendering::Materials;
 using namespace Z_Engine::Rendering::Scenes;
 using namespace Z_Engine::Rendering::Renderers;
@@ -63,11 +62,9 @@ using namespace Z_Engine::Window;
 using namespace Z_Engine::Core;
 using namespace Z_Engine::Inputs;
 using namespace Z_Engine::Event;
-
 using namespace Z_Engine::Managers;
 using namespace Z_Engine::Rendering::Textures;
 using namespace Z_Engine::Controllers;
-
 using namespace Z_Engine::Rendering::Meshes;
 
 void MainLayer::Initialize() {
@@ -134,17 +131,37 @@ Z_Engine::Engine* CreateEngine() { return new my_engine::my_engine(); }
 ```
 and voilà ! 
 
-## How to build: 
+## Setup
 
-To build **Z-Engine**, you'll have to use Visual Studio and the provided solution file.
+Before building, make sure your setup is correct : 
+
+### Setup Window machine
+
+- Install Visual Studio 2019 Community or Professional, make sure to add "Desktop development with C++".
+- Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)  
+
+### Setup Linux machine
+
+- Install lastest version of `Visual Studio Code` or any text editor
+- Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
+- Install compiler `clang version 7.0.1`
+
+## Building: 
+
+As this project uses differents dependencies, make sure you've cloned the project with the `--recursive` option.
+you can also do  `git submodule update --init --recursive`.
+
+1. Install [CMake](https://cmake.org/download/) 3.20 or later
+2. Start your favorite terminal and be sure that you can run CMake, you can type `cmake --version` to simply output the current CMake's version installed
+3. Change directories to the location where you've cloned the repository.
+4. Invoke `cmake -S . -B .\out\build`
+5. Invoke `cmake --build .\out\build`
+
 There are 2 projects that you can run :
  - Sandbox : This project represents the experimental setup that we use to test 2D features of the engine.
  - Sandbox3D : This project represents the experimental setup that we use to test 3D features of the engine. 
 
-You just have to set either as startup project and press F5 in Visual Studio to build and run. 
-For optimal performance, choose Release mode, for the best debugging experience, choose Debug mode.
-
-### Dependancies
+### Dependencies
 
 The project uses the following dependancies : 
  - [SDL2](https://www.libsdl.org/download-2.0.php) for window creation and user input management,
@@ -152,8 +169,5 @@ The project uses the following dependancies :
  - [GLEW](http://glew.sourceforge.net/) for openGL functions 
  - [STB](https://github.com/nothings/stb) for loading and manipulating image files for textures.
  - [ImGUI](https://github.com/ocornut/imgui) for GUI components and interaction.
+ - [spdlog](https://github.com/gabime/spdlog) for logging
 
-
-### Building
-
-You have just to clone the repository and build it
