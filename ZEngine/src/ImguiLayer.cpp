@@ -66,14 +66,14 @@ namespace ZEngine::Layers {
 		return false;
 	}
 
-	bool ImguiLayer::OnMouseButtonPressed(MouseButtonPressedEvent& e) {
+	bool ImguiLayer::OnMouseButtonPressed(Event::MouseButtonPressedEvent& e) {
 		ImGuiIO& io = ImGui::GetIO();
 		for (int x = 0; x < (int)ImGuiMouseButton_COUNT; ++x)
 			io.MouseDown[x] = true;
 		return false;
 	}
 
-	bool ImguiLayer::OnMouseButtonReleased(MouseButtonReleasedEvent& e) {
+	bool ImguiLayer::OnMouseButtonReleased(Event::MouseButtonReleasedEvent& e) {
 		ImGuiIO& io = ImGui::GetIO();
 		for (int x = 0; x < (int)ImGuiMouseButton_COUNT; ++x)
 			io.MouseDown[x] = false;
@@ -81,14 +81,14 @@ namespace ZEngine::Layers {
 		return false;
 	}
 
-	bool ImguiLayer::OnMouseButtonMoved(MouseButtonMovedEvent& e) {
+	bool ImguiLayer::OnMouseButtonMoved(Event::MouseButtonMovedEvent& e) {
 		ImGuiIO& io = ImGui::GetIO();
 		io.MousePos = ImVec2(float(e.GetPosX()), float(e.GetPosY()));
 
 		return false;
 	}
 
-	bool ImguiLayer::OnMouseButtonWheelMoved(MouseButtonWheelEvent& e) {
+	bool ImguiLayer::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e) {
 		ImGuiIO& io = ImGui::GetIO();
 		if (e.GetOffetX() > 0) io.MouseWheelH += 1;
 		if (e.GetOffetX() < 0) io.MouseWheelH -= 1;
@@ -97,7 +97,7 @@ namespace ZEngine::Layers {
 		return false;
 	}
 
-	bool ImguiLayer::OnTextInputRaised(TextInputEvent& event) {
+	bool ImguiLayer::OnTextInputRaised(Event::TextInputEvent& event) {
 		ImGuiIO& io = ImGui::GetIO();
 		for (unsigned char c : event.GetText()) io.AddInputCharacter(c);
 		return false;

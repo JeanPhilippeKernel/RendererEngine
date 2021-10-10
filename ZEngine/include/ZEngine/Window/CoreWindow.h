@@ -14,37 +14,39 @@
 #include <Inputs/IMouseEventCallback.h>
 #include <Inputs/ITextInputEventCallback.h>
 
-
+#include <Core/IInitializable.h>
 #include <Core/IUpdatable.h>
 #include <Core/IRenderable.h>
 #include <Core/IEventable.h>
 
 #include <Window/ICoreWindowEventCallback.h>
+#include <Layers/Layer.h>
+#include <Layers/LayerStack.h>
 
-namespace ZEngine {
-	class Engine;
+namespace ZEngine { class Engine; }
+namespace ZEngine::Layers { 
+	class Layer; 
+	class LayerStack;
 }
-
-
-using namespace ZEngine::Event;
 
 namespace ZEngine::Window {
 
-
 	class CoreWindow : 
+		public std::enable_shared_from_this<CoreWindow>,
 		public Inputs::IKeyboardEventCallback, 
 		public Inputs::IMouseEventCallback, 
 		public Inputs::ITextInputEventCallback, 
 		public Core::IUpdatable, 
 		public Core::IRenderable, 
-		public Core::IEventable, 
+		public Core::IEventable,
+		public Core::IInitializable, 
 		public ICoreWindowEventCallback  {
 
 	public:
-		using EventCallbackFn = std::function<void(CoreEvent&)>;
+		using EventCallbackFn = std::function<void(Event::CoreEvent&)>;
 
 	public:
-		CoreWindow() = default;
+		CoreWindow();
 		virtual ~CoreWindow() = default;
 
 		virtual unsigned int GetHeight()	const = 0;
@@ -59,17 +61,21 @@ namespace ZEngine::Window {
 
 		virtual const WindowProperty& GetWindowProperty() const = 0;
 		
-		virtual void SetAttachedEngine(ZEngine::Engine* const engine) {
-			m_engine = engine;
-		}
-
 		virtual void PollEvent() = 0;
+
+		virtual void ForwardEventToLayers(Event::CoreEvent& event);
+		
+		virtual void SetAttachedEngine(ZEngine::Engine* const engine);
+
+		virtual void PushOverlayLayer(Layers::Layer* const layer);
+		virtual void PushLayer(Layers::Layer* const layer);
 
 	protected:
 		static const char* ATTACHED_PROPERTY;
 
 		WindowProperty m_property;
-		ZEngine::Engine* m_engine { nullptr };
+		ZEngine::Scope<ZEngine::Layers::LayerStack> m_layer_stack_ptr{ nullptr };
+		ZEngine::Engine* m_engine { nullptr };	
 	};
 		
 	CoreWindow* Create(WindowProperty prop = {});

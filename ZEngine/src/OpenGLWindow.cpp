@@ -9,12 +9,10 @@
 
 #include <imgui.h>
 
-
 using namespace ZEngine;
 using namespace ZEngine::Rendering::Graphics;
 using namespace ZEngine::Rendering::Renderers;
-
-
+using namespace ZEngine::Event;
 
 namespace ZEngine::Window {
 
@@ -30,7 +28,7 @@ namespace ZEngine::Window {
 namespace ZEngine::Window::SDLWin {
 
 	OpenGLWindow::OpenGLWindow(WindowProperty& prop)
-		: m_event(new SDL_Event{}, [](SDL_Event* e) { free(e); })
+		: CoreWindow(), m_event(new SDL_Event{}, [](SDL_Event* e) { free(e); })
 
 	{
 		m_property = prop;
@@ -74,6 +72,12 @@ namespace ZEngine::Window::SDLWin {
 	}
 
 
+	void OpenGLWindow::Initialize() {
+		for(auto layer : *m_layer_stack_ptr) {
+			layer->SetAttachedWindow(shared_from_this());
+			layer->Initialize();
+		}
+	}
 
 	void OpenGLWindow::PollEvent() {
 		const auto pending = SDL_PollEvent(m_event.get());
@@ -188,14 +192,16 @@ namespace ZEngine::Window::SDLWin {
 	}
 
 	void OpenGLWindow::Update(Core::TimeStep delta_time) {
-
+		for (auto* const layer : *m_layer_stack_ptr)
+			layer->Update(delta_time);
 	}
 
 	void OpenGLWindow::Render() {
+		for (auto* const layer : *m_layer_stack_ptr) {
+			layer->Render();
+		}
 		SDL_GL_SwapWindow(m_native_window);
 	}
-
-
 
 	OpenGLWindow::~OpenGLWindow()
 	{
@@ -208,7 +214,6 @@ namespace ZEngine::Window::SDLWin {
 	bool OpenGLWindow::OnWindowClosed(WindowClosedEvent& event)
 	{
 		Event::EngineClosedEvent e(event.GetName().c_str());
-
 		Event::EventDispatcher event_dispatcher(e);
 		event_dispatcher.Dispatch<Event::EngineClosedEvent>(std::bind(&Engine::OnEngineClosed, m_engine, std::placeholders::_1));
 
@@ -223,71 +228,69 @@ namespace ZEngine::Window::SDLWin {
 		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
 
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::WindowResizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return false;
 	}
 
 	bool OpenGLWindow::OnKeyPressed(KeyPressedEvent& event) {
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::KeyPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return true;
 	}
 	
 	bool OpenGLWindow::OnKeyReleased(KeyReleasedEvent& event) {
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::KeyReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return true;
 	}
 
-
-
 	bool OpenGLWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event) {
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::MouseButtonPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return true;
 	}
 
 	bool OpenGLWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event) {
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::MouseButtonReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return true;
 	}
 
 	bool OpenGLWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event) {
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::MouseButtonMovedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return true;
 	}
 
 	bool OpenGLWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event) {
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::MouseButtonWheelEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return true;
 	}
 
 	bool OpenGLWindow::OnTextInputRaised(TextInputEvent& event) {
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::TextInputEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return true;
 	}
 
 	bool OpenGLWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event) {
 		m_property.IsMinimized = true;
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::WindowMinimizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return false;
 	}
 	
 	bool OpenGLWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event) {
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::WindowMaximizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return false;
 	}
 	
 	bool OpenGLWindow::OnWindowRestored(Event::WindowRestoredEvent& event) {
 		m_property.IsMinimized = false;
 		Event::EventDispatcher event_dispatcher(event);
-		event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&Engine::OnEvent, m_engine, std::placeholders::_1));
+		event_dispatcher.ForwardTo<Event::WindowRestoredEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
 		return false;
 	}
 
