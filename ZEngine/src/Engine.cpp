@@ -7,7 +7,6 @@ namespace ZEngine {
 	
 	Core::TimeStep Engine::m_delta_time = { 0.0f };
 
-
 	Engine::Engine() 
 		:m_running(true)
 	{
@@ -20,10 +19,7 @@ namespace ZEngine {
 	}
 
 	void Engine::Initialize() {
-		for(auto layer : m_layer_stack) {
-			layer->SetAttachedWindow(m_window);
-			layer->Initialize();
-		}
+		m_window->Initialize();
 	}
 
 	void Engine::ProcessEvent() {
@@ -32,35 +28,10 @@ namespace ZEngine {
 	
 	void Engine::Update(Core::TimeStep delta_time) {
 		m_window->Update(delta_time);
-		for (auto* const layer : m_layer_stack)
-			layer->Update(delta_time);
 	}
 	
 	void Engine::Render() {
-		for (auto* const layer : m_layer_stack) {
-			layer->Render();
-		}
-
 		m_window->Render();
-	}
-
-
-	bool Engine::OnEvent(Event::CoreEvent& event) {
-
-		auto index = std::distance(m_layer_stack.begin(), m_layer_stack.end());
-		for (auto it = m_layer_stack.end(); it >= m_layer_stack.begin();) {
-			
-			if(index == 0) break;
-			
-			(*(--it))->OnEvent(event);
-			--index;
-		}
-
-		if (!event.IsHandled()) {
-			Event::EventDispatcher event_dispatcher(event);
-			event_dispatcher.Dispatch<Event::EngineClosedEvent>(std::bind(&Engine::OnEngineClosed, this, std::placeholders::_1));
-		}
-		return true;
 	}
 
 	bool Engine::OnEngineClosed(Event::EngineClosedEvent& event) {
@@ -68,8 +39,6 @@ namespace ZEngine {
 		return true;
 	}
 
-
-	
 	void Engine::Run() {
 		
 		while (m_running) {

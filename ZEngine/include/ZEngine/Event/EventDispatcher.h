@@ -10,6 +10,9 @@ namespace ZEngine::Event {
 		template<typename T, typename = std::enable_if_t<std::is_base_of_v<CoreEvent, T>>>
 		using EventFn = std::function<bool(T&)>;
 
+		template<typename T, typename = std::enable_if_t<std::is_base_of_v<CoreEvent, T>>>
+		using ForwardEventFn = std::function<void(T&)>;
+
 	public:
 		EventDispatcher(CoreEvent& event)
 			:m_event(event)
@@ -24,6 +27,11 @@ namespace ZEngine::Event {
 			}
 
 			return false;
+		}
+
+		template<typename K>
+		void ForwardTo(const ForwardEventFn<K>& func) {
+			func(dynamic_cast<K&>(m_event));
 		}
 
 	private:

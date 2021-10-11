@@ -1,13 +1,11 @@
-#include <LayerStack.h>
+#include <Layers/LayerStack.h>
 
-
-namespace ZEngine {
+namespace ZEngine::Layers {
 	
 	LayerStack::~LayerStack() {
 		for(auto layer : m_layers)
 			delete layer;
 	}
-
 
 	void LayerStack::PushLayer(Layer* const layer) {
 		if (m_layers.empty()) {

@@ -10,7 +10,7 @@
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
 
-
+namespace ZEngine::Window { class CoreWindow; }
 
 namespace ZEngine::Layers {
 	class Layer : 

@@ -36,7 +36,7 @@ namespace ZEngine::Layers {
 		void Initialize() override;
 
 		bool OnEvent(Event::CoreEvent& event) override {
-			EventDispatcher event_dispatcher(event);
+			Event::EventDispatcher event_dispatcher(event);
 
 			event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&ImguiLayer::OnKeyPressed, this, std::placeholders::_1));
 			event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&ImguiLayer::OnKeyReleased, this, std::placeholders::_1));

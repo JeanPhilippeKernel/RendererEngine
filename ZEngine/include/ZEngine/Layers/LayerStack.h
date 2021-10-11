@@ -1,12 +1,11 @@
 #pragma once
 #include <vector>
-#include "ZEngineDef.h"
-#include "Layers/Layer.h"
+#include <ZEngineDef.h>
+#include <Layers/Layer.h>
 
-using namespace ZEngine::Layers;
+namespace ZEngine::Layers {
+	class Layer;
 
-namespace ZEngine {
-	
 	class LayerStack {
 	public:
 		LayerStack() = default;
