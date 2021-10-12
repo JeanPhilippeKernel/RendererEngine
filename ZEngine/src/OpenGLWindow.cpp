@@ -6,6 +6,7 @@
 
 #include <Inputs/KeyCode.h>
 #include <Rendering/Renderers/RenderCommand.h>
+#include <Logging/LoggerDefinition.h>
 
 #include <imgui.h>
 
@@ -35,7 +36,7 @@ namespace ZEngine::Window::SDLWin {
 
 		const int sdl_init = SDL_Init(SDL_INIT_EVERYTHING);
 		if (sdl_init != 0) {
-			SDL_Log("Unable to initialize SDL : %s", SDL_GetError());
+			Z_ENGINE_CORE_CRITICAL("Unable to initialize SDL : {}", SDL_GetError());
 			exit(EXIT_FAILURE);
 		}
 
@@ -54,17 +55,18 @@ namespace ZEngine::Window::SDLWin {
 			m_property.Width, m_property.Height,
 			SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL | SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_MOUSE_CAPTURE
 		);
-
+		Z_ENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
+		
 		SetVSync(true);
 		SDL_SetWindowData(m_native_window, CoreWindow::ATTACHED_PROPERTY, &m_property);
 
 		m_context = CreateContext(this);
 		m_context->MarkActive();
 
-#ifdef WIN32
+#ifdef _WIN32
 		int glad_init = gladLoadGLLoader(SDL_GL_GetProcAddress);
 		if (glad_init == 0) {
-			SDL_LogError(SDL_LOG_PRIORITY_CRITICAL, "unable to initialize glad library...");
+			Z_ENGINE_CORE_CRITICAL("unable to initialize glad library...");
 			exit(EXIT_FAILURE);
 		}
 #endif
@@ -224,6 +226,8 @@ namespace ZEngine::Window::SDLWin {
 	{
 		m_property.SetWidth(event.GetWidth());
 		m_property.SetHeight(event.GetHeight());
+
+		Z_ENGINE_CORE_INFO("Window size updated, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
 
 		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
 

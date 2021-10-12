@@ -1,5 +1,6 @@
 #include <Engine.h>
 #include <Layers/ImguiLayer.h>
+#include <Logging/LoggerDefinition.h>
 
 #include <SDL_timer.h>
 
@@ -10,16 +11,20 @@ namespace ZEngine {
 	Engine::Engine() 
 		:m_running(true)
 	{
+		Logging::Logger::Initialize();
+		Z_ENGINE_CORE_INFO("Engine started");
+
 		m_window.reset(ZEngine::Window::Create());
 		m_window->SetAttachedEngine(this);
 	}
 
 	Engine::~Engine() {
-		
+		Z_ENGINE_CORE_INFO("Engine stopped");
 	}
 
 	void Engine::Initialize() {
 		m_window->Initialize();
+		Z_ENGINE_CORE_INFO("Engine initialized");
 	}
 
 	void Engine::ProcessEvent() {
