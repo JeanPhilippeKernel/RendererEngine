@@ -46,3 +46,20 @@ if (BUILD_SANDBOX)
 	add_subdirectory(${EXAMPLE_DIR}/Sandbox)
 	add_subdirectory(${EXAMPLE_DIR}/Sandbox3D)
 endif ()
+
+# Post build operation
+#
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	set(SYSTEM_NAME "Windows")
+elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	set(SYSTEM_NAME "Linux")
+endif ()
+
+add_custom_target(AssembleContent ALL
+	DEPENDS sandbox2d sandbox3d zEngine
+)
+
+add_custom_command(TARGET AssembleContent
+	POST_BUILD
+	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -SystemNames ${SYSTEM_NAME} -Configurations $<IF:$<CONFIG:Debug>,Debug,Release>
+)
