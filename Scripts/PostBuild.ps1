@@ -31,23 +31,6 @@ $ContentsToProcess = @(
             @{ From = "$RepoRoot\Assets";  To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
         )
     }
-    @{
-        Name = "DLL files"
-        IsDirectory = $false
-        Contents = @(
-            if($SystemNames -eq 'Windows') {
-                if($Configurations -eq 'Debug'){
-                    @{ From = "$OuputBuildDirectory\__externals\SDL2\$Configurations\SDL2d.dll";    To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\SDL2d.dll"}
-                }
-                else {
-                    @{ From ="$OuputBuildDirectory\__externals\SDL2\$Configurations\SDL2.dll";     To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\SDL2.dll"}
-                }
-            }
-            else {
-                #Todo: provide dir on linux system
-            }
-        )
-    }
 )
 
 foreach ($item in $ContentsToProcess) {

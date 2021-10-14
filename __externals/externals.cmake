@@ -33,7 +33,7 @@ target_link_libraries(imported::imgui INTERFACE imgui)
 add_library (imported::sdl2 INTERFACE IMPORTED)
 set (SDL2_INCLUDE_PATH ${EXTERNAL_DIR}/SDL2/include)
 set_target_properties(imported::sdl2 PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${SDL2_INCLUDE_PATH}")
-target_link_libraries(imported::sdl2 INTERFACE SDL2)
+target_link_libraries(imported::sdl2 INTERFACE SDL2-static)
 
 # spdlog
 add_library (imported::spdlog INTERFACE IMPORTED)
