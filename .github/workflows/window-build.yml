@@ -27,6 +27,8 @@ jobs:
     steps:
     - name: check out repository
       uses: actions/checkout@v2
+    - name: Checkout submodules
+      run: git submodule update --init --recursive
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
@@ -34,7 +36,7 @@ jobs:
       run: cmake -S ${{env.PROJECT_ROOT_DIR}} -B ${{env.OUTPUT_BUILD_DIR}} -DCMAKE_SYSTEM_NAME=${{matrix.buildSystem}} -DSDL_STATIC=$SDL_STATIC -DSDL_SHARED=$SDL_SHARED -DSPDLOG_BUILD_SHARED=$SPDLOG_BUILD_SHARED -DBUILD_STATIC_LIBS=$BUILD_STATIC_LIBS
       env:
         SDL_STATIC: ON
-        SDL_SHARED: ON
+        SDL_SHARED: OFF
         SPDLOG_BUILD_SHARED: OFF
         BUILD_STATIC_LIBS: ON
       shell: pwsh
