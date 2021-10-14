@@ -19,16 +19,28 @@ $ContentsToProcess = @(
         Name = "Resources"
         IsDirectory = $true
         Contents = @(
-            @{ From = "$RepoRoot\Resources";        To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\"}
-            @{ From = "$RepoRoot\Resources";        To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
+            if ($SystemNames -eq "Windows"){
+                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\"}
+                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
+            }
+            else {
+                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox\src\"}
+                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\"}
+            }
         )
     }
     @{
         Name = "Assets"
         IsDirectory = $true
         Contents = @(
-            @{ From = "$RepoRoot\Assets";  To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\"}
-            @{ From = "$RepoRoot\Assets";  To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
+            if ($SystemNames -eq "Windows") {
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
+            }
+            else {
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\"}
+            }
         )
     }
 )

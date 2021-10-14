@@ -30,16 +30,8 @@ option (BUILD_SANDBOX "build example projects that show how to use core engine" 
 add_subdirectory (${EXTERNAL_DIR}/fmt)
 add_subdirectory (${EXTERNAL_DIR}/glad)
 add_subdirectory (${EXTERNAL_DIR}/imgui)
-
-# Todo  : these options should be moved to the script build once available...
-set (SDL_STATIC ON)
-set (SDL_SHARED OFF)
 add_subdirectory (${EXTERNAL_DIR}/SDL2)
-
-set (SPDLOG_BUILD_SHARED OFF)
 add_subdirectory (${EXTERNAL_DIR}/spdlog)
-
-set (BUILD_STATIC_LIBS ON)
 add_subdirectory (${EXTERNAL_DIR}/glm)
 
 # Core engine lib is here
@@ -62,7 +54,11 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 endif ()
 
 add_custom_target(AssembleContent ALL
-	DEPENDS sandbox2d sandbox3d zEngine
+	DEPENDS 
+		zEngine
+		sandbox2d 
+		sandbox3d 
+		SDL2main 
 )
 
 add_custom_command(TARGET AssembleContent
