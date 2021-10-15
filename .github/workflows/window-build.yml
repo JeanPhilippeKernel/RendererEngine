@@ -36,6 +36,10 @@ jobs:
         cmake-version: '3.20.x'
     - name: Use cmake
       run: cmake --version
+
+    - name: Clean up  build dir
+      run: rm ${{env.OUTPUT_BUILD_DIR}} -Recurse -Force
+      shell: pwsh
       
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
