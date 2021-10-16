@@ -4,14 +4,15 @@
 # https://aka.ms/yaml
 
 trigger:
-- develop
-- master
+  - develop
+  - master
 
 pr:
-- develop
-- master
+  - develop
+  - master
 
-pool:
-  vmImage: windows-latest
+stages:
+- template: Templates/Stages-RendererBuild.yml
+
 
 

@@ -1,0 +1,14 @@
+
+jobs:
+- job: Build_Startup
+  displayName: 'Perform pipeline startup'
+  workspace:
+    clean: all
+  pool:
+    name: Windows-OS
+    vmImage: windows-2019
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: true
