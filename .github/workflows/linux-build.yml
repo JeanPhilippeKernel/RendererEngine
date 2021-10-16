@@ -37,8 +37,10 @@ jobs:
         version: 7
         platform: x64
 
-    - name: Define Clang 7 as default compiler
+    - name: Define Clang-7 as default C compiler
       run: export CC=/usr/bin/clang-7
+
+    - name: Define Clang++-7 as default C++ compiler
       run: export CXX=/usr/bin/clang++-7
 
     - name: Check CMake Version
