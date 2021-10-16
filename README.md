@@ -154,7 +154,7 @@ you can also do  `git submodule update --init --recursive`.
 1. Install [CMake](https://cmake.org/download/) 3.20 or later
 2. Start your favorite terminal and be sure that you can run CMake, you can type `cmake --version` to simply output the current CMake's version installed
 3. Change directories to the location where you've cloned the repository.
-4. Invoke `cmake -S . -B .\out\build -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSPDLOG_BUILD_SHARED=OFF -DBUILD_STATIC_LIBS=ON`
+4. Invoke `cmake -S . -B .\out\build -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSPDLOG_BUILD_SHARED=OFF -DBUILD_STATIC_LIBS=ON -DSPDLOG_FMT_EXTERNAL=ON -DSPDLOG_FMT_EXTERNAL_HO=OFF`
 5. Invoke `cmake --build .\out\build`
 
 There are 2 projects that you can run :
