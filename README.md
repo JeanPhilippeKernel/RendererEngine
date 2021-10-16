@@ -1,6 +1,6 @@
-![build](https://github.com/JeanPhilippeKernel/RendererEngine/workflows/MSBuild/badge.svg?branch=develop)
+[![ZEngine Window Build](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/window-build.yml/badge.svg)](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/window-build.yml)
 
-# Z-Engine
+# ZEngine
 
 Z-Engine is an open-source 2D - 3D rendering engine written in C++ and using OpenGL as graphic API.
 It can be used for activities such as:
@@ -15,7 +15,7 @@ It can be used for activities such as:
 
 
 ## Usage
-If you want to use Z-Engine in your application, you will need to include the **Z_Engine.lib** library
+If you want to use ZEngine in your application, you will need to include the **zEngine.lib** library
 and the **#include <ZEngine.h>** and  **#include <EntryPoint.h>** header in your code then create an engine's instance and a main layer
 
 
