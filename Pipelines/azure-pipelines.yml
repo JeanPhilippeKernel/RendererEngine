@@ -7,10 +7,6 @@ trigger:
   - develop
   - master
 
-pr:
-  - develop
-  - master
-
 stages:
 - template: Templates/Stages-RendererBuild.yml
 

@@ -3,7 +3,4 @@ stages:
 - stage: Renderer_Build
   displayName: Renderer Engine Build
   jobs:
-  # - template: Jobs-BuildStartup.yml
-
   - template: Jobs-CMakeBuildWindows.yml
-  # - template: Jobs-CMakeBuildLinux.yml
