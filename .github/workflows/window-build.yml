@@ -18,15 +18,21 @@ jobs:
     # well on Windows or Mac.  You can convert this to a matrix build if you need
     # cross-platform coverage.
     # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-    runs-on: windows-2022
+    runs-on: windows-2019
     strategy:
       matrix:
           buildSystem: [Windows]
           buildConfiguration: [Debug, Release]
 
     steps:
+    - name: Clean Workspace
+      # You may pin to the exact commit or the version.
+      # uses: AutoModality/action-clean@d004b47eb728f2a83316fc70ba9a62ef97278013
+      uses: AutoModality/action-clean@v1.1.0
+      
     - name: check out repository
       uses: actions/checkout@v2
+      
     - name: Checkout submodules
       run: git submodule update --init --recursive
 
@@ -34,6 +40,7 @@ jobs:
       uses: jwlawson/actions-setup-cmake@v1.9
       with:
         cmake-version: '3.20.x'
+        
     - name: Check CMake Version
       run: cmake --version
       
