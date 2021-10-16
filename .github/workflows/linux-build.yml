@@ -1,32 +1,67 @@
-name: Z-Engine Release Build
+name: ZEngine Linux Build
 
-on: [push]
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
 
 env:
-  # Path to the solution file relative to the root of the project.
-  SOLUTION_FILE_PATH: .
-
-  # Configuration type to build.
-  # You can convert this to a build matrix if you need coverage of multiple configuration types.
-  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-  BUILD_CONFIGURATION: Release
+  PROJECT_ROOT_DIR: .
+  OUTPUT_BUILD_DIR: .\out\build
 
 jobs:
-  build:
-    runs-on: windows-latest
+  Windows-Build:
+    # The CMake configure and build commands are platform agnostic and should work equally
+    # well on Windows or Mac.  You can convert this to a matrix build if you need
+    # cross-platform coverage.
+    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+    runs-on: ubuntu-18.04	
+    strategy:
+      matrix:
+          buildSystem: [Linux]
+          buildPlatform: [x64]
+          buildConfiguration: [Release]
 
-    steps:
-    - uses: actions/checkout@v2
+    steps:      
+    - name: check out repository
+      uses: actions/checkout@v2
+      
+    - name: Checkout submodules
+      run: git submodule update --init --recursive
 
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1
+    - name: Setup cmake
+      uses: jwlawson/actions-setup-cmake@v1.9
+      with:
+        cmake-version: '3.20.x'
+    
+    - name: Set up Clang
+      uses: egor-tensin/setup-clang@v1
+      with:
+        version: 7
+        platform: x64
 
-    - name: Restore NuGet packages
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+    - name: Define Clang 7 as default compiler
+      run: export CC=/usr/bin/clang-7
+      run: export CXX=/usr/bin/clang++-7
 
-    - name: Build
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      # Add additional options to the MSBuild command line here (like platform or verbosity level).
-      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
+    - name: Check CMake Version
+      run: cmake --version
+      
+    - name: Configure CMake
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      run: cmake -S ${{env.PROJECT_ROOT_DIR}} -B ${{env.OUTPUT_BUILD_DIR}} -DCMAKE_BUILD_TYPE=${{matrix.buildConfiguration}} -A ${{matrix.buildPlatform}} -DSDL_STATIC=$SDL_STATIC -DSDL_SHARED=$SDL_SHARED -DSPDLOG_BUILD_SHARED=$SPDLOG_BUILD_SHARED -DBUILD_STATIC_LIBS=$BUILD_STATIC_LIBS -DSPDLOG_FMT_EXTERNAL=$SPDLOG_FMT_EXTERNAL -DSPDLOG_FMT_EXTERNAL_HO=$SPDLOG_FMT_EXTERNAL_HO
+      env:
+        SDL_STATIC: ON
+        SDL_SHARED: OFF
+        SPDLOG_BUILD_SHARED: OFF
+        BUILD_STATIC_LIBS: ON
+        SPDLOG_FMT_EXTERNAL: ON
+        SPDLOG_FMT_EXTERNAL_HO: OFF
+      shell: pwsh
+
+    - name: Cmake Build
+      # Build your program with the given configuration
+      run: cmake --build ${{env.OUTPUT_BUILD_DIR}}
+      shell: pwsh
