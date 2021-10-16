@@ -43,7 +43,7 @@ jobs:
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      run: cmake -S ${{env.PROJECT_ROOT_DIR}} -B ${{env.OUTPUT_BUILD_DIR}} -G "Visual Studio 16 2019" -A ${{matrix.buildPlatform}} -DCMAKE_SYSTEM_NAME=${{matrix.buildSystem}} -DSDL_STATIC=$SDL_STATIC -DSDL_SHARED=$SDL_SHARED -DSPDLOG_BUILD_SHARED=$SPDLOG_BUILD_SHARED -DBUILD_STATIC_LIBS=$BUILD_STATIC_LIBS
+      run: cmake -S ${{env.PROJECT_ROOT_DIR}} -B ${{env.OUTPUT_BUILD_DIR}} -G "Visual Studio 16 2019" -A ${{matrix.buildPlatform}} -DCMAKE_SYSTEM_NAME=${{matrix.buildSystem}} -DSDL_STATIC=$SDL_STATIC -DSDL_SHARED=$SDL_SHARED -DSPDLOG_BUILD_SHARED=$SPDLOG_BUILD_SHARED -DBUILD_STATIC_LIBS=$BUILD_STATIC_LIBS -DSPDLOG_FMT_EXTERNAL=ON -DSPDLOG_FMT_EXTERNAL_HO=OFF
       env:
         SDL_STATIC: ON
         SDL_SHARED: OFF
