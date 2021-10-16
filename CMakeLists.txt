@@ -54,8 +54,9 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 endif ()
 
 add_custom_target(AssembleContent ALL
+	COMMENT "Copying assets and resources contents"
 	DEPENDS 
-		zEngine
+		zEngineLib
 		sandbox2d 
 		sandbox3d 
 		SDL2main 
