@@ -26,16 +26,16 @@ jobs:
 
   - task: PowerShell@2
     displayName: 'Configure CMake'
-    targetType: inline
-    workingDirectory: $(build.SourceDirectory)
-    script: cmake -S . -B .\out\build -G "Visual Studio 16 2019" -A $(BuildPlatform) -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSPDLOG_BUILD_SHARED=OFF -DBUILD_STATIC_LIBS=ON
+    targetType: 'inline'
+    workingDirectory: $(Build.SourceDirectory)
+    script: 'cmake -S . -B .\out\build -G "Visual Studio 16 2019" -A $(BuildPlatform) -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSPDLOG_BUILD_SHARED=OFF -DBUILD_STATIC_LIBS=ON'
     pwsh: true
   
   - task: PowerShell@2
     displayName: 'CMake Build'
-    targetType: inline
-    workingDirectory: $(build.SourceDirectory)
-    script: cmake --build .\out\build --config $(BuildConfiguration)
+    targetType: 'inline'
+    workingDirectory: $(Build.SourceDirectory)
+    script: 'cmake --build .\out\build --config $(BuildConfiguration)'
     pwsh: true
     condition: succeeded()
   
