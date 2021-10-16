@@ -26,6 +26,9 @@ jobs:
     - name: Checkout submodules
       run: git submodule update --init --recursive
 
+    - name: Setup OpenGL and SDL2
+      run: apt-get install libgl sdl
+
     - name: Setup cmake
       uses: jwlawson/actions-setup-cmake@v1.9
       with:
