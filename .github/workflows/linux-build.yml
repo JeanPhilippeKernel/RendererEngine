@@ -33,8 +33,26 @@ jobs:
       uses: jwlawson/actions-setup-cmake@v1.9
       with:
         cmake-version: '3.20.x'
-    
-    - name: Set up Clang
+
+    - name: Check CMake Version
+      run: cmake --version
+
+    - name: Install pre-requisite packages.
+      run: sudo apt-get install -y wget apt-transport-https software-properties-common
+
+    - name: Download the Microsoft repository GPG keys
+      run: wget -q https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb
+
+    - name: Register the Microsoft repository GPG keys
+      run: sudo dpkg -i packages-microsoft-prod.deb
+
+    - name: Update the list of packages after we added packages.microsoft.com
+      run: sudo apt-get update
+
+    - name: Install PowerShell
+      run: sudo apt-get install -y powershell
+
+    - name: Setup Clang
       uses: egor-tensin/setup-clang@v1
       with:
         version: 7
@@ -45,9 +63,6 @@ jobs:
 
     - name: Define Clang++-7 as default C++ compiler
       run: export CXX=/usr/bin/clang++-7
-
-    - name: Check CMake Version
-      run: cmake --version
       
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
