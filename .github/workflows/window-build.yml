@@ -9,15 +9,9 @@ on:
 env:
   PROJECT_ROOT_DIR: .
   OUTPUT_BUILD_DIR: .\out\build
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-  # BUILD_TYPE: Release
 
 jobs:
   Windows-Build:
-    # The CMake configure and build commands are platform agnostic and should work equally
-    # well on Windows or Mac.  You can convert this to a matrix build if you need
-    # cross-platform coverage.
-    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
     runs-on: windows-2019
     strategy:
       matrix:
@@ -26,32 +20,21 @@ jobs:
           buildConfiguration: [Debug, Release]
 
     steps:      
-    - name: check out repository
+    - name: Checkout repository
       uses: actions/checkout@v2
       
     - name: Checkout submodules
       run: git submodule update --init --recursive
 
-    - name: Setup cmake
+    - name: Install CMake
       uses: jwlawson/actions-setup-cmake@v1.9
       with:
         cmake-version: '3.20.x'
         
-    - name: Check CMake Version
-      run: cmake --version
-      
     - name: Configure CMake
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      run: cmake -S ${{env.PROJECT_ROOT_DIR}} -B ${{env.OUTPUT_BUILD_DIR}} -G "Visual Studio 16 2019" -A ${{matrix.buildPlatform}} -DCMAKE_SYSTEM_NAME=${{matrix.buildSystem}} -DSDL_STATIC=$SDL_STATIC -DSDL_SHARED=$SDL_SHARED -DSPDLOG_BUILD_SHARED=$SPDLOG_BUILD_SHARED -DBUILD_STATIC_LIBS=$BUILD_STATIC_LIBS -DSPDLOG_FMT_EXTERNAL=ON -DSPDLOG_FMT_EXTERNAL_HO=OFF
-      env:
-        SDL_STATIC: ON
-        SDL_SHARED: OFF
-        SPDLOG_BUILD_SHARED: OFF
-        BUILD_STATIC_LIBS: ON
+      run: cmake -S ${{env.PROJECT_ROOT_DIR}} -B ${{env.OUTPUT_BUILD_DIR}} -G "Visual Studio 16 2019" -A ${{matrix.buildPlatform}} -DCMAKE_SYSTEM_NAME=${{matrix.buildSystem}} -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSPDLOG_BUILD_SHARED=OFF -DBUILD_STATIC_LIBS=ON -DSPDLOG_FMT_EXTERNAL=ON -DSPDLOG_FMT_EXTERNAL_HO=OFF
       shell: pwsh
 
-    - name: Cmake Build
-      # Build your program with the given configuration
+    - name: CMake Build
       run: cmake --build ${{env.OUTPUT_BUILD_DIR}} --config ${{matrix.buildConfiguration}}
       shell: pwsh
