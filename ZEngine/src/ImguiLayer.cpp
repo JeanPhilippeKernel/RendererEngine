@@ -21,7 +21,8 @@ namespace ZEngine::Layers {
 			ImGui::CreateContext();
 			ImGui::StyleColorsDark();
 
-			ImGuiIO& io = ImGui::GetIO(); (void)io;
+			ImGuiIO& io = ImGui::GetIO();
+			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
 			ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow()), m_window.lock()->GetNativeContext());
 			ImGui_ImplOpenGL3_Init("#version 460");
