@@ -17,7 +17,7 @@ jobs:
       matrix:
           buildSystem: [Linux]
           buildPlatform: [x64]
-          buildConfiguration: [Release]
+          buildConfiguration: [Debug, Release]
 
     steps:      
     - name: Checkout repository
@@ -61,10 +61,6 @@ jobs:
     - name: Define Clang++-7 as default C++ compiler
       run: export CXX=/usr/bin/clang++-7
       
-    - name: Configure CMake
-      run: cmake -S ${{env.PROJECT_ROOT_DIR}} -B ${{env.OUTPUT_BUILD_DIR}} -DCMAKE_SYSTEM_NAME=${{matrix.buildSystem}} -DCMAKE_BUILD_TYPE=${{matrix.buildConfiguration}} -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSPDLOG_BUILD_SHARED=OFF -DBUILD_STATIC_LIBS=ON -DSPDLOG_FMT_EXTERNAL=ON -DSPDLOG_FMT_EXTERNAL_HO=OFF
-      shell: pwsh
-
     - name: CMake Build
-      run: cmake --build ${{env.OUTPUT_BUILD_DIR}} --config ${{matrix.buildConfiguration}}
+      run: .\Scripts\BuildEngine.ps1 -SystemNames ${{matrix.buildSystem}} -Architectures ${{matrix.buildPlatform}} -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh
