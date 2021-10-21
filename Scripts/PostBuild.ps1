@@ -34,7 +34,11 @@ param (
 
 $ErrorActionPreference = "Stop"
 [string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
-[string]$OuputBuildDirectory = [IO.Path]::Combine($RepoRoot, "out\build")
+[string]$OuputBuildDirectory = If($SystemNames -eq 'Windows') { 
+    [IO.Path]::Combine($RepoRoot, "Result.Windows.x64.MultiConfig") 
+}  Else { 
+    [IO.Path]::Combine($RepoRoot, "Result.Linux.x64.$Configurations")
+}
 
 $ContentsToProcess = @(
     @{
@@ -75,7 +79,9 @@ foreach ($item in $ContentsToProcess) {
         else {
             Copy-Item -Path $content.From -Destination $content.To -Force
         }
+
+        [string]$name = $item.Name
+        [string]$ToDirectory = $content.To
+        Write-Host "Copied $name --> $ToDirectory"
     }
-    $name = $item.Name
-    Write-Host "Copied $name"
 }
