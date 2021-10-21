@@ -28,6 +28,9 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Bb]in-int/
+[Rr]esult.[Ww]indows.[Xx]64.[Mm]ulti[Cc]onfig/
+[Rr]esult.[Ll]inux.[Xx]64.[Dd]ebug/
+[Rr]esult.[Ll]inux.[Xx]64.[Rr]elease/
 
 # Submodules folder
 __externals/fmt
