@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [ master, develop ]
 
-env:
-  PROJECT_ROOT_DIR: .
-  OUTPUT_BUILD_DIR: .\out\build
-
 jobs:
   Windows-Build:
     runs-on: windows-2019
@@ -30,11 +26,7 @@ jobs:
       uses: jwlawson/actions-setup-cmake@v1.9
       with:
         cmake-version: '3.20.x'
-        
-    - name: Configure CMake
-      run: cmake -S ${{env.PROJECT_ROOT_DIR}} -B ${{env.OUTPUT_BUILD_DIR}} -G "Visual Studio 16 2019" -A ${{matrix.buildPlatform}} -DCMAKE_SYSTEM_NAME=${{matrix.buildSystem}} -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSPDLOG_BUILD_SHARED=OFF -DBUILD_STATIC_LIBS=ON -DSPDLOG_FMT_EXTERNAL=ON -DSPDLOG_FMT_EXTERNAL_HO=OFF
-      shell: pwsh
 
     - name: CMake Build
-      run: cmake --build ${{env.OUTPUT_BUILD_DIR}} --config ${{matrix.buildConfiguration}}
+      run: .\Scripts\BuildEngine.ps1 -SystemNames ${{matrix.buildSystem}} -Architectures ${{matrix.buildPlatform}} -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh

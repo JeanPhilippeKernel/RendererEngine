@@ -43,7 +43,7 @@ param (
 $ErrorActionPreference = "Stop"
 [string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 
-. (Join-Path $PSScriptRoot shared.ps1)
+. (Join-Path $PSScriptRoot Shared.ps1)
 
 $CMakeProgram  =  Find-CMake
 if($CMakeProgram) {
