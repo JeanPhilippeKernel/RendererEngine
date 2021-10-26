@@ -409,7 +409,7 @@ out/
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 .vscode/
-
+!.vscode/launch.json
 # Visual Studio CMake settings files
 CMakeSettings.json
 

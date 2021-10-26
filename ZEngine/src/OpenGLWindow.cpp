@@ -1,7 +1,7 @@
 #include <cstdint>
-#include <Window/SDLWin/OpenGLWindow.h>
 #include <Engine.h>
 
+#include <Window/SDLWin/OpenGLWindow.h>
 #include <glad/include/glad/glad.h>
 
 #include <Inputs/KeyCode.h>
@@ -33,11 +33,21 @@ namespace ZEngine::Window::SDLWin {
 
 	{
 		m_property = prop;
-
-		const int sdl_init = SDL_Init(SDL_INIT_EVERYTHING);
+		int sdl_init = 0;
+#ifdef _WIN32
+		sdl_init = SDL_Init(SDL_INIT_EVERYTHING);
+#else
+		sdl_init = SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_EVENTS);
+#endif
 		if (sdl_init != 0) {
-			Z_ENGINE_CORE_CRITICAL("Unable to initialize SDL : {}", SDL_GetError());
-			exit(EXIT_FAILURE);
+			Z_ENGINE_CORE_CRITICAL("Unable to initialize SDL subsystems : {}", SDL_GetError());
+			Z_ENGINE_EXIT_FAILURE();
+		}
+
+		const int loaded_gl_library = SDL_GL_LoadLibrary(NULL);
+		if (loaded_gl_library != 0) {
+			Z_ENGINE_CORE_CRITICAL("Failed to load OpenGL library...");
+			Z_ENGINE_EXIT_FAILURE();
 		}
 
 		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
@@ -46,9 +56,13 @@ namespace ZEngine::Window::SDLWin {
 
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 
+#ifdef __LINUX__
+		m_desired_gl_context_major_version = 3;
+		m_desired_gl_context_minor_version = 3;
+#endif
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, m_desired_gl_context_major_version);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, m_desired_gl_context_minor_version);
 
 		m_native_window = SDL_CreateWindow(
 			m_property.Title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -63,13 +77,12 @@ namespace ZEngine::Window::SDLWin {
 		m_context = CreateContext(this);
 		m_context->MarkActive();
 
-#ifdef _WIN32
 		int glad_init = gladLoadGLLoader(SDL_GL_GetProcAddress);
 		if (glad_init == 0) {
-			Z_ENGINE_CORE_CRITICAL("unable to initialize glad library...");
-			exit(EXIT_FAILURE);
+			Z_ENGINE_CORE_CRITICAL("Unable to initialize glad library...");
+			Z_ENGINE_EXIT_FAILURE();
 		}
-#endif
+
 		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
 	}
 
