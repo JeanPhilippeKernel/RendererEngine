@@ -1,11 +1,32 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Sandox3D (Linux Debug)",
+            "name": "Sandbox3D (Darwin Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Darwin.x64.Debug/Examples/Sandbox3D/src/sandbox3d",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Sandbox3D (Darwin Release)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Darwin.x64.Release/Examples/Sandbox3D/src/sandbox3d",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Sandbox3D (Linux Debug)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/Result.Linux.x64.Debug/Examples/Sandbox3D/src/sandbox3d",
@@ -24,7 +45,7 @@
             ]
         },
         {
-            "name": "Sandox3D (Linux Release)",
+            "name": "Sandbox3D (Linux Release)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/Result.Linux.x64.Release/Examples/Sandbox3D/src/sandbox3d",
@@ -43,7 +64,7 @@
             ]
         },
         {
-            "name": "Sandox2D (Linux Debug)",
+            "name": "Sandbox2D (Linux Debug)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/Result.Linux.x64.Debug/Examples/Sandbox/src/sandbox2d",
@@ -62,7 +83,7 @@
             ]
         },
         {
-            "name": "Sandox2D (Linux Release)",
+            "name": "Sandbox2D (Linux Release)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/Result.Linux.x64.Release/Examples/Sandbox/src/sandbox2d",

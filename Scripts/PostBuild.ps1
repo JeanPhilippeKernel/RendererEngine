@@ -50,8 +50,8 @@ $ContentsToProcess = @(
                 @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\Resources\Windows"}
             }
             else {
-                @{ From = "$RepoRoot\Resources\Linux";    To = "$OuputBuildDirectory\Examples\Sandbox\src\Resources\Linux"}
-                @{ From = "$RepoRoot\Resources\Linux";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\Resources\Linux"}
+                @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Examples\Sandbox\src\Resources\Unix"}
+                @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\Resources\Unix"}
             }
         )
     }

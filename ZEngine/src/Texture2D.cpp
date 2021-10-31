@@ -39,7 +39,7 @@ namespace  ZEngine::Rendering::Textures {
 
 			glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
 			glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
-#elif defined(__linux__) || defined(__APPLE__)
+#else
 			glGenTextures(1, &m_texture_id);
 			glBindTexture(GL_TEXTURE_2D, m_texture_id);
 
@@ -54,7 +54,7 @@ namespace  ZEngine::Rendering::Textures {
 
 #ifdef _WIN32
 			glTextureSubImage2D(m_texture_id, 0, 0, 0, width, height, m_data_format, GL_UNSIGNED_BYTE, (const void *)(image_data));
-#elif defined(__linux__) || defined(__APPLE__)
+#else
 			glTexImage2D(GL_TEXTURE_2D, 0, m_internal_format, width, height, 0, m_data_format, GL_UNSIGNED_BYTE, (const void *)(image_data));
 #endif
 
@@ -79,7 +79,7 @@ namespace  ZEngine::Rendering::Textures {
 		glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTextureParameteri(m_texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-#elif defined(__linux__) || defined(__APPLE__)
+#else
 		glGenTextures(1, &m_texture_id);
 		glBindTexture(GL_TEXTURE_2D, m_texture_id);
 		
@@ -96,7 +96,7 @@ namespace  ZEngine::Rendering::Textures {
 	void Texture2D::SetData(const void * data) {
 #ifdef _WIN32
 		glTextureSubImage2D(m_texture_id, 0, 0, 0, m_width, m_height, m_data_format, GL_UNSIGNED_BYTE, data);
-#elif defined(__linux__) || defined(__APPLE__)
+#else
 		glTexImage2D(GL_TEXTURE_2D, 0, m_internal_format, m_width, m_height, 0, m_data_format, GL_UNSIGNED_BYTE, data);
 #endif
 	}
@@ -118,7 +118,7 @@ namespace  ZEngine::Rendering::Textures {
 	void Texture2D::Bind(int slot) const {
 #ifdef _WIN32
 		glBindTextureUnit(slot, m_texture_id);
-#elif defined(__linux__) || defined(__APPLE__)
+#else
 		glActiveTexture(GL_TEXTURE0 + slot);
 		glBindTexture(GL_TEXTURE_2D, m_texture_id);
 #endif
@@ -127,7 +127,7 @@ namespace  ZEngine::Rendering::Textures {
 	void Texture2D::Unbind(int slot) const {
 #ifdef _WIN32
 		glBindTextureUnit(slot, 0);
-#elif defined(__linux__) || defined(__APPLE__)	
+#else	
 		glActiveTexture(GL_TEXTURE0 + slot);
 		glBindTexture(GL_TEXTURE_2D, 0);	
 #endif	

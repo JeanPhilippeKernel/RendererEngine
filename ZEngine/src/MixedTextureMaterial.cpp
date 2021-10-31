@@ -6,8 +6,8 @@ namespace ZEngine::Rendering::Materials {
 		: 
 #ifdef _WIN32	
 		ShaderMaterial("Resources/Windows/Shaders/mixed_texture_shader.glsl")
-#elif defined(__linux__) || defined(__APPLE__)
-		ShaderMaterial("Resources/Linux/Shaders/mixed_texture_shader.glsl")
+#else
+		ShaderMaterial("Resources/Unix/Shaders/mixed_texture_shader.glsl")
 #endif
 	{
 		m_unique_identifier = "CA36ABA0-B4D4-4CBF-BDE8-BBBC15872091";

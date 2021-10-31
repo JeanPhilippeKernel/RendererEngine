@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Buffers {
 			unsigned int buffer_reserved_byte_size = m_vertex_count * sizeof(Renderers::Storages::IVertex);
 #ifdef _WIN32
 			glCreateBuffers(1, &m_vertex_buffer_id);
-#elif defined(__linux__) || defined(__APPLE__)
+#else
 			glGenBuffers(1, &m_vertex_buffer_id);
 #endif
 			glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);

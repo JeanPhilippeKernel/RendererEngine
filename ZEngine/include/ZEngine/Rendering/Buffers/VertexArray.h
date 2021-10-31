@@ -20,7 +20,7 @@ namespace ZEngine::Rendering::Buffers {
 		VertexArray() {
 #ifdef _WIN32	
 			glCreateVertexArrays(1, &m_vertex_array_id);
-#elif defined(__linux__) || defined(__APPLE__)
+#else
 			glGenVertexArrays(1, &m_vertex_array_id);
 #endif
 		}
