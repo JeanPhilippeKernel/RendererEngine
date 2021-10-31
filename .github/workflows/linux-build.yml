@@ -5,11 +5,7 @@ on:
     branches: [ master, develop ]
   pull_request:
     branches: [ master, develop ]
-
-env:
-  PROJECT_ROOT_DIR: .
-  OUTPUT_BUILD_DIR: .\out\build
-
+    
 jobs:
   Linux-Build:
     runs-on: ubuntu-18.04	
@@ -54,12 +50,6 @@ jobs:
       with:
         version: 7
         platform: x64
-
-    - name: Define Clang-7 as default C compiler
-      run: export CC=/usr/bin/clang-7
-
-    - name: Define Clang++-7 as default C++ compiler
-      run: export CXX=/usr/bin/clang++-7
       
     - name: CMake Build
       run: .\Scripts\BuildEngine.ps1 -SystemNames ${{matrix.buildSystem}} -Architectures ${{matrix.buildPlatform}} -Configurations ${{matrix.buildConfiguration}}
