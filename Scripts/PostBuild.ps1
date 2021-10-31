@@ -24,8 +24,8 @@
 
 param (
     [Parameter(HelpMessage="System name to build, default to all")]
-    [ValidateSet('Windows', 'Linux')]
-    [string[]] $SystemNames = @('Windows', 'Linux'),
+    [ValidateSet('Windows', 'Linux', 'Darwin')]
+    [string[]] $SystemNames = @('Windows', 'Linux', 'Darwin'),
 
     [Parameter(HelpMessage="Configuration type to build, default to Debug")]
     [ValidateSet('Debug', 'Release')]
@@ -37,7 +37,7 @@ $ErrorActionPreference = "Stop"
 [string]$OuputBuildDirectory = If($SystemNames -eq 'Windows') { 
     [IO.Path]::Combine($RepoRoot, "Result.Windows.x64.MultiConfig") 
 }  Else { 
-    [IO.Path]::Combine($RepoRoot, "Result.Linux.x64.$Configurations")
+    [IO.Path]::Combine($RepoRoot, "Result.$SystemNames.x64.$Configurations")
 }
 
 $ContentsToProcess = @(

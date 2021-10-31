@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Buffers {
 		IndexBuffer() : GraphicBuffer<T>() {
 #ifdef _WIN32
 			glCreateBuffers(1, &m_element_buffer_id);
-#elif __linux__
+#elif defined(__linux__) || defined(__APPLE__)
 			glGenBuffers(1, &m_element_buffer_id);
 #endif
 		}

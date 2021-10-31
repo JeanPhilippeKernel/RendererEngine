@@ -6,7 +6,7 @@ namespace ZEngine::Rendering::Materials {
 		: 
 #ifdef _WIN32	
 		ShaderMaterial("Resources/Windows/Shaders/mixed_texture_shader.glsl")
-#elif __linux__
+#elif defined(__linux__) || defined(__APPLE__)
 		ShaderMaterial("Resources/Linux/Shaders/mixed_texture_shader.glsl")
 #endif
 	{

@@ -31,6 +31,8 @@ bld/
 [Rr]esult.[Ww]indows.[Xx]64.[Mm]ulti[Cc]onfig/
 [Rr]esult.[Ll]inux.[Xx]64.[Dd]ebug/
 [Rr]esult.[Ll]inux.[Xx]64.[Rr]elease/
+[Rr]esult.[Dd]arwin.[Xx]64.[Dd]ebug/
+[Rr]esult.[Dd]arwin.[Xx]64.[Rr]elease/
 
 # Submodules folder
 __externals/fmt
