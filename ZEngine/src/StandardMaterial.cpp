@@ -4,7 +4,11 @@ namespace ZEngine::Rendering::Materials {
 
 	StandardMaterial::StandardMaterial() 
 		: 
+#ifdef _WIN32
 		ShaderMaterial("Resources/Shaders/standard_shader.glsl"), 
+#elif __linux__
+		ShaderMaterial("Resources/Linux/Shaders/standard_shader.glsl"), 
+#endif
 		m_tile_factor(1.0f),
 		m_tint_color(glm::vec4(1.0f))
 	{

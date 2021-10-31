@@ -17,8 +17,11 @@ namespace ZEngine::Rendering::Buffers {
 
 		explicit VertexBuffer(unsigned int vertex_count) : GraphicBuffer<T>(), m_vertex_count(vertex_count) {
 			unsigned int buffer_reserved_byte_size = m_vertex_count * sizeof(Renderers::Storages::IVertex);
-			
+#ifdef _WIN32
 			glCreateBuffers(1, &m_vertex_buffer_id);
+#elif __linux__
+			glGenBuffers(1, &m_vertex_buffer_id);
+#endif
 			glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
 			glBufferData(GL_ARRAY_BUFFER, buffer_reserved_byte_size, nullptr, GL_DYNAMIC_DRAW);
 

@@ -50,8 +50,8 @@ $ContentsToProcess = @(
                 @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
             }
             else {
-                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox\src\"}
-                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\"}
+                @{ From = "$RepoRoot\Resources\Linux";    To = "$OuputBuildDirectory\Examples\Sandbox\src\Resources\Linux"}
+                @{ From = "$RepoRoot\Resources\Linux";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\Resources\Linux"}
             }
         )
     }
@@ -60,12 +60,12 @@ $ContentsToProcess = @(
         IsDirectory = $true
         Contents = @(
             if ($SystemNames -eq "Windows") {
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\"}
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\Assets"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\Assets"}
             }
             else {
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\"}
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\Assets"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\Assets"}
             }
         )
     }
@@ -73,7 +73,14 @@ $ContentsToProcess = @(
 
 foreach ($item in $ContentsToProcess) {
     foreach($content in $item.Contents) {
+
         if($item.IsDirectory -eq $true) {
+
+            # Delete if directories or files already exist
+            #
+            if(Test-Path $content.To) {
+                Remove-Item $content.To -Recurse -Force
+            }           
             Copy-Item -Path $content.From -Destination $content.To -Recurse -Force
         }
         else {

@@ -57,7 +57,7 @@ namespace ZEngine::Window::SDLWin {
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
 
-#ifdef __LINUX__
+#ifdef __linux__
 		m_desired_gl_context_major_version = 3;
 		m_desired_gl_context_minor_version = 3;
 #endif
