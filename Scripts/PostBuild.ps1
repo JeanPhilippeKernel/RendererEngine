@@ -46,8 +46,8 @@ $ContentsToProcess = @(
         IsDirectory = $true
         Contents = @(
             if ($SystemNames -eq "Windows"){
-                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\"}
-                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
+                @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\Resources\Windows"}
+                @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\Resources\Windows"}
             }
             else {
                 @{ From = "$RepoRoot\Resources\Linux";    To = "$OuputBuildDirectory\Examples\Sandbox\src\Resources\Linux"}

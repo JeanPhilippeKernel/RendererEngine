@@ -5,7 +5,7 @@ namespace ZEngine::Rendering::Materials {
 	MixedTextureMaterial::MixedTextureMaterial() 
 		: 
 #ifdef _WIN32	
-		ShaderMaterial("Resources/Shaders/mixed_texture_shader.glsl")
+		ShaderMaterial("Resources/Windows/Shaders/mixed_texture_shader.glsl")
 #elif __linux__
 		ShaderMaterial("Resources/Linux/Shaders/mixed_texture_shader.glsl")
 #endif
