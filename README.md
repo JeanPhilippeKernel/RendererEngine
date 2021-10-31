@@ -9,8 +9,8 @@ It can be used for activities such as:
 
 ### Supported Platforms:
 - Windows
-- Linux (`Debian` and `Ubuntu` are recommended systems)
-- MacOS (coming soon)
+- macOS
+- Linux (`Debian` or `Ubuntu` are recommended systems)
 
 ## Setup
 
@@ -21,11 +21,19 @@ Before building, make sure your setup is correct :
 - Install Visual Studio 2019 Community or Professional, make sure to add "Desktop development with C++".
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)  
 
+### Setup macOS machine
+
+- Install lastest version of `Visual Studio Code` or any text editor
+- Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
+- Install compiler `clang`
+
 ### Setup Linux machine
 
 - Install lastest version of `Visual Studio Code` or any text editor
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
 - Install compiler `clang 7`
+- Install debugger `gdb`
+- Install packages `mesa-utils`, `libgl1-mesa-dev`, `mesa-common-dev`
 - Install [SDL2](https://gigi.nullneuron.net/gigilabs/how-to-set-up-sdl2-on-linux/) 
 
 ## Building: 
@@ -41,9 +49,14 @@ You can also do  `git submodule update --init --recursive`.
 		- Debug version :	`.\Scripts\BuildEngine.ps1 -SystemNames Windows -Architectures x64 -Configurations Debug -RunBuilds $True`
 		- Release version :	`.\Scripts\BuildEngine.ps1 -SystemNames Windows -Architectures x64 -Configurations Release -RunBuilds $True`
 
+	- Building on macOS :
+		- Debug version :	`.\Scripts\BuildEngine.ps1 -SystemNames Darwin -Architectures x64 -Configurations Debug -RunBuilds $True`
+		- Release version :	`.\Scripts\BuildEngine.ps1 -SystemNames Darwin -Architectures x64 -Configurations Release -RunBuilds $True`
+
 	- Building on Linux :
 		- Debug version :	`.\Scripts\BuildEngine.ps1 -SystemNames Linux -Architectures x64 -Configurations Debug -RunBuilds $True`
 		- Release version :	`.\Scripts\BuildEngine.ps1 -SystemNames Linux -Architectures x64 -Configurations Release -RunBuilds $True`
+
 
 ## Testing
 
@@ -60,4 +73,3 @@ The project uses the following dependencies :
  - [STB](https://github.com/nothings/stb) for loading and manipulating image files for textures.
  - [ImGUI](https://github.com/ocornut/imgui) for GUI components and interaction.
  - [SPDLOG](https://github.com/gabime/spdlog) for logging
-
