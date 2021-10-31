@@ -1,0 +1,105 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Sandbox3D (Darwin Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Darwin.x64.Debug/Examples/Sandbox3D/src/sandbox3d",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Sandbox3D (Darwin Release)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Darwin.x64.Release/Examples/Sandbox3D/src/sandbox3d",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Sandbox3D (Linux Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Linux.x64.Debug/Examples/Sandbox3D/src/sandbox3d",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",  
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "Sandbox3D (Linux Release)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Linux.x64.Release/Examples/Sandbox3D/src/sandbox3d",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "Sandbox2D (Linux Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Linux.x64.Debug/Examples/Sandbox/src/sandbox2d",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "Sandbox2D (Linux Release)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Linux.x64.Release/Examples/Sandbox/src/sandbox2d",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}

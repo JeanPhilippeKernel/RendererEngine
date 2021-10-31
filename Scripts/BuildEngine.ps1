@@ -25,8 +25,8 @@
 
 param (
     [Parameter(HelpMessage="System name to build, default to all")]
-    [ValidateSet('Windows', 'Linux')]
-    [string[]] $SystemNames = @('Windows', 'Linux'),
+    [ValidateSet('Windows', 'Linux', 'Darwin')]
+    [string[]] $SystemNames = @('Windows', 'Linux', 'Darwin'),
 
     [Parameter(HelpMessage="Architecture type to build, default to x64")]
     [ValidateSet('x64')]
@@ -51,7 +51,7 @@ if($CMakeProgram) {
 }
 
 function Build([string]$systemName, [string]$architecture, [string]$configuration, [bool]$runBuild) {
-    $IsMultipleConfig = ($systemName -ne 'Linux')
+    $IsMultipleConfig = ($systemName -eq 'Windows')
 
     Write-Host "Building $systemName $architecture $configuration"
 

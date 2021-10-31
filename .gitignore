@@ -31,11 +31,14 @@ bld/
 [Rr]esult.[Ww]indows.[Xx]64.[Mm]ulti[Cc]onfig/
 [Rr]esult.[Ll]inux.[Xx]64.[Dd]ebug/
 [Rr]esult.[Ll]inux.[Xx]64.[Rr]elease/
+[Rr]esult.[Dd]arwin.[Xx]64.[Dd]ebug/
+[Rr]esult.[Dd]arwin.[Xx]64.[Rr]elease/
 
 # Submodules folder
 __externals/fmt
 __externals/glm
 __externals/imgui/src
+__externals/imgui/src/examples/example_glfw_vulkan/out/
 __externals/SDL2
 __externals/stb
 __externals/spdlog
@@ -409,7 +412,7 @@ out/
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 .vscode/
-
+!.vscode/launch.json
 # Visual Studio CMake settings files
 CMakeSettings.json
 

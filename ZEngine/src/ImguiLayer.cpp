@@ -25,7 +25,13 @@ namespace ZEngine::Layers {
 			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
 			ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow()), m_window.lock()->GetNativeContext());
-			ImGui_ImplOpenGL3_Init("#version 460");
+			
+			// we should get Version information from attached Window...
+#ifdef _WIN32
+			ImGui_ImplOpenGL3_Init("#version 450");
+#else
+			ImGui_ImplOpenGL3_Init("#version 330");
+#endif
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplSDL2_NewFrame(static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow()));
 			m_initialized = true;

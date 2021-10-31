@@ -17,9 +17,12 @@ namespace ZEngine::Rendering::Buffers {
 	class VertexArray : public Core::IGraphicObject {
 
 	public:
-		VertexArray()
-		{
+		VertexArray() {
+#ifdef _WIN32	
 			glCreateVertexArrays(1, &m_vertex_array_id);
+#else
+			glGenVertexArrays(1, &m_vertex_array_id);
+#endif
 		}
 
 		~VertexArray() {

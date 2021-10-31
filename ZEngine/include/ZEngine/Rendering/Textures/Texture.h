@@ -40,7 +40,7 @@ namespace ZEngine::Rendering::Textures {
 		unsigned int m_height{0};
 
 		unsigned int m_data_format{ 0 };
-		int			 m_internal_format{ 0 };
+		unsigned int m_internal_format{ 0 };
 	};
 
 

@@ -84,6 +84,8 @@ namespace ZEngine::Window::SDLWin {
 		virtual bool OnWindowRestored(Event::WindowRestoredEvent&)					override;
 
 	private:
+		unsigned int m_desired_gl_context_major_version{ 4 };
+		unsigned int m_desired_gl_context_minor_version{ 5 };
 		SDL_Window* m_native_window{ nullptr };
 		Rendering::Graphics::GraphicContext* m_context{ nullptr };
 		std::unique_ptr<SDL_Event, std::function<void(SDL_Event*)>> m_event;

@@ -24,8 +24,8 @@
 
 param (
     [Parameter(HelpMessage="System name to build, default to all")]
-    [ValidateSet('Windows', 'Linux')]
-    [string[]] $SystemNames = @('Windows', 'Linux'),
+    [ValidateSet('Windows', 'Linux', 'Darwin')]
+    [string[]] $SystemNames = @('Windows', 'Linux', 'Darwin'),
 
     [Parameter(HelpMessage="Configuration type to build, default to Debug")]
     [ValidateSet('Debug', 'Release')]
@@ -37,7 +37,7 @@ $ErrorActionPreference = "Stop"
 [string]$OuputBuildDirectory = If($SystemNames -eq 'Windows') { 
     [IO.Path]::Combine($RepoRoot, "Result.Windows.x64.MultiConfig") 
 }  Else { 
-    [IO.Path]::Combine($RepoRoot, "Result.Linux.x64.$Configurations")
+    [IO.Path]::Combine($RepoRoot, "Result.$SystemNames.x64.$Configurations")
 }
 
 $ContentsToProcess = @(
@@ -46,12 +46,12 @@ $ContentsToProcess = @(
         IsDirectory = $true
         Contents = @(
             if ($SystemNames -eq "Windows"){
-                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\"}
-                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
+                @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\Resources\Windows"}
+                @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\Resources\Windows"}
             }
             else {
-                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox\src\"}
-                @{ From = "$RepoRoot\Resources";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\"}
+                @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Examples\Sandbox\src\Resources\Unix"}
+                @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\Resources\Unix"}
             }
         )
     }
@@ -60,12 +60,12 @@ $ContentsToProcess = @(
         IsDirectory = $true
         Contents = @(
             if ($SystemNames -eq "Windows") {
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\"}
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\Assets"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\Assets"}
             }
             else {
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\"}
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\Assets"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\Assets"}
             }
         )
     }
@@ -73,7 +73,14 @@ $ContentsToProcess = @(
 
 foreach ($item in $ContentsToProcess) {
     foreach($content in $item.Contents) {
+
         if($item.IsDirectory -eq $true) {
+
+            # Delete if directories or files already exist
+            #
+            if(Test-Path $content.To) {
+                Remove-Item $content.To -Recurse -Force
+            }           
             Copy-Item -Path $content.From -Destination $content.To -Recurse -Force
         }
         else {

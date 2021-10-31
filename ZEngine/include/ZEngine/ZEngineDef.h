@@ -1,8 +1,10 @@
 #pragma once
 #include <memory>
+#include <stdlib.h>
 
 
 #define BIT(x) (1 << (x))
+#define Z_ENGINE_EXIT_FAILURE()	exit(EXIT_FAILURE)
 
 namespace ZEngine {
 
