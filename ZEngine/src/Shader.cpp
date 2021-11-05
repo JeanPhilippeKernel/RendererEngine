@@ -1,8 +1,5 @@
 #include <Rendering/Shaders/Shader.h>
-#include <vector>
-#include <fstream>
-#include <string>
-
+#include <algorithm>
 
 namespace ZEngine::Rendering::Shaders {
 
