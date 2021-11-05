@@ -1,21 +1,17 @@
 #pragma  once
 #include <string>
 #include <unordered_map>
-
-
 #include <ZEngineDef.h>
 #include <Maths/Math.h>
-#include <glad/include/glad/glad.h>
-
 #include <Core/IGraphicObject.h>
+#include <Rendering/Shaders/Compilers/ShaderCompiler.h>
 
 
 namespace ZEngine::Rendering::Shaders {
 	class Shader : public Core::IGraphicObject {
 	public:
-		Shader(const char * vertexSrc, const char * fragmentSrc);
 		Shader(const char * filename);
-		~Shader();
+		virtual ~Shader();
 
 		bool IsActive() const;
 		void Bind() const;
@@ -48,19 +44,14 @@ namespace ZEngine::Rendering::Shaders {
 
 	private:
 		GLint _GetLocationUniform(const char* name);
-		void _Compile();
-		void _Read(const char* filename);
-
 
 	private:
 		GLuint m_program{0};
+		Scope<Compilers::ShaderCompiler> m_compiler;
 		std::unordered_map<const char*, GLint> m_uniform_location_map;
-		std::unordered_map<GLenum, std::string> m_shader_source_map;
 
 		// Inherited via IGraphicObject
 	};
 
-
-	Shader* CreateShader(const char * vertexSrc, const char * fragmentSrc);
 	Shader* CreateShader(const char * filename);
 }
