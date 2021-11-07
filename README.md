@@ -36,13 +36,13 @@ Before building, make sure your setup is correct :
 - Install packages `mesa-utils`, `libgl1-mesa-dev`, `mesa-common-dev`
 - Install [SDL2](https://gigi.nullneuron.net/gigilabs/how-to-set-up-sdl2-on-linux/) 
 
-## Building: 
+## Building 
 
 As this project uses differents dependencies, make sure you've cloned the project with the `--recursive` option.
 You can also do  `git submodule update --init --recursive`.
 
-1. Install [CMake](https://cmake.org/download/) 3.20 or later
-2. Start your favorite terminal and be sure that you can run CMake, you can type `cmake --version` to simply output the current CMake's version installed
+1. Install [CMake](https://cmake.org/download/) 3.20 or later.
+2. Start `Powershell Core` and make sure that you can run CMake, you can type `cmake --version` to simply output the current CMake's version installed.
 3. Change directories to the location where you've cloned the repository.
 4. Building on different systems
 	- Building on Windows : 
@@ -69,7 +69,7 @@ There are 2 examples projects that you can run/test :
 The project uses the following dependencies : 
  - [SDL2](https://www.libsdl.org/download-2.0.php) for window creation and user input management,
  - [GLM](https://glm.g-truc.net/0.9.9/index.html) for functions and mathematical calculations,
- - [GLEW](http://glew.sourceforge.net/) for openGL functions 
+ - [GLAD](https://glad.dav1d.de/) for openGL functions 
  - [STB](https://github.com/nothings/stb) for loading and manipulating image files for textures.
  - [ImGUI](https://github.com/ocornut/imgui) for GUI components and interaction.
  - [SPDLOG](https://github.com/gabime/spdlog) for logging
