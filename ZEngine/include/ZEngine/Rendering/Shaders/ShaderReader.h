@@ -2,28 +2,31 @@
 #include <fstream>
 #include <unordered_map>
 #include <future>
-#include <glad/glad.h>
 #include <Rendering/Shaders/ShaderInformation.h>
 
 namespace ZEngine::Rendering::Shaders {
 
 	class ShaderReader {
 	public:
+
+		/**
+		 * Initializes a new ShaderReader instance.
+		 */
 		ShaderReader();
 		~ShaderReader();
 
 		/**
-		* Reading content of shader file
+		* Read synchronously content of shader file
 		* 
-		* @param filename :  Path to the shader file
+		* @param filename  Path to the shader file
 		* @return enum ShaderReaderState that describes the read operation state
 		*/
 		ShaderOperationResult Read(std::string_view filename);
 		
 		/**
-		* Reading asynchronously content of shader file
+		* Read asynchronously content of shader file
 		*
-		* @param filename :  Path to the shader file
+		* @param filename  Path to the shader file
 		* @return enum ShaderReaderState that describes the read operation state
 		*/
 		std::future<ShaderOperationResult> ReadAsync(std::string_view filename) = delete;
@@ -32,9 +35,16 @@ namespace ZEngine::Rendering::Shaders {
 		* Get shaders information collected during Reading process
 		* 
 		* @see Read(std::string_view) and ReadAsync(std::string_view) methods
-		* @return ShaderInformation	object
+		* @return ShaderInformation
 		*/
 		const std::vector<ShaderInformation>& GetInformations() const;
+		
+		/**
+		* Get shaders information collected during Reading process
+		* 
+		* @see Read(std::string_view) and ReadAsync(std::string_view) methods
+		* @return ShaderInformation
+		*/
 		std::vector<ShaderInformation>& GetInformations();
 
 	private:

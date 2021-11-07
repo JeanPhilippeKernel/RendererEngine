@@ -44,7 +44,7 @@ namespace ZEngine::Rendering::Shaders {
 		return m_program;
 	}
 
-	GLint Shader::_GetLocationUniform(const char* name){
+	GLint Shader::_GetLocationUniform(const char* name) {
 		const auto it = std::find_if(
 			std::begin(m_uniform_location_map), std::end(m_uniform_location_map), 
 			[&](const auto& kv){ return strcmp(kv.first, name) == 0; }

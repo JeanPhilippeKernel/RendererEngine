@@ -8,6 +8,11 @@ namespace ZEngine::Rendering::Shaders::Compilers {
         CompilationStage();
         virtual ~CompilationStage();
 
-        virtual void Run(std::vector<ShaderInformation>&) override;
+		/**
+		* Run Compiler stage
+		* 
+		* @param information    Collection of shader information
+		*/        
+        virtual void Run(std::vector<ShaderInformation>& information) override;
     };
 }
