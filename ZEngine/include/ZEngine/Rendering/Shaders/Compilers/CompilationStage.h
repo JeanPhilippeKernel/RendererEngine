@@ -5,6 +5,10 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
     class CompilationStage : public ICompilerStage {
     public:
+
+        /**
+        * Initialize a new CompilationStage instance.
+        */
         CompilationStage();
         virtual ~CompilationStage();
 
