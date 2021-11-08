@@ -35,7 +35,7 @@ namespace ZEngine::Managers {
 		auto result = IManager::Add(key, texture);
 
 		assert(result.has_value() == true);
-		return result->get();		
+		return result->get();
 	}
 
 	Ref<Rendering::Textures::Texture>& TextureManager::Load(const char* filename) {
