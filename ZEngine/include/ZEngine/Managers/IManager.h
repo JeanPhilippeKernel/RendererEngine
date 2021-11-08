@@ -43,7 +43,6 @@ namespace ZEngine::Managers {
 			if(kv.first) {
 				auto it  =  kv.second;
 				return it->second;
-				//return val;
 			}
 
 			auto pair  = m_collection.emplace(std::make_pair(key, val));

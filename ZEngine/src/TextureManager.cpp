@@ -9,6 +9,11 @@ namespace ZEngine::Managers {
 	Ref<Rendering::Textures::Texture>& TextureManager::Add(const char* name, const char* filename) {
 		const auto key = std::string(name).append(m_suffix);
 
+		const auto found = IManager::Exists(key);
+		if (found.first) {
+			return found.second->second;
+		}
+
 		Ref<Rendering::Textures::Texture> texture;
 		texture.reset(Rendering::Textures::CreateTexture(filename));
 		auto result = IManager::Add(key, texture);
@@ -20,6 +25,11 @@ namespace ZEngine::Managers {
 	Ref<Rendering::Textures::Texture>& TextureManager::Add(const char* name, unsigned int width, unsigned int height) {
 		const auto key = std::string(name).append(m_suffix);
 
+		const auto found = IManager::Exists(key);
+		if (found.first) {
+			return found.second->second;
+		}
+		
 		ZEngine::Ref<Rendering::Textures::Texture> texture;
 		texture.reset(Rendering::Textures::CreateTexture(width, height));
 		auto result = IManager::Add(key, texture);
