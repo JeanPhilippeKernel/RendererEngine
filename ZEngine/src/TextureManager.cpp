@@ -10,32 +10,32 @@ namespace ZEngine::Managers {
 		const auto key = std::string(name).append(m_suffix);
 
 		const auto found = IManager::Exists(key);
-		if (!found.first) {
-			Ref<Rendering::Textures::Texture> texture;
-			texture.reset(Rendering::Textures::CreateTexture(filename));
-			auto result = IManager::Add(key, texture);
-
-			assert(result.has_value() == true);
-			return result->get();
+		if (found.first) {
+			return found.second->second;
 		}
 
-		return found.second->second;
+		Ref<Rendering::Textures::Texture> texture;
+		texture.reset(Rendering::Textures::CreateTexture(filename));
+		auto result = IManager::Add(key, texture);
+
+		assert(result.has_value() == true);
+		return result->get();
 	}
 
 	Ref<Rendering::Textures::Texture>& TextureManager::Add(const char* name, unsigned int width, unsigned int height) {
 		const auto key = std::string(name).append(m_suffix);
 
 		const auto found = IManager::Exists(key);
-		if (!found.first) {
-			ZEngine::Ref<Rendering::Textures::Texture> texture;
-			texture.reset(Rendering::Textures::CreateTexture(width, height));
-			auto result = IManager::Add(key, texture);
-
-			assert(result.has_value() == true);
-			return result->get();		
+		if (found.first) {
+			return found.second->second;
 		}
+		
+		ZEngine::Ref<Rendering::Textures::Texture> texture;
+		texture.reset(Rendering::Textures::CreateTexture(width, height));
+		auto result = IManager::Add(key, texture);
 
-		return found.second->second;
+		assert(result.has_value() == true);
+		return result->get();		
 	}
 
 	Ref<Rendering::Textures::Texture>& TextureManager::Load(const char* filename) {
