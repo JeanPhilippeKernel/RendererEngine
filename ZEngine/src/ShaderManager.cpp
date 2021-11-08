@@ -9,12 +9,17 @@ namespace ZEngine::Managers {
 	Ref<Rendering::Shaders::Shader>& ShaderManager::Add(const char* name, const char* filename) {
 		const auto key = std::string(name).append(m_suffix);
 		
-		Ref<Rendering::Shaders::Shader> shader;
-		shader.reset(Rendering::Shaders::CreateShader(filename));
-		const auto result = IManager::Add(key, shader);
+		const auto found = IManager::Exists(key);
+		if (!found.first) {
+			Ref<Rendering::Shaders::Shader> shader;
+			shader.reset(Rendering::Shaders::CreateShader(filename));
+			const auto result = IManager::Add(key, shader);
 		
-		assert(result.has_value() == true);
-		return result->get();
+			assert(result.has_value() == true);
+			return result->get();
+		}
+
+		return found.second->second;
 	}
 
 	Ref<Rendering::Shaders::Shader>& ShaderManager::Load(const char* filename) {
