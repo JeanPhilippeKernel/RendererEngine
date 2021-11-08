@@ -3,10 +3,18 @@ Z-ENGINE - Contributing
 
 # Contributing
 
-When contributing to this repository, please first discuss the change you wish to make via issue,
-email, or any other method with the owners of this repository before making a change. 
+When contributing to this repository, please first discuss the change you wish to make via issue. 
 
-Please note we have a code of conduct, please follow it in all your interactions with the project.
+## Rules
+
+**ZEngine** is built upon 2 rules:
+
+1. You cannot add code that will slow down the rendering process
+2. You cannot add code that will make things complex to use
+
+### Performance
+
+ZEngine is a 3D rendering engine. So every piece of code has to be scrutinized to look for potential bottlenecks or slow downs. Ultimately the goal is to render more with less resources.
 
 ## Pull Request Process
 
