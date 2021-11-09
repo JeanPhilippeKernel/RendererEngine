@@ -10,13 +10,15 @@ namespace Tetragrama {
 	Editor::Editor()
 		: m_engine(new ZEngine::Engine{})
 	{
-		m_engine->GetWindow()->PushLayer(new Layers::ExampleLayer());
+		ZEngine::Ref<ZEngine::Layers::Layer> example_layer(new Layers::ExampleLayer{});
+		m_engine->GetWindow()->PushLayer(example_layer);
 
-		ZEngine::Layers::ImguiLayer* gui_layer(new Layers::UserInterfaceLayer{});
+		ZEngine::Ref<ZEngine::Layers::ImguiLayer> gui_layer(new Layers::UserInterfaceLayer{});
 		std::vector<ZEngine::Ref<ZEngine::Components::UI::UIComponent>> ui_components{
 			ZEngine::Ref<ZEngine::Components::UI::UIComponent>(new Components::AboutUIComponent()),
 			ZEngine::Ref<ZEngine::Components::UI::UIComponent>(new Components::DemoUIComponent())
 		};
+
 		gui_layer->AddUIComponent(std::move(ui_components));
 		m_engine->GetWindow()->PushOverlayLayer(gui_layer);
 	}
