@@ -14,10 +14,11 @@ namespace Sandbox {
 	public:																																			  
 		Sandbox_One() : ZEngine::Engine() {
 			auto window = this->GetWindow();
-			window->PushLayer(new ExampleLayer());
 			
-
-			ZEngine::Layers::ImguiLayer* gui_layer(new GUILayer{});
+			ZEngine::Ref<ZEngine::Layers::Layer> example_layer(new ExampleLayer{});
+			window->PushLayer(example_layer);
+			
+			ZEngine::Ref<ZEngine::Layers::ImguiLayer> gui_layer(new GUILayer{});
 			std::vector<ZEngine::Ref<ZEngine::Components::UI::UIComponent>> ui_components {
 				ZEngine::Ref<ZEngine::Components::UI::UIComponent> (new AboutUIComponent()),
 				ZEngine::Ref<ZEngine::Components::UI::UIComponent> (new DemoUIComponent())

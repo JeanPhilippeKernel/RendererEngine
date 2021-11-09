@@ -18,7 +18,7 @@ namespace  ZEngine::Rendering::Scenes {
 	}
 
 	void GraphicScene::Add(Ref<Meshes::Mesh>& mesh) {
-		m_mesh_list.emplace_back(mesh);
+		m_mesh_list.push_back(mesh);
 	}
 
 	void GraphicScene::Add(const std::vector<Ref<Meshes::Mesh>>& meshes) {

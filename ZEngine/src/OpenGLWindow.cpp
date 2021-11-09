@@ -88,7 +88,7 @@ namespace ZEngine::Window::SDLWin {
 
 
 	void OpenGLWindow::Initialize() {
-		for(auto layer : *m_layer_stack_ptr) {
+		for(Ref<Layers::Layer>& layer : *m_layer_stack_ptr) {
 			layer->SetAttachedWindow(shared_from_this());
 			layer->Initialize();
 		}
@@ -207,12 +207,13 @@ namespace ZEngine::Window::SDLWin {
 	}
 
 	void OpenGLWindow::Update(Core::TimeStep delta_time) {
-		for (auto* const layer : *m_layer_stack_ptr)
+		for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr) {
 			layer->Update(delta_time);
+		}
 	}
 
 	void OpenGLWindow::Render() {
-		for (auto* const layer : *m_layer_stack_ptr) {
+		for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr) {
 			layer->Render();
 		}
 		SDL_GL_SwapWindow(m_native_window);

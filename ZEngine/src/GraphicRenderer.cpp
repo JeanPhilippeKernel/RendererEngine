@@ -29,7 +29,7 @@ namespace ZEngine::Rendering::Renderers {
 	   else {
 		   unsigned int mesh_identifier_id = it->second.size();
 		   mesh.SetUniqueIdentifier(mesh_identifier_id);
-		   it->second.emplace_back(mesh);
+		   it->second.push_back(mesh);
 	   }
    }
 

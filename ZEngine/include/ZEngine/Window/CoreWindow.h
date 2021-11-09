@@ -67,8 +67,11 @@ namespace ZEngine::Window {
 		
 		virtual void SetAttachedEngine(ZEngine::Engine* const engine);
 
-		virtual void PushOverlayLayer(Layers::Layer* const layer);
-		virtual void PushLayer(Layers::Layer* const layer);
+		virtual void PushOverlayLayer(const Ref<Layers::Layer>& layer);
+		virtual void PushLayer(const Ref<Layers::Layer>& layer);
+
+		virtual void PushOverlayLayer(Ref<Layers::Layer>&& layer);
+		virtual void PushLayer(Ref<Layers::Layer>&& layer);
 
 	protected:
 		static const char* ATTACHED_PROPERTY;
