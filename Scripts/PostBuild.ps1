@@ -48,10 +48,12 @@ $ContentsToProcess = @(
             if ($SystemNames -eq "Windows"){
                 @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\Resources\Windows"}
                 @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\Resources\Windows"}
+                @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Windows"}
             }
             else {
                 @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Examples\Sandbox\src\Resources\Unix"}
                 @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Examples\Sandbox3D\src\Resources\Unix"}
+                @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Tetragrama\src\Resources\Unix"}
             }
         )
     }
@@ -62,10 +64,12 @@ $ContentsToProcess = @(
             if ($SystemNames -eq "Windows") {
                 @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\$Configurations\Assets"}
                 @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\$Configurations\Assets"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Assets"}
             }
             else {
                 @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox\src\Assets"}
                 @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Examples\Sandbox3D\src\Assets"}
+                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Tetragrama\src\Assets"}
             }
         )
     }
