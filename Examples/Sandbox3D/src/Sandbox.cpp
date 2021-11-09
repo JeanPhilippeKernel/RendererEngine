@@ -14,13 +14,14 @@ namespace Sandbox3D {
 	public:
 		Sandbox() {
 			auto window = this->GetWindow();
-			window->PushLayer(new ExampleLayer());
-
-
-			ZEngine::Layers::ImguiLayer* gui_layer(new GUILayer{});
-			std::vector<ZEngine::Ref<ZEngine::Components::UI::UIComponent>> ui_components{
-				ZEngine::Ref<ZEngine::Components::UI::UIComponent>(new AboutUIComponent()),
-				ZEngine::Ref<ZEngine::Components::UI::UIComponent>(new DemoUIComponent())
+			
+			ZEngine::Ref<ZEngine::Layers::Layer> example_layer(new ExampleLayer{});
+			window->PushLayer(example_layer);
+			
+			ZEngine::Ref<ZEngine::Layers::ImguiLayer> gui_layer(new GUILayer{});
+			std::vector<ZEngine::Ref<ZEngine::Components::UI::UIComponent>> ui_components {
+				ZEngine::Ref<ZEngine::Components::UI::UIComponent> (new AboutUIComponent()),
+				ZEngine::Ref<ZEngine::Components::UI::UIComponent> (new DemoUIComponent())
 			};
 			gui_layer->AddUIComponent(std::move(ui_components));
 			window->PushOverlayLayer(gui_layer);

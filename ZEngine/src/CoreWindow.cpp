@@ -16,21 +16,31 @@ namespace ZEngine::Window {
 		m_engine = engine;
 	}
 
-	void CoreWindow::PushOverlayLayer(Layer* const layer) { 
+	void CoreWindow::PushOverlayLayer(const Ref<Layer>& layer) { 
 		m_layer_stack_ptr->PushOverlayLayer(layer); 
 	}
 		
-	void CoreWindow::PushLayer(Layer* const layer) { 
+	void CoreWindow::PushLayer(const Ref<Layer>& layer) { 
 		m_layer_stack_ptr->PushLayer(layer); 
 	}	
+
+	void CoreWindow::PushOverlayLayer(Ref<Layer>&& layer) {
+		m_layer_stack_ptr->PushOverlayLayer(layer);
+	}
+
+	void CoreWindow::PushLayer(Ref<Layer>&& layer) {
+		m_layer_stack_ptr->PushLayer(layer);
+	}
 
 	void CoreWindow::ForwardEventToLayers(CoreEvent& event) {
 		auto index = std::distance(m_layer_stack_ptr->begin(), m_layer_stack_ptr->end());
 		for (auto it = m_layer_stack_ptr->end(); it >= m_layer_stack_ptr->begin();) {
 
 			if(index == 0) break;
-
-			(*(--it))->OnEvent(event);
+			
+			--it;
+			it->get()->OnEvent(event);
+			// (*(--it))->OnEvent(event);
 			--index;
 		}
 	}	
