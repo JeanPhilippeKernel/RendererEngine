@@ -37,6 +37,13 @@ add_subdirectory (${EXTERNAL_DIR}/glm)
 #
 add_subdirectory(ZEngine)
 
+# Editor is here
+#
+add_subdirectory(Tetragrama)
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT tetragrama)
+endif ()
+
 # Examples
 #
 if (BUILD_SANDBOX_PROJECTS)
