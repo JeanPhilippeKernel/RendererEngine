@@ -11,24 +11,28 @@ namespace ZEngine::Layers {
 		LayerStack() = default;
 		~LayerStack();
 
-		void PushLayer(Layer* const layer);
+		void PushLayer(const Ref<Layer>& layer);
+		void PushLayer(Ref<Layer>&& layer);		
 
-		void PushOverlayLayer(Layer* const layer);
+		void PushOverlayLayer(const Ref<Layer>& layer);
+		void PushOverlayLayer(Ref<Layer>&& layer);		
 		
-		void PopLayer(Layer* const layer);
+		void PopLayer(const Ref<Layer>& layer);
+		void PopLayer(Ref<Layer>&& layer);
 
 		void PopLayer();
 
 		void PopOverlayLayer();
 
-		void PopOverlayLayer(Layer* const layer);
+		void PopOverlayLayer(const Ref<Layer>& layer);
+		void PopOverlayLayer(Ref<Layer>&& layer);
 
 	public:
-		std::vector<Layer*>::iterator begin() { return std::begin(m_layers); }
-		std::vector<Layer*>::iterator end() { return std::end(m_layers); }
+		std::vector<Ref<Layer>>::iterator begin() { return std::begin(m_layers); }
+		std::vector<Ref<Layer>>::iterator end() { return std::end(m_layers); }
 
 	private:
-		std::vector<Layer*> m_layers;
-		std::vector<Layer*>::iterator current_it;
+		std::vector<Ref<Layer>> m_layers;
+		std::vector<Ref<Layer>>::iterator current_it;
 	};
 }
