@@ -24,7 +24,7 @@ namespace Sandbox3D {
 				ZEngine::Ref<ZEngine::Components::UI::UIComponent> (new DemoUIComponent())
 			};
 			gui_layer->AddUIComponent(std::move(ui_components));
-			window->PushOverlayLayer(gui_layer);			
+			window->PushOverlayLayer(gui_layer);
 		}		
 
 		~Sandbox() = default;
