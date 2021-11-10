@@ -1,5 +1,4 @@
-#include <regex>
-#include <sstream>
+#include <ZEngine/pch.h>
 #include <Rendering/Shaders/ShaderReader.h>
 #include <Logging/LoggerDefinition.h>
 

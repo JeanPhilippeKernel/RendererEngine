@@ -23,6 +23,8 @@ target_include_directories (zEngineLib
 		${EXTERNAL_INCLUDE_DIRS}
 )
 
+target_precompile_headers(zEngineLib PRIVATE ${PROJECT_SOURCE_DIR}/include/ZEngine/pch.h)
+
 target_compile_definitions (zEngineLib
 	PUBLIC
 		Z_ENGINE_PLATFORM

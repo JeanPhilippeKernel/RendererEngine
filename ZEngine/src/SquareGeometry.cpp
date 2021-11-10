@@ -1,3 +1,4 @@
+#include <ZEngine/pch.h>
 #include <Rendering/Geometries/SquareGeometry.h>
 
 namespace ZEngine::Rendering::Geometries

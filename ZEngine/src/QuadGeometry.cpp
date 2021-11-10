@@ -1,3 +1,4 @@
+#include <ZEngine/pch.h>
 #include <Rendering/Geometries/QuadGeometry.h>
 
 using namespace ZEngine::Rendering::Renderers::Storages;

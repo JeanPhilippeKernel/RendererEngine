@@ -1,3 +1,4 @@
+#include <ZEngine/pch.h>
 #include <Rendering/Meshes/Mesh.h>
 
 namespace ZEngine::Rendering::Meshes {

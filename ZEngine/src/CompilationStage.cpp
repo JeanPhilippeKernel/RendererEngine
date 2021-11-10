@@ -1,3 +1,4 @@
+#include <ZEngine/pch.h>
 #include <Rendering/Shaders/Compilers/CompilationStage.h>
 #include <Rendering/Shaders/Compilers/LinkageStage.h>
 #include <Logging/LoggerDefinition.h>

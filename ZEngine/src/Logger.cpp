@@ -1,5 +1,5 @@
+#include <ZEngine/pch.h>
 #include <Logging/Logger.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
 
 namespace ZEngine::Logging {
     

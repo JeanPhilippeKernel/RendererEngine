@@ -1,5 +1,5 @@
+#include <ZEngine/pch.h>
 #include <Rendering/Shaders/Shader.h>
-#include <algorithm>
 
 namespace ZEngine::Rendering::Shaders {
 
