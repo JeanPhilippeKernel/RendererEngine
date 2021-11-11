@@ -15,6 +15,7 @@ namespace Tetragrama::Components {
 
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override { return false; }
+
     private:
         bool m_is_open{true};        
     };
