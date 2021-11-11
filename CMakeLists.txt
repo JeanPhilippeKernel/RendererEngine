@@ -32,6 +32,7 @@ add_subdirectory (${EXTERNAL_DIR}/imgui)
 add_subdirectory (${EXTERNAL_DIR}/SDL2)
 add_subdirectory (${EXTERNAL_DIR}/spdlog)
 add_subdirectory (${EXTERNAL_DIR}/glm)
+add_subdirectory (${EXTERNAL_DIR}/glfw)
 
 # Core engine lib is here
 #

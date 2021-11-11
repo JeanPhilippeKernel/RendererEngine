@@ -40,5 +40,6 @@ target_link_libraries (zEngineLib
 		imported::glm
 		imported::imgui
 		imported::sdl2
+		imported::glfw
 		OpenGL::GL
 )
