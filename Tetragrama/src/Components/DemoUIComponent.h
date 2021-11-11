@@ -12,6 +12,10 @@ namespace Tetragrama::Components {
         virtual void Render() override {
             ImGui::ShowDemoWindow(&m_is_open);
         }
+
+    protected:
+        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override { return false; }
+
     private:
         bool m_is_open{true};
     };

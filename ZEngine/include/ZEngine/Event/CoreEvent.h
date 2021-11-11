@@ -4,11 +4,12 @@
 #include <Event/EventType.h>
 #include <Event/EventCategory.h>
 																					 
-namespace ZEngine::Event {
+#define EVENT_TYPE(x)		static ZEngine::Event::EventType GetStaticType() { return  ZEngine::Event::EventType::x; }
+#define EVENT_CATEGORY(x)	static int  GetStaticCategory() { return  ZEngine::Event::EventCategory::x; }
 
-#define EVENT_TYPE(x) static EventType GetStaticType() { return EventType::x; }
-#define EVENT_CATEGORY(x) static int GetStaticCategory() { return EventCategory::x;  }
-		
+
+namespace ZEngine::Event {
+	
 	class CoreEvent {
 	public:
 		CoreEvent() = default;

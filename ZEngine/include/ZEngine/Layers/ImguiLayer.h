@@ -18,12 +18,15 @@
 #include <functional>
 #include <vector>
 
+namespace ZEngine::Components::UI { class UIComponent; }
+
 namespace ZEngine::Layers {
 	class ImguiLayer : public Layer, 
 		public Inputs::IKeyboardEventCallback, 
 		public Inputs::IMouseEventCallback, 
 		public Inputs::ITextInputEventCallback, 
-		public Window::ICoreWindowEventCallback {
+		public Window::ICoreWindowEventCallback,
+		public std::enable_shared_from_this<ImguiLayer> {
 
 	public:
 		ImguiLayer(const char * name = "ImGUI Layer")
@@ -47,6 +50,7 @@ namespace ZEngine::Layers {
 			event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&ImguiLayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
 			event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
 			
+			event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
 			event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&ImguiLayer::OnWindowResized, this, std::placeholders::_1));
 
 			return false;
@@ -70,7 +74,7 @@ namespace ZEngine::Layers {
 		bool OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent&)		override;
 		bool OnTextInputRaised(Event::TextInputEvent&)					override;
 
-		bool OnWindowClosed(Event::WindowClosedEvent&)					override { return false; }
+		bool OnWindowClosed(Event::WindowClosedEvent&)					override;
 		bool OnWindowResized(Event::WindowResizedEvent&)				override;
 		bool OnWindowMinimized(Event::WindowMinimizedEvent&)			override { return false; }
 		bool OnWindowMaximized(Event::WindowMaximizedEvent&)			override { return false; }

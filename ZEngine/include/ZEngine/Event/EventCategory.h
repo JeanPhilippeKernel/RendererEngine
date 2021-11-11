@@ -7,6 +7,7 @@ namespace ZEngine::Event {
 		Engine		= BIT(0),
 		Keyboard	= BIT(1),
 		Mouse		= BIT(2),
-		Input		= BIT(3)
+		Input		= BIT(3),
+		UserInterfaceComponent = BIT(4)
 	};
 }

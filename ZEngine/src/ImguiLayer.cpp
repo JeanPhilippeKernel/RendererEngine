@@ -1,4 +1,5 @@
 #include <Layers/ImguiLayer.h>
+#include <algorithm>
 
 namespace ZEngine::Layers {
 
@@ -40,13 +41,27 @@ namespace ZEngine::Layers {
 
 	void ImguiLayer::AddUIComponent(const Ref<Components::UI::UIComponent>& component) {
 		m_ui_components.push_back(component);
+		
+		if (!component->HasParentLayer()) {
+			auto last = std::prev(std::end(m_ui_components));
+			(*last)->SetParentLayer(shared_from_this());
+		}
 	}
 
 	void ImguiLayer::AddUIComponent(Ref<Components::UI::UIComponent>&& component) {
-		m_ui_components.emplace_back(component);
+		if (!component->HasParentLayer()) {
+			component->SetParentLayer(shared_from_this());
+		}
+		m_ui_components.push_back(component);
 	}
 
 	void ImguiLayer::AddUIComponent(std::vector<Ref<Components::UI::UIComponent>>&& components) {
+		std::for_each(std::begin(components), std::end(components), [this](Ref<Components::UI::UIComponent>& component) {
+			if (!component->HasParentLayer()) {
+				component->SetParentLayer(shared_from_this());
+			}
+		});
+
 		std::move(std::begin(components), std::end(components), std::back_inserter(m_ui_components));
 	}
 
@@ -110,6 +125,11 @@ namespace ZEngine::Layers {
 		return false;
 	}
 
+	bool ImguiLayer::OnWindowClosed(Event::WindowClosedEvent& event) {
+		Event::EventDispatcher event_dispatcher(event);
+		event_dispatcher.ForwardTo<Event::WindowClosedEvent>(std::bind(&ZEngine::Window::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
+		return true;
+	}
 
 	bool ImguiLayer::OnWindowResized(Event::WindowResizedEvent& event) {
 		ImGuiIO& io = ImGui::GetIO();
@@ -117,5 +137,6 @@ namespace ZEngine::Layers {
 		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 		return false;
 	}
+
 
 }
