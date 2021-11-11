@@ -1,19 +1,21 @@
 #pragma once
-#include <pch.h>
 #include <ZEngine/ZEngineDef.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Layers/ImguiLayer.h>
 
 namespace Tetragrama {
 
-	class Editor {
+	class Editor : ZEngine::Core::IInitializable {
 	public:
 		Editor();
-		~Editor();
+		virtual ~Editor();
 
+		void Initialize() override;
         void Run();
 
 	private:
-		ZEngine::Scope<ZEngine::Engine> m_engine{ nullptr };
+		ZEngine::Ref<ZEngine::Layers::ImguiLayer>	m_ui_layer{ nullptr };
+		ZEngine::Scope<ZEngine::Engine>				m_engine{ nullptr };
 	};
 
 }

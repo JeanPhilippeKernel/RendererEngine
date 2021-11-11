@@ -13,6 +13,7 @@ namespace ZEngine::Event {
 
 		EngineClosed,
 
-		TextInput
+		TextInput,
+		UserInterfaceComponent
 	};
 }

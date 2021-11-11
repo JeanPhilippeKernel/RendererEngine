@@ -22,6 +22,8 @@ endif ()
 target_include_directories (${TARGET_NAME}
 	PRIVATE
         ${PROJECT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/Components
+        ${CMAKE_CURRENT_SOURCE_DIR}/Layers
 		${ENLISTMENT_ROOT}/ZEngine/include
 )
 

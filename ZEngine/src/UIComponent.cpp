@@ -7,6 +7,11 @@ namespace ZEngine::Components::UI
     {
     }
 
+    UIComponent::UIComponent(const Ref<Layers::ImguiLayer>& layer, std::string_view name, bool visibility)
+        : m_parent_layer(layer), m_name(name.data()), m_visibility(visibility)
+    {
+    }
+
     void UIComponent::SetName(std::string_view name) {
         std::string_view current(m_name);
         if(current.compare(name) != 0) {
@@ -24,5 +29,13 @@ namespace ZEngine::Components::UI
 
     bool UIComponent::GetVisibility() const { 
         return m_visibility;
+    }
+
+    void UIComponent::SetParentLayer(const Ref<Layers::ImguiLayer>& layer) {
+        m_parent_layer = layer;
+    }
+
+    bool UIComponent::HasParentLayer() {
+        return m_parent_layer.expired() == false;
     }
 }
