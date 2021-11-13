@@ -8,7 +8,7 @@ namespace ZEngine::Event {
 
 	class MouseButtonReleasedEvent : public MouseEvent {
 	public:
-		explicit MouseButtonReleasedEvent(unsigned char button)
+		explicit MouseButtonReleasedEvent(ZENGINE_KEYCODE button)
 			:MouseEvent(button)
 		{
 		}

@@ -92,6 +92,9 @@ namespace Tetragrama::Components {
             ImGui::EndMenuBar();
         }
 
+        // Add child components here
+        ImGui::ShowDemoWindow(&m_visibility);
+
         ImGui::End();
     } 
 

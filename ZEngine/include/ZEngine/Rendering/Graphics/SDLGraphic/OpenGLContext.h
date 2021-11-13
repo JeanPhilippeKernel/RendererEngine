@@ -1,6 +1,5 @@
 #pragma once
 #include <SDL2/include/SDL.h>
-//#include <SDL2/SDL.h>
 
 #include <Rendering/Graphics/GraphicContext.h>
 

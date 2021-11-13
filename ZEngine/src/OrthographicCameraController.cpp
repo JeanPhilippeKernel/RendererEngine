@@ -14,32 +14,32 @@ namespace ZEngine::Controllers {
 	}
 
 	void OrthographicCameraController::Update(Core::TimeStep dt) {
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_LEFT)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT, m_window.lock())) {
 			m_position.x -= m_move_speed * dt;
 			m_orthographic_camera->SetPosition(m_position);
 		}
 
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_RIGHT)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_RIGHT, m_window.lock())) {
 			m_position.x += m_move_speed * dt;
 			m_orthographic_camera->SetPosition(m_position);
 		}
 
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_UP)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_UP, m_window.lock())) {
 			m_position.y += m_move_speed * dt;
 			m_orthographic_camera->SetPosition(m_position);
 		}
 
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_DOWN)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_DOWN, m_window.lock())) {
 			m_position.y -= m_move_speed * dt;
 			m_orthographic_camera->SetPosition(m_position);
 		}
 
 		if(m_can_rotate) {
-			if(IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Q)) {
+			if(IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_Q, m_window.lock())) {
 				m_rotation_angle += m_rotation_speed * dt;
 			}
 
-			if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_D)) {
+			if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_D, m_window.lock())) {
 				m_rotation_angle -= m_rotation_speed * dt;
 			}
 

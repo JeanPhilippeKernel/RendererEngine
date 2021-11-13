@@ -1,13 +1,11 @@
 #pragma once
-#include <memory>
-
-#define SDL_MAIN_HANDLED
-#include <SDL2/include/SDL.h>
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
 
 #include <Window/CoreWindow.h>
 #include <Rendering/Graphics/GraphicContext.h>
 
-namespace ZEngine::Window::SDLWin {
+namespace ZEngine::Window::GLFWWindow {
 
 	class OpenGLWindow : public CoreWindow {
 	public:
@@ -22,10 +20,10 @@ namespace ZEngine::Window::SDLWin {
 		void SetVSync(bool value) override { 
 			m_property.VSync = value; 
 			if (value) {
-				SDL_GL_SetSwapInterval(1);
+				glfwSwapInterval(1);
 			}
 			else {
-				SDL_GL_SetSwapInterval(0);
+				glfwSwapInterval(0);
 			}
 		}
 
@@ -38,9 +36,11 @@ namespace ZEngine::Window::SDLWin {
 
 		virtual void Initialize() override;
 		virtual void PollEvent() override;
-		virtual float GetTime() override { return (float)SDL_GetTicks(); }
+		virtual float GetTime() override { return (float)glfwGetTime(); }
 		virtual void Update(Core::TimeStep delta_time) override;
 		virtual void Render() override;
+
+
 
 	public:
 		bool OnEvent(Event::CoreEvent& event) override {
@@ -83,12 +83,30 @@ namespace ZEngine::Window::SDLWin {
 		virtual bool OnWindowMaximized(Event::WindowMaximizedEvent&)				override;
 		virtual bool OnWindowRestored(Event::WindowRestoredEvent&)					override;
 
+
+	private:
+		static void __OnGlfwWindowClose(GLFWwindow*);
+		static void __OnGlfwWindowResized(GLFWwindow*, int width, int height);
+		static void __OnGlfwWindowMaximized(GLFWwindow*, int maximized);
+		static void __OnGlfwWindowMinimized(GLFWwindow*, int minimized);
+		
+		static void __OnGlfwMouseButtonRaised(GLFWwindow*, int button, int action, int mods);
+		static void __OnGlfwMouseScrollRaised(GLFWwindow*, double xoffset, double yoffset);
+		static void __OnGlfwCursorMoved(GLFWwindow*, double xpos, double ypos);
+		static void __OnGlfwTextInputRaised(GLFWwindow*, unsigned int character);
+
+		static void __OnGlfwKeyboardRaised(GLFWwindow*, int key, int scancode, int action, int mods);
+
+
+		static void __OnGlfwFrameBufferSizeChanged(GLFWwindow*, int width, int height);
+
+
+
 	private:
 		unsigned int m_desired_gl_context_major_version{ 4 };
 		unsigned int m_desired_gl_context_minor_version{ 5 };
-		SDL_Window* m_native_window{ nullptr };
+		GLFWwindow* m_native_window{ nullptr };
 		Rendering::Graphics::GraphicContext* m_context{ nullptr };
-		std::unique_ptr<SDL_Event, std::function<void(SDL_Event*)>> m_event;
 	};
 		
 }

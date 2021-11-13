@@ -16,3 +16,6 @@
 [submodule "__externals/spdlog"]
 	path = __externals/spdlog
 	url = https://github.com/gabime/spdlog
+[submodule "__externals/glfw"]
+	path = __externals/glfw
+	url = https://github.com/glfw/glfw

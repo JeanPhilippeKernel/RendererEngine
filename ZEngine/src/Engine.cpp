@@ -2,8 +2,6 @@
 #include <Layers/ImguiLayer.h>
 #include <Logging/LoggerDefinition.h>
 
-#include <SDL_timer.h>
-
 namespace ZEngine {
 	
 	Core::TimeStep Engine::m_delta_time = { 0.0f };
@@ -48,7 +46,7 @@ namespace ZEngine {
 		
 		while (m_running) {
 
-			float time =  static_cast<float>(SDL_GetTicks()) / 1000.0f;
+			float time =  m_window->GetTime() / 1000.0f;
 			m_delta_time = time - m_last_frame_time;
 			m_last_frame_time = (m_delta_time >= 1.0f) ? m_last_frame_time : time + 1.0f;	  // waiting 1s to update 
 										  		

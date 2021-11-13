@@ -2,9 +2,6 @@
 #
 find_package(OpenGL REQUIRED)
 
-# Libraries
-#
-
 # fmt
 add_library (imported::fmt INTERFACE IMPORTED)
 set (FMT_INCLUDE_PATH ${EXTERNAL_DIR}/fmt/include)
@@ -41,8 +38,15 @@ set (SPDLOG_INCLUDE_PATH ${EXTERNAL_DIR}/spdlog/include)
 set_target_properties(imported::spdlog PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${SPDLOG_INCLUDE_PATH}")
 target_link_libraries(imported::spdlog INTERFACE spdlog)
 
+# glfw
+add_library (imported::glfw INTERFACE IMPORTED)
+set (GLFW_INCLUDE_PATH ${EXTERNAL_DIR}/glfw/include)
+set_target_properties(imported::glfw PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${GLFW_INCLUDE_PATH}")
+target_link_libraries(imported::glfw INTERFACE glfw)
+
+
 # Exporting all externals include directories 
 list (APPEND EXTERNAL_INCLUDE_DIRS 
 	${FMT_INCLUDE_PATH} ${GLAD_INCLUDE_PATH} ${GLM_INCLUDE_PATH}
-	${IMGUI_INCLUDE_PATH} ${SDL2_INCLUDE_PATH} ${SPDLOG_INCLUDE_PATH}
+	${IMGUI_INCLUDE_PATH} ${SDL2_INCLUDE_PATH} ${SPDLOG_INCLUDE_PATH} ${GLFW_INCLUDE_PATH}
 )

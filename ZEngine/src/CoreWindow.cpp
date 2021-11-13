@@ -1,4 +1,12 @@
 #include <Window/CoreWindow.h>
+#include <ZEngineDef.h>
+
+#ifdef ZENGINE_WINDOW_SDL
+#include <Window/SDLWin/OpenGLWindow.h>
+#else
+#include <Window/GlfwWindow/OpenGLWindow.h>
+#endif
+
 
 using namespace ZEngine;
 using namespace ZEngine::Event;
@@ -40,8 +48,15 @@ namespace ZEngine::Window {
 			
 			--it;
 			it->get()->OnEvent(event);
-			// (*(--it))->OnEvent(event);
 			--index;
 		}
 	}	
+
+	CoreWindow* Create(WindowProperty prop)
+	{
+		auto core_window = new ZENGINE_OPENGL_WINDOW(prop);
+		core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
+		return core_window;
+	}
+
 }
