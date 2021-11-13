@@ -62,7 +62,7 @@ namespace ZEngine::Layers {
 			return false;
 		}
 
-		void Update(Core::TimeStep dt);
+		void Update(Core::TimeStep dt) override;
 		
 		virtual void AddUIComponent(const Ref<Components::UI::UIComponent>& component);
 		virtual void AddUIComponent(Ref<Components::UI::UIComponent>&& component);
