@@ -28,30 +28,32 @@ namespace ZEngine::Window::GLFWWindow {
 		glfwWindowHint(GLFW_STENCIL_BITS , 8);
 		glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
 
-#ifndef _WIN32
-		m_desired_gl_context_major_version = 3;
-		m_desired_gl_context_minor_version = 3;
-		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_FORWARD_COMPAT);
-#else
-		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#ifdef __APPLE__
+        m_desired_gl_context_major_version = 4;
+        m_desired_gl_context_minor_version = 1;
+        glfwWindowHint (GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
-
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR , m_desired_gl_context_major_version);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR , m_desired_gl_context_minor_version);
 
+        glfwSetErrorCallback([](int error, const char* description) {
+            Z_ENGINE_CORE_CRITICAL(description);
+            Z_ENGINE_EXIT_FAILURE();
+        });
+        
 		m_native_window  = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
-		//glfwFocusWindow(m_native_window);
 		
 		Z_ENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
 		
-		SetVSync(true);
 		glfwSetWindowUserPointer(m_native_window,  &m_property);
 
 		m_context = CreateContext(this);
 		m_context->MarkActive();
-
-		int glad_init = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+        
+        SetVSync(true);
+		
+        int glad_init = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
 		if (glad_init == 0) {
 			Z_ENGINE_CORE_CRITICAL("Unable to initialize glad library...");
 			Z_ENGINE_EXIT_FAILURE();

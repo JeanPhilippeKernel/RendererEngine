@@ -73,6 +73,9 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
         $CMakeGenerator = "-G `"Visual Studio 16 2019`" -A $architecture"
         $CMakeCacheVariableOverride += " -DCMAKE_CONFIGURATION_TYPES=Debug;Release"
     }
+    elseif ($systemName -eq "Darwin") {
+        $CMakeGenerator = "-G `"Xcode`""
+    }
     else {
         $CMakeGenerator = "-G `"Unix Makefiles`""
     }
