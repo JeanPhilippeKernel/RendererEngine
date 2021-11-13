@@ -1,4 +1,5 @@
 #include <Components/UIComponent.h>
+#include <algorithm>
 
 namespace ZEngine::Components::UI
 {
@@ -35,7 +36,50 @@ namespace ZEngine::Components::UI
         m_parent_layer = layer;
     }
 
-    bool UIComponent::HasParentLayer() {
+    bool UIComponent::HasParentLayer() const {
         return m_parent_layer.expired() == false;
+    }
+
+    void UIComponent::SetParentUI(const Ref<UIComponent>& item) {
+        m_parent_ui = item;
+    }
+
+    bool UIComponent::HasParentUI() const {
+        return m_parent_ui.expired() == false;
+    }
+
+    void UIComponent::AddChild(Ref<UIComponent>& item) {
+        if (!item->HasParentUI()) {
+            item->SetParentUI(shared_from_this());
+        }
+        m_children.push_back(item);
+    }
+
+    void UIComponent::AddChild(Ref<UIComponent>&& item) {
+        if (!item->HasParentUI()) {
+            item->SetParentUI(shared_from_this());
+        }
+        m_children.push_back(std::move(item));
+    }
+    
+    void UIComponent::AddChild(const Ref<UIComponent>& item) {
+        m_children.push_back(item);
+        auto last =  std::prev(std::end(m_children));
+
+        if (!(last->get()->HasParentUI())) {
+            last->get()->SetParentUI(shared_from_this());
+        }
+    }        
+
+    void UIComponent::AddChildren(std::vector<Ref<UIComponent>>& items) {
+        std::for_each(std::begin(items), std::end(items), [this](Ref<UIComponent>& component) {
+            this->AddChild(component);
+        });
+    }
+
+    void UIComponent::AddChildren(std::vector<Ref<UIComponent>>&& items) {
+        std::for_each(std::begin(items), std::end(items), [this](Ref<UIComponent>& component) {
+            this->AddChild(std::move(component));
+        });        
     }
 }

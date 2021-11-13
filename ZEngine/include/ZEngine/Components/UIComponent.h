@@ -1,5 +1,6 @@
 #pragma once 
 #include <string>
+#include <vector>
 #include <Core/IRenderable.h>
 #include <Layers/ImguiLayer.h>
 #include <ZEngineDef.h>
@@ -9,7 +10,9 @@ namespace ZEngine::Layers { class ImguiLayer; }
 
 namespace ZEngine::Components::UI
 {
-    class UIComponent : public Core::IRenderable  {
+    class UIComponent : 
+    public Core::IRenderable, 
+    public std::enable_shared_from_this<UIComponent>  {
     
     public:
         UIComponent() = default;
@@ -24,12 +27,24 @@ namespace ZEngine::Components::UI
         bool GetVisibility() const;
 
         void SetParentLayer(const Ref<Layers::ImguiLayer>& layer);
-        bool HasParentLayer();
+        void SetParentUI(const Ref<UIComponent>& item);
+
+        bool HasParentLayer() const;
+        bool HasParentUI() const;
+
+        void AddChild(Ref<UIComponent>& item);
+        void AddChild(Ref<UIComponent>&& item);
+        void AddChild(const Ref<UIComponent>& item);        
+
+        void AddChildren(std::vector<Ref<UIComponent>>& items);
+        void AddChildren(std::vector<Ref<UIComponent>>&& items);        
 
     protected:
         bool m_visibility{ false };
         std::string m_name;
         WeakRef<Layers::ImguiLayer> m_parent_layer;
+        WeakRef<UIComponent> m_parent_ui;
+        std::vector<Ref<UIComponent>> m_children;
 
         virtual bool OnUIComponentRaised(Event::UIComponentEvent&) = 0;
     };
