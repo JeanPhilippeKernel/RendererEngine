@@ -3,7 +3,13 @@
 
 #include <imgui.h>
 #include <imconfig.h>
+
+#ifdef ZENGINE_WINDOW_SDL
 #include <backends/imgui_impl_sdl.h>
+#else
+#include <backends/imgui_impl_glfw.h>
+#endif
+
 #include <backends/imgui_impl_opengl3.h>
 
 #include <Core/TimeStep.h>
@@ -56,7 +62,7 @@ namespace ZEngine::Layers {
 			return false;
 		}
 
-		void Update(Core::TimeStep dt) override { }
+		void Update(Core::TimeStep dt);
 		
 		virtual void AddUIComponent(const Ref<Components::UI::UIComponent>& component);
 		virtual void AddUIComponent(Ref<Components::UI::UIComponent>&& component);

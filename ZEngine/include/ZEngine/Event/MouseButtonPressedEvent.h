@@ -8,7 +8,7 @@ namespace ZEngine::Event {
 
 	class MouseButtonPressedEvent : public MouseEvent {
 	public:
-		MouseButtonPressedEvent(unsigned char button)
+		MouseButtonPressedEvent(ZENGINE_KEYCODE button)
 			:MouseEvent(button)
 		{
 		}

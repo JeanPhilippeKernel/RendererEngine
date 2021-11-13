@@ -62,6 +62,7 @@ namespace ZEngine::Window {
 		virtual const WindowProperty& GetWindowProperty() const = 0;
 		
 		virtual void PollEvent() = 0;
+		virtual float GetTime() = 0;
 
 		virtual void ForwardEventToLayers(Event::CoreEvent& event);
 		

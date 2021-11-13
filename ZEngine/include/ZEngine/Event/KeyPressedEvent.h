@@ -8,7 +8,7 @@ namespace ZEngine::Event {
 
 	class KeyPressedEvent : public KeyEvent {
 	public:
-		KeyPressedEvent(Inputs::KeyCode key, int repeat_count)
+		KeyPressedEvent(ZENGINE_KEYCODE key, int repeat_count)
 			:KeyEvent(key), m_repeat_count(repeat_count)
 		{
 		}

@@ -1,5 +1,10 @@
 #include <Layers/ImguiLayer.h>
 #include <algorithm>
+#include <ZEngineDef.h>
+
+#ifndef ZENGINE_WINDOW_SDL
+#include <GLFW/glfw3.h>
+#endif
 
 namespace ZEngine::Layers {
 
@@ -9,7 +14,11 @@ namespace ZEngine::Layers {
 		m_ui_components.clear();
 		if (m_initialized) {
 			ImGui_ImplOpenGL3_Shutdown();
+
+#ifdef ZENGINE_WINDOW_SDL
 			ImGui_ImplSDL2_Shutdown();
+#endif
+			ImGui_ImplGlfw_Shutdown();
 			ImGui::DestroyContext();
 		
 			m_initialized = false;
@@ -23,9 +32,15 @@ namespace ZEngine::Layers {
 			ImGui::StyleColorsDark();
 
 			ImGuiIO& io = ImGui::GetIO();
+			io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+			io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
+#ifdef ZENGINE_WINDOW_SDL
 			ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow()), m_window.lock()->GetNativeContext());
+#else
+			ImGui_ImplGlfw_InitForOpenGL(static_cast<GLFWwindow*>(m_window.lock()->GetNativeWindow()), false);
+#endif
 			
 			// we should get Version information from attached Window...
 #ifdef _WIN32
@@ -33,12 +48,18 @@ namespace ZEngine::Layers {
 #else
 			ImGui_ImplOpenGL3_Init("#version 330");
 #endif
-			ImGui_ImplOpenGL3_NewFrame();
-			ImGui_ImplSDL2_NewFrame(static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow()));
 			m_initialized = true;
 		}
 	}
 
+
+	void ImguiLayer::Update(Core::TimeStep dt) {
+		ImGuiIO& io = ImGui::GetIO();
+		if (dt > 0.0f) {
+			io.DeltaTime = dt;
+		}
+	}
+	
 	void ImguiLayer::AddUIComponent(const Ref<Components::UI::UIComponent>& component) {
 		m_ui_components.push_back(component);
 		
@@ -66,18 +87,45 @@ namespace ZEngine::Layers {
 	}
 
 	void ImguiLayer::Render() {		
+		ImGui_ImplOpenGL3_NewFrame();
+#ifdef ZENGINE_WINDOW_SDL
+		ImGui_ImplSDL2_NewFrame(static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow()));
+#else
+		ImGui_ImplGlfw_NewFrame();
+#endif
+
 		ImGui::NewFrame();
 		for (const auto& component : m_ui_components) {
 			if(component->GetVisibility() == true) {
 				component->Render();
 			}
 		}
+
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+		ImGuiIO& io = ImGui::GetIO();
+		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+		{
+#ifdef ZENGINE_WINDOW_SDL
+			SDL_Window* backup_current_window = static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow());
+			SDL_GLContext* backup_current_context = static_cast<SDL_GLContext*>(m_window.lock()->GetNativeContext());
+#else
+			GLFWwindow* backup_current_context = static_cast<GLFWwindow*>(m_window.lock()->GetNativeContext());
+#endif
+			ImGui::UpdatePlatformWindows();
+			ImGui::RenderPlatformWindowsDefault();
+
+#ifdef ZENGINE_WINDOW_SDL
+			SDL_GL_MakeCurrent(backup_current_window, *backup_current_context);
+#else
+			glfwMakeContextCurrent(backup_current_context);
+#endif
+		}
 	}
 
 	bool ImguiLayer::OnKeyPressed(Event::KeyPressedEvent& e) {
-		ImGuiIO& io = ImGui::GetIO();
+		ImGuiIO& io = ImGui::GetIO();	
 		io.KeysDown[(int)e.GetKeyCode()] = true;
 		return false;
 	}
@@ -90,23 +138,19 @@ namespace ZEngine::Layers {
 
 	bool ImguiLayer::OnMouseButtonPressed(Event::MouseButtonPressedEvent& e) {
 		ImGuiIO& io = ImGui::GetIO();
-		for (int x = 0; x < (int)ImGuiMouseButton_COUNT; ++x)
-			io.MouseDown[x] = true;
+		io.MouseDown[(uint32_t)e.GetButton()] = true;
 		return false;
 	}
 
 	bool ImguiLayer::OnMouseButtonReleased(Event::MouseButtonReleasedEvent& e) {
 		ImGuiIO& io = ImGui::GetIO();
-		for (int x = 0; x < (int)ImGuiMouseButton_COUNT; ++x)
-			io.MouseDown[x] = false;
-
+		io.MouseDown[(int)e.GetButton()] = false;
 		return false;
 	}
 
 	bool ImguiLayer::OnMouseButtonMoved(Event::MouseButtonMovedEvent& e) {
 		ImGuiIO& io = ImGui::GetIO();
 		io.MousePos = ImVec2(float(e.GetPosX()), float(e.GetPosY()));
-
 		return false;
 	}
 

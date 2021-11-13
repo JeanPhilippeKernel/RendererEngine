@@ -23,16 +23,22 @@ get_filename_component (EXTERNAL_DIR "${ENLISTMENT_ROOT}/__externals" ABSOLUTE C
 get_filename_component (EXAMPLE_DIR "${ENLISTMENT_ROOT}/Examples" ABSOLUTE CACHE)
 
 option (BUILD_SANDBOX_PROJECTS "build example projects that show how to use core engine" ON)
+option (USE_SDL_LIBS "Use SDL as main window library" OFF)
 
 # Externals dependencies
 #
 add_subdirectory (${EXTERNAL_DIR}/fmt)
 add_subdirectory (${EXTERNAL_DIR}/glad)
 add_subdirectory (${EXTERNAL_DIR}/imgui)
-add_subdirectory (${EXTERNAL_DIR}/SDL2)
+
+if (USE_SDL_LIBS) 
+	add_subdirectory (${EXTERNAL_DIR}/SDL2)
+else ()	
+	add_subdirectory (${EXTERNAL_DIR}/glfw)
+endif ()
+
 add_subdirectory (${EXTERNAL_DIR}/spdlog)
 add_subdirectory (${EXTERNAL_DIR}/glm)
-add_subdirectory (${EXTERNAL_DIR}/glfw)
 
 # Core engine lib is here
 #
@@ -62,7 +68,6 @@ add_custom_target(AssembleContent ALL
 		zEngineLib
 		sandbox2d 
 		sandbox3d 
-		SDL2main 
 )
 
 add_custom_command(TARGET AssembleContent

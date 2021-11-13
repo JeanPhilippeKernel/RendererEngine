@@ -47,19 +47,19 @@ namespace Sandbox::Layers {
 	void ExampleLayer::Update(TimeStep dt) {
 		m_scene->GetCameraController()->Update(dt);
 
-		if(IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_J)) {
+		if(IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_J, GetAttachedWindow())) {
 		
 		}
 
-		if (IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_F)) {
+		if (IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, GetAttachedWindow())) {
 			
 		}
 
-		if (IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_B)) {
+		if (IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_B, GetAttachedWindow())) {
 			
 		}
 
-		if (IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Y)) {
+		if (IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_Y, GetAttachedWindow())) {
 			
 		}
 	}

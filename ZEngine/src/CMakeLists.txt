@@ -1,7 +1,7 @@
 include(${EXTERNAL_DIR}/externals.cmake)
 
 file (GLOB_RECURSE HEADER_FILES_LIST CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../include/ZEngine/*.h)
-file (GLOB CPP_FILES_LIST CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+file (GLOB_RECURSE CPP_FILES_LIST CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 file (GLOB_RECURSE RESOURCE_FILES_LIST CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/../Resources/*.glsl)
 
 source_group (TREE ${PROJECT_SOURCE_DIR}/include PREFIX "Header Files" FILES ${HEADER_FILES_LIST})
@@ -32,14 +32,18 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	target_link_libraries(zEngineLib PRIVATE stdc++fs)
 endif ()
 
+if (USE_SDL_LIBS)
+	target_link_libraries (zEngineLib PUBLIC imported::sdl2)
+else ()
+	target_link_libraries (zEngineLib PUBLIC imported::glfw)
+endif ()
+
 target_link_libraries (zEngineLib
-	PUBLIC
+PUBLIC
 		imported::fmt
 		imported::spdlog
 		imported::glad
 		imported::glm
 		imported::imgui
-		imported::sdl2
-		imported::glfw
 		OpenGL::GL
 )

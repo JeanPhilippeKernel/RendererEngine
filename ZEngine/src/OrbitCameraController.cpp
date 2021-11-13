@@ -21,7 +21,7 @@ namespace ZEngine::Controllers {
 	void OrbitCameraController::Update(Core::TimeStep dt) {
 		static Maths::Vector2 last_mouse_cursor_pos;
 
-		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(Z_ENGINE_KEY_MOUSE_RIGHT)) {
+		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_RIGHT, m_window.lock())) {
 			auto camera = std::dynamic_pointer_cast<Rendering::Cameras::OrbitCamera>(m_perspective_camera);
 			float yaw_angle_degree		= (m_mouse_cursor_pos.x - last_mouse_cursor_pos.x) * m_rotation_speed * dt;
 			float pitch_angle_degree	= (m_mouse_cursor_pos.y - last_mouse_cursor_pos.y) * m_rotation_speed * dt;
