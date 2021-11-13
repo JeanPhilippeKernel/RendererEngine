@@ -31,7 +31,11 @@ namespace ZEngine::Window::GLFWWindow {
 #ifndef _WIN32
 		m_desired_gl_context_major_version = 3;
 		m_desired_gl_context_minor_version = 3;
+		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_FORWARD_COMPAT);
+#else
+		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #endif
+
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR , m_desired_gl_context_major_version);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR , m_desired_gl_context_minor_version);
