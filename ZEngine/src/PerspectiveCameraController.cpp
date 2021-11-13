@@ -1,5 +1,5 @@
 #include <Controllers/PerspectiveCameraController.h>
-#include <Inputs/KeyCode.h>
+#include <Inputs/KeyCodeDefinition.h>
 #include <Inputs/IDevice.h>
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>

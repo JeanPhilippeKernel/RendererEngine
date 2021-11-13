@@ -25,6 +25,10 @@ get_filename_component (EXAMPLE_DIR "${ENLISTMENT_ROOT}/Examples" ABSOLUTE CACHE
 option (BUILD_SANDBOX_PROJECTS "build example projects that show how to use core engine" ON)
 option (USE_SDL_LIBS "Use SDL as main window library" OFF)
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	set (USE_SDL_LIBS ON)
+endif ()
+
 # Externals dependencies
 #
 add_subdirectory (${EXTERNAL_DIR}/fmt)

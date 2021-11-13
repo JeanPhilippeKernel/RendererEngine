@@ -93,7 +93,7 @@ namespace Tetragrama::Components {
         }
 
         // Add child components here
-        ImGui::ShowDemoWindow(&m_visibility);
+        //ImGui::ShowDemoWindow(&m_visibility);
 
         ImGui::End();
     } 
