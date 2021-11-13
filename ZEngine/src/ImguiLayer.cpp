@@ -2,7 +2,9 @@
 #include <algorithm>
 #include <ZEngineDef.h>
 
-#ifndef ZENGINE_WINDOW_SDL
+#ifdef ZENGINE_WINDOW_SDL
+#include <SDL2/include/SDL.h>
+#else
 #include <GLFW/glfw3.h>
 #endif
 
@@ -17,8 +19,9 @@ namespace ZEngine::Layers {
 
 #ifdef ZENGINE_WINDOW_SDL
 			ImGui_ImplSDL2_Shutdown();
-#endif
+#else
 			ImGui_ImplGlfw_Shutdown();
+#endif
 			ImGui::DestroyContext();
 		
 			m_initialized = false;
@@ -108,8 +111,8 @@ namespace ZEngine::Layers {
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 		{
 #ifdef ZENGINE_WINDOW_SDL
-			SDL_Window* backup_current_window = static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow());
-			SDL_GLContext* backup_current_context = static_cast<SDL_GLContext*>(m_window.lock()->GetNativeContext());
+			SDL_Window* backup_current_window = SDL_GL_GetCurrentWindow();
+			SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
 #else
 			GLFWwindow* backup_current_context = static_cast<GLFWwindow*>(m_window.lock()->GetNativeContext());
 #endif
@@ -117,7 +120,7 @@ namespace ZEngine::Layers {
 			ImGui::RenderPlatformWindowsDefault();
 
 #ifdef ZENGINE_WINDOW_SDL
-			SDL_GL_MakeCurrent(backup_current_window, *backup_current_context);
+			SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
 #else
 			glfwMakeContextCurrent(backup_current_context);
 #endif
