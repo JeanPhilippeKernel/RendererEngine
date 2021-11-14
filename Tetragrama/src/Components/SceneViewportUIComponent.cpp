@@ -22,9 +22,20 @@ namespace Tetragrama::Components {
         const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
 
         ImGui::SetNextWindowPos(main_viewport->WorkSize, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(main_viewport->WorkSize);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::Begin(m_name.c_str(), &m_visibility, ImGuiWindowFlags_NoCollapse);
-        ImGui::Text("Scene");
+       
+        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
+        
+        if (HasParentLayer()) {
+            auto layer = m_parent_layer.lock();
+            const auto info = layer->GetLayerInformation();
+            ImGui::Image((void*)info.Data, ImVec2{1080, 800}, ImVec2(0,1), ImVec2(1, 0));
+        }
+        
         ImGui::End();
     }
 }

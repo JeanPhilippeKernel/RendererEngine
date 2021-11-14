@@ -86,8 +86,10 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
     
     # SDL2 options
     #    
-    $CMakeCacheVariableOverride += " -DSDL_STATIC=ON"
-    $CMakeCacheVariableOverride += " -DSDL_SHARED=OFF"
+    if ($systemName -eq "Linux") {
+        $CMakeCacheVariableOverride += " -DSDL_STATIC=ON"
+        $CMakeCacheVariableOverride += " -DSDL_SHARED=OFF"
+    }
     
     # Spdlog options
     #
@@ -98,9 +100,11 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
     
     # GLFW options
     #
-    $CMakeCacheVariableOverride += " -DGLFW_BUILD_DOCS=OFF"
-    $CMakeCacheVariableOverride += " -DGLFW_BUILD_EXAMPLES=OFF"
-    $CMakeCacheVariableOverride += " -DGLFW_INSTALL=OFF"
+    if ($systemName -ne "Linux") {
+        $CMakeCacheVariableOverride += " -DGLFW_BUILD_DOCS=OFF"
+        $CMakeCacheVariableOverride += " -DGLFW_BUILD_EXAMPLES=OFF"
+        $CMakeCacheVariableOverride += " -DGLFW_INSTALL=OFF"
+    }
 
     $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
 

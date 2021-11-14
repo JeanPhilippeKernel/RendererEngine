@@ -51,6 +51,9 @@ namespace ZEngine::Rendering::Renderers {
 	   );
    }
 
+   const Ref<Buffers::FrameBuffer>& GraphicRenderer::GetFrameBuffer() const {
+	   return m_framebuffer;
+   }
 
    void GraphicRenderer::StartScene(const Maths::Matrix4& view_projection_matrix) {
 	   m_view_projection_matrix = view_projection_matrix;

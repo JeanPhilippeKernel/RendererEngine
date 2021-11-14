@@ -31,6 +31,8 @@ namespace  ZEngine::Rendering::Scenes {
 		void Initialize() override;
 		virtual void Render() override;
 
+		unsigned int ToTextureRepresentation() const;
+
 		void Add(Ref<Meshes::Mesh>& mesh);
 		void Add(const std::vector<Ref<Meshes::Mesh>>& meshes);
 

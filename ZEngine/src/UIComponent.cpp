@@ -34,6 +34,11 @@ namespace ZEngine::Components::UI
 
     void UIComponent::SetParentLayer(const Ref<Layers::ImguiLayer>& layer) {
         m_parent_layer = layer;
+        if (HasChildren()) {
+            std::for_each(std::begin(m_children), std::end(m_children), [layer](Ref<UIComponent>& child) {
+                child->m_parent_layer = layer;
+            });
+        }
     }
 
     bool UIComponent::HasParentLayer() const {
