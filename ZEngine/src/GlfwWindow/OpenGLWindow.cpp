@@ -234,11 +234,13 @@ namespace ZEngine::Window::GLFWWindow {
 	{
 		delete m_context;
 
+		glfwSetErrorCallback(NULL);
 		glfwDestroyWindow(m_native_window);
 		glfwTerminate();
 	}
 
 	bool OpenGLWindow::OnWindowClosed(WindowClosedEvent& event) {
+		glfwSetWindowShouldClose(m_native_window, GLFW_TRUE);
 		Z_ENGINE_CORE_INFO("Window has been closed");
 
 		Event::EngineClosedEvent e(event.GetName().c_str());
