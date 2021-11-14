@@ -10,6 +10,11 @@ namespace Tetragrama::Layers {
 		}
 		
 		virtual ~UserInterfaceLayer() = default;
+	
+	protected:
+		virtual void OnRecievedData(const void*, const ZEngine::Layers::LayerInformation& information) override {
+			m_information = information;
+		}
 	};
 
 }

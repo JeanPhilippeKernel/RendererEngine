@@ -1,3 +1,4 @@
+#include <pch.h>
 #include <Editor.h>
 #include <Layers/ExampleLayer.h>
 #include <Layers/UserInterfaceLayer.h>
@@ -20,8 +21,10 @@ namespace Tetragrama {
 	}
 
 	void Editor::Initialize() {
-		// ZEngine::Ref<Layers::ExampleLayer> example(new Layers::ExampleLayer{});
-		// m_engine->GetWindow()->PushLayer(example);
+		 ZEngine::Ref<Layers::ExampleLayer> example(new Layers::ExampleLayer{});
+		 example->AddSubscriber(m_ui_layer);
+
+		 m_engine->GetWindow()->PushLayer(example);
 
 		ZEngine::Ref<ZEngine::Components::UI::UIComponent> dockspace_component(new Components::DockspaceUIComponent{});
 		ZEngine::Ref<ZEngine::Components::UI::UIComponent> scene_component(new Components::SceneViewportUIComponent{});

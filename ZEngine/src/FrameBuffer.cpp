@@ -6,11 +6,7 @@ namespace ZEngine::Rendering::Buffers {
     FrameBuffer::FrameBuffer(const FrameBufferSpecification& specification)
         : m_specification(specification)
     {
-#ifdef _WIN32
-        glCreateFramebuffers(1, &m_framebuffer_identifier);
-#else
-        glGenFramebuffers(1, &m_framebuffer_identifier);
-#endif
+
         this->Resize();
     }
     
@@ -31,23 +27,27 @@ namespace ZEngine::Rendering::Buffers {
     }
 
     void FrameBuffer::Resize() {
+#ifdef _WIN32
+        glCreateFramebuffers(1, &m_framebuffer_identifier);
+#else
+        glGenFramebuffers(1, &m_framebuffer_identifier);
+#endif
         glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer_identifier);
 
         glCreateTextures(GL_TEXTURE_2D, 1, &m_texture_identifier);
-        //glBindTextureUnit(0, m_texture_identifier);
+        glBindTextureUnit(0, m_texture_identifier);
         glTextureStorage2D(m_texture_identifier, 1, GL_RGBA8, m_specification.Width, m_specification.Height);
-        glTextureParameterf(m_texture_identifier, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTextureParameterf(m_texture_identifier, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTextureParameteri(m_texture_identifier, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTextureParameteri(m_texture_identifier, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_specification.Width, m_specification.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTextureParameteri(m_texture_identifier, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTextureParameteri(m_texture_identifier, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_texture_identifier, 0);
 
         if (m_specification.HasStencil && m_specification.HasDepth) {
-            glCreateRenderbuffers(1, &m_render_buffer_identifier);
-            glBindRenderbuffer(GL_RENDERBUFFER, m_render_buffer_identifier);
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, m_specification.Width, m_specification.Height);
-            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_render_buffer_identifier);
+            glCreateTextures(GL_TEXTURE_2D, 1, &m_render_buffer_identifier);
+            glBindTextureUnit(0, m_render_buffer_identifier);
+            glTextureStorage2D(m_render_buffer_identifier, 1, GL_DEPTH32F_STENCIL8, m_specification.Width, m_specification.Height);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_render_buffer_identifier, 0);
         }
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {

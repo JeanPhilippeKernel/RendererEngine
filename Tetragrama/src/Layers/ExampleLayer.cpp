@@ -1,3 +1,4 @@
+#include <pch.h>
 #include "ExampleLayer.h"
 
 
@@ -38,7 +39,7 @@ namespace Tetragrama::Layers {
 		Ref<ZEngine::Rendering::Meshes::Mesh> mesh_three;
 
 		mesh_one.reset(MeshBuilder::CreateCube({ 0.f, -0.5f, 0.0f }, { 100.f, .0f, 100.f }, 0.0f, Vector3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
-		mesh_three.reset(MeshBuilder::CreateCube({ -20.f, 10.f, 0.0f }, { 5.f, 5.0f, 5.f }, {45.0f, 120.0f, 30.0f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
+		mesh_three.reset(MeshBuilder::CreateCube({ -20.f, 10.f, 0.0f }, { 5.f, 5.0f, 5.f }, {200.0f, 120.0f, 30.0f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
 		
 		Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
 		material->SetInterpolateFactor(.5f);
@@ -49,9 +50,11 @@ namespace Tetragrama::Layers {
 		mesh_two->SetMaterial(material);
 
 
-		m_mesh_collection.emplace_back(mesh_one);
-		m_mesh_collection.emplace_back(mesh_two);
-		m_mesh_collection.emplace_back(mesh_three);
+		m_mesh_collection.push_back(std::move(mesh_one));
+		m_mesh_collection.push_back(std::move(mesh_two));
+		m_mesh_collection.push_back(std::move(mesh_three));
+
+		m_information.Data = (void *)m_scene->ToTextureRepresentation();
 	}
 
 	void ExampleLayer::Update(TimeStep dt) {
@@ -77,6 +80,7 @@ namespace Tetragrama::Layers {
 
 		m_scene->Add(m_mesh_collection);
 		m_scene->Render();
-	}
 
+		OnRenderCallback();
+	}
 }

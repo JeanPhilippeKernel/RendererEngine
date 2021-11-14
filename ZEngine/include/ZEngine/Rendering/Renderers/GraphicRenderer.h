@@ -29,6 +29,7 @@ namespace ZEngine::Rendering::Renderers {
 
 
 	public:
+		const Ref<Buffers::FrameBuffer>& GetFrameBuffer() const;
 		virtual void StartScene(const Maths::Matrix4& m_view_projection_matrix);
 		virtual void EndScene();
 

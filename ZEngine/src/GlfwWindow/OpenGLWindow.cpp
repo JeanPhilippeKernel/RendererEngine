@@ -24,7 +24,7 @@ namespace ZEngine::Window::GLFWWindow {
 			Z_ENGINE_EXIT_FAILURE();
 		}
 
-		glfwWindowHint(GLFW_DEPTH_BITS , 24);
+		glfwWindowHint(GLFW_DEPTH_BITS , 32);
 		glfwWindowHint(GLFW_STENCIL_BITS , 8);
 		glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
 

@@ -51,13 +51,15 @@ namespace ZEngine::Rendering::Renderers {
 	   );
    }
 
+   const Ref<Buffers::FrameBuffer>& GraphicRenderer::GetFrameBuffer() const {
+	   return m_framebuffer;
+   }
 
    void GraphicRenderer::StartScene(const Maths::Matrix4& view_projection_matrix) {
 	   m_view_projection_matrix = view_projection_matrix;
    }
 
    void GraphicRenderer::EndScene() {
-	   m_framebuffer->Bind();
 	   
 	   std::for_each(std::begin(m_mesh_map), std::end(m_mesh_map),
 		   [this](const std::pair<unsigned int, std::vector<Meshes::Mesh>>& value) {
@@ -84,6 +86,5 @@ namespace ZEngine::Rendering::Renderers {
 	   }
 
 	   m_mesh_map.clear();
-	   m_framebuffer->Unbind();
    }
 }

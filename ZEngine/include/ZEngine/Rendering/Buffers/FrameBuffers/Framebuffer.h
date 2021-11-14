@@ -10,11 +10,17 @@ namespace ZEngine::Rendering::Buffers {
         ~FrameBuffer();
 
         virtual GLuint GetIdentifier() const override;
+
         void Resize();
         void Resize(unsigned int width, unsigned int height) = delete;
 
         void Bind() const;
         void Unbind() const;
+
+        const FrameBufferSpecification& GetSpecification() const { m_specification; }
+        FrameBufferSpecification& GetSpecification() { m_specification; }
+
+        unsigned int GetTexture() const { return m_texture_identifier; }
 
     private:
         GLuint m_framebuffer_identifier;
