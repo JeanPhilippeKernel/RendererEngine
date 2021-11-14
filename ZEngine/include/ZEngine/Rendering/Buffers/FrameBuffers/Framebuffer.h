@@ -17,15 +17,15 @@ namespace ZEngine::Rendering::Buffers {
         void Bind() const;
         void Unbind() const;
 
-        const FrameBufferSpecification& GetSpecification() const { m_specification; }
-        FrameBufferSpecification& GetSpecification() { m_specification; }
+        const FrameBufferSpecification& GetSpecification() const { return m_specification; }
+        FrameBufferSpecification& GetSpecification() { return m_specification; }
 
-        unsigned int GetTexture() const { return m_texture_identifier; }
+        unsigned int GetTexture() const { return m_texture_color_attachment_identifier; }
 
     private:
         GLuint m_framebuffer_identifier;
-        GLuint m_texture_identifier;
-        GLuint m_render_buffer_identifier;
+        GLuint m_texture_color_attachment_identifier;
+        GLuint m_texture_color_depth_attachment;
         FrameBufferSpecification m_specification;
     };
 }

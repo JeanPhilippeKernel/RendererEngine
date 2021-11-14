@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <algorithm>
+#include <vector>
 #include <Event/CoreEvent.h>
 #include <ZEngineDef.h>
 #include <Core/TimeStep.h>
