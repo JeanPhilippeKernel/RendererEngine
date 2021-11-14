@@ -1,6 +1,6 @@
 #include <pch.h>
-#include <ZEngine/Logging/LoggerDefinition.h>
 #include <DockspaceUIComponent.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <Event/EventDispatcher.h>
 
 using namespace ZEngine::Components::UI::Event;
@@ -92,8 +92,11 @@ namespace Tetragrama::Components {
             ImGui::EndMenuBar();
         }
 
-        // Add child components here
-        //ImGui::ShowDemoWindow(&m_visibility);
+        if (HasChildren()) {
+            std::for_each(std::begin(m_children), std::end(m_children), [this](const ZEngine::Ref<UIComponent>& item) {
+                item->Render();
+            });
+        }
 
         ImGui::End();
     } 

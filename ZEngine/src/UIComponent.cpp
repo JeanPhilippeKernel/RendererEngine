@@ -48,6 +48,10 @@ namespace ZEngine::Components::UI
         return m_parent_ui.expired() == false;
     }
 
+    bool UIComponent::HasChildren() const {
+        return m_children.size() > 0;
+    }
+
     void UIComponent::AddChild(Ref<UIComponent>& item) {
         if (!item->HasParentUI()) {
             item->SetParentUI(shared_from_this());
