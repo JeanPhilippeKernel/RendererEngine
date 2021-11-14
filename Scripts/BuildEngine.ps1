@@ -86,8 +86,10 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
     
     # SDL2 options
     #    
-    $CMakeCacheVariableOverride += " -DSDL_STATIC=ON"
-    $CMakeCacheVariableOverride += " -DSDL_SHARED=OFF"
+    if ($systemName -eq "Linux") {
+        $CMakeCacheVariableOverride += " -DSDL_STATIC=ON"
+        $CMakeCacheVariableOverride += " -DSDL_SHARED=OFF"
+    }
     
     # Spdlog options
     #
