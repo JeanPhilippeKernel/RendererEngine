@@ -100,9 +100,11 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
     
     # GLFW options
     #
-    $CMakeCacheVariableOverride += " -DGLFW_BUILD_DOCS=OFF"
-    $CMakeCacheVariableOverride += " -DGLFW_BUILD_EXAMPLES=OFF"
-    $CMakeCacheVariableOverride += " -DGLFW_INSTALL=OFF"
+    if ($systemName -ne "Linux") {
+        $CMakeCacheVariableOverride += " -DGLFW_BUILD_DOCS=OFF"
+        $CMakeCacheVariableOverride += " -DGLFW_BUILD_EXAMPLES=OFF"
+        $CMakeCacheVariableOverride += " -DGLFW_INSTALL=OFF"
+    }
 
     $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
 
