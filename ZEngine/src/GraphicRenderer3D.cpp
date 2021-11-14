@@ -1,4 +1,5 @@
 #include <Rendering/Renderers/GraphicRenderer3D.h>
+#include <Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h>
 
 
 namespace ZEngine::Rendering::Renderers {
@@ -7,6 +8,14 @@ namespace ZEngine::Rendering::Renderers {
 		: GraphicRenderer()
 	{
 		m_storage_type = Storages::GraphicRendererStorageType::GRAPHIC_3D_STORAGE_TYPE;
+		
+		Buffers::FrameBufferSpecification 	spec;
+		spec.HasDepth = true;
+		spec.HasStencil = true;
+		spec.Width = 1080;
+		spec.Height = 800;
+
+		m_framebuffer.reset(new Buffers::FrameBuffer(spec));
 	}
 
 

@@ -9,6 +9,8 @@
 #include <Rendering/Cameras/Camera.h>
 #include <Rendering/Textures/Texture.h>
 
+#include <Rendering/Buffers/FrameBuffers/Framebuffer.h>
+
 #include <Core/IInitializable.h>
 #include <Rendering/Meshes/Mesh.h>
 #include <ZEngineDef.h>
@@ -50,5 +52,6 @@ namespace ZEngine::Rendering::Renderers {
 		std::unordered_map<unsigned int, std::vector<Rendering::Meshes::Mesh>>	m_mesh_map;
 		std::queue<Ref<Storages::GraphicRendererStorage<float, unsigned int>>>	m_graphic_storage_list;
 		Storages::GraphicRendererStorageType									m_storage_type;
+		Ref<Buffers::FrameBuffer>												m_framebuffer;
 	};
 }

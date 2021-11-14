@@ -57,6 +57,7 @@ namespace ZEngine::Rendering::Renderers {
    }
 
    void GraphicRenderer::EndScene() {
+	   m_framebuffer->Bind();
 	   
 	   std::for_each(std::begin(m_mesh_map), std::end(m_mesh_map),
 		   [this](const std::pair<unsigned int, std::vector<Meshes::Mesh>>& value) {
@@ -83,5 +84,6 @@ namespace ZEngine::Rendering::Renderers {
 	   }
 
 	   m_mesh_map.clear();
+	   m_framebuffer->Unbind();
    }
 }
