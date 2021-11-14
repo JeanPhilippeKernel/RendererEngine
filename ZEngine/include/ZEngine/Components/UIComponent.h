@@ -31,6 +31,7 @@ namespace ZEngine::Components::UI
 
         bool HasParentLayer() const;
         bool HasParentUI() const;
+        bool HasChildren() const;
 
         void AddChild(Ref<UIComponent>& item);
         void AddChild(Ref<UIComponent>&& item);
