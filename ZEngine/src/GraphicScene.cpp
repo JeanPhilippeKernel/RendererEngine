@@ -1,5 +1,4 @@
 ﻿#include <ZEngine/pch.h>
-
 #include <Rendering/Scenes/GraphicScene.h>
 #include <Rendering/Renderers/RenderCommand.h>
 
