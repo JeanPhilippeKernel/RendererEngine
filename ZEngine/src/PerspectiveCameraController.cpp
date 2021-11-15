@@ -1,6 +1,6 @@
 #include <ZEngine/pch.h>
 #include <Controllers/PerspectiveCameraController.h>
-#include <Inputs/KeyCode.h>
+#include <Inputs/KeyCodeDefinition.h>
 #include <Inputs/IDevice.h>
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>
@@ -18,22 +18,22 @@ namespace ZEngine::Controllers {
 	}
 
 	void PerspectiveCameraController::Update(Core::TimeStep dt) {
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_LEFT)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT, m_window.lock())) {
 			m_camera_target.x -= m_move_speed * dt;
 			m_perspective_camera->SetTarget(m_camera_target);
 		}
 
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_RIGHT)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_RIGHT, m_window.lock())) {
 			m_camera_target.x += m_move_speed * dt;
 			m_perspective_camera->SetTarget(m_camera_target);
 		}
 
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_UP)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_UP, m_window.lock())) {
 			m_position.z -= m_move_speed * dt;
 			m_perspective_camera->SetPosition(m_position);
 		}
 
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_DOWN)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_DOWN, m_window.lock())) {
 			m_position.z += m_move_speed * dt;
 			m_perspective_camera->SetPosition(m_position);
 		}

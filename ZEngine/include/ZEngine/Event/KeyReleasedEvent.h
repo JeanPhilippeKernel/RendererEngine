@@ -9,15 +9,15 @@ namespace ZEngine::Event {
 
 	class KeyReleasedEvent : public KeyEvent {
 	public:
-		 KeyReleasedEvent(Inputs::KeyCode key)
+		 KeyReleasedEvent(ZENGINE_KEYCODE key)
 			 : KeyEvent(key) 
 		 {
 		 }
 
-		 EVENT_TYPE(KeyReleased)
+		EVENT_TYPE(KeyReleased)
 		 
 		virtual EventType GetType()	const override {
-		  return GetStaticType();
+			return GetStaticType();
 		}
 		
 		virtual int GetCategory() const override {
@@ -26,7 +26,5 @@ namespace ZEngine::Event {
 		virtual std::string ToString() const override {
 			return fmt::format("KeyReleasedEvent : {0}", m_keycode);
 		}
-
-	protected:
 	};
 }

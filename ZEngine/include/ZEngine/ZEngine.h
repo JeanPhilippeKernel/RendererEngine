@@ -39,6 +39,7 @@
 #include "Inputs/Keyboard.h"
 #include "Inputs/KeyCode.h"
 #include "Inputs/Mouse.h"
+#include "Inputs/KeyCodeDefinition.h"
 
 #include "Managers/IManager.h"
 #include "Managers/ShaderManager.h"
@@ -59,5 +60,4 @@
 #include "Layers/ImguiLayer.h"
 
 #include "Components/UIComponent.h"
-
-//#include "EntryPoint.h"
+#include "Components/UIComponentEvent.h"

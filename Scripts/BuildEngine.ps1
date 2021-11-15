@@ -73,6 +73,9 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
         $CMakeGenerator = "-G `"Visual Studio 16 2019`" -A $architecture"
         $CMakeCacheVariableOverride += " -DCMAKE_CONFIGURATION_TYPES=Debug;Release"
     }
+    elseif ($systemName -eq "Darwin") {
+        $CMakeGenerator = "-G `"Xcode`""
+    }
     else {
         $CMakeGenerator = "-G `"Unix Makefiles`""
     }
@@ -80,12 +83,28 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
     $CMakeCacheVariableOverride += " -DCMAKE_SYSTEM_NAME=$systemName"
     $CMakeCacheVariableOverride += " -DCMAKE_BUILD_TYPE=$configuration"
     $CMakeCacheVariableOverride += " -DBUILD_SANDBOX_PROJECTS=ON"
-    $CMakeCacheVariableOverride += " -DSDL_STATIC=ON"
-    $CMakeCacheVariableOverride += " -DSDL_SHARED=OFF"
+    
+    # SDL2 options
+    #    
+    if ($systemName -eq "Linux") {
+        $CMakeCacheVariableOverride += " -DSDL_STATIC=ON"
+        $CMakeCacheVariableOverride += " -DSDL_SHARED=OFF"
+    }
+    
+    # Spdlog options
+    #
     $CMakeCacheVariableOverride += " -DSPDLOG_BUILD_SHARED=OFF"
     $CMakeCacheVariableOverride += " -DBUILD_STATIC_LIBS=ON"
     $CMakeCacheVariableOverride += " -DSPDLOG_FMT_EXTERNAL=ON"
     $CMakeCacheVariableOverride += " -DSPDLOG_FMT_EXTERNAL_HO=OFF"
+    
+    # GLFW options
+    #
+    if ($systemName -ne "Linux") {
+        $CMakeCacheVariableOverride += " -DGLFW_BUILD_DOCS=OFF"
+        $CMakeCacheVariableOverride += " -DGLFW_BUILD_EXAMPLES=OFF"
+        $CMakeCacheVariableOverride += " -DGLFW_INSTALL=OFF"
+    }
 
     $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
 

@@ -38,6 +38,7 @@ namespace ZEngine::Window::SDLWin {
 
 		virtual void Initialize() override;
 		virtual void PollEvent() override;
+		virtual float GetTime() override { return (float)SDL_GetTicks(); }
 		virtual void Update(Core::TimeStep delta_time) override;
 		virtual void Render() override;
 
@@ -66,9 +67,6 @@ namespace ZEngine::Window::SDLWin {
 		}
 
 	protected:
-		virtual bool OnWindowClosed(Event::WindowClosedEvent&)						override;
-		virtual bool OnWindowResized(Event::WindowResizedEvent&)					override;
-
 		virtual bool OnKeyPressed(Event::KeyPressedEvent&)							override;
 		virtual bool OnKeyReleased(Event::KeyReleasedEvent&)						override;
 
@@ -79,6 +77,8 @@ namespace ZEngine::Window::SDLWin {
 
 		virtual bool OnTextInputRaised(Event::TextInputEvent&)						override;
 
+		virtual bool OnWindowClosed(Event::WindowClosedEvent&)						override;
+		virtual bool OnWindowResized(Event::WindowResizedEvent&)					override;
 		virtual bool OnWindowMinimized(Event::WindowMinimizedEvent&)				override;
 		virtual bool OnWindowMaximized(Event::WindowMaximizedEvent&)				override;
 		virtual bool OnWindowRestored(Event::WindowRestoredEvent&)					override;

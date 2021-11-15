@@ -1,5 +1,7 @@
 #pragma once
 #include <string>
+#include <algorithm>
+#include <vector>
 #include <Event/CoreEvent.h>
 #include <ZEngineDef.h>
 #include <Core/TimeStep.h>
@@ -13,6 +15,12 @@
 namespace ZEngine::Window { class CoreWindow; }
 
 namespace ZEngine::Layers {
+
+	struct LayerInformation {
+		std::string Sender; 
+		void* Data{nullptr};
+	};
+
 	class Layer : 
 		public Core::IInitializable, 
 		public Core::IUpdatable, 
@@ -23,6 +31,7 @@ namespace ZEngine::Layers {
 		Layer(const char* name = "default_layer")
 			: m_name(name)
 		{
+			m_information.Sender = name;
 		}
 
 		virtual ~Layer() = default;
@@ -40,8 +49,27 @@ namespace ZEngine::Layers {
 			return nullptr;
 		}
 
+		const LayerInformation& GetLayerInformation() const { return m_information; }
+
+		void AddSubscriber(const Ref<Layer>& subscriber) {
+			m_subscribers.push_back(subscriber);
+		}
+
+		virtual void OnRenderCallback() {
+			if (m_information.Data) {
+				std::for_each(std::begin(m_subscribers), std::end(m_subscribers), [this](Ref<Layer>& subscriber) {
+					subscriber->OnRecievedData(this, m_information);
+				});			
+			}
+		}
+
+		virtual void OnRecievedData(const void*, const LayerInformation&) { }
+
 	protected:
 		std::string m_name;
+		LayerInformation m_information;
 		ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;
+		std::vector<Ref<Layer>> m_subscribers;
+
 	};
 }

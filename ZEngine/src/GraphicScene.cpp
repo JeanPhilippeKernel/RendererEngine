@@ -24,14 +24,17 @@ namespace  ZEngine::Rendering::Scenes {
 		std::copy(std::begin(meshes), std::end(meshes), std::back_inserter(m_mesh_list));
 	}
 
-	void GraphicScene::Render() {
-
+	void GraphicScene::Render() {		
 		m_renderer->StartScene(m_camera_controller->GetCamera()->GetViewProjectionMatrix());
 		m_renderer->AddMesh(m_mesh_list);
 		m_renderer->EndScene();
-		
+			
 		m_mesh_list.clear();
 	}
 
+
+	unsigned int GraphicScene::ToTextureRepresentation() const {
+		return m_renderer->GetFrameBuffer()->GetTexture();
+	}
 
 }

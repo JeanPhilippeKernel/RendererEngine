@@ -12,6 +12,10 @@ namespace Sandbox::Components {
         virtual void Render() override {
             ImGui::ShowAboutWindow(&m_is_open);
         }
+
+    protected:
+        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override { return false; }
+
     private:
         bool m_is_open{true};        
     };

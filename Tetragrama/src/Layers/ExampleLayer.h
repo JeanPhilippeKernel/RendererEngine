@@ -19,7 +19,6 @@ namespace Tetragrama::Layers {
 						   
 		virtual bool OnEvent(ZEngine::Event::CoreEvent& e) override;
 
-
 	private:
 		ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>				m_scene;
 		ZEngine::Ref<ZEngine::Managers::TextureManager>						m_texture_manager; 

@@ -7,7 +7,11 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
 	LinkageStage::LinkageStage()
 	{
-		m_next_stage = std::make_shared<ValidationStage>();
+#ifdef __APPLE__
+        //we dont perform validation stage on macOs for the moment as it considers generated shader program as invalid
+#else
+        m_next_stage = std::make_shared<ValidationStage>();
+#endif
 	}
 
 	LinkageStage::~LinkageStage()

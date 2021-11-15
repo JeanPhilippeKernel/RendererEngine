@@ -13,16 +13,7 @@ using namespace ZEngine::Rendering::Graphics;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Event;
 
-namespace ZEngine::Window {
-
-	CoreWindow* Create(WindowProperty prop)
-	{
-		auto core_window = new SDLWin::OpenGLWindow(prop);
-		core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
-		return core_window;
-	}
-
-}
+#ifdef ZENGINE_WINDOW_SDL
 
 namespace ZEngine::Window::SDLWin {
 
@@ -311,3 +302,4 @@ namespace ZEngine::Window::SDLWin {
 	}
 
 }
+#endif

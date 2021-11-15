@@ -1,6 +1,6 @@
 #include <ZEngine/pch.h>
 #include <Controllers/FirstPersonShooterCameraController.h>
-#include <Inputs/KeyCode.h>
+#include <Inputs/KeyCodeDefinition.h>
 #include <Inputs/IDevice.h>
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>
@@ -17,42 +17,53 @@ namespace ZEngine::Controllers {
 		m_move_speed		= 0.05f;
 		m_rotation_speed	= 0.05f;
 
+#ifdef ZENGINE_WINDOW_SDL
 		SDL_WarpMouseInWindow(
 			NULL,
 			m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f
 		);
+#else
+		GLFWwindow * current_window = static_cast<GLFWwindow*>(m_window.lock()->GetNativeWindow());
+		glfwSetInputMode(current_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		glfwSetCursorPos(current_window, m_window.lock()->GetWidth() / 2.0,  m_window.lock()->GetHeight() / 2.0);
+#endif
 	}
 
 	void FirstPersonShooterCameraController::Update(Core::TimeStep dt) {
+#ifdef ZENGINE_WINDOW_SDL
 		SDL_WarpMouseInWindow(
 			NULL,
 			m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f
 		);
-		
+#else
+		GLFWwindow * current_window = static_cast<GLFWwindow*>(m_window.lock()->GetNativeWindow());
+		glfwSetInputMode(current_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		glfwSetCursorPos(current_window, m_window.lock()->GetWidth() / 2.0,  m_window.lock()->GetHeight() / 2.0);
+#endif		
 		auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
 
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_W)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_W, m_window.lock())) {
 			camera->Move(m_move_speed * dt * camera->GetForward());
 		}
 
-		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_S)) {
+		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, m_window.lock())) {
 			camera->Move(m_move_speed * dt * -camera->GetForward());
 		}
 
 
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_A)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_A, m_window.lock())) {
 			camera->Move(m_move_speed * dt * camera->GetRight());
 		}
 
-		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_D)) {
+		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_D, m_window.lock())) {
 			camera->Move(m_move_speed * dt * -camera->GetRight());
 		}
 
-		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_Z)) {
+		if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_Z, m_window.lock())) {
 			camera->Move(m_move_speed * dt * -camera->GetUp());
 		}
 
-		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(Z_ENGINE_KEY_X)) {
+		else if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_X, m_window.lock())) {
 			camera->Move(m_move_speed * dt * camera->GetUp());
 		}
 
@@ -72,7 +83,7 @@ namespace ZEngine::Controllers {
 
 		auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
 		
-		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(Z_ENGINE_KEY_MOUSE_RIGHT)) {
+		if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_RIGHT, m_window.lock())) {
 			const float yaw_angle	= static_cast<float>(((m_window.lock()->GetWidth() / 2.0f) - x_pos) * m_rotation_speed * Engine::GetDeltaTime());
 			const float pitch_angle = static_cast<float>(((m_window.lock()->GetHeight() / 2.0f) - y_pos) * m_rotation_speed * Engine::GetDeltaTime());
 	

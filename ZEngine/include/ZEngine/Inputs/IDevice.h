@@ -7,6 +7,7 @@
 
 #include <Inputs/KeyCode.h>
 #include <ZEngineDef.h>
+#include <Window/CoreWindow.h>
 
 #include <string.h>
 
@@ -37,9 +38,9 @@ namespace ZEngine::Inputs {
 			auto pair = m_devices.emplace(std::make_pair(type.name(), device_ptr));
 			return dynamic_cast<T*>(pair.first->second.get());
 		 }
-	 
-		 virtual bool IsKeyPressed(KeyCode key) const = 0;
-		 virtual bool IsKeyReleased(KeyCode key) const = 0;
+		 
+		 virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const = 0;
+		 virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const = 0;
 
 		 virtual const std::string& GetName() const { return m_name; }
 
