@@ -1,3 +1,4 @@
+#include <ZEngine/pch.h>
 #include <Rendering/Cameras/OrbitCamera.h>
 
 namespace ZEngine::Rendering::Cameras {

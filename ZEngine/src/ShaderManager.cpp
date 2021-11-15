@@ -1,3 +1,4 @@
+#include <ZEngine/pch.h>
 #include <Managers/ShaderManager.h>
 
 namespace ZEngine::Managers {

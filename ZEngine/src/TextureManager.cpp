@@ -1,3 +1,4 @@
+#include <ZEngine/pch.h>
 #include <Managers/TextureManager.h>
 
 namespace ZEngine::Managers {

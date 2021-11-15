@@ -1,3 +1,4 @@
+#include <ZEngine/pch.h>
 #include <Rendering/Shaders/Compilers/ICompilerStage.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers {

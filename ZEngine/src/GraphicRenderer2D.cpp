@@ -1,3 +1,4 @@
+#include <ZEngine/pch.h>
 #include <Rendering/Renderers/GraphicRenderer2D.h>
 
 namespace ZEngine::Rendering::Renderers {

@@ -1,4 +1,4 @@
-#include <memory>
+#include <ZEngine/pch.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Shaders/Compilers/ShaderCompiler.h>
 #include <Rendering/Shaders/Compilers/CompilationStage.h>

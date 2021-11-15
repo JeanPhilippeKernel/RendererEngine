@@ -1,13 +1,15 @@
+#include <pch.h>
 #include <Engine.h>
 #include <Layers/ImguiLayer.h>
 #include <Logging/LoggerDefinition.h>
 
-namespace ZEngine {
-	
-	Core::TimeStep Engine::m_delta_time = { 0.0f };
+namespace ZEngine
+{
 
-	Engine::Engine() 
-		:m_running(true)
+	Core::TimeStep Engine::m_delta_time = {0.0f};
+
+	Engine::Engine()
+		: m_running(true)
 	{
 		Logging::Logger::Initialize();
 		Z_ENGINE_CORE_INFO("Engine started");
@@ -16,43 +18,52 @@ namespace ZEngine {
 		m_window->SetAttachedEngine(this);
 	}
 
-	Engine::~Engine() {
+	Engine::~Engine()
+	{
 		Z_ENGINE_CORE_INFO("Engine stopped");
 	}
 
-	void Engine::Initialize() {
+	void Engine::Initialize()
+	{
 		m_window->Initialize();
 		Z_ENGINE_CORE_INFO("Engine initialized");
 	}
 
-	void Engine::ProcessEvent() {
+	void Engine::ProcessEvent()
+	{
 		m_window->PollEvent();
 	}
-	
-	void Engine::Update(Core::TimeStep delta_time) {
+
+	void Engine::Update(Core::TimeStep delta_time)
+	{
 		m_window->Update(delta_time);
 	}
-	
-	void Engine::Render() {
+
+	void Engine::Render()
+	{
 		m_window->Render();
 	}
 
-	bool Engine::OnEngineClosed(Event::EngineClosedEvent& event) {
+	bool Engine::OnEngineClosed(Event::EngineClosedEvent &event)
+	{
 		m_running = false;
 		return true;
 	}
 
-	void Engine::Run() {
-		
-		while (m_running) {
+	void Engine::Run()
+	{
 
-			float time =  m_window->GetTime() / 1000.0f;
+		while (m_running)
+		{
+
+			float time = m_window->GetTime() / 1000.0f;
 			m_delta_time = time - m_last_frame_time;
-			m_last_frame_time = (m_delta_time >= 1.0f) ? m_last_frame_time : time + 1.0f;	  // waiting 1s to update 
-										  		
+			m_last_frame_time = (m_delta_time >= 1.0f) ? m_last_frame_time : time + 1.0f; // waiting 1s to update
+
 			ProcessEvent();
-			
-			if(!m_window->GetWindowProperty().IsMinimized) {
+
+			if (!m_window->GetWindowProperty().IsMinimized)
+			{
 				Update(m_delta_time);
 				Render();
 			}
