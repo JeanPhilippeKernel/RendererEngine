@@ -57,6 +57,10 @@ You can also do  `git submodule update --init --recursive`.
 		- Debug version :	`.\Scripts\BuildEngine.ps1 -SystemNames Linux -Architectures x64 -Configurations Debug -RunBuilds $True`
 		- Release version :	`.\Scripts\BuildEngine.ps1 -SystemNames Linux -Architectures x64 -Configurations Release -RunBuilds $True`
 
+- Notes :
+	- `Architectures` can be omitted as its default value is : `x64`.
+	- `RunBuilds` can be omitted as its default value is : `$True`.
+	- You can build `Debug` and `Release` versions at once by omitting the `Configuration` parameter
 
 ## Testing
 
@@ -67,7 +71,8 @@ There are 2 examples projects that you can run/test :
 ## Dependencies
 
 The project uses the following dependencies : 
- - [SDL2](https://www.libsdl.org/download-2.0.php) for window creation and user input management,
+ - [SDL2](https://www.libsdl.org/download-2.0.php) for window creation and user input management for Linux,
+ - [GLFW](https://github.com/glfw/glfw) for window creation and user input management for Window and MacOS,
  - [GLM](https://glm.g-truc.net/0.9.9/index.html) for functions and mathematical calculations,
  - [GLAD](https://glad.dav1d.de/) for openGL functions 
  - [STB](https://github.com/nothings/stb) for loading and manipulating image files for textures.

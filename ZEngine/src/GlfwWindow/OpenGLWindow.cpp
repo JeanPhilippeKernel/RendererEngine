@@ -1,5 +1,5 @@
+#include <pch.h>
 #include <Window/GlfwWindow/OpenGLWindow.h>
-#include <cstdint>
 #include <Engine.h>
 #include <Inputs/KeyCode.h>
 #include <Rendering/Renderers/RenderCommand.h>
@@ -20,8 +20,8 @@ namespace ZEngine::Window::GLFWWindow {
 		int glfw_init = glfwInit();
 
 		if (glfw_init == GLFW_FALSE) {
-			Z_ENGINE_CORE_CRITICAL("Unable to initialize glfw..");
-			Z_ENGINE_EXIT_FAILURE();
+			ZENGINE_CORE_CRITICAL("Unable to initialize glfw..");
+			ZENGINE_EXIT_FAILURE();
 		}
 
 		glfwWindowHint(GLFW_DEPTH_BITS , 32);
@@ -38,13 +38,13 @@ namespace ZEngine::Window::GLFWWindow {
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR , m_desired_gl_context_minor_version);
 
         glfwSetErrorCallback([](int error, const char* description) {
-            Z_ENGINE_CORE_CRITICAL(description);
-            Z_ENGINE_EXIT_FAILURE();
+            ZENGINE_CORE_CRITICAL(description);
+            ZENGINE_EXIT_FAILURE();
         });
         
 		m_native_window  = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
 		
-		Z_ENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
+		ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
 		
 		glfwSetWindowUserPointer(m_native_window,  &m_property);
 
@@ -55,8 +55,8 @@ namespace ZEngine::Window::GLFWWindow {
 		
         int glad_init = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
 		if (glad_init == 0) {
-			Z_ENGINE_CORE_CRITICAL("Unable to initialize glad library...");
-			Z_ENGINE_EXIT_FAILURE();
+			ZENGINE_CORE_CRITICAL("Unable to initialize glad library...");
+			ZENGINE_EXIT_FAILURE();
 		}
 
 		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
@@ -95,7 +95,7 @@ namespace ZEngine::Window::GLFWWindow {
 			property->SetWidth(width);
 			property->SetHeight(height);
 
-			Z_ENGINE_CORE_INFO("Window size updated, Properties : Width = {0}, Height = {1}", property->Width, property->Height);
+			ZENGINE_CORE_INFO("Window size updated, Properties : Width = {0}, Height = {1}", property->Width, property->Height);
 
 			RendererCommand::SetViewport(0, 0, property->Width, property->Height);
 		}
@@ -241,7 +241,7 @@ namespace ZEngine::Window::GLFWWindow {
 
 	bool OpenGLWindow::OnWindowClosed(WindowClosedEvent& event) {
 		glfwSetWindowShouldClose(m_native_window, GLFW_TRUE);
-		Z_ENGINE_CORE_INFO("Window has been closed");
+		ZENGINE_CORE_INFO("Window has been closed");
 
 		Event::EngineClosedEvent e(event.GetName().c_str());
 		Event::EventDispatcher event_dispatcher(e);
@@ -251,7 +251,7 @@ namespace ZEngine::Window::GLFWWindow {
 	}
 
 	bool OpenGLWindow::OnWindowResized(WindowResizedEvent& event) {
-		Z_ENGINE_CORE_INFO("Window has been resized");
+		ZENGINE_CORE_INFO("Window has been resized");
 
 		Event::EventDispatcher event_dispatcher(event);
 		event_dispatcher.ForwardTo<Event::WindowResizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
@@ -259,7 +259,7 @@ namespace ZEngine::Window::GLFWWindow {
 	}
 
 	bool OpenGLWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event) {
-		Z_ENGINE_CORE_INFO("Window has been minimized");
+		ZENGINE_CORE_INFO("Window has been minimized");
 
 		m_property.IsMinimized = true;
 		Event::EventDispatcher event_dispatcher(event);
@@ -268,7 +268,7 @@ namespace ZEngine::Window::GLFWWindow {
 	}
 
 	bool OpenGLWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event) {
-		Z_ENGINE_CORE_INFO("Window has been maximized");
+		ZENGINE_CORE_INFO("Window has been maximized");
 
 		Event::EventDispatcher event_dispatcher(event);
 		event_dispatcher.ForwardTo<Event::WindowMaximizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
@@ -276,7 +276,7 @@ namespace ZEngine::Window::GLFWWindow {
 	}
 
 	bool OpenGLWindow::OnWindowRestored(Event::WindowRestoredEvent& event) {
-		Z_ENGINE_CORE_INFO("Window has been restored");
+		ZENGINE_CORE_INFO("Window has been restored");
 
 		m_property.IsMinimized = false;
 		Event::EventDispatcher event_dispatcher(event);

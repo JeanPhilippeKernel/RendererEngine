@@ -7,6 +7,8 @@
 #include "Rendering/Buffers/VertexBuffer.h"
 #include "Rendering/Buffers/IndexBuffer.h"
 #include "Rendering/Buffers/VertexArray.h"
+#include "Rendering/Buffers/FrameBuffers/Framebuffer.h"
+#include "Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h"
 
 #include "Rendering/Scenes/GraphicScene.h"
 #include "Rendering/Scenes/GraphicScene2D.h"

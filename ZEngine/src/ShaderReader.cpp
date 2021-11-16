@@ -1,4 +1,4 @@
-#include <ZEngine/pch.h>
+#include <pch.h>
 #include <Rendering/Shaders/ShaderReader.h>
 #include <Logging/LoggerDefinition.h>
 
@@ -20,7 +20,7 @@ namespace ZEngine::Rendering::Shaders {
 
 		m_filestream.open(filename.data(), std::ifstream::in);
 		if (!m_filestream.is_open()) {
-			Z_ENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename.data());
+			ZENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename.data());
 			return ShaderOperationResult::FAILURE;
 		}
 
@@ -49,7 +49,7 @@ namespace ZEngine::Rendering::Shaders {
 			const auto last = std::prev(std::end(m_shader_info_collection));
 			last->Source.append(current_line + "\n");
 		}
-		Z_ENGINE_CORE_INFO("====== Shader file : {} read succeeded ======", filename.data());
+		ZENGINE_CORE_INFO("====== Shader file : {} read succeeded ======", filename.data());
 		m_filestream.close();
 		return ShaderOperationResult::SUCCESS;
 	}

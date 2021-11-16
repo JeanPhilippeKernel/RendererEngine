@@ -2,7 +2,7 @@
 #include <memory>
 #include "Engine.h"
 
-#ifdef Z_ENGINE_PLATFORM
+#ifdef ZENGINE_PLATFORM
 
 int main(int argc, char* argv[]) {
 	

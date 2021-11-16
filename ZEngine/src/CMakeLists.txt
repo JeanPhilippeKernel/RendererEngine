@@ -43,7 +43,7 @@ target_precompile_headers(zEngineLib PRIVATE ${PROJECT_SOURCE_DIR}/include/ZEngi
 
 target_compile_definitions (zEngineLib
 	PUBLIC
-		Z_ENGINE_PLATFORM
+		ZENGINE_PLATFORM
 )
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	target_link_libraries(zEngineLib PRIVATE stdc++fs)

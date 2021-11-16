@@ -12,7 +12,7 @@ namespace ZEngine
 		: m_running(true)
 	{
 		Logging::Logger::Initialize();
-		Z_ENGINE_CORE_INFO("Engine started");
+		ZENGINE_CORE_INFO("Engine started");
 
 		m_window.reset(ZEngine::Window::Create());
 		m_window->SetAttachedEngine(this);
@@ -20,13 +20,13 @@ namespace ZEngine
 
 	Engine::~Engine()
 	{
-		Z_ENGINE_CORE_INFO("Engine stopped");
+		ZENGINE_CORE_INFO("Engine stopped");
 	}
 
 	void Engine::Initialize()
 	{
 		m_window->Initialize();
-		Z_ENGINE_CORE_INFO("Engine initialized");
+		ZENGINE_CORE_INFO("Engine initialized");
 	}
 
 	void Engine::ProcessEvent()

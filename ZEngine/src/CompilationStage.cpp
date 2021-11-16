@@ -1,4 +1,4 @@
-#include <ZEngine/pch.h>
+#include <pch.h>
 #include <Rendering/Shaders/Compilers/CompilationStage.h>
 #include <Rendering/Shaders/Compilers/LinkageStage.h>
 #include <Logging/LoggerDefinition.h>
@@ -16,11 +16,11 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
 	void CompilationStage::Run(std::vector<ShaderInformation>& information_list)
 	{
-		Z_ENGINE_CORE_INFO("------> Compilation stage started");
+		ZENGINE_CORE_INFO("------> Compilation stage started");
 
 		std::for_each(std::begin(information_list), std::end(information_list), [this](ShaderInformation& shader_info) {
 
-			Z_ENGINE_CORE_INFO("------> Compiling {} shader", shader_info.Name);
+			ZENGINE_CORE_INFO("------> Compiling {} shader", shader_info.Name);
 
 			shader_info.ShaderId = glCreateShader(shader_info.InternalType);
 			const GLchar* source = (const GLchar*)shader_info.Source.c_str();
@@ -41,16 +41,16 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
 				this->m_information.IsSuccess = this->m_information.IsSuccess && false;
 				this->m_information.ErrorMessage.append(std::begin(log_message), std::end(log_message));
-				Z_ENGINE_CORE_ERROR("------> Failed to compile {} shader", shader_info.Name);
+				ZENGINE_CORE_ERROR("------> Failed to compile {} shader", shader_info.Name);
 			}
 		});
 
 		if (!this->m_information.IsSuccess) {
-			Z_ENGINE_CORE_ERROR("------> Compilation stage completed with errors");
-			Z_ENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage);
+			ZENGINE_CORE_ERROR("------> Compilation stage completed with errors");
+			ZENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage);
 			return;
 		}
 
-		Z_ENGINE_CORE_INFO("------> Compilation stage completed successfully");
+		ZENGINE_CORE_INFO("------> Compilation stage completed successfully");
 	}
 }

@@ -1,4 +1,4 @@
-#include <ZEngine/pch.h>
+#include <pch.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Shaders/Compilers/ShaderCompiler.h>
 #include <Rendering/Shaders/Compilers/CompilationStage.h>
@@ -40,18 +40,18 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 	std::tuple<ShaderOperationResult, GLuint> ShaderCompiler::Compile() {
 		bool compile_process_succeeded{ true };
 
-		Z_ENGINE_CORE_INFO("====== Compilation process started ======");
+		ZENGINE_CORE_INFO("====== Compilation process started ======");
 
 		const ShaderOperationResult read_operation = m_reader->Read(m_source_file);
 		if (read_operation == ShaderOperationResult::FAILURE) {
-			Z_ENGINE_CORE_CRITICAL("Compilation process stopped");
+			ZENGINE_CORE_CRITICAL("Compilation process stopped");
 			return std::make_tuple(ShaderOperationResult::FAILURE, 0);
 		}
 
 		auto shader_information = m_reader->GetInformations();
 		if (shader_information.empty()) {
-			Z_ENGINE_CORE_CRITICAL("Information collected while reading shader file are incorrect or not enough to continue compilation process");
-			Z_ENGINE_CORE_CRITICAL("Compilation process stopped");
+			ZENGINE_CORE_CRITICAL("Information collected while reading shader file are incorrect or not enough to continue compilation process");
+			ZENGINE_CORE_CRITICAL("Compilation process stopped");
 			return std::make_tuple(ShaderOperationResult::FAILURE, 0);
 		}
 
@@ -70,11 +70,11 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 		}
 
 		if (!compile_process_succeeded) {
-			Z_ENGINE_CORE_CRITICAL("Compilation process weren't able to create a valid Shader Program");
+			ZENGINE_CORE_CRITICAL("Compilation process weren't able to create a valid Shader Program");
 			return std::make_tuple(ShaderOperationResult::FAILURE, 0);
 		}
 
-		Z_ENGINE_CORE_INFO("====== Compilation process succeeded ======");
+		ZENGINE_CORE_INFO("====== Compilation process succeeded ======");
 
 		const auto& first = std::begin(shader_information);
 		return std::make_tuple(ShaderOperationResult::SUCCESS, first->ProgramId);

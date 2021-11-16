@@ -1,4 +1,4 @@
-#include <ZEngine/pch.h>
+#include <pch.h>
 #include <Rendering/Shaders/Compilers/ValidationStage.h>
 #include <Logging/LoggerDefinition.h>
 
@@ -13,7 +13,7 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 	}
 
 	void ValidationStage::Run(std::vector<ShaderInformation>& information_list) {
-		Z_ENGINE_CORE_INFO("------> Validation stage started");
+		ZENGINE_CORE_INFO("------> Validation stage started");
 
 		// We assume that all ShaderInformation object have the same ProgramId
 		const auto& first = information_list.at(0);
@@ -32,15 +32,15 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
 			this->m_information.IsSuccess = this->m_information.IsSuccess && false;
 			this->m_information.ErrorMessage.append(std::begin(log_message), std::end(log_message));
-			Z_ENGINE_CORE_ERROR("------> Shader Program is invalid");
+			ZENGINE_CORE_ERROR("------> Shader Program is invalid");
 		}
 
 		if (!this->m_information.IsSuccess) {
-			Z_ENGINE_CORE_ERROR("------> Validation stage completed with errors");
-			Z_ENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage);
+			ZENGINE_CORE_ERROR("------> Validation stage completed with errors");
+			ZENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage);
 			return;
 		}
 
-		Z_ENGINE_CORE_INFO("------> Validation stage succeeded");
+		ZENGINE_CORE_INFO("------> Validation stage succeeded");
 	}
 }

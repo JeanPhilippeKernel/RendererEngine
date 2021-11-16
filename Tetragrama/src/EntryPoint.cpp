@@ -1,7 +1,7 @@
 #include <pch.h>
 #include "Editor.h"
 
-#ifdef Z_ENGINE_PLATFORM
+#ifdef ZENGINE_PLATFORM
 
 int main(int argc, char* argv[]) {
 	

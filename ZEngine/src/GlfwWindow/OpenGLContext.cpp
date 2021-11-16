@@ -1,3 +1,4 @@
+#include <pch.h>
 #include <Rendering/Graphics/GlfwGraphic/OpenGLContext.h>
 
 namespace ZEngine::Rendering::Graphics::GLFWGraphic {

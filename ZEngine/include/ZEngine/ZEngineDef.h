@@ -4,7 +4,7 @@
 
 
 #define BIT(x) (1 << (x))
-#define Z_ENGINE_EXIT_FAILURE()	exit(EXIT_FAILURE)
+#define ZENGINE_EXIT_FAILURE()	exit(EXIT_FAILURE)
 
 #ifdef __linux__
 	#define ZENGINE_WINDOW_SDL

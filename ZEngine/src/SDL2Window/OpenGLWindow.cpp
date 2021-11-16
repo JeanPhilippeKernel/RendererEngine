@@ -1,4 +1,4 @@
-#include <ZEngine/pch.h>
+#include <pch.h>
 #include <Engine.h>
 
 #include <Window/SDLWin/OpenGLWindow.h>
@@ -29,14 +29,14 @@ namespace ZEngine::Window::SDLWin {
 		sdl_init = SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 #endif
 		if (sdl_init != 0) {
-			Z_ENGINE_CORE_CRITICAL("Unable to initialize SDL subsystems : {}", SDL_GetError());
-			Z_ENGINE_EXIT_FAILURE();
+			ZENGINE_CORE_CRITICAL("Unable to initialize SDL subsystems : {}", SDL_GetError());
+			ZENGINE_EXIT_FAILURE();
 		}
 
 		const int loaded_gl_library = SDL_GL_LoadLibrary(NULL);
 		if (loaded_gl_library != 0) {
-			Z_ENGINE_CORE_CRITICAL("Failed to load OpenGL library...");
-			Z_ENGINE_EXIT_FAILURE();
+			ZENGINE_CORE_CRITICAL("Failed to load OpenGL library...");
+			ZENGINE_EXIT_FAILURE();
 		}
 
 		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
@@ -58,7 +58,7 @@ namespace ZEngine::Window::SDLWin {
 			m_property.Width, m_property.Height,
 			SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL | SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_MOUSE_CAPTURE
 		);
-		Z_ENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
+		ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
 		
 		SetVSync(true);
 		SDL_SetWindowData(m_native_window, CoreWindow::ATTACHED_PROPERTY, &m_property);
@@ -68,8 +68,8 @@ namespace ZEngine::Window::SDLWin {
 
 		int glad_init = gladLoadGLLoader(SDL_GL_GetProcAddress);
 		if (glad_init == 0) {
-			Z_ENGINE_CORE_CRITICAL("Unable to initialize glad library...");
-			Z_ENGINE_EXIT_FAILURE();
+			ZENGINE_CORE_CRITICAL("Unable to initialize glad library...");
+			ZENGINE_EXIT_FAILURE();
 		}
 
 		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
@@ -230,7 +230,7 @@ namespace ZEngine::Window::SDLWin {
 		m_property.SetWidth(event.GetWidth());
 		m_property.SetHeight(event.GetHeight());
 
-		Z_ENGINE_CORE_INFO("Window size updated, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
+		ZENGINE_CORE_INFO("Window size updated, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
 
 		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
 

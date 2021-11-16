@@ -1,3 +1,4 @@
+#include <pch.h>
 #include <Rendering/Buffers/FrameBuffers/Framebuffer.h>
 #include <Logging/LoggerDefinition.h>
 
@@ -68,7 +69,7 @@ namespace ZEngine::Rendering::Buffers {
 #endif
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-            Z_ENGINE_CORE_CRITICAL("Framebuffer is incomplete");
+            ZENGINE_CORE_CRITICAL("Framebuffer is incomplete");
         }
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
