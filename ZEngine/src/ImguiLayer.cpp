@@ -2,6 +2,12 @@
 #include <Layers/ImguiLayer.h>
 #include <ZEngineDef.h>
 
+#ifdef ZENGINE_WINDOW_SDL
+    #include <SDL.h>
+#else
+    #include <GLFW/glfw3.h>
+#endif
+
 namespace ZEngine::Layers {
 
 	bool ImguiLayer::m_initialized = false;
