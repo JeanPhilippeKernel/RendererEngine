@@ -36,13 +36,15 @@ namespace ZEngine::Controllers {
 
 		const ZEngine::Ref<Rendering::Cameras::Camera> GetCamera() const override { return m_orthographic_camera; }
 
+		void UpdateProjectionMatrix() override;
+
 	public:
 		bool OnMouseButtonPressed(Event::MouseButtonPressedEvent&)				override { return false; }
 		bool OnMouseButtonReleased(Event::MouseButtonReleasedEvent&)			override { return false; }
 		bool OnMouseButtonMoved(Event::MouseButtonMovedEvent&)					override { return false; }
 		bool OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent&)				override;
 
-		bool OnWindowResized(Event::WindowResizedEvent&)						override;
+		bool OnWindowResized(Event::WindowResizedEvent&)						override { return false; }
 		bool OnWindowClosed(Event::WindowClosedEvent&)							override { return false; }
 		bool OnWindowMinimized(Event::WindowMinimizedEvent&)					override { return false; }
 		bool OnWindowMaximized(Event::WindowMaximizedEvent&)					override { return false; }

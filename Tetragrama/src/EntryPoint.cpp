@@ -5,7 +5,7 @@
 
 int main(int argc, char* argv[]) {
 	
-	std::unique_ptr<Tetragrama::Editor> editor(new Tetragrama::Editor());
+	std::shared_ptr<Tetragrama::Editor> editor(new Tetragrama::Editor());
 	editor->Initialize();
 	editor->Run();
 	return 0;

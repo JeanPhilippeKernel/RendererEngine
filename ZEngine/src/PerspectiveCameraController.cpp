@@ -4,8 +4,7 @@
 #include <Inputs/IDevice.h>
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>
-#include <Event/EventDispatcher.h>
-		 
+#include <Event/EventDispatcher.h>	 
 #include <Engine.h>
 
 using namespace ZEngine::Inputs;
@@ -39,24 +38,20 @@ namespace ZEngine::Controllers {
 		}
 	}
 
+	void PerspectiveCameraController::UpdateProjectionMatrix() {
+		m_perspective_camera->SetProjectionMatrix(glm::perspective(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far));
+	}
+
 	bool PerspectiveCameraController::OnEvent(Event::CoreEvent& e) {
 		Event::EventDispatcher dispatcher(e);
 		dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&PerspectiveCameraController::OnMouseButtonWheelMoved, this, std::placeholders::_1));
-		dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&PerspectiveCameraController::OnWindowResized, this, std::placeholders::_1));
 		return false;
 	}
-
 
 	bool PerspectiveCameraController::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e) {
 		m_zoom_factor	-= m_move_speed * static_cast<float>(e.GetOffetY()) * Engine::GetDeltaTime();
 		m_camera_fov	= m_zoom_factor;
-		m_perspective_camera->SetProjectionMatrix(glm::perspective(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far));
-		return false;
-	}
-
-	bool PerspectiveCameraController::OnWindowResized(Event::WindowResizedEvent& e) {
-		m_aspect_ratio = static_cast<float>(e.GetWidth()) / static_cast<float>(e.GetHeight());
-		m_perspective_camera->SetProjectionMatrix(glm::perspective(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far));
+		UpdateProjectionMatrix();
 		return false;
 	}
 

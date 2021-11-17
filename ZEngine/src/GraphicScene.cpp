@@ -24,6 +24,12 @@ namespace  ZEngine::Rendering::Scenes {
 		std::copy(std::begin(meshes), std::end(meshes), std::back_inserter(m_mesh_list));
 	}
 
+	void GraphicScene::UpdateSize(uint32_t width, uint32_t height) {
+		m_camera_controller->SetAspectRatio(((float)width) / ((float)height));
+		m_camera_controller->UpdateProjectionMatrix();
+		m_renderer->GetFrameBuffer()->Resize(width, height);
+	}
+
 	void GraphicScene::Render() {		
 		m_renderer->StartScene(m_camera_controller->GetCamera()->GetViewProjectionMatrix());
 		m_renderer->AddMesh(m_mesh_list);
@@ -31,7 +37,6 @@ namespace  ZEngine::Rendering::Scenes {
 			
 		m_mesh_list.clear();
 	}
-
 
 	unsigned int GraphicScene::ToTextureRepresentation() const {
 		return m_renderer->GetFrameBuffer()->GetTexture();

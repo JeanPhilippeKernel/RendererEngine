@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Buffers {
         virtual GLuint GetIdentifier() const override;
 
         void Resize();
-        void Resize(unsigned int width, unsigned int height) = delete;
+        void Resize(uint32_t width, uint32_t height);
 
         void Bind() const;
         void Unbind() const;

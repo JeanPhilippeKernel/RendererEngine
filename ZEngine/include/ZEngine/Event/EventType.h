@@ -14,6 +14,9 @@ namespace ZEngine::Event {
 		EngineClosed,
 
 		TextInput,
-		UserInterfaceComponent
+
+		UserInterfaceComponent,
+		SceneViewportResized,
+		SceneTextureAvailable
 	};
 }

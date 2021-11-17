@@ -29,11 +29,9 @@ namespace Tetragrama::Layers {
 		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
 		m_texture_manager->Load("Assets/Images/zota.jpg");
 
-
 		m_scene.reset(new GraphicScene3D(new OrbitCameraController(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f)));
 		m_scene->Initialize();
 		
-
 		Ref<ZEngine::Rendering::Meshes::Mesh> mesh_one;
 		Ref<ZEngine::Rendering::Meshes::Mesh> mesh_two;
 		Ref<ZEngine::Rendering::Meshes::Mesh> mesh_three;
@@ -49,12 +47,9 @@ namespace Tetragrama::Layers {
 		mesh_two.reset(MeshBuilder::CreateCube({ 0.f, 10.f, 0.0f }, { 10.f, 10.0f, 10.f }, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
 		mesh_two->SetMaterial(material);
 
-
 		m_mesh_collection.push_back(std::move(mesh_one));
 		m_mesh_collection.push_back(std::move(mesh_two));
 		m_mesh_collection.push_back(std::move(mesh_three));
-
-		m_information.Data = (void *)m_scene->ToTextureRepresentation();
 	}
 
 	void ExampleLayer::Update(TimeStep dt) {
@@ -74,13 +69,24 @@ namespace Tetragrama::Layers {
 	}
 
 	void ExampleLayer::Render() {
-		/*m_scene->Add(quad_mesh_ptr);
-		m_scene->Add(quad_mesh_ptr_2);
-		m_scene->Add(quad_mesh_ptr_3);*/
-
 		m_scene->Add(m_mesh_collection);
 		m_scene->Render();
+	}
 
-		OnRenderCallback();
+	bool ExampleLayer::OnSceneViewportResized(Components::Event::SceneViewportResizedEvent& e) {
+		m_scene->UpdateSize(e.GetWidth(), e.GetHeight());
+
+		Components::Event::SceneTextureAvailableEvent scene_texture_event{ m_scene->ToTextureRepresentation() };
+		OnSceneTextureAvailable(scene_texture_event);
+		return true;
+	}
+
+	bool ExampleLayer::OnSceneTextureAvailable(Components::Event::SceneTextureAvailableEvent& e) {
+		ZEngine::Event::EventDispatcher event_dispatcher(e);
+		if (!m_editor.expired()) {
+			const auto editor_ptr = m_editor.lock();
+			event_dispatcher.ForwardTo<Components::Event::SceneTextureAvailableEvent>(std::bind(&Editor::OnUIComponentRaised, editor_ptr.get(), std::placeholders::_1));
+		}
+		return false;
 	}
 }
