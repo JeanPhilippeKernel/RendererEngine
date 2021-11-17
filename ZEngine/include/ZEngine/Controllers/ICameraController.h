@@ -55,6 +55,8 @@ namespace ZEngine::Controllers {
 
 		virtual const ZEngine::Ref<Rendering::Cameras::Camera> GetCamera() const =  0;
 
+		virtual void UpdateProjectionMatrix() = 0;
+
 	protected:
 		Maths::Vector3 m_position			{ 0.0f, 0.0f, 0.0f };
 		float m_rotation_angle			{ 0.0f };

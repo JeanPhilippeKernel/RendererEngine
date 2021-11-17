@@ -1,14 +1,10 @@
 ﻿#pragma once
 #include <vector>
-
 #include <Rendering/Cameras/Camera.h>
 #include <ZEngineDef.h>
-
 #include <Core/IRenderable.h>
 #include <Core/IInitializable.h>
-
 #include <Controllers/ICameraController.h>
-
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 
@@ -30,8 +26,9 @@ namespace  ZEngine::Rendering::Scenes {
 
 		void Initialize() override;
 		virtual void Render() override;
-
-		unsigned int ToTextureRepresentation() const;
+		
+		void UpdateSize(uint32_t width, uint32_t);
+		uint32_t ToTextureRepresentation() const;
 
 		void Add(Ref<Meshes::Mesh>& mesh);
 		void Add(const std::vector<Ref<Meshes::Mesh>>& meshes);

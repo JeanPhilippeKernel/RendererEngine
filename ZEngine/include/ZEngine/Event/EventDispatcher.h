@@ -31,7 +31,9 @@ namespace ZEngine::Event {
 
 		template<typename K>
 		void ForwardTo(const ForwardEventFn<K>& func) {
-			func(dynamic_cast<K&>(m_event));
+			if (m_event.GetType() == K::GetStaticType()) {
+				func(dynamic_cast<K&>(m_event));
+			}
 		}
 
 	private:

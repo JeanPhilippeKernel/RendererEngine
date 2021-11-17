@@ -63,3 +63,6 @@
 
 #include "Components/UIComponent.h"
 #include "Components/UIComponentEvent.h"
+
+#include "Event/EventCategory.h"
+#include "Event/EventType.h"

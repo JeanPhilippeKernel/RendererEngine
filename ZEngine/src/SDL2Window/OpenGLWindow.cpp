@@ -1,8 +1,6 @@
 #include <pch.h>
 #include <Engine.h>
-
 #include <Window/SDLWin/OpenGLWindow.h>
-
 #include <Inputs/KeyCode.h>
 #include <Rendering/Renderers/RenderCommand.h>
 #include <Logging/LoggerDefinition.h>
@@ -12,8 +10,6 @@ using namespace ZEngine;
 using namespace ZEngine::Rendering::Graphics;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Event;
-
-#ifdef ZENGINE_WINDOW_SDL
 
 namespace ZEngine::Window::SDLWin {
 
@@ -302,4 +298,3 @@ namespace ZEngine::Window::SDLWin {
 	}
 
 }
-#endif

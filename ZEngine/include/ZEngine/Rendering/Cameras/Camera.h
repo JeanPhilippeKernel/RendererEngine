@@ -35,7 +35,6 @@ namespace ZEngine::Rendering::Cameras
 		virtual void SetTarget(const Maths::Vector3& target) { m_target = target; }
 		virtual const Maths::Vector3& GetTarget() const { return m_target; }
 
- 									
 	protected:
 		virtual void UpdateViewMatrix() = 0;
 

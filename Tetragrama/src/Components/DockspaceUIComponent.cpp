@@ -21,11 +21,6 @@ namespace Tetragrama::Components {
 
     bool DockspaceUIComponent::OnUIComponentRaised(UIComponentEvent& event) {
         ZEngine::Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.Dispatch<UIComponentEvent>(std::bind(&DockspaceUIComponent::OnRequestCreateScene, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<UIComponentEvent>(std::bind(&DockspaceUIComponent::OnRequestOpenScene, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<UIComponentEvent>(std::bind(&DockspaceUIComponent::OnRequestSave, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<UIComponentEvent>(std::bind(&DockspaceUIComponent::OnRequestSaveAs, this, std::placeholders::_1));
-
         return true;
     }
 
@@ -53,31 +48,15 @@ namespace Tetragrama::Components {
         {
             if (ImGui::BeginMenu("File"))
             {
-                if (ImGui::MenuItem("New Scene")) {
-                    UIComponentEvent event{};
-                    ZEngine::Event::EventDispatcher event_dispatcher(event);
-                    event_dispatcher.Dispatch<UIComponentEvent>(std::bind(&DockspaceUIComponent::OnUIComponentRaised, this, std::placeholders::_1));
-                }
+                if (ImGui::MenuItem("New Scene")) {}
                 
-                if (ImGui::MenuItem("Open Scene")) {
-                    UIComponentEvent event{};
-                    ZEngine::Event::EventDispatcher event_dispatcher(event);
-                    event_dispatcher.Dispatch<UIComponentEvent>(std::bind(&DockspaceUIComponent::OnUIComponentRaised, this, std::placeholders::_1));
-                }
+                if (ImGui::MenuItem("Open Scene")) {}
                 
                 ImGui::Separator();
                 
-                if (ImGui::MenuItem("Save")) {
-                    UIComponentEvent event{};
-                    ZEngine::Event::EventDispatcher event_dispatcher(event);
-                    event_dispatcher.Dispatch<UIComponentEvent>(std::bind(&DockspaceUIComponent::OnUIComponentRaised, this, std::placeholders::_1));
-                }
+                if (ImGui::MenuItem("Save")) {}
                 
-                if (ImGui::MenuItem("Save As ...")) {
-                    UIComponentEvent event{};
-                    ZEngine::Event::EventDispatcher event_dispatcher(event);
-                    event_dispatcher.Dispatch<UIComponentEvent>(std::bind(&DockspaceUIComponent::OnUIComponentRaised, this, std::placeholders::_1));
-                }
+                if (ImGui::MenuItem("Save As ...")) {}
 
                 ImGui::Separator();
 
