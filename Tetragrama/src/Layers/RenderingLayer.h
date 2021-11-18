@@ -8,19 +8,19 @@
 namespace Tetragrama { class Editor; }
 
 namespace Tetragrama::Layers {
-	class ExampleLayer : public ZEngine::Layers::Layer {
+	class RenderingLayer : public ZEngine::Layers::Layer {
 	public:
-		ExampleLayer(const char* name = "example layer")
+		RenderingLayer(const char* name = "Rendering layer")
 			: Layer(name)
 		{
 		}
 
-		ExampleLayer(ZEngine::Ref<Editor>&& editor, const char* name = "example layer")
+		RenderingLayer(ZEngine::Ref<Editor>&& editor, const char* name = "Rendering layer")
 			: m_editor(std::move(editor)), Layer(name)
 		{
 		}
 
-		virtual ~ExampleLayer() =  default;
+		virtual ~RenderingLayer() =  default;
 		 
 		virtual void Initialize()							override;
 		virtual void Update(ZEngine::Core::TimeStep dt)	override;
@@ -31,8 +31,8 @@ namespace Tetragrama::Layers {
 
 		virtual void OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent& e) {
 			ZEngine::Event::EventDispatcher event_dispatcher(e);
-			event_dispatcher.Dispatch<Components::Event::SceneViewportResizedEvent>(std::bind(&ExampleLayer::OnSceneViewportResized, this, std::placeholders::_1));
-			event_dispatcher.Dispatch<Components::Event::SceneTextureAvailableEvent>(std::bind(&ExampleLayer::OnSceneTextureAvailable, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<Components::Event::SceneViewportResizedEvent>(std::bind(&RenderingLayer::OnSceneViewportResized, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<Components::Event::SceneTextureAvailableEvent>(std::bind(&RenderingLayer::OnSceneTextureAvailable, this, std::placeholders::_1));
 		}
 
 	private:

@@ -1,5 +1,5 @@
 #include <pch.h>
-#include "ExampleLayer.h"
+#include <RenderingLayer.h>
 
 
 using namespace ZEngine;
@@ -21,7 +21,7 @@ using namespace ZEngine::Maths;
 
 namespace Tetragrama::Layers {
 	
-	void ExampleLayer::Initialize() {
+	void RenderingLayer::Initialize() {
 
 		m_texture_manager.reset(new ZEngine::Managers::TextureManager());
 		m_texture_manager->Load("Assets/Images/free_image.png");
@@ -52,7 +52,7 @@ namespace Tetragrama::Layers {
 		m_mesh_collection.push_back(std::move(mesh_three));
 	}
 
-	void ExampleLayer::Update(TimeStep dt) {
+	void RenderingLayer::Update(TimeStep dt) {
 		m_scene->GetCameraController()->Update(dt);
 
 		//quad_mesh_ptr_2
@@ -63,17 +63,17 @@ namespace Tetragrama::Layers {
 			);
 	}
 
-	bool ExampleLayer::OnEvent(CoreEvent& e) {
+	bool RenderingLayer::OnEvent(CoreEvent& e) {
 		m_scene->GetCameraController()->OnEvent(e);
 		return false;
 	}
 
-	void ExampleLayer::Render() {
+	void RenderingLayer::Render() {
 		m_scene->Add(m_mesh_collection);
 		m_scene->Render();
 	}
 
-	bool ExampleLayer::OnSceneViewportResized(Components::Event::SceneViewportResizedEvent& e) {
+	bool RenderingLayer::OnSceneViewportResized(Components::Event::SceneViewportResizedEvent& e) {
 		m_scene->UpdateSize(e.GetWidth(), e.GetHeight());
 
 		Components::Event::SceneTextureAvailableEvent scene_texture_event{ m_scene->ToTextureRepresentation() };
@@ -81,7 +81,7 @@ namespace Tetragrama::Layers {
 		return true;
 	}
 
-	bool ExampleLayer::OnSceneTextureAvailable(Components::Event::SceneTextureAvailableEvent& e) {
+	bool RenderingLayer::OnSceneTextureAvailable(Components::Event::SceneTextureAvailableEvent& e) {
 		ZEngine::Event::EventDispatcher event_dispatcher(e);
 		if (!m_editor.expired()) {
 			const auto editor_ptr = m_editor.lock();
