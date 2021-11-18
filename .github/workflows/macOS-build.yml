@@ -1,4 +1,4 @@
-name: ZEngine Window Build
+name: ZEngine macOS Build
 
 on:
   push:
