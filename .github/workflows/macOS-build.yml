@@ -1,0 +1,27 @@
+name: ZEngine Window Build
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+
+jobs:
+  Windows-Build:
+    runs-on: macos-10.15
+    strategy:
+      matrix:
+          buildSystem: [Darwin]
+          buildPlatform: [x64]
+          buildConfiguration: [Debug, Release]
+
+    steps:      
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      
+    - name: Checkout submodules
+      run: git submodule update --init --recursive
+
+    - name: CMake Build
+      run: .\Scripts\BuildEngine.ps1 -SystemNames ${{matrix.buildSystem}} -Architectures ${{matrix.buildPlatform}} -Configurations ${{matrix.buildConfiguration}}
+      shell: pwsh
