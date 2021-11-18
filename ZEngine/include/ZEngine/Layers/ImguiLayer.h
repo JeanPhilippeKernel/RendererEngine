@@ -57,7 +57,6 @@ namespace ZEngine::Layers {
 			event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
 			
 			event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
-			event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&ImguiLayer::OnWindowResized, this, std::placeholders::_1));
 
 			return false;
 		}
@@ -81,7 +80,7 @@ namespace ZEngine::Layers {
 		bool OnTextInputRaised(Event::TextInputEvent&)					override;
 
 		bool OnWindowClosed(Event::WindowClosedEvent&)					override;
-		bool OnWindowResized(Event::WindowResizedEvent&)				override;
+		bool OnWindowResized(Event::WindowResizedEvent&)				override { return false; }
 		bool OnWindowMinimized(Event::WindowMinimizedEvent&)			override { return false; }
 		bool OnWindowMaximized(Event::WindowMaximizedEvent&)			override { return false; }
 		bool OnWindowRestored(Event::WindowRestoredEvent&)				override { return false; }

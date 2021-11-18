@@ -31,6 +31,9 @@ namespace ZEngine::Layers {
 		std::vector<Ref<Layer>>::iterator begin() { return std::begin(m_layers); }
 		std::vector<Ref<Layer>>::iterator end() { return std::end(m_layers); }
 
+		std::vector<Ref<Layer>>::reverse_iterator rbegin() { return std::rbegin(m_layers); }
+		std::vector<Ref<Layer>>::reverse_iterator rend() { return std::rend(m_layers); }
+
 	private:
 		std::vector<Ref<Layer>> m_layers;
 		std::vector<Ref<Layer>>::iterator current_it;

@@ -42,19 +42,15 @@ namespace ZEngine::Window {
 	}
 
 	void CoreWindow::ForwardEventToLayers(CoreEvent& event) {
-		auto index = std::distance(m_layer_stack_ptr->begin(), m_layer_stack_ptr->end());
-		for (auto it = m_layer_stack_ptr->end(); it >= m_layer_stack_ptr->begin();) {
-
-			if(index == 0) break;
-			
-			--it;
+		for (auto it = m_layer_stack_ptr->rbegin(); it != m_layer_stack_ptr->rend(); ++it) {
+			if (event.IsHandled()) {
+				break;
+			}
 			it->get()->OnEvent(event);
-			--index;
 		}
 	}	
 
-	CoreWindow* Create(WindowProperty prop)
-	{
+	CoreWindow* Create(WindowProperty prop) {
 		auto core_window = new ZENGINE_OPENGL_WINDOW(prop);
 		core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
 		return core_window;

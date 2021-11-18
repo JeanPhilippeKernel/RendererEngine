@@ -178,12 +178,4 @@ namespace ZEngine::Layers {
 		return true;
 	}
 
-	bool ImguiLayer::OnWindowResized(Event::WindowResizedEvent& event) {
-		ImGuiIO& io = ImGui::GetIO();
-		io.DisplaySize = ImVec2((float)event.GetWidth(), (float)event.GetHeight());
-		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-		return false;
-	}
-
-
 }

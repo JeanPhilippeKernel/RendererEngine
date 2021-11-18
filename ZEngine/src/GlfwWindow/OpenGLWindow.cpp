@@ -246,7 +246,6 @@ namespace ZEngine::Window::GLFWWindow {
 		Event::EngineClosedEvent e(event.GetName().c_str());
 		Event::EventDispatcher event_dispatcher(e);
 		event_dispatcher.Dispatch<Event::EngineClosedEvent>(std::bind(&Engine::OnEngineClosed, m_engine, std::placeholders::_1));
-
 		return true;
 	}
 
