@@ -7,7 +7,7 @@ on:
     branches: [ master, develop ]
 
 jobs:
-  Windows-Build:
+  macOS-Build:
     runs-on: macos-10.15
     strategy:
       matrix:
