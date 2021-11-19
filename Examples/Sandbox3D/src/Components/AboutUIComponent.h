@@ -9,6 +9,8 @@ namespace Sandbox3D::Components {
         {}
         virtual ~AboutUIComponent() = default;
 
+        void Update(ZEngine::Core::TimeStep dt) override {}
+        
         virtual void Render() override {
             ImGui::ShowAboutWindow(&m_is_open);
         }

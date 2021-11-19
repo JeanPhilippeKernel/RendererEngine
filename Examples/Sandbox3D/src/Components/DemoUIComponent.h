@@ -8,6 +8,8 @@ namespace Sandbox3D::Components {
             : UIComponent(name, visibility)
         {}
         virtual ~DemoUIComponent() = default;
+        
+        void Update(ZEngine::Core::TimeStep dt) override {}
 
         virtual void Render() override {
             ImGui::ShowDemoWindow(&m_is_open);
