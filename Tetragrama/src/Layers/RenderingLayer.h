@@ -2,6 +2,8 @@
 #include <vector>
 #include <ZEngine/ZEngine.h>
 #include <Components/Events/SceneViewportResizedEvent.h>
+#include <Components/Events/SceneViewportFocusedEvent.h>
+#include <Components/Events/SceneViewportUnfocusedEvent.h>
 #include <Components/Events/SceneTextureAvailableEvent.h>
 #include <Editor.h>
 
@@ -33,10 +35,14 @@ namespace Tetragrama::Layers {
 			ZEngine::Event::EventDispatcher event_dispatcher(e);
 			event_dispatcher.Dispatch<Components::Event::SceneViewportResizedEvent>(std::bind(&RenderingLayer::OnSceneViewportResized, this, std::placeholders::_1));
 			event_dispatcher.Dispatch<Components::Event::SceneTextureAvailableEvent>(std::bind(&RenderingLayer::OnSceneTextureAvailable, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<Components::Event::SceneViewportFocusedEvent>(std::bind(&RenderingLayer::OnSceneViewportFocused, this, std::placeholders::_1));
+			event_dispatcher.Dispatch<Components::Event::SceneViewportUnfocusedEvent>(std::bind(&RenderingLayer::OnSceneViewportUnfocused, this, std::placeholders::_1));
 		}
 
 	private:
 		bool OnSceneViewportResized(Components::Event::SceneViewportResizedEvent& e);
+		bool OnSceneViewportFocused(Components::Event::SceneViewportFocusedEvent& e);
+		bool OnSceneViewportUnfocused(Components::Event::SceneViewportUnfocusedEvent& e);
 		bool OnSceneTextureAvailable(Components::Event::SceneTextureAvailableEvent& e);
 		
 	private:
@@ -44,6 +50,7 @@ namespace Tetragrama::Layers {
 		ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>				m_scene;
 		ZEngine::Ref<ZEngine::Managers::TextureManager>						m_texture_manager; 
 		std::vector<ZEngine::Ref<ZEngine::Rendering::Meshes::Mesh>>			m_mesh_collection;
+		bool m_scene_should_accept_event{ false };
 	};
 
 } 

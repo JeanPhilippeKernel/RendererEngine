@@ -13,6 +13,8 @@ namespace Tetragrama::Components {
             ImGui::ShowDemoWindow(&m_is_open);
         }
 
+        void Update(ZEngine::Core::TimeStep dt) override {}
+
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override { return false; }
 

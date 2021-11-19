@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <Core/IRenderable.h>
+#include <Core/IUpdatable.h>
 #include <Layers/ImguiLayer.h>
 #include <ZEngineDef.h>
 #include <ZEngine/Components/UIComponentEvent.h>
@@ -11,7 +12,8 @@ namespace ZEngine::Layers { class ImguiLayer; }
 namespace ZEngine::Components::UI
 {
     class UIComponent : 
-    public Core::IRenderable, 
+    public Core::IRenderable,
+    public Core::IUpdatable,
     public std::enable_shared_from_this<UIComponent>  {
     
     public:

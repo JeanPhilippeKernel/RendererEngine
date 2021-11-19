@@ -7,6 +7,8 @@ namespace Tetragrama::Components {
         DockspaceUIComponent(std::string_view name = "Dockspace UI Component", bool visibility = true);
         virtual ~DockspaceUIComponent();
 
+        void Update(ZEngine::Core::TimeStep dt) override;
+
         virtual void Render() override;
 
     protected:

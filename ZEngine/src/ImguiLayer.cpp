@@ -61,6 +61,9 @@ namespace ZEngine::Layers {
 		if (dt > 0.0f) {
 			io.DeltaTime = dt;
 		}
+		for (const auto& component : m_ui_components) {
+				component->Update(dt);
+		}
 	}
 	
 	void ImguiLayer::AddUIComponent(const Ref<Components::UI::UIComponent>& component) {

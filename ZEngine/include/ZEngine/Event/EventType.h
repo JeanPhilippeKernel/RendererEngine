@@ -17,6 +17,8 @@ namespace ZEngine::Event {
 
 		UserInterfaceComponent,
 		SceneViewportResized,
+		SceneViewportFocused,
+		SceneViewportUnfocused,
 		SceneTextureAvailable
 	};
 }

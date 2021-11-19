@@ -33,6 +33,8 @@ namespace Tetragrama::Layers {
 				const auto editor_ptr = m_editor.lock();
 				if (!e.IsHandled()) {
 					event_dispatcher.ForwardTo<Components::Event::SceneViewportResizedEvent>(std::bind(&Editor::OnUIComponentRaised, editor_ptr.get(), std::placeholders::_1));
+					event_dispatcher.ForwardTo<Components::Event::SceneViewportFocusedEvent>(std::bind(&Editor::OnUIComponentRaised, editor_ptr.get(), std::placeholders::_1));
+					event_dispatcher.ForwardTo<Components::Event::SceneViewportUnfocusedEvent>(std::bind(&Editor::OnUIComponentRaised, editor_ptr.get(), std::placeholders::_1));
 				}
 			}
 			return false;			

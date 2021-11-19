@@ -4,6 +4,7 @@
 #include <Layers/UserInterfaceLayer.h>
 #include <Components/Events/SceneViewportResizedEvent.h>
 #include <Components/Events/SceneTextureAvailableEvent.h>
+#include <Components/Events/SceneViewportFocusedEvent.h>
 
 
 using namespace ZEngine::Components::UI::Event;
@@ -39,6 +40,8 @@ namespace Tetragrama {
 		ZEngine::Event::EventDispatcher event_dispatcher(e);
 		if (rendering_layer_ptr) {
 			event_dispatcher.ForwardTo<Components::Event::SceneViewportResizedEvent>(std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
+			event_dispatcher.ForwardTo<Components::Event::SceneViewportFocusedEvent>(std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
+			event_dispatcher.ForwardTo<Components::Event::SceneViewportUnfocusedEvent>(std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
 		}
 
 		if (user_interface_layer_ptr) {
