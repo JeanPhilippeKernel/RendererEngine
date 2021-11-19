@@ -24,6 +24,14 @@ namespace Tetragrama::Components {
         return true;
     }
 
+    void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt) {
+        if (HasChildren()) {
+            for (const auto& child : m_children) {
+                child->Update(dt);
+            }
+        }
+    }
+
     void DockspaceUIComponent::Render() {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->WorkPos);

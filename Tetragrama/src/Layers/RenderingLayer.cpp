@@ -64,7 +64,9 @@ namespace Tetragrama::Layers {
 	}
 
 	bool RenderingLayer::OnEvent(CoreEvent& e) {
-		m_scene->GetCameraController()->OnEvent(e);
+		if (m_scene_should_accept_event) {
+			m_scene->GetCameraController()->OnEvent(e);
+		}
 		return false;
 	}
 
@@ -78,6 +80,16 @@ namespace Tetragrama::Layers {
 
 		Components::Event::SceneTextureAvailableEvent scene_texture_event{ m_scene->ToTextureRepresentation() };
 		OnSceneTextureAvailable(scene_texture_event);
+		return true;
+	}
+
+	bool RenderingLayer::OnSceneViewportFocused(Components::Event::SceneViewportFocusedEvent& e) {
+		m_scene_should_accept_event = true;
+		return true;
+	}
+
+	bool RenderingLayer::OnSceneViewportUnfocused(Components::Event::SceneViewportUnfocusedEvent& e) {
+		m_scene_should_accept_event = false;
 		return true;
 	}
 
