@@ -55,5 +55,6 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 		std::string				m_source_file;
 		Ref<ICompilerStage>		m_stage{ nullptr };
 		Scope<ShaderReader>		m_reader{ nullptr };
+		static std::unordered_map<std::string, std::vector<ShaderInformation>> s_already_compiled_shaders_collection;
 	};
 }

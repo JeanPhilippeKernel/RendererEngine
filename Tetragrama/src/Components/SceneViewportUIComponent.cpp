@@ -31,14 +31,10 @@ namespace Tetragrama::Components {
         }
 
         if (m_is_window_hovered && m_is_window_focused) {
-            ZENGINE_CORE_WARN("Scene viewport hovered {}", m_is_window_focused);
-            ZENGINE_CORE_WARN("Scene viewport focused {}", m_is_window_hovered);
             SceneViewportFocusedEvent e;
             OnSceneViewportFocused(e);
         }
         else {
-            ZENGINE_CORE_WARN("Scene viewport hovered {}", m_is_window_focused);
-            ZENGINE_CORE_WARN("Scene viewport focused {}", m_is_window_hovered);
             SceneViewportUnfocusedEvent e;
             OnSceneViewportUnfocused(e);
         }
@@ -73,7 +69,6 @@ namespace Tetragrama::Components {
 
 
     bool SceneViewportUIComponent::OnSceneViewportFocused(Event::SceneViewportFocusedEvent& e) {
-        ZENGINE_CORE_INFO("Viewport focused");
         auto layer = m_parent_layer.lock();
 
         const auto user_interface_ptr = dynamic_cast<Layers::UserInterfaceLayer*>(layer.get());
@@ -85,7 +80,6 @@ namespace Tetragrama::Components {
     }
 
     bool SceneViewportUIComponent::OnSceneViewportUnfocused(Event::SceneViewportUnfocusedEvent& e) {
-        ZENGINE_CORE_INFO("Viewport unfocused");
         auto layer = m_parent_layer.lock();
 
         const auto user_interface_ptr = dynamic_cast<Layers::UserInterfaceLayer*>(layer.get());

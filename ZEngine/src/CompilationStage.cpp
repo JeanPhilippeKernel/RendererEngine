@@ -20,6 +20,11 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
 		std::for_each(std::begin(information_list), std::end(information_list), [this](ShaderInformation& shader_info) {
 
+			if (shader_info.CompiledOnce) {
+				ZENGINE_CORE_WARN("------> This {} shader has already been compiled... compilation stage skipped", shader_info.Name);
+				return;
+			}
+
 			ZENGINE_CORE_INFO("------> Compiling {} shader", shader_info.Name);
 
 			shader_info.ShaderId = glCreateShader(shader_info.InternalType);

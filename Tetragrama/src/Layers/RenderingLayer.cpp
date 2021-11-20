@@ -27,7 +27,6 @@ namespace Tetragrama::Layers {
 		m_texture_manager->Load("Assets/Images/free_image.png");
 		m_texture_manager->Load("Assets/Images/Crate.png");
 		m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
-		m_texture_manager->Load("Assets/Images/zota.jpg");
 
 		m_scene.reset(new GraphicScene3D(new OrbitCameraController(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f)));
 		m_scene->Initialize();
@@ -37,6 +36,9 @@ namespace Tetragrama::Layers {
 		Ref<ZEngine::Rendering::Meshes::Mesh> mesh_three;
 
 		mesh_one.reset(MeshBuilder::CreateCube({ 0.f, -0.5f, 0.0f }, { 100.f, .0f, 100.f }, 0.0f, Vector3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
+		StandardMaterial * mat = dynamic_cast<StandardMaterial *>(mesh_one->GetMaterial().get());
+		mat->SetTileFactor(20.f);
+
 		mesh_three.reset(MeshBuilder::CreateCube({ -20.f, 10.f, 0.0f }, { 5.f, 5.0f, 5.f }, {200.0f, 120.0f, 30.0f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
 		
 		Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
@@ -56,11 +58,12 @@ namespace Tetragrama::Layers {
 		m_scene->GetCameraController()->Update(dt);
 
 		//quad_mesh_ptr_2
-		m_mesh_collection[1]
-			->GetGeometry()
-			->ApplyTransform(
-				glm::rotate(Matrix4(1.0f), dt * 0.05f, Vector3(0.f, 1.0f, 0.0f))
-			);
+		m_mesh_collection[1]->GetGeometry()->ApplyTransform(glm::rotate(Matrix4(1.0f), dt * 0.05f, Vector3(0.f, 1.0f, 0.0f)));
+
+		//quad_mesh_ptr_1
+		auto& mat = m_mesh_collection[2]->GetMaterial();
+		auto& texture = mat->GetTexture();
+		texture->SetData(150, 50, 25, 255.f);
 	}
 
 	bool RenderingLayer::OnEvent(CoreEvent& e) {

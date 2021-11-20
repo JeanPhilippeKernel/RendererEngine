@@ -5,6 +5,8 @@
 
 namespace ZEngine::Rendering::Shaders::Compilers {
 	
+	std::unordered_map<std::string, std::vector<ShaderInformation>> ShaderCompiler::s_already_compiled_shaders_collection;
+
 	ShaderCompiler::ShaderCompiler() {
 		m_reader = std::make_unique<ShaderReader>();
 		m_stage  = std::make_unique<CompilationStage>();
@@ -41,24 +43,36 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 		bool compile_process_succeeded{ true };
 
 		ZENGINE_CORE_INFO("====== Compilation process started ======");
+		
+		std::vector<ShaderInformation> shader_information;
 
-		const ShaderOperationResult read_operation = m_reader->Read(m_source_file);
-		if (read_operation == ShaderOperationResult::FAILURE) {
-			ZENGINE_CORE_CRITICAL("Compilation process stopped");
-			return std::make_tuple(ShaderOperationResult::FAILURE, 0);
+		auto find_it = std::find_if(std::begin(s_already_compiled_shaders_collection), std::end(s_already_compiled_shaders_collection), [this](const auto& item) {
+			return item.first == this->m_source_file;
+		});
+
+		if (find_it != std::end(s_already_compiled_shaders_collection)) {
+			shader_information = find_it->second;
+			std::for_each(std::begin(shader_information), std::end(shader_information), [](ShaderInformation& item) { item.CompiledOnce = true; });
 		}
+		else {
+			const ShaderOperationResult read_operation = m_reader->Read(m_source_file);
+			if (read_operation == ShaderOperationResult::FAILURE) {
+				ZENGINE_CORE_CRITICAL("Compilation process stopped");
+				return std::make_tuple(ShaderOperationResult::FAILURE, 0);
+			}
 
-		auto shader_information = m_reader->GetInformations();
-		if (shader_information.empty()) {
-			ZENGINE_CORE_CRITICAL("Information collected while reading shader file are incorrect or not enough to continue compilation process");
-			ZENGINE_CORE_CRITICAL("Compilation process stopped");
-			return std::make_tuple(ShaderOperationResult::FAILURE, 0);
+			shader_information = m_reader->GetInformations();
+			if (shader_information.empty()) {
+				ZENGINE_CORE_CRITICAL("Information collected while reading shader file are incorrect or not enough to continue compilation process");
+				ZENGINE_CORE_CRITICAL("Compilation process stopped");
+				return std::make_tuple(ShaderOperationResult::FAILURE, 0);
+			}
 		}
 
 		while (m_running_stages) {
 			
 			m_stage->Run(shader_information);
-			const auto stage_info = m_stage->GetInformation();
+			const auto& stage_info = m_stage->GetInformation();
 			compile_process_succeeded = compile_process_succeeded && stage_info.IsSuccess;
 
 			if (stage_info.IsSuccess && m_stage->HasNext()) {
@@ -75,6 +89,9 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 		}
 
 		ZENGINE_CORE_INFO("====== Compilation process succeeded ======");
+
+		// We store it, so next time we won't run the compilation stage if it has been before
+		s_already_compiled_shaders_collection.emplace(m_source_file, shader_information);
 
 		const auto& first = std::begin(shader_information);
 		return std::make_tuple(ShaderOperationResult::SUCCESS, first->ProgramId);

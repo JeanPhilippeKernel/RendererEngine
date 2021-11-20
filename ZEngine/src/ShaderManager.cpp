@@ -8,15 +8,11 @@ namespace ZEngine::Managers {
 	}
 
 	Ref<Rendering::Shaders::Shader>& ShaderManager::Add(const char* name, const char* filename) {
-		const auto key = std::string(name).append(m_suffix);
 		
-		const auto found = IManager::Exists(key);
-		if (found.first) {
-			return found.second->second;
-		}
-
 		Ref<Rendering::Shaders::Shader> shader;
 		shader.reset(Rendering::Shaders::CreateShader(filename));
+
+		const auto key = std::string(name).append("_" + std::to_string(shader->GetIdentifier()) + m_suffix);
 		const auto result = IManager::Add(key, shader);
 		
 		assert(result.has_value() == true);

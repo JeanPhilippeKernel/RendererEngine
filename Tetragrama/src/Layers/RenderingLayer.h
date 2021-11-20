@@ -46,11 +46,11 @@ namespace Tetragrama::Layers {
 		bool OnSceneTextureAvailable(Components::Event::SceneTextureAvailableEvent& e);
 		
 	private:
+		bool																m_scene_should_accept_event{ true };
 		ZEngine::WeakRef<Editor> m_editor;
 		ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>				m_scene;
 		ZEngine::Ref<ZEngine::Managers::TextureManager>						m_texture_manager; 
 		std::vector<ZEngine::Ref<ZEngine::Rendering::Meshes::Mesh>>			m_mesh_collection;
-		bool m_scene_should_accept_event{ false };
 	};
 
 } 

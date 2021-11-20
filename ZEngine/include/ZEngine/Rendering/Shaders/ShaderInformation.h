@@ -21,6 +21,10 @@ namespace ZEngine::Rendering::Shaders {
 		*/								
 		GLenum InternalType;
 		/**
+		* Wether the shader has been compiled once
+		*/
+		bool CompiledOnce;
+		/**
 		* Graphic Shader type
 		* @see ShaderType
 		*/								
