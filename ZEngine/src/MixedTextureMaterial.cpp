@@ -11,7 +11,6 @@ namespace ZEngine::Rendering::Materials {
 		ShaderMaterial("Resources/Unix/Shaders/mixed_texture_shader.glsl")
 #endif
 	{
-		m_unique_identifier = "CA36ABA0-B4D4-4CBF-BDE8-BBBC15872091";
 		m_material_name = typeid(*(this)).name();
 	}
 

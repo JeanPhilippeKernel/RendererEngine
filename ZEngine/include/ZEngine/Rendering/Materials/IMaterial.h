@@ -62,9 +62,6 @@ namespace ZEngine::Rendering::Materials {
 			return m_material_name;
 		}
 
-		const std::string& GetUniqueIdentifier() const {
-			return m_unique_identifier;
-		}
 
 		virtual const Ref<Textures::Texture>& GetTexture() const { 
 			return m_texture;
@@ -83,7 +80,6 @@ namespace ZEngine::Rendering::Materials {
 		}
 
 	protected:
-		std::string				m_unique_identifier{};
 		std::string				m_material_name{};
 
 		Ref<Textures::Texture>	m_texture	{nullptr};

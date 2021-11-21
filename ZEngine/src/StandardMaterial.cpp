@@ -13,7 +13,6 @@ namespace ZEngine::Rendering::Materials {
 		m_tile_factor(1.0f),
 		m_tint_color(glm::vec4(1.0f))
 	{
-		m_unique_identifier = "3460B305-3F25-493E-961B-9C837F00369E";
 		m_material_name =  typeid(*this).name();
 	}
 
