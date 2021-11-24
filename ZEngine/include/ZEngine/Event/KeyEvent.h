@@ -4,16 +4,18 @@
 #include <Inputs/KeyCode.h>
 
 namespace ZEngine::Event {
-	
-	class KeyEvent : public CoreEvent {
-	public:
-		 KeyEvent(ZENGINE_KEYCODE key) : m_keycode(key)	{}
 
-		 ZENGINE_KEYCODE GetKeyCode() const {  return m_keycode; }
+    class KeyEvent : public CoreEvent {
+    public:
+        KeyEvent(ZENGINE_KEYCODE key) : m_keycode(key) {}
 
-		 EVENT_CATEGORY(Keyboard | EventCategory::Input)
-	
-	protected:
-		ZENGINE_KEYCODE m_keycode;
-	};
-}
+        ZENGINE_KEYCODE GetKeyCode() const {
+            return m_keycode;
+        }
+
+        EVENT_CATEGORY(Keyboard | EventCategory::Input)
+
+    protected:
+        ZENGINE_KEYCODE m_keycode;
+    };
+} // namespace ZEngine::Event

@@ -1,24 +1,36 @@
 #pragma once
 
 namespace ZEngine::Event {
-	enum class EventType {
-		None = 0,
+    enum class EventType {
+        None = 0,
 
-		WindowShown, WindowHidden, WindowMoved, WindowResized, WindowClosed,
-		WindowSizeChanged, WindowMinimized, WindowMaximized,
-		WindowRestored, WindowFocusLost, WindowFocusGained,
+        WindowShown,
+        WindowHidden,
+        WindowMoved,
+        WindowResized,
+        WindowClosed,
+        WindowSizeChanged,
+        WindowMinimized,
+        WindowMaximized,
+        WindowRestored,
+        WindowFocusLost,
+        WindowFocusGained,
 
-		KeyPressed, KeyReleased,
-		MouseButtonPressed, MouseButtonReleased, MouseMoved, MouseWheel,
+        KeyPressed,
+        KeyReleased,
+        MouseButtonPressed,
+        MouseButtonReleased,
+        MouseMoved,
+        MouseWheel,
 
-		EngineClosed,
+        EngineClosed,
 
-		TextInput,
+        TextInput,
 
-		UserInterfaceComponent,
-		SceneViewportResized,
-		SceneViewportFocused,
-		SceneViewportUnfocused,
-		SceneTextureAvailable
-	};
+        UserInterfaceComponent,
+        SceneViewportResized,
+        SceneViewportFocused,
+        SceneViewportUnfocused,
+        SceneTextureAvailable
+    };
 }

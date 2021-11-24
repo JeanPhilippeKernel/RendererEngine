@@ -9,75 +9,69 @@
 
 namespace ZEngine::Inputs {
 
-	class Mouse : public IDevice {
-	public:
-		Mouse(const char * name = "mouse_device") 
-			: IDevice(name) 
-		{
-		}
+    class Mouse : public IDevice {
+    public:
+        Mouse(const char* name = "mouse_device") : IDevice(name) {}
 
-		virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
-#ifdef 	ZENGINE_KEY_MAPPING_SDL
-			bool is_pressed{ false };
-			const uint32_t	state = SDL_GetMouseState(NULL, NULL);
-			unsigned int	mask = 0;
+        virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
+#ifdef ZENGINE_KEY_MAPPING_SDL
+            bool           is_pressed{false};
+            const uint32_t state = SDL_GetMouseState(NULL, NULL);
+            unsigned int   mask  = 0;
 
-			switch (key)
-			{
-				case KeyCode::MOUSE_LEFT:
-					mask = SDL_BUTTON_LMASK; 
-					break;
-				case KeyCode::MOUSE_WHEEL:
-					mask = SDL_BUTTON_MMASK;
-					break;
-				case KeyCode::MOUSE_RIGHT:
-					mask = SDL_BUTTON_RMASK;
-					break;
-				default:
-					break;
-			}
+            switch (key) {
+            case KeyCode::MOUSE_LEFT:
+                mask = SDL_BUTTON_LMASK;
+                break;
+            case KeyCode::MOUSE_WHEEL:
+                mask = SDL_BUTTON_MMASK;
+                break;
+            case KeyCode::MOUSE_RIGHT:
+                mask = SDL_BUTTON_RMASK;
+                break;
+            default:
+                break;
+            }
 
-			is_pressed = (state & mask) >= 1 ? true : false;
-			return is_pressed;
+            is_pressed = (state & mask) >= 1 ? true : false;
+            return is_pressed;
 #else
-			auto state = glfwGetMouseButton(static_cast<GLFWwindow*>(window->GetNativeWindow()), (int)key);
-			return state == GLFW_PRESS;
+            auto state = glfwGetMouseButton(static_cast<GLFWwindow*>(window->GetNativeWindow()), (int) key);
+            return state == GLFW_PRESS;
 #endif
-		}
+        }
 
-		virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
-			return !IsKeyPressed(key, window);
-		}
+        virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
+            return !IsKeyPressed(key, window);
+        }
 
-#ifdef 	ZENGINE_KEY_MAPPING_SDL
-		std::array<int, 2> GetMousePosition() const {
-			int x, y;
-			const auto state =  SDL_GetMouseState(&x, &y);
-			return std::array<int, 2> {x,y};
-		} 
+#ifdef ZENGINE_KEY_MAPPING_SDL
+        std::array<int, 2> GetMousePosition() const {
+            int        x, y;
+            const auto state = SDL_GetMouseState(&x, &y);
+            return std::array<int, 2>{x, y};
+        }
 #else
-		std::array<double, 2> GetMousePosition(const Ref<Window::CoreWindow>& window) const {
-			double x, y;
-			glfwGetCursorPos(static_cast<GLFWwindow*>(window->GetNativeWindow()), &x, &y);
-			return std::array<double, 2> {x, y};
-		}
+        std::array<double, 2> GetMousePosition(const Ref<Window::CoreWindow>& window) const {
+            double x, y;
+            glfwGetCursorPos(static_cast<GLFWwindow*>(window->GetNativeWindow()), &x, &y);
+            return std::array<double, 2>{x, y};
+        }
 #endif
-		// virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
-		// 	auto state = glfwGetMouseButton(static_cast<GLFWwindow*>(window->GetNativeWindow()), (int)key);
-		// 	return state == GLFW_PRESS;
-		// }
+        // virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
+        // 	auto state = glfwGetMouseButton(static_cast<GLFWwindow*>(window->GetNativeWindow()), (int)key);
+        // 	return state == GLFW_PRESS;
+        // }
 
-		// virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
-		// 	auto state = glfwGetMouseButton(static_cast<GLFWwindow*>(window->GetNativeWindow()), (int)key);
-		// 	return state == GLFW_RELEASE;
-		// }
+        // virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
+        // 	auto state = glfwGetMouseButton(static_cast<GLFWwindow*>(window->GetNativeWindow()), (int)key);
+        // 	return state == GLFW_RELEASE;
+        // }
 
-		// std::array<double, 2> GetMousePosition(const Ref<Window::CoreWindow>& window) const {
-		// 	double x, y;
-		// 	glfwGetCursorPos(static_cast<GLFWwindow*>(window->GetNativeWindow()), &x, &y);
-		// 	return std::array<double, 2> {x, y};
-		// }
-
-	};
-}
-
+        // std::array<double, 2> GetMousePosition(const Ref<Window::CoreWindow>& window) const {
+        // 	double x, y;
+        // 	glfwGetCursorPos(static_cast<GLFWwindow*>(window->GetNativeWindow()), &x, &y);
+        // 	return std::array<double, 2> {x, y};
+        // }
+    };
+} // namespace ZEngine::Inputs

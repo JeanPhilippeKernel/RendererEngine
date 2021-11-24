@@ -34,7 +34,7 @@
 #include "Rendering/Materials/MixedTextureMaterial.h"
 
 #include "Rendering/Meshes/Mesh.h"
-#include "Rendering/Meshes/MeshBuilder.h"							
+#include "Rendering/Meshes/MeshBuilder.h"
 #include "Rendering/Textures/Texture.h"
 
 #include "Inputs/IDevice.h"
@@ -58,7 +58,7 @@
 
 #include "Core/TimeStep.h"
 #include "Core/Utility.h"
- 
+
 #include "Layers/ImguiLayer.h"
 
 #include "Components/UIComponent.h"

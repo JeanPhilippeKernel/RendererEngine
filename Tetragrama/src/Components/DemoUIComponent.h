@@ -1,12 +1,10 @@
-#pragma once 
+#pragma once
 #include <ZEngine/ZEngine.h>
 
 namespace Tetragrama::Components {
     class DemoUIComponent : public ZEngine::Components::UI::UIComponent {
     public:
-        DemoUIComponent(std::string_view name = "DemoUIComponent", bool visibility = true) 
-            : UIComponent(name, visibility)
-        {}
+        DemoUIComponent(std::string_view name = "DemoUIComponent", bool visibility = true) : UIComponent(name, visibility) {}
         virtual ~DemoUIComponent() = default;
 
         virtual void Render() override {
@@ -16,9 +14,11 @@ namespace Tetragrama::Components {
         void Update(ZEngine::Core::TimeStep dt) override {}
 
     protected:
-        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override { return false; }
+        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override {
+            return false;
+        }
 
     private:
         bool m_is_open{true};
     };
-}
+} // namespace Tetragrama::Components

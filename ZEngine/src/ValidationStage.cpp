@@ -4,43 +4,39 @@
 
 namespace ZEngine::Rendering::Shaders::Compilers {
 
-	ValidationStage::ValidationStage()
-	{
-	}
+    ValidationStage::ValidationStage() {}
 
-	ValidationStage::~ValidationStage()
-	{
-	}
+    ValidationStage::~ValidationStage() {}
 
-	void ValidationStage::Run(std::vector<ShaderInformation>& information_list) {
-		ZENGINE_CORE_INFO("------> Validation stage started");
+    void ValidationStage::Run(std::vector<ShaderInformation>& information_list) {
+        ZENGINE_CORE_INFO("------> Validation stage started");
 
-		// We assume that all ShaderInformation object have the same ProgramId
-		const auto& first = information_list.at(0);
-		const GLuint shader_program = first.ProgramId;
-		glValidateProgram(shader_program);
+        // We assume that all ShaderInformation object have the same ProgramId
+        const auto&  first          = information_list.at(0);
+        const GLuint shader_program = first.ProgramId;
+        glValidateProgram(shader_program);
 
-		GLint validate_status;
-		glGetProgramiv(shader_program, GL_VALIDATE_STATUS, &validate_status);
-		if (validate_status == GL_FALSE) {
+        GLint validate_status;
+        glGetProgramiv(shader_program, GL_VALIDATE_STATUS, &validate_status);
+        if (validate_status == GL_FALSE) {
 
-			GLint log_info_length = 0;
-			glGetProgramiv(shader_program, GL_INFO_LOG_LENGTH, &log_info_length);
+            GLint log_info_length = 0;
+            glGetProgramiv(shader_program, GL_INFO_LOG_LENGTH, &log_info_length);
 
-			std::vector<GLchar> log_message(log_info_length);
-			glGetProgramInfoLog(shader_program, log_info_length, &log_info_length, &log_message[0]);
+            std::vector<GLchar> log_message(log_info_length);
+            glGetProgramInfoLog(shader_program, log_info_length, &log_info_length, &log_message[0]);
 
-			this->m_information.IsSuccess = this->m_information.IsSuccess && false;
-			this->m_information.ErrorMessage.append(std::begin(log_message), std::end(log_message));
-			ZENGINE_CORE_ERROR("------> Shader Program is invalid");
-		}
+            this->m_information.IsSuccess = this->m_information.IsSuccess && false;
+            this->m_information.ErrorMessage.append(std::begin(log_message), std::end(log_message));
+            ZENGINE_CORE_ERROR("------> Shader Program is invalid");
+        }
 
-		if (!this->m_information.IsSuccess) {
-			ZENGINE_CORE_ERROR("------> Validation stage completed with errors");
-			ZENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage);
-			return;
-		}
+        if (!this->m_information.IsSuccess) {
+            ZENGINE_CORE_ERROR("------> Validation stage completed with errors");
+            ZENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage);
+            return;
+        }
 
-		ZENGINE_CORE_INFO("------> Validation stage succeeded");
-	}
-}
+        ZENGINE_CORE_INFO("------> Validation stage succeeded");
+    }
+} // namespace ZEngine::Rendering::Shaders::Compilers

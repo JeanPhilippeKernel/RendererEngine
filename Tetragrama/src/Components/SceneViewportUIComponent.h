@@ -13,22 +13,24 @@ namespace Tetragrama::Components {
         void Update(ZEngine::Core::TimeStep dt) override;
 
         virtual void Render() override;
-        
-        void SetSceneTexture(const uint32_t scene_texture) { m_scene_texture_identifier = scene_texture;  }
+
+        void SetSceneTexture(const uint32_t scene_texture) {
+            m_scene_texture_identifier = scene_texture;
+        }
 
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
-    
+
     private:
         bool OnSceneViewportResized(Event::SceneViewportResizedEvent&);
         bool OnSceneViewportFocused(Event::SceneViewportFocusedEvent&);
         bool OnSceneViewportUnfocused(Event::SceneViewportUnfocusedEvent&);
 
     private:
-        bool m_is_window_focused{ false };
-        bool m_is_window_hovered{ false };
-        ImVec2 m_viewport_size{ 0.f, 0.f };
-        ImVec2 m_content_region_available_size{ 0.f, 0.f };
-        uint32_t m_scene_texture_identifier{ 0 };
+        bool     m_is_window_focused{false};
+        bool     m_is_window_hovered{false};
+        ImVec2   m_viewport_size{0.f, 0.f};
+        ImVec2   m_content_region_available_size{0.f, 0.f};
+        uint32_t m_scene_texture_identifier{0};
     };
-}
+} // namespace Tetragrama::Components

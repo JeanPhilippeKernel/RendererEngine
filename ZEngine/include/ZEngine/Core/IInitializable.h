@@ -2,11 +2,10 @@
 
 namespace ZEngine::Core {
 
-	struct IInitializable
-	{
-		IInitializable()			= default;
-		virtual ~IInitializable()	= default;
+    struct IInitializable {
+        IInitializable()          = default;
+        virtual ~IInitializable() = default;
 
-		virtual void Initialize()	=  0;
-	};
-}
+        virtual void Initialize() = 0;
+    };
+} // namespace ZEngine::Core

@@ -14,47 +14,42 @@
 #include <Core/IEventable.h>
 #include <Core/IInitializable.h>
 
-
 namespace ZEngine {
-	
-	class Engine : 
-		public Core::IInitializable,
-		public Core::IUpdatable, 
-		public Core::IRenderable {
 
-	public:
-		Engine();
-		virtual ~Engine();
+    class Engine : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable {
 
-	public:
-		virtual void Initialize() override;
-		virtual void Update(Core::TimeStep delta_time) override;
-		virtual void Render() override;
-		
-	public:
-		void Run();
+    public:
+        Engine();
+        virtual ~Engine();
 
-		const Ref<ZEngine::Window::CoreWindow>& GetWindow() const { return m_window; }
-		static Core::TimeStep GetDeltaTime() { return m_delta_time; }
+    public:
+        virtual void Initialize() override;
+        virtual void Update(Core::TimeStep delta_time) override;
+        virtual void Render() override;
 
-	protected:
-		virtual void ProcessEvent();
+    public:
+        void Run();
 
-	public:
-		bool OnEngineClosed(Event::EngineClosedEvent&);
-	
-	private:
-		static Core::TimeStep m_delta_time;
-		
-		bool m_running{ false };
-		float m_last_frame_time { 0.0f };
-		Ref<ZEngine::Window::CoreWindow> m_window;
+        const Ref<ZEngine::Window::CoreWindow>& GetWindow() const {
+            return m_window;
+        }
+        static Core::TimeStep GetDeltaTime() {
+            return m_delta_time;
+        }
 
-	};
+    protected:
+        virtual void ProcessEvent();
 
-	Engine* CreateEngine();
-}
+    public:
+        bool OnEngineClosed(Event::EngineClosedEvent&);
 
+    private:
+        static Core::TimeStep m_delta_time;
 
+        bool                             m_running{false};
+        float                            m_last_frame_time{0.0f};
+        Ref<ZEngine::Window::CoreWindow> m_window;
+    };
 
-
+    Engine* CreateEngine();
+} // namespace ZEngine

@@ -3,7 +3,7 @@
 
 #ifdef ZENGINE_WINDOW_SDL
 #include <Rendering/Graphics/SDLGraphic/OpenGLContext.h>
-#else 
+#else
 #include <Rendering/Graphics/GlfwGraphic/OpenGLContext.h>
 #endif
 
@@ -11,11 +11,11 @@
 
 namespace ZEngine::Rendering::Graphics {
 
-	GraphicContext* CreateContext() {
-		return new ZENGINE_OPENGL_CONTEXT();
-	}
+    GraphicContext* CreateContext() {
+        return new ZENGINE_OPENGL_CONTEXT();
+    }
 
-	GraphicContext* CreateContext(const CoreWindow* window) {
-		return new ZENGINE_OPENGL_CONTEXT(window);
-	}
-}
+    GraphicContext* CreateContext(const CoreWindow* window) {
+        return new ZENGINE_OPENGL_CONTEXT(window);
+    }
+} // namespace ZEngine::Rendering::Graphics

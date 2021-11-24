@@ -16,13 +16,13 @@ namespace Tetragrama::Components {
 
     private:
         ImGuiDockNodeFlags m_dockspace_node_flag;
-        ImGuiWindowFlags m_window_flags;
+        ImGuiWindowFlags   m_window_flags;
 
         bool OnRequestCreateScene(ZEngine::Components::UI::Event::UIComponentEvent&);
-        bool OnRequestOpenScene(ZEngine::Components::UI::Event::UIComponentEvent& );
+        bool OnRequestOpenScene(ZEngine::Components::UI::Event::UIComponentEvent&);
         bool OnRequestSave(ZEngine::Components::UI::Event::UIComponentEvent&);
         bool OnRequestSaveAs(ZEngine::Components::UI::Event::UIComponentEvent&);
-        
+
         bool OnRequestExit(ZEngine::Event::WindowClosedEvent&);
     };
-}
+} // namespace Tetragrama::Components
