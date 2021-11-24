@@ -3,15 +3,15 @@
 
 namespace ZEngine::Components::UI::Event {
 
-	class UIComponentEvent : public ZEngine::Event::CoreEvent {
-	public:
-		UIComponentEvent() = default;
+    class UIComponentEvent : public ZEngine::Event::CoreEvent {
+    public:
+        UIComponentEvent()          = default;
         virtual ~UIComponentEvent() = default;
 
-		EVENT_CATEGORY(UserInterfaceComponent)
-		
-		virtual std::string ToString() const override {
+        EVENT_CATEGORY(UserInterfaceComponent)
+
+        virtual std::string ToString() const override {
             return "UIComponentEvent";
-		}
-	};
-}
+        }
+    };
+} // namespace ZEngine::Components::UI::Event

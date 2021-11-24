@@ -4,42 +4,41 @@
 
 using namespace ZEngine::Controllers;
 
+namespace ZEngine::Rendering::Scenes {
 
-namespace  ZEngine::Rendering::Scenes {
-	
-	void GraphicScene::Initialize() {
-		m_camera_controller->Initialize();
-		m_renderer->Initialize();
-	}
+    void GraphicScene::Initialize() {
+        m_camera_controller->Initialize();
+        m_renderer->Initialize();
+    }
 
-	const Scope<ICameraController>& GraphicScene::GetCameraController() const {
-		return m_camera_controller;
-	}
+    const Scope<ICameraController>& GraphicScene::GetCameraController() const {
+        return m_camera_controller;
+    }
 
-	void GraphicScene::Add(Ref<Meshes::Mesh>& mesh) {
-		m_mesh_list.push_back(mesh);
-	}
+    void GraphicScene::Add(Ref<Meshes::Mesh>& mesh) {
+        m_mesh_list.push_back(mesh);
+    }
 
-	void GraphicScene::Add(const std::vector<Ref<Meshes::Mesh>>& meshes) {
-		std::copy(std::begin(meshes), std::end(meshes), std::back_inserter(m_mesh_list));
-	}
+    void GraphicScene::Add(const std::vector<Ref<Meshes::Mesh>>& meshes) {
+        std::copy(std::begin(meshes), std::end(meshes), std::back_inserter(m_mesh_list));
+    }
 
-	void GraphicScene::UpdateSize(uint32_t width, uint32_t height) {
-		m_camera_controller->SetAspectRatio(((float)width) / ((float)height));
-		m_camera_controller->UpdateProjectionMatrix();
-		m_renderer->GetFrameBuffer()->Resize(width, height);
-	}
+    void GraphicScene::UpdateSize(uint32_t width, uint32_t height) {
+        m_camera_controller->SetAspectRatio(((float) width) / ((float) height));
+        m_camera_controller->UpdateProjectionMatrix();
+        m_renderer->GetFrameBuffer()->Resize(width, height);
+    }
 
-	void GraphicScene::Render() {		
-		m_renderer->StartScene(m_camera_controller->GetCamera()->GetViewProjectionMatrix());
-		m_renderer->AddMesh(m_mesh_list);
-		m_renderer->EndScene();
-			
-		m_mesh_list.clear();
-	}
+    void GraphicScene::Render() {
+        m_renderer->StartScene(m_camera_controller->GetCamera()->GetViewProjectionMatrix());
+        m_renderer->AddMesh(m_mesh_list);
+        m_renderer->EndScene();
 
-	unsigned int GraphicScene::ToTextureRepresentation() const {
-		return m_renderer->GetFrameBuffer()->GetTexture();
-	}
+        m_mesh_list.clear();
+    }
 
-}
+    unsigned int GraphicScene::ToTextureRepresentation() const {
+        return m_renderer->GetFrameBuffer()->GetTexture();
+    }
+
+} // namespace ZEngine::Rendering::Scenes

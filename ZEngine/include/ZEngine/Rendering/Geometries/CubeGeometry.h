@@ -3,8 +3,8 @@
 
 namespace ZEngine::Rendering::Geometries {
 
-	struct CubeGeometry : public IGeometry {
-		explicit CubeGeometry();
-		~CubeGeometry() = default;
-	};
-}
+    struct CubeGeometry : public IGeometry {
+        explicit CubeGeometry();
+        ~CubeGeometry() = default;
+    };
+} // namespace ZEngine::Rendering::Geometries

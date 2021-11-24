@@ -3,8 +3,8 @@
 
 namespace ZEngine::Rendering::Geometries {
 
-	struct QuadGeometry : public IGeometry {
-		explicit QuadGeometry();
-		~QuadGeometry() = default;
-	};
-}
+    struct QuadGeometry : public IGeometry {
+        explicit QuadGeometry();
+        ~QuadGeometry() = default;
+    };
+} // namespace ZEngine::Rendering::Geometries

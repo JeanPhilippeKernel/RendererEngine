@@ -3,12 +3,11 @@
 
 namespace ZEngine::Rendering::Renderers {
 
-	class GraphicRenderer2D : public GraphicRenderer {
-	public:
-		explicit GraphicRenderer2D();
-		~GraphicRenderer2D()	= default;
+    class GraphicRenderer2D : public GraphicRenderer {
+    public:
+        explicit GraphicRenderer2D();
+        ~GraphicRenderer2D() = default;
 
-		void Initialize() override;
-	};
-}
-	
+        void Initialize() override;
+    };
+} // namespace ZEngine::Rendering::Renderers

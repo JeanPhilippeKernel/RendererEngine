@@ -12,64 +12,61 @@
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
 
-namespace ZEngine::Window { class CoreWindow; }
+namespace ZEngine::Window {
+    class CoreWindow;
+}
 
 namespace ZEngine::Layers {
 
-	struct LayerInformation {
-		std::string Sender; 
-		void* Data{nullptr};
-	};
+    struct LayerInformation {
+        std::string Sender;
+        void*       Data{nullptr};
+    };
 
-	class Layer : 
-		public Core::IInitializable, 
-		public Core::IUpdatable, 
-		public Core::IEventable, 
-		public Core::IRenderable {
-	
-	public:
-		Layer(const char* name = "default_layer")
-			: m_name(name)
-		{
-			m_information.Sender = name;
-		}
+    class Layer : public Core::IInitializable, public Core::IUpdatable, public Core::IEventable, public Core::IRenderable {
 
-		virtual ~Layer() = default;
+    public:
+        Layer(const char* name = "default_layer") : m_name(name) {
+            m_information.Sender = name;
+        }
 
-		std::string_view GetName() const { return m_name; }
+        virtual ~Layer() = default;
 
-		void SetAttachedWindow(const ZEngine::Ref<Window::CoreWindow>& window) {
-			m_window = window;
-		}
+        std::string_view GetName() const {
+            return m_name;
+        }
 
-		ZEngine::Ref<ZEngine::Window::CoreWindow> GetAttachedWindow() const {
-			if(!m_window.expired())
-				return m_window.lock();
-			
-			return nullptr;
-		}
+        void SetAttachedWindow(const ZEngine::Ref<Window::CoreWindow>& window) {
+            m_window = window;
+        }
 
-		const LayerInformation& GetLayerInformation() const { return m_information; }
+        ZEngine::Ref<ZEngine::Window::CoreWindow> GetAttachedWindow() const {
+            if (!m_window.expired())
+                return m_window.lock();
 
-		void AddSubscriber(const Ref<Layer>& subscriber) {
-			m_subscribers.push_back(subscriber);
-		}
+            return nullptr;
+        }
 
-		virtual void OnRenderCallback() {
-			if (m_information.Data) {
-				std::for_each(std::begin(m_subscribers), std::end(m_subscribers), [this](Ref<Layer>& subscriber) {
-					subscriber->OnRecievedData(this, m_information);
-				});			
-			}
-		}
+        const LayerInformation& GetLayerInformation() const {
+            return m_information;
+        }
 
-		virtual void OnRecievedData(const void*, const LayerInformation&) { }
+        void AddSubscriber(const Ref<Layer>& subscriber) {
+            m_subscribers.push_back(subscriber);
+        }
 
-	protected:
-		std::string m_name;
-		LayerInformation m_information;
-		ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;
-		std::vector<Ref<Layer>> m_subscribers;
+        virtual void OnRenderCallback() {
+            if (m_information.Data) {
+                std::for_each(std::begin(m_subscribers), std::end(m_subscribers), [this](Ref<Layer>& subscriber) { subscriber->OnRecievedData(this, m_information); });
+            }
+        }
 
-	};
-}
+        virtual void OnRecievedData(const void*, const LayerInformation&) {}
+
+    protected:
+        std::string                                   m_name;
+        LayerInformation                              m_information;
+        ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;
+        std::vector<Ref<Layer>>                       m_subscribers;
+    };
+} // namespace ZEngine::Layers

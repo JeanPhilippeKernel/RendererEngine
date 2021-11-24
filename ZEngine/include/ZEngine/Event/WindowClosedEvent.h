@@ -2,28 +2,27 @@
 #include <Event/CoreEvent.h>
 #include <fmt/format.h>
 
-
 namespace ZEngine::Event {
-	class WindowClosedEvent : public CoreEvent {
-	public:
-		WindowClosedEvent() { m_name = "WindowClosed"; }
-		~WindowClosedEvent() = default;
+    class WindowClosedEvent : public CoreEvent {
+    public:
+        WindowClosedEvent() {
+            m_name = "WindowClosed";
+        }
+        ~WindowClosedEvent() = default;
 
+        EventType GetType() const override {
+            return GetStaticType();
+        }
 
-		EventType GetType() const override {
-			return GetStaticType();
-		}
+        int GetCategory() const override {
+            return GetStaticCategory();
+        }
 
-		int GetCategory() const override {
-			return GetStaticCategory();
-		}
+        std::string ToString() const override {
+            return fmt::format("WindowClosedEvent");
+        }
 
-		std::string ToString() const override {
-			return fmt::format("WindowClosedEvent");
-		}
-
-		EVENT_CATEGORY(Engine)
-		EVENT_TYPE(WindowClosed)
-
-	};
-}
+        EVENT_CATEGORY(Engine)
+        EVENT_TYPE(WindowClosed)
+    };
+} // namespace ZEngine::Event

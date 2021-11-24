@@ -5,18 +5,17 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
     class ValidationStage : public ICompilerStage {
     public:
-
         /**
-        * Initialize a new ValidationStage instance.
-        */
+         * Initialize a new ValidationStage instance.
+         */
         ValidationStage();
         virtual ~ValidationStage();
 
         /**
-        * Run Compiler stage
-        *
-        * @param information Collection of shader information
-        */
+         * Run Compiler stage
+         *
+         * @param information Collection of shader information
+         */
         virtual void Run(std::vector<ShaderInformation>& information) override;
     };
-}
+} // namespace ZEngine::Rendering::Shaders::Compilers

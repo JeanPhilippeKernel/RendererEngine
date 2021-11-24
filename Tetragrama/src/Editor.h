@@ -1,24 +1,24 @@
 #pragma once
-#include <ZEngine/ZEngineDef.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Layers/ImguiLayer.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace Tetragrama {
 
-	class Editor : ZEngine::Core::IInitializable, public std::enable_shared_from_this<Editor> {
-	public:
-		Editor();
-		virtual ~Editor();
+    class Editor : ZEngine::Core::IInitializable, public std::enable_shared_from_this<Editor> {
+    public:
+        Editor();
+        virtual ~Editor();
 
-		void Initialize() override;
+        void Initialize() override;
         void Run();
 
-		void OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent& e);
+        void OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent& e);
 
-	private:
-		ZEngine::Ref<ZEngine::Layers::ImguiLayer>	m_ui_layer{ nullptr };
-		ZEngine::Ref<ZEngine::Layers::Layer>		m_rendering_layer{ nullptr };
-		ZEngine::Scope<ZEngine::Engine>				m_engine{ nullptr };
-	};
+    private:
+        ZEngine::Ref<ZEngine::Layers::ImguiLayer> m_ui_layer{nullptr};
+        ZEngine::Ref<ZEngine::Layers::Layer>      m_rendering_layer{nullptr};
+        ZEngine::Scope<ZEngine::Engine>           m_engine{nullptr};
+    };
 
-}
+} // namespace Tetragrama

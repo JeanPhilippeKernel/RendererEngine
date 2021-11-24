@@ -2,29 +2,28 @@
 #include <Rendering/Cameras/Camera.h>
 #include <glm/glm/gtc/matrix_transform.hpp>
 
-
 namespace ZEngine::Rendering::Cameras {
-	
-	class PerspectiveCamera : public Camera {
-	public:
-		PerspectiveCamera(float field_of_view, float aspect_ratio, float near, float far);
-		virtual ~PerspectiveCamera() = default;
 
-		virtual void SetTarget(const Maths::Vector3& target)					override;
-		virtual void SetFieldOfView(float rad_angle);
+    class PerspectiveCamera : public Camera {
+    public:
+        PerspectiveCamera(float field_of_view, float aspect_ratio, float near, float far);
+        virtual ~PerspectiveCamera() = default;
 
-		virtual void SetPosition(const Maths::Vector3& position)				override;
-		virtual void SetProjectionMatrix(const Maths::Matrix4& projection)	override;
+        virtual void SetTarget(const Maths::Vector3& target) override;
+        virtual void SetFieldOfView(float rad_angle);
 
-	protected:
-		virtual void UpdateCoordinateVectors();
-		virtual void UpdateViewMatrix()									override;
+        virtual void SetPosition(const Maths::Vector3& position) override;
+        virtual void SetProjectionMatrix(const Maths::Matrix4& projection) override;
 
-	protected:
-		float m_field_of_view{ 0.0f };
+    protected:
+        virtual void UpdateCoordinateVectors();
+        virtual void UpdateViewMatrix() override;
 
-		float m_radius;
-		float m_yaw_angle;
-		float m_pitch_angle;
-	};
-}
+    protected:
+        float m_field_of_view{0.0f};
+
+        float m_radius;
+        float m_yaw_angle;
+        float m_pitch_angle;
+    };
+} // namespace ZEngine::Rendering::Cameras

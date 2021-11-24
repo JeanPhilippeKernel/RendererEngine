@@ -4,38 +4,46 @@
 #include <Layers/Layer.h>
 
 namespace ZEngine::Layers {
-	class Layer;
+    class Layer;
 
-	class LayerStack {
-	public:
-		LayerStack() = default;
-		~LayerStack();
+    class LayerStack {
+    public:
+        LayerStack() = default;
+        ~LayerStack();
 
-		void PushLayer(const Ref<Layer>& layer);
-		void PushLayer(Ref<Layer>&& layer);		
+        void PushLayer(const Ref<Layer>& layer);
+        void PushLayer(Ref<Layer>&& layer);
 
-		void PushOverlayLayer(const Ref<Layer>& layer);
-		void PushOverlayLayer(Ref<Layer>&& layer);		
-		
-		void PopLayer(const Ref<Layer>& layer);
-		void PopLayer(Ref<Layer>&& layer);
+        void PushOverlayLayer(const Ref<Layer>& layer);
+        void PushOverlayLayer(Ref<Layer>&& layer);
 
-		void PopLayer();
+        void PopLayer(const Ref<Layer>& layer);
+        void PopLayer(Ref<Layer>&& layer);
 
-		void PopOverlayLayer();
+        void PopLayer();
 
-		void PopOverlayLayer(const Ref<Layer>& layer);
-		void PopOverlayLayer(Ref<Layer>&& layer);
+        void PopOverlayLayer();
 
-	public:
-		std::vector<Ref<Layer>>::iterator begin() { return std::begin(m_layers); }
-		std::vector<Ref<Layer>>::iterator end() { return std::end(m_layers); }
+        void PopOverlayLayer(const Ref<Layer>& layer);
+        void PopOverlayLayer(Ref<Layer>&& layer);
 
-		std::vector<Ref<Layer>>::reverse_iterator rbegin() { return std::rbegin(m_layers); }
-		std::vector<Ref<Layer>>::reverse_iterator rend() { return std::rend(m_layers); }
+    public:
+        std::vector<Ref<Layer>>::iterator begin() {
+            return std::begin(m_layers);
+        }
+        std::vector<Ref<Layer>>::iterator end() {
+            return std::end(m_layers);
+        }
 
-	private:
-		std::vector<Ref<Layer>> m_layers;
-		std::vector<Ref<Layer>>::iterator current_it;
-	};
-}
+        std::vector<Ref<Layer>>::reverse_iterator rbegin() {
+            return std::rbegin(m_layers);
+        }
+        std::vector<Ref<Layer>>::reverse_iterator rend() {
+            return std::rend(m_layers);
+        }
+
+    private:
+        std::vector<Ref<Layer>>           m_layers;
+        std::vector<Ref<Layer>>::iterator current_it;
+    };
+} // namespace ZEngine::Layers

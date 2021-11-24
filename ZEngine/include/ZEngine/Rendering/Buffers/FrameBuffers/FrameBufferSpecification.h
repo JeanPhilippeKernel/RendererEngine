@@ -5,8 +5,8 @@ namespace ZEngine::Rendering::Buffers {
     struct FrameBufferSpecification {
         unsigned int Height;
         unsigned int Width;
-        bool HasDepth;
-        bool HasStencil;
+        bool         HasDepth;
+        bool         HasStencil;
     };
-   
-}
+
+} // namespace ZEngine::Rendering::Buffers

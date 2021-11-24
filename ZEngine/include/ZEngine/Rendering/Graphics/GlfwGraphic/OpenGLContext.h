@@ -7,21 +7,18 @@ using namespace ZEngine::Rendering::Graphics;
 
 namespace ZEngine::Rendering::Graphics::GLFWGraphic {
 
-	class OpenGLContext : public GraphicContext {
-	public:
-		OpenGLContext() = default;
-		OpenGLContext(const CoreWindow* window)
-			:GraphicContext(window)
-		{
-		}
+    class OpenGLContext : public GraphicContext {
+    public:
+        OpenGLContext() = default;
+        OpenGLContext(const CoreWindow* window) : GraphicContext(window) {}
 
-		~OpenGLContext() 
-		{
-		}
+        ~OpenGLContext() {}
 
-		virtual void* GetNativeContext() const override { return glfwGetCurrentContext(); }
+        virtual void* GetNativeContext() const override {
+            return glfwGetCurrentContext();
+        }
 
-		virtual void MarkActive() override;
-	};
+        virtual void MarkActive() override;
+    };
 
-}
+} // namespace ZEngine::Rendering::Graphics::GLFWGraphic

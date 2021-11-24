@@ -4,12 +4,10 @@
 
 namespace ZEngine::Rendering::Buffers {
 
-    FrameBuffer::FrameBuffer(const FrameBufferSpecification& specification)
-        : m_specification(specification)
-    {
+    FrameBuffer::FrameBuffer(const FrameBufferSpecification& specification) : m_specification(specification) {
         this->Resize();
     }
-    
+
     FrameBuffer::~FrameBuffer() {
         glDeleteTextures(1, &m_texture_color_depth_attachment);
         glDeleteTextures(1, &m_texture_color_attachment_identifier);
@@ -20,13 +18,13 @@ namespace ZEngine::Rendering::Buffers {
         return m_framebuffer_identifier;
     }
 
-    void FrameBuffer::Bind() const { 
-        glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer_identifier); 
+    void FrameBuffer::Bind() const {
+        glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer_identifier);
         glViewport(0, 0, m_specification.Width, m_specification.Height);
     }
-    
-    void FrameBuffer::Unbind() const { 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0); 
+
+    void FrameBuffer::Unbind() const {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
     void FrameBuffer::Resize() {
@@ -56,8 +54,8 @@ namespace ZEngine::Rendering::Buffers {
         glGenTextures(1, &m_texture_color_attachment_identifier);
         glBindTexture(GL_TEXTURE_2D, m_texture_color_attachment_identifier);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_specification.Width, m_specification.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_texture_color_attachment_identifier, 0);
 
@@ -73,12 +71,12 @@ namespace ZEngine::Rendering::Buffers {
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             ZENGINE_CORE_CRITICAL("Framebuffer is incomplete");
         }
-        
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
     void FrameBuffer::Resize(uint32_t width, uint32_t height) {
-        m_specification.Width = width;
+        m_specification.Width  = width;
         m_specification.Height = height;
 
         /*Cleaunp before creating new framebuffer*/
@@ -131,4 +129,4 @@ namespace ZEngine::Rendering::Buffers {
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
-}
+} // namespace ZEngine::Rendering::Buffers
