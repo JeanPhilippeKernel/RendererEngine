@@ -33,6 +33,7 @@ namespace ZEngine::Rendering::Renderers {
         shader->Bind();
         material->Apply();
 
+        //Todo : As used by many shader, we should moved it out to an Uniform Buffer
         shader->SetUniform("uniform_viewprojection", m_view_projection_matrix);
         RendererCommand::DrawIndexed(shader, vertex_array);
     }
