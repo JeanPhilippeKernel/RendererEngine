@@ -1,19 +1,9 @@
 #pragma once
-#include <memory>
 #include <queue>
-
-#include <Rendering/Renderers/RenderCommand.h>
 #include <Rendering/Renderers/Storages/GraphicRendererStorage.h>
-
-#include "Rendering/Buffers/VertexArray.h"
-#include <Rendering/Cameras/Camera.h>
-#include <Rendering/Textures/Texture.h>
-
 #include <Rendering/Buffers/FrameBuffers/Framebuffer.h>
-
 #include <Core/IInitializable.h>
 #include <Rendering/Meshes/Mesh.h>
-#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Renderers {
 
@@ -22,7 +12,8 @@ namespace ZEngine::Rendering::Renderers {
         GraphicRenderer();
         virtual ~GraphicRenderer() = default;
 
-        virtual void AddMesh(Meshes::Mesh& mesh);
+        virtual void AddMesh(Meshes::Mesh& mesh) = 0;
+
         virtual void AddMesh(Ref<Meshes::Mesh>& mesh);
         virtual void AddMesh(std::vector<Meshes::Mesh>& meshes);
         virtual void AddMesh(std::vector<Ref<Meshes::Mesh>>& meshes);
@@ -30,27 +21,15 @@ namespace ZEngine::Rendering::Renderers {
     public:
         const Ref<Buffers::FrameBuffer>& GetFrameBuffer() const;
         virtual void                     StartScene(const Maths::Matrix4& m_view_projection_matrix);
-        virtual void                     EndScene();
+        virtual void                     EndScene() = 0;
 
     protected:
-        void Submit(const Ref<Storages::GraphicRendererStorage<float, unsigned int>>& graphic_storage) {
-
-            const auto& shader       = graphic_storage->GetShader();
-            const auto& vertex_array = graphic_storage->GetVertexArray();
-            const auto& material     = graphic_storage->GetMaterial();
-            shader->Bind();
-            material->Apply();
-
-            shader->SetUniform("uniform_viewprojection", m_view_projection_matrix);
-            RendererCommand::DrawIndexed(shader, vertex_array);
-        }
+        void Submit(const Ref<Storages::GraphicRendererStorage<float, unsigned int>>& graphic_storage);
 
     protected:
-        Maths::Matrix4 m_view_projection_matrix;
-
-        std::unordered_map<unsigned int, std::vector<Rendering::Meshes::Mesh>> m_mesh_map;
-        std::queue<Ref<Storages::GraphicRendererStorage<float, unsigned int>>> m_graphic_storage_list;
-        Storages::GraphicRendererStorageType                                   m_storage_type;
+        Maths::Matrix4                                                         m_view_projection_matrix;
         Ref<Buffers::FrameBuffer>                                              m_framebuffer;
+        Storages::GraphicRendererStorageType                                   m_storage_type{Storages::GraphicRendererStorageType::GRAPHIC_STORAGE_TYPE_UNDEFINED};
+        std::queue<Ref<Storages::GraphicRendererStorage<float, unsigned int>>> m_graphic_storage_list;
     };
 } // namespace ZEngine::Rendering::Renderers

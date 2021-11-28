@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <Rendering/Scenes/GraphicScene3D.h>
+#include <Rendering/Renderers/RenderCommand.h>
 
 namespace ZEngine::Rendering::Scenes {
 
