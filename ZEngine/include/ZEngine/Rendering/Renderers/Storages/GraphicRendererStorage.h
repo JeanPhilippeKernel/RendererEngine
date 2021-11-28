@@ -2,18 +2,16 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
-
 #include <Rendering/Renderers/Storages/GraphicVertex.h>
 #include <Rendering/Buffers/VertexArray.h>
 #include <Rendering/Buffers/VertexBuffer.h>
 #include <Rendering/Buffers/IndexBuffer.h>
 #include <Rendering/Shaders/Shader.h>
-
-#include "../../Materials/ShaderMaterial.h"
+#include <Rendering/Materials/ShaderMaterial.h>
 
 namespace ZEngine::Rendering::Renderers::Storages {
 
-    enum class GraphicRendererStorageType { GRAPHIC_2D_STORAGE_TYPE, GRAPHIC_3D_STORAGE_TYPE };
+    enum class GraphicRendererStorageType { GRAPHIC_STORAGE_TYPE_UNDEFINED, GRAPHIC_2D_STORAGE_TYPE, GRAPHIC_3D_STORAGE_TYPE };
 
     template <typename T, typename K>
     class GraphicRendererStorage {
@@ -43,9 +41,8 @@ namespace ZEngine::Rendering::Renderers::Storages {
         }
 
     private:
-        Ref<Shaders::Shader>           m_shader{nullptr};
-        Ref<Materials::ShaderMaterial> m_shader_material{nullptr};
-
+        Ref<Shaders::Shader>            m_shader{nullptr};
+        Ref<Materials::ShaderMaterial>  m_shader_material{nullptr};
         Ref<Buffers::VertexBuffer<T>>   m_vertex_buffer{nullptr};
         Ref<Buffers::IndexBuffer<K>>    m_index_buffer{nullptr};
         Ref<Buffers::VertexArray<T, K>> m_vertex_array{nullptr};

@@ -1,28 +1,9 @@
 #include <pch.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
+#include <Rendering/Renderers/RenderCommand.h>
 
 namespace ZEngine::Rendering::Renderers {
-    GraphicRenderer::GraphicRenderer() : m_view_projection_matrix(Maths::identity<Maths::Matrix4>()), m_mesh_map(), m_graphic_storage_list() {}
-
-    void GraphicRenderer::AddMesh(Meshes::Mesh& mesh) {
-        const auto& material          = mesh.GetMaterial();
-        const auto& material_hashcode = material->GetHashCode();
-
-        auto it = std::find_if(std::begin(m_mesh_map), std::end(m_mesh_map),
-            [&material_hashcode](const std::pair<unsigned int, std::vector<Meshes::Mesh>>& value) { return value.first == material_hashcode; });
-
-        if (it == std::end(m_mesh_map)) {
-            std::vector<Meshes::Mesh> meshes = {mesh};
-            mesh.SetUniqueIdentifier(0);
-            m_mesh_map.emplace(material_hashcode, meshes);
-        }
-
-        else {
-            unsigned int mesh_identifier_id = it->second.size();
-            mesh.SetUniqueIdentifier(mesh_identifier_id);
-            it->second.push_back(mesh);
-        }
-    }
+    GraphicRenderer::GraphicRenderer() : m_view_projection_matrix(Maths::identity<Maths::Matrix4>()), m_graphic_storage_list() {}
 
     void GraphicRenderer::AddMesh(Ref<Meshes::Mesh>& mesh) {
         AddMesh(*mesh);
@@ -44,29 +25,16 @@ namespace ZEngine::Rendering::Renderers {
         m_view_projection_matrix = view_projection_matrix;
     }
 
-    void GraphicRenderer::EndScene() {
+    void GraphicRenderer::Submit(const Ref<Storages::GraphicRendererStorage<float, unsigned int>>& graphic_storage) {
 
-        std::for_each(std::begin(m_mesh_map), std::end(m_mesh_map), [this](const std::pair<unsigned int, std::vector<Meshes::Mesh>>& value) {
-            const auto& material = value.second.at(0).GetMaterial();
-            const auto& shader   = material->GetShader();
+        const auto& shader       = graphic_storage->GetShader();
+        const auto& vertex_array = graphic_storage->GetVertexArray();
+        const auto& material     = graphic_storage->GetMaterial();
+        shader->Bind();
+        material->Apply();
 
-            std::vector<Storages::GraphicVertex> vertices;
-            std::for_each(std::begin(value.second), std::end(value.second), [&vertices](const Meshes::Mesh& mesh) {
-                const auto& mesh_vertices = mesh.GetGeometry()->GetVertices();
-                std::copy(std::begin(mesh_vertices), std::end(mesh_vertices), std::back_inserter(vertices));
-            });
-
-            Ref<Storages::GraphicRendererStorage<float, unsigned int>> graphic_storage;
-            graphic_storage.reset(new Storages::GraphicRendererStorage<float, unsigned int>{shader, vertices, material, m_storage_type});
-            m_graphic_storage_list.emplace(graphic_storage);
-        });
-
-        while (!m_graphic_storage_list.empty()) {
-            const auto& storage = m_graphic_storage_list.front();
-            this->Submit(storage);
-            m_graphic_storage_list.pop();
-        }
-
-        m_mesh_map.clear();
+        //Todo : As used by many shader, we should moved it out to an Uniform Buffer
+        shader->SetUniform("uniform_viewprojection", m_view_projection_matrix);
+        RendererCommand::DrawIndexed(shader, vertex_array);
     }
 } // namespace ZEngine::Rendering::Renderers

@@ -9,3 +9,4 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <sstream>
 #include <cstdint>
+#include <queue>
