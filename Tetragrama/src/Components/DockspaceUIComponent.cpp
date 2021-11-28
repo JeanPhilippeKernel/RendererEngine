@@ -102,6 +102,8 @@ namespace Tetragrama::Components {
     bool DockspaceUIComponent::OnRequestExit(ZEngine::Event::WindowClosedEvent& event) {
         if (!m_parent_layer.expired()) {
             m_parent_layer.lock()->OnEvent(event);
+
+            ZENGINE_EDITOR_WARN("zEngine editor stopped");
         }
         return true;
     }

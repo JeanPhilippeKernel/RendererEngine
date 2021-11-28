@@ -1,8 +1,14 @@
 #pragma once
 #include <Logging/Logger.h>
 
-#define ZENGINE_CORE_INFO(...) ::ZEngine::Logging::Logger::GetCurrent()->info(__VA_ARGS__)
-#define ZENGINE_CORE_TRACE(...) ::ZEngine::Logging::Logger::GetCurrent()->trace(__VA_ARGS__)
-#define ZENGINE_CORE_WARN(...) ::ZEngine::Logging::Logger::GetCurrent()->warn(__VA_ARGS__)
-#define ZENGINE_CORE_ERROR(...) ::ZEngine::Logging::Logger::GetCurrent()->error(__VA_ARGS__)
-#define ZENGINE_CORE_CRITICAL(...) ::ZEngine::Logging::Logger::GetCurrent()->critical(__VA_ARGS__)
+#define ZENGINE_CORE_INFO(...) ::ZEngine::Logging::Logger::GetEngineLogger()->info(__VA_ARGS__)
+#define ZENGINE_CORE_TRACE(...) ::ZEngine::Logging::Logger::GetEngineLogger()->trace(__VA_ARGS__)
+#define ZENGINE_CORE_WARN(...) ::ZEngine::Logging::Logger::GetEngineLogger()->warn(__VA_ARGS__)
+#define ZENGINE_CORE_ERROR(...) ::ZEngine::Logging::Logger::GetEngineLogger()->error(__VA_ARGS__)
+#define ZENGINE_CORE_CRITICAL(...) ::ZEngine::Logging::Logger::GetEngineLogger()->critical(__VA_ARGS__)
+
+#define ZENGINE_EDITOR_INFO(...) ::ZEngine::Logging::Logger::GetEditorLogger()->info(__VA_ARGS__)
+#define ZENGINE_EDITOR_TRACE(...) ::ZEngine::Logging::Logger::GetEditorLogger()->trace(__VA_ARGS__)
+#define ZENGINE_EDITOR_WARN(...) ::ZEngine::Logging::Logger::GetEditorLogger()->warn(__VA_ARGS__)
+#define ZENGINE_EDITOR_ERROR(...) ::ZEngine::Logging::Logger::GetEditorLogger()->error(__VA_ARGS__)
+#define ZENGINE_EDITOR_CRITICAL(...) ::ZEngine::Logging::Logger::GetEditorLogger()->critical(__VA_ARGS__)

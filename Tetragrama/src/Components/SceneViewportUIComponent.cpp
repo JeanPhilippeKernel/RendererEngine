@@ -50,7 +50,7 @@ namespace Tetragrama::Components {
     }
 
     bool SceneViewportUIComponent::OnSceneViewportResized(Event::SceneViewportResizedEvent& e) {
-        ZENGINE_CORE_INFO("Viewport resized : {} - {}", e.GetWidth(), e.GetHeight());
+        ZENGINE_EDITOR_INFO("Viewport resized : {} - {}", e.GetWidth(), e.GetHeight());
         auto layer = m_parent_layer.lock();
 
         const auto user_interface_ptr = dynamic_cast<Layers::UserInterfaceLayer*>(layer.get());
