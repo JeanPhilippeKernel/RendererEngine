@@ -62,11 +62,6 @@ You can also do  `git submodule update --init --recursive`.
 	- `RunBuilds` can be omitted as its default value is : `$True`.
 	- You can build `Debug` and `Release` versions at once by omitting the `Configuration` parameter
 
-## Testing
-
-There are 2 examples projects that you can run/test :
- - Sandbox : Experimental setup that showcases Core 2D features. 
-
 ## Dependencies
 
 The project uses the following dependencies : 
