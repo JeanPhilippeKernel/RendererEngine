@@ -15,6 +15,6 @@ namespace ZEngine::Rendering::Renderers {
         virtual void EndScene() override;
 
     private:
-        std::unordered_map<unsigned int, std::vector<Rendering::Meshes::Mesh>> m_mesh_map;
+        std::vector<Rendering::Meshes::Mesh> m_mesh_collection;
     };
 } // namespace ZEngine::Rendering::Renderers

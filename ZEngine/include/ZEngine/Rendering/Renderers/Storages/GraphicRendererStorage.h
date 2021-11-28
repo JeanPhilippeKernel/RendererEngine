@@ -2,14 +2,12 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
-
 #include <Rendering/Renderers/Storages/GraphicVertex.h>
 #include <Rendering/Buffers/VertexArray.h>
 #include <Rendering/Buffers/VertexBuffer.h>
 #include <Rendering/Buffers/IndexBuffer.h>
 #include <Rendering/Shaders/Shader.h>
-
-#include "../../Materials/ShaderMaterial.h"
+#include <Rendering/Materials/ShaderMaterial.h>
 
 namespace ZEngine::Rendering::Renderers::Storages {
 
