@@ -59,7 +59,6 @@ endif ()
 #
 if (BUILD_SANDBOX_PROJECTS)
 	add_subdirectory(${EXAMPLE_DIR}/Sandbox)
-	add_subdirectory(${EXAMPLE_DIR}/Sandbox3D)
 endif ()
 
 # Post build operation
@@ -70,8 +69,8 @@ add_custom_target(AssembleContent ALL
 	COMMENT "Copying assets and resources contents"
 	DEPENDS 
 		zEngineLib
-		sandbox2d 
-		sandbox3d 
+		tetragrama
+		sandbox2d
 )
 
 add_custom_command(TARGET AssembleContent
