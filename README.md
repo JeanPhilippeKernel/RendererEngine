@@ -65,8 +65,7 @@ You can also do  `git submodule update --init --recursive`.
 ## Testing
 
 There are 2 examples projects that you can run/test :
- - Sandbox : Experimental setup that showcases Core 2D features.
- - Sandbox3D : Experimental setup that showcases Core 3D features. 
+ - Sandbox : Experimental setup that showcases Core 2D features. 
 
 ## Dependencies
 
