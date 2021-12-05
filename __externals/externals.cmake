@@ -54,7 +54,11 @@ target_link_libraries(imported::entt INTERFACE EnTT)
 add_library (imported::assimp INTERFACE IMPORTED)
 set (ASSIMP_INCLUDE_PATH ${EXTERNAL_DIR}/assimp/include)
 set_target_properties(imported::assimp PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${ASSIMP_INCLUDE_PATH}")
-target_compile_options(assimp PRIVATE /Wv:18) # Fix zip lib compile issue
+
+if (MSVC)
+	target_compile_options(assimp PRIVATE /Wv:18) # Fix zip lib compile issue
+endif ()
+
 target_link_libraries(imported::assimp INTERFACE assimp)
 
 # Exporting all externals include directories
