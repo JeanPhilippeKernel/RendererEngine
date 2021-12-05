@@ -22,3 +22,6 @@
 [submodule "__externals/entt"]
 	path = __externals/entt
 	url = https://github.com/skypjack/entt
+[submodule "__externals/assimp"]
+	path = __externals/assimp
+	url = https://github.com/assimp/assimp

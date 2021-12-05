@@ -56,12 +56,13 @@ else ()
 endif ()
 
 target_link_libraries (zEngineLib
-PUBLIC
+	PUBLIC
 		imported::fmt
 		imported::spdlog
 		imported::glad
 		imported::glm
 		imported::imgui
 		imported::entt
+		imported::assimp
 		OpenGL::GL
 )

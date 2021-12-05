@@ -44,6 +44,7 @@ endif ()
 add_subdirectory (${EXTERNAL_DIR}/spdlog)
 add_subdirectory (${EXTERNAL_DIR}/glm)
 add_subdirectory (${EXTERNAL_DIR}/entt)
+add_subdirectory (${EXTERNAL_DIR}/assimp)
 
 # Core engine lib is here
 #
