@@ -107,9 +107,20 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
         $CMakeCacheVariableOverride += " -DGLFW_INSTALL=OFF"
     }
 
+    # ASSIMP options
+    #
+    $CMakeCacheVariableOverride += " -DASSIMP_BUILD_TESTS=OFF"
+    $CMakeCacheVariableOverride += " -DASSIMP_INSTALL=OFF"
+    $CMakeCacheVariableOverride += " -DASSIMP_BUILD_SAMPLES=OFF"
+    $CMakeCacheVariableOverride += " -DASSIMP_BUILD_ASSIMP_TOOLS=OFF"
+    
+    if ($systemName -eq "Darwin") {
+        $CMakeCacheVariableOverride += " -DBUILD_FRAMEWORK=ON"
+    }
+
     $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
 
-    # Set Clang as Compiler 
+    # Set Clang as Compiler
     #
     if($systemName -eq 'Linux') {
         $env:CC= '/usr/bin/clang-7'
@@ -121,7 +132,7 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
     Write-Host $CMakeArguments
     $process = Start-Process $CMakeProgram -ArgumentList $CMakeArguments -NoNewWindow -Wait -PassThru
     if($process.ExitCode -ne 0) {
-        throw "cmake failed generation for '$argumentList' with exit code '$p.ExitCode'"        
+        throw "cmake failed generation for '$argumentList' with exit code '$p.ExitCode'"
     }
 
     # CMake Build Process

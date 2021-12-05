@@ -50,10 +50,22 @@ set (ENTT_INCLUDE_PATH ${EXTERNAL_DIR}/entt/single_include)
 set_target_properties(imported::entt PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${ENTT_INCLUDE_PATH}")
 target_link_libraries(imported::entt INTERFACE EnTT)
 
+# assimp
+add_library (imported::assimp INTERFACE IMPORTED)
+set (ASSIMP_INCLUDE_PATH ${EXTERNAL_DIR}/assimp/include)
+set_target_properties(imported::assimp PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${ASSIMP_INCLUDE_PATH}")
+target_compile_options(assimp PRIVATE /Wv:18) # Fix zip lib compile issue
+target_link_libraries(imported::assimp INTERFACE assimp)
 
-# Exporting all externals include directories 
-list (APPEND EXTERNAL_INCLUDE_DIRS 
-	${FMT_INCLUDE_PATH} ${GLAD_INCLUDE_PATH} ${GLM_INCLUDE_PATH}
-	${IMGUI_INCLUDE_PATH} ${SDL2_INCLUDE_PATH} ${SPDLOG_INCLUDE_PATH}
-	${GLFW_INCLUDE_PATH} ${ENTT_INCLUDE_PATH}
+# Exporting all externals include directories
+list (APPEND EXTERNAL_INCLUDE_DIRS
+	${FMT_INCLUDE_PATH}
+	${GLAD_INCLUDE_PATH}
+	${GLM_INCLUDE_PATH}
+	${IMGUI_INCLUDE_PATH}
+	${SDL2_INCLUDE_PATH}
+	${SPDLOG_INCLUDE_PATH}
+	${GLFW_INCLUDE_PATH}
+	${ENTT_INCLUDE_PATH}
+	${ASSIMP_INCLUDE_PATH}
 )
