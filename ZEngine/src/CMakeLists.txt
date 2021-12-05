@@ -62,5 +62,6 @@ PUBLIC
 		imported::glad
 		imported::glm
 		imported::imgui
+		imported::entt
 		OpenGL::GL
 )

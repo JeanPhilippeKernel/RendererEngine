@@ -44,9 +44,16 @@ set (GLFW_INCLUDE_PATH ${EXTERNAL_DIR}/glfw/include)
 set_target_properties(imported::glfw PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${GLFW_INCLUDE_PATH}")
 target_link_libraries(imported::glfw INTERFACE glfw)
 
+# entt
+add_library (imported::entt INTERFACE IMPORTED)
+set (ENTT_INCLUDE_PATH ${EXTERNAL_DIR}/entt/single_include)
+set_target_properties(imported::entt PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${ENTT_INCLUDE_PATH}")
+target_link_libraries(imported::entt INTERFACE EnTT)
+
 
 # Exporting all externals include directories 
 list (APPEND EXTERNAL_INCLUDE_DIRS 
 	${FMT_INCLUDE_PATH} ${GLAD_INCLUDE_PATH} ${GLM_INCLUDE_PATH}
-	${IMGUI_INCLUDE_PATH} ${SDL2_INCLUDE_PATH} ${SPDLOG_INCLUDE_PATH} ${GLFW_INCLUDE_PATH}
+	${IMGUI_INCLUDE_PATH} ${SDL2_INCLUDE_PATH} ${SPDLOG_INCLUDE_PATH}
+	${GLFW_INCLUDE_PATH} ${ENTT_INCLUDE_PATH}
 )

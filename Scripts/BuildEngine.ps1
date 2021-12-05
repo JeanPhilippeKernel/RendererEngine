@@ -83,6 +83,7 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
     $CMakeCacheVariableOverride += " -DCMAKE_SYSTEM_NAME=$systemName"
     $CMakeCacheVariableOverride += " -DCMAKE_BUILD_TYPE=$configuration"
     $CMakeCacheVariableOverride += " -DBUILD_SANDBOX_PROJECTS=ON"
+    $CMakeCacheVariableOverride += " -DENTT_INCLUDE_HEADERS=ON"
     
     # SDL2 options
     #    

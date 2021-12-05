@@ -43,6 +43,7 @@ endif ()
 
 add_subdirectory (${EXTERNAL_DIR}/spdlog)
 add_subdirectory (${EXTERNAL_DIR}/glm)
+add_subdirectory (${EXTERNAL_DIR}/entt)
 
 # Core engine lib is here
 #
