@@ -13,4 +13,12 @@ if ((${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	message(FATAL_ERROR "CLANG compiler version should be 7.*.* !")
 endif ()
 
+
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	set	(CMAKE_CXX_STANDARD 20)
+else ()
+	set	(CMAKE_CXX_STANDARD 17)
+endif ()
+
 add_subdirectory (src)

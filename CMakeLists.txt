@@ -10,12 +10,6 @@ project (RendererEngine
 
 set_property (GLOBAL PROPERTY USE_FOLDERS ON)
 
-set (CMAKE_CXX_STANDARD_REQUIRED ON) 
-set	(CMAKE_CXX_STANDARD 17)
-
-set (CMAKE_C_STANDARD_REQUIRED ON)
-set (CMAKE_C_STANDARD 11)
-
 # Core invariants
 #
 get_filename_component (ENLISTMENT_ROOT "." ABSOLUTE CACHE)

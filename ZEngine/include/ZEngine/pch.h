@@ -10,3 +10,4 @@
 #include <sstream>
 #include <cstdint>
 #include <queue>
+#include <functional>
