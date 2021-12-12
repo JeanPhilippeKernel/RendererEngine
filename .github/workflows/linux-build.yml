@@ -51,6 +51,9 @@ jobs:
     - name: Install GCC compiler
       run: sudo apt install -y gcc-11
 
+    - name: Install G++ compiler
+      run: sudo apt install -y g++-11
+
     - name: CMake Build
       run: .\Scripts\BuildEngine.ps1 -SystemNames ${{matrix.buildSystem}} -Architectures ${{matrix.buildPlatform}} -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh
