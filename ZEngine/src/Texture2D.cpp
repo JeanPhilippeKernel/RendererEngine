@@ -2,6 +2,9 @@
 #include <Rendering/Textures/Texture2D.h>
 
 #define STB_IMAGE_IMPLEMENTATION
+#ifdef __GNUC__
+#define STBI_NO_SIMD
+#endif
 #include <stb/stb_image.h>
 
 namespace ZEngine::Rendering::Textures {

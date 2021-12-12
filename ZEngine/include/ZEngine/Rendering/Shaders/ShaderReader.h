@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <future>
 #include <Rendering/Shaders/ShaderInformation.h>
+#include <mutex>
 
 namespace ZEngine::Rendering::Shaders {
 
@@ -28,7 +29,7 @@ namespace ZEngine::Rendering::Shaders {
          * @param filename  Path to the shader file
          * @return enum ShaderReaderState that describes the read operation state
          */
-        std::future<ShaderOperationResult> ReadAsync(std::string_view filename) = delete;
+        std::future<ShaderOperationResult> ReadAsync(std::string_view filename);
 
         /**
          * Get shaders information collected during Reading process
@@ -50,5 +51,6 @@ namespace ZEngine::Rendering::Shaders {
         const char*                    m_regex_expression{"#type[\\s][a-zA-Z]+"};
         std::ifstream                  m_filestream{};
         std::vector<ShaderInformation> m_shader_info_collection{};
+        std::mutex                     m_lock;
     };
 } // namespace ZEngine::Rendering::Shaders

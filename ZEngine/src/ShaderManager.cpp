@@ -22,6 +22,6 @@ namespace ZEngine::Managers {
     Ref<Rendering::Shaders::Shader>& ShaderManager::Load(const char* filename) {
         std::filesystem::path p(filename);
         const auto            name = p.stem();
-        return Add(name.u8string().c_str(), filename);
+        return Add(reinterpret_cast<const char*>(name.u8string().c_str()), filename);
     }
 } // namespace ZEngine::Managers

@@ -30,7 +30,9 @@ namespace ZEngine::Rendering::Shaders::Compilers {
             glGetProgramiv(shader_program, GL_INFO_LOG_LENGTH, &log_info_length);
 
             std::vector<GLchar> log_message(log_info_length);
-            glGetProgramInfoLog(shader_program, log_info_length, &log_info_length, &log_message[0]);
+            if (log_info_length > 0) {
+                glGetProgramInfoLog(shader_program, log_info_length, &log_info_length, &log_message[0]);
+            }
             glDeleteProgram(shader_program);
 
             this->m_information.IsSuccess = this->m_information.IsSuccess && false;

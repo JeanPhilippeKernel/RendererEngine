@@ -120,11 +120,11 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
 
     $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
 
-    # Set Clang as Compiler
+    # Set Linux build compiler
     #
     if($systemName -eq 'Linux') {
-        $env:CC= '/usr/bin/clang-7'
-        $env:CXX= '/usr/bin/clang++-7'
+        $env:CC= '/usr/bin/gcc-11'
+        $env:CXX= '/usr/bin/g++-11'
     }
 
     # CMake Generation process

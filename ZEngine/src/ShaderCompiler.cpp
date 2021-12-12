@@ -49,7 +49,7 @@ namespace ZEngine::Rendering::Shaders::Compilers {
             shader_information = find_it->second;
             std::for_each(std::begin(shader_information), std::end(shader_information), [](ShaderInformation& item) { item.CompiledOnce = true; });
         } else {
-            const ShaderOperationResult read_operation = m_reader->Read(m_source_file);
+             ShaderOperationResult read_operation = m_reader->ReadAsync(m_source_file).get();
             if (read_operation == ShaderOperationResult::FAILURE) {
                 ZENGINE_CORE_CRITICAL("Compilation process stopped");
                 return std::make_tuple(ShaderOperationResult::FAILURE, 0);

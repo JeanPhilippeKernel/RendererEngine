@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <Rendering/Shaders/Shader.h>
+#include <Core/Coroutine.h>
 
 namespace ZEngine::Rendering::Shaders {
 

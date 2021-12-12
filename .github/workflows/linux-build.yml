@@ -8,22 +8,22 @@ on:
     
 jobs:
   Linux-Build:
-    runs-on: ubuntu-18.04	
+    runs-on: ubuntu-18.04
     strategy:
       matrix:
           buildSystem: [Linux]
           buildPlatform: [x64]
           buildConfiguration: [Debug, Release]
 
-    steps:      
+    steps:
     - name: Checkout repository
       uses: actions/checkout@v2
       
     - name: Checkout submodules
       run: git submodule update --init --recursive
 
-    - name: Install SDL2 Library
-      run: sudo apt-get install libsdl2-dev
+    - name: Install development library
+      run: sudo apt-get install libasound2-dev libgl1-mesa-dev libpulse-dev libudev-dev libdbus-1-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxt-dev libxxf86vm-dev
 
     - name: Install CMake
       uses: jwlawson/actions-setup-cmake@v1.9
@@ -45,12 +45,15 @@ jobs:
     - name: Install PowerShell
       run: sudo apt-get install -y powershell
 
-    - name: Install Clang Compiler
-      uses: egor-tensin/setup-clang@v1
-      with:
-        version: 7
-        platform: x64
-      
+    - name: Add GCC Toolchain repository
+      run: sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+
+    - name: Install GCC compiler
+      run: sudo apt install -y gcc-11
+
+    - name: Install G++ compiler
+      run: sudo apt install -y g++-11
+
     - name: CMake Build
       run: .\Scripts\BuildEngine.ps1 -SystemNames ${{matrix.buildSystem}} -Architectures ${{matrix.buildPlatform}} -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh

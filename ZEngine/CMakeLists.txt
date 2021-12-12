@@ -2,15 +2,21 @@ cmake_minimum_required (VERSION 3.17)
 
 project (ZEngine 
 	VERSION 1.0
-	DESCRIPTION "Z-Engine is the core engine lib that provides abstraction on top of OpenGL/DirectX/Metal"
+	DESCRIPTION "ZEngine is the core engine lib that provides abstraction on top of OpenGL/DirectX/Metal"
 	LANGUAGES CXX C
 )
 
-# Compiler verification
+# Compiler verification in Linux
 #
-if ((${CMAKE_SYSTEM_NAME} STREQUAL "Linux") 
-	AND (NOT ${CMAKE_CXX_COMPILER_VERSION} MATCHES "7.*.*"))
-	message(FATAL_ERROR "CLANG compiler version should be 7.*.* !")
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	if ((NOT ${CMAKE_CXX_COMPILER_VERSION} MATCHES "11.*.*") AND (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang"))
+		message(FATAL_ERROR "CLANG compiler version should be 11.*.* !")
+	elseif ((NOT ${CMAKE_CXX_COMPILER_VERSION} MATCHES "11.*.*") AND (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU"))
+		message(FATAL_ERROR "GNU compiler version should be 11.*.* !")
+	endif ()
 endif ()
+
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+set	(CMAKE_CXX_STANDARD 20)
 
 add_subdirectory (src)

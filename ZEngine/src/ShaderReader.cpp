@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <Rendering/Shaders/ShaderReader.h>
 #include <Logging/LoggerDefinition.h>
+#include <Core/Coroutine.h>
 
 namespace ZEngine::Rendering::Shaders {
 
@@ -13,6 +14,8 @@ namespace ZEngine::Rendering::Shaders {
     }
 
     ShaderOperationResult ShaderReader::Read(std::string_view filename) {
+        std::unique_lock<std::mutex> loker(this->m_lock);
+
         std::regex reg{m_regex_expression};
 
         m_filestream.open(filename.data(), std::ifstream::in);
@@ -49,6 +52,11 @@ namespace ZEngine::Rendering::Shaders {
         ZENGINE_CORE_INFO("====== Shader file : {} read succeeded ======", filename.data());
         m_filestream.close();
         return ShaderOperationResult::SUCCESS;
+    }
+
+    std::future<ShaderOperationResult> ShaderReader::ReadAsync(std::string_view filename) {
+        auto result = co_await std::async(std::launch::async, &ShaderReader::Read, this, filename);
+        co_return result;
     }
 
     const std::vector<ShaderInformation>& ShaderReader::GetInformations() const {
