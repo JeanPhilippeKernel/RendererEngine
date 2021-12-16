@@ -25,16 +25,18 @@ Before building, make sure your setup is correct :
 
 - Install lastest version of `Visual Studio Code` or any text editor
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
-- Install compiler `clang`
+- Install compiler `Apple Clang` (most recent version)
 
 ### Setup Linux machine
 
 - Install lastest version of `Visual Studio Code` or any text editor
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
-- Install compiler `clang 7`
+- Install compiler `gcc-11`
 - Install debugger `gdb`
-- Install packages `mesa-utils`, `libgl1-mesa-dev`, `mesa-common-dev`
-- Install [SDL2](https://gigi.nullneuron.net/gigilabs/how-to-set-up-sdl2-on-linux/) 
+- Install packages
+ 	`libxext-dev libasound2-dev libgl1-mesa-dev libpulse-dev`
+	`libudev-dev libdbus-1-dev libx11-dev libxcursor-dev libxi-dev`
+	`libxinerama-dev libxrandr-dev libxss-dev libxt-dev libxxf86vm-dev`
 
 ## Building 
 
@@ -72,3 +74,5 @@ The project uses the following dependencies :
  - [STB](https://github.com/nothings/stb) for loading and manipulating image files for textures.
  - [ImGUI](https://github.com/ocornut/imgui) for GUI components and interaction.
  - [SPDLOG](https://github.com/gabime/spdlog) for logging
+ - [EnTT](https://github.com/skypjack/entt) for entity component system
+ - [Assimp](https://github.com/assimp/assimp) for managing and loading assest 2D -3D models
