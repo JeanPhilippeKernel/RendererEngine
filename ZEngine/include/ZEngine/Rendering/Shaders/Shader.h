@@ -34,8 +34,8 @@ namespace ZEngine::Rendering::Shaders {
         /**
          * Set a shader uniform value
          *
-         * @param name 			Uniform name
-         * @param value 			Integer value
+         * @param name  Uniform name
+         * @param value Integer value
          */
         void SetUniform(const char* name, int value);
 
@@ -43,8 +43,8 @@ namespace ZEngine::Rendering::Shaders {
          * Set a shader uniform value
          *
          * @param name 			Uniform name
-         * @param value_one 		Integer value
-         * @param value_two 		Integer value
+         * @param value_one 	Integer value
+         * @param value_two 	Integer value
          */
         void SetUniform(const char* name, int value_one, int value_two);
 
@@ -52,8 +52,8 @@ namespace ZEngine::Rendering::Shaders {
          * Set a shader uniform value
          *
          * @param name 			Uniform name
-         * @param value_one 		Integer value
-         * @param value_two 		Integer value
+         * @param value_one 	Integer value
+         * @param value_two 	Integer value
          * @param value_three 	Integer value
          */
         void SetUniform(const char* name, int value_one, int value_two, int value_three);
@@ -62,8 +62,8 @@ namespace ZEngine::Rendering::Shaders {
          * Set a shader uniform value
          *
          * @param name 			Uniform name
-         * @param value_one 		Integer value
-         * @param value_two 		Integer value
+         * @param value_one 	Integer value
+         * @param value_two 	Integer value
          * @param value_three 	Integer value
          * @param value_four 	Integer value
          */
@@ -73,7 +73,7 @@ namespace ZEngine::Rendering::Shaders {
          * Set a shader uniform value
          *
          * @param name 			Uniform name
-         * @param value_one 		Float value
+         * @param value_one 	Float value
          */
         void SetUniform(const char* name, float value);
 
@@ -81,8 +81,8 @@ namespace ZEngine::Rendering::Shaders {
          * Set a shader uniform value
          *
          * @param name 			Uniform name
-         * @param value_one 		Float value
-         * @param value_two 		Float value
+         * @param value_one 	Float value
+         * @param value_two 	Float value
          */
         void SetUniform(const char* name, float value_one, float value_two);
 
@@ -90,8 +90,8 @@ namespace ZEngine::Rendering::Shaders {
          * Set a shader uniform value
          *
          * @param name 			Uniform name
-         * @param value_one 		Float value
-         * @param value_two 		Float value
+         * @param value_one 	Float value
+         * @param value_two 	Float value
          * @param value_three 	Float value
          */
         void SetUniform(const char* name, float value_one, float value_two, float value_three);
@@ -100,8 +100,8 @@ namespace ZEngine::Rendering::Shaders {
          * Set a shader uniform value
          *
          * @param name 			Uniform name
-         * @param value_one 		Float value
-         * @param value_two 		Float value
+         * @param value_one 	Float value
+         * @param value_two 	Float value
          * @param value_three 	Float value
          * @param value_four 	Float value
          */
