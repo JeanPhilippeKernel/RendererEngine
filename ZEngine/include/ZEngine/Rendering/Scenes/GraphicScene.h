@@ -27,12 +27,17 @@ namespace ZEngine::Rendering::Scenes {
         void Add(Ref<Meshes::Mesh>& mesh);
         void Add(const std::vector<Ref<Meshes::Mesh>>& meshes);
 
+        void SetShouldReactToEvent(bool value);
+        bool ShouldReactToEvent() const;
+
         virtual const Scope<Controllers::ICameraController>& GetCameraController() const;
 
     protected:
         Scope<Controllers::ICameraController> m_camera_controller;
         Scope<Renderers::GraphicRenderer>     m_renderer;
-
-        std::vector<Ref<Meshes::Mesh>> m_mesh_list;
+        std::vector<Ref<Meshes::Mesh>>        m_mesh_list;
+    
+    private:
+        bool m_should_react_to_event{ true };
     };
 } // namespace ZEngine::Rendering::Scenes

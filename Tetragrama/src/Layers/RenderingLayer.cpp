@@ -2,7 +2,6 @@
 #include <RenderingLayer.h>
 
 using namespace ZEngine;
-
 using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Rendering::Renderers;
@@ -10,19 +9,19 @@ using namespace ZEngine::Window;
 using namespace ZEngine::Core;
 using namespace ZEngine::Inputs;
 using namespace ZEngine::Event;
-
 using namespace ZEngine::Managers;
 using namespace ZEngine::Rendering::Textures;
 using namespace ZEngine::Controllers;
-
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Maths;
 
 namespace Tetragrama::Layers {
 
+    RenderingLayer::RenderingLayer(ZEngine::Ref<Editor>&& editor, const char* name)
+        : m_editor(std::move(editor)), m_texture_manager(new ZEngine::Managers::TextureManager()), Layer(name) {}
+
     void RenderingLayer::Initialize() {
 
-        m_texture_manager.reset(new ZEngine::Managers::TextureManager());
         m_texture_manager->Load("Assets/Images/free_image.png");
         m_texture_manager->Load("Assets/Images/Crate.png");
         m_texture_manager->Load("Assets/Images/Checkerboard_2.png");
@@ -46,7 +45,7 @@ namespace Tetragrama::Layers {
         material->SetSecondTexture(m_texture_manager->Obtains("Crate"));
 
         mesh_two.reset(MeshBuilder::CreateCube({0.f, 10.f, 0.0f}, {10.f, 10.0f, 10.f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
-        mesh_two->SetMaterial(material);
+        mesh_two->SetMaterial(std::move(material));
 
         m_mesh_collection.push_back(std::move(mesh_one));
         m_mesh_collection.push_back(std::move(mesh_two));
@@ -66,10 +65,18 @@ namespace Tetragrama::Layers {
     }
 
     bool RenderingLayer::OnEvent(CoreEvent& e) {
-        if (m_scene_should_accept_event) {
+        if (m_scene->ShouldReactToEvent()) {
             m_scene->GetCameraController()->OnEvent(e);
         }
         return false;
+    }
+
+    void RenderingLayer::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent& e) {
+        ZEngine::Event::EventDispatcher event_dispatcher(e);
+        event_dispatcher.Dispatch<Components::Event::SceneViewportResizedEvent>(std::bind(&RenderingLayer::OnSceneViewportResized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Components::Event::SceneTextureAvailableEvent>(std::bind(&RenderingLayer::OnSceneTextureAvailable, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Components::Event::SceneViewportFocusedEvent>(std::bind(&RenderingLayer::OnSceneViewportFocused, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Components::Event::SceneViewportUnfocusedEvent>(std::bind(&RenderingLayer::OnSceneViewportUnfocused, this, std::placeholders::_1));
     }
 
     void RenderingLayer::Render() {
@@ -86,12 +93,12 @@ namespace Tetragrama::Layers {
     }
 
     bool RenderingLayer::OnSceneViewportFocused(Components::Event::SceneViewportFocusedEvent& e) {
-        m_scene_should_accept_event = true;
+        m_scene->SetShouldReactToEvent(true);
         return true;
     }
 
     bool RenderingLayer::OnSceneViewportUnfocused(Components::Event::SceneViewportUnfocusedEvent& e) {
-        m_scene_should_accept_event = false;
+        m_scene->SetShouldReactToEvent(false);
         return true;
     }
 

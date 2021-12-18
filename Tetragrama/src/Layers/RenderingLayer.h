@@ -14,9 +14,7 @@ namespace Tetragrama {
 namespace Tetragrama::Layers {
     class RenderingLayer : public ZEngine::Layers::Layer {
     public:
-        RenderingLayer(const char* name = "Rendering layer") : Layer(name) {}
-
-        RenderingLayer(ZEngine::Ref<Editor>&& editor, const char* name = "Rendering layer") : m_editor(std::move(editor)), Layer(name) {}
+        RenderingLayer(ZEngine::Ref<Editor>&& editor, const char* name = "Rendering layer");
 
         virtual ~RenderingLayer() = default;
 
@@ -27,13 +25,7 @@ namespace Tetragrama::Layers {
 
         virtual bool OnEvent(ZEngine::Event::CoreEvent& e) override;
 
-        virtual void OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent& e) {
-            ZEngine::Event::EventDispatcher event_dispatcher(e);
-            event_dispatcher.Dispatch<Components::Event::SceneViewportResizedEvent>(std::bind(&RenderingLayer::OnSceneViewportResized, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Components::Event::SceneTextureAvailableEvent>(std::bind(&RenderingLayer::OnSceneTextureAvailable, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Components::Event::SceneViewportFocusedEvent>(std::bind(&RenderingLayer::OnSceneViewportFocused, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Components::Event::SceneViewportUnfocusedEvent>(std::bind(&RenderingLayer::OnSceneViewportUnfocused, this, std::placeholders::_1));
-        }
+        virtual void OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent& e);
 
     private:
         bool OnSceneViewportResized(Components::Event::SceneViewportResizedEvent& e);
@@ -42,7 +34,6 @@ namespace Tetragrama::Layers {
         bool OnSceneTextureAvailable(Components::Event::SceneTextureAvailableEvent& e);
 
     private:
-        bool                                                        m_scene_should_accept_event{true};
         ZEngine::WeakRef<Editor>                                    m_editor;
         ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>      m_scene;
         ZEngine::Ref<ZEngine::Managers::TextureManager>             m_texture_manager;
