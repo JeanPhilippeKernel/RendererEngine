@@ -4,6 +4,7 @@
 #include <Rendering/Buffers/FrameBuffers/Framebuffer.h>
 #include <Core/IInitializable.h>
 #include <Rendering/Meshes/Mesh.h>
+#include <Rendering/Cameras/Camera.h>
 
 namespace ZEngine::Rendering::Renderers {
 
@@ -20,16 +21,16 @@ namespace ZEngine::Rendering::Renderers {
 
     public:
         const Ref<Buffers::FrameBuffer>& GetFrameBuffer() const;
-        virtual void                     StartScene(const Maths::Matrix4& m_view_projection_matrix);
+        virtual void                     StartScene(const Ref<Rendering::Cameras::Camera>& camera);
         virtual void                     EndScene() = 0;
 
     protected:
         void Submit(const Ref<Storages::GraphicRendererStorage<float, unsigned int>>& graphic_storage);
 
     protected:
-        Maths::Matrix4                                                         m_view_projection_matrix;
-        Ref<Buffers::FrameBuffer>                                              m_framebuffer;
         Storages::GraphicRendererStorageType                                   m_storage_type{Storages::GraphicRendererStorageType::GRAPHIC_STORAGE_TYPE_UNDEFINED};
+        Ref<Rendering::Cameras::Camera>                                        m_camera;
+        Ref<Buffers::FrameBuffer>                                              m_framebuffer;
         std::queue<Ref<Storages::GraphicRendererStorage<float, unsigned int>>> m_graphic_storage_list;
     };
 } // namespace ZEngine::Rendering::Renderers

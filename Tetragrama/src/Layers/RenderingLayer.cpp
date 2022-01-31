@@ -29,34 +29,39 @@ namespace Tetragrama::Layers {
         m_scene.reset(new GraphicScene3D(new OrbitCameraController(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f)));
         m_scene->Initialize();
 
-        Ref<ZEngine::Rendering::Meshes::Mesh> mesh_one;
-        Ref<ZEngine::Rendering::Meshes::Mesh> mesh_two;
+        Ref<ZEngine::Rendering::Meshes::Mesh> checkboard_mesh;
+        Ref<ZEngine::Rendering::Meshes::Mesh> multi_textured_cube_mesh;
         Ref<ZEngine::Rendering::Meshes::Mesh> mesh_three;
 
-        mesh_one.reset(MeshBuilder::CreateCube({0.f, -0.5f, 0.0f}, {100.f, .0f, 100.f}, 0.0f, Vector3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
-        StandardMaterial* mat = dynamic_cast<StandardMaterial*>(mesh_one->GetMaterial().get());
-        mat->SetTileFactor(20.f);
+        Ref<ZEngine::Rendering::Meshes::Mesh> light_source_mesh;
+        light_source_mesh.reset(MeshBuilder::CreateCube({-30.0f, 10.f, 0.0f}, {2.f, 2.0f, 2.f}, 0.0f, {0.0f, 1.0f, 0.0f}));
 
-        mesh_three.reset(MeshBuilder::CreateCube({-20.f, 10.f, 0.0f}, {5.f, 5.0f, 5.f}, {200.0f, 120.0f, 30.0f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
+        checkboard_mesh.reset(MeshBuilder::CreateCube({0.f, -0.5f, 0.0f}, {100.f, .0f, 100.f}, 0.0f, Vector3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
+        StandardMaterial* checkboard_material = reinterpret_cast<StandardMaterial*>(checkboard_mesh->GetMaterial().get());
+        checkboard_material->SetTileFactor(20.f);
 
+        multi_textured_cube_mesh.reset(MeshBuilder::CreateCube({0.f, 10.f, 0.0f}, {10.f, 10.0f, 10.f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
         Ref<MixedTextureMaterial> material(new MixedTextureMaterial{});
         material->SetInterpolateFactor(.5f);
         material->SetTexture(m_texture_manager->Obtains("free_image"));
         material->SetSecondTexture(m_texture_manager->Obtains("Crate"));
+        multi_textured_cube_mesh->SetMaterial(std::move(material));
 
-        mesh_two.reset(MeshBuilder::CreateCube({0.f, 10.f, 0.0f}, {10.f, 10.0f, 10.f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
-        mesh_two->SetMaterial(std::move(material));
+        mesh_three.reset(MeshBuilder::CreateCube({-20.f, 10.f, 0.0f}, {5.f, 5.0f, 5.f}, {255.0f, 127.5f, 30.0f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
+        StandardMaterial* mesh_three_material = reinterpret_cast<StandardMaterial*>(mesh_three->GetMaterial().get());
+        mesh_three_material->SetAmbiantLightStrength(0.1f);
 
-        m_mesh_collection.push_back(std::move(mesh_one));
-        m_mesh_collection.push_back(std::move(mesh_two));
+        m_mesh_collection.push_back(std::move(checkboard_mesh));
+        m_mesh_collection.push_back(std::move(multi_textured_cube_mesh));
         m_mesh_collection.push_back(std::move(mesh_three));
+        m_mesh_collection.push_back(std::move(light_source_mesh));
     }
 
     void RenderingLayer::Update(TimeStep dt) {
         m_scene->GetCameraController()->Update(dt);
 
         // quad_mesh_ptr_2
-        m_mesh_collection[1]->GetGeometry()->ApplyTransform(glm::rotate(Matrix4(1.0f), dt * 0.05f, Vector3(0.f, 1.0f, 0.0f)));
+        m_mesh_collection[1]->GetGeometry()->Transform(glm::rotate(Matrix4(1.0f), dt * 0.05f, Vector3(0.f, 1.0f, 0.0f)));
 
         // quad_mesh_ptr_1
         auto& mat     = m_mesh_collection[2]->GetMaterial();
@@ -81,6 +86,7 @@ namespace Tetragrama::Layers {
 
     void RenderingLayer::Render() {
         m_scene->Add(m_mesh_collection);
+        // m_scene->Add(m_light_collection);
         m_scene->Render();
     }
 

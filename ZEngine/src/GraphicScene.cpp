@@ -38,7 +38,7 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::Render() {
-        m_renderer->StartScene(m_camera_controller->GetCamera()->GetViewProjectionMatrix());
+        m_renderer->StartScene(m_camera_controller->GetCamera());
         m_renderer->AddMesh(m_mesh_list);
         m_renderer->EndScene();
 

@@ -40,7 +40,6 @@ namespace ZEngine::Rendering::Cameras {
     }
 
     void PerspectiveCamera::UpdateViewMatrix() {
-
         m_view_matrix     = Maths::lookAt(m_position, m_target, m_up);
         m_view_projection = m_projection * m_view_matrix;
     }

@@ -3,21 +3,24 @@
 
 precision mediump float;
 
-layout (location = 0) in vec3 	a_position;
-layout (location = 1) in vec2 	a_texture_coord;
+layout (location = 0) in vec3 a_position;
+layout (location = 1) in vec3 a_normal;
+layout (location = 2) in vec2 a_texture_coord;
 
 
-//uniform variables
-uniform mat4 uniform_viewprojection;
+//global uniform variables
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
 
 
 //output variables
 out vec2 texture_coord;
 
 void main()
-{	
-	gl_Position 	= uniform_viewprojection * vec4(a_position, 1.0f);
-	texture_coord 	= a_texture_coord;
+{
+	gl_Position = projection * view * model * vec4(a_position, 1.0f);
+	texture_coord = a_texture_coord;
 }
 
 
@@ -28,20 +31,20 @@ precision mediump float;
 
 in vec2 texture_coord;
 
-struct MixedMaterial 
+struct MixedMaterial
 {
 	float interpolation_factor;
 };
 
 uniform MixedMaterial 	material;
-uniform sampler2D 		uniform_texture_0;
-uniform sampler2D 		uniform_texture_1;
+uniform sampler2D 		texture_sampler_0;
+uniform sampler2D 		texture_sampler_1;
 
 out vec4 output_color;
 
-void main() 
+void main()
 {
    output_color = mix(
-	texture(uniform_texture_0, texture_coord), 
-	texture(uniform_texture_1, texture_coord), material.interpolation_factor);
+	texture(texture_sampler_0, texture_coord), 
+	texture(texture_sampler_1, texture_coord), material.interpolation_factor);
 }

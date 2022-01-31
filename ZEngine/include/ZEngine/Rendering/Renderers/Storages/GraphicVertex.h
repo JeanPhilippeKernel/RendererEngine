@@ -13,19 +13,21 @@ namespace ZEngine::Rendering::Renderers::Storages {
 
     public:
         explicit GraphicVertex();
-        explicit GraphicVertex(const glm::vec3& position, const glm::vec2& texture_coord = {0.0f, 0.0f});
+        explicit GraphicVertex(const glm::vec3& position, const glm::vec3& normal = {0.0f, 0.0f, 0.0f}, const glm::vec2& texture_coord = {0.0f, 0.0f});
 
         ~GraphicVertex() = default;
 
         glm::vec3 GetPosition() const;
+        glm::vec3 GetNormal() const;
         glm::vec2 GetTextureCoord() const;
 
         void SetPosition(const glm::vec3& value);
+        void SetNormal(const glm::vec3& value);
         void SetTextureCoord(const glm::vec2& value);
 
-        void ApplyMatrixToPosition(const glm::mat4& matrix);
+        void TransformPosition(const glm::mat4& matrix);
 
-        const std::array<float, 5>& GetData() const {
+        const std::array<float, 8>& GetData() const {
             return m_buffer;
         }
 
@@ -33,7 +35,7 @@ namespace ZEngine::Rendering::Renderers::Storages {
         void _UpdateBuffer();
 
     private:
-        std::array<float, 5> m_buffer;
+        std::array<float, 8> m_buffer;
     };
 
     struct GraphicVertex::Descriptor {

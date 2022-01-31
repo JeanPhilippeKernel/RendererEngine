@@ -22,7 +22,7 @@ namespace ZEngine::Rendering::Meshes {
         Matrix4 transform =
             translate(Matrix4(1.0f), {position.x, position.y, 0.0f}) * rotate(Matrix4(1.0f), angle, Vector3(0.0f, 0.0f, 1.0f)) * scale(Matrix4(1.0f), {size.x, size.y, 0.0f});
 
-        quad_geometry->ApplyTransform(transform);
+        quad_geometry->Transform(transform);
         material->SetTexture(texture);
 
         mesh->SetGeometry(quad_geometry);
@@ -92,7 +92,7 @@ namespace ZEngine::Rendering::Meshes {
         Matrix4 transform =
             translate(Matrix4(1.0f), {position.x, position.y, position.z}) * rotate(Matrix4(1.0f), angle, Vector3(0.0f, 0.0f, 1.0f)) * scale(Matrix4(1.0f), {size.x, size.y, 0.0f});
 
-        quad_geometry->ApplyTransform(transform);
+        quad_geometry->Transform(transform);
         mesh->SetGeometry(quad_geometry);
         return mesh;
     }
@@ -184,7 +184,7 @@ namespace ZEngine::Rendering::Meshes {
         Matrix4 transform =
             translate(Matrix4(1.0f), {position.x, position.y, 0.0f}) * rotate(Matrix4(1.0f), angle, Vector3(0.0f, 0.0f, 1.0f)) * scale(Matrix4(1.0f), {size.x, size.y, 0.0f});
 
-        quad_geometry->ApplyTransform(transform);
+        quad_geometry->Transform(transform);
         material->SetTexture(texture);
         mesh->SetGeometry(quad_geometry);
         mesh->SetMaterial(material);
@@ -254,7 +254,7 @@ namespace ZEngine::Rendering::Meshes {
         Matrix4 transform =
             translate(Matrix4(1.0f), {position.x, position.y, position.z}) * rotate(Matrix4(1.0f), angle, Vector3(0.0f, 0.0f, 1.0f)) * scale(Matrix4(1.0f), {size.x, size.y, 0.0f});
 
-        quad_geometry->ApplyTransform(transform);
+        quad_geometry->Transform(transform);
         mesh->SetGeometry(quad_geometry);
         return mesh;
     }
@@ -345,7 +345,7 @@ namespace ZEngine::Rendering::Meshes {
 
         Matrix4 transform = translate(Matrix4(1.0f), {position.x, position.y, 0.0f}) * rotate(Matrix4(1.0f), angle, axis) * scale(Matrix4(1.0f), size);
 
-        quad_geometry->ApplyTransform(transform);
+        quad_geometry->Transform(transform);
         material->SetTexture(texture);
 
         mesh->SetGeometry(quad_geometry);
@@ -417,7 +417,7 @@ namespace ZEngine::Rendering::Meshes {
         Matrix4 transform = translate(Matrix4(1.0f), {position.x, position.y, position.z}) * rotate(Matrix4(1.0f), angle, axis) * scale(Matrix4(1.0f), size);
 
         material->SetTexture(texture);
-        quad_geometry->ApplyTransform(transform);
+        quad_geometry->Transform(transform);
 
         mesh->SetGeometry(quad_geometry);
         mesh->SetMaterial(material);

@@ -3,7 +3,7 @@
 #include <Rendering/Renderers/RenderCommand.h>
 
 namespace ZEngine::Rendering::Renderers {
-    GraphicRenderer::GraphicRenderer() : m_view_projection_matrix(Maths::identity<Maths::Matrix4>()), m_graphic_storage_list() {}
+    GraphicRenderer::GraphicRenderer() : m_graphic_storage_list() {}
 
     void GraphicRenderer::AddMesh(Ref<Meshes::Mesh>& mesh) {
         AddMesh(*mesh);
@@ -21,20 +21,22 @@ namespace ZEngine::Rendering::Renderers {
         return m_framebuffer;
     }
 
-    void GraphicRenderer::StartScene(const Maths::Matrix4& view_projection_matrix) {
-        m_view_projection_matrix = view_projection_matrix;
+    void GraphicRenderer::StartScene(const Ref<Rendering::Cameras::Camera>& camera) {
+        m_camera = camera;
     }
 
-    void GraphicRenderer::Submit(const Ref<Storages::GraphicRendererStorage<float, unsigned int>>& graphic_storage) {
-
-        const auto& shader       = graphic_storage->GetShader();
-        const auto& vertex_array = graphic_storage->GetVertexArray();
-        const auto& material     = graphic_storage->GetMaterial();
-        shader->Bind();
+    void GraphicRenderer::Submit(const Ref<Storages::GraphicRendererStorage<float, unsigned int>>& storage) {
+        const auto& material = storage->GetMaterial();
+        const auto& geometry = storage->GetGeometry();
         material->Apply();
 
-        //Todo : As used by many shader, we should moved it out to an Uniform Buffer
-        shader->SetUniform("uniform_viewprojection", m_view_projection_matrix);
+        // Todo : As used by many shader, we should moved it out to an Uniform Buffer
+        const auto& shader = material->GetShader();
+        shader->SetUniform("model", geometry->GetTransform());
+        shader->SetUniform("view", m_camera->GetViewMatrix());
+        shader->SetUniform("projection", m_camera->GetProjectionMatrix());
+
+        const auto& vertex_array = storage->GetVertexArray();
         RendererCommand::DrawIndexed(shader, vertex_array);
     }
 } // namespace ZEngine::Rendering::Renderers

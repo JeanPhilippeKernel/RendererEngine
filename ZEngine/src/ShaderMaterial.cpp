@@ -8,4 +8,8 @@ namespace ZEngine::Rendering::Materials {
     ShaderMaterial::ShaderMaterial(const char* shader_filename) : IMaterial(), m_shader_manager(new Managers::ShaderManager()) {
         m_shader = m_shader_manager->Load(shader_filename);
     }
+
+    void ShaderMaterial::Apply() {
+        m_shader->Bind();
+    }
 } // namespace ZEngine::Rendering::Materials

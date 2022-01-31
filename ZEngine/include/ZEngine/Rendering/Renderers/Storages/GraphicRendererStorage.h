@@ -8,6 +8,7 @@
 #include <Rendering/Buffers/IndexBuffer.h>
 #include <Rendering/Shaders/Shader.h>
 #include <Rendering/Materials/ShaderMaterial.h>
+#include <Rendering/Geometries/IGeometry.h>
 
 namespace ZEngine::Rendering::Renderers::Storages {
 
@@ -21,6 +22,9 @@ namespace ZEngine::Rendering::Renderers::Storages {
 
         explicit GraphicRendererStorage(const Ref<Shaders::Shader>& shader, const std::vector<Renderers::Storages::GraphicVertex>& vertices_list,
             const Ref<Materials::ShaderMaterial>& material, GraphicRendererStorageType storage_type);
+
+        explicit GraphicRendererStorage(const Ref<Shaders::Shader>& shader, const Ref<Rendering::Geometries::IGeometry>& geometry, const Ref<Materials::ShaderMaterial>& material,
+            GraphicRendererStorageType storage_type);
 
         ~GraphicRendererStorage() = default;
 
@@ -40,9 +44,14 @@ namespace ZEngine::Rendering::Renderers::Storages {
             return m_shader_material;
         }
 
+        const Ref<Geometries::IGeometry>& GetGeometry() const {
+            return m_geometry;
+        }
+
     private:
         Ref<Shaders::Shader>            m_shader{nullptr};
         Ref<Materials::ShaderMaterial>  m_shader_material{nullptr};
+        Ref<Geometries::IGeometry>      m_geometry{nullptr};
         Ref<Buffers::VertexBuffer<T>>   m_vertex_buffer{nullptr};
         Ref<Buffers::IndexBuffer<K>>    m_index_buffer{nullptr};
         Ref<Buffers::VertexArray<T, K>> m_vertex_array{nullptr};
@@ -119,8 +128,8 @@ namespace ZEngine::Rendering::Renderers::Storages {
         std::vector<T> raw_vertices;
 
         std::for_each(std::begin(vertices_list), std::end(vertices_list), [&raw_vertices](const GraphicVertex& vertex) {
-            const auto& data = vertex.GetData();
-            std::copy(std::begin(data), std::end(data), std::back_inserter(raw_vertices));
+            auto&& data = vertex.GetData();
+            std::move(std::begin(data), std::end(data), std::back_inserter(raw_vertices));
         });
 
         m_vertex_buffer.reset(new Buffers::VertexBuffer<T>(vertex_count));
@@ -165,6 +174,14 @@ namespace ZEngine::Rendering::Renderers::Storages {
         m_vertex_array.reset(new Buffers::VertexArray<T, K>());
         m_vertex_array->AddVertexBuffer(m_vertex_buffer);
         m_vertex_array->SetIndexBuffer(m_index_buffer);
+    }
+
+
+    template <typename T, typename K>
+    inline GraphicRendererStorage<T, K>::GraphicRendererStorage(const Ref<Shaders::Shader>& shader, const Ref<Rendering::Geometries::IGeometry>& geometry,
+        const Ref<Materials::ShaderMaterial>& material, GraphicRendererStorageType storage_type)
+        : GraphicRendererStorage(shader, geometry->GetVertices(), material, storage_type) {
+        m_geometry = geometry;
     }
 
 } // namespace ZEngine::Rendering::Renderers::Storages

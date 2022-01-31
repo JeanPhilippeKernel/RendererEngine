@@ -33,16 +33,12 @@ namespace ZEngine::Rendering::Renderers {
     void GraphicRenderer3D::EndScene() {
 
         std::for_each(std::begin(m_mesh_collection), std::end(m_mesh_collection), [this](const Meshes::Mesh& mesh) {
-            const auto& material      = mesh.GetMaterial();
-            const auto& shader        = material->GetShader();
-            const auto& mesh_vertices = mesh.GetGeometry()->GetVertices();
-
-            std::vector<Storages::GraphicVertex> vertices;
-            std::move(std::begin(mesh_vertices), std::end(mesh_vertices), std::back_inserter(vertices));
-
+            const auto&                                                geometry = mesh.GetGeometry();
+            const auto&                                                material = mesh.GetMaterial();
+            const auto&                                                shader   = material->GetShader();
             Ref<Storages::GraphicRendererStorage<float, unsigned int>> graphic_storage;
-            graphic_storage.reset(new Storages::GraphicRendererStorage<float, unsigned int>{shader, vertices, material, m_storage_type});
-            m_graphic_storage_list.emplace(graphic_storage);
+            graphic_storage.reset(new Storages::GraphicRendererStorage<float, unsigned int>{shader, geometry, material, m_storage_type});
+            m_graphic_storage_list.emplace(std::move(graphic_storage));
         });
 
         while (!m_graphic_storage_list.empty()) {
