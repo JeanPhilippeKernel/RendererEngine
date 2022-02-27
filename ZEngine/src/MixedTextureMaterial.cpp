@@ -33,9 +33,10 @@ namespace ZEngine::Rendering::Materials {
     }
 
     void MixedTextureMaterial::Apply() {
+        ShaderMaterial::Apply();
 
-        m_shader->SetUniform("uniform_texture_0", 0);
-        m_shader->SetUniform("uniform_texture_1", 1);
+        m_shader->SetUniform("texture_sampler_0", 0);
+        m_shader->SetUniform("texture_sampler_1", 1);
         m_shader->SetUniform("material.interpolation_factor", m_interpolate_factor);
 
         m_texture->Bind();

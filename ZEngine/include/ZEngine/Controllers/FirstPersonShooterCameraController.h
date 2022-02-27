@@ -27,6 +27,7 @@ namespace ZEngine::Controllers {
         bool OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent&) override {
             return false;
         }
+
         bool OnMouseButtonMoved(Event::MouseButtonMovedEvent&) override;
     };
 } // namespace ZEngine::Controllers

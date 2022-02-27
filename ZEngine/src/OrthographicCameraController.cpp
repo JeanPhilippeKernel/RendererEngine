@@ -48,6 +48,14 @@ namespace ZEngine::Controllers {
         }
     }
 
+    const Maths::Vector3& OrthographicCameraController::GetPosition() const {
+        return m_orthographic_camera->GetPosition();
+    }
+
+    void OrthographicCameraController::SetPosition(const Maths::Vector3& position) {
+        m_orthographic_camera->SetPosition(position);
+    }
+
     void OrthographicCameraController::UpdateProjectionMatrix() {
         m_orthographic_camera->SetProjectionMatrix(glm::ortho(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor));
     }

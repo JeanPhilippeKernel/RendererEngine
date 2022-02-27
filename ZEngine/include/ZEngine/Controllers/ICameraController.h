@@ -26,12 +26,12 @@ namespace ZEngine::Controllers {
 
         virtual ~ICameraController() = default;
 
-        const Maths::Vector3& GetPosition() const {
-            return m_position;
-        }
+        virtual const Maths::Vector3& GetPosition() const = 0;
+
         float GetRotationAngle() const {
             return m_rotation_angle;
         }
+
         float GetZoomFactor() const {
             return m_zoom_factor;
         }
@@ -39,19 +39,21 @@ namespace ZEngine::Controllers {
         float GetMoveSpeed() const {
             return m_move_speed;
         }
+
         float GetRotationSpeed() const {
             return m_rotation_speed;
         }
+
         float GetAspectRatio() const {
             return m_aspect_ratio;
         }
 
-        void SetPosition(Maths::Vector3 position) {
-            m_position = position;
-        }
+        virtual void SetPosition(const Maths::Vector3& position) = 0;
+
         void SetRotationAngle(float angle) {
             m_rotation_angle = angle;
         }
+
         void SetZoomFactor(float factor) {
             m_zoom_factor = factor;
         }
@@ -59,9 +61,11 @@ namespace ZEngine::Controllers {
         void SetMoveSpeed(float speed) {
             m_move_speed = speed;
         }
+
         void SetRotationSpeed(float speed) {
             m_rotation_speed = speed;
         }
+
         void SetAspectRatio(float ar) {
             m_aspect_ratio = ar;
         }

@@ -70,8 +70,7 @@ namespace ZEngine::Rendering::Materials {
         }
 
     protected:
-        std::string m_material_name{};
-
+        std::string            m_material_name{};
         Ref<Textures::Texture> m_texture{nullptr};
         Ref<Shaders::Shader>   m_shader{nullptr};
     };

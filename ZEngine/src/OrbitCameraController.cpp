@@ -14,8 +14,13 @@ namespace ZEngine::Controllers {
 
     void OrbitCameraController::Initialize() {
         PerspectiveCameraController::Initialize();
+#ifdef __linux__
+        m_move_speed     = 0.85f;
+        m_rotation_speed = 0.005f;
+#else
         m_move_speed     = 1.f;
         m_rotation_speed = 0.2f;
+#endif
     }
 
     void OrbitCameraController::Update(Core::TimeStep dt) {

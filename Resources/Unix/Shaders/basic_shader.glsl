@@ -18,7 +18,7 @@ layout (location = 1) in vec3 a_normal;
 layout (location = 2) in vec2 a_texture_coord;
 
 /*
- * Vertex output variables 
+ * Vertex output variables
  */
 out vec2 texture_coord;
 
@@ -28,25 +28,16 @@ void main()
 	texture_coord = a_texture_coord;
 }
 
-
 #type fragment
-#version  330 core
+#version 330 core
 
 precision mediump float;
-
-struct MixedMaterial
-{
-	float interpolation_factor;
-};
 
 /*
  * Fragment input variables
  */
-in vec2 texture_coord;
-
-uniform MixedMaterial 	material;
-uniform sampler2D 		texture_sampler_0;
-uniform sampler2D 		texture_sampler_1;
+in vec2 			texture_coord;
+uniform sampler2D	texture_sampler;
 
 /*
  * Fragment output variables
@@ -55,7 +46,5 @@ out vec4 output_color;
 
 void main()
 {
-   output_color = mix(
-	texture(texture_sampler_0, texture_coord), 
-	texture(texture_sampler_1, texture_coord), material.interpolation_factor);
+	output_color = texture(texture_sampler, texture_coord);
 }

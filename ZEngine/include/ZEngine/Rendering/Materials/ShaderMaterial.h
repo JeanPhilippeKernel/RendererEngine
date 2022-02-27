@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Materials {
 
         virtual ~ShaderMaterial() = default;
 
-        virtual void Apply() = 0;
+        virtual void Apply();
 
     protected:
         Ref<Managers::ShaderManager> m_shader_manager;

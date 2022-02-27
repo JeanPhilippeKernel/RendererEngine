@@ -28,6 +28,11 @@ namespace ZEngine::Rendering::Meshes {
         const Ref<Materials::ShaderMaterial>& GetMaterial() const;
         const Ref<Geometries::IGeometry>&     GetGeometry() const;
 
+        bool IsLight() const;
+
+    protected:
+        bool m_is_light_mesh_object{false};
+
     private:
         unsigned int                   m_unique_identifier;
         Ref<Materials::ShaderMaterial> m_material{nullptr};

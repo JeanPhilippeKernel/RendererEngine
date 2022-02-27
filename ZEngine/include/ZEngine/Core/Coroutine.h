@@ -41,8 +41,7 @@ namespace ZENGINE_COROUTINE_NAMESPACE {
                 m_promise.set_exception(std::move(e));
             }
 
-            void unhandled_exception()
-            {
+            void unhandled_exception() {
                 m_promise.set_exception(std::current_exception());
             }
         };
@@ -73,8 +72,7 @@ namespace ZENGINE_COROUTINE_NAMESPACE {
                 m_promise.set_exception(std::move(e));
             }
 
-            void unhandled_exception()
-            {
+            void unhandled_exception() {
                 m_promise.set_exception(std::current_exception());
             }
         };

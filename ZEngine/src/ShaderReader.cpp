@@ -14,7 +14,7 @@ namespace ZEngine::Rendering::Shaders {
     }
 
     ShaderOperationResult ShaderReader::Read(std::string_view filename) {
-        std::unique_lock<std::mutex> loker(this->m_lock);
+        std::unique_lock<std::mutex> locker(this->m_lock);
 
         std::regex reg{m_regex_expression};
 
@@ -27,7 +27,6 @@ namespace ZEngine::Rendering::Shaders {
         m_filestream.seekg(std::ifstream::beg);
 
         std::string current_line;
-
         while (std::getline(m_filestream, current_line)) {
 
             if (std::regex_match(current_line, reg)) {
@@ -56,7 +55,7 @@ namespace ZEngine::Rendering::Shaders {
 
     std::future<ShaderOperationResult> ShaderReader::ReadAsync(std::string_view filename) {
         auto result = co_await std::async(std::launch::async, &ShaderReader::Read, this, filename);
-        co_return result;
+        co_return              result;
     }
 
     const std::vector<ShaderInformation>& ShaderReader::GetInformations() const {

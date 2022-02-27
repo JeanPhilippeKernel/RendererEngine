@@ -1,5 +1,6 @@
 #pragma once
 #include <Rendering/Meshes/Mesh.h>
+#include <Rendering/Lights/Light.h>
 #include <Rendering/Textures/Texture2D.h>
 #include <ZEngineDef.h>
 
@@ -77,5 +78,17 @@ namespace ZEngine::Rendering::Meshes {
             const Maths::Vector3& position, const Maths::Vector3& size, float angle, const Maths::Vector3& axis, Rendering::Materials::ShaderMaterial* const material);
         static Mesh* CreateCube(
             const Maths::Vector3& position, const Maths::Vector3& size, float angle, const Maths::Vector3& axis, const Ref<Rendering::Materials::ShaderMaterial>& material);
+
+        static Lights::Light* CreateLight(const Maths::Vector3& position, const Maths::Vector3& size, float angle, const Maths::Vector3& axis);
+        static Lights::Light* CreateLight(const Maths::Vector3& position, const Maths::Vector3& size, const Maths::Vector3& color, float angle, const Maths::Vector3& axis);
+        static Lights::Light* CreateLight(const Maths::Vector3& position, const Maths::Vector3& size, const Maths::Vector4& color, float angle, const Maths::Vector3& axis);
+        static Lights::Light* CreateLight(
+            const Maths::Vector3& position, const Maths::Vector3& size, float angle, const Maths::Vector3& axis, Rendering::Textures::Texture* const texture);
+        static Lights::Light* CreateLight(
+            const Maths::Vector3& position, const Maths::Vector3& size, float angle, const Maths::Vector3& axis, Rendering::Textures::Texture2D* const texture);
+        static Lights::Light* CreateLight(
+            const Maths::Vector3& position, const Maths::Vector3& size, float angle, const Maths::Vector3& axis, const Ref<Rendering::Textures::Texture2D>& texture);
+        static Lights::Light* CreateLight(
+            const Maths::Vector3& position, const Maths::Vector3& size, float angle, const Maths::Vector3& axis, const Ref<Rendering::Textures::Texture>& texture);
     };
 } // namespace ZEngine::Rendering::Meshes

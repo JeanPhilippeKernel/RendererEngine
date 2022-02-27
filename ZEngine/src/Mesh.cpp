@@ -31,6 +31,10 @@ namespace ZEngine::Rendering::Meshes {
         }
     }
 
+    bool Mesh::IsLight() const {
+        return m_is_light_mesh_object;
+    }
+
     void Mesh::SetMaterial(Materials::ShaderMaterial* const material) {
         m_material.reset(material);
     }

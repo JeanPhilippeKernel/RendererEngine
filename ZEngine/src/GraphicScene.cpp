@@ -32,17 +32,18 @@ namespace ZEngine::Rendering::Scenes {
     void GraphicScene::SetShouldReactToEvent(bool value) {
         m_should_react_to_event = value;
     }
-    
+
     bool GraphicScene::ShouldReactToEvent() const {
         return m_should_react_to_event;
     }
 
     void GraphicScene::Render() {
-        m_renderer->StartScene(m_camera_controller->GetCamera()->GetViewProjectionMatrix());
+        m_renderer->StartScene(m_camera_controller->GetCamera());
         m_renderer->AddMesh(m_mesh_list);
         m_renderer->EndScene();
 
         m_mesh_list.clear();
+        m_mesh_list.shrink_to_fit();
     }
 
     unsigned int GraphicScene::ToTextureRepresentation() const {

@@ -16,9 +16,11 @@ namespace ZEngine::Rendering::Cameras {
         virtual const Maths::Vector3& GetPosition() const {
             return m_position;
         }
+
         virtual void SetPosition(const Maths::Vector3& position) {
             m_position = position;
         }
+
         virtual void SetProjectionMatrix(const Maths::Matrix4& projection) {
             m_projection = projection;
         }
@@ -26,9 +28,11 @@ namespace ZEngine::Rendering::Cameras {
         virtual const Maths::Matrix4& GetViewMatrix() const {
             return m_view_matrix;
         }
+
         virtual const Maths::Matrix4& GetProjectionMatrix() const {
             return m_projection;
         }
+
         virtual const Maths::Matrix4& GetViewProjectionMatrix() const {
             return m_view_projection;
         }
@@ -36,9 +40,11 @@ namespace ZEngine::Rendering::Cameras {
         virtual const Maths::Vector3& GetUp() const {
             return m_up;
         }
+
         virtual const Maths::Vector3& GetForward() const {
             return m_forward;
         }
+
         virtual const Maths::Vector3& GetRight() const {
             return m_right;
         }
@@ -46,6 +52,7 @@ namespace ZEngine::Rendering::Cameras {
         virtual void SetTarget(const Maths::Vector3& target) {
             m_target = target;
         }
+
         virtual const Maths::Vector3& GetTarget() const {
             return m_target;
         }
