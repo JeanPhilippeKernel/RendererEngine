@@ -11,9 +11,8 @@ namespace ZEngine::Rendering::Materials {
           ShaderMaterial("Resources/Unix/Shaders/standard_shader.glsl"),
 #endif
           m_tile_factor(1.0f),
-          m_ambiant_light_strength(1.0f),
           m_tint_color(glm::vec4(1.0f)),
-          m_light_source_color(glm::vec3(1.0f)) {
+          m_specular_map(Textures::CreateTexture(1, 1)) {
         m_material_name = typeid(*this).name();
     }
 
@@ -32,12 +31,40 @@ namespace ZEngine::Rendering::Materials {
         m_tint_color = value;
     }
 
-    void StandardMaterial::SetAmbiantLightStrength(float value) {
-        m_ambiant_light_strength = value;
+    void StandardMaterial::SetShininess(float value) {
+        m_shininess = value;
     }
 
-    void StandardMaterial::SetLightSourceColor(const glm::vec3& value) {
-        m_light_source_color = value;
+    void StandardMaterial::SetLight(const Ref<Lights::Light>& light) {
+        m_light = light;
+    }
+
+    void StandardMaterial::SetViewPosition(const glm::vec3& position) {
+        m_view_position = position;
+    }
+
+    void StandardMaterial::SetSpecularMap(const Ref<Textures::Texture>& texture) {
+        m_specular_map = texture;
+    }
+
+    void StandardMaterial::SetSpecularMap(Textures::Texture* const texture) {
+        m_specular_map.reset(texture);
+    }
+
+    void StandardMaterial::SetDiffuseMap(const Ref<Textures::Texture>& texture) {
+        m_texture = texture;
+    }
+
+    void StandardMaterial::SetDiffuseMap(Textures::Texture* const texture) {
+        m_texture.reset(texture);
+    }
+
+    void StandardMaterial::SetTexture(const Ref<Textures::Texture>& texture) {
+        SetDiffuseMap(texture);
+    }
+
+    void StandardMaterial::SetTexture(Textures::Texture* const texture) {
+        SetDiffuseMap(texture);
     }
 
     void StandardMaterial::Apply() {
@@ -46,9 +73,22 @@ namespace ZEngine::Rendering::Materials {
         m_shader->SetUniform("material.tiling_factor", m_tile_factor);
         m_shader->SetUniform("material.tint_color", m_tint_color);
 
-        m_shader->SetUniform("light.ambient_strength", m_ambiant_light_strength);
-        m_shader->SetUniform("light.source_color", m_light_source_color);
+        m_shader->SetUniform("material.diffuse", 0);
+        m_shader->SetUniform("material.specular", 1);
+        m_shader->SetUniform("material.shininess", m_shininess);
+
+        m_shader->SetUniform("view_position", m_view_position);
+
+        if (!m_light.expired()) {
+            const auto light = m_light.lock();
+
+            m_shader->SetUniform("light.position", light->GetGeometry()->GetPosition());
+            m_shader->SetUniform("light.ambient", light->GetAmbientColor());
+            m_shader->SetUniform("light.diffuse", light->GetDiffuseColor());
+            m_shader->SetUniform("light.specular", light->GetSpecularColor());
+        }
 
         m_texture->Bind();
+        m_specular_map->Bind(1);
     }
 } // namespace ZEngine::Rendering::Materials

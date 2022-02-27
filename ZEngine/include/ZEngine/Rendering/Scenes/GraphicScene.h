@@ -36,8 +36,8 @@ namespace ZEngine::Rendering::Scenes {
         Scope<Controllers::ICameraController> m_camera_controller;
         Scope<Renderers::GraphicRenderer>     m_renderer;
         std::vector<Ref<Meshes::Mesh>>        m_mesh_list;
-    
+
     private:
-        bool m_should_react_to_event{ true };
+        bool m_should_react_to_event{true};
     };
 } // namespace ZEngine::Rendering::Scenes

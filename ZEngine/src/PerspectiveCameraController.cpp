@@ -38,6 +38,14 @@ namespace ZEngine::Controllers {
         }
     }
 
+    const Maths::Vector3& PerspectiveCameraController::GetPosition() const {
+        return m_perspective_camera->GetPosition();
+    }
+
+    void PerspectiveCameraController::SetPosition(const Maths::Vector3& position) {
+        m_perspective_camera->SetPosition(position);
+    }
+
     void PerspectiveCameraController::UpdateProjectionMatrix() {
         m_perspective_camera->SetProjectionMatrix(glm::perspective(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far));
     }

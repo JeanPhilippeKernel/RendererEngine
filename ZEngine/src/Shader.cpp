@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <Rendering/Shaders/Shader.h>
+#include <Logging/LoggerDefinition.h>
 #include <Core/Coroutine.h>
 
 namespace ZEngine::Rendering::Shaders {
@@ -52,7 +53,11 @@ namespace ZEngine::Rendering::Shaders {
             return it->second;
 
         GLint location = glGetUniformLocation(m_program, name);
-        assert(location != -1);
+        if (location == -1) {
+            ZENGINE_CORE_WARN("Error while finding uniform location : Name : {0}", name);
+            return -1;
+        }
+
         m_uniform_location_map[name] = location;
         return location;
     }

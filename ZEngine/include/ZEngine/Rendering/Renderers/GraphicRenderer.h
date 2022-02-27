@@ -32,5 +32,6 @@ namespace ZEngine::Rendering::Renderers {
         Ref<Rendering::Cameras::Camera>                                        m_camera;
         Ref<Buffers::FrameBuffer>                                              m_framebuffer;
         std::queue<Ref<Storages::GraphicRendererStorage<float, unsigned int>>> m_graphic_storage_list;
+        std::vector<Rendering::Meshes::Mesh>                                   m_light_collection;
     };
 } // namespace ZEngine::Rendering::Renderers

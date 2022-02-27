@@ -27,6 +27,10 @@ namespace ZEngine::Rendering::Renderers {
     }
 
     void GraphicRenderer3D::AddMesh(Meshes::Mesh& mesh) {
+        if (mesh.IsLight()) {
+            m_light_collection.push_back(mesh);
+        }
+
         m_mesh_collection.push_back(mesh);
     }
 
@@ -48,5 +52,8 @@ namespace ZEngine::Rendering::Renderers {
         }
 
         m_mesh_collection.clear();
+        m_light_collection.clear();
+        m_mesh_collection.shrink_to_fit();
+        m_light_collection.shrink_to_fit();
     }
 } // namespace ZEngine::Rendering::Renderers
