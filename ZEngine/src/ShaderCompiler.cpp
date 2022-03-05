@@ -9,13 +9,13 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
     ShaderCompiler::ShaderCompiler() {
         m_reader = std::make_unique<ShaderReader>();
-        m_stage  = std::make_unique<CompilationStage>();
+        m_stage  = std::make_shared<CompilationStage>();
         m_stage->SetContext(this);
     }
 
     ShaderCompiler::ShaderCompiler(std::string_view filename) : m_source_file(filename) {
         m_reader = std::make_unique<ShaderReader>();
-        m_stage  = std::make_unique<CompilationStage>();
+        m_stage  = std::make_shared<CompilationStage>();
         m_stage->SetContext(this);
     }
 
@@ -23,16 +23,6 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
     void ShaderCompiler::SetSource(std::string_view filename) {
         m_source_file = filename.data();
-    }
-
-    void ShaderCompiler::UpdateStage(const Ref<ICompilerStage>& stage) {
-        m_stage = stage;
-        m_stage->SetContext(this);
-    }
-
-    void ShaderCompiler::UpdateStage(ICompilerStage* const stage) {
-        m_stage.reset(stage);
-        m_stage->SetContext(this);
     }
 
     std::tuple<ShaderOperationResult, GLuint> ShaderCompiler::Compile() {
@@ -65,8 +55,10 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
         while (m_running_stages) {
 
-            m_stage->Run(shader_information);
-            const auto& stage_info    = m_stage->GetInformation();
+            ICompilerStage* stage = reinterpret_cast<ICompilerStage*>(m_stage.get());
+            stage->Run(shader_information);
+
+            const auto& stage_info    = stage->GetInformation();
             compile_process_succeeded = compile_process_succeeded && stage_info.IsSuccess;
 
             if (stage_info.IsSuccess && m_stage->HasNext()) {

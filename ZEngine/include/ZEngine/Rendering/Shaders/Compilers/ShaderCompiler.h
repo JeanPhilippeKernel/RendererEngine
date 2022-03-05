@@ -1,14 +1,13 @@
 #pragma once
-#include <ZEngineDef.h>
 #include <future>
 #include <tuple>
-#include <Rendering/Shaders/Compilers/ICompilerStage.h>
+#include <ZEngineDef.h>
+#include <Core/IPipeline.h>
 #include <Rendering/Shaders/ShaderReader.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers {
-    struct ICompilerStage;
 
-    class ShaderCompiler : public std::enable_shared_from_this<ShaderCompiler> {
+    class ShaderCompiler : public Core::IPipelineContext, public std::enable_shared_from_this<ShaderCompiler> {
     public:
         /**
          * Initialize a new ShaderCompiler instance.
@@ -22,18 +21,6 @@ namespace ZEngine::Rendering::Shaders::Compilers {
          * @param filename Path of the shader file
          */
         void SetSource(std::string_view filename);
-
-        /**
-         * Update the current compiler stage
-         * @param stage Compiler stage
-         */
-        void UpdateStage(const Ref<ICompilerStage>& stage);
-
-        /**
-         * Update the current compiler stage
-         * @param stage Compiler stage
-         */
-        void UpdateStage(ICompilerStage* const stage);
 
         /**
          * Compile shader source code
@@ -52,7 +39,6 @@ namespace ZEngine::Rendering::Shaders::Compilers {
     private:
         bool                                                                   m_running_stages{true};
         std::string                                                            m_source_file;
-        Ref<ICompilerStage>                                                    m_stage{nullptr};
         Scope<ShaderReader>                                                    m_reader{nullptr};
         static std::unordered_map<std::string, std::vector<ShaderInformation>> s_already_compiled_shaders_collection;
     };

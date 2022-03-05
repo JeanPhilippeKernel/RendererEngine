@@ -12,12 +12,9 @@ namespace ZEngine::Rendering::Shaders {
 
 namespace ZEngine::Rendering::Shaders {
 
-    Shader::Shader(const char* filename) {
-        m_compiler                = std::make_unique<Compilers::ShaderCompiler>(filename);
-        const auto compile_result = m_compiler->Compile();
-
-        if (std::get<0>(compile_result) == ShaderOperationResult::SUCCESS) {
-            m_program = std::get<1>(compile_result);
+    Shader::Shader(const char* filename, bool defer_program_creation) : m_filename(filename) {
+        if (!defer_program_creation) {
+            CreateProgram();
         }
     }
 
@@ -30,6 +27,15 @@ namespace ZEngine::Rendering::Shaders {
         GLint state = 0;
         glGetIntegerv(GL_CURRENT_PROGRAM, &state);
         return (state == m_program);
+    }
+
+    void Shader::CreateProgram() {
+        m_compiler                = std::make_unique<Compilers::ShaderCompiler>(m_filename);
+        const auto compile_result = m_compiler->Compile();
+
+        if (std::get<0>(compile_result) == ShaderOperationResult::SUCCESS) {
+            m_program = std::get<1>(compile_result);
+        }
     }
 
     void Shader::Bind() const {
