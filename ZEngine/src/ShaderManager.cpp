@@ -13,8 +13,13 @@ namespace ZEngine::Managers {
         Ref<Rendering::Shaders::Shader> shader;
         shader.reset(Rendering::Shaders::CreateShader(filename, true));
 
-        const auto key    = uuids::to_string(uuids::uuid_system_generator{}()) + m_suffix;
-        const auto result = IManager::Add(key, std::move(shader));
+        std::random_device                                     rd;
+        std::ranlux48_base                                     generator(rd());
+        uuids::basic_uuid_random_generator<std::ranlux48_base> gen(&generator);
+
+        uuids::uuid const guid   = gen();
+        const auto        key    = uuids::to_string(guid) + m_suffix;
+        const auto        result = IManager::Add(key, std::move(shader));
 
         assert(result.has_value() == true);
         return result->get();
