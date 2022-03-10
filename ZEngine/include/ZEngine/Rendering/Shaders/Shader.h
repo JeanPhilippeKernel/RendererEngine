@@ -22,6 +22,13 @@ namespace ZEngine::Rendering::Shaders {
         bool IsActive() const;
 
         /**
+         * Get shader filename
+         *
+         * @return Shader filename
+         */
+        std::string_view GetFilename() const;
+
+        /**
          * Compile and create shader program
          */
         void CreateProgram();
@@ -186,5 +193,5 @@ namespace ZEngine::Rendering::Shaders {
         std::unordered_map<const char*, GLint> m_uniform_location_map;
     };
 
-    Shader* CreateShader(const char* filename);
+    Shader* CreateShader(const char* filename, bool defer_program_creation = false);
 } // namespace ZEngine::Rendering::Shaders

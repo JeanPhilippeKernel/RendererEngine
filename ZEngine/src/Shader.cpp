@@ -5,8 +5,8 @@
 
 namespace ZEngine::Rendering::Shaders {
 
-    Shader* CreateShader(const char* filename) {
-        return new Shader(filename);
+    Shader* CreateShader(const char* filename, bool defer_program_creation) {
+        return new Shader(filename, defer_program_creation);
     }
 } // namespace ZEngine::Rendering::Shaders
 
@@ -27,6 +27,10 @@ namespace ZEngine::Rendering::Shaders {
         GLint state = 0;
         glGetIntegerv(GL_CURRENT_PROGRAM, &state);
         return (state == m_program);
+    }
+
+    std::string_view Shader::GetFilename() const {
+        return m_filename;
     }
 
     void Shader::CreateProgram() {

@@ -41,7 +41,7 @@ namespace Tetragrama::Layers {
         light_source_mesh->SetDiffuseColor({0.5f, 0.5f, 0.5f});
         light_source_mesh->SetSpecularColor({1.0f, 1.0f, 1.0f});
 
-        checkboard_mesh.reset(MeshBuilder::CreateCube({0.f, -0.5f, 0.0f}, {100.f, .0f, 100.f}, 0.0f, Vector3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
+        checkboard_mesh.reset(MeshBuilder::CreateCube({0.f, -0.5f, 0.0f}, {1000.f, .0f, 1000.f}, 0.0f, Vector3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
         StandardMaterial* checkboard_material = reinterpret_cast<StandardMaterial*>(checkboard_mesh->GetMaterial().get());
         checkboard_material->SetTileFactor(20.f);
         Ref<Rendering::Textures::Texture> specular_map(Rendering::Textures::CreateTexture(1, 1));

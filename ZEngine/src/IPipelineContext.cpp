@@ -2,7 +2,7 @@
 
 namespace ZEngine::Core {
 
-    void IPipelineContext::UpdateStage(const Ref<IPipelineStage>& stage) {
+    void IPipelineContext::UpdateStage(Ref<IPipelineStage> stage) {
         m_stage = stage;
         m_stage->SetContext(this);
     }
@@ -11,4 +11,4 @@ namespace ZEngine::Core {
         m_stage.reset(stage);
         m_stage->SetContext(this);
     }
-}
+} // namespace ZEngine::Core

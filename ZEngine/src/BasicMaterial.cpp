@@ -3,20 +3,13 @@
 
 namespace ZEngine::Rendering::Materials {
 
-    BasicMaterial::BasicMaterial()
-        :
-#ifdef _WIN32
-          ShaderMaterial("Resources/Windows/Shaders/basic_shader.glsl")
-#else
-          ShaderMaterial("Resources/Unix/Shaders/basic_shader.glsl")
-#endif
-    {
+    BasicMaterial::BasicMaterial() : ShaderMaterial(Shaders::ShaderBuiltInType::BASIC) {
         m_material_name = typeid(*this).name();
         m_texture.reset(Textures::CreateTexture(1, 1));
     }
 
-    void BasicMaterial::Apply() {
-        ShaderMaterial::Apply();
+    void BasicMaterial::Apply(Shaders::Shader* const shader) {
+        ShaderMaterial::Apply(shader);
         m_texture->Bind();
     }
 } // namespace ZEngine::Rendering::Materials

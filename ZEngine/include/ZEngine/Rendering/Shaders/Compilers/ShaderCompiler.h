@@ -37,7 +37,6 @@ namespace ZEngine::Rendering::Shaders::Compilers {
         std::future<std::tuple<ShaderOperationResult, GLuint>> CompileAsync() = delete;
 
     private:
-        bool                                                                   m_running_stages{true};
         std::string                                                            m_source_file;
         Scope<ShaderReader>                                                    m_reader{nullptr};
         static std::unordered_map<std::string, std::vector<ShaderInformation>> s_already_compiled_shaders_collection;

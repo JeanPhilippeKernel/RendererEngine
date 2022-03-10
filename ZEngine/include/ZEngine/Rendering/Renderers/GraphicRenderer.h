@@ -1,10 +1,14 @@
 #pragma once
-#include <queue>
-#include <Rendering/Renderers/Storages/GraphicRendererStorage.h>
 #include <Rendering/Buffers/FrameBuffers/Framebuffer.h>
 #include <Core/IInitializable.h>
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Cameras/Camera.h>
+#include <Rendering/Renderers/Pipelines/GraphicRendererPipelineContext.h>
+#include <Rendering/Renderers/GraphicRendererInformation.h>
+
+namespace ZEngine::Rendering::Renderers::Pipelines {
+    class GraphicRendererPipelineContext;
+}
 
 namespace ZEngine::Rendering::Renderers {
 
@@ -20,18 +24,17 @@ namespace ZEngine::Rendering::Renderers {
         virtual void AddMesh(std::vector<Ref<Meshes::Mesh>>& meshes);
 
     public:
-        const Ref<Buffers::FrameBuffer>& GetFrameBuffer() const;
-        virtual void                     StartScene(const Ref<Rendering::Cameras::Camera>& camera);
-        virtual void                     EndScene() = 0;
+        const Ref<Buffers::FrameBuffer>&       GetFrameBuffer() const;
+        const Ref<Rendering::Cameras::Camera>& GetCamera() const;
+        virtual void                           StartScene(const Ref<Rendering::Cameras::Camera>& camera);
+        virtual void                           EndScene() = 0;
+
+        virtual const Ref<GraphicRendererInformation>& GetRendererInformation() const;
 
     protected:
-        void Submit(const Ref<Storages::GraphicRendererStorage<float, unsigned int>>& graphic_storage);
-
-    protected:
-        Storages::GraphicRendererStorageType                                   m_storage_type{Storages::GraphicRendererStorageType::GRAPHIC_STORAGE_TYPE_UNDEFINED};
-        Ref<Rendering::Cameras::Camera>                                        m_camera;
-        Ref<Buffers::FrameBuffer>                                              m_framebuffer;
-        std::queue<Ref<Storages::GraphicRendererStorage<float, unsigned int>>> m_graphic_storage_list;
-        std::vector<Rendering::Meshes::Mesh>                                   m_light_collection;
+        Ref<Rendering::Cameras::Camera>                  m_camera;
+        Ref<Buffers::FrameBuffer>                        m_framebuffer;
+        Ref<GraphicRendererInformation>                  m_renderer_information;
+        Scope<Pipelines::GraphicRendererPipelineContext> m_renderer_pipeline_context;
     };
 } // namespace ZEngine::Rendering::Renderers

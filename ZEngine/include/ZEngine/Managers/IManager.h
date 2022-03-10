@@ -43,6 +43,18 @@ namespace ZEngine::Managers {
             return pair.first->second;
         }
 
+        std::optional<std::reference_wrapper<K>> Add(T&& key, K&& val) {
+            const auto& kv = Exists(key);
+
+            if (kv.first) {
+                auto it = kv.second;
+                return it->second;
+            }
+
+            auto pair = m_collection.emplace(std::make_pair(std::move(key), std::move(val)));
+            return pair.first->second;
+        }
+
         std::optional<std::reference_wrapper<K>> Get(const T& key) {
 
             const auto& kv = Exists(key);

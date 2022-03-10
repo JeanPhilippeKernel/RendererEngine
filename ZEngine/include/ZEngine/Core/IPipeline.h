@@ -45,21 +45,31 @@ namespace ZEngine::Core {
          */
         virtual bool HasNext();
 
+        /**
+         * Return information related to the stage.
+         * These information are updated during call of Run()
+         *
+         * @return An information related to the pipeline stage
+         */
+        virtual const Core::StageInformation& GetInformation() const {
+            return m_information;
+        }
+
     protected:
         StageInformation    m_information{};
-        IPipelineContext*                  m_context{nullptr};
+        IPipelineContext*   m_context{nullptr};
         Ref<IPipelineStage> m_next_stage{nullptr};
     };
 
     struct IPipelineContext {
-        IPipelineContext() = default;
+        IPipelineContext()          = default;
         virtual ~IPipelineContext() = default;
 
         /**
          * Update the current compiler stage
          * @param stage Compiler stage
          */
-        virtual void UpdateStage(const Ref<IPipelineStage>& stage);
+        virtual void UpdateStage(Ref<IPipelineStage> stage);
 
         /**
          * Update the current compiler stage
@@ -68,6 +78,7 @@ namespace ZEngine::Core {
         virtual void UpdateStage(IPipelineStage* const stage);
 
     protected:
+        bool                m_running_stages{true};
         Ref<IPipelineStage> m_stage{nullptr};
     };
 } // namespace ZEngine::Core

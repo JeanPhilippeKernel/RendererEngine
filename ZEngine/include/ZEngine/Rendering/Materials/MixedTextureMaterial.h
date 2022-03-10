@@ -10,7 +10,7 @@ namespace ZEngine::Rendering::Materials {
 
         unsigned int GetHashCode() override;
 
-        void Apply() override;
+        void Apply(Shaders::Shader* const shader) override;
 
         void SetSecondTexture(Ref<Textures::Texture>& texture);
         void SetSecondTexture(Textures::Texture* const texture);

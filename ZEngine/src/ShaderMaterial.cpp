@@ -3,13 +3,13 @@
 
 namespace ZEngine::Rendering::Materials {
 
-    ShaderMaterial::ShaderMaterial(const Ref<Shaders::Shader>& shader) : IMaterial(shader), m_shader_manager(new Managers::ShaderManager()) {}
-
-    ShaderMaterial::ShaderMaterial(const char* shader_filename) : IMaterial(), m_shader_manager(new Managers::ShaderManager()) {
-        m_shader = m_shader_manager->Load(shader_filename);
+    ShaderMaterial::ShaderMaterial(Shaders::ShaderBuiltInType type) : IMaterial() {
+        m_shader_built_in_type = type;
     }
 
-    void ShaderMaterial::Apply() {
-        m_shader->Bind();
+    void ShaderMaterial::Apply(Shaders::Shader* const shader) {
+        assert(shader != nullptr);
+
+        shader->Bind();
     }
 } // namespace ZEngine::Rendering::Materials

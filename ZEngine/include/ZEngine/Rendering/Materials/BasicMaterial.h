@@ -8,6 +8,6 @@ namespace ZEngine::Rendering::Materials {
         explicit BasicMaterial();
         virtual ~BasicMaterial() = default;
 
-        void Apply() override;
+        void Apply(Shaders::Shader* const shader) override;
     };
 } // namespace ZEngine::Rendering::Materials

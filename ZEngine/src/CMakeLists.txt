@@ -65,5 +65,6 @@ target_link_libraries (zEngineLib
 		imported::imgui
 		imported::entt
 		imported::assimp
+		imported::stduuid
 		OpenGL::GL
 )

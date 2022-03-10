@@ -3,14 +3,7 @@
 
 namespace ZEngine::Rendering::Materials {
 
-    MixedTextureMaterial::MixedTextureMaterial()
-        :
-#ifdef _WIN32
-          ShaderMaterial("Resources/Windows/Shaders/mixed_texture_shader.glsl")
-#else
-          ShaderMaterial("Resources/Unix/Shaders/mixed_texture_shader.glsl")
-#endif
-    {
+    MixedTextureMaterial::MixedTextureMaterial() : ShaderMaterial(Shaders::ShaderBuiltInType::MIXED_TEXTURE) {
         m_material_name = typeid(*(this)).name();
     }
 
@@ -32,12 +25,12 @@ namespace ZEngine::Rendering::Materials {
         m_interpolate_factor = std::clamp<float>(value, 0.0f, 1.0f);
     }
 
-    void MixedTextureMaterial::Apply() {
-        ShaderMaterial::Apply();
+    void MixedTextureMaterial::Apply(Shaders::Shader* const shader) {
+        ShaderMaterial::Apply(shader);
 
-        m_shader->SetUniform("texture_sampler_0", 0);
-        m_shader->SetUniform("texture_sampler_1", 1);
-        m_shader->SetUniform("material.interpolation_factor", m_interpolate_factor);
+        shader->SetUniform("texture_sampler_0", 0);
+        shader->SetUniform("texture_sampler_1", 1);
+        shader->SetUniform("material.interpolation_factor", m_interpolate_factor);
 
         m_texture->Bind();
         m_second_texture->Bind(1);

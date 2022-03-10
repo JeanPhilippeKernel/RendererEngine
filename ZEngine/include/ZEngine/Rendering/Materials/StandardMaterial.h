@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Materials {
         void SetLight(const Ref<Lights::Light>& light);
         void SetViewPosition(const glm::vec3& position);
 
-        void Apply() override;
+        void Apply(Shaders::Shader* const shader) override;
 
         void SetSpecularMap(const Ref<Textures::Texture>& texture);
         void SetSpecularMap(Textures::Texture* const texture);

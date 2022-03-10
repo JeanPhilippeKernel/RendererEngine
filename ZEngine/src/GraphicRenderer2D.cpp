@@ -4,7 +4,7 @@
 namespace ZEngine::Rendering::Renderers {
 
     GraphicRenderer2D::GraphicRenderer2D() : GraphicRenderer(), m_mesh_map() {
-        m_storage_type = Storages::GraphicRendererStorageType::GRAPHIC_2D_STORAGE_TYPE;
+        m_renderer_information->GraphicStorageType = Storages::GraphicRendererStorageType::GRAPHIC_2D_STORAGE_TYPE;
     }
 
     void GraphicRenderer2D::Initialize() {
@@ -35,7 +35,7 @@ namespace ZEngine::Rendering::Renderers {
 
     void GraphicRenderer2D::EndScene() {
 
-        std::for_each(std::begin(m_mesh_map), std::end(m_mesh_map), [this](const std::pair<unsigned int, std::vector<Meshes::Mesh>>& value) {
+        /*std::for_each(std::begin(m_mesh_map), std::end(m_mesh_map), [this](const std::pair<unsigned int, std::vector<Meshes::Mesh>>& value) {
             const auto& material = value.second.at(0).GetMaterial();
             const auto& shader   = material->GetShader();
 
@@ -56,6 +56,6 @@ namespace ZEngine::Rendering::Renderers {
             m_graphic_storage_list.pop();
         }
 
-        m_mesh_map.clear();
+        m_mesh_map.clear();*/
     }
 } // namespace ZEngine::Rendering::Renderers

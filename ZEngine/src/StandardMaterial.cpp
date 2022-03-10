@@ -4,15 +4,7 @@
 namespace ZEngine::Rendering::Materials {
 
     StandardMaterial::StandardMaterial()
-        :
-#ifdef _WIN32
-          ShaderMaterial("Resources/Windows/Shaders/standard_shader.glsl"),
-#else
-          ShaderMaterial("Resources/Unix/Shaders/standard_shader.glsl"),
-#endif
-          m_tile_factor(1.0f),
-          m_tint_color(glm::vec4(1.0f)),
-          m_specular_map(Textures::CreateTexture(1, 1)) {
+        : ShaderMaterial(Shaders::ShaderBuiltInType::STANDARD), m_tile_factor(1.0f), m_tint_color(glm::vec4(1.0f)), m_specular_map(Textures::CreateTexture(1, 1)) {
         m_material_name = typeid(*this).name();
     }
 
@@ -67,25 +59,25 @@ namespace ZEngine::Rendering::Materials {
         SetDiffuseMap(texture);
     }
 
-    void StandardMaterial::Apply() {
-        ShaderMaterial::Apply();
+    void StandardMaterial::Apply(Shaders::Shader* const shader) {
+        ShaderMaterial::Apply(shader);
 
-        m_shader->SetUniform("material.tiling_factor", m_tile_factor);
-        m_shader->SetUniform("material.tint_color", m_tint_color);
+        shader->SetUniform("material.tiling_factor", m_tile_factor);
+        shader->SetUniform("material.tint_color", m_tint_color);
 
-        m_shader->SetUniform("material.diffuse", 0);
-        m_shader->SetUniform("material.specular", 1);
-        m_shader->SetUniform("material.shininess", m_shininess);
+        shader->SetUniform("material.diffuse", 0);
+        shader->SetUniform("material.specular", 1);
+        shader->SetUniform("material.shininess", m_shininess);
 
-        m_shader->SetUniform("view_position", m_view_position);
+        shader->SetUniform("view_position", m_view_position);
 
         if (!m_light.expired()) {
             const auto light = m_light.lock();
 
-            m_shader->SetUniform("light.position", light->GetGeometry()->GetPosition());
-            m_shader->SetUniform("light.ambient", light->GetAmbientColor());
-            m_shader->SetUniform("light.diffuse", light->GetDiffuseColor());
-            m_shader->SetUniform("light.specular", light->GetSpecularColor());
+            shader->SetUniform("light.position", light->GetGeometry()->GetPosition());
+            shader->SetUniform("light.ambient", light->GetAmbientColor());
+            shader->SetUniform("light.diffuse", light->GetDiffuseColor());
+            shader->SetUniform("light.specular", light->GetSpecularColor());
         }
 
         m_texture->Bind();

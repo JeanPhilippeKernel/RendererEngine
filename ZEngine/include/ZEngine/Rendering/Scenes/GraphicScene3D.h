@@ -13,7 +13,5 @@ namespace ZEngine::Rendering::Scenes {
         }
 
         ~GraphicScene3D() = default;
-
-        void Render() override;
     };
 } // namespace ZEngine::Rendering::Scenes
