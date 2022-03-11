@@ -120,7 +120,6 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
 
     # STDUUID options
     $CMakeCacheVariableOverride += " -DUUID_BUILD_TESTS=OFF"
-    $CMakeCacheVariableOverride += " -DUUID_USING_CXX20_SPAN=ON"
 
     $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
 
