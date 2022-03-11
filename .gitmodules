@@ -25,3 +25,6 @@
 [submodule "__externals/assimp"]
 	path = __externals/assimp
 	url = https://github.com/assimp/assimp
+[submodule "__externals/stduuid"]
+	path = __externals/stduuid
+	url = https://github.com/mariusbancila/stduuid

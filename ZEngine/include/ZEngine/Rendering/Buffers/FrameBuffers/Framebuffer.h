@@ -20,6 +20,7 @@ namespace ZEngine::Rendering::Buffers {
         const FrameBufferSpecification& GetSpecification() const {
             return m_specification;
         }
+
         FrameBufferSpecification& GetSpecification() {
             return m_specification;
         }

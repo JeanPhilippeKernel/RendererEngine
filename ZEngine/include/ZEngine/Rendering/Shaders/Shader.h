@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Shaders {
         /**
          * Initialize a new Shader instance.
          */
-        Shader(const char* filename);
+        Shader(const char* filename, bool defer_program_creation = false);
         virtual ~Shader();
 
         /**
@@ -20,6 +20,18 @@ namespace ZEngine::Rendering::Shaders {
          * @return True of False
          */
         bool IsActive() const;
+
+        /**
+         * Get shader filename
+         *
+         * @return Shader filename
+         */
+        std::string_view GetFilename() const;
+
+        /**
+         * Compile and create shader program
+         */
+        void CreateProgram();
 
         /**
          * Make active and uses the shader program
@@ -176,9 +188,10 @@ namespace ZEngine::Rendering::Shaders {
 
     private:
         GLuint                                 m_program{0};
+        std::string                            m_filename;
         Scope<Compilers::ShaderCompiler>       m_compiler;
         std::unordered_map<const char*, GLint> m_uniform_location_map;
     };
 
-    Shader* CreateShader(const char* filename);
+    Shader* CreateShader(const char* filename, bool defer_program_creation = false);
 } // namespace ZEngine::Rendering::Shaders

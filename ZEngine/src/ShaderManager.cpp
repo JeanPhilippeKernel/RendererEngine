@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <uuid.h>
 #include <Managers/ShaderManager.h>
 
 namespace ZEngine::Managers {
@@ -10,10 +11,15 @@ namespace ZEngine::Managers {
     Ref<Rendering::Shaders::Shader>& ShaderManager::Add(const char* name, const char* filename) {
 
         Ref<Rendering::Shaders::Shader> shader;
-        shader.reset(Rendering::Shaders::CreateShader(filename));
+        shader.reset(Rendering::Shaders::CreateShader(filename, true));
 
-        const auto key    = std::string(name).append("_" + std::to_string(shader->GetIdentifier()) + m_suffix);
-        const auto result = IManager::Add(key, shader);
+        std::random_device                                     rd;
+        std::ranlux48_base                                     generator(rd());
+        uuids::basic_uuid_random_generator<std::ranlux48_base> gen(&generator);
+
+        uuids::uuid const guid   = gen();
+        const auto        key    = uuids::to_string(guid) + m_suffix;
+        const auto        result = IManager::Add(key, std::move(shader));
 
         assert(result.has_value() == true);
         return result->get();

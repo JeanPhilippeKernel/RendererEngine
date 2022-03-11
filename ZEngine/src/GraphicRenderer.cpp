@@ -1,9 +1,8 @@
 #include <pch.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
-#include <Rendering/Renderers/RenderCommand.h>
 
 namespace ZEngine::Rendering::Renderers {
-    GraphicRenderer::GraphicRenderer() : m_graphic_storage_list() {}
+    GraphicRenderer::GraphicRenderer() : m_renderer_information(new GraphicRendererInformation()) {}
 
     void GraphicRenderer::AddMesh(Ref<Meshes::Mesh>& mesh) {
         AddMesh(*mesh);
@@ -21,22 +20,15 @@ namespace ZEngine::Rendering::Renderers {
         return m_framebuffer;
     }
 
+    const Ref<Rendering::Cameras::Camera>& GraphicRenderer::GetCamera() const {
+        return m_camera;
+    }
+
     void GraphicRenderer::StartScene(const Ref<Rendering::Cameras::Camera>& camera) {
         m_camera = camera;
     }
 
-    void GraphicRenderer::Submit(const Ref<Storages::GraphicRendererStorage<float, unsigned int>>& storage) {
-        const auto& material = storage->GetMaterial();
-        const auto& geometry = storage->GetGeometry();
-        material->Apply();
-
-        // Todo : As used by many shader, we should moved it out to an Uniform Buffer
-        const auto& shader = material->GetShader();
-        shader->SetUniform("model", geometry->GetTransform());
-        shader->SetUniform("view", m_camera->GetViewMatrix());
-        shader->SetUniform("projection", m_camera->GetProjectionMatrix());
-
-        const auto& vertex_array = storage->GetVertexArray();
-        RendererCommand::DrawIndexed(shader, vertex_array);
+    const Ref<GraphicRendererInformation>& GraphicRenderer::GetRendererInformation() const {
+        return m_renderer_information;
     }
 } // namespace ZEngine::Rendering::Renderers

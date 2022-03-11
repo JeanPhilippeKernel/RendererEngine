@@ -79,7 +79,7 @@ namespace ZEngine::Controllers {
     protected:
         float          m_camera_fov{Maths::half_pi<float>()};
         float          m_camera_near{0.1f};
-        float          m_camera_far{300.0f};
+        float          m_camera_far{3000.0f};
         Maths::Vector3 m_camera_target{0.0f, 0.0f, 0.0f};
 
         ZEngine::Ref<Rendering::Cameras::PerspectiveCamera> m_perspective_camera;

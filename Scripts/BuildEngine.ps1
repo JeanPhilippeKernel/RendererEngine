@@ -118,6 +118,15 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
         $CMakeCacheVariableOverride += " -DBUILD_FRAMEWORK=ON"
     }
 
+    # STDUUID options
+    $CMakeCacheVariableOverride += " -DUUID_BUILD_TESTS=OFF"
+    if ($systemName -eq "Darwin") {
+        $CMakeCacheVariableOverride += " -DUUID_USING_CXX20_SPAN=OFF"
+    }
+    else {
+        $CMakeCacheVariableOverride += " -DUUID_USING_CXX20_SPAN=ON"
+    }
+
     $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
 
     # Set Linux build compiler

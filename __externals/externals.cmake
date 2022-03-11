@@ -61,6 +61,13 @@ endif ()
 
 target_link_libraries(imported::assimp INTERFACE assimp)
 
+# stduuid
+add_library (imported::stduuid INTERFACE IMPORTED)
+set (STDUUID_INCLUDE_PATH ${EXTERNAL_DIR}/stduuid/include)
+set_target_properties(imported::stduuid PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${STDUUID_INCLUDE_PATH}")
+target_link_libraries(imported::stduuid INTERFACE stduuid)
+
+
 # Exporting all externals include directories
 list (APPEND EXTERNAL_INCLUDE_DIRS
 	${FMT_INCLUDE_PATH}
@@ -72,4 +79,5 @@ list (APPEND EXTERNAL_INCLUDE_DIRS
 	${GLFW_INCLUDE_PATH}
 	${ENTT_INCLUDE_PATH}
 	${ASSIMP_INCLUDE_PATH}
+	${STDUUID_INCLUDE_PATH}
 )

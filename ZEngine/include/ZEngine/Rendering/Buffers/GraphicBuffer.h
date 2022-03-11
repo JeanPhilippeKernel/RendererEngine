@@ -26,7 +26,7 @@ namespace ZEngine::Rendering::Buffers {
             if (this->m_data_size > 0)
                 m_data.clear();
 
-            std::for_each(std::begin(data), std::end(data), [this](const T& x) { m_data.emplace_back(x); });
+            std::for_each(std::begin(data), std::end(data), [this](const T& x) { m_data.push_back(x); });
             this->m_data_size = data.size();
             this->m_byte_size = m_data_size * sizeof(T);
         }
