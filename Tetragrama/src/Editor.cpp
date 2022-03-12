@@ -24,26 +24,23 @@ namespace Tetragrama {
 
     void Editor::Run() {
         m_engine->Initialize();
-        m_engine->Run();
+        m_engine->Start();
     }
 
     void Editor::OnUIComponentRaised(UIComponentEvent& e) {
-        const auto rendering_layer_ptr      = dynamic_cast<Layers::RenderingLayer*>(m_rendering_layer.get());
-        const auto user_interface_layer_ptr = dynamic_cast<Layers::UserInterfaceLayer*>(m_ui_layer.get());
+        const auto rendering_layer_ptr      = reinterpret_cast<Layers::RenderingLayer*>(m_rendering_layer.get());
+        const auto user_interface_layer_ptr = reinterpret_cast<Layers::UserInterfaceLayer*>(m_ui_layer.get());
 
         ZEngine::Event::EventDispatcher event_dispatcher(e);
-        if (rendering_layer_ptr) {
-            event_dispatcher.ForwardTo<Components::Event::SceneViewportResizedEvent>(
-                std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
-            event_dispatcher.ForwardTo<Components::Event::SceneViewportFocusedEvent>(
-                std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
-            event_dispatcher.ForwardTo<Components::Event::SceneViewportUnfocusedEvent>(
-                std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
-        }
 
-        if (user_interface_layer_ptr) {
-            event_dispatcher.ForwardTo<Components::Event::SceneTextureAvailableEvent>(
-                std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_layer_ptr, std::placeholders::_1));
-        }
+        event_dispatcher.ForwardTo<Components::Event::SceneViewportResizedEvent>(
+            std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
+        event_dispatcher.ForwardTo<Components::Event::SceneViewportFocusedEvent>(
+            std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
+        event_dispatcher.ForwardTo<Components::Event::SceneViewportUnfocusedEvent>(
+            std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
+
+        event_dispatcher.ForwardTo<Components::Event::SceneTextureAvailableEvent>(
+            std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_layer_ptr, std::placeholders::_1));
     }
 } // namespace Tetragrama

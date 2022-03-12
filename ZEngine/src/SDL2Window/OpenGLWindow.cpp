@@ -56,21 +56,27 @@ namespace ZEngine::Window::SDLWin {
 		);
 		ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
 		
-		SetVSync(true);
 		SDL_SetWindowData(m_native_window, CoreWindow::ATTACHED_PROPERTY, &m_property);
-
-		m_context = CreateContext(this);
-		m_context->MarkActive();
-
-		int glad_init = gladLoadGLLoader(SDL_GL_GetProcAddress);
-		if (glad_init == 0) {
-			ZENGINE_CORE_CRITICAL("Unable to initialize glad library...");
-			ZENGINE_EXIT_FAILURE();
-		}
-
-		RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
 	}
 
+    bool OpenGLWindow::HasContext() const {
+        return m_context != nullptr;
+    }
+
+    void OpenGLWindow::CreateAndActiveContext() {
+        m_context = CreateContext(this);
+        m_context->MarkActive();
+
+        SetVSync(true);
+
+        int glad_init = gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
+        if (glad_init == 0) {
+            ZENGINE_CORE_CRITICAL("Unable to initialize glad library...");
+            ZENGINE_EXIT_FAILURE();
+        }
+
+        RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
+    }
 
 	void OpenGLWindow::Initialize() {
 		for(Ref<Layers::Layer>& layer : *m_layer_stack_ptr) {

@@ -15,16 +15,24 @@ namespace ZEngine::Window::GLFWWindow {
         unsigned int GetHeight() const override {
             return m_property.Height;
         }
+
         unsigned int GetWidth() const override {
             return m_property.Width;
         }
+
         const std::string& GetTitle() const override {
             return m_property.Title;
+        }
+
+        void SetTitle(std::string_view title) override {
+            m_property.Title = title;
+            glfwSetWindowTitle(m_native_window, m_property.Title.c_str());
         }
 
         bool IsVSyncEnable() const override {
             return m_property.VSync;
         }
+
         void SetVSync(bool value) override {
             m_property.VSync = value;
             if (value) {
@@ -41,9 +49,14 @@ namespace ZEngine::Window::GLFWWindow {
         void* GetNativeWindow() const override {
             return m_native_window;
         }
+
         void* GetNativeContext() const override {
             return m_context->GetNativeContext();
         }
+
+        virtual bool HasContext() const override;
+
+        virtual void CreateAndActiveContext() override;
 
         virtual const WindowProperty& GetWindowProperty() const override {
             return m_property;

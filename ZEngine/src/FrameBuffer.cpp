@@ -70,6 +70,7 @@ namespace ZEngine::Rendering::Buffers {
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             ZENGINE_CORE_CRITICAL("Framebuffer is incomplete");
+            ZENGINE_EXIT_FAILURE();
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -125,6 +126,7 @@ namespace ZEngine::Rendering::Buffers {
 #endif
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             ZENGINE_CORE_CRITICAL("Framebuffer is incomplete");
+            ZENGINE_EXIT_FAILURE();
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

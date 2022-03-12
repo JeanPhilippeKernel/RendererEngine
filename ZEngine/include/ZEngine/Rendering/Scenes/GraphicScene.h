@@ -21,7 +21,7 @@ namespace ZEngine::Rendering::Scenes {
         void         Initialize() override;
         virtual void Render() override;
 
-        void     UpdateSize(uint32_t width, uint32_t);
+        void     RequestNewSize(uint32_t, uint32_t);
         uint32_t ToTextureRepresentation() const;
 
         void Add(Ref<Meshes::Mesh>& mesh);
@@ -39,5 +39,6 @@ namespace ZEngine::Rendering::Scenes {
 
     private:
         bool m_should_react_to_event{true};
+        std::queue<std::function<void(void)>> m_pending_operation;
     };
 } // namespace ZEngine::Rendering::Scenes

@@ -48,19 +48,6 @@ namespace ZEngine::Window::GLFWWindow {
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
-        m_context = CreateContext(this);
-        m_context->MarkActive();
-
-        SetVSync(true);
-
-        int glad_init = gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
-        if (glad_init == 0) {
-            ZENGINE_CORE_CRITICAL("Unable to initialize glad library...");
-            ZENGINE_EXIT_FAILURE();
-        }
-
-        RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
-
         glfwSetFramebufferSizeCallback(m_native_window, OpenGLWindow::__OnGlfwFrameBufferSizeChanged);
 
         glfwSetWindowCloseCallback(m_native_window, OpenGLWindow::__OnGlfwWindowClose);
@@ -74,6 +61,25 @@ namespace ZEngine::Window::GLFWWindow {
 
         glfwSetCursorPosCallback(m_native_window, OpenGLWindow::__OnGlfwCursorMoved);
         glfwSetCharCallback(m_native_window, OpenGLWindow::__OnGlfwTextInputRaised);
+    }
+
+    bool OpenGLWindow::HasContext() const {
+        return m_context != nullptr;
+    }
+
+    void OpenGLWindow::CreateAndActiveContext() {
+        m_context = CreateContext(this);
+        m_context->MarkActive();
+
+        SetVSync(true);
+
+        int glad_init = gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
+        if (glad_init == 0) {
+            ZENGINE_CORE_CRITICAL("Unable to initialize glad library...");
+            ZENGINE_EXIT_FAILURE();
+        }
+
+        RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
     }
 
     void OpenGLWindow::Initialize() {
