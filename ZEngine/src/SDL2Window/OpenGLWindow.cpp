@@ -69,7 +69,7 @@ namespace ZEngine::Window::SDLWin {
 
         SetVSync(true);
 
-        int glad_init = gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
+        int glad_init = gladLoadGLLoader(SDL_GL_GetProcAddress);
         if (glad_init == 0) {
             ZENGINE_CORE_CRITICAL("Unable to initialize glad library...");
             ZENGINE_EXIT_FAILURE();
