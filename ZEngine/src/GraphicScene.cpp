@@ -23,10 +23,12 @@ namespace ZEngine::Rendering::Scenes {
         std::copy(std::begin(meshes), std::end(meshes), std::back_inserter(m_mesh_list));
     }
 
-    void GraphicScene::UpdateSize(uint32_t width, uint32_t height) {
-        m_camera_controller->SetAspectRatio(((float) width) / ((float) height));
-        m_camera_controller->UpdateProjectionMatrix();
-        m_renderer->GetFrameBuffer()->Resize(width, height);
+    void GraphicScene::RequestNewSize(uint32_t width, uint32_t height) {
+        m_pending_operation.push([w = width, h = height, this]() {
+            m_camera_controller->SetAspectRatio(((float) w) / ((float) h));
+            m_camera_controller->UpdateProjectionMatrix();
+            m_renderer->GetFrameBuffer()->Resize(w, h);
+        });
     }
 
     void GraphicScene::SetShouldReactToEvent(bool value) {
@@ -38,6 +40,11 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::Render() {
+        while (!m_pending_operation.empty()) {
+            auto& callback_func = m_pending_operation.front();
+            callback_func();
+            m_pending_operation.pop();
+        }
         m_renderer->StartScene(m_camera_controller->GetCamera());
         m_renderer->AddMesh(m_mesh_list);
         m_renderer->EndScene();

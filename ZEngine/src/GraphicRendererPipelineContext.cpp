@@ -4,7 +4,7 @@
 
 namespace ZEngine::Rendering::Renderers::Pipelines {
 
-    GraphicRendererPipelineContext::GraphicRendererPipelineContext() : m_renderer(nullptr), m_pipeline_data() {
+    GraphicRendererPipelineContext::GraphicRendererPipelineContext() : m_is_completed(false), m_renderer(nullptr), m_pipeline_data() {
         this->Reset();
     }
 
@@ -27,6 +27,10 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
         return m_renderer;
     }
 
+    bool GraphicRendererPipelineContext::HasPipelineData() const {
+        return !m_pipeline_data.MeshCollection.empty();
+    }
+
     void GraphicRendererPipelineContext::Execute() {
         while (m_running_stages) {
 
@@ -40,12 +44,17 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
                 m_running_stages = false;
             }
         }
-
+        m_is_completed = true;
         Reset();
+    }
+
+    bool GraphicRendererPipelineContext::IsCompleted() const {
+        return m_is_completed;
     }
 
     void GraphicRendererPipelineContext::Reset() {
         m_running_stages = true;
+        m_is_completed   = false;
         m_stage          = std::make_shared<GraphicRendererDisassembleStage>();
         m_pipeline_data  = {};
 

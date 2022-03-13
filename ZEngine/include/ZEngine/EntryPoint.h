@@ -8,7 +8,7 @@ int main(int argc, char* argv[]) {
 
     std::unique_ptr<ZEngine::Engine> engine{ZEngine::CreateEngine()};
     engine->Initialize();
-    engine->Run();
+    engine->Start();
 
     return 0;
 }

@@ -53,33 +53,29 @@ namespace Tetragrama::Components {
         ZENGINE_EDITOR_INFO("Viewport resized : {} - {}", e.GetWidth(), e.GetHeight());
         auto layer = m_parent_layer.lock();
 
-        const auto user_interface_ptr = dynamic_cast<Layers::UserInterfaceLayer*>(layer.get());
-        if (user_interface_ptr) {
-            ZEngine::Event::EventDispatcher event_dispatcher(e);
-            event_dispatcher.ForwardTo<SceneViewportResizedEvent>(std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_ptr, std::placeholders::_1));
-        }
+        const auto                      user_interface_ptr = reinterpret_cast<Layers::UserInterfaceLayer*>(layer.get());
+        ZEngine::Event::EventDispatcher event_dispatcher(e);
+        event_dispatcher.ForwardTo<SceneViewportResizedEvent>(std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_ptr, std::placeholders::_1));
         return false;
     }
 
     bool SceneViewportUIComponent::OnSceneViewportFocused(Event::SceneViewportFocusedEvent& e) {
         auto layer = m_parent_layer.lock();
 
-        const auto user_interface_ptr = dynamic_cast<Layers::UserInterfaceLayer*>(layer.get());
-        if (user_interface_ptr) {
-            ZEngine::Event::EventDispatcher event_dispatcher(e);
-            event_dispatcher.ForwardTo<SceneViewportFocusedEvent>(std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_ptr, std::placeholders::_1));
-        }
+        const auto                      user_interface_ptr = reinterpret_cast<Layers::UserInterfaceLayer*>(layer.get());
+        ZEngine::Event::EventDispatcher event_dispatcher(e);
+        event_dispatcher.ForwardTo<SceneViewportFocusedEvent>(std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_ptr, std::placeholders::_1));
+
         return false;
     }
 
     bool SceneViewportUIComponent::OnSceneViewportUnfocused(Event::SceneViewportUnfocusedEvent& e) {
         auto layer = m_parent_layer.lock();
 
-        const auto user_interface_ptr = dynamic_cast<Layers::UserInterfaceLayer*>(layer.get());
-        if (user_interface_ptr) {
-            ZEngine::Event::EventDispatcher event_dispatcher(e);
-            event_dispatcher.ForwardTo<SceneViewportUnfocusedEvent>(std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_ptr, std::placeholders::_1));
-        }
+        const auto                      user_interface_ptr = reinterpret_cast<Layers::UserInterfaceLayer*>(layer.get());
+        ZEngine::Event::EventDispatcher event_dispatcher(e);
+        event_dispatcher.ForwardTo<SceneViewportUnfocusedEvent>(std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_ptr, std::placeholders::_1));
+
         return false;
     }
 } // namespace Tetragrama::Components

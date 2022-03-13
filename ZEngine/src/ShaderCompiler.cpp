@@ -28,8 +28,6 @@ namespace ZEngine::Rendering::Shaders::Compilers {
     std::tuple<ShaderOperationResult, GLuint> ShaderCompiler::Compile() {
         bool compile_process_succeeded{true};
 
-        ZENGINE_CORE_INFO("====== Compilation process started ======");
-
         std::vector<ShaderInformation> shader_information;
 
         auto find_it = std::find_if(std::begin(s_already_compiled_shaders_collection), std::end(s_already_compiled_shaders_collection),
@@ -72,8 +70,6 @@ namespace ZEngine::Rendering::Shaders::Compilers {
             ZENGINE_CORE_CRITICAL("Compilation process weren't able to create a valid Shader Program");
             return std::make_tuple(ShaderOperationResult::FAILURE, 0);
         }
-
-        ZENGINE_CORE_INFO("====== Compilation process succeeded ======");
 
         // We store it, so next time we won't run the compilation stage if it has been before
         s_already_compiled_shaders_collection.emplace(m_source_file, shader_information);

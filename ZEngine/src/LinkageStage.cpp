@@ -16,7 +16,6 @@ namespace ZEngine::Rendering::Shaders::Compilers {
     LinkageStage::~LinkageStage() {}
 
     void LinkageStage::Run(std::vector<ShaderInformation>& information_list) {
-        ZENGINE_CORE_INFO("------> Linking stage started");
 
         GLuint shader_program = glCreateProgram();
         std::for_each(
@@ -50,6 +49,5 @@ namespace ZEngine::Rendering::Shaders::Compilers {
             info.ProgramId = shader_program;
             glDetachShader(shader_program, info.ShaderId);
         });
-        ZENGINE_CORE_INFO("------> Linking stage succeeded");
     }
 } // namespace ZEngine::Rendering::Shaders::Compilers

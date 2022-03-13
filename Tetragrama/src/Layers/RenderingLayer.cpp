@@ -149,7 +149,7 @@ namespace Tetragrama::Layers {
     }
 
     bool RenderingLayer::OnSceneViewportResized(Components::Event::SceneViewportResizedEvent& e) {
-        m_scene->UpdateSize(e.GetWidth(), e.GetHeight());
+        m_scene->RequestNewSize(e.GetWidth(), e.GetHeight());
 
         Components::Event::SceneTextureAvailableEvent scene_texture_event{m_scene->ToTextureRepresentation()};
         OnSceneTextureAvailable(scene_texture_event);
