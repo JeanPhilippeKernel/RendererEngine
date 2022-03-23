@@ -100,10 +100,10 @@ namespace ZEngine::Rendering::Textures {
 
     void Texture2D::SetData(float r, float g, float b, float a) {
         unsigned char data[5] = {0, 0, 0, 0, '\0'};
-        data[0]               = static_cast<unsigned char>(std::min(r, 255.0f));
-        data[1]               = static_cast<unsigned char>(std::min(g, 255.0f));
-        data[2]               = static_cast<unsigned char>(std::min(b, 255.0f));
-        data[3]               = static_cast<unsigned char>(std::min(a, 255.0f));
+        data[0]               = static_cast<unsigned char>(std::clamp(r, .f, 255.0f));
+        data[1]               = static_cast<unsigned char>(std::clamp(g, .f, 255.0f));
+        data[2]               = static_cast<unsigned char>(std::clamp(b, .f, 255.0f));
+        data[3]               = static_cast<unsigned char>(std::clamp(a, .f, 255.0f));
 
         SetData(data);
     }
