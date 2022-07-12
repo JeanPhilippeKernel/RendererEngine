@@ -17,6 +17,7 @@ namespace ZEngine {
 
     Engine::~Engine() {
         m_request_terminate = false;
+        Logging::Logger::Flush();
         ZENGINE_CORE_INFO("Engine stopped");
     }
 
