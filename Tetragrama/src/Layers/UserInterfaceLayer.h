@@ -3,6 +3,7 @@
 #include <Editor.h>
 #include <Components/DockspaceUIComponent.h>
 #include <Components/SceneViewportUIComponent.h>
+#include <Components/LogUIComponent.h>
 #include <Components/DemoUIComponent.h>
 #include <Components/Events/SceneTextureAvailableEvent.h>
 
@@ -42,6 +43,7 @@ namespace Tetragrama::Layers {
         ZEngine::WeakRef<Editor>                           m_editor;
         ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_dockspace_component;
         ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_scene_component;
+        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_log_component;
         ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_demo_component;
     };
 
