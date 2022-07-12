@@ -30,9 +30,9 @@ namespace ZEngine::Logging {
 
         spdlog::init_thread_pool(8192, 1);
         m_sink_collection.push_back(
-            std::make_shared<spdlog::sinks::daily_file_sink_mt>(std::format("{0}/{1}", m_logger_output_directory, m_engine_logger_output_file), 0, 0, true, 0));
+            std::make_shared<spdlog::sinks::daily_file_sink_mt>(fmt::format("{0}/{1}", m_logger_output_directory, m_engine_logger_output_file), 0, 0, true, 0));
         m_sink_collection.push_back(
-            std::make_shared<spdlog::sinks::daily_file_sink_mt>(std::format("{0}/{1}", m_logger_output_directory, m_editor_logger_output_file), 0, 0, true, 0));
+            std::make_shared<spdlog::sinks::daily_file_sink_mt>(fmt::format("{0}/{1}", m_logger_output_directory, m_editor_logger_output_file), 0, 0, true, 0));
 
         m_engine_logger = std::make_shared<spdlog::async_logger>("ENGINE", m_sink_collection[0], spdlog::thread_pool());
         m_editor_logger = std::make_shared<spdlog::async_logger>("EDITOR", m_sink_collection[1], spdlog::thread_pool());
