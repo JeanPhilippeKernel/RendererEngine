@@ -11,13 +11,14 @@
 #include <Core/IRenderable.h>
 #include <Core/IEventable.h>
 #include <Core/IInitializable.h>
+#include <EngineConfiguration.h>
 
 namespace ZEngine {
 
     class Engine : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable {
 
     public:
-        Engine();
+        explicit Engine(const EngineConfiguration&);
         virtual ~Engine();
 
     public:
@@ -52,4 +53,5 @@ namespace ZEngine {
     };
 
     Engine* CreateEngine();
+    Engine* CreateEngine(const EngineConfiguration&);
 } // namespace ZEngine

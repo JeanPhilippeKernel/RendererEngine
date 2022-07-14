@@ -22,6 +22,7 @@
 #include <Window/ICoreWindowEventCallback.h>
 #include <Layers/Layer.h>
 #include <Layers/LayerStack.h>
+#include <Window/WindowConfiguration.h>
 
 namespace ZEngine {
     class Engine;
@@ -50,14 +51,14 @@ namespace ZEngine::Window {
         CoreWindow();
         virtual ~CoreWindow() = default;
 
-        virtual unsigned int       GetHeight() const                                    = 0;
-        virtual unsigned int       GetWidth() const                                     = 0;
-        virtual const std::string& GetTitle() const                                     = 0;
-        virtual void               SetTitle(std::string_view title)                     = 0;
+        virtual unsigned int       GetHeight() const                = 0;
+        virtual unsigned int       GetWidth() const                 = 0;
+        virtual const std::string& GetTitle() const                 = 0;
+        virtual void               SetTitle(std::string_view title) = 0;
 
-        virtual bool               IsVSyncEnable() const                                = 0;
-        virtual void               SetVSync(bool value)                                 = 0;
-        virtual void               SetCallbackFunction(const EventCallbackFn& callback) = 0;
+        virtual bool IsVSyncEnable() const                                = 0;
+        virtual void SetVSync(bool value)                                 = 0;
+        virtual void SetCallbackFunction(const EventCallbackFn& callback) = 0;
 
         virtual void* GetNativeWindow() const  = 0;
         virtual void* GetNativeContext() const = 0;
@@ -89,4 +90,5 @@ namespace ZEngine::Window {
     };
 
     CoreWindow* Create(WindowProperty prop = {});
+    CoreWindow* Create(const WindowConfiguration&);
 } // namespace ZEngine::Window
