@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.17 FATAL_ERROR)
 
-project (RendererEngine 
+project (RendererEngine
 	VERSION 1.0
 	DESCRIPTION "Renderer Engine is an open-source 2D - 3D rendering engine written in C/C++"
 	LANGUAGES CXX C
@@ -14,7 +14,7 @@ get_filename_component (ENLISTMENT_ROOT "." ABSOLUTE CACHE)
 get_filename_component (EXTERNAL_DIR "${ENLISTMENT_ROOT}/__externals" ABSOLUTE CACHE)
 get_filename_component (EXAMPLE_DIR "${ENLISTMENT_ROOT}/Examples" ABSOLUTE CACHE)
 
-option (BUILD_SANDBOX_PROJECTS "build example projects that show how to use core engine" ON)
+option (BUILD_SANDBOX_PROJECTS "build example projects that show how to use core engine" OFF)
 option (USE_SDL_LIBS "Use SDL as main window library" OFF)
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
@@ -27,9 +27,9 @@ add_subdirectory (${EXTERNAL_DIR}/fmt)
 add_subdirectory (${EXTERNAL_DIR}/glad)
 add_subdirectory (${EXTERNAL_DIR}/imgui)
 
-if (USE_SDL_LIBS) 
+if (USE_SDL_LIBS)
 	add_subdirectory (${EXTERNAL_DIR}/SDL2)
-else ()	
+else ()
 	add_subdirectory (${EXTERNAL_DIR}/glfw)
 endif ()
 
@@ -50,22 +50,15 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT tetragrama)
 endif ()
 
-# Examples
-#
-if (BUILD_SANDBOX_PROJECTS)
-	add_subdirectory(${EXAMPLE_DIR}/Sandbox)
-endif ()
-
 # Post build operation
 #
 set(SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
 
 add_custom_target(AssembleContent ALL
 	COMMENT "Copying assets and resources contents"
-	DEPENDS 
+	DEPENDS
 		zEngineLib
 		tetragrama
-		sandbox2d
 )
 
 add_custom_command(TARGET AssembleContent
