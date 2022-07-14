@@ -7,18 +7,18 @@ namespace ZEngine {
 
     Core::TimeStep Engine::m_delta_time = {0.0f};
 
-    Engine::Engine() : m_request_terminate(false), m_last_frame_time(0.0f) {
-        Logging::Logger::Initialize();
-        ZENGINE_CORE_INFO("Engine started");
+    Engine::Engine(const EngineConfiguration& configuration) : m_request_terminate(false), m_last_frame_time(0.0f) {
+        Logging::Logger::Initialize(configuration.LoggerConfiguration);
+        ZENGINE_CORE_INFO("Engine created");
 
-        m_window.reset(ZEngine::Window::Create());
+        m_window.reset(ZEngine::Window::Create(configuration.WindowConfiguration));
         m_window->SetAttachedEngine(this);
     }
 
     Engine::~Engine() {
         m_request_terminate = false;
         Logging::Logger::Flush();
-        ZENGINE_CORE_INFO("Engine stopped");
+        ZENGINE_CORE_INFO("Engine destroyed");
     }
 
     void Engine::Initialize() {

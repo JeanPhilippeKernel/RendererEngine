@@ -52,4 +52,14 @@ namespace ZEngine::Window {
         return core_window;
     }
 
+    CoreWindow* Create(const WindowConfiguration& configuration) {
+        WindowProperty prop = {};
+        prop.Height         = configuration.Height;
+        prop.Width          = configuration.Width;
+        prop.Title          = configuration.Title;
+        prop.VSync          = configuration.EnableVsync;
+
+        return Create(std::move(prop));
+    }
+
 } // namespace ZEngine::Window

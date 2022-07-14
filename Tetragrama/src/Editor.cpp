@@ -15,7 +15,17 @@ namespace Tetragrama {
     Editor::~Editor() {}
 
     void Editor::Initialize() {
-        m_engine.reset(new ZEngine::Engine{}), m_ui_layer.reset(new Layers::UserInterfaceLayer(shared_from_this()));
+        ZEngine::EngineConfiguration engine_configuration;
+        engine_configuration.LoggerConfiguration = {};
+
+        engine_configuration.WindowConfiguration             = {};
+        engine_configuration.WindowConfiguration.EnableVsync = true;
+        engine_configuration.WindowConfiguration.Title       = "Tetragramma editor";
+        engine_configuration.WindowConfiguration.Width       = 1500;
+        engine_configuration.WindowConfiguration.Height      = 800;
+
+        m_engine = std::make_unique<ZEngine::Engine>(engine_configuration);
+        m_ui_layer.reset(new Layers::UserInterfaceLayer(shared_from_this()));
         m_rendering_layer.reset(new Layers::RenderingLayer(shared_from_this()));
 
         m_engine->GetWindow()->PushLayer(m_rendering_layer);
