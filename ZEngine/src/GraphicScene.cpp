@@ -24,11 +24,13 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::RequestNewSize(uint32_t width, uint32_t height) {
-        m_pending_operation.push([w = width, h = height, this]() {
-            m_camera_controller->SetAspectRatio(((float) w) / ((float) h));
-            m_camera_controller->UpdateProjectionMatrix();
-            m_renderer->GetFrameBuffer()->Resize(w, h);
-        });
+        if ((width > 0) && (height > 0)) {
+            m_pending_operation.push([w = width, h = height, this]() {
+                m_camera_controller->SetAspectRatio(((float) w) / ((float) h));
+                m_camera_controller->UpdateProjectionMatrix();
+                m_renderer->GetFrameBuffer()->Resize(w, h);
+            });
+        }
     }
 
     void GraphicScene::SetShouldReactToEvent(bool value) {
@@ -51,6 +53,10 @@ namespace ZEngine::Rendering::Scenes {
 
         m_mesh_list.clear();
         m_mesh_list.shrink_to_fit();
+
+        if (OnSceneRenderCompleted) {
+            OnSceneRenderCompleted(ToTextureRepresentation());
+        }
     }
 
     unsigned int GraphicScene::ToTextureRepresentation() const {

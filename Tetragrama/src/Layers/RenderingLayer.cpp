@@ -1,5 +1,7 @@
 #include <pch.h>
 #include <RenderingLayer.h>
+#include <Messengers/Messenger.h>
+#include <MessageToken.h>
 
 using namespace ZEngine;
 using namespace ZEngine::Rendering::Materials;
@@ -17,8 +19,8 @@ using namespace ZEngine::Maths;
 
 namespace Tetragrama::Layers {
 
-    RenderingLayer::RenderingLayer(ZEngine::Ref<Editor>&& editor, const char* name)
-        : m_editor(std::move(editor)), m_texture_manager(new ZEngine::Managers::TextureManager()), Layer(name) {}
+    RenderingLayer::RenderingLayer(std::string_view name)
+        : m_texture_manager(new ZEngine::Managers::TextureManager()), Layer(name.data()) {}
 
     void RenderingLayer::Initialize() {
 
@@ -30,6 +32,7 @@ namespace Tetragrama::Layers {
 
         m_scene.reset(new GraphicScene3D(new OrbitCameraController(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f)));
         m_scene->Initialize();
+        m_scene->OnSceneRenderCompleted = std::bind(&RenderingLayer::OnSceneRenderCompletedCallback, this, std::placeholders::_1);
 
         Ref<ZEngine::Rendering::Meshes::Mesh> checkboard_mesh;
         Ref<ZEngine::Rendering::Meshes::Mesh> multi_textured_cube_mesh;
@@ -135,43 +138,26 @@ namespace Tetragrama::Layers {
         return false;
     }
 
-    void RenderingLayer::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent& e) {
-        ZEngine::Event::EventDispatcher event_dispatcher(e);
-        event_dispatcher.Dispatch<Components::Event::SceneViewportResizedEvent>(std::bind(&RenderingLayer::OnSceneViewportResized, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Components::Event::SceneTextureAvailableEvent>(std::bind(&RenderingLayer::OnSceneTextureAvailable, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Components::Event::SceneViewportFocusedEvent>(std::bind(&RenderingLayer::OnSceneViewportFocused, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Components::Event::SceneViewportUnfocusedEvent>(std::bind(&RenderingLayer::OnSceneViewportUnfocused, this, std::placeholders::_1));
-    }
-
     void RenderingLayer::Render() {
         m_scene->Add(m_mesh_collection);
         m_scene->Render();
     }
 
-    bool RenderingLayer::OnSceneViewportResized(Components::Event::SceneViewportResizedEvent& e) {
-        m_scene->RequestNewSize(e.GetWidth(), e.GetHeight());
-
-        Components::Event::SceneTextureAvailableEvent scene_texture_event{m_scene->ToTextureRepresentation()};
-        OnSceneTextureAvailable(scene_texture_event);
-        return true;
+    void RenderingLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message) {
+        const auto& value = message.GetValue();
+        m_scene->RequestNewSize(value.first, value.second);
     }
 
-    bool RenderingLayer::OnSceneViewportFocused(Components::Event::SceneViewportFocusedEvent& e) {
-        m_scene->SetShouldReactToEvent(true);
-        return true;
+    void RenderingLayer::SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>& message) {
+        m_scene->SetShouldReactToEvent(message.GetValue());
     }
 
-    bool RenderingLayer::OnSceneViewportUnfocused(Components::Event::SceneViewportUnfocusedEvent& e) {
-        m_scene->SetShouldReactToEvent(false);
-        return true;
+    void RenderingLayer::SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>& message) {
+        m_scene->SetShouldReactToEvent(message.GetValue());
     }
 
-    bool RenderingLayer::OnSceneTextureAvailable(Components::Event::SceneTextureAvailableEvent& e) {
-        ZEngine::Event::EventDispatcher event_dispatcher(e);
-        if (!m_editor.expired()) {
-            const auto editor_ptr = m_editor.lock();
-            event_dispatcher.ForwardTo<Components::Event::SceneTextureAvailableEvent>(std::bind(&Editor::OnUIComponentRaised, editor_ptr.get(), std::placeholders::_1));
-        }
-        return false;
+    void RenderingLayer::OnSceneRenderCompletedCallback(uint32_t scene_texture_id) {
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<uint32_t>>(
+            EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE, Messengers::GenericMessage<uint32_t>{scene_texture_id});
     }
 } // namespace Tetragrama::Layers

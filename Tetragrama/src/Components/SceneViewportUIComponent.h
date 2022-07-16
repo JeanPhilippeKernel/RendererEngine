@@ -3,6 +3,7 @@
 #include <Components/Events/SceneViewportResizedEvent.h>
 #include <Components/Events/SceneViewportFocusedEvent.h>
 #include <Components/Events/SceneViewportUnfocusedEvent.h>
+#include <Messengers/Message.h>
 
 namespace Tetragrama::Components {
     class SceneViewportUIComponent : public ZEngine::Components::UI::UIComponent {
@@ -14,18 +15,19 @@ namespace Tetragrama::Components {
 
         virtual void Render() override;
 
-        void SetSceneTexture(const uint32_t scene_texture) {
-            m_scene_texture_identifier = scene_texture;
+        void SetSceneTexture(uint32_t scene_texture);
+
+        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override {
+            return false;
         }
 
-    protected:
-        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
+    public:
+        void SceneTextureAvailableMessageHandler(Messengers::GenericMessage<uint32_t>&);
 
-    private:
-        bool OnSceneViewportResized(Event::SceneViewportResizedEvent&);
-        bool OnSceneViewportFocused(Event::SceneViewportFocusedEvent&);
-        bool OnSceneViewportUnfocused(Event::SceneViewportUnfocusedEvent&);
-
+        void SceneViewportResizedMessageHandler(Messengers::GenericMessage<std::pair<float, float>>&);
+        void SceneViewportFocusedMessageHandler(Messengers::GenericMessage<bool>&);
+        void SceneViewportUnfocusedMessageHandler(Messengers::GenericMessage<bool>&);
+   
     private:
         bool     m_is_window_focused{false};
         bool     m_is_window_hovered{false};

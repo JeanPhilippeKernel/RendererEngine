@@ -3,6 +3,8 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <Layers/UserInterfaceLayer.h>
 #include <Event/EventDispatcher.h>
+#include <Messengers/Messenger.h>
+#include <MessageToken.h>
 
 using namespace ZEngine::Components::UI::Event;
 using namespace Tetragrama::Components::Event;
@@ -12,25 +14,21 @@ namespace Tetragrama::Components {
 
     SceneViewportUIComponent::~SceneViewportUIComponent() {}
 
-    bool SceneViewportUIComponent::OnUIComponentRaised(UIComponentEvent& e) {
-        // ZEngine::Event::EventDispatcher event_dispatcher(e);
-        // event_dispatcher.Dispatch<SceneViewportResizedEvent>(std::bind(&SceneViewportUIComponent::OnSceneViewportResized, this, std::placeholders::_1));
-        return false;
-    }
-
     void SceneViewportUIComponent::Update(ZEngine::Core::TimeStep dt) {
         if ((m_viewport_size.x != m_content_region_available_size.x) || (m_viewport_size.y != m_content_region_available_size.y)) {
             m_viewport_size = m_content_region_available_size;
-            SceneViewportResizedEvent e{m_viewport_size.x, m_viewport_size.y};
-            OnSceneViewportResized(e);
+
+            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<std::pair<float, float>>>(
+                EDITOR_COMPONENT_SCENEVIEWPORT_RESIZED, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
         }
 
         if (m_is_window_hovered && m_is_window_focused) {
-            SceneViewportFocusedEvent e;
-            OnSceneViewportFocused(e);
+            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+                EDITOR_COMPONENT_SCENEVIEWPORT_FOCUSED, Messengers::GenericMessage<bool>{true});
+
         } else {
-            SceneViewportUnfocusedEvent e;
-            OnSceneViewportUnfocused(e);
+            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+                EDITOR_COMPONENT_SCENEVIEWPORT_UNFOCUSED, Messengers::GenericMessage<bool>{false});
         }
     }
 
@@ -42,40 +40,34 @@ namespace Tetragrama::Components {
         m_is_window_focused             = ImGui::IsWindowFocused();
         m_is_window_hovered             = ImGui::IsWindowHovered();
 
-        ImGui::Image((void*) m_scene_texture_identifier, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+        ImGui::Image(reinterpret_cast<void*>(m_scene_texture_identifier), m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
 
         ImGui::End();
 
         ImGui::PopStyleVar();
     }
 
-    bool SceneViewportUIComponent::OnSceneViewportResized(Event::SceneViewportResizedEvent& e) {
-        ZENGINE_EDITOR_INFO("Viewport resized : {} - {}", e.GetWidth(), e.GetHeight());
-        auto layer = m_parent_layer.lock();
-
-        const auto                      user_interface_ptr = reinterpret_cast<Layers::UserInterfaceLayer*>(layer.get());
-        ZEngine::Event::EventDispatcher event_dispatcher(e);
-        event_dispatcher.ForwardTo<SceneViewportResizedEvent>(std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_ptr, std::placeholders::_1));
-        return false;
+    void SceneViewportUIComponent::SetSceneTexture(uint32_t scene_texture) {
+        m_scene_texture_identifier = scene_texture;
     }
 
-    bool SceneViewportUIComponent::OnSceneViewportFocused(Event::SceneViewportFocusedEvent& e) {
-        auto layer = m_parent_layer.lock();
-
-        const auto                      user_interface_ptr = reinterpret_cast<Layers::UserInterfaceLayer*>(layer.get());
-        ZEngine::Event::EventDispatcher event_dispatcher(e);
-        event_dispatcher.ForwardTo<SceneViewportFocusedEvent>(std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_ptr, std::placeholders::_1));
-
-        return false;
+    void SceneViewportUIComponent::SceneTextureAvailableMessageHandler(Messengers::GenericMessage<uint32_t>& message) {
+        SetSceneTexture(message.GetValue());
     }
 
-    bool SceneViewportUIComponent::OnSceneViewportUnfocused(Event::SceneViewportUnfocusedEvent& e) {
-        auto layer = m_parent_layer.lock();
+    void SceneViewportUIComponent::SceneViewportResizedMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& e) {
+        const auto& value = e.GetValue();
+        ZENGINE_EDITOR_INFO("Viewport resized : {} - {}", value.first, value.second);
 
-        const auto                      user_interface_ptr = reinterpret_cast<Layers::UserInterfaceLayer*>(layer.get());
-        ZEngine::Event::EventDispatcher event_dispatcher(e);
-        event_dispatcher.ForwardTo<SceneViewportUnfocusedEvent>(std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_ptr, std::placeholders::_1));
+        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{e});
+    }
 
-        return false;
+    void SceneViewportUIComponent::SceneViewportFocusedMessageHandler(Messengers::GenericMessage<bool>& e) {
+        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, Messengers::GenericMessage<bool>{e});
+    }
+
+    void SceneViewportUIComponent::SceneViewportUnfocusedMessageHandler(Messengers::GenericMessage<bool>& e) {
+        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{e});
     }
 } // namespace Tetragrama::Components

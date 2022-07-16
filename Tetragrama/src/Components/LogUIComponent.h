@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/ZEngine.h>
+#include <Message.h>
 
 namespace Tetragrama::Components {
     class LogUIComponent : public ZEngine::Components::UI::UIComponent {
