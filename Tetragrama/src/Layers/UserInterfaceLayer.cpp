@@ -1,5 +1,9 @@
 #include <pch.h>
 #include <UserInterfaceLayer.h>
+#include <Messenger.h>
+#include <MessageToken.h>
+
+using namespace Tetragrama::Messengers;
 
 namespace Tetragrama::Layers {
 
@@ -16,11 +20,22 @@ namespace Tetragrama::Layers {
         m_dockspace_component->AddChild(m_log_component);
 
         this->AddUIComponent(m_dockspace_component);
-    }
 
-    bool UserInterfaceLayer::OnSceneTextureAvailableRaised(Components::Event::SceneTextureAvailableEvent& e) {
-        auto scene_ui_component = reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get());
-        scene_ui_component->SetSceneTexture(e.GetSceneTexture());
-        return true;
+        // Register components
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<uint32_t>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE,
+            std::bind(&Components::SceneViewportUIComponent::SceneTextureAvailableMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
+                std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<bool>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_FOCUSED,
+            std::bind(&Components::SceneViewportUIComponent::SceneViewportFocusedMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
+                std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<bool>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_UNFOCUSED,
+            std::bind(&Components::SceneViewportUIComponent::SceneViewportUnfocusedMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
+                std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<std::pair<float, float>>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_RESIZED,
+            std::bind(&Components::SceneViewportUIComponent::SceneViewportResizedMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
+                std::placeholders::_1));
     }
 } // namespace Tetragrama::Layers

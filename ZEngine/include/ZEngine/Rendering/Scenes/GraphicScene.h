@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <vector>
+#include <functional>
 #include <Rendering/Cameras/Camera.h>
 #include <ZEngineDef.h>
 #include <Core/IRenderable.h>
@@ -31,6 +32,9 @@ namespace ZEngine::Rendering::Scenes {
         bool ShouldReactToEvent() const;
 
         virtual const Scope<Controllers::ICameraController>& GetCameraController() const;
+
+    public:
+        std::function<void(uint32_t)> OnSceneRenderCompleted;
 
     protected:
         Scope<Controllers::ICameraController> m_camera_controller;

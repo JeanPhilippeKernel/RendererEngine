@@ -5,16 +5,12 @@
 #include <Components/Events/SceneViewportFocusedEvent.h>
 #include <Components/Events/SceneViewportUnfocusedEvent.h>
 #include <Components/Events/SceneTextureAvailableEvent.h>
-#include <Editor.h>
-
-namespace Tetragrama {
-    class Editor;
-}
+#include <Messengers/Message.h>
 
 namespace Tetragrama::Layers {
     class RenderingLayer : public ZEngine::Layers::Layer {
     public:
-        RenderingLayer(ZEngine::Ref<Editor>&& editor, const char* name = "Rendering layer");
+        RenderingLayer(std::string_view name = "Rendering layer");
 
         virtual ~RenderingLayer() = default;
 
@@ -25,16 +21,15 @@ namespace Tetragrama::Layers {
 
         virtual bool OnEvent(ZEngine::Event::CoreEvent& e) override;
 
-        virtual void OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent& e);
+    public:
+        void SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>&);
+        void SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>&);
+        void SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>&);
+
+    protected:
+        void OnSceneRenderCompletedCallback(uint32_t);
 
     private:
-        bool OnSceneViewportResized(Components::Event::SceneViewportResizedEvent& e);
-        bool OnSceneViewportFocused(Components::Event::SceneViewportFocusedEvent& e);
-        bool OnSceneViewportUnfocused(Components::Event::SceneViewportUnfocusedEvent& e);
-        bool OnSceneTextureAvailable(Components::Event::SceneTextureAvailableEvent& e);
-
-    private:
-        ZEngine::WeakRef<Editor>                                    m_editor;
         ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>      m_scene;
         ZEngine::Ref<ZEngine::Managers::TextureManager>             m_texture_manager;
         std::vector<ZEngine::Ref<ZEngine::Rendering::Meshes::Mesh>> m_mesh_collection;

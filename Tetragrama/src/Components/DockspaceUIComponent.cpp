@@ -15,7 +15,6 @@ namespace Tetragrama::Components {
     DockspaceUIComponent::~DockspaceUIComponent() {}
 
     bool DockspaceUIComponent::OnUIComponentRaised(UIComponentEvent& event) {
-        ZEngine::Event::EventDispatcher event_dispatcher(event);
         return true;
     }
 

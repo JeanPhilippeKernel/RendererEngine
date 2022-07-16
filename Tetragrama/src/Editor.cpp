@@ -5,8 +5,11 @@
 #include <Editor.h>
 #include <Layers/RenderingLayer.h>
 #include <Layers/UserInterfaceLayer.h>
+#include <Messengers/Messenger.h>
+#include <MessageToken.h>
 
 using namespace ZEngine::Components::UI::Event;
+using namespace Tetragrama::Messengers;
 
 namespace Tetragrama {
 
@@ -24,33 +27,26 @@ namespace Tetragrama {
         engine_configuration.WindowConfiguration.Width       = 1500;
         engine_configuration.WindowConfiguration.Height      = 800;
 
-        m_engine = std::make_unique<ZEngine::Engine>(engine_configuration);
-        m_ui_layer.reset(new Layers::UserInterfaceLayer(shared_from_this()));
-        m_rendering_layer.reset(new Layers::RenderingLayer(shared_from_this()));
+        m_engine          = std::make_unique<ZEngine::Engine>(engine_configuration);
+        m_ui_layer        = std::make_shared<Layers::UserInterfaceLayer>();
+        m_rendering_layer = std::make_shared<Layers::RenderingLayer>();
 
         m_engine->GetWindow()->PushLayer(m_rendering_layer);
         m_engine->GetWindow()->PushOverlayLayer(m_ui_layer);
+
+        // Register components
+        IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<std::pair<float, float>>>(m_rendering_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE,
+            std::bind(&Layers::RenderingLayer::SceneRequestResizeMessageHandler, reinterpret_cast<Layers::RenderingLayer*>(m_rendering_layer.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(m_rendering_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS,
+            std::bind(&Layers::RenderingLayer::SceneRequestFocusMessageHandler, reinterpret_cast<Layers::RenderingLayer*>(m_rendering_layer.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(m_rendering_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS,
+            std::bind(&Layers::RenderingLayer::SceneRequestUnfocusMessageHandler, reinterpret_cast<Layers::RenderingLayer*>(m_rendering_layer.get()), std::placeholders::_1));
     }
 
     void Editor::Run() {
         m_engine->Initialize();
         m_engine->Start();
-    }
-
-    void Editor::OnUIComponentRaised(UIComponentEvent& e) {
-        const auto rendering_layer_ptr      = reinterpret_cast<Layers::RenderingLayer*>(m_rendering_layer.get());
-        const auto user_interface_layer_ptr = reinterpret_cast<Layers::UserInterfaceLayer*>(m_ui_layer.get());
-
-        ZEngine::Event::EventDispatcher event_dispatcher(e);
-
-        event_dispatcher.ForwardTo<Components::Event::SceneViewportResizedEvent>(
-            std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
-        event_dispatcher.ForwardTo<Components::Event::SceneViewportFocusedEvent>(
-            std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
-        event_dispatcher.ForwardTo<Components::Event::SceneViewportUnfocusedEvent>(
-            std::bind(&Layers::RenderingLayer::OnUIComponentRaised, rendering_layer_ptr, std::placeholders::_1));
-
-        event_dispatcher.ForwardTo<Components::Event::SceneTextureAvailableEvent>(
-            std::bind(&Layers::UserInterfaceLayer::OnUIComponentRaised, user_interface_layer_ptr, std::placeholders::_1));
     }
 } // namespace Tetragrama

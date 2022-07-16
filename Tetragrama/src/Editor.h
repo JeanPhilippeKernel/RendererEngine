@@ -13,8 +13,6 @@ namespace Tetragrama {
         void Initialize() override;
         void Run();
 
-        void OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent& e);
-
     private:
         ZEngine::Ref<ZEngine::Layers::ImguiLayer> m_ui_layer{nullptr};
         ZEngine::Ref<ZEngine::Layers::Layer>      m_rendering_layer{nullptr};
