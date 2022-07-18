@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include <ZEngine/ZEngine.h>
 #include <Message.h>
 
@@ -12,6 +13,9 @@ namespace Tetragrama::Components {
 
         virtual void Render() override;
 
+    public:
+        void ReceiveLogMessageMessageHandler(Messengers::GenericMessage<std::vector<std::string>>&);
+
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
 
@@ -21,6 +25,5 @@ namespace Tetragrama::Components {
         bool            m_is_copy_button_pressed{false};
         bool            m_is_clear_button_pressed{false};
         ImGuiTextBuffer m_content;
-        ImVector<int>   m_line_offsets;
     };
 } // namespace Tetragrama::Components

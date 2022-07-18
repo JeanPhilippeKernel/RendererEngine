@@ -1,7 +1,6 @@
 #include <pch.h>
 #include <LogUIComponent.h>
 
-
 namespace Tetragrama::Components {
     LogUIComponent::LogUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility) {}
 
@@ -26,6 +25,12 @@ namespace Tetragrama::Components {
         ImGui::BeginChild("scrolling", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
 
+        if (m_content.size() > 0) {
+            const char* buf     = m_content.begin();
+            const char* buf_end = m_content.end();
+            ImGui::TextUnformatted(buf, buf_end);
+        }
+
         ImGui::PopStyleVar();
 
         if (m_auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
@@ -35,5 +40,14 @@ namespace Tetragrama::Components {
         ImGui::EndChild();
 
         ImGui::End();
+    }
+
+    void LogUIComponent::ReceiveLogMessageMessageHandler(Messengers::GenericMessage<std::vector<std::string>>& message) {
+        const auto& message_content = message.GetValue();
+        if (!message_content.empty()) {
+            for (const auto& content : message_content) {
+                m_content.append(content.c_str(), (content.c_str() + content.size()));
+            }
+        }
     }
 } // namespace Tetragrama::Components
