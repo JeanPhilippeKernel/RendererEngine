@@ -1,5 +1,6 @@
 #pragma once
 #include <mutex>
+#include <thread>
 #include <ZEngineDef.h>
 #include <spdlog/spdlog.h>
 #include <Logging/LoggerConfiguration.h>
