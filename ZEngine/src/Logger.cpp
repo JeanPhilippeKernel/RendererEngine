@@ -55,7 +55,8 @@ namespace ZEngine::Logging {
         m_periodic_invoke_callback_interval = configuration.PeriodicInvokeCallbackInterval;
         m_message_callback                  = configuration.MessageCallback;
 
-        if (m_callback_invoker.get_id() == std::thread::id::id()) {
+        std::thread::id empty_id;
+        if (m_callback_invoker.get_id() == empty_id) {
             m_callback_invoker = std::thread([&]() {
                 auto current_time = std::chrono::system_clock::now();
 
