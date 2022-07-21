@@ -18,7 +18,7 @@ namespace Tetragrama::Layers {
     private:
         ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_dockspace_component;
         ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_scene_component;
-        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_log_component;
+        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_editor_log_component;
         ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_demo_component;
     };
 

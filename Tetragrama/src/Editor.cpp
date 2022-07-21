@@ -18,19 +18,20 @@ namespace Tetragrama {
     Editor::~Editor() {}
 
     void Editor::Initialize() {
-        ZEngine::EngineConfiguration engine_configuration;
-        engine_configuration.LoggerConfiguration = {};
+        m_engine_configuration                                      = std::make_shared<ZEngine::EngineConfiguration>();
+        m_engine_configuration->LoggerConfiguration                 = {};
+        m_engine_configuration->LoggerConfiguration.MessageCallback = std::bind(&Editor::LoggerMessageCallback, this, std::placeholders::_1);
 
-        engine_configuration.WindowConfiguration             = {};
-        engine_configuration.WindowConfiguration.EnableVsync = true;
-        engine_configuration.WindowConfiguration.Title       = "Tetragramma editor";
-        engine_configuration.WindowConfiguration.Width       = 1500;
-        engine_configuration.WindowConfiguration.Height      = 800;
+        m_engine_configuration->WindowConfiguration             = {};
+        m_engine_configuration->WindowConfiguration.EnableVsync = true;
+        m_engine_configuration->WindowConfiguration.Title       = "Tetragramma editor";
+        m_engine_configuration->WindowConfiguration.Width       = 1500;
+        m_engine_configuration->WindowConfiguration.Height      = 800;
 
-        m_engine          = std::make_unique<ZEngine::Engine>(engine_configuration);
         m_ui_layer        = std::make_shared<Layers::UserInterfaceLayer>();
         m_rendering_layer = std::make_shared<Layers::RenderingLayer>();
 
+        m_engine = std::make_unique<ZEngine::Engine>(*m_engine_configuration);
         m_engine->GetWindow()->PushLayer(m_rendering_layer);
         m_engine->GetWindow()->PushOverlayLayer(m_ui_layer);
 
@@ -48,5 +49,14 @@ namespace Tetragrama {
     void Editor::Run() {
         m_engine->Initialize();
         m_engine->Start();
+    }
+
+    ZEngine::Ref<ZEngine::EngineConfiguration> Editor::GetCurrentEngineConfiguration() const {
+        return m_engine_configuration;
+    }
+
+    void Editor::LoggerMessageCallback(std::vector<std::string> message) const {
+        IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, GenericMessage<std::vector<std::string>>>(
+            EDITOR_COMPONENT_LOG_RECEIVE_LOG_MESSAGE, GenericMessage<std::vector<std::string>>{std::move(message)});
     }
 } // namespace Tetragrama

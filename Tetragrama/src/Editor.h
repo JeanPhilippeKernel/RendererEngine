@@ -13,10 +13,16 @@ namespace Tetragrama {
         void Initialize() override;
         void Run();
 
+        ZEngine::Ref<ZEngine::EngineConfiguration> GetCurrentEngineConfiguration() const;
+
+    public:
+        void LoggerMessageCallback(std::vector<std::string>) const;
+
     private:
-        ZEngine::Ref<ZEngine::Layers::ImguiLayer> m_ui_layer{nullptr};
-        ZEngine::Ref<ZEngine::Layers::Layer>      m_rendering_layer{nullptr};
-        ZEngine::Scope<ZEngine::Engine>           m_engine{nullptr};
+        ZEngine::Ref<ZEngine::EngineConfiguration> m_engine_configuration;
+        ZEngine::Ref<ZEngine::Layers::ImguiLayer>  m_ui_layer;
+        ZEngine::Ref<ZEngine::Layers::Layer>       m_rendering_layer;
+        ZEngine::Scope<ZEngine::Engine>            m_engine;
     };
 
 } // namespace Tetragrama

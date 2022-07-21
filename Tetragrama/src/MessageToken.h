@@ -11,4 +11,5 @@ namespace Tetragrama {
     static std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS   = "editor::render_layer::scene::request::focus";
     static std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS = "editor::render_layer::scene::request::unfocus";
 
+    static std::string_view EDITOR_COMPONENT_LOG_RECEIVE_LOG_MESSAGE = "editor::component::log::receive_log_message";
 } // namespace Tetragrama
