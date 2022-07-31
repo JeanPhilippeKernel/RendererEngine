@@ -8,8 +8,8 @@ namespace ZEngine::Rendering::Scenes {
 
     class GraphicScene3D : public GraphicScene {
     public:
-        explicit GraphicScene3D(Controllers::PerspectiveCameraController* const controller) : GraphicScene(controller) {
-            m_renderer.reset(new Renderers::GraphicRenderer3D());
+        GraphicScene3D() : GraphicScene() {
+            m_renderer = CreateScope<Renderers::GraphicRenderer3D>();
         }
 
         ~GraphicScene3D() = default;

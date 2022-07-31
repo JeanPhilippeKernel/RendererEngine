@@ -5,44 +5,48 @@
 #include <ZEngineDef.h>
 #include <Core/IRenderable.h>
 #include <Core/IInitializable.h>
+#include <Core/IUpdatable.h>
 #include <Controllers/ICameraController.h>
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
+#include <Rendering/Entities/GraphicSceneEntity.h>
+#include <entt/entt.hpp>
 
 namespace ZEngine::Rendering::Scenes {
-    class GraphicScene : public Core::IInitializable, public Core::IRenderable {
+    class GraphicScene : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable, public Core::IEventable {
 
     public:
-        explicit GraphicScene(Controllers::ICameraController* const controller) : m_camera_controller(nullptr), m_renderer(nullptr) {
-            m_camera_controller.reset(controller);
+        GraphicScene() {
+            m_entity_registry = std::make_shared<entt::registry>();
         }
 
         virtual ~GraphicScene() = default;
 
         void         Initialize() override;
+        void         Update(Core::TimeStep dt) override;
+        virtual bool OnEvent(Event::CoreEvent&) override;
         virtual void Render() override;
 
-        void     RequestNewSize(uint32_t, uint32_t);
-        uint32_t ToTextureRepresentation() const;
-
-        void Add(Ref<Meshes::Mesh>& mesh);
-        void Add(const std::vector<Ref<Meshes::Mesh>>& meshes);
+        virtual void RequestNewSize(uint32_t, uint32_t);
+        uint32_t     ToTextureRepresentation() const;
 
         void SetShouldReactToEvent(bool value);
         bool ShouldReactToEvent() const;
 
-        virtual const Scope<Controllers::ICameraController>& GetCameraController() const;
-
     public:
+        Entities::GraphicSceneEntity CreateEntity(std::string_view entity_name = "empty entity");
+        Entities::GraphicSceneEntity GetEntity(std::string_view entity_name);
+
         std::function<void(uint32_t)> OnSceneRenderCompleted;
 
     protected:
-        Scope<Controllers::ICameraController> m_camera_controller;
-        Scope<Renderers::GraphicRenderer>     m_renderer;
-        std::vector<Ref<Meshes::Mesh>>        m_mesh_list;
+        Ref<Cameras::Camera>              m_scene_camera;
+        Scope<Renderers::GraphicRenderer> m_renderer;
+        std::vector<Ref<Meshes::Mesh>>    m_mesh_list;
 
     private:
-        bool m_should_react_to_event{true};
+        bool                                  m_should_react_to_event{true};
         std::queue<std::function<void(void)>> m_pending_operation;
+        Ref<entt::registry>                   m_entity_registry;
     };
 } // namespace ZEngine::Rendering::Scenes

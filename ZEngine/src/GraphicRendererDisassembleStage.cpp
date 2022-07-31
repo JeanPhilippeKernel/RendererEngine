@@ -11,7 +11,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
     GraphicRendererDisassembleStage::~GraphicRendererDisassembleStage() {}
 
     void GraphicRendererDisassembleStage::Run(GraphicRendererPipelineInformation& information) {
-        auto const pipeline_context = reinterpret_cast<GraphicRendererPipelineContext *>(m_context);
+        auto const  pipeline_context  = reinterpret_cast<GraphicRendererPipelineContext*>(m_context);
         const auto& shader_collection = pipeline_context->GetRenderer()->GetRendererInformation()->ShaderCollection;
 
         std::for_each(std::begin(information.MeshCollection), std::end(information.MeshCollection), [&](const Meshes::Mesh& mesh) {

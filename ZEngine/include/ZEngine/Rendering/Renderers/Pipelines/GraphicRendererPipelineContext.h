@@ -23,8 +23,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
         GraphicRendererPipelineInformation&       GetPipelineData();
         const GraphicRendererPipelineInformation& GetPipelineData() const;
         bool                                      HasPipelineData() const;
-        void Execute();
-        void Reset();
+        void                                      Execute();
+        void                                      Reset();
 
         bool IsCompleted() const;
 

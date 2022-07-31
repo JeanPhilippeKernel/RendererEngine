@@ -14,6 +14,15 @@
 #include "Rendering/Scenes/GraphicScene2D.h"
 #include "Rendering/Scenes/GraphicScene3D.h"
 
+#include "Rendering/Entities/GraphicSceneEntity.h"
+
+#include "Rendering/Components/NameComponent.h"
+#include "Rendering/Components/TransformComponent.h"
+#include "Rendering/Components/GeometryComponent.h"
+#include "Rendering/Components/MaterialComponent.h"
+#include "Rendering/Components/LightComponent.h"
+#include "Rendering/Components/CameraComponent.h"
+
 #include "Rendering/Renderers/GraphicRenderer.h"
 #include "Rendering/Renderers/GraphicRenderer2D.h"
 #include "Rendering/Renderers/GraphicRenderer3D.h"

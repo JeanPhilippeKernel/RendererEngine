@@ -458,66 +458,66 @@ namespace ZEngine::Rendering::Meshes {
         return mesh;
     }
 
-    Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis) {
-        Light*         mesh          = new Light{};
-        CubeGeometry*  quad_geometry = new CubeGeometry(position, size, axis, angle);
-        Texture*       texture       = CreateTexture(1, 1);
-        BasicMaterial* material      = new BasicMaterial{};
+    // Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis) {
+    //     Light*         mesh          = new Light{};
+    //     CubeGeometry*  quad_geometry = new CubeGeometry(position, size, axis, angle);
+    //     Texture*       texture       = CreateTexture(1, 1);
+    //     BasicMaterial* material      = new BasicMaterial{};
 
-        material->SetTexture(texture);
-        mesh->SetGeometry(quad_geometry);
-        mesh->SetMaterial(material);
-        return mesh;
-    }
+    //    material->SetTexture(texture);
+    //    mesh->SetGeometry(quad_geometry);
+    //    mesh->SetMaterial(material);
+    //    return mesh;
+    //}
 
-    Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, const Vector3& color, float angle, const Vector3& axis) {
-        Light*         mesh     = CreateLight(position, size, angle, axis);
-        Texture*       texture  = CreateTexture(1, 1);
-        BasicMaterial* material = new BasicMaterial{};
+    // Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, const Vector3& color, float angle, const Vector3& axis) {
+    //     Light*         mesh     = CreateLight(position, size, angle, axis);
+    //     Texture*       texture  = CreateTexture(1, 1);
+    //     BasicMaterial* material = new BasicMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, 255.f);
-        material->SetTexture(texture);
-        mesh->SetMaterial(material);
-        return mesh;
-    }
+    //    texture->SetData(color.x, color.y, color.z, 255.f);
+    //    material->SetTexture(texture);
+    //    mesh->SetMaterial(material);
+    //    return mesh;
+    //}
 
-    Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, const Vector4& color, float angle, const Vector3& axis) {
-        Light*         mesh     = CreateLight(position, size, angle, axis);
-        Texture*       texture  = CreateTexture(1, 1);
-        BasicMaterial* material = new BasicMaterial{};
+    // Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, const Vector4& color, float angle, const Vector3& axis) {
+    //     Light*         mesh     = CreateLight(position, size, angle, axis);
+    //     Texture*       texture  = CreateTexture(1, 1);
+    //     BasicMaterial* material = new BasicMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, color.w);
-        material->SetTexture(texture);
-        mesh->SetMaterial(material);
-        return mesh;
-    }
+    //    texture->SetData(color.x, color.y, color.z, color.w);
+    //    material->SetTexture(texture);
+    //    mesh->SetMaterial(material);
+    //    return mesh;
+    //}
 
-    Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis, Texture2D* const texture) {
-        Texture* internal_texture = reinterpret_cast<Texture*>(texture);
-        return CreateLight(position, size, angle, axis, internal_texture);
-    }
+    // Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis, Texture2D* const texture) {
+    //     Texture* internal_texture = reinterpret_cast<Texture*>(texture);
+    //     return CreateLight(position, size, angle, axis, internal_texture);
+    // }
 
-    Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis, Texture* const texture) {
-        Light*         mesh     = CreateLight(position, size, angle, axis);
-        BasicMaterial* material = new BasicMaterial{};
+    // Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis, Texture* const texture) {
+    //     Light*         mesh     = CreateLight(position, size, angle, axis);
+    //     BasicMaterial* material = new BasicMaterial{};
 
-        material->SetTexture(texture);
-        mesh->SetMaterial(material);
-        return mesh;
-    }
+    //    material->SetTexture(texture);
+    //    mesh->SetMaterial(material);
+    //    return mesh;
+    //}
 
-    Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis, const Ref<Rendering::Textures::Texture2D>& texture) {
-        auto internal_texture = std::dynamic_pointer_cast<Texture>(texture);
-        assert(texture != nullptr);
-        return CreateLight(position, size, angle, axis, internal_texture);
-    }
+    // Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis, const Ref<Rendering::Textures::Texture2D>& texture) {
+    //     auto internal_texture = std::dynamic_pointer_cast<Texture>(texture);
+    //     assert(texture != nullptr);
+    //     return CreateLight(position, size, angle, axis, internal_texture);
+    // }
 
-    Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis, const Ref<Rendering::Textures::Texture>& texture) {
-        Light*         mesh     = CreateLight(position, size, angle, axis);
-        BasicMaterial* material = new BasicMaterial{};
+    // Light* MeshBuilder::CreateLight(const Vector3& position, const Vector3& size, float angle, const Vector3& axis, const Ref<Rendering::Textures::Texture>& texture) {
+    //     Light*         mesh     = CreateLight(position, size, angle, axis);
+    //     BasicMaterial* material = new BasicMaterial{};
 
-        material->SetTexture(texture);
-        mesh->SetMaterial(material);
-        return mesh;
-    }
+    //    material->SetTexture(texture);
+    //    mesh->SetMaterial(material);
+    //    return mesh;
+    //}
 } // namespace ZEngine::Rendering::Meshes

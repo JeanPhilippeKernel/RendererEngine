@@ -16,7 +16,7 @@ namespace ZEngine::Rendering::Materials {
 
         void SetShininess(float value);
 
-        void SetLight(const Ref<Lights::Light>& light);
+        void SetLight(const Ref<Lights::BasicLight>& light);
         void SetViewPosition(const glm::vec3& position);
 
         void Apply(Shaders::Shader* const shader) override;
@@ -37,7 +37,7 @@ namespace ZEngine::Rendering::Materials {
         Ref<Textures::Texture> m_specular_map;
 
     private:
-        glm::vec3              m_view_position;
-        WeakRef<Lights::Light> m_light;
+        glm::vec3                   m_view_position;
+        WeakRef<Lights::BasicLight> m_light;
     };
 } // namespace ZEngine::Rendering::Materials
