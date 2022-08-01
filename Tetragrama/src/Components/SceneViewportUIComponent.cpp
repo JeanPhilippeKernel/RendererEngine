@@ -1,7 +1,7 @@
 #include <pch.h>
 #include <SceneViewportUIComponent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
-#include <Layers/UserInterfaceLayer.h>
+#include <Layers/UILayer.h>
 #include <Event/EventDispatcher.h>
 #include <Messengers/Messenger.h>
 #include <MessageToken.h>

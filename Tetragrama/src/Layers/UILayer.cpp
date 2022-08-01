@@ -1,5 +1,5 @@
 #include <pch.h>
-#include <UserInterfaceLayer.h>
+#include <UILayer.h>
 #include <Messenger.h>
 #include <MessageToken.h>
 
@@ -7,7 +7,7 @@ using namespace Tetragrama::Messengers;
 
 namespace Tetragrama::Layers {
 
-    void UserInterfaceLayer::Initialize() {
+    void UILayer::Initialize() {
         ImguiLayer::Initialize();
 
         m_dockspace_component  = std::make_shared<Components::DockspaceUIComponent>();

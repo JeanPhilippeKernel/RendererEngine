@@ -3,8 +3,8 @@
 #include <Components/Events/SceneViewportFocusedEvent.h>
 #include <Components/Events/SceneViewportResizedEvent.h>
 #include <Editor.h>
-#include <Layers/RenderingLayer.h>
-#include <Layers/UserInterfaceLayer.h>
+#include <Layers/RenderLayer.h>
+#include <Layers/UILayer.h>
 #include <Messengers/Messenger.h>
 #include <MessageToken.h>
 
@@ -28,22 +28,22 @@ namespace Tetragrama {
         m_engine_configuration->WindowConfiguration.Width       = 1500;
         m_engine_configuration->WindowConfiguration.Height      = 800;
 
-        m_ui_layer        = std::make_shared<Layers::UserInterfaceLayer>();
-        m_rendering_layer = std::make_shared<Layers::RenderingLayer>();
+        m_ui_layer        = std::make_shared<Layers::UILayer>();
+        m_render_layer = std::make_shared<Layers::RenderLayer>();
 
         m_engine = std::make_unique<ZEngine::Engine>(*m_engine_configuration);
-        m_engine->GetWindow()->PushLayer(m_rendering_layer);
+        m_engine->GetWindow()->PushLayer(m_render_layer);
         m_engine->GetWindow()->PushOverlayLayer(m_ui_layer);
 
         // Register components
-        IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<std::pair<float, float>>>(m_rendering_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE,
-            std::bind(&Layers::RenderingLayer::SceneRequestResizeMessageHandler, reinterpret_cast<Layers::RenderingLayer*>(m_rendering_layer.get()), std::placeholders::_1));
+        IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<std::pair<float, float>>>(m_render_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE,
+            std::bind(&Layers::RenderLayer::SceneRequestResizeMessageHandler, reinterpret_cast<Layers::RenderLayer*>(m_render_layer.get()), std::placeholders::_1));
 
-        IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(m_rendering_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS,
-            std::bind(&Layers::RenderingLayer::SceneRequestFocusMessageHandler, reinterpret_cast<Layers::RenderingLayer*>(m_rendering_layer.get()), std::placeholders::_1));
+        IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(m_render_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS,
+            std::bind(&Layers::RenderLayer::SceneRequestFocusMessageHandler, reinterpret_cast<Layers::RenderLayer*>(m_render_layer.get()), std::placeholders::_1));
 
-        IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(m_rendering_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS,
-            std::bind(&Layers::RenderingLayer::SceneRequestUnfocusMessageHandler, reinterpret_cast<Layers::RenderingLayer*>(m_rendering_layer.get()), std::placeholders::_1));
+        IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(m_render_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS,
+            std::bind(&Layers::RenderLayer::SceneRequestUnfocusMessageHandler, reinterpret_cast<Layers::RenderLayer*>(m_render_layer.get()), std::placeholders::_1));
     }
 
     void Editor::Run() {

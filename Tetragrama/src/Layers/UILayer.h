@@ -9,11 +9,11 @@
 #include <Components/HierarchyViewUIComponent.h>
 
 namespace Tetragrama::Layers {
-    class UserInterfaceLayer : public ZEngine::Layers::ImguiLayer {
+    class UILayer : public ZEngine::Layers::ImguiLayer {
     public:
-        UserInterfaceLayer(std::string_view name = "user interface layer") : ImguiLayer(name.data()) {}
+        UILayer(std::string_view name = "user interface layer") : ImguiLayer(name.data()) {}
 
-        virtual ~UserInterfaceLayer() = default;
+        virtual ~UILayer() = default;
 
         void Initialize() override;
 

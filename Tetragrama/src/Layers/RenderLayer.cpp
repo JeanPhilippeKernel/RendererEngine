@@ -1,5 +1,5 @@
 #include <pch.h>
-#include <RenderingLayer.h>
+#include <RenderLayer.h>
 #include <Messengers/Messenger.h>
 #include <MessageToken.h>
 
@@ -21,9 +21,9 @@ using namespace ZEngine::Rendering::Geometries;
 
 namespace Tetragrama::Layers {
 
-    RenderingLayer::RenderingLayer(std::string_view name) : m_texture_manager(new ZEngine::Managers::TextureManager()), Layer(name.data()) {}
+    RenderLayer::RenderLayer(std::string_view name) : m_texture_manager(new ZEngine::Managers::TextureManager()), Layer(name.data()) {}
 
-    void RenderingLayer::Initialize() {
+    void RenderLayer::Initialize() {
 
         m_texture_manager->Load("Assets/Images/free_image.png");
         m_texture_manager->Load("Assets/Images/Crate.png");
@@ -33,7 +33,7 @@ namespace Tetragrama::Layers {
 
         m_scene = CreateRef<GraphicScene3D>();
         m_scene->Initialize();
-        m_scene->OnSceneRenderCompleted = std::bind(&RenderingLayer::OnSceneRenderCompletedCallback, this, std::placeholders::_1);
+        m_scene->OnSceneRenderCompleted = std::bind(&RenderLayer::OnSceneRenderCompletedCallback, this, std::placeholders::_1);
 
         auto camera_entity = m_scene->CreateEntity("Main camera");
         camera_entity.AddComponent<CameraComponent>(CreateRef<OrbitCameraController>(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f));
@@ -50,7 +50,7 @@ namespace Tetragrama::Layers {
         light_entity.AddComponent<LightComponent>(Maths::Vector3{0.2f, 0.2f, 0.2f}, Maths::Vector3{0.5f, 0.5f, 0.5f}, Maths::Vector3{1.0f, 1.0f, 1.0f});
         light_entity.AddComponent<MaterialComponent>(std::move(light_material));
 
-        auto checkboard_entity    = m_scene->CreateEntity("Checkboard");
+        auto  checkboard_entity    = m_scene->CreateEntity("Checkboard");
         auto& checkboard_transform = checkboard_entity.GetComponent<TransformComponent>();
         checkboard_transform.SetPosition({0.f, -0.5f, 0.0f});
         checkboard_transform.SetScaleSize({1000.f, .0f, 1000.f});
@@ -67,7 +67,7 @@ namespace Tetragrama::Layers {
         material->SetLight(light_entity.GetComponent<LightComponent>().GetLight());
         checkboard_entity.AddComponent<MaterialComponent>(std::move(material));
 
-        auto cube_box_entity    = m_scene->CreateEntity("box");
+        auto  cube_box_entity    = m_scene->CreateEntity("box");
         auto& cube_box_transform = cube_box_entity.GetComponent<TransformComponent>();
         cube_box_transform.SetPosition({0.f, 10.f, 0.0f});
         cube_box_transform.SetScaleSize({10.f, 10.0f, 10.f});
@@ -92,7 +92,7 @@ namespace Tetragrama::Layers {
         cube_box_2_entity.AddComponent<MaterialComponent>(std::move(cube_box_2_material));
     }
 
-    void RenderingLayer::Update(TimeStep dt) {
+    void RenderLayer::Update(TimeStep dt) {
         m_scene->Update(dt);
 
         auto box_entity   = m_scene->GetEntity("box");
@@ -159,31 +159,31 @@ namespace Tetragrama::Layers {
         }
     }
 
-    bool RenderingLayer::OnEvent(CoreEvent& e) {
+    bool RenderLayer::OnEvent(CoreEvent& e) {
         if (m_scene->ShouldReactToEvent()) {
-             m_scene->OnEvent(e);
+            m_scene->OnEvent(e);
         }
         return false;
     }
 
-    void RenderingLayer::Render() {
+    void RenderLayer::Render() {
         m_scene->Render();
     }
 
-    void RenderingLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message) {
+    void RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message) {
         const auto& value = message.GetValue();
         m_scene->RequestNewSize(value.first, value.second);
     }
 
-    void RenderingLayer::SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>& message) {
+    void RenderLayer::SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>& message) {
         m_scene->SetShouldReactToEvent(message.GetValue());
     }
 
-    void RenderingLayer::SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>& message) {
+    void RenderLayer::SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>& message) {
         m_scene->SetShouldReactToEvent(message.GetValue());
     }
 
-    void RenderingLayer::OnSceneRenderCompletedCallback(uint32_t scene_texture_id) {
+    void RenderLayer::OnSceneRenderCompletedCallback(uint32_t scene_texture_id) {
         Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<uint32_t>>(
             EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE, Messengers::GenericMessage<uint32_t>{scene_texture_id});
     }
