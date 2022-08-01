@@ -27,7 +27,7 @@ namespace ZEngine::Rendering::Scenes {
         virtual bool OnEvent(Event::CoreEvent&) override;
         virtual void Render() override;
 
-        virtual void RequestNewSize(uint32_t, uint32_t);
+        virtual void RequestNewSize(float, float);
         uint32_t     ToTextureRepresentation() const;
 
         void SetShouldReactToEvent(bool value);
@@ -45,8 +45,8 @@ namespace ZEngine::Rendering::Scenes {
         std::vector<Ref<Meshes::Mesh>>    m_mesh_list;
 
     private:
-        bool                                  m_should_react_to_event{true};
-        std::queue<std::function<void(void)>> m_pending_operation;
-        Ref<entt::registry>                   m_entity_registry;
+        bool                    m_should_react_to_event{true};
+        std::pair<float, float> m_scene_requested_size{0.0f, 0.0f};
+        Ref<entt::registry>     m_entity_registry;
     };
 } // namespace ZEngine::Rendering::Scenes

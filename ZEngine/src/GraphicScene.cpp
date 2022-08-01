@@ -53,18 +53,9 @@ namespace ZEngine::Rendering::Scenes {
         return false;
     }
 
-    void GraphicScene::RequestNewSize(uint32_t width, uint32_t height) {
-        if ((width > 0) && (height > 0)) {
-            m_pending_operation.emplace([w = width, h = height, this]() {
-                m_entity_registry->view<CameraComponent>().each([&, this](CameraComponent& component) {
-                    if (component.IsPrimaryCamera) {
-                        auto controller = component.GetCameraController();
-                        controller->SetAspectRatio(((float) w) / ((float) h));
-                        controller->UpdateProjectionMatrix();
-                        m_renderer->GetFrameBuffer()->Resize(w, h);
-                    }
-                });
-            });
+    void GraphicScene::RequestNewSize(float width, float height) {
+        if ((width > 0.0f) && (height > 0.0f)) {
+            m_scene_requested_size = {width, height};
         }
     }
 
@@ -84,10 +75,16 @@ namespace ZEngine::Rendering::Scenes {
             }
         });
 
-        while (!m_pending_operation.empty()) {
-            auto& callback_func = m_pending_operation.front();
-            callback_func();
-            m_pending_operation.pop();
+        if ((m_scene_requested_size.first > 0.0f) && (m_scene_requested_size.second > 0.0f)) {
+            m_entity_registry->view<CameraComponent>().each([&, this](CameraComponent& component) {
+                if (component.IsPrimaryCamera) {
+                    auto controller = component.GetCameraController();
+                    controller->SetAspectRatio(m_scene_requested_size.first / m_scene_requested_size.second);
+                    controller->UpdateProjectionMatrix();
+                    m_renderer->GetFrameBuffer()->Resize(m_scene_requested_size.first, m_scene_requested_size.second);
+                }
+            });
+            m_scene_requested_size = {0.0f, 0.0f};
         }
 
         // Todo : Should be refactored
