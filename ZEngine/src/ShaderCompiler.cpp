@@ -30,8 +30,7 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
         std::vector<ShaderInformation> shader_information;
 
-        auto find_it = std::find_if(std::begin(s_already_compiled_shaders_collection), std::end(s_already_compiled_shaders_collection),
-            [this](const auto& item) { return item.first == this->m_source_file; });
+        auto find_it = s_already_compiled_shaders_collection.find(m_source_file);
 
         if (find_it != std::end(s_already_compiled_shaders_collection)) {
             shader_information = find_it->second;

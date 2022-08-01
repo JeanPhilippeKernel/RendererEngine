@@ -32,7 +32,6 @@ namespace Tetragrama::Layers {
     private:
         ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>      m_scene;
         ZEngine::Ref<ZEngine::Managers::TextureManager>             m_texture_manager;
-        std::vector<ZEngine::Ref<ZEngine::Rendering::Meshes::Mesh>> m_mesh_collection;
     };
 
 } // namespace Tetragrama::Layers

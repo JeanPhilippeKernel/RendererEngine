@@ -27,7 +27,7 @@ namespace ZEngine::Rendering::Materials {
         m_shininess = value;
     }
 
-    void StandardMaterial::SetLight(const Ref<Lights::Light>& light) {
+    void StandardMaterial::SetLight(const Ref<Lights::BasicLight>& light) {
         m_light = light;
     }
 
@@ -74,7 +74,7 @@ namespace ZEngine::Rendering::Materials {
         if (!m_light.expired()) {
             const auto light = m_light.lock();
 
-            shader->SetUniform("light.position", light->GetGeometry()->GetPosition());
+            shader->SetUniform("light.position", light->GetPosition());
             shader->SetUniform("light.ambient", light->GetAmbientColor());
             shader->SetUniform("light.diffuse", light->GetDiffuseColor());
             shader->SetUniform("light.specular", light->GetSpecularColor());

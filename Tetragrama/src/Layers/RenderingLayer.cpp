@@ -16,11 +16,12 @@ using namespace ZEngine::Rendering::Textures;
 using namespace ZEngine::Controllers;
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Maths;
+using namespace ZEngine::Rendering::Components;
+using namespace ZEngine::Rendering::Geometries;
 
 namespace Tetragrama::Layers {
 
-    RenderingLayer::RenderingLayer(std::string_view name)
-        : m_texture_manager(new ZEngine::Managers::TextureManager()), Layer(name.data()) {}
+    RenderingLayer::RenderingLayer(std::string_view name) : m_texture_manager(new ZEngine::Managers::TextureManager()), Layer(name.data()) {}
 
     void RenderingLayer::Initialize() {
 
@@ -30,116 +31,142 @@ namespace Tetragrama::Layers {
         m_texture_manager->Load("Assets/Images/container2_specular.png");
         m_texture_manager->Load("Assets/Images/container2.png");
 
-        m_scene.reset(new GraphicScene3D(new OrbitCameraController(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f)));
+        m_scene = CreateRef<GraphicScene3D>();
         m_scene->Initialize();
         m_scene->OnSceneRenderCompleted = std::bind(&RenderingLayer::OnSceneRenderCompletedCallback, this, std::placeholders::_1);
 
-        Ref<ZEngine::Rendering::Meshes::Mesh> checkboard_mesh;
-        Ref<ZEngine::Rendering::Meshes::Mesh> multi_textured_cube_mesh;
-        Ref<ZEngine::Rendering::Meshes::Mesh> mesh_three;
+        auto camera_entity = m_scene->CreateEntity("Main camera");
+        camera_entity.AddComponent<CameraComponent>(CreateRef<OrbitCameraController>(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f));
 
-        Ref<ZEngine::Rendering::Lights::Light> light_source_mesh;
-        light_source_mesh.reset(MeshBuilder::CreateLight({-30.0f, 10.f, 0.0f}, {1.f, 1.0f, 1.f}, 0.0f, {0.0f, 1.0f, 0.0f}));
-        light_source_mesh->SetAmbientColor({0.2f, 0.2f, 0.2f});
-        light_source_mesh->SetDiffuseColor({0.5f, 0.5f, 0.5f});
-        light_source_mesh->SetSpecularColor({1.0f, 1.0f, 1.0f});
+        auto light_entity = m_scene->CreateEntity("light");
+        light_entity.AddComponent<GeometryComponent>(CreateRef<CubeGeometry>());
+        auto& light_transform = light_entity.GetComponent<TransformComponent>();
+        light_transform.SetPosition({-30.0f, 10.f, 0.0f});
+        light_transform.SetScaleSize({1.f, 1.0f, 1.f});
+        light_transform.SetRotationAngle(0.0f);
+        light_transform.SetRotationAxis({0.0f, 1.0f, 0.0f});
+        Ref<BasicMaterial> light_material = CreateRef<BasicMaterial>();
+        light_material->SetTexture(CreateTexture(1, 1));
+        light_entity.AddComponent<LightComponent>(Maths::Vector3{0.2f, 0.2f, 0.2f}, Maths::Vector3{0.5f, 0.5f, 0.5f}, Maths::Vector3{1.0f, 1.0f, 1.0f});
+        light_entity.AddComponent<MaterialComponent>(std::move(light_material));
 
-        checkboard_mesh.reset(MeshBuilder::CreateCube({0.f, -0.5f, 0.0f}, {1000.f, .0f, 1000.f}, 0.0f, Vector3(1.f, 0.0f, 0.0f), m_texture_manager->Obtains("Checkerboard_2")));
-        StandardMaterial* checkboard_material = reinterpret_cast<StandardMaterial*>(checkboard_mesh->GetMaterial().get());
-        checkboard_material->SetTileFactor(20.f);
-        Ref<Rendering::Textures::Texture> specular_map(Rendering::Textures::CreateTexture(1, 1));
-        specular_map->SetData(60, 60, 60, 100);
-        checkboard_material->SetSpecularMap(specular_map);
-        checkboard_material->SetShininess(10.0f);
-        checkboard_material->SetLight(light_source_mesh);
+        auto checkboard_entity    = m_scene->CreateEntity("Checkboard");
+        auto& checkboard_transform = checkboard_entity.GetComponent<TransformComponent>();
+        checkboard_transform.SetPosition({0.f, -0.5f, 0.0f});
+        checkboard_transform.SetScaleSize({1000.f, .0f, 1000.f});
+        checkboard_transform.SetRotationAngle(0.0f);
+        checkboard_transform.SetRotationAxis({1.f, 0.0f, 0.0f});
+        checkboard_entity.AddComponent<GeometryComponent>(CreateRef<CubeGeometry>());
+        Ref<StandardMaterial> material = CreateRef<StandardMaterial>();
+        material->SetDiffuseMap(m_texture_manager->Obtains("Checkerboard_2"));
+        material->SetTileFactor(20.f);
+        Ref<Rendering::Textures::Texture> specular_map_2(Rendering::Textures::CreateTexture(1, 1));
+        specular_map_2->SetData(60, 60, 60, 100);
+        material->SetSpecularMap(specular_map_2);
+        material->SetShininess(10.0f);
+        material->SetLight(light_entity.GetComponent<LightComponent>().GetLight());
+        checkboard_entity.AddComponent<MaterialComponent>(std::move(material));
 
-        multi_textured_cube_mesh.reset(MeshBuilder::CreateCube({0.f, 10.f, 0.0f}, {10.f, 10.0f, 10.f}, 0.0f, Vector3(0.f, 1.0f, 0.0f), m_texture_manager->Obtains("container2")));
-        StandardMaterial* multi_textured_cube_material = reinterpret_cast<StandardMaterial*>(multi_textured_cube_mesh->GetMaterial().get());
-        multi_textured_cube_material->SetSpecularMap(m_texture_manager->Obtains("container2_specular"));
-        multi_textured_cube_material->SetShininess(100.0f);
-        multi_textured_cube_material->SetLight(light_source_mesh);
+        auto cube_box_entity    = m_scene->CreateEntity("box");
+        auto& cube_box_transform = cube_box_entity.GetComponent<TransformComponent>();
+        cube_box_transform.SetPosition({0.f, 10.f, 0.0f});
+        cube_box_transform.SetScaleSize({10.f, 10.0f, 10.f});
+        cube_box_transform.SetRotationAngle(0.0f);
+        cube_box_transform.SetRotationAxis({0.f, 1.0f, 0.0f});
+        cube_box_entity.AddComponent<GeometryComponent>(CreateRef<CubeGeometry>());
+        Ref<StandardMaterial> cube_box_material = CreateRef<StandardMaterial>();
+        cube_box_material->SetDiffuseMap(m_texture_manager->Obtains("container2"));
+        cube_box_material->SetSpecularMap(m_texture_manager->Obtains("container2_specular"));
+        cube_box_material->SetShininess(100.0f);
+        cube_box_material->SetLight(light_entity.GetComponent<LightComponent>().GetLight());
+        cube_box_entity.AddComponent<MaterialComponent>(std::move(cube_box_material));
 
-        mesh_three.reset(MeshBuilder::CreateCube({-20.f, 10.f, 0.0f}, {5.f, 5.0f, 5.f}, {255.0f, 127.5f, 30.0f}, 0.0f, Vector3(0.f, 1.0f, 0.0f)));
-        StandardMaterial* mesh_three_material         = reinterpret_cast<StandardMaterial*>(mesh_three->GetMaterial().get());
-        auto&             mesh_three_material_texture = mesh_three_material->GetTexture();
-        mesh_three_material_texture->SetData(255.0f, 127.5f, 79.05f, 255.f);
-        mesh_three_material->SetShininess(32.0f);
-
-        mesh_three_material->SetLight(light_source_mesh);
-
-        m_mesh_collection.push_back(std::move(checkboard_mesh));
-        m_mesh_collection.push_back(std::move(multi_textured_cube_mesh));
-        // m_mesh_collection.push_back(std::move(mesh_three));
-        m_mesh_collection.push_back(std::move(light_source_mesh));
+        auto cube_box_2_entity = m_scene->CreateEntity();
+        cube_box_2_entity.AddComponent<GeometryComponent>(CreateRef<CubeGeometry>());
+        Ref<StandardMaterial> cube_box_2_material = CreateRef<StandardMaterial>();
+        cube_box_2_material->SetTexture(CreateTexture(1, 1));
+        auto& cube_box_2_material_texture = cube_box_2_material->GetTexture();
+        cube_box_2_material_texture->SetData(255.0f, 127.5f, 79.05f, 255.f);
+        cube_box_2_material->SetShininess(32.0f);
+        cube_box_2_material->SetLight(light_entity.GetComponent<LightComponent>().GetLight());
+        cube_box_2_entity.AddComponent<MaterialComponent>(std::move(cube_box_2_material));
     }
 
     void RenderingLayer::Update(TimeStep dt) {
-        m_scene->GetCameraController()->Update(dt);
+        m_scene->Update(dt);
 
-        // quad_mesh_ptr_2
-        /* auto rotation_angle = m_mesh_collection[0]->GetGeometry()->GetRotationAngle() + (dt * 0.05f);
-         m_mesh_collection[0]->GetGeometry()->SetRotationAngle(rotation_angle);*/
+        auto box_entity   = m_scene->GetEntity("box");
+        auto light_entity = m_scene->GetEntity("light");
 
-        StandardMaterial* multi_textured_cube_material = reinterpret_cast<StandardMaterial*>(m_mesh_collection[1]->GetMaterial().get());
-        multi_textured_cube_material->SetViewPosition(m_scene->GetCameraController()->GetPosition());
+        auto& box_component = box_entity.GetComponent<TransformComponent>();
+        auto  angle         = box_component.GetRotationAngle();
+        box_component.SetRotationAngle(angle + std::sin(dt * 0.05f));
 
         if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_UP, GetAttachedWindow())) {
-            auto& geometry = m_mesh_collection[2]->GetGeometry();
-            auto  position = geometry->GetPosition();
+            auto& component = light_entity.GetComponent<TransformComponent>();
+            auto  position  = component.GetPosition();
             position.y += .5f;
-            geometry->SetPosition(position);
+            component.SetPosition(position);
         }
 
         if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_DOWN, GetAttachedWindow())) {
-            auto& geometry = m_mesh_collection[2]->GetGeometry();
-            auto  position = geometry->GetPosition();
+            auto& component = light_entity.GetComponent<TransformComponent>();
+            auto  position  = component.GetPosition();
             position.y -= .5f;
-            geometry->SetPosition(position);
+            component.SetPosition(position);
         }
 
         if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT, GetAttachedWindow())) {
-            auto& geometry = m_mesh_collection[2]->GetGeometry();
-            auto  position = geometry->GetPosition();
+            auto& component = light_entity.GetComponent<TransformComponent>();
+            auto  position  = component.GetPosition();
             position.x -= .5f;
-            geometry->SetPosition(position);
+            component.SetPosition(position);
         }
 
         if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_RIGHT, GetAttachedWindow())) {
-            auto& geometry = m_mesh_collection[2]->GetGeometry();
-            auto  position = geometry->GetPosition();
+            auto& component = light_entity.GetComponent<TransformComponent>();
+            auto  position  = component.GetPosition();
             position.x += .5f;
-            geometry->SetPosition(position);
+            component.SetPosition(position);
         }
 
-        if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_B, GetAttachedWindow())) {
-            auto& geometry = m_mesh_collection[2]->GetGeometry();
-            auto  position = geometry->GetPosition();
-            position.z -= .5f;
-            geometry->SetPosition(position);
+        if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_W, GetAttachedWindow())) {
+            auto& component = box_entity.GetComponent<TransformComponent>();
+            auto  position  = component.GetPosition();
+            position.y += .5f;
+            component.SetPosition(position);
         }
 
-        if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_V, GetAttachedWindow())) {
-            auto& geometry = m_mesh_collection[2]->GetGeometry();
-            auto  position = geometry->GetPosition();
-            position.z += .5f;
-            geometry->SetPosition(position);
+        if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, GetAttachedWindow())) {
+            auto& component = box_entity.GetComponent<TransformComponent>();
+            auto  position  = component.GetPosition();
+            position.y -= .5f;
+            component.SetPosition(position);
         }
 
-        // quad_mesh_ptr_1
-        // auto& mat     = m_mesh_collection[0]->GetMaterial();
-        // auto& texture = mat->GetTexture();
-        // texture->SetData(150, 50, 25, 255.f);
+        if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_A, GetAttachedWindow())) {
+            auto& component = box_entity.GetComponent<TransformComponent>();
+            auto  position  = component.GetPosition();
+            position.x -= .5f;
+            component.SetPosition(position);
+        }
+
+        if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_D, GetAttachedWindow())) {
+            auto& component = box_entity.GetComponent<TransformComponent>();
+            auto  position  = component.GetPosition();
+            position.x += .5f;
+            component.SetPosition(position);
+        }
     }
 
     bool RenderingLayer::OnEvent(CoreEvent& e) {
         if (m_scene->ShouldReactToEvent()) {
-            m_scene->GetCameraController()->OnEvent(e);
+             m_scene->OnEvent(e);
         }
         return false;
     }
 
     void RenderingLayer::Render() {
-        m_scene->Add(m_mesh_collection);
         m_scene->Render();
     }
 

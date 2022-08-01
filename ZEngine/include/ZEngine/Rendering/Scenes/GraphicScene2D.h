@@ -8,7 +8,7 @@ namespace ZEngine::Rendering::Scenes {
 
     class GraphicScene2D : public GraphicScene {
     public:
-        explicit GraphicScene2D(Controllers::OrthographicCameraController* const controller) : GraphicScene(controller) {
+        explicit GraphicScene2D() {
             m_renderer.reset(new Renderers::GraphicRenderer2D());
         }
 

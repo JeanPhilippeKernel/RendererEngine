@@ -17,4 +17,4 @@ namespace ZEngine::Core {
     bool IPipelineStage::HasNext() {
         return m_next_stage != nullptr;
     }
-}
+} // namespace ZEngine::Core

@@ -20,31 +20,29 @@ namespace ZEngine::Inputs {
         template <typename T, typename = std::enable_if_t<std::is_base_of_v<IDevice, T>>>
         static const T* As() noexcept {
 
-            const auto& type = typeid(T);
-            auto        it   = std::find_if(
-                         std::begin(m_devices), std::end(m_devices), [&type](const std::pair<const char*, Ref<IDevice>>& item) { return strcmp(item.first, type.name()) == 0; });
+            const std::type_info& type = typeid(T);
+            auto                  it   = m_devices.find(std::string(type.name()));
 
             if (it != std::end(m_devices)) {
-                return dynamic_cast<T*>(it->second.get());
+                return reinterpret_cast<T*>(it->second.get());
             }
 
-            Ref<IDevice> device_ptr;
-            device_ptr.reset(new T());
+            Ref<IDevice> device_ptr = CreateRef<T>();
 
-            auto pair = m_devices.emplace(std::make_pair(type.name(), device_ptr));
-            return dynamic_cast<T*>(pair.first->second.get());
+            auto pair = m_devices.emplace(std::make_pair(std::string(type.name()), std::move(device_ptr)));
+            return reinterpret_cast<T*>(pair.first->second.get());
         }
 
         virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const  = 0;
         virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const = 0;
 
-        virtual const std::string& GetName() const {
+        virtual std::string_view GetName() const {
             return m_name;
         }
 
     protected:
-        IDevice(const char* name = "abstract_device") : m_name(name) {}
-        static std::unordered_map<const char*, Ref<IDevice>> m_devices;
+        IDevice(std::string_view name = "abstract_device") : m_name(name) {}
+        static std::unordered_map<std::string, Ref<IDevice>> m_devices;
         std::string                                          m_name;
     };
 } // namespace ZEngine::Inputs
