@@ -8,11 +8,11 @@
 #include <Messengers/Message.h>
 
 namespace Tetragrama::Layers {
-    class RenderingLayer : public ZEngine::Layers::Layer {
+    class RenderLayer : public ZEngine::Layers::Layer {
     public:
-        RenderingLayer(std::string_view name = "Rendering layer");
+        RenderLayer(std::string_view name = "Rendering layer");
 
-        virtual ~RenderingLayer() = default;
+        virtual ~RenderLayer() = default;
 
         virtual void Initialize() override;
         virtual void Update(ZEngine::Core::TimeStep dt) override;
@@ -30,8 +30,8 @@ namespace Tetragrama::Layers {
         void OnSceneRenderCompletedCallback(uint32_t);
 
     private:
-        ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>      m_scene;
-        ZEngine::Ref<ZEngine::Managers::TextureManager>             m_texture_manager;
+        ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene> m_scene;
+        ZEngine::Ref<ZEngine::Managers::TextureManager>        m_texture_manager;
     };
 
 } // namespace Tetragrama::Layers

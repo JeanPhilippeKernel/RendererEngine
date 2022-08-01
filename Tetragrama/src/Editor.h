@@ -21,7 +21,7 @@ namespace Tetragrama {
     private:
         ZEngine::Ref<ZEngine::EngineConfiguration> m_engine_configuration;
         ZEngine::Ref<ZEngine::Layers::ImguiLayer>  m_ui_layer;
-        ZEngine::Ref<ZEngine::Layers::Layer>       m_rendering_layer;
+        ZEngine::Ref<ZEngine::Layers::Layer>       m_render_layer;
         ZEngine::Scope<ZEngine::Engine>            m_engine;
     };
 
