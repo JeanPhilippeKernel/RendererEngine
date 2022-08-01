@@ -45,30 +45,25 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     bool GraphicScene::OnEvent(Event::CoreEvent& e) {
-        auto views = m_entity_registry->view<CameraComponent>();
-        for (auto entity : views) {
-            auto& component = views.get<CameraComponent>(entity);
+        m_entity_registry->view<CameraComponent>().each([&](CameraComponent& component) {
             if (component.IsPrimaryCamera) {
                 component.GetCameraController()->OnEvent(e);
             }
-        }
+        });
         return false;
     }
 
     void GraphicScene::RequestNewSize(uint32_t width, uint32_t height) {
         if ((width > 0) && (height > 0)) {
             m_pending_operation.emplace([w = width, h = height, this]() {
-                auto views = m_entity_registry->view<CameraComponent>();
-                for (auto entity : views) {
-                    auto& component  = views.get<CameraComponent>(entity);
-                    auto  controller = component.GetCameraController();
-                    controller->SetAspectRatio(((float) w) / ((float) h));
-                    controller->UpdateProjectionMatrix();
-
+                m_entity_registry->view<CameraComponent>().each([&, this](CameraComponent& component) {
                     if (component.IsPrimaryCamera) {
+                        auto controller = component.GetCameraController();
+                        controller->SetAspectRatio(((float) w) / ((float) h));
+                        controller->UpdateProjectionMatrix();
                         m_renderer->GetFrameBuffer()->Resize(w, h);
                     }
-                }
+                });
             });
         }
     }
@@ -82,16 +77,12 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::Update(Core::TimeStep dt) {
-        {
-            auto views = m_entity_registry->view<CameraComponent>();
-            for (auto entity : views) {
-                auto& component = views.get<CameraComponent>(entity);
-                if (component.IsPrimaryCamera) {
-                    m_scene_camera = component.GetCamera();
-                    component.GetCameraController()->Update(dt);
-                }
+        m_entity_registry->view<CameraComponent>().each([&dt, this](CameraComponent& component) {
+            if (component.IsPrimaryCamera) {
+                m_scene_camera = component.GetCamera();
+                component.GetCameraController()->Update(dt);
             }
-        }
+        });
 
         while (!m_pending_operation.empty()) {
             auto& callback_func = m_pending_operation.front();
@@ -133,7 +124,6 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::Render() {
-
         if (m_scene_camera) {
             m_renderer->StartScene(m_scene_camera);
             m_renderer->AddMesh(m_mesh_list);
