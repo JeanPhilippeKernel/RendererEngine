@@ -47,12 +47,15 @@ $ContentsToProcess = @(
         Contents = @(
             if ($SystemNames -eq "Windows"){
                 @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Windows"}
+                @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
             }
             elseif ($SystemNames -eq "Darwin") {
                 @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Unix"}
+                @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
             }
             else {
                 @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Tetragrama\src\Resources\Unix"}
+                @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\Settings"}
             }
         )
     }
