@@ -85,7 +85,7 @@ foreach ($item in $ContentsToProcess) {
             #
             if(Test-Path $content.To) {
                 Remove-Item $content.To -Recurse -Force
-            }           
+            }
             Copy-Item -Path $content.From -Destination $content.To -Recurse -Force
         }
         else {
