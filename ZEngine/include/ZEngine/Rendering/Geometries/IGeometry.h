@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <Maths/Math.h>
 #include <Rendering/Renderers/Storages/GraphicVertex.h>
+#include <Rendering/Geometries/GeometryEnum.h>
 
 namespace ZEngine::Rendering::Geometries {
 
@@ -76,6 +77,10 @@ namespace ZEngine::Rendering::Geometries {
             return m_vertices;
         }
 
+        virtual GeometryType GetGeometryType() const {
+            return m_geometry_type;
+        }
+
     protected:
         Maths::Vector3                                  m_position;
         Maths::Vector3                                  m_scale_size;
@@ -83,5 +88,6 @@ namespace ZEngine::Rendering::Geometries {
         float                                           m_rotation_angle;
         Maths::Matrix4                                  m_transform;
         std::vector<Renderers::Storages::GraphicVertex> m_vertices{};
+        GeometryType                                    m_geometry_type{GeometryType::CUSTOM};
     };
 } // namespace ZEngine::Rendering::Geometries

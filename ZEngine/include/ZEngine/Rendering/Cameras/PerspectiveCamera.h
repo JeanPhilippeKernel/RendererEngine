@@ -10,7 +10,6 @@ namespace ZEngine::Rendering::Cameras {
         virtual ~PerspectiveCamera() = default;
 
         virtual void SetTarget(const Maths::Vector3& target) override;
-        virtual void SetFieldOfView(float rad_angle);
 
         virtual void SetPosition(const Maths::Vector3& position) override;
         virtual void SetProjectionMatrix(const Maths::Matrix4& projection) override;
@@ -20,8 +19,6 @@ namespace ZEngine::Rendering::Cameras {
         virtual void UpdateViewMatrix() override;
 
     protected:
-        float m_field_of_view{0.0f};
-
         float m_radius;
         float m_yaw_angle;
         float m_pitch_angle;

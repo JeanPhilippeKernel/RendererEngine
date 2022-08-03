@@ -15,7 +15,7 @@ namespace ZEngine::Rendering::Entities {
 
         template <typename TComponent>
         bool HasComponent() const {
-            if (!m_weak_registry_ptr.expired()) {
+            if (m_weak_registry_ptr.expired()) {
                 return false;
             }
             auto registry = m_weak_registry_ptr.lock();
@@ -42,6 +42,18 @@ namespace ZEngine::Rendering::Entities {
         TComponent& GetComponent() const {
             auto registry = m_weak_registry_ptr.lock();
             return registry->get<TComponent>(m_entity_handle);
+        }
+
+        bool operator==(const GraphicSceneEntity& rhs) {
+            return (this->m_entity_handle == rhs.m_entity_handle) && (this->m_weak_registry_ptr.lock().get() == rhs.m_weak_registry_ptr.lock().get());
+        }
+
+        bool operator!=(const GraphicSceneEntity& rhs) {
+            return !((*this) == rhs);
+        }
+
+        operator uint32_t() const {
+            return static_cast<uint32_t>(m_entity_handle);
         }
 
     private:

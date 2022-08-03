@@ -44,6 +44,10 @@ namespace ZEngine::Rendering::Scenes {
         return GraphicSceneEntity(entity_handle, m_entity_registry);
     }
 
+    Ref<entt::registry> GraphicScene::GetRegistry() const {
+        return m_entity_registry;
+    }
+
     bool GraphicScene::OnEvent(Event::CoreEvent& e) {
         m_entity_registry->view<CameraComponent>().each([&](CameraComponent& component) {
             if (component.IsPrimaryCamera) {

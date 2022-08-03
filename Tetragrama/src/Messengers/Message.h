@@ -36,4 +36,30 @@ namespace Tetragrama::Messengers {
     private:
         T m_value;
     };
+
+    template <typename T>
+    struct PointerValueMessage : public EmptyMessage {
+        PointerValueMessage() {}
+        PointerValueMessage(PointerValueMessage&& rhs) {
+            m_value     = std::move(rhs.m_value);
+            rhs.m_value = nullptr;
+        }
+        PointerValueMessage(T* const value) : m_value(value) {}
+        virtual ~PointerValueMessage() {}
+
+        T* GetValue() {
+            return m_value;
+        }
+
+        const T* GetValue() const {
+            return m_value;
+        }
+
+        void SetValue(T* const value) {
+            m_value = value;
+        }
+
+    private:
+        T* m_value{nullptr};
+    };
 } // namespace Tetragrama::Messengers

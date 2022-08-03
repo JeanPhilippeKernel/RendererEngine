@@ -4,7 +4,8 @@
 namespace ZEngine::Rendering::Cameras {
 
     PerspectiveCamera::PerspectiveCamera(float field_of_view, float aspect_ratio, float near, float far) : m_yaw_angle(0.0f), m_pitch_angle(0.0f), m_radius(0.0f) {
-        m_projection = Maths::perspective(field_of_view, aspect_ratio, near, far);
+        m_camera_type = CameraType::PERSPECTIVE;
+        m_projection  = Maths::perspective(field_of_view, aspect_ratio, near, far);
         UpdateCoordinateVectors();
         UpdateViewMatrix();
     }
@@ -15,11 +16,6 @@ namespace ZEngine::Rendering::Cameras {
         UpdateViewMatrix();
     }
 
-    void PerspectiveCamera::SetFieldOfView(float rad_angle) {
-        m_field_of_view = rad_angle;
-        UpdateCoordinateVectors();
-        UpdateViewMatrix();
-    }
 
     void PerspectiveCamera::SetPosition(const Maths::Vector3& position) {
         Camera::SetPosition(position);
