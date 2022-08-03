@@ -49,5 +49,19 @@ namespace Tetragrama::Layers {
         IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<std::vector<std::string>>>(m_editor_log_component, EDITOR_COMPONENT_LOG_RECEIVE_LOG_MESSAGE,
             std::bind(
                 &Components::LogUIComponent::ReceiveLogMessageMessageHandler, reinterpret_cast<Components::LogUIComponent*>(m_editor_log_component.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>>(m_hierarchy_view_component,
+            EDITOR_RENDER_LAYER_SCENE_AVAILABLE,
+            std::bind(&Components::HierarchyViewUIComponent::SceneAvailableMessageHandler,
+                reinterpret_cast<Components::HierarchyViewUIComponent*>(m_hierarchy_view_component.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>>(m_inspector_view_component,
+            EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED,
+            std::bind(&Components::InspectorViewUIComponent::SceneEntitySelectedMessageHandler,
+                reinterpret_cast<Components::InspectorViewUIComponent*>(m_inspector_view_component.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, EmptyMessage>(m_inspector_view_component, EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED,
+            std::bind(&Components::InspectorViewUIComponent::SceneEntityUnSelectedMessageHandler,
+                reinterpret_cast<Components::InspectorViewUIComponent*>(m_inspector_view_component.get()), std::placeholders::_1));
     }
 } // namespace Tetragrama::Layers

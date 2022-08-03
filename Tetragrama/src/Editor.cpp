@@ -28,10 +28,10 @@ namespace Tetragrama {
         m_engine_configuration->WindowConfiguration.Width       = 1500;
         m_engine_configuration->WindowConfiguration.Height      = 800;
 
-        m_ui_layer        = std::make_shared<Layers::UILayer>();
-        m_render_layer = std::make_shared<Layers::RenderLayer>();
+        m_ui_layer     = ZEngine::CreateRef<Layers::UILayer>();
+        m_render_layer = ZEngine::CreateRef<Layers::RenderLayer>();
 
-        m_engine = std::make_unique<ZEngine::Engine>(*m_engine_configuration);
+        m_engine = ZEngine::CreateScope<ZEngine::Engine>(*m_engine_configuration);
         m_engine->GetWindow()->PushLayer(m_render_layer);
         m_engine->GetWindow()->PushOverlayLayer(m_ui_layer);
 

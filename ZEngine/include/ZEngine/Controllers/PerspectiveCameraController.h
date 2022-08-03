@@ -41,6 +41,15 @@ namespace ZEngine::Controllers {
         virtual const Maths::Vector3& GetPosition() const override;
         virtual void                  SetPosition(const Maths::Vector3& position) override;
 
+        virtual float GetFieldOfView() const;
+        virtual void  SetFieldOfView(float rad_fov);
+
+        virtual float GetNear() const;
+        virtual void  SetNear(float value);
+
+        virtual float GetFar() const;
+        virtual void  SetFar(float value);
+
     public:
         bool OnMouseButtonPressed(Event::MouseButtonPressedEvent&) override {
             return false;

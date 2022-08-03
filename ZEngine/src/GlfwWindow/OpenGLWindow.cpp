@@ -83,9 +83,13 @@ namespace ZEngine::Window::GLFWWindow {
     }
 
     void OpenGLWindow::Initialize() {
-        for (Ref<Layers::Layer>& layer : *m_layer_stack_ptr) {
-            layer->SetAttachedWindow(shared_from_this());
-            layer->Initialize();
+        auto& layer_stack = *m_layer_stack_ptr;
+
+        // Initialize in reverse order, so overlay layers can be initialize first
+        // this give us opportunity to initialize UI-like layers before graphic render-like layers
+        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it) {
+            (*rlayer_it)->SetAttachedWindow(shared_from_this());
+            (*rlayer_it)->Initialize();
         }
     }
 

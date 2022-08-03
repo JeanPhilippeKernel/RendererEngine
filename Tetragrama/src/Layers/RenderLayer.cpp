@@ -35,8 +35,11 @@ namespace Tetragrama::Layers {
         m_scene->Initialize();
         m_scene->OnSceneRenderCompleted = std::bind(&RenderLayer::OnSceneRenderCompletedCallback, this, std::placeholders::_1);
 
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<Ref<GraphicScene>>>(
+            EDITOR_RENDER_LAYER_SCENE_AVAILABLE, Messengers::GenericMessage<Ref<GraphicScene>>{m_scene});
+
         auto camera_entity = m_scene->CreateEntity("Main camera");
-        camera_entity.AddComponent<CameraComponent>(CreateRef<OrbitCameraController>(GetAttachedWindow(), Vector3(0.0f, 20.0f, 50.f), 10.0f, -20.0f));
+        camera_entity.AddComponent<CameraComponent>(CreateRef<OrbitCameraController>(GetAttachedWindow(), Vector3(0.0f, 20.0f, 120.f), 10.0f, -20.0f));
 
         auto light_entity = m_scene->CreateEntity("light");
         light_entity.AddComponent<GeometryComponent>(CreateRef<CubeGeometry>());
@@ -81,7 +84,10 @@ namespace Tetragrama::Layers {
         cube_box_material->SetLight(light_entity.GetComponent<LightComponent>().GetLight());
         cube_box_entity.AddComponent<MaterialComponent>(std::move(cube_box_material));
 
-        auto cube_box_2_entity = m_scene->CreateEntity();
+        auto  cube_box_2_entity    = m_scene->CreateEntity();
+        auto& cube_box_2_transform = cube_box_2_entity.GetComponent<TransformComponent>();
+        cube_box_2_transform.SetPosition({19.f, 9.f, -80.0f});
+        cube_box_2_transform.SetScaleSize({10.f, 10.0f, 10.f});
         cube_box_2_entity.AddComponent<GeometryComponent>(CreateRef<CubeGeometry>());
         Ref<StandardMaterial> cube_box_2_material = CreateRef<StandardMaterial>();
         cube_box_2_material->SetTexture(CreateTexture(1, 1));

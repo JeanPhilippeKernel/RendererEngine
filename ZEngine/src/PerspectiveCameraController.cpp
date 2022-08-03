@@ -16,8 +16,7 @@ namespace ZEngine::Controllers {
         m_perspective_camera->SetPosition(m_position);
     }
 
-    void PerspectiveCameraController::Update(Core::TimeStep dt) {
-    }
+    void PerspectiveCameraController::Update(Core::TimeStep dt) {}
 
     const Maths::Vector3& PerspectiveCameraController::GetPosition() const {
         return m_perspective_camera->GetPosition();
@@ -25,6 +24,32 @@ namespace ZEngine::Controllers {
 
     void PerspectiveCameraController::SetPosition(const Maths::Vector3& position) {
         m_perspective_camera->SetPosition(position);
+    }
+
+    float PerspectiveCameraController::GetFieldOfView() const {
+        return m_camera_fov;
+    }
+
+    void PerspectiveCameraController::SetFieldOfView(float rad_fov) {
+        m_camera_fov = rad_fov;
+        UpdateProjectionMatrix();
+    }
+
+    float PerspectiveCameraController::GetNear() const {
+        return m_camera_near;
+    }
+
+    void PerspectiveCameraController::SetNear(float value) {
+        m_camera_near = value;
+        UpdateProjectionMatrix();
+    }
+
+    float PerspectiveCameraController::GetFar() const {
+        return m_camera_far;
+    }
+    void PerspectiveCameraController::SetFar(float value) {
+        m_camera_far = value;
+        UpdateProjectionMatrix();
     }
 
     void PerspectiveCameraController::UpdateProjectionMatrix() {

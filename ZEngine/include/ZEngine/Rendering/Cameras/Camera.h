@@ -1,6 +1,7 @@
 #pragma once
 #include <Maths/Math.h>
 #include <ZEngineDef.h>
+#include <Rendering/Cameras/CameraEnum.h>
 
 namespace ZEngine::Rendering::Cameras {
     class Camera {
@@ -57,6 +58,10 @@ namespace ZEngine::Rendering::Cameras {
             return m_target;
         }
 
+        virtual CameraType GetCameraType() const {
+            return m_camera_type;
+        }
+
     protected:
         virtual void UpdateViewMatrix() = 0;
 
@@ -72,5 +77,6 @@ namespace ZEngine::Rendering::Cameras {
         Maths::Matrix4 m_view_matrix;
         Maths::Matrix4 m_projection;
         Maths::Matrix4 m_view_projection;
+        CameraType     m_camera_type;
     };
 } // namespace ZEngine::Rendering::Cameras

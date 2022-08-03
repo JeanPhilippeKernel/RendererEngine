@@ -5,7 +5,6 @@
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>
 #include <Event/EventDispatcher.h>
-
 #include <Engine.h>
 
 using namespace ZEngine::Inputs;
@@ -27,7 +26,7 @@ namespace ZEngine::Controllers {
         static Maths::Vector2 last_mouse_cursor_pos;
 
         if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_RIGHT, m_window.lock())) {
-            auto  camera             = std::dynamic_pointer_cast<Rendering::Cameras::OrbitCamera>(m_perspective_camera);
+            auto  camera             = reinterpret_cast<Rendering::Cameras::OrbitCamera*>(m_perspective_camera.get());
             float yaw_angle_degree   = (m_mouse_cursor_pos.x - last_mouse_cursor_pos.x) * m_rotation_speed * dt;
             float pitch_angle_degree = (m_mouse_cursor_pos.y - last_mouse_cursor_pos.y) * m_rotation_speed * dt;
             camera->SetPosition(yaw_angle_degree, pitch_angle_degree);
@@ -48,7 +47,7 @@ namespace ZEngine::Controllers {
     }
 
     bool OrbitCameraController::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e) {
-        auto camera = std::dynamic_pointer_cast<Rendering::Cameras::OrbitCamera>(m_perspective_camera);
+        auto camera = reinterpret_cast<Rendering::Cameras::OrbitCamera*>(m_perspective_camera.get());
         auto radius = camera->GetRadius();
         radius += e.GetOffetY() * m_move_speed * Engine::GetDeltaTime();
         camera->SetRadius(radius);

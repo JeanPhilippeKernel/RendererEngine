@@ -4,13 +4,15 @@
 namespace ZEngine::Rendering::Cameras {
 
     OrthographicCamera::OrthographicCamera(float left, float right, float bottom, float top) {
-        m_projection = Maths::ortho(left, right, bottom, top, -1.0f, 1.0f);
+        m_camera_type = CameraType::ORTHOGRAPHIC;
+        m_projection  = Maths::ortho(left, right, bottom, top, -1.0f, 1.0f);
         UpdateViewMatrix();
     }
 
     OrthographicCamera::OrthographicCamera(float left, float right, float bottom, float top, float degree_angle) {
-        m_projection = Maths::ortho(left, right, bottom, top, -1.0f, 1.0f);
-        m_angle      = Maths::radians(degree_angle);
+        m_camera_type = CameraType::ORTHOGRAPHIC;
+        m_projection  = Maths::ortho(left, right, bottom, top, -1.0f, 1.0f);
+        m_angle       = Maths::radians(degree_angle);
         UpdateViewMatrix();
     }
 

@@ -16,9 +16,11 @@ namespace ZEngine::Rendering::Cameras {
         float GetYawAngle() const {
             return Maths::degrees(m_yaw_angle);
         }
+
         float GetPitchAngle() const {
             return Maths::degrees(m_pitch_angle);
         }
+
         float GetRadius() const {
             return m_radius;
         }
