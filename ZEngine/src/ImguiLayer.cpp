@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <Layers/ImguiLayer.h>
 #include <ZEngineDef.h>
+#include <fmt/format.h>
 
 #ifdef ZENGINE_WINDOW_SDL
 #include <SDL.h>
@@ -35,6 +36,14 @@ namespace ZEngine::Layers {
             ImGui::StyleColorsDark();
 
             ImGuiIO& io = ImGui::GetIO();
+
+            std::string_view      default_layout_ini = "Settings/DefaultLayout.ini";
+            const auto            current_directoy = std::filesystem::current_path();
+            auto                  layout_file_path   = fmt::format("{0}/{1}", current_directoy.string(), default_layout_ini);
+            if (std::filesystem::exists(std::filesystem::path(layout_file_path))) {
+                io.IniFilename  = default_layout_ini.data();
+            }
+
             io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
             io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
             io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
