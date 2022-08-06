@@ -29,6 +29,18 @@ namespace ZEngine::Rendering::Textures {
             return m_texture_id;
         }
 
+        unsigned int GetWidth() const {
+            return m_width;
+        }
+
+        unsigned int GetHeight() const {
+            return m_height;
+        }
+
+        std::string_view GetFilePath() {
+            return m_path;
+        }
+
     protected:
         std::string m_path;
         GLuint      m_texture_id{0};

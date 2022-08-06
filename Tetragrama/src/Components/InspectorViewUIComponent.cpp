@@ -81,7 +81,44 @@ namespace Tetragrama::Components {
 
             if (m_scene_entity->HasComponent<MaterialComponent>()) {
 
-                if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(MaterialComponent).hash_code()), ImGuiTreeNodeFlags_DefaultOpen, "%s", "Material")) {
+                if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(MaterialComponent).hash_code()), ImGuiTreeNodeFlags_DefaultOpen, "%s", "Materials")) {
+                    auto& component            = m_scene_entity->GetComponent<MaterialComponent>();
+                    auto  material             = component.GetMaterial();
+                    auto  material_shader_type = material->GetShaderBuiltInType();
+
+                    const char* built_in_shader_type[] = {"Basic", "Standard"};
+
+                    auto material_name = fmt::format("{0} Material", built_in_shader_type[(int) material_shader_type]);
+                    ImGui::Dummy(ImVec2(0, 3));
+                    Helpers::DrawInputTextControl("Name", material_name, nullptr, true);
+
+                    if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::STANDARD) {
+                        auto standard_material = reinterpret_cast<ZEngine::Rendering::Materials::StandardMaterial*>(material.get());
+
+                        ImGui::Dummy(ImVec2(0, 0.5f));
+
+                        float tile_factor = standard_material->GetTileFactor();
+                        Helpers::DrawDragFloatControl(
+                            "Tile Factor", tile_factor, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetTileFactor(value); });
+                        ImGui::Dummy(ImVec2(0, 0.5f));
+
+                        float shininess = standard_material->GetShininess();
+                        Helpers::DrawDragFloatControl(
+                            "Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetShininess(value); });
+                        ImGui::Dummy(ImVec2(0, 0.5f));
+
+                        auto tint_color      = standard_material->GetTintColor();
+                        auto diffuse_texture = standard_material->GetDiffuseMap();
+                        Helpers::DrawTextureColorControl("Diffuse Map", reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), tint_color, true, nullptr,
+                            [standard_material](auto& value) { standard_material->SetTintColor(value); });
+                        ImGui::Dummy(ImVec2(0, 0.5f));
+
+                        auto specular_texture    = standard_material->GetSpecularMap();
+                        auto specular_tint_color = ZEngine::Maths::Vector4{1, 1, 1, 1};
+                        Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color);
+                        ImGui::Dummy(ImVec2(0, 0.5f));
+                    }
+
                     ImGui::TreePop();
                 }
                 ImGui::Dummy(ImVec2(0, 5));

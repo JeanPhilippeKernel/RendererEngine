@@ -16,4 +16,11 @@ namespace Tetragrama::Helpers {
         const std::function<void(float)>& callback = nullptr, float column_width = 100.0f);
 
     void DrawCenteredButtonControl(std::string_view label, const std::function<void(void)>& callback = nullptr);
+
+    void DrawColorEdit4Control(std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback = nullptr,
+        float default_value = 0.0f, float column_width = 100.0f);
+
+    void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Maths::Vector4& texture_tint_color, bool enable_zoom = true,
+        const std::function<void(void)>& image_click_callback = nullptr, const std::function<void(ZEngine::Maths::Vector4&)>& tint_color_change_callback = nullptr,
+        float column_width = 100.0f);
 } // namespace Tetragrama::Helpers
