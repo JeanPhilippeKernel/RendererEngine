@@ -30,6 +30,13 @@ namespace ZEngine::Rendering::Materials {
         void SetTexture(Textures::Texture* const texture) override;
         void SetTexture(const Ref<Textures::Texture>& texture) override;
 
+        float                 GetTileFactor() const;
+        float                 GetShininess() const;
+        const Maths::Vector4& GetTintColor() const;
+
+        Ref<Textures::Texture> GetSpecularMap() const;
+        Ref<Textures::Texture> GetDiffuseMap() const;
+
     private:
         float                  m_shininess;
         float                  m_tile_factor;
