@@ -113,8 +113,9 @@ namespace Tetragrama::Components {
                             [standard_material](auto& value) { standard_material->SetTintColor(value); });
                         ImGui::Dummy(ImVec2(0, 0.5f));
 
-                        auto specular_texture = standard_material->GetSpecularMap();
-                        Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()));
+                        auto specular_texture    = standard_material->GetSpecularMap();
+                        auto specular_tint_color = ZEngine::Maths::Vector4{1, 1, 1, 1};
+                        Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color);
                         ImGui::Dummy(ImVec2(0, 0.5f));
                     }
 

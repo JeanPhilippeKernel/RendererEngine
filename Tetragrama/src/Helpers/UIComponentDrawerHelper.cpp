@@ -6,7 +6,7 @@ namespace Tetragrama::Helpers {
 
     void DrawVec4Control(
         std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback, float default_value, float column_width) {
-        ImGui::PushID(label.data());
+        ImGui::PushID(label.data(), (label.data() + label.size()));
 
         ImGui::Columns(2);
 
@@ -108,7 +108,7 @@ namespace Tetragrama::Helpers {
 
     void DrawVec3Control(
         std::string_view label, ZEngine::Maths::Vector3& values, const std::function<void(ZEngine::Maths::Vector3&)>& callback, float default_value, float column_width) {
-        ImGui::PushID(label.data());
+        ImGui::PushID(label.data(), (label.data() + label.size()));
 
         ImGui::Columns(2);
 
@@ -192,7 +192,7 @@ namespace Tetragrama::Helpers {
 
     void DrawVec2Control(
         std::string_view label, ZEngine::Maths::Vector2& values, const std::function<void(ZEngine::Maths::Vector2&)>& callback, float default_value, float column_width) {
-        ImGui::PushID(label.data());
+        ImGui::PushID(label.data(), (label.data() + label.size()));
 
         ImGui::Columns(2);
 
@@ -252,7 +252,7 @@ namespace Tetragrama::Helpers {
 
 
     void DrawInputTextControl(std::string_view label, std::string_view content, const std::function<void(std::string_view)>& callback, bool read_only_mode, float column_width) {
-        ImGui::PushID(label.data());
+        ImGui::PushID(label.data(), (label.data() + label.size()));
         ImGui::Columns(2);
 
         ImGui::SetColumnWidth(0, column_width);
@@ -285,7 +285,7 @@ namespace Tetragrama::Helpers {
 
     void DrawDragFloatControl(std::string_view label, float value, float increment_speed, float min_value, float max_value, std::string_view fmt,
         const std::function<void(float)>& callback, float column_width) {
-        ImGui::PushID(label.data());
+        ImGui::PushID(label.data(), (label.data() + label.size()));
         ImGui::Columns(2);
 
         ImGui::SetColumnWidth(0, column_width);
@@ -308,7 +308,7 @@ namespace Tetragrama::Helpers {
 
     void DrawCenteredButtonControl(std::string_view label, const std::function<void(void)>& callback) {
 
-        ImGui::PushID(label.data());
+        ImGui::PushID(label.data(), (label.data() + label.size()));
 
         ImGui::BeginTable("##table", 3);
 
@@ -332,7 +332,7 @@ namespace Tetragrama::Helpers {
 
     void DrawColorEdit4Control(
         std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback, float default_value, float column_width) {
-        ImGui::PushID(label.data());
+        ImGui::PushID(label.data(), (label.data() + label.size()));
 
         ImGui::Columns(2);
 
@@ -357,7 +357,7 @@ namespace Tetragrama::Helpers {
 
     void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Maths::Vector4& tint_color, bool enable_zoom,
         const std::function<void(void)>& image_click_callback, const std::function<void(ZEngine::Maths::Vector4&)>& tint_color_change_callback, float column_width) {
-        ImGui::PushID(label.data());
+        ImGui::PushID(label.data(), (label.data() + label.size()));
         ImGui::Columns(2);
 
         ImGui::SetColumnWidth(0, column_width);
