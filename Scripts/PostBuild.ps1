@@ -46,16 +46,19 @@ $ContentsToProcess = @(
         IsDirectory = $true
         Contents = @(
             if ($SystemNames -eq "Windows"){
-                @{ From = "$RepoRoot\Resources\Windows";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Windows"}
+                @{ From = "$RepoRoot\Resources\Windows";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Windows"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
+                @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings\Fonts"}
             }
             elseif ($SystemNames -eq "Darwin") {
-                @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Unix"}
+                @{ From = "$RepoRoot\Resources\Unix";               To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Unix"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
+                @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings\Fonts"}
             }
             else {
-                @{ From = "$RepoRoot\Resources\Unix";    To = "$OuputBuildDirectory\Tetragrama\src\Resources\Unix"}
+                @{ From = "$RepoRoot\Resources\Unix";               To = "$OuputBuildDirectory\Tetragrama\src\Resources\Unix"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\Settings"}
+                @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\Settings\Fonts"}
             }
         )
     }

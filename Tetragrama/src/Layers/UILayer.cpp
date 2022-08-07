@@ -63,5 +63,9 @@ namespace Tetragrama::Layers {
         IMessenger::Register<ZEngine::Components::UI::UIComponent, EmptyMessage>(m_inspector_view_component, EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED,
             std::bind(&Components::InspectorViewUIComponent::SceneEntityUnSelectedMessageHandler,
                 reinterpret_cast<Components::InspectorViewUIComponent*>(m_inspector_view_component.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, EmptyMessage>(m_inspector_view_component, EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED,
+            std::bind(&Components::InspectorViewUIComponent::SceneEntityDeletedMessageHandler,
+                reinterpret_cast<Components::InspectorViewUIComponent*>(m_inspector_view_component.get()), std::placeholders::_1));
     }
 } // namespace Tetragrama::Layers
