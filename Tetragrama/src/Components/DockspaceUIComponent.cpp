@@ -2,13 +2,14 @@
 #include <DockspaceUIComponent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <Event/EventDispatcher.h>
+#include <imgui/src/imgui_internal.h>
 
 using namespace ZEngine::Components::UI::Event;
 
 namespace Tetragrama::Components {
 
     DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {
-        m_dockspace_node_flag = ImGuiDockNodeFlags_None;
+        m_dockspace_node_flag = ImGuiDockNodeFlags_NoWindowMenuButton;
         m_window_flags        = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
     }
 
