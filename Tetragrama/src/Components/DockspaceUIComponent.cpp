@@ -7,7 +7,7 @@ using namespace ZEngine::Components::UI::Event;
 
 namespace Tetragrama::Components {
 
-    DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility) {
+    DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {
         m_dockspace_node_flag = ImGuiDockNodeFlags_None;
         m_window_flags        = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
     }
@@ -38,12 +38,12 @@ namespace Tetragrama::Components {
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
-        ImGui::Begin(m_name.c_str(), &m_visibility, m_window_flags);
+        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), m_window_flags);
 
         ImGui::PopStyleVar();
         ImGui::PopStyleVar(2);
 
-        ImGuiID dockspace_id = ImGui::GetID("EditorDockspaceUIComponent");
+        ImGuiID dockspace_id = ImGui::GetID("Dockspace");
         ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), m_dockspace_node_flag);
 
         if (ImGui::BeginMenuBar()) {

@@ -2,9 +2,10 @@
 #include <Components/UIComponent.h>
 
 namespace ZEngine::Components::UI {
-    UIComponent::UIComponent(std::string_view name, bool visibility) : m_name(name.data()), m_visibility(visibility) {}
+    UIComponent::UIComponent(std::string_view name, bool visibility, bool can_be_closed) : m_name(name.data()), m_visibility(visibility), m_can_be_closed(can_be_closed) {}
 
-    UIComponent::UIComponent(const Ref<Layers::ImguiLayer>& layer, std::string_view name, bool visibility) : m_parent_layer(layer), m_name(name.data()), m_visibility(visibility) {}
+    UIComponent::UIComponent(const Ref<Layers::ImguiLayer>& layer, std::string_view name, bool visibility, bool can_be_closed)
+        : m_parent_layer(layer), m_name(name.data()), m_visibility(visibility), m_can_be_closed(can_be_closed) {}
 
     void UIComponent::SetName(std::string_view name) {
         std::string_view current(m_name);
