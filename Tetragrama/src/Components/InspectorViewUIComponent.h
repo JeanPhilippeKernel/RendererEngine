@@ -16,11 +16,13 @@ namespace Tetragrama::Components {
     public:
         void SceneEntitySelectedMessageHandler(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>&);
         void SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage&);
+        void SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&);
 
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
 
     private:
+        ImGuiTreeNodeFlags                                m_node_flag;
         ZEngine::Rendering::Entities::GraphicSceneEntity* m_scene_entity{nullptr};
     };
 } // namespace Tetragrama::Components

@@ -17,6 +17,7 @@ namespace ZEngine::Rendering::Materials {
         void SetShininess(float value);
 
         void SetLight(const Ref<Lights::BasicLight>& light);
+        bool HasLight() const;
         void SetViewPosition(const glm::vec3& position);
 
         void Apply(Shaders::Shader* const shader) override;

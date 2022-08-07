@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine.h>
+#include <imgui/src/imgui_internal.h>
 
 namespace Tetragrama::Helpers {
     void DrawVec4Control(std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback = nullptr,
@@ -23,4 +24,50 @@ namespace Tetragrama::Helpers {
     void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Maths::Vector4& texture_tint_color, bool enable_zoom = true,
         const std::function<void(void)>& image_click_callback = nullptr, const std::function<void(ZEngine::Maths::Vector4&)>& tint_color_change_callback = nullptr,
         float column_width = 100.0f);
+
+    template <typename TComponent>
+    void DrawEntityComponentControl(std::string_view component_name, ZEngine::Rendering::Entities::GraphicSceneEntity& entity, ImGuiTreeNodeFlags flags, bool enable_removal_option,
+        const std::function<void(TComponent&)>& component_definition_func) {
+        if (entity.HasComponent<TComponent>()) {
+
+            ImVec2 content_region_available = ImGui::GetContentRegionAvail();
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{2, 2});
+            float line_height = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+
+            bool opened = ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(TComponent).hash_code()), flags, "%s", component_name.data());
+            ImGui::PopStyleVar();
+
+            ImGui::SameLine(content_region_available.x - line_height * 0.5f);
+            if (ImGui::Button("...", ImVec2{line_height, line_height})) {
+                ImGui::OpenPopup("ComponentSettings");
+            }
+
+            bool request_component_removal = false;
+            if (ImGui::BeginPopup("ComponentSettings")) {
+                if (enable_removal_option) {
+                    if (ImGui::MenuItem("Remove Component")) {
+                        request_component_removal = true;
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+
+                ImGui::EndPopup();
+            }
+
+            if (opened) {
+                auto& component = entity.GetComponent<TComponent>();
+                if (component_definition_func) {
+                    component_definition_func(component);
+                }
+                ImGui::TreePop();
+            }
+
+            if (request_component_removal) {
+                entity.RemoveComponent<TComponent>();
+            }
+
+            ImGui::Dummy(ImVec2(0, 5));
+            ImGui::Separator();
+        }
+    }
 } // namespace Tetragrama::Helpers

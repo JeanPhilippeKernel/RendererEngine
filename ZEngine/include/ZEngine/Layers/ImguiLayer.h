@@ -92,6 +92,8 @@ namespace ZEngine::Layers {
             return false;
         }
 
+        virtual void StyleDarkTheme();
+
     private:
         static bool                                   m_initialized;
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;

@@ -8,6 +8,7 @@ namespace Tetragrama {
     static std::string_view EDITOR_COMPONENT_SCENEVIEWPORT_RESIZED           = "editor::component::sceneviewport::resized";
     static std::string_view EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED     = "editor::component::hierarchyview::node_selected";
     static std::string_view EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED   = "editor::component::hierarchyview::node_unselected";
+    static std::string_view EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED      = "editor::component::hierarchyview::node_deleted";
 
     static std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE  = "editor::render_layer::scene::request::resize";
     static std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS   = "editor::render_layer::scene::request::focus";

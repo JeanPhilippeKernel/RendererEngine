@@ -56,8 +56,12 @@ namespace ZEngine::Rendering::Entities {
             return static_cast<uint32_t>(m_entity_handle);
         }
 
+        operator entt::entity() const {
+            return m_entity_handle;
+        }
+
     private:
-        entt::entity            m_entity_handle;
+        entt::entity            m_entity_handle{entt::null};
         WeakRef<entt::registry> m_weak_registry_ptr;
     };
 

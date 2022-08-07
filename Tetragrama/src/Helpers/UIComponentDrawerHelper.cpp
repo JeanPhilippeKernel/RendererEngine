@@ -1,11 +1,13 @@
 #include <pch.h>
 #include <UIComponentDrawerHelper.h>
-#include <imgui/src/imgui_internal.h>
 
 namespace Tetragrama::Helpers {
 
     void DrawVec4Control(
         std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback, float default_value, float column_width) {
+        ImGuiIO& io                = ImGui::GetIO();
+        auto     default_bold_font = io.Fonts->Fonts[0];
+
         ImGui::PushID(label.data(), (label.data() + label.size()));
 
         ImGui::Columns(2);
@@ -23,12 +25,14 @@ namespace Tetragrama::Helpers {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.9f, 0.2f, 0.2f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
+        ImGui::PushFont(default_bold_font);
         if (ImGui::Button("X", button_size)) {
             values.x = default_value;
             if (callback) {
                 callback(values);
             }
         }
+        ImGui::PopFont();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine();
@@ -43,12 +47,14 @@ namespace Tetragrama::Helpers {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.1f, 0.8f, 0.15f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.2f, 0.9f, 0.2f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.1f, 0.8f, 0.15f, 1.0f});
+        ImGui::PushFont(default_bold_font);
         if (ImGui::Button("Y", button_size)) {
             values.y = default_value;
             if (callback) {
                 callback(values);
             }
         }
+        ImGui::PopFont();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine();
@@ -64,12 +70,14 @@ namespace Tetragrama::Helpers {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.1f, 0.15f, 0.8f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.2f, 0.2f, 0.9f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.1f, 0.15f, 0.8f, 1.0f});
+        ImGui::PushFont(default_bold_font);
         if (ImGui::Button("Z", button_size)) {
             values.z = default_value;
             if (callback) {
                 callback(values);
             }
         }
+        ImGui::PopFont();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine();
@@ -85,12 +93,14 @@ namespace Tetragrama::Helpers {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{1.0f, 1.0f, 1.0f, 0.5f});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{1.f, 1.0f, 1.0f, 0.8f});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{1.0f, 1.0f, 1.0f, 0.5f});
+        ImGui::PushFont(default_bold_font);
         if (ImGui::Button("W", button_size)) {
             values.w = default_value;
             if (callback) {
                 callback(values);
             }
         }
+        ImGui::PopFont();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine();
@@ -108,6 +118,9 @@ namespace Tetragrama::Helpers {
 
     void DrawVec3Control(
         std::string_view label, ZEngine::Maths::Vector3& values, const std::function<void(ZEngine::Maths::Vector3&)>& callback, float default_value, float column_width) {
+        ImGuiIO& io                = ImGui::GetIO();
+        auto     default_bold_font = io.Fonts->Fonts[0];
+
         ImGui::PushID(label.data(), (label.data() + label.size()));
 
         ImGui::Columns(2);
@@ -125,12 +138,14 @@ namespace Tetragrama::Helpers {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.9f, 0.2f, 0.2f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
+        ImGui::PushFont(default_bold_font);
         if (ImGui::Button("X", button_size)) {
             values.x = default_value;
             if (callback) {
                 callback(values);
             }
         }
+        ImGui::PopFont();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine();
@@ -145,12 +160,14 @@ namespace Tetragrama::Helpers {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.1f, 0.8f, 0.15f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.2f, 0.9f, 0.2f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.1f, 0.8f, 0.15f, 1.0f});
+        ImGui::PushFont(default_bold_font);
         if (ImGui::Button("Y", button_size)) {
             values.y = default_value;
             if (callback) {
                 callback(values);
             }
         }
+        ImGui::PopFont();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine();
@@ -166,12 +183,14 @@ namespace Tetragrama::Helpers {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.1f, 0.15f, 0.8f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.2f, 0.2f, 0.9f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.1f, 0.15f, 0.8f, 1.0f});
+        ImGui::PushFont(default_bold_font);
         if (ImGui::Button("Z", button_size)) {
             values.z = default_value;
             if (callback) {
                 callback(values);
             }
         }
+        ImGui::PopFont();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine();
@@ -192,6 +211,9 @@ namespace Tetragrama::Helpers {
 
     void DrawVec2Control(
         std::string_view label, ZEngine::Maths::Vector2& values, const std::function<void(ZEngine::Maths::Vector2&)>& callback, float default_value, float column_width) {
+        ImGuiIO& io                = ImGui::GetIO();
+        auto     default_bold_font = io.Fonts->Fonts[0];
+
         ImGui::PushID(label.data(), (label.data() + label.size()));
 
         ImGui::Columns(2);
@@ -209,12 +231,14 @@ namespace Tetragrama::Helpers {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.9f, 0.2f, 0.2f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
+        ImGui::PushFont(default_bold_font);
         if (ImGui::Button("X", button_size)) {
             values.x = default_value;
             if (callback) {
                 callback(values);
             }
         }
+        ImGui::PopFont();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine();
@@ -229,12 +253,14 @@ namespace Tetragrama::Helpers {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.1f, 0.8f, 0.15f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.2f, 0.9f, 0.2f, 1.0f});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.1f, 0.8f, 0.15f, 1.0f});
+        ImGui::PushFont(default_bold_font);
         if (ImGui::Button("Y", button_size)) {
             values.y = default_value;
             if (callback) {
                 callback(values);
             }
         }
+        ImGui::PopFont();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine();

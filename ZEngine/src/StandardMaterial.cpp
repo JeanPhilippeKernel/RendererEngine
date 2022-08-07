@@ -31,6 +31,10 @@ namespace ZEngine::Rendering::Materials {
         m_light = light;
     }
 
+    bool StandardMaterial::HasLight() const {
+        return m_light.use_count() > 0;
+    }
+
     void StandardMaterial::SetViewPosition(const glm::vec3& position) {
         m_view_position = position;
     }

@@ -3,7 +3,7 @@
 
 namespace ZEngine::Rendering::Components {
     struct TransformComponent {
-        TransformComponent(const Maths::Vector3& position = {0.0f, 0.0f, 0.0f}, const Maths::Vector3& scale_size = {0.0f, 0.0f, 0.0f},
+        TransformComponent(const Maths::Vector3& position = {0.0f, 0.0f, 0.0f}, const Maths::Vector3& scale_size = {10.0f, 10.0f, 10.0f},
             const Maths::Vector3& rotation_axis = {0.0f, 1.0f, 0.0f}, float rotation_angle = 0.0f)
             : m_position(position), m_scale_size(scale_size), m_rotation_axis(rotation_axis), m_rotation_angle(rotation_angle) {}
 
