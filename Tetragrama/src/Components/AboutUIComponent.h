@@ -4,7 +4,7 @@
 namespace Tetragrama::Components {
     class AboutUIComponent : public ZEngine::Components::UI::UIComponent {
     public:
-        AboutUIComponent(std::string_view name = "AboutUIComponent", bool visibility = true) : UIComponent(name, visibility) {}
+        AboutUIComponent(std::string_view name = "AboutUIComponent", bool visibility = true) : UIComponent(name, visibility, true) {}
         virtual ~AboutUIComponent() = default;
 
         virtual void Render() override {

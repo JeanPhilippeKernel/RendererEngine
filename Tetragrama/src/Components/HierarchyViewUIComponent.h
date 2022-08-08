@@ -6,7 +6,7 @@
 namespace Tetragrama::Components {
     class HierarchyViewUIComponent : public ZEngine::Components::UI::UIComponent {
     public:
-        HierarchyViewUIComponent(std::string_view name = "HierarchyViewUIComponent", bool visibility = true);
+        HierarchyViewUIComponent(std::string_view name = "Hierarchy", bool visibility = true);
         virtual ~HierarchyViewUIComponent();
 
         void Update(ZEngine::Core::TimeStep dt) override;
