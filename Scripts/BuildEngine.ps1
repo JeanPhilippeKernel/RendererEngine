@@ -92,7 +92,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'GLFW '= @('-DGLFW_BUILD_DOCS=OFF', '-DGLFW_BUILD_EXAMPLES=OFF', '-DGLFW_INSTALL=OFF');
         'ASSIMP'=@('-DASSIMP_BUILD_TESTS=OFF', '-DASSIMP_INSTALL=OFF', '-DASSIMP_BUILD_SAMPLES=OFF', '-DASSIMP_BUILD_ASSIMP_TOOLS=OFF');
         'STDUUID'=@('-DUUID_BUILD_TESTS=OFF', '-DUUID_USING_CXX20_SPAN=ON');
-        'DSDL'=@('-DSDL_STATIC=ON', '-DSDL_SHARED=OFF');
         'FRAMEWORK'=@('-DBUILD_FRAMEWORK=ON');
     }  
 
@@ -116,7 +115,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         }
         "Linux" { 
             $cMakeGenerator = "-G `"Unix Makefiles`""
-            $cMakeCacheVariableOverride += $submoduleCMakeOptions.DSDL -join ' ' 
+            $cMakeCacheVariableOverride += $submoduleCMakeOptions.SDL2 -join ' ' 
 
             # Set Linux build compiler
             $env:CC = '/usr/bin/gcc-11'

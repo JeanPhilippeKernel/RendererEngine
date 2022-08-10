@@ -44,7 +44,7 @@ elseif ($IsWindows) {
 }
 
 [string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
-[string]$OuputBuildDirectory = If($SystemName -eq 'Windows') { 
+[string]$OuputBuildDirectory = If($IsWindows) { 
     [IO.Path]::Combine($RepoRoot, "Result.Windows.x64.MultiConfig") 
 }  Else { 
     [IO.Path]::Combine($RepoRoot, "Result.$SystemName.x64.$Configurations")
@@ -55,12 +55,12 @@ $ContentsToProcess = @(
         Name = "Resources"
         IsDirectory = $true
         Contents = @(
-            if ($SystemName -eq "Windows"){
+            if ($IsWindows){
                 @{ From = "$RepoRoot\Resources\Windows";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Windows"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
                 @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings\Fonts"}
             }
-            elseif ($SystemName -eq "Darwin") {
+            elseif ($IsMacOS) {
                 @{ From = "$RepoRoot\Resources\Unix";               To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Unix"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
                 @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings\Fonts"}
@@ -76,10 +76,10 @@ $ContentsToProcess = @(
         Name = "Assets"
         IsDirectory = $true
         Contents = @(
-            if ($SystemName -eq "Windows") {
+            if ($IsWindows) {
                 @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Assets"}
             }
-            elseif ($SystemName -eq "Darwin") {
+            elseif ($IsMacOS) {
                 @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Assets"}
             }
             else {
