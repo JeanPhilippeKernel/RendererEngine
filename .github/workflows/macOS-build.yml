@@ -23,5 +23,5 @@ jobs:
       run: git submodule update --init --recursive
 
     - name: CMake Build
-      run: .\Scripts\BuildEngine.ps1 -SystemNames ${{matrix.buildSystem}} -Architectures ${{matrix.buildPlatform}} -Configurations ${{matrix.buildConfiguration}}
+      run: .\Scripts\BuildEngine.ps1  -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh
