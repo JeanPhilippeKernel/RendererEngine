@@ -43,6 +43,14 @@ namespace ZEngine::Window::GLFWWindow {
         });
 
         m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
+        glfwMaximizeWindow(m_native_window);
+
+        int          window_width = 0, window_height = 0;
+        glfwGetWindowSize(m_native_window, &window_width, &window_height);
+        if ((window_width > 0) && (window_height > 0)) {
+            m_property.SetWidth(window_width);
+            m_property.SetHeight(window_height);
+        }
 
         ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
 

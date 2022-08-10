@@ -6,7 +6,7 @@
 namespace Tetragrama::Components {
     class InspectorViewUIComponent : public ZEngine::Components::UI::UIComponent {
     public:
-        InspectorViewUIComponent(std::string_view name = "InspectorViewUIComponent", bool visibility = true);
+        InspectorViewUIComponent(std::string_view name = "Inspector", bool visibility = true);
         virtual ~InspectorViewUIComponent();
 
         void Update(ZEngine::Core::TimeStep dt) override;

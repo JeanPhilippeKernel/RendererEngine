@@ -6,7 +6,7 @@ using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Components;
 
 namespace Tetragrama::Components {
-    InspectorViewUIComponent::InspectorViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility) {
+    InspectorViewUIComponent::InspectorViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {
         m_node_flag =
             ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding;
     }
@@ -32,7 +32,7 @@ namespace Tetragrama::Components {
     }
 
     void InspectorViewUIComponent::Render() {
-        ImGui::Begin(m_name.c_str(), &m_visibility, ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
         if (m_scene_entity) {
             Helpers::DrawEntityComponentControl<NameComponent>("Name", *m_scene_entity, m_node_flag, false, [](NameComponent& component) {

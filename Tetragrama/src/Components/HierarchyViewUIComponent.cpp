@@ -7,7 +7,7 @@ using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Rendering::Entities;
 
 namespace Tetragrama::Components {
-    HierarchyViewUIComponent::HierarchyViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility) {
+    HierarchyViewUIComponent::HierarchyViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {
         m_node_flag = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
     }
 
@@ -24,7 +24,7 @@ namespace Tetragrama::Components {
     }
 
     void HierarchyViewUIComponent::Render() {
-        ImGui::Begin(m_name.c_str(), &m_visibility, ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
         if (!m_active_scene.expired()) {
             auto scene_ptr = m_active_scene.lock();
