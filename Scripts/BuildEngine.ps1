@@ -24,160 +24,143 @@
 #Requires -PSEdition Core
 
 param (
-    [Parameter(HelpMessage="Configuration type to build")]
+    [Parameter(HelpMessage = "configuration type to build")]
     [ValidateSet('Debug', 'Release')]
     [string[]] $Configurations = @('Debug', 'Release'),
 
-    [Parameter(HelpMessage="Whether to run build, default to True")]
+    [Parameter(HelpMessage = "Whether to run build, default to True")]
     [bool] $RunBuilds = $True,
 
-    [Parameter(HelpMessage="VS version use to build, default to 2019")]
+    [Parameter(HelpMessage = "VS version use to build, default to 2019")]
     [ValidateSet(2019, 2022)]
-    [int] $VSVersion = 2019
+    [int] $VsVersion = 2019
 )
-
-
-##Define None variables
-Set-Variable ARCHITECTURE -Option None -value 'x64'
-Set-Variable SYSTEM_NAMES -Option None -value 'Windows', 'Linux', 'Darwin'
-
-# # CMake arguments variables
-
-Set-Variable CMAKE_GENERATOR_DARWIN -Option None -value 'Xcode'
-Set-Variable CMAKE_GENERATOR_UNIX -Option None -value 'Unix Makefiles'
-
-# VS Version supported
-Set-Variable VS16 -Option None -value 'Visual Studio 16 2019'
-Set-Variable VS17 -Option None -value 'Visual Studio 17 2022'
-
 
 $ErrorActionPreference = "Stop"
 [string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 
 . (Join-Path $PSScriptRoot Shared.ps1)
 
-$CMakeProgram  =  Find-CMake
-
-if($CMakeProgram) {
+$cMakeProgram = Find-CMake
+if ($cMakeProgram) {
     Write-Host "CMake program found..."
-}else{
+}
+else {
     throw 'CMake program not found'
-    exit(1)
 }
 
-function Build([string]$Configuration ="Debug", [int]$VSVersion = 2019 ,[bool]$RunBuild =$True) {
+function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
-    #Check if the OS allow multiple configguration, if not windows this value will'be false
-    $IsMultipleConfig = $IsWindows
+    $architecture = 'x64'
 
-    #Check System name
+    # Check if the OS allow multiple configguration, if not windows this value will'be false
+    $isMultipleConfig = $IsWindows
+
+    # Check System name
     if ($IsLinux) {
-        $SystemName =  "Linux"
+        $systemName = "Linux"
+        $cMakeGenerator 
     }
     elseif ($IsMacOS) {
-        $SystemName =   "Darwin"
+        $systemName = "Darwin"
     }
     elseif ($IsWindows) {
-        $SystemName =  "Windows"
-    }else{
+        $systemName = "Windows"
+    }
+    else {
         throw 'The OS is not supported' 
     }
 
+    Write-Host "Building $systemName $architecture $configuration"
 
-    Write-Host "Building $SystemName $Configuration"
-
-    [string]$BuildDirectoryNameExtension = If($IsMultipleConfig) { "MultiConfig" } Else { $Configuration }
-    [string]$BuildDirectoryName = "Result." + $SystemName + "." + $ARCHITECTURE + "." + $BuildDirectoryNameExtension
-    [string]$BuildDirectoryPath = [IO.Path]::Combine($RepoRoot, $BuildDirectoryName)
-    [string]$CMakeCacheVariableOverride = ""
-    [string]$CMakeGenerator = ""
+    [string]$BuildDirectoryNameExtension = If ($isMultipleConfig) { "MultiConfig" } Else { $configuration }
+    [string]$BuildDirectoryName = "Result." + $systemName + "." + $architecture + "." + $BuildDirectoryNameExtension
+    [string]$buildDirectoryPath = [IO.Path]::Combine($RepoRoot, $BuildDirectoryName)
+    [string]$cMakeCacheVariableOverride = ""
+    [string]$cMakeGenerator = ""
 
     # Create build directory
-    #
-    if(-Not (Test-Path $BuildDirectoryPath)) {
-        mkdir $BuildDirectoryPath
+    if (-Not (Test-Path $buildDirectoryPath)) {
+        mkdir $buildDirectoryPath
     } 
 
-    #Building CMake arguments switch to System
-
-    switch ($SystemName) {
+    # Building CMake arguments switch to System
+    switch ($systemName) {
         "Windows" { 
-            switch ($VSVersion) {
+            switch ($VsVersion) {
                 2019 { 
-                    $CMakeGenerator = "-G `"$VS16`" -A $ARCHITECTURE"
-                 }
+                    $cMakeGenerator = "-G `"Visual Studio 16 2019`" -A $architecture"
+                }
                 2022 { 
-                    $CMakeGenerator = "-G `"$VS17`" -A $ARCHITECTURE"
-                 }
+                    $cMakeGenerator = "-G `"Visual Studio 17 2022`" -A $architecture"
+                }
                 Default {
                     throw 'This version of Visual Studio is not supported' 
                 }
-            }
-          
-            $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,'DCMAKE_CONFIGURATION_TYPES=Debug;Release' -join " -"
-         }
+            }          
+            $cMakeCacheVariableOverride = $cMakeCacheVariableOverride, 'DCMAKE_CONFIGURATION_TYPES=Debug;Release' -join " -"
+        }
+        "Linux" { 
+            $cMakeGenerator = "-G `"Unix Makefiles`""
+            $cMakeCacheVariableOverride = $cMakeCacheVariableOverride, 'DSDL_STATIC=ON', 'DSDL_SHARED=OFF' -join " -"
 
-         "Linux" { 
-            $CMakeGenerator = "-G `"$CMAKE_GENERATOR_UNIX`""
-            $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,'DSDL_STATIC=ON','DSDL_SHARED=OFF' -join " -"
-
-            #Set Linux build compiler
-            $env:CC= '/usr/bin/gcc-11'
-            $env:CXX= '/usr/bin/g++-11'
+            # Set Linux build compiler
+            $env:CC = '/usr/bin/gcc-11'
+            $env:CXX = '/usr/bin/g++-11'
         }
         "Darwin" { 
-            $CMakeGenerator = "-G `"$CMAKE_GENERATOR_DARWIN`""
-            $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,'DBUILD_FRAMEWORK=ON' -join " -"
+            $cMakeGenerator = "-G `"Xcode`""
+            $cMakeCacheVariableOverride = $cMakeCacheVariableOverride, 'DBUILD_FRAMEWORK=ON' -join " -"
         }
         Default {
             throw 'This system is not supported'
         }
     }
 
-    $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,('DCMAKE_SYSTEM_NAME='+$SystemName),
-    ('DCMAKE_BUILD_TYPE='+$configuration),'DBUILD_SANDBOX_PROJECTS=ON','DENTT_INCLUDE_HEADERS=ON','DSPDLOG_BUILD_SHARED=OFF','DBUILD_STATIC_LIBS=ON','DSPDLOG_FMT_EXTERNAL=ON','DSPDLOG_FMT_EXTERNAL_HO=OFF','DASSIMP_BUILD_TESTS=OFF','DASSIMP_INSTALL=OFF','DASSIMP_BUILD_SAMPLES=OFF','DASSIMP_BUILD_ASSIMP_TOOLS=OFF','DUUID_BUILD_TESTS=OFF','DUUID_USING_CXX20_SPAN=ON' -join " -"
-
-    if(!$IsLinux){
-        $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,'DGLFW_BUILD_DOCS=OFF','DGLFW_BUILD_EXAMPLES=OFF','DGLFW_INSTALL=OFF' -join " -"
+    $cMakeOptions = @("DCMAKE_SYSTEM_NAME=$systemName","DCMAKE_BUILD_TYPE=$configuration", "DBUILD_SANDBOX_PROJECTS=ON", "DENTT_INCLUDE_HEADERS=ON")
+    $submoduleCMakeOptions = @{
+        'SDL2' = @("DSDL_STATIC=ON", "DSDL_SHARED=OFF");
+        'SPDLOG' = @('DSPDLOG_BUILD_SHARED=OFF', 'DBUILD_STATIC_LIBS=ON', 'DSPDLOG_FMT_EXTERNAL=ON', 'DSPDLOG_FMT_EXTERNAL_HO=OFF');
+        'GLFW '= @('DGLFW_BUILD_DOCS=OFF', 'DGLFW_BUILD_EXAMPLES=OFF', 'DGLFW_INSTALL=OFF');
+        'ASSIMP'=@('DASSIMP_BUILD_TESTS=OFF', 'DASSIMP_INSTALL=OFF', 'DASSIMP_BUILD_SAMPLES=OFF', 'DASSIMP_BUILD_ASSIMP_TOOLS=OFF');
+        'STDUUID'=@('DUUID_BUILD_TESTS=OFF', 'DUUID_USING_CXX20_SPAN=ON');
+    }  
+    $cMakeCacheVariableOverride = $cMakeCacheVariableOverride + ($cMakeOptions -join ' -') + ($submoduleCMakeOptions.SPDLOG + $submoduleCMakeOptions.ASSIMP + $submoduleCMakeOptions.STDUUID -join ' -')
+    if (-not $IsLinux) {
+        $cMakeCacheVariableOverride = $cMakeCacheVariableOverride + $submoduleCMakeOptions.GLFW -join ' -'
     }
-
-    $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
-   
+    
+    $cMakeArguments = " -S $RepoRoot -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
 
     # CMake Generation process
-    #
-    Write-Host $CMakeArguments
-    $CMakeProcess = Start-Process $CMakeProgram -ArgumentList $CMakeArguments -NoNewWindow -Wait -PassThru
-   
-    if ($CMakeProcess.ExitCode -ne 0 ){
-        throw "cmake failed generation for '$CMakeArguments' with exit code '$CMakeProcess.ExitCode'"
+    Write-Host $cMakeArguments
+    $cMakeProcess = Start-Process $cMakeProgram -ArgumentList $cMakeArguments -NoNewWindow -Wait -PassThru   
+    if ($cMakeProcess.ExitCode -ne 0 ) {
+        throw "cmake failed generation for '$cMakeArguments' with exit code '$cMakeProcess.ExitCode'"
     }
 
     # CMake build processing
-    if($RunBuild){
-        if($CMakeGenerator -like 'Visual Studio*'){
-             # With a Visual Studio Generator, `msbuild.exe` is used to run the build. By default, `msbuild.exe` will
+    if ($runBuild) {
+        if ($cMakeGenerator -like 'Visual Studio*') {
+            # With a Visual Studio Generator, `msbuild.exe` is used to run the build. By default, `msbuild.exe` will
             # launch worker processes to opportunistically re-use for subsequent builds. To cause the worker processes
             # to exit at the end of the main process, pass `-nodeReuse:false`.
-            $BuildToolOptions = '-nodeReuse:false'
+            $buildToolOptions = '-nodeReuse:false'
         }
 
-        $BuildArguments = "--build $BuildDirectoryPath --config $Configuration"
-
-        if($BuildToolOptions){
-            $BuildArguments = $BuildArguments,$BuildToolOptions -join " --"
+        $buildArguments = "--build $buildDirectoryPath --config $configuration"
+        if ($buildToolOptions) {
+            $buildArguments = $buildArguments, $buildToolOptions -join " --"
         }
 
-        $BuildProcess = Start-Process $CMakeProgram -ArgumentList $BuildArguments -NoNewWindow -Wait -PassThru
-
-        $BuildProcess.WaitForExit();
-
-        if($BuildProcess.ExitCode -ne 0){
-            throw "cmake failed build for '$BuildArguments' with exit code '$BuildProcess.ExitCode'"
+        $buildProcess = Start-Process $cMakeProgram -ArgumentList $buildArguments -NoNewWindow -Wait -PassThru
+        $buildProcess.WaitForExit();
+        if ($buildProcess.ExitCode -ne 0) {
+            throw "cmake failed build for '$buildArguments' with exit code '$buildProcess.ExitCode'"
         }
     }
 }
 
-        foreach ($config in $Configurations) {
-            Build $config $VSVersion $RunBuilds 
-        }
+foreach ($config in $Configurations) {
+    Build $config $VsVersion $RunBuilds 
+}

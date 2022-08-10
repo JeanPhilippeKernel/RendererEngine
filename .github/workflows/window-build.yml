@@ -11,8 +11,6 @@ jobs:
     runs-on: windows-2019
     strategy:
       matrix:
-          buildSystem: [Windows]
-          buildPlatform: [x64]
           buildConfiguration: [Debug, Release]
 
     steps:      
@@ -28,5 +26,5 @@ jobs:
         cmake-version: '3.20.x'
 
     - name: CMake Build
-      run: .\Scripts\BuildEngine.ps1  -Configurations ${{matrix.buildConfiguration}}
+      run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh

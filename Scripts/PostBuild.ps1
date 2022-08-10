@@ -23,10 +23,6 @@
 #Requires -PSEdition Core
 
 param (
-    # [Parameter(HelpMessage="System name to build, default to all")]
-    # [ValidateSet('Windows', 'Linux', 'Darwin')]
-    # [string[]] $SystemNames = @('Windows', 'Linux', 'Darwin'),
-
     [Parameter(HelpMessage="Configuration type to build, default to Debug")]
     [ValidateSet('Debug', 'Release')]
     [string[]] $Configurations = 'Debug'
