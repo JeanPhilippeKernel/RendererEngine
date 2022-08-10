@@ -23,9 +23,9 @@
 #Requires -PSEdition Core
 
 param (
-    [Parameter(HelpMessage="System name to build, default to all")]
-    [ValidateSet('Windows', 'Linux', 'Darwin')]
-    [string[]] $SystemNames = @('Windows', 'Linux', 'Darwin'),
+    # [Parameter(HelpMessage="System name to build, default to all")]
+    # [ValidateSet('Windows', 'Linux', 'Darwin')]
+    # [string[]] $SystemNames = @('Windows', 'Linux', 'Darwin'),
 
     [Parameter(HelpMessage="Configuration type to build, default to Debug")]
     [ValidateSet('Debug', 'Release')]
@@ -33,11 +33,25 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
+
+   #Check System name
+if ($IsLinux) {
+    $SystemName =  "Linux"
+}
+elseif ($IsMacOS) {
+    $SystemName =   "Darwin"
+}
+elseif ($IsWindows) {
+    $SystemName =  "Windows"
+}else{
+    throw 'The OS is not supported' 
+}
+
 [string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
-[string]$OuputBuildDirectory = If($SystemNames -eq 'Windows') { 
+[string]$OuputBuildDirectory = If($SystemName -eq 'Windows') { 
     [IO.Path]::Combine($RepoRoot, "Result.Windows.x64.MultiConfig") 
 }  Else { 
-    [IO.Path]::Combine($RepoRoot, "Result.$SystemNames.x64.$Configurations")
+    [IO.Path]::Combine($RepoRoot, "Result.$SystemName.x64.$Configurations")
 }
 
 $ContentsToProcess = @(
@@ -45,12 +59,12 @@ $ContentsToProcess = @(
         Name = "Resources"
         IsDirectory = $true
         Contents = @(
-            if ($SystemNames -eq "Windows"){
+            if ($SystemName -eq "Windows"){
                 @{ From = "$RepoRoot\Resources\Windows";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Windows"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
                 @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings\Fonts"}
             }
-            elseif ($SystemNames -eq "Darwin") {
+            elseif ($SystemName -eq "Darwin") {
                 @{ From = "$RepoRoot\Resources\Unix";               To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Unix"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
                 @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings\Fonts"}
@@ -66,10 +80,10 @@ $ContentsToProcess = @(
         Name = "Assets"
         IsDirectory = $true
         Contents = @(
-            if ($SystemNames -eq "Windows") {
+            if ($SystemName -eq "Windows") {
                 @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Assets"}
             }
-            elseif ($SystemNames -eq "Darwin") {
+            elseif ($SystemName -eq "Darwin") {
                 @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Assets"}
             }
             else {
