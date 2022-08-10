@@ -381,6 +381,31 @@ namespace Tetragrama::Helpers {
         ImGui::PopID();
     }
 
+    void DrawColorEdit3Control(
+        std::string_view label, ZEngine::Maths::Vector3& values, const std::function<void(ZEngine::Maths::Vector3&)>& callback, float default_value, float column_width) {
+        ImGui::PushID(label.data(), (label.data() + label.size()));
+
+        ImGui::Columns(2);
+
+        ImGui::SetColumnWidth(0, column_width);
+        ImGui::Text(label.data());
+        ImGui::NextColumn();
+
+        ImGui::PushMultiItemsWidths(1, ImGui::CalcItemWidth() + 60.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.5f, 0});
+
+        if (ImGui::ColorEdit3("##TintColor", ZEngine::Maths::value_ptr(values))) {
+            if (callback) {
+                callback(values);
+            }
+        }
+
+        ImGui::PopItemWidth();
+        ImGui::PopStyleVar();
+        ImGui::Columns(1);
+        ImGui::PopID();
+    }
+
     void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Maths::Vector4& tint_color, bool enable_zoom,
         const std::function<void(void)>& image_click_callback, const std::function<void(ZEngine::Maths::Vector4&)>& tint_color_change_callback, float column_width) {
         ImGui::PushID(label.data(), (label.data() + label.size()));

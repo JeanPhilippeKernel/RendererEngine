@@ -10,14 +10,21 @@ namespace ZEngine::Controllers {
     class OrthographicCameraController : public ICameraController, public Inputs::IMouseEventCallback, public Window::ICoreWindowEventCallback {
 
     public:
-        OrthographicCameraController() = default;
+        OrthographicCameraController() {
+            m_controller_type = CameraControllerType::ORTHOGRAPHIC_CONTROLLER;
+        }
+
         OrthographicCameraController(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window, bool can_rotate = false)
             : ICameraController(window, can_rotate),
-              m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor)) {}
+              m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor)) {
+                m_controller_type = CameraControllerType::ORTHOGRAPHIC_CONTROLLER;
+        }
 
         OrthographicCameraController(float aspect_ratio)
             : ICameraController(aspect_ratio),
-              m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor)) {}
+              m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor)) {
+                m_controller_type = CameraControllerType::ORTHOGRAPHIC_CONTROLLER;
+        }
 
         virtual ~OrthographicCameraController() = default;
 

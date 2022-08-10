@@ -64,7 +64,7 @@ namespace ZENGINE_COROUTINE_NAMESPACE {
                 return {};
             }
 
-            void return_value() {
+            void return_void() {
                 m_promise.set_value();
             }
 
@@ -88,7 +88,7 @@ namespace ZENGINE_COROUTINE_NAMESPACE {
 
         void await_suspend(coroutine_handle<> callback) {
 
-            thread worker_thread([this, callback]() mutable {
+            thread worker_thread([&m_internal_future = m_internal_future, callback]() mutable {
                 m_internal_future.wait();
                 callback();
             });

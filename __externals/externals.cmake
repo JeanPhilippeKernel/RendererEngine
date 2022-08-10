@@ -68,6 +68,12 @@ set_target_properties(imported::stduuid PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
 target_link_libraries(imported::stduuid INTERFACE stduuid)
 
 
+# yaml-cpp
+add_library (imported::yaml-cpp INTERFACE IMPORTED)
+set (YAML_CPP_INCLUDE_PATH ${EXTERNAL_DIR}/yaml-cpp/include)
+set_target_properties(imported::yaml-cpp PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${YAML_CPP_INCLUDE_PATH}")
+target_link_libraries(imported::yaml-cpp INTERFACE yaml-cpp)
+
 # Exporting all externals include directories
 list (APPEND EXTERNAL_INCLUDE_DIRS
 	${FMT_INCLUDE_PATH}
@@ -80,4 +86,5 @@ list (APPEND EXTERNAL_INCLUDE_DIRS
 	${ENTT_INCLUDE_PATH}
 	${ASSIMP_INCLUDE_PATH}
 	${STDUUID_INCLUDE_PATH}
+	${YAML_CPP_INCLUDE_PATH}
 )

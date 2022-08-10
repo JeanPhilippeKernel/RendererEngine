@@ -101,6 +101,24 @@ namespace Tetragrama::Components {
                 }
             });
 
+            Helpers::DrawEntityComponentControl<LightComponent>("Lighting", *m_scene_entity, m_node_flag, true, [](LightComponent& component) {
+                auto light = component.GetLight();
+
+                ImGui::Dummy(ImVec2(0, 3));
+
+                auto ambient_color = light->GetAmbientColor();
+                Helpers::DrawColorEdit3Control("Ambient", ambient_color, [&light](ZEngine::Maths::Vector3& value) { light->SetAmbientColor(value); });
+                ImGui::Dummy(ImVec2(0, 0.5f));
+
+                auto diffuse_color = light->GetDiffuseColor();
+                Helpers::DrawColorEdit3Control("Diffuse", diffuse_color, [&light](ZEngine::Maths::Vector3& value) { light->SetDiffuseColor(value); });
+                ImGui::Dummy(ImVec2(0, 0.5f));
+
+                auto specular_color = light->GetSpecularColor();
+                Helpers::DrawColorEdit3Control("Specular", specular_color, [&light](ZEngine::Maths::Vector3& value) { light->SetSpecularColor(value); });
+                ImGui::Dummy(ImVec2(0, 0.5f));
+            });
+
             // Camera
             Helpers::DrawEntityComponentControl<CameraComponent>("Camera", *m_scene_entity, m_node_flag, true, [this](CameraComponent& component) {
                 auto const camera_controller = component.GetCameraController();
@@ -141,7 +159,8 @@ namespace Tetragrama::Components {
                     ImGui::Dummy(ImVec2(0, 3));
 
                     // Camera Controller Type
-                    if (auto orbit_controller = dynamic_cast<ZEngine::Controllers::OrbitCameraController*>(camera_controller)) {
+                    if (camera_controller->GetControllerType() == ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER) {
+                        auto orbit_controller = reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(camera_controller);
                         if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(orbit_controller).hash_code()), m_node_flag, "%s", "Controller (Orbit)")) {
                             auto       camera       = orbit_controller->GetCamera();
                             auto const orbit_camera = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
@@ -186,6 +205,13 @@ namespace Tetragrama::Components {
                     material->SetSpecularMap(ZEngine::Rendering::Textures::CreateTexture(1, 1));
 
                     m_scene_entity->AddComponent<MaterialComponent>(std::move(material));
+                    ImGui::CloseCurrentPopup();
+                }
+
+                if (ImGui::MenuItem("Light")) {
+                    m_scene_entity->AddComponent<LightComponent>(
+                        ZEngine::Maths::Vector3{0.2f, 0.2f, 0.2f}, ZEngine::Maths::Vector3{0.5f, 0.5f, 0.5f}, ZEngine::Maths::Vector3{1.0f, 1.0f, 1.0f});
+
                     ImGui::CloseCurrentPopup();
                 }
 

@@ -7,6 +7,7 @@
 namespace ZEngine::Rendering::Entities {
     class GraphicSceneEntity {
     public:
+        GraphicSceneEntity() = default;
         GraphicSceneEntity(entt::entity handle, Ref<entt::registry> registry_ptr);
         GraphicSceneEntity(GraphicSceneEntity&& rhs) noexcept;
         virtual ~GraphicSceneEntity() = default;

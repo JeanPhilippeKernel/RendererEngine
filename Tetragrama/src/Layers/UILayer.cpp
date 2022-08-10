@@ -30,6 +30,12 @@ namespace Tetragrama::Layers {
         this->AddUIComponent(m_dockspace_component);
 
         // Register components
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<ZEngine::Event::WindowClosedEvent>>(m_dockspace_component,
+            EDITOR_COMPONENT_DOCKSPACE_REQUEST_EXIT,
+            std::bind(&Components::DockspaceUIComponent::RequestExitMessageHandler, reinterpret_cast<Components::DockspaceUIComponent*>(m_dockspace_component.get()),
+                std::placeholders::_1));
+
         IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<uint32_t>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE,
             std::bind(&Components::SceneViewportUIComponent::SceneTextureAvailableMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
                 std::placeholders::_1));
@@ -45,6 +51,10 @@ namespace Tetragrama::Layers {
         IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<std::pair<float, float>>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_RESIZED,
             std::bind(&Components::SceneViewportUIComponent::SceneViewportResizedMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
                 std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, EmptyMessage>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_REQUEST_RECOMPUTATION,
+            std::bind(&Components::SceneViewportUIComponent::SceneViewportRequestRecomputationMessageHandler,
+                reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()), std::placeholders::_1));
 
         IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<std::vector<std::string>>>(m_editor_log_component, EDITOR_COMPONENT_LOG_RECEIVE_LOG_MESSAGE,
             std::bind(

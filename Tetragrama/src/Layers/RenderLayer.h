@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <queue>
 #include <ZEngine/ZEngine.h>
 #include <Components/Events/SceneViewportResizedEvent.h>
 #include <Components/Events/SceneViewportFocusedEvent.h>
@@ -25,13 +26,16 @@ namespace Tetragrama::Layers {
         void SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>&);
         void SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>&);
         void SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>&);
+        void SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>&);
+        void SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>&);
 
     protected:
         void OnSceneRenderCompletedCallback(uint32_t);
 
     private:
-        ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene> m_scene;
-        ZEngine::Ref<ZEngine::Managers::TextureManager>        m_texture_manager;
+        ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>     m_scene;
+        ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;
+        std::queue<std::function<void(void)>>                     m_deferral_operation;
     };
 
 } // namespace Tetragrama::Layers

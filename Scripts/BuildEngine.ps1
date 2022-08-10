@@ -122,6 +122,14 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
     #
     $CMakeCacheVariableOverride += " -DUUID_BUILD_TESTS=OFF"
     $CMakeCacheVariableOverride += " -DUUID_USING_CXX20_SPAN=ON"
+    $CMakeCacheVariableOverride += " -DUUID_SYSTEM_GENERATOR=OFF"
+
+    # YAM-CPP options
+    #
+    $CMakeCacheVariableOverride += " -DYAML_CPP_BUILD_TOOLS=OFF"
+    $CMakeCacheVariableOverride += " -DYAML_CPP_BUILD_TESTS=OFF"
+    $CMakeCacheVariableOverride += " -DYAML_CPP_FORMAT_SOURCE=OFF"
+    $CMakeCacheVariableOverride += " -DYAML_BUILD_SHARED_LIBS=OFF"
 
     $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
 

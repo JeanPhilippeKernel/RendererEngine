@@ -60,6 +60,7 @@ namespace ZEngine::Rendering::Textures {
         }
 
         stbi_image_free(image_data);
+        m_is_from_file = true;
     }
 
     Texture2D::Texture2D(unsigned int width, unsigned int height) : Texture(width, height) {
@@ -86,16 +87,24 @@ namespace ZEngine::Rendering::Textures {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 #endif
-        const char* data = "\xff\xff\xff\xff"; // R:255 G: 255 B: 255 A: 255
+        unsigned char data[] = {255, 255, 255, 255, '\0'}; // R:255 G: 255 B: 255 A: 255
+        // unsigned char data[] = {'\xff', '\xff', '\xff', '\xff', '\0'}; // R:255 G: 255 B: 255 A: 255
         SetData(data);
     }
 
-    void Texture2D::SetData(const void* data) {
+    void Texture2D::SetData(void* const data) {
 #ifdef _WIN32
         glTextureSubImage2D(m_texture_id, 0, 0, 0, m_width, m_height, m_data_format, GL_UNSIGNED_BYTE, data);
 #else
         glTexImage2D(GL_TEXTURE_2D, 0, m_internal_format, m_width, m_height, 0, m_data_format, GL_UNSIGNED_BYTE, data);
 #endif
+        m_is_from_file = false;
+
+        auto data_ptr  = reinterpret_cast<unsigned char*>(data);
+        m_r            = *(data_ptr + 0);
+        m_g            = *(data_ptr + 1);
+        m_b            = *(data_ptr + 2);
+        m_a            = *(data_ptr + 3);
     }
 
     void Texture2D::SetData(float r, float g, float b, float a) {

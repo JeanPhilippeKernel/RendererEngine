@@ -44,6 +44,12 @@ namespace Tetragrama {
 
         IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(m_render_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS,
             std::bind(&Layers::RenderLayer::SceneRequestUnfocusMessageHandler, reinterpret_cast<Layers::RenderLayer*>(m_render_layer.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(m_render_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION,
+            std::bind(&Layers::RenderLayer::SceneRequestSerializationMessageHandler, reinterpret_cast<Layers::RenderLayer*>(m_render_layer.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(m_render_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION,
+            std::bind(&Layers::RenderLayer::SceneRequestDeserializationMessageHandler, reinterpret_cast<Layers::RenderLayer*>(m_render_layer.get()), std::placeholders::_1));
     }
 
     void Editor::Run() {
