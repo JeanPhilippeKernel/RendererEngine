@@ -84,6 +84,20 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         mkdir $buildDirectoryPath
     } 
 
+    $cMakeOptions = " -DCMAKE_SYSTEM_NAME=$systemName", " -DCMAKE_BUILD_TYPE=$configuration"
+    $submoduleCMakeOptions = @{
+        'ENTT'= @("-DENTT_INCLUDE_HEADERS=ON")
+        'SDL2' = @("-DSDL_STATIC=ON", "-DSDL_SHARED=OFF");
+        'SPDLOG' = @('-DSPDLOG_BUILD_SHARED=OFF', '-DBUILD_STATIC_LIBS=ON', '-DSPDLOG_FMT_EXTERNAL=ON', '-DSPDLOG_FMT_EXTERNAL_HO=OFF');
+        'GLFW '= @('-DGLFW_BUILD_DOCS=OFF', '-DGLFW_BUILD_EXAMPLES=OFF', '-DGLFW_INSTALL=OFF');
+        'ASSIMP'=@('-DASSIMP_BUILD_TESTS=OFF', '-DASSIMP_INSTALL=OFF', '-DASSIMP_BUILD_SAMPLES=OFF', '-DASSIMP_BUILD_ASSIMP_TOOLS=OFF');
+        'STDUUID'=@('-DUUID_BUILD_TESTS=OFF', '-DUUID_USING_CXX20_SPAN=ON');
+        'DSDL'=@('-DSDL_STATIC=ON', '-DSDL_SHARED=OFF');
+        'FRAMEWORK'=@('-DBUILD_FRAMEWORK=ON');
+    }  
+
+    $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
+
     # Building CMake arguments switch to System
     switch ($systemName) {
         "Windows" { 
@@ -98,11 +112,11 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
                     throw 'This version of Visual Studio is not supported' 
                 }
             }          
-            $cMakeCacheVariableOverride = $cMakeCacheVariableOverride, 'DCMAKE_CONFIGURATION_TYPES=Debug;Release' -join " -"
+            $cMakeCacheVariableOverride += ' -DCMAKE_CONFIGURATION_TYPES=Debug;Release '
         }
         "Linux" { 
             $cMakeGenerator = "-G `"Unix Makefiles`""
-            $cMakeCacheVariableOverride = $cMakeCacheVariableOverride, 'DSDL_STATIC=ON', 'DSDL_SHARED=OFF' -join " -"
+            $cMakeCacheVariableOverride += $submoduleCMakeOptions.DSDL -join ' ' 
 
             # Set Linux build compiler
             $env:CC = '/usr/bin/gcc-11'
@@ -110,26 +124,22 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         }
         "Darwin" { 
             $cMakeGenerator = "-G `"Xcode`""
-            $cMakeCacheVariableOverride = $cMakeCacheVariableOverride, 'DBUILD_FRAMEWORK=ON' -join " -"
+            $cMakeCacheVariableOverride += $submoduleCMakeOptions.FRAMEWORK -join ' ' 
         }
         Default {
             throw 'This system is not supported'
         }
     }
 
-    $cMakeOptions = @("DCMAKE_SYSTEM_NAME=$systemName","DCMAKE_BUILD_TYPE=$configuration", "DBUILD_SANDBOX_PROJECTS=ON", "DENTT_INCLUDE_HEADERS=ON")
-    $submoduleCMakeOptions = @{
-        'SDL2' = @("DSDL_STATIC=ON", "DSDL_SHARED=OFF");
-        'SPDLOG' = @('DSPDLOG_BUILD_SHARED=OFF', 'DBUILD_STATIC_LIBS=ON', 'DSPDLOG_FMT_EXTERNAL=ON', 'DSPDLOG_FMT_EXTERNAL_HO=OFF');
-        'GLFW '= @('DGLFW_BUILD_DOCS=OFF', 'DGLFW_BUILD_EXAMPLES=OFF', 'DGLFW_INSTALL=OFF');
-        'ASSIMP'=@('DASSIMP_BUILD_TESTS=OFF', 'DASSIMP_INSTALL=OFF', 'DASSIMP_BUILD_SAMPLES=OFF', 'DASSIMP_BUILD_ASSIMP_TOOLS=OFF');
-        'STDUUID'=@('DUUID_BUILD_TESTS=OFF', 'DUUID_USING_CXX20_SPAN=ON');
-    }  
-    $cMakeCacheVariableOverride = $cMakeCacheVariableOverride + ($cMakeOptions -join ' -') + ($submoduleCMakeOptions.SPDLOG + $submoduleCMakeOptions.ASSIMP + $submoduleCMakeOptions.STDUUID -join ' -')
+    $cMakeCacheVariableOverride += $submoduleCMakeOptions.ENT -join ' ' 
+    $cMakeCacheVariableOverride += $submoduleCMakeOptions.SPDLOG -join ' ' 
+    $cMakeCacheVariableOverride += $submoduleCMakeOptions.ASSIMP -join ' ' 
+    $cMakeCacheVariableOverride += $submoduleCMakeOptions.STDUUID -join ' ' 
+
     if (-not $IsLinux) {
-        $cMakeCacheVariableOverride = $cMakeCacheVariableOverride + $submoduleCMakeOptions.GLFW -join ' -'
+        $cMakeCacheVariableOverride = $cMakeCacheVariableOverride + $submoduleCMakeOptions.GLFW -join ' '
     }
-    
+
     $cMakeArguments = " -S $RepoRoot -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
 
     # CMake Generation process
