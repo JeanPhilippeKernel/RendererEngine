@@ -88,7 +88,6 @@ namespace ZEngine::Rendering::Textures {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 #endif
         unsigned char data[] = {255, 255, 255, 255, '\0'}; // R:255 G: 255 B: 255 A: 255
-        // unsigned char data[] = {'\xff', '\xff', '\xff', '\xff', '\0'}; // R:255 G: 255 B: 255 A: 255
         SetData(data);
     }
 
