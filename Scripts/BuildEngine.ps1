@@ -42,46 +42,9 @@ Set-Variable ARCHITECTURE -Option None -value 'x64'
 Set-Variable SYSTEM_NAMES -Option None -value 'Windows', 'Linux', 'Darwin'
 
 # # CMake arguments variables
-Set-Variable CMAKE_CONFIGURATION_TYPES -Option None -value 'DCMAKE_CONFIGURATION_TYPES=Debug;Release'
+
 Set-Variable CMAKE_GENERATOR_DARWIN -Option None -value 'Xcode'
 Set-Variable CMAKE_GENERATOR_UNIX -Option None -value 'Unix Makefiles'
-
-Set-Variable CMAKE_SYSTEM_NAME -Option None -value 'DCMAKE_SYSTEM_NAME='
-Set-Variable CMAKE_BUILD_TYPE -Option None -value 'DCMAKE_BUILD_TYPE='
-Set-Variable BUILD_SANDBOX_PROJECTS -Option None -value 'DBUILD_SANDBOX_PROJECTS=ON'
-Set-Variable ENTT_INCLUDE_HEADERS -Option None -value 'DENTT_INCLUDE_HEADERS=ON'
-
-# # SDL2 options variables
-Set-Variable SDL_STATIC -Option None -value 'DSDL_STATIC=ON'
-Set-Variable SDL_SHARED -Option None -value 'DSDL_SHARED=OFF'
-
-# # SPDLOG options variables
-Set-Variable SPDLOG_BUILD_SHARED -Option None -value 'DSPDLOG_BUILD_SHARED=OFF'
-Set-Variable BUILD_STATIC_LIBS -Option None -value 'DBUILD_STATIC_LIBS=ON'
-Set-Variable SPDLOG_FMT_EXTERNAL -Option None -value 'DSPDLOG_FMT_EXTERNAL=ON'
-Set-Variable SPDLOG_FMT_EXTERNAL_HO -Option None -value 'DSPDLOG_FMT_EXTERNAL_HO=OFF'
-
-# # GLFW options variables
-Set-Variable GLFW_BUILD_DOCS -Option None -value 'DGLFW_BUILD_DOCS=OFF'
-Set-Variable GLFW_BUILD_EXAMPLE -Option None -value 'DGLFW_BUILD_EXAMPLES=OFF'
-Set-Variable GLFW_INSTALL -Option None -value 'DGLFW_INSTALL=OFF'
-
-# # ASSIMP options variables
-Set-Variable ASSIMP_BUILD_TESTS -Option None -value 'DASSIMP_BUILD_TESTS=OFF'
-Set-Variable ASSIMP_INSTALL -Option None -value 'DASSIMP_INSTALL=OFF'
-Set-Variable ASSIMP_BUILD_SAMPLES -Option None -value 'DASSIMP_BUILD_SAMPLES=OFF'
-Set-Variable ASSIMP_BUILD_ASSIMP_TOOLS -Option None -value 'DASSIMP_BUILD_ASSIMP_TOOLS=OFF'
-
-# # FRAMEWORK options variables
-Set-Variable BUILD_FRAMEWORK -Option None -value 'DBUILD_FRAMEWORK=ON'
-
-# # STDUUID options variables
-Set-Variable UUID_BUILD_TESTS -Option None -value 'DUUID_BUILD_TESTS=OFF'
-Set-Variable UUID_USING_CXX20_SPAN -Option None -value 'DUUID_USING_CXX20_SPAN=ON'
-
-# # Linux build compiler options variables
-Set-Variable ENV_CC -Option None -value '/usr/bin/gcc-11'
-Set-Variable ENV_CXX -Option None -value '/usr/bin/g++-11'
 
 # VS Version supported
 Set-Variable VS16 -Option None -value 'Visual Studio 16 2019'
@@ -133,15 +96,7 @@ function Build([string]$Configuration ="Debug", [int]$VSVersion = 2019 ,[bool]$R
     #
     if(-Not (Test-Path $BuildDirectoryPath)) {
         mkdir $BuildDirectoryPath
-    }
-    # else{
-    #     #Clear folder if it's not empty before
-    #     $BuildDirectoryPathInfo = Get-ChildItem $BuildDirectoryPath | Measure-Object
-    #     if($BuildDirectoryPathInfo.Count -ne 0){
-    #         Get-ChildItem $BuildDirectoryPath -Recurse  | Get-ChildItem | Remove-Item -Recurse -Force
-    #     }
-    # }
-
+    } 
 
     #Building CMake arguments switch to System
 
@@ -158,32 +113,32 @@ function Build([string]$Configuration ="Debug", [int]$VSVersion = 2019 ,[bool]$R
                     throw 'This version of Visual Studio is not supported' 
                 }
             }
-            # $CMakeGenerator = "-G `"Visual Studio 16 2019`" -A $ARCHITECTURE"
-            $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,$CMAKE_CONFIGURATION_TYPES -join " -"
+          
+            $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,'DCMAKE_CONFIGURATION_TYPES=Debug;Release' -join " -"
          }
 
          "Linux" { 
             $CMakeGenerator = "-G `"$CMAKE_GENERATOR_UNIX`""
-            $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,$SDL_STATIC,$SDL_SHARED -join " -"
+            $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,'DSDL_STATIC=ON','DSDL_SHARED=OFF' -join " -"
 
             #Set Linux build compiler
-            $env:CC= $ENV_CC
-            $env:CXX= $ENV_CXX
+            $env:CC= '/usr/bin/gcc-11'
+            $env:CXX= '/usr/bin/g++-11'
         }
         "Darwin" { 
             $CMakeGenerator = "-G `"$CMAKE_GENERATOR_DARWIN`""
-            $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,$BUILD_FRAMEWORK -join " -"
+            $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,'DBUILD_FRAMEWORK=ON' -join " -"
         }
         Default {
             throw 'This system is not supported'
         }
     }
 
-    $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,($CMAKE_SYSTEM_NAME+$SystemName),
-    ($CMAKE_BUILD_TYPE+$configuration),$BUILD_SANDBOX_PROJECTS,$ENTT_INCLUDE_HEADERS,$SPDLOG_BUILD_SHARED,$BUILD_STATIC_LIBS,$SPDLOG_FMT_EXTERNAL,$SPDLOG_FMT_EXTERNAL_HO,$ASSIMP_BUILD_TESTS,$ASSIMP_INSTALL,$ASSIMP_BUILD_SAMPLES,$ASSIMP_BUILD_ASSIMP_TOOLS,$UUID_BUILD_TESTS,$UUID_USING_CXX20_SPAN,$ASSIMP_BUILD_TESTS,$ASSIMP_INSTALL,$ASSIMP_BUILD_SAMPLES,$ASSIMP_BUILD_ASSIMP_TOOLS -join " -"
+    $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,('DCMAKE_SYSTEM_NAME='+$SystemName),
+    ('DCMAKE_BUILD_TYPE='+$configuration),'DBUILD_SANDBOX_PROJECTS=ON','DENTT_INCLUDE_HEADERS=ON','DSPDLOG_BUILD_SHARED=OFF','DBUILD_STATIC_LIBS=ON','DSPDLOG_FMT_EXTERNAL=ON','DSPDLOG_FMT_EXTERNAL_HO=OFF','DASSIMP_BUILD_TESTS=OFF','DASSIMP_INSTALL=OFF','DASSIMP_BUILD_SAMPLES=OFF','DASSIMP_BUILD_ASSIMP_TOOLS=OFF','DUUID_BUILD_TESTS=OFF','DUUID_USING_CXX20_SPAN=ON' -join " -"
 
     if(!$IsLinux){
-        $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,$GLFW_BUILD_DOCS,$GLFW_BUILD_EXAMPLE,$GLFW_INSTALL -join " -"
+        $CMakeCacheVariableOverride = $CMakeCacheVariableOverride,'DGLFW_BUILD_DOCS=OFF','DGLFW_BUILD_EXAMPLES=OFF','DGLFW_INSTALL=OFF' -join " -"
     }
 
     $CMakeArguments = " -S $RepoRoot -B $BuildDirectoryPath $CMakeGenerator $CMakeCacheVariableOverride"
