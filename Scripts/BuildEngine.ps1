@@ -81,18 +81,18 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 
     # Create build directory
     if (-Not (Test-Path $buildDirectoryPath)) {
-        mkdir $buildDirectoryPath
+        $Null = New-Item -ItemType Directory -Path $BuildDirectoryPath -ErrorAction SilentlyContinue
     } 
 
     $cMakeOptions = " -DCMAKE_SYSTEM_NAME=$systemName", " -DCMAKE_BUILD_TYPE=$configuration"
     $submoduleCMakeOptions = @{
         'ENTT'= @("-DENTT_INCLUDE_HEADERS=ON")
         'SDL2' = @("-DSDL_STATIC=ON", "-DSDL_SHARED=OFF");
-        'SPDLOG' = @('-DSPDLOG_BUILD_SHARED=OFF', '-DBUILD_STATIC_LIBS=ON', '-DSPDLOG_FMT_EXTERNAL=ON', '-DSPDLOG_FMT_EXTERNAL_HO=OFF');
-        'GLFW '= @('-DGLFW_BUILD_DOCS=OFF', '-DGLFW_BUILD_EXAMPLES=OFF', '-DGLFW_INSTALL=OFF');
-        'ASSIMP'=@('-DASSIMP_BUILD_TESTS=OFF', '-DASSIMP_INSTALL=OFF', '-DASSIMP_BUILD_SAMPLES=OFF', '-DASSIMP_BUILD_ASSIMP_TOOLS=OFF');
-        'STDUUID'=@('-DUUID_BUILD_TESTS=OFF', '-DUUID_USING_CXX20_SPAN=ON');
-        'FRAMEWORK'=@('-DBUILD_FRAMEWORK=ON');
+        'SPDLOG' = @("-DSPDLOG_BUILD_SHARED=OFF", "-DBUILD_STATIC_LIBS=ON", "-DSPDLOG_FMT_EXTERNAL=ON", "-DSPDLOG_FMT_EXTERNAL_HO=OFF");
+        'GLFW '= @("-DGLFW_BUILD_DOCS=OFF", "-DGLFW_BUILD_EXAMPLES=OFF", "-DGLFW_INSTALL=OFF");
+        'ASSIMP'=@("-DASSIMP_BUILD_TESTS=OFF", "-DASSIMP_INSTALL=OFF", "-DASSIMP_BUILD_SAMPLES=OFF", "-DASSIMP_BUILD_ASSIMP_TOOLS=OFF");
+        'STDUUID'=@("-DUUID_BUILD_TESTS=OFF", "-DUUID_USING_CXX20_SPAN=ON");
+        'FRAMEWORK'=@("-DBUILD_FRAMEWORK=ON");
     }  
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
@@ -130,13 +130,13 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         }
     }
 
-    $cMakeCacheVariableOverride += $submoduleCMakeOptions.ENT -join ' ' 
-    $cMakeCacheVariableOverride += $submoduleCMakeOptions.SPDLOG -join ' ' 
-    $cMakeCacheVariableOverride += $submoduleCMakeOptions.ASSIMP -join ' ' 
-    $cMakeCacheVariableOverride += $submoduleCMakeOptions.STDUUID -join ' ' 
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.ENT -join ' ' 
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPDLOG -join ' ' 
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.ASSIMP -join ' ' 
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.STDUUID -join ' ' 
 
     if (-not $IsLinux) {
-        $cMakeCacheVariableOverride = $cMakeCacheVariableOverride + $submoduleCMakeOptions.GLFW -join ' '
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '
     }
 
     $cMakeArguments = " -S $RepoRoot -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
