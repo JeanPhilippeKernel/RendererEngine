@@ -53,10 +53,10 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
     $architecture = 'x64'
 
-    # Check if the OS support multiple configuration
+    # Check if the system supports multiple configurations
     $isMultipleConfig = $IsWindows
 
-    # Check System name
+    # Check the system name
     if ($IsLinux) {
         $systemName = "Linux"
         $cMakeGenerator 
@@ -98,6 +98,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
 
+    # Define CMake Generator argument 
     switch ($systemName) {
         "Windows" { 
             switch ($VsVersion) {
@@ -142,7 +143,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     $cMakeArguments = " -S $RepoRoot -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
 
     # CMake Generation process
-    #
     Write-Host $cMakeArguments
     $cMakeProcess = Start-Process $cMakeProgram -ArgumentList $cMakeArguments -NoNewWindow -Wait -PassThru   
     if ($cMakeProcess.ExitCode -ne 0 ) {
@@ -150,6 +150,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     }
 
     # CMake Build Process
+    #
     if ($runBuild) {
         if ($cMakeGenerator -like 'Visual Studio*') {
             # With a Visual Studio Generator, `msbuild.exe` is used to run the build. By default, `msbuild.exe` will
