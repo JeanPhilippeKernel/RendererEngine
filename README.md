@@ -48,21 +48,18 @@ You can also do  `git submodule update --init --recursive`.
 3. Change directories to the location where you've cloned the repository.
 4. Building on different systems
 	- Building on Windows : 
-		- Debug version :	`.\Scripts\BuildEngine.ps1 -SystemNames Windows -Architectures x64 -Configurations Debug -RunBuilds $True`
-		- Release version :	`.\Scripts\BuildEngine.ps1 -SystemNames Windows -Architectures x64 -Configurations Release -RunBuilds $True`
+		- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True -VsVersion 2019`
+		- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True -VsVersion 2019`
 
-	- Building on macOS :
-		- Debug version :	`.\Scripts\BuildEngine.ps1 -SystemNames Darwin -Architectures x64 -Configurations Debug -RunBuilds $True`
-		- Release version :	`.\Scripts\BuildEngine.ps1 -SystemNames Darwin -Architectures x64 -Configurations Release -RunBuilds $True`
+	- Building on macOS and Linux :
+		- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True`
+		- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True`
 
-	- Building on Linux :
-		- Debug version :	`.\Scripts\BuildEngine.ps1 -SystemNames Linux -Architectures x64 -Configurations Debug -RunBuilds $True`
-		- Release version :	`.\Scripts\BuildEngine.ps1 -SystemNames Linux -Architectures x64 -Configurations Release -RunBuilds $True`
 
 - Notes :
-	- `Architectures` can be omitted as its default value is : `x64`.
 	- `RunBuilds` can be omitted as its default value is : `$True`.
 	- You can build `Debug` and `Release` versions at once by omitting the `Configuration` parameter
+	- On Windows, you can specify the Visual Studio version with `VsVersion`, it can be omitted as its default value is : `2019`
 
 ## Dependencies
 
