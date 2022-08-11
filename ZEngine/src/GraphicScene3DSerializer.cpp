@@ -117,10 +117,12 @@ namespace ZEngine::Serializers {
     SerializeInformation GraphicScene3DSerializer::Deserialize(std::string_view filename) {
         std::ifstream file_stream;
         const auto    full_scene_file_path = fmt::format("{0}/{1}", m_default_scene_directory_path.string(), filename);
-        file_stream.open(full_scene_file_path, std::ifstream::app);
+        file_stream.open(full_scene_file_path, std::ifstream::in);
         if (!file_stream.is_open()) {
             return SerializeInformation{false, "Failed to open Scene file"};
         }
+        file_stream.seekg(std::ifstream::beg);
+        
         std::stringstream content_stream;
         content_stream << file_stream.rdbuf();
 
