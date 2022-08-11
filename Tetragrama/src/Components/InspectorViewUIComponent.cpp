@@ -24,14 +24,26 @@ namespace Tetragrama::Components {
     }
 
     void InspectorViewUIComponent::SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage& message) {
-        m_scene_entity = nullptr;
+        m_recieved_unselected_request = true;
     }
 
     void InspectorViewUIComponent::SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&) {
-        m_scene_entity = nullptr;
+        m_recieved_deleted_request = true;
+    }
+
+    void InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>& message) {
+        m_is_allowed_to_render = message.GetValue();
     }
 
     void InspectorViewUIComponent::Render() {
+        if (m_recieved_deleted_request || m_recieved_unselected_request) {
+            m_scene_entity                = nullptr;
+            m_recieved_deleted_request    = false;
+            m_recieved_unselected_request = false;
+        }
+
+        CHECK_IF_ALLOWED_TO_RENDER()
+
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
         if (m_scene_entity) {

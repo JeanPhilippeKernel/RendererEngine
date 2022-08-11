@@ -61,6 +61,10 @@ namespace ZEngine::Rendering::Entities {
             return m_entity_handle;
         }
 
+        operator bool() const {
+            return (m_entity_handle != entt::null) && (m_weak_registry_ptr != nullptr) && !m_weak_registry_ptr.expired();
+        }
+
     private:
         entt::entity            m_entity_handle{entt::null};
         WeakRef<entt::registry> m_weak_registry_ptr;

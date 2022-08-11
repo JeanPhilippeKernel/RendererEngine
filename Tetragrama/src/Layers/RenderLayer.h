@@ -29,13 +29,20 @@ namespace Tetragrama::Layers {
         void SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>&);
         void SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>&);
 
+        void SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage&);
+        void SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>&);
+
     protected:
         void OnSceneRenderCompletedCallback(uint32_t);
 
     private:
         ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>     m_scene;
         ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;
-        std::queue<std::function<void(void)>>                     m_deferral_operation;
+        std::queue<std::function<void(void)>>                      m_deferral_operation;
+
+    private:
+        void HandleNewSceneMessage(const Messengers::EmptyMessage&);
+        void HandleOpenSceneMessage(const Messengers::GenericMessage<std::string>&);
     };
 
 } // namespace Tetragrama::Layers

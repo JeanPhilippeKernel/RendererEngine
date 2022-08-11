@@ -43,7 +43,6 @@ namespace Tetragrama::Layers {
             operation();
             m_deferral_operation.pop();
         }
-
     }
 
     bool RenderLayer::OnEvent(CoreEvent& e) {
@@ -71,6 +70,12 @@ namespace Tetragrama::Layers {
     }
 
     void RenderLayer::SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>& message) {
+        // Todo: We need to replace this whole part by using system FileDialog API
+        if (!m_scene->HasEntities()) {
+            ZENGINE_EDITOR_WARN("There are no entities in the current scene to serialize")
+            return;
+        }
+
         auto scene_filename = message.GetValue();
         if (scene_filename.empty()) {
             scene_filename = "SampleScene.zengine";
@@ -86,6 +91,7 @@ namespace Tetragrama::Layers {
     }
 
     void RenderLayer::SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>& message) {
+        // Todo: We need to replace this whole part by using system FileDialog API
         auto scene_filename = message.GetValue();
         if (scene_filename.empty()) {
             scene_filename = "SampleScene.zengine";
@@ -105,8 +111,58 @@ namespace Tetragrama::Layers {
         });
     }
 
+    void RenderLayer::SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage& message) {
+        if (m_scene->HasEntities()) {
+            Messengers::IMessenger::Send<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+                EDITOR_COMPONENT_HIERARCHYVIEW_REQUEST_RESUME_OR_PAUSE_RENDER, Messengers::GenericMessage<bool>{false});
+
+            Messengers::IMessenger::Send<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
+
+            Messengers::IMessenger::Send<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+                EDITOR_COMPONENT_INSPECTORVIEW_REQUEST_RESUME_OR_PAUSE_RENDER, Messengers::GenericMessage<bool>{false});
+        }
+
+        HandleNewSceneMessage(message);
+    }
+
+    void RenderLayer::SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>& message) {
+        if (m_scene->HasEntities()) {
+            Messengers::IMessenger::Send<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+                EDITOR_COMPONENT_HIERARCHYVIEW_REQUEST_RESUME_OR_PAUSE_RENDER, Messengers::GenericMessage<bool>{false});
+
+            Messengers::IMessenger::Send<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
+
+            Messengers::IMessenger::Send<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+                EDITOR_COMPONENT_INSPECTORVIEW_REQUEST_RESUME_OR_PAUSE_RENDER, Messengers::GenericMessage<bool>{false});
+        }
+        HandleOpenSceneMessage(message);
+    }
+
     void RenderLayer::OnSceneRenderCompletedCallback(uint32_t scene_texture_id) {
         Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<uint32_t>>(
             EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE, Messengers::GenericMessage<uint32_t>{scene_texture_id});
+    }
+
+    void RenderLayer::HandleNewSceneMessage(const Messengers::EmptyMessage&) {
+        m_scene->RemoveAllEntities();
+
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+            EDITOR_COMPONENT_HIERARCHYVIEW_REQUEST_RESUME_OR_PAUSE_RENDER, Messengers::GenericMessage<bool>{true});
+
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+            EDITOR_COMPONENT_INSPECTORVIEW_REQUEST_RESUME_OR_PAUSE_RENDER, Messengers::GenericMessage<bool>{true});
+    }
+
+    void RenderLayer::HandleOpenSceneMessage(const Messengers::GenericMessage<std::string>& message) {
+        m_scene->RemoveAllEntities();
+
+        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION, Messengers::GenericMessage<std::string>{message});
+
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+            EDITOR_COMPONENT_HIERARCHYVIEW_REQUEST_RESUME_OR_PAUSE_RENDER, Messengers::GenericMessage<bool>{true});
+
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
+            EDITOR_COMPONENT_INSPECTORVIEW_REQUEST_RESUME_OR_PAUSE_RENDER, Messengers::GenericMessage<bool>{true});
     }
 } // namespace Tetragrama::Layers

@@ -19,11 +19,17 @@ namespace Tetragrama::Components {
         m_active_scene = message.GetValue();
     }
 
+    void HierarchyViewUIComponent::RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>& message) {
+        m_is_allowed_to_render = message.GetValue();
+    }
+
     bool HierarchyViewUIComponent::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) {
         return false;
     }
 
     void HierarchyViewUIComponent::Render() {
+        CHECK_IF_ALLOWED_TO_RENDER()
+
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
         if (!m_active_scene.expired()) {

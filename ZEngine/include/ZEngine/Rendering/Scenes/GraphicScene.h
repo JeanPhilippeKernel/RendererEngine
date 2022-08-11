@@ -47,7 +47,10 @@ namespace ZEngine::Rendering::Scenes {
         Entities::GraphicSceneEntity CreateEntity(std::string_view uuid_string, std::string_view entity_name = "empty entity");
         Entities::GraphicSceneEntity GetEntity(std::string_view entity_name);
         void                         RemoveEntity(const Entities::GraphicSceneEntity& entity);
+        void                         RemoveAllEntities();
         Ref<entt::registry>          GetRegistry() const;
+
+        bool HasEntities() const;
 
         std::function<void(uint32_t)> OnSceneRenderCompleted;
 

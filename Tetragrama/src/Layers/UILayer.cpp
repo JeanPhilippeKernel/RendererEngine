@@ -65,6 +65,14 @@ namespace Tetragrama::Layers {
             std::bind(&Components::HierarchyViewUIComponent::SceneAvailableMessageHandler,
                 reinterpret_cast<Components::HierarchyViewUIComponent*>(m_hierarchy_view_component.get()), std::placeholders::_1));
 
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<bool>>(m_hierarchy_view_component, EDITOR_COMPONENT_HIERARCHYVIEW_REQUEST_RESUME_OR_PAUSE_RENDER,
+            std::bind(&Components::HierarchyViewUIComponent::RequestStartOrPauseRenderMessageHandler,
+                reinterpret_cast<Components::HierarchyViewUIComponent*>(m_hierarchy_view_component.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<bool>>(m_inspector_view_component, EDITOR_COMPONENT_INSPECTORVIEW_REQUEST_RESUME_OR_PAUSE_RENDER,
+            std::bind(&Components::InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandler,
+                reinterpret_cast<Components::InspectorViewUIComponent*>(m_inspector_view_component.get()), std::placeholders::_1));
+
         IMessenger::Register<ZEngine::Components::UI::UIComponent, PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>>(m_inspector_view_component,
             EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED,
             std::bind(&Components::InspectorViewUIComponent::SceneEntitySelectedMessageHandler,

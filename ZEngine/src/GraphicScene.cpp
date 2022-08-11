@@ -64,11 +64,23 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::RemoveEntity(const Entities::GraphicSceneEntity& entity) {
+        if (!m_entity_registry->valid(entity)) {
+            ZENGINE_CORE_ERROR("This entity is no longer valid")
+            return;
+        }
         m_entity_registry->destroy(entity);
+    }
+
+    void GraphicScene::RemoveAllEntities() {
+        m_entity_registry->clear();
     }
 
     Ref<entt::registry> GraphicScene::GetRegistry() const {
         return m_entity_registry;
+    }
+
+    bool GraphicScene::HasEntities() const {
+        return !m_entity_registry->empty();
     }
 
     bool GraphicScene::OnEvent(Event::CoreEvent& e) {
