@@ -124,7 +124,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         }
         "Darwin" { 
             $cMakeGenerator = "-G `"Xcode`""
-            $cMakeCacheVariableOverride += $submoduleCMakeOptions.FRAMEWORK -join ' ' 
+            $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.FRAMEWORK -join ' ' 
         }
         Default {
             throw 'This system is not supported'
