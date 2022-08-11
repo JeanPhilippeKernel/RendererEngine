@@ -53,7 +53,8 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
     $architecture = 'x64'
 
-    # Check if the OS allow multiple configguration, if not windows this value will'be false
+    # Check if the system supports multiple configurations
+    #
     $isMultipleConfig = $IsWindows
 
     # Check System name
