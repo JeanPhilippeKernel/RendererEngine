@@ -14,7 +14,7 @@ namespace ZEngine::Rendering::Textures {
         void Bind(int slot = 0) const override;
         void Unbind(int slot = 0) const override;
 
-        void SetData(const void* data) override;
+        void SetData(void* const data) override;
         void SetData(float r, float g, float b, float a) override;
     };
 } // namespace ZEngine::Rendering::Textures

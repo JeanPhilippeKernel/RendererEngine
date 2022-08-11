@@ -7,6 +7,7 @@
 namespace ZEngine::Rendering::Entities {
     class GraphicSceneEntity {
     public:
+        GraphicSceneEntity() = default;
         GraphicSceneEntity(entt::entity handle, Ref<entt::registry> registry_ptr);
         GraphicSceneEntity(GraphicSceneEntity&& rhs) noexcept;
         virtual ~GraphicSceneEntity() = default;
@@ -58,6 +59,10 @@ namespace ZEngine::Rendering::Entities {
 
         operator entt::entity() const {
             return m_entity_handle;
+        }
+
+        operator bool() const {
+            return (m_entity_handle != entt::null) && (m_weak_registry_ptr != nullptr) && !m_weak_registry_ptr.expired();
         }
 
     private:

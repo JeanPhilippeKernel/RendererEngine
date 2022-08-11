@@ -44,6 +44,7 @@ target_precompile_headers(zEngineLib PRIVATE ${PROJECT_SOURCE_DIR}/include/ZEngi
 target_compile_definitions (zEngineLib
 	PUBLIC
 		ZENGINE_PLATFORM
+		YAML_CPP_STATIC_DEFINE
 )
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
@@ -66,5 +67,6 @@ target_link_libraries (zEngineLib
 		imported::entt
 		imported::assimp
 		imported::stduuid
+		imported::yaml-cpp
 		OpenGL::GL
 )

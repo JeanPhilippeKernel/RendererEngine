@@ -92,7 +92,8 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'SPDLOG' = @("-DSPDLOG_BUILD_SHARED=OFF", "-DBUILD_STATIC_LIBS=ON", "-DSPDLOG_FMT_EXTERNAL=ON", "-DSPDLOG_FMT_EXTERNAL_HO=OFF");
         'GLFW '= @("-DGLFW_BUILD_DOCS=OFF", "-DGLFW_BUILD_EXAMPLES=OFF", "-DGLFW_INSTALL=OFF");
         'ASSIMP'=@("-DASSIMP_BUILD_TESTS=OFF", "-DASSIMP_INSTALL=OFF", "-DASSIMP_BUILD_SAMPLES=OFF", "-DASSIMP_BUILD_ASSIMP_TOOLS=OFF");
-        'STDUUID'=@("-DUUID_BUILD_TESTS=OFF", "-DUUID_USING_CXX20_SPAN=ON");
+        'STDUUID'=@("-DUUID_BUILD_TESTS=OFF", "-DUUID_USING_CXX20_SPAN=ON", "-DUUID_SYSTEM_GENERATOR=OFF");
+        'YAMLCPP'=@("-DYAML_CPP_BUILD_TOOLS=OFF", "-DYAML_CPP_BUILD_TESTS=OFF", "-DYAML_CPP_FORMAT_SOURCE=OFF", "-DYAML_BUILD_SHARED_LIBS=OFF");
         'FRAMEWORK'=@("-DBUILD_FRAMEWORK=ON");
     }  
 
@@ -135,6 +136,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPDLOG -join ' ' 
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.ASSIMP -join ' ' 
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.STDUUID -join ' ' 
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.YAMLCPP -join ' '
 
     if (-not $IsLinux) {
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '

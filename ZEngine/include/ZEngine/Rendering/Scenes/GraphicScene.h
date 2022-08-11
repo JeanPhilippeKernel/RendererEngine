@@ -10,7 +10,13 @@
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 #include <Rendering/Entities/GraphicSceneEntity.h>
+#include <Window/CoreWindow.h>
 #include <entt/entt.hpp>
+#include <uuid.h>
+
+namespace ZEngine::Serializers {
+    class GraphicScene3DSerializer;
+}
 
 namespace ZEngine::Rendering::Scenes {
     class GraphicScene : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable, public Core::IEventable {
@@ -33,11 +39,18 @@ namespace ZEngine::Rendering::Scenes {
         void SetShouldReactToEvent(bool value);
         bool ShouldReactToEvent() const;
 
+        void SetWindowParent(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window);
+
     public:
         Entities::GraphicSceneEntity CreateEntity(std::string_view entity_name = "empty entity");
+        Entities::GraphicSceneEntity CreateEntity(uuids::uuid uuid, std::string_view entity_name = "empty entity");
+        Entities::GraphicSceneEntity CreateEntity(std::string_view uuid_string, std::string_view entity_name = "empty entity");
         Entities::GraphicSceneEntity GetEntity(std::string_view entity_name);
         void                         RemoveEntity(const Entities::GraphicSceneEntity& entity);
+        void                         RemoveAllEntities();
         Ref<entt::registry>          GetRegistry() const;
+
+        bool HasEntities() const;
 
         std::function<void(uint32_t)> OnSceneRenderCompleted;
 
@@ -49,6 +62,10 @@ namespace ZEngine::Rendering::Scenes {
     private:
         bool                    m_should_react_to_event{true};
         std::pair<float, float> m_scene_requested_size{0.0f, 0.0f};
+        std::pair<float, float> m_last_scene_requested_size{0.0f, 0.0f};
         Ref<entt::registry>     m_entity_registry;
+        ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_parent_window;
+
+        friend class ZEngine::Serializers::GraphicScene3DSerializer;
     };
 } // namespace ZEngine::Rendering::Scenes

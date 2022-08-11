@@ -30,6 +30,12 @@ namespace Tetragrama::Layers {
         this->AddUIComponent(m_dockspace_component);
 
         // Register components
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<ZEngine::Event::WindowClosedEvent>>(m_dockspace_component,
+            EDITOR_COMPONENT_DOCKSPACE_REQUEST_EXIT,
+            std::bind(&Components::DockspaceUIComponent::RequestExitMessageHandler, reinterpret_cast<Components::DockspaceUIComponent*>(m_dockspace_component.get()),
+                std::placeholders::_1));
+
         IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<uint32_t>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE,
             std::bind(&Components::SceneViewportUIComponent::SceneTextureAvailableMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
                 std::placeholders::_1));
@@ -46,6 +52,10 @@ namespace Tetragrama::Layers {
             std::bind(&Components::SceneViewportUIComponent::SceneViewportResizedMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
                 std::placeholders::_1));
 
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, EmptyMessage>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_REQUEST_RECOMPUTATION,
+            std::bind(&Components::SceneViewportUIComponent::SceneViewportRequestRecomputationMessageHandler,
+                reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()), std::placeholders::_1));
+
         IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<std::vector<std::string>>>(m_editor_log_component, EDITOR_COMPONENT_LOG_RECEIVE_LOG_MESSAGE,
             std::bind(
                 &Components::LogUIComponent::ReceiveLogMessageMessageHandler, reinterpret_cast<Components::LogUIComponent*>(m_editor_log_component.get()), std::placeholders::_1));
@@ -54,6 +64,14 @@ namespace Tetragrama::Layers {
             EDITOR_RENDER_LAYER_SCENE_AVAILABLE,
             std::bind(&Components::HierarchyViewUIComponent::SceneAvailableMessageHandler,
                 reinterpret_cast<Components::HierarchyViewUIComponent*>(m_hierarchy_view_component.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<bool>>(m_hierarchy_view_component, EDITOR_COMPONENT_HIERARCHYVIEW_REQUEST_RESUME_OR_PAUSE_RENDER,
+            std::bind(&Components::HierarchyViewUIComponent::RequestStartOrPauseRenderMessageHandler,
+                reinterpret_cast<Components::HierarchyViewUIComponent*>(m_hierarchy_view_component.get()), std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<bool>>(m_inspector_view_component, EDITOR_COMPONENT_INSPECTORVIEW_REQUEST_RESUME_OR_PAUSE_RENDER,
+            std::bind(&Components::InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandler,
+                reinterpret_cast<Components::InspectorViewUIComponent*>(m_inspector_view_component.get()), std::placeholders::_1));
 
         IMessenger::Register<ZEngine::Components::UI::UIComponent, PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>>(m_inspector_view_component,
             EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED,

@@ -27,6 +27,7 @@ namespace Tetragrama::Components {
         void SceneViewportResizedMessageHandler(Messengers::GenericMessage<std::pair<float, float>>&);
         void SceneViewportFocusedMessageHandler(Messengers::GenericMessage<bool>&);
         void SceneViewportUnfocusedMessageHandler(Messengers::GenericMessage<bool>&);
+        void SceneViewportRequestRecomputationMessageHandler(Messengers::EmptyMessage&);
    
     private:
         bool     m_is_window_focused{false};

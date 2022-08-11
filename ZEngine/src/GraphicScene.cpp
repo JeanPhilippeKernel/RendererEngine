@@ -9,6 +9,7 @@
 #include <Rendering/Components/CameraComponent.h>
 #include <Rendering/Entities/GraphicSceneEntity.h>
 #include <Rendering/Materials/StandardMaterial.h>
+#include <ZEngine/Rendering/Components/UUIComponent.h>
 
 using namespace ZEngine::Controllers;
 using namespace ZEngine::Rendering::Components;
@@ -22,6 +23,23 @@ namespace ZEngine::Rendering::Scenes {
 
     GraphicSceneEntity GraphicScene::CreateEntity(std::string_view entity_name) {
         GraphicSceneEntity graphic_entity(m_entity_registry->create(), m_entity_registry);
+        graphic_entity.AddComponent<UUIComponent>();
+        graphic_entity.AddComponent<NameComponent>(entity_name);
+        graphic_entity.AddComponent<TransformComponent>();
+        return graphic_entity;
+    }
+
+    GraphicSceneEntity GraphicScene::CreateEntity(uuids::uuid uuid, std::string_view entity_name) {
+        GraphicSceneEntity graphic_entity(m_entity_registry->create(), m_entity_registry);
+        graphic_entity.AddComponent<UUIComponent>(uuid);
+        graphic_entity.AddComponent<NameComponent>(entity_name);
+        graphic_entity.AddComponent<TransformComponent>();
+        return graphic_entity;
+    }
+
+    GraphicSceneEntity GraphicScene::CreateEntity(std::string_view uuid_string, std::string_view entity_name) {
+        GraphicSceneEntity graphic_entity(m_entity_registry->create(), m_entity_registry);
+        graphic_entity.AddComponent<UUIComponent>(uuid_string);
         graphic_entity.AddComponent<NameComponent>(entity_name);
         graphic_entity.AddComponent<TransformComponent>();
         return graphic_entity;
@@ -46,11 +64,23 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::RemoveEntity(const Entities::GraphicSceneEntity& entity) {
+        if (!m_entity_registry->valid(entity)) {
+            ZENGINE_CORE_ERROR("This entity is no longer valid")
+            return;
+        }
         m_entity_registry->destroy(entity);
+    }
+
+    void GraphicScene::RemoveAllEntities() {
+        m_entity_registry->clear();
     }
 
     Ref<entt::registry> GraphicScene::GetRegistry() const {
         return m_entity_registry;
+    }
+
+    bool GraphicScene::HasEntities() const {
+        return !m_entity_registry->empty();
     }
 
     bool GraphicScene::OnEvent(Event::CoreEvent& e) {
@@ -76,6 +106,10 @@ namespace ZEngine::Rendering::Scenes {
         return m_should_react_to_event;
     }
 
+    void GraphicScene::SetWindowParent(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window) {
+        m_parent_window = window;
+    }
+
     void GraphicScene::Update(Core::TimeStep dt) {
         m_entity_registry->view<CameraComponent>().each([&dt, this](CameraComponent& component) {
             if (component.IsPrimaryCamera) {
@@ -89,11 +123,11 @@ namespace ZEngine::Rendering::Scenes {
                 if (component.IsPrimaryCamera) {
                     auto controller = component.GetCameraController();
                     controller->SetAspectRatio(m_scene_requested_size.first / m_scene_requested_size.second);
-                    controller->UpdateProjectionMatrix();
                     m_renderer->GetFrameBuffer()->Resize(m_scene_requested_size.first, m_scene_requested_size.second);
                 }
             });
-            m_scene_requested_size = {0.0f, 0.0f};
+            m_last_scene_requested_size = m_scene_requested_size;
+            m_scene_requested_size      = {0.0f, 0.0f};
         }
 
         // Todo : Should be refactored
