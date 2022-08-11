@@ -53,7 +53,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
     $architecture = 'x64'
 
-    # Check if the OS allow multiple configguration, if not windows this value will'be false
+    # Check if the OS support multiple configuration
     $isMultipleConfig = $IsWindows
 
     # Check System name
@@ -82,8 +82,9 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     # Create build directory
     if (-Not (Test-Path $buildDirectoryPath)) {
         $Null = New-Item -ItemType Directory -Path $BuildDirectoryPath -ErrorAction SilentlyContinue
-    } 
+    }     
 
+    # Define CMake Generator arguments
     $cMakeOptions = " -DCMAKE_SYSTEM_NAME=$systemName", " -DCMAKE_BUILD_TYPE=$configuration"
     $submoduleCMakeOptions = @{
         'ENTT'= @("-DENTT_INCLUDE_HEADERS=ON")
@@ -97,7 +98,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
 
-    # Building CMake arguments switch to System
     switch ($systemName) {
         "Windows" { 
             switch ($VsVersion) {
@@ -115,7 +115,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         }
         "Linux" { 
             $cMakeGenerator = "-G `"Unix Makefiles`""
-            $cMakeCacheVariableOverride += $submoduleCMakeOptions.SDL2 -join ' ' 
+            $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SDL2 -join ' ' 
 
             # Set Linux build compiler
             $env:CC = '/usr/bin/gcc-11'
@@ -142,13 +142,14 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     $cMakeArguments = " -S $RepoRoot -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
 
     # CMake Generation process
+    #
     Write-Host $cMakeArguments
     $cMakeProcess = Start-Process $cMakeProgram -ArgumentList $cMakeArguments -NoNewWindow -Wait -PassThru   
     if ($cMakeProcess.ExitCode -ne 0 ) {
         throw "cmake failed generation for '$cMakeArguments' with exit code '$cMakeProcess.ExitCode'"
     }
 
-    # CMake build processing
+    # CMake Build Process
     if ($runBuild) {
         if ($cMakeGenerator -like 'Visual Studio*') {
             # With a Visual Studio Generator, `msbuild.exe` is used to run the build. By default, `msbuild.exe` will
