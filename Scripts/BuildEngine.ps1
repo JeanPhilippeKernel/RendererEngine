@@ -98,7 +98,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
 
-    # Building CMake arguments switch to System
+    # Define CMake Generator argument 
     switch ($systemName) {
         "Windows" { 
             switch ($VsVersion) {
