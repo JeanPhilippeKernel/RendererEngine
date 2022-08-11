@@ -55,7 +55,6 @@ You can also do  `git submodule update --init --recursive`.
 		- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True`
 		- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True`
 
-		- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True`
 
 - Notes :
 	- `RunBuilds` can be omitted as its default value is : `$True`.
