@@ -73,3 +73,4 @@ The project uses the following dependencies :
  - [SPDLOG](https://github.com/gabime/spdlog) for logging
  - [EnTT](https://github.com/skypjack/entt) for entity component system
  - [Assimp](https://github.com/assimp/assimp) for managing and loading assest 2D -3D models
+ - [yaml-cpp](https://github.com/jbeder/yaml-cpp) for parsing and emitting YAML files
