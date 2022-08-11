@@ -30,7 +30,7 @@ param (
 
 $ErrorActionPreference = "Stop"
 
-   #Check System name
+# Check the system name
 if ($IsLinux) {
     $SystemName =  "Linux"
 }
