@@ -149,7 +149,8 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         throw "cmake failed generation for '$cMakeArguments' with exit code '$cMakeProcess.ExitCode'"
     }
 
-    # CMake build processing
+    # CMake Build Process
+    #
     if ($runBuild) {
         if ($cMakeGenerator -like 'Visual Studio*') {
             # With a Visual Studio Generator, `msbuild.exe` is used to run the build. By default, `msbuild.exe` will
