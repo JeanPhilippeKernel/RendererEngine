@@ -51,7 +51,7 @@ You can also do  `git submodule update --init --recursive`.
 		- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True -VsVersion 2019`
 		- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True -VsVersion 2019`
 
-	- Building on macOS :
+	- Building on macOS and Linux :
 		- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True`
 		- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True`
 
