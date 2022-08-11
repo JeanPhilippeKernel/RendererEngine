@@ -63,7 +63,7 @@ You can also do  `git submodule update --init --recursive`.
 	- `Architectures` can be omitted as its default value is : `x64`.
 	- `RunBuilds` can be omitted as its default value is : `$True`.
 	- You can build `Debug` and `Release` versions at once by omitting the `Configuration` parameter
-	- On Windows OS you can specify the Visual Studio version use to build with `VsVersion`, it can be omitted as its default value is : `2019`
+	- On Windows, you can specify the Visual Studio version with `VsVersion`, it can be omitted as its default value is : `2019`
 
 ## Dependencies
 
