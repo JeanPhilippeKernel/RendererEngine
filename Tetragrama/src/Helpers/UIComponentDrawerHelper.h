@@ -27,6 +27,8 @@ namespace Tetragrama::Helpers {
     void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Maths::Vector4& texture_tint_color, bool enable_zoom = true,
         const std::function<void(void)>& image_click_callback = nullptr, const std::function<void(ZEngine::Maths::Vector4&)>& tint_color_change_callback = nullptr,
         float column_width = 100.0f);
+    
+    void DrawColoredTextLine(const char* start, const char* end, const ImVec4& color);
 
     template <typename TComponent>
     void DrawEntityComponentControl(std::string_view component_name, ZEngine::Rendering::Entities::GraphicSceneEntity& entity, ImGuiTreeNodeFlags flags, bool enable_removal_option,

@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <LogUIComponent.h>
+#include <Helpers/UIComponentDrawerHelper.h>
 
 namespace Tetragrama::Components {
     LogUIComponent::LogUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {}
@@ -43,39 +44,26 @@ namespace Tetragrama::Components {
                     bool   has_color = false;
 
                     if (strstr(line_start, "[error]")) {
-                        color     = ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
-                        has_color = true;
+                        Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));                       
                     }
-                    auto test = strstr(line_start, "[warning]");
                     if (strstr(line_start, "[warning]")) {
-                        color     = ImVec4(1.0f, 0.87f, 0.37f, 1.f);
-                        has_color = true;
+                        Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.0f, 0.87f, 0.37f, 1.f));                       
                     }
                     if (strstr(line_start, "[debug]")) {
-                        color     = ImVec4(0.94f, 0.39f, 0.13f, 1.0f);
-                        has_color = true;
-                    }
-                    if (strstr(line_start, "[success]")) {
-                        color     = ImVec4(0.46f, 0.96f, 0.46f, 1.f);
-                        has_color = true;
-                    }
+                        Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(0.94f, 0.39f, 0.13f, 1.0f));
+                    }                
                     if (strstr(line_start, "[info]")) {
-                        color     = ImVec4(0.0f, 0.32f, 0.65f, 1.f);
-                        has_color = true;
+                        Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(0.46f, 0.96f, 0.46f, 1.f));
                     }
                     if (strstr(line_start, "[trace]")) {
-                        color     = ImVec4(1.0f, 1.0f, 1.0f, 1.f);
-                        has_color = true;
+                        Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.0f, 1.0f, 1.0f, 1.f));
+                    }
+                    if (strstr(line_start, "[trace]")) {
+                        Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(0.47f, 0.47f, 0.69f, 0.40f));
                     }
                     if (strstr(line_start, "[log]")) {
-                        color     = ImVec4(1.f, 1.f, 1.f, 0.5f);
-                        has_color = true;
-                    }
-                    if (has_color) {
-                        ImGui::PushStyleColor(ImGuiCol_Text, color);
-                        ImGui::TextUnformatted(line_start, line_end);
-                        ImGui::PopStyleColor();
-                    }                                        
+                        Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.f, 1.f, 1.f, 0.5f));                      
+                    }                                                   
                 }
             }
             clipper.End();         
