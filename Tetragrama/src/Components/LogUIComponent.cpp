@@ -13,7 +13,6 @@ namespace Tetragrama::Components {
         return false;
     }
 
-
     void LogUIComponent::Render() {
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
@@ -28,10 +27,8 @@ namespace Tetragrama::Components {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
 
         if (m_content.size() > 0) {
-
             const char* buf     = m_content.begin();
             const char* buf_end = m_content.end();
-
 
             ImGuiListClipper clipper;
             clipper.Begin(m_content_line_offsets.Size);
@@ -39,9 +36,6 @@ namespace Tetragrama::Components {
                 for (int line_no = clipper.DisplayStart; line_no < clipper.DisplayEnd; line_no++) {
                     const char* line_start = buf + m_content_line_offsets[line_no];
                     const char* line_end   = (line_no + 1 < m_content_line_offsets.Size) ? (buf + m_content_line_offsets[line_no + 1] - 1) : buf_end;
-                   
-                    ImVec4 color;
-                    bool   has_color = false;
 
                     if (strstr(line_start, "[error]")) {
                         Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));                       
@@ -58,7 +52,7 @@ namespace Tetragrama::Components {
                     if (strstr(line_start, "[trace]")) {
                         Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.0f, 1.0f, 1.0f, 1.f));
                     }
-                    if (strstr(line_start, "[trace]")) {
+                    if (strstr(line_start, "[critical]")) {
                         Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(0.47f, 0.47f, 0.69f, 0.40f));
                     }
                     if (strstr(line_start, "[log]")) {

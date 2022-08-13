@@ -450,7 +450,6 @@ namespace Tetragrama::Helpers {
     }
 
     void DrawColoredTextLine(const char* start, const char* end, const ImVec4& color) {
-
         ImGui::PushStyleColor(ImGuiCol_Text, color);
         ImGui::TextUnformatted(start, end);
         ImGui::PopStyleColor();
