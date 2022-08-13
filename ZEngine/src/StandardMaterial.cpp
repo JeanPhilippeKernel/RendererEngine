@@ -31,6 +31,10 @@ namespace ZEngine::Rendering::Materials {
         m_light = light;
     }
 
+    bool StandardMaterial::HasLight() const {
+        return m_light.use_count() > 0;
+    }
+
     void StandardMaterial::SetViewPosition(const glm::vec3& position) {
         m_view_position = position;
     }
@@ -53,6 +57,26 @@ namespace ZEngine::Rendering::Materials {
 
     void StandardMaterial::SetTexture(const Ref<Textures::Texture>& texture) {
         SetDiffuseMap(texture);
+    }
+
+    float StandardMaterial::GetTileFactor() const {
+        return m_tile_factor;
+    }
+
+    float StandardMaterial::GetShininess() const {
+        return m_shininess;
+    }
+
+    const Maths::Vector4& StandardMaterial::GetTintColor() const {
+        return m_tint_color;
+    }
+
+    Ref<Textures::Texture> StandardMaterial::GetSpecularMap() const {
+        return m_specular_map;
+    }
+
+    Ref<Textures::Texture> StandardMaterial::GetDiffuseMap() const {
+        return m_texture;
     }
 
     void StandardMaterial::SetTexture(Textures::Texture* const texture) {

@@ -2,7 +2,7 @@
 #include <LogUIComponent.h>
 
 namespace Tetragrama::Components {
-    LogUIComponent::LogUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility) {}
+    LogUIComponent::LogUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {}
 
     LogUIComponent::~LogUIComponent() {}
 
@@ -14,7 +14,7 @@ namespace Tetragrama::Components {
 
 
     void LogUIComponent::Render() {
-        ImGui::Begin(m_name.c_str(), &m_visibility, ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
         ImGui::SameLine();
         m_is_clear_button_pressed = ImGui::Button("Clear");

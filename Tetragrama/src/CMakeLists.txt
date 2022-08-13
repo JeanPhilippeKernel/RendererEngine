@@ -25,6 +25,7 @@ target_include_directories (${TARGET_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/Components
         ${CMAKE_CURRENT_SOURCE_DIR}/Layers
         ${CMAKE_CURRENT_SOURCE_DIR}/Messengers
+        ${CMAKE_CURRENT_SOURCE_DIR}/Helpers
 		${ENLISTMENT_ROOT}/ZEngine/include
 )
 

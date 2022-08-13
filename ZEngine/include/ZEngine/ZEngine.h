@@ -3,6 +3,8 @@
 
 #include "Engine.h"
 
+#include "Core/Coroutine.h"
+
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/Buffers/VertexBuffer.h"
 #include "Rendering/Buffers/IndexBuffer.h"
@@ -13,6 +15,9 @@
 #include "Rendering/Scenes/GraphicScene.h"
 #include "Rendering/Scenes/GraphicScene2D.h"
 #include "Rendering/Scenes/GraphicScene3D.h"
+
+#include "Serializers/GraphicSceneSerializer.h"
+#include "Serializers/GraphicScene3DSerializer.h"
 
 #include "Rendering/Entities/GraphicSceneEntity.h"
 

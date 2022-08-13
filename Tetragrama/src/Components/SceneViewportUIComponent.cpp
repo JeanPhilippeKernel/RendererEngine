@@ -10,7 +10,7 @@ using namespace ZEngine::Components::UI::Event;
 using namespace Tetragrama::Components::Event;
 
 namespace Tetragrama::Components {
-    SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility) {}
+    SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {}
 
     SceneViewportUIComponent::~SceneViewportUIComponent() {}
 
@@ -34,7 +34,7 @@ namespace Tetragrama::Components {
 
     void SceneViewportUIComponent::Render() {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::Begin(m_name.c_str(), &m_visibility, ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
         m_content_region_available_size = ImGui::GetContentRegionAvail();
         m_is_window_focused             = ImGui::IsWindowFocused();
@@ -69,5 +69,10 @@ namespace Tetragrama::Components {
 
     void SceneViewportUIComponent::SceneViewportUnfocusedMessageHandler(Messengers::GenericMessage<bool>& e) {
         Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{e});
+    }
+
+    void SceneViewportUIComponent::SceneViewportRequestRecomputationMessageHandler(Messengers::EmptyMessage&) {
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<std::pair<float, float>>>(
+            EDITOR_COMPONENT_SCENEVIEWPORT_RESIZED, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
     }
 } // namespace Tetragrama::Components

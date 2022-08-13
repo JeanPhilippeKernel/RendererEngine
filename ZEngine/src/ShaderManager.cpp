@@ -8,7 +8,7 @@ namespace ZEngine::Managers {
         this->m_suffix = "_shader";
     }
 
-    Ref<Rendering::Shaders::Shader>& ShaderManager::Add(const char* name, const char* filename) {
+    Ref<Rendering::Shaders::Shader> ShaderManager::Add(const char* name, const char* filename) {
 
         Ref<Rendering::Shaders::Shader> shader;
         shader.reset(Rendering::Shaders::CreateShader(filename, true));
@@ -25,7 +25,7 @@ namespace ZEngine::Managers {
         return result->get();
     }
 
-    Ref<Rendering::Shaders::Shader>& ShaderManager::Load(const char* filename) {
+    Ref<Rendering::Shaders::Shader> ShaderManager::Load(const char* filename) {
         std::filesystem::path p(filename);
         const auto            name = p.stem();
         return Add(reinterpret_cast<const char*>(name.u8string().c_str()), filename);

@@ -11,13 +11,20 @@ namespace ZEngine::Layers {
     class ImguiLayer;
 }
 
+#define CHECK_IF_ALLOWED_TO_RENDER()   \
+    {                                  \
+        if (!m_is_allowed_to_render) { \
+            return;                    \
+        }                              \
+    }
+
 namespace ZEngine::Components::UI {
     class UIComponent : public Core::IRenderable, public Core::IUpdatable, public std::enable_shared_from_this<UIComponent> {
 
     public:
         UIComponent() = default;
-        UIComponent(std::string_view name, bool visibility);
-        UIComponent(const Ref<Layers::ImguiLayer>& layer, std::string_view name, bool visibility);
+        UIComponent(std::string_view name, bool visibility, bool can_be_closed);
+        UIComponent(const Ref<Layers::ImguiLayer>& layer, std::string_view name, bool visibility, bool can_be_closed);
         virtual ~UIComponent() = default;
 
         void SetName(std::string_view name);
@@ -42,6 +49,8 @@ namespace ZEngine::Components::UI {
 
     protected:
         bool                          m_visibility{false};
+        bool                          m_can_be_closed{false};
+        bool                          m_is_allowed_to_render{true};
         std::string                   m_name;
         WeakRef<Layers::ImguiLayer>   m_parent_layer;
         WeakRef<UIComponent>          m_parent_ui;

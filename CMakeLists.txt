@@ -38,6 +38,7 @@ add_subdirectory (${EXTERNAL_DIR}/glm)
 add_subdirectory (${EXTERNAL_DIR}/entt)
 add_subdirectory (${EXTERNAL_DIR}/assimp)
 add_subdirectory (${EXTERNAL_DIR}/stduuid)
+add_subdirectory (${EXTERNAL_DIR}/yaml-cpp)
 
 # Core engine lib is here
 #
@@ -63,5 +64,5 @@ add_custom_target(AssembleContent ALL
 
 add_custom_command(TARGET AssembleContent
 	POST_BUILD
-	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -SystemNames ${SYSTEM_NAME} -Configurations $<IF:$<CONFIG:Debug>,Debug,Release>
+	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -Configurations $<IF:$<CONFIG:Debug>,Debug,Release>
 )
