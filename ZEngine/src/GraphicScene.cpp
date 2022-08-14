@@ -110,6 +110,23 @@ namespace ZEngine::Rendering::Scenes {
         m_parent_window = window;
     }
 
+    Ref<ZEngine::Window::CoreWindow> GraphicScene::GetWindowParent() const {
+        return m_parent_window.lock();
+    }
+
+    Entities::GraphicSceneEntity GraphicScene::GetPrimariyCameraEntity() const {
+        Entities::GraphicSceneEntity camera_entity;
+        auto view_cameras = m_entity_registry->view<CameraComponent>();
+        for (auto entity : view_cameras) {
+            auto& component = view_cameras.get<CameraComponent>(entity);
+            if (component.IsPrimaryCamera) {
+                camera_entity = {entity, m_entity_registry};
+                break;
+            }
+        }
+        return camera_entity;
+    }
+
     void GraphicScene::Update(Core::TimeStep dt) {
         m_entity_registry->view<CameraComponent>().each([&dt, this](CameraComponent& component) {
             if (component.IsPrimaryCamera) {
@@ -151,17 +168,14 @@ namespace ZEngine::Rendering::Scenes {
         }
 
         m_entity_registry->view<LightComponent, TransformComponent>().each([](entt::entity handle, LightComponent& light_component, TransformComponent& transform_component) {
-            // We update light position with is geometry position, so we have the correct light's source position
+            // We update light position with its transform's position, so we have the correct light's source position
             light_component.GetLight()->SetPosition(transform_component.GetPosition());
         });
 
         m_entity_registry->view<TransformComponent, GeometryComponent, MaterialComponent>().each(
             [this](entt::entity handle, TransformComponent& transform_component, GeometryComponent& geometry_component, MaterialComponent& material_component) {
                 auto geometry = geometry_component.GetGeometry();
-                geometry->SetPosition(transform_component.GetPosition());
-                geometry->SetRotationAxis(transform_component.GetRotationAxis());
-                geometry->SetRotationAngle(transform_component.GetRotationAngle());
-                geometry->SetScaleSize(transform_component.GetScaleSize());
+                geometry->SetTransform(transform_component.GetTransform());
 
                 auto mesh = CreateRef<Meshes::Mesh>(std::move(geometry), material_component.GetMaterial());
                 m_mesh_list.push_back(std::move(mesh));

@@ -5,6 +5,7 @@
 
 using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Rendering::Entities;
+using namespace ZEngine::Inputs;
 
 namespace Tetragrama::Components {
     HierarchyViewUIComponent::HierarchyViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {
@@ -13,7 +14,24 @@ namespace Tetragrama::Components {
 
     HierarchyViewUIComponent::~HierarchyViewUIComponent() {}
 
-    void HierarchyViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
+    void HierarchyViewUIComponent::Update(ZEngine::Core::TimeStep dt) {
+
+        if (auto scene = m_active_scene.lock()) {
+            if (auto scene_active_window = scene->GetWindowParent()) {
+                if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_W, scene_active_window)) {
+                    m_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
+                }
+
+                if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_E, scene_active_window)) {
+                    m_gizmo_operation = ImGuizmo::OPERATION::ROTATE;
+                }
+
+                if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_R, scene_active_window)) {
+                    m_gizmo_operation = ImGuizmo::OPERATION::SCALE;
+                }
+            }
+        }
+    }
 
     void HierarchyViewUIComponent::SceneAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message) {
         m_active_scene = message.GetValue();
@@ -67,6 +85,43 @@ namespace Tetragrama::Components {
             m_selected_scene_entity = std::move(scene_entity);
             Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::PointerValueMessage<GraphicSceneEntity>>(
                 EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::PointerValueMessage<GraphicSceneEntity>{&m_selected_scene_entity});
+        }
+
+        if (m_selected_scene_entity) {
+            auto primary_scene_camera = m_active_scene.lock()->GetPrimariyCameraEntity();
+            if (primary_scene_camera) {
+                auto&       camera_component   = primary_scene_camera.GetComponent<CameraComponent>();
+                auto        camera             = camera_component.GetCamera();
+                const auto& camera_projection  = camera->GetProjectionMatrix();
+                auto        camera_view_matrix = camera->GetViewMatrix();
+
+                auto& entity_transform_component = m_selected_scene_entity.GetComponent<TransformComponent>();
+
+                auto transform = entity_transform_component.GetTransform();
+
+                // snapping
+                float snap_value = 0.5f;
+                bool  is_snap_operation =
+                    ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, m_active_scene.lock()->GetWindowParent());
+                if (is_snap_operation && static_cast<ImGuizmo::OPERATION>(m_gizmo_operation) == ImGuizmo::ROTATE) {
+                    snap_value = 45.0f;
+                }
+                float snap_array[3] = {snap_value, snap_value, snap_value};
+
+                if (m_gizmo_operation > 0) {
+                    ImGuizmo::Manipulate(ZEngine::Maths::value_ptr(camera_view_matrix), ZEngine::Maths::value_ptr(camera_projection), (ImGuizmo::OPERATION) m_gizmo_operation,
+                        ImGuizmo::MODE::LOCAL, ZEngine::Maths::value_ptr(transform), nullptr, is_snap_operation ? snap_array : nullptr);
+                }
+
+                if (ImGuizmo::IsUsing()) {
+                    ZEngine::Maths::Vector3 translation, rotation, scale;
+                    ZEngine::Maths::DecomposeTransformComponent(transform, translation, rotation, scale);
+
+                    entity_transform_component.SetPosition(translation);
+                    entity_transform_component.SetScaleSize(scale);
+                    entity_transform_component.SetRotation(rotation);
+                }
+            }
         }
 
         bool request_entity_removal = false;

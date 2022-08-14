@@ -28,6 +28,8 @@ add_library (zEngineLib
 	STATIC
 		${HEADER_FILES_LIST}
 		${Sources}
+		${EXTERNAL_DIR}/ImGuizmo/ImGuizmo.h
+		${EXTERNAL_DIR}/ImGuizmo/ImGuizmo.cpp
 		${RESOURCE_FILES_LIST}
 )
 

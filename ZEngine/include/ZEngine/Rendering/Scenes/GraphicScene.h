@@ -40,6 +40,9 @@ namespace ZEngine::Rendering::Scenes {
         bool ShouldReactToEvent() const;
 
         void SetWindowParent(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window);
+        Ref<ZEngine::Window::CoreWindow> GetWindowParent() const;
+
+        Entities::GraphicSceneEntity GetPrimariyCameraEntity() const;
 
     public:
         Entities::GraphicSceneEntity CreateEntity(std::string_view entity_name = "empty entity");

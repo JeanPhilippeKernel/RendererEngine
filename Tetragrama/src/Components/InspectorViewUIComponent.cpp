@@ -57,8 +57,8 @@ namespace Tetragrama::Components {
                 auto position = component.GetPosition();
                 Helpers::DrawVec3Control("Position", position, [&component](ZEngine::Maths::Vector3& value) { component.SetPosition(value); });
 
-                auto rotation_axis = component.GetRotationAxis();
-                Helpers::DrawVec3Control("Rotation", rotation_axis, [&component](ZEngine::Maths::Vector3& value) { component.SetRotationAxis(value); });
+                auto rotation_axis_degree = component.GetRotationEulerAngles();
+                Helpers::DrawVec3Control("Rotation", rotation_axis_degree, [&component](ZEngine::Maths::Vector3& value) { component.SetRotationEulerAngles(value); });
 
                 auto scale_size = component.GetScaleSize();
                 Helpers::DrawVec3Control(

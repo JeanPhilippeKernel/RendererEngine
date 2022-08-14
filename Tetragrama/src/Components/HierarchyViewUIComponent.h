@@ -28,5 +28,6 @@ namespace Tetragrama::Components {
         bool                                                       m_has_recieved_reset_request{false};
         ZEngine::Rendering::Entities::GraphicSceneEntity           m_selected_scene_entity{entt::null, nullptr};
         ZEngine::WeakRef<ZEngine::Rendering::Scenes::GraphicScene> m_active_scene;
+        int                                                        m_gizmo_operation{-1};
     };
 } // namespace Tetragrama::Components

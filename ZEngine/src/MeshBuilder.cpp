@@ -16,7 +16,7 @@ namespace ZEngine::Rendering::Meshes {
 
     Mesh* MeshBuilder::CreateQuad(const Vector2& position, const Vector2& size, float angle) {
         Mesh*             mesh          = new Mesh{};
-        QuadGeometry*     quad_geometry = new QuadGeometry({position.x, position.y, 0.0f}, {size.x, size.y, 0.0f}, Vector3(0.0f, 0.0f, 1.0f), angle);
+        QuadGeometry*     quad_geometry = new QuadGeometry();
         Texture*          texture       = CreateTexture(1, 1);
         StandardMaterial* material      = new StandardMaterial{};
 
@@ -80,7 +80,7 @@ namespace ZEngine::Rendering::Meshes {
 
     Mesh* MeshBuilder::CreateQuad(const Vector3& position, const Vector2& size, float angle) {
         Mesh*         mesh          = new Mesh{};
-        QuadGeometry* quad_geometry = new QuadGeometry(position, {size.x, size.y, 0.0f}, Vector3(0.0f, 0.0f, 1.0f), angle);
+        QuadGeometry* quad_geometry = new QuadGeometry();
 
         mesh->SetGeometry(quad_geometry);
         return mesh;
@@ -164,7 +164,7 @@ namespace ZEngine::Rendering::Meshes {
 
     Mesh* MeshBuilder::CreateSquare(const Vector2& position, const Vector2& size, float angle) {
         Mesh*             mesh          = new Mesh{};
-        SquareGeometry*   quad_geometry = new SquareGeometry({position.x, position.y, 0.0f}, {size.x, size.y, 0.0f}, Vector3(0.0f, 0.0f, 1.0f), angle);
+        SquareGeometry*   quad_geometry = new SquareGeometry();
         Texture*          texture       = CreateTexture(1, 1);
         StandardMaterial* material      = new StandardMaterial{};
 
@@ -227,7 +227,7 @@ namespace ZEngine::Rendering::Meshes {
 
     Mesh* MeshBuilder::CreateSquare(const Vector3& position, const Vector2& size, float angle) {
         Mesh*           mesh          = new Mesh{};
-        SquareGeometry* quad_geometry = new SquareGeometry(position, {size.x, size.y, 0.0f}, Vector3(0.0f, 0.0f, 1.0f), angle);
+        SquareGeometry* quad_geometry = new SquareGeometry();
 
         mesh->SetGeometry(quad_geometry);
         return mesh;
@@ -310,7 +310,7 @@ namespace ZEngine::Rendering::Meshes {
 
     Mesh* MeshBuilder::CreateCube(const Vector2& position, const Vector3& size, float angle, const Vector3& axis) {
         Mesh*             mesh          = new Mesh{};
-        CubeGeometry*     quad_geometry = new CubeGeometry({position.x, position.y, 0.0f}, size, axis, angle);
+        CubeGeometry*     quad_geometry = new CubeGeometry();
         Texture*          texture       = CreateTexture(1, 1);
         StandardMaterial* material      = new StandardMaterial{};
 
@@ -373,7 +373,7 @@ namespace ZEngine::Rendering::Meshes {
 
     Mesh* MeshBuilder::CreateCube(const Vector3& position, const Vector3& size, float angle, const Vector3& axis) {
         Mesh*             mesh          = new Mesh{};
-        CubeGeometry*     quad_geometry = new CubeGeometry(position, size, axis, angle);
+        CubeGeometry*     quad_geometry = new CubeGeometry();
         Texture*          texture       = CreateTexture(1, 1);
         StandardMaterial* material      = new StandardMaterial{};
 
