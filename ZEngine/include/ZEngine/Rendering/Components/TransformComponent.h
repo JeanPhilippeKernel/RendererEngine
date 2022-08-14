@@ -37,7 +37,7 @@ namespace ZEngine::Rendering::Components {
             return m_rotation;
         }
 
-        const Maths::Vector3& GetRotationEulerAngles() const {
+        Maths::Vector3 GetRotationEulerAngles() const {
             return Maths::degrees(m_rotation);
         }
 
