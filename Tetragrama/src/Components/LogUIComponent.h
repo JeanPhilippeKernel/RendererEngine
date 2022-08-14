@@ -25,5 +25,6 @@ namespace Tetragrama::Components {
         bool            m_is_copy_button_pressed{false};
         bool            m_is_clear_button_pressed{false};
         ImGuiTextBuffer m_content;
+        ImVector<int>   m_content_line_offsets;
     };
 } // namespace Tetragrama::Components

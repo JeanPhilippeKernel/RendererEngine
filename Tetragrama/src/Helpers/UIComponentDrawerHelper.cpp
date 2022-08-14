@@ -448,4 +448,10 @@ namespace Tetragrama::Helpers {
         ImGui::Columns(1);
         ImGui::PopID();
     }
+
+    void DrawColoredTextLine(const char* start, const char* end, const ImVec4& color) {
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+        ImGui::TextUnformatted(start, end);
+        ImGui::PopStyleColor();
+    }
 } // namespace Tetragrama::Helpers
