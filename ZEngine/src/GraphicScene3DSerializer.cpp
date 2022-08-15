@@ -122,7 +122,7 @@ namespace ZEngine::Serializers {
             return SerializeInformation{false, "Failed to open Scene file"};
         }
         file_stream.seekg(std::ifstream::beg);
-        
+
         std::stringstream content_stream;
         content_stream << file_stream.rdbuf();
 
@@ -163,7 +163,7 @@ namespace ZEngine::Serializers {
                     if (transform_component) {
                         auto& component = scene_entity.GetComponent<TransformComponent>();
                         component.SetPosition(transform_component["Position"].as<Maths::Vector3>());
-                        component.SetRotationAxis(transform_component["Rotation"].as<Maths::Vector3>());
+                        component.SetRotationEulerAngles(transform_component["Rotation"].as<Maths::Vector3>());
                         component.SetScaleSize(transform_component["Scale"].as<Maths::Vector3>());
                     }
 
@@ -293,7 +293,7 @@ namespace ZEngine::Serializers {
             emitter << YAML::Key << "TransformComponent";
             emitter << YAML::BeginMap;
             emitter << YAML::Key << "Position" << YAML::Value << component.GetPosition();
-            emitter << YAML::Key << "Rotation" << YAML::Value << component.GetRotationAxis();
+            emitter << YAML::Key << "Rotation" << YAML::Value << component.GetRotationEulerAngles();
             emitter << YAML::Key << "Scale" << YAML::Value << component.GetScaleSize();
             emitter << YAML::EndMap;
         });

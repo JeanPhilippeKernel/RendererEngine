@@ -20,4 +20,7 @@ namespace ZEngine::Maths {
     using Matrix2 = mat2;
 
     using Quaternion = quat;
+
+    // From TheCherno : https://github.com/TheCherno/Hazel/blob/master/Hazel/src/Hazel/Math/Math.h
+    bool DecomposeTransformComponent(const Matrix4& transform, Vector3& translation, Vector3& rotation, Vector3& scale);
 } // namespace ZEngine::Maths

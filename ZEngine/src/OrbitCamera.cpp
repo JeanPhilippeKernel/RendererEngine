@@ -37,9 +37,10 @@ namespace ZEngine::Rendering::Cameras {
 
         Maths::Quaternion quat_around_y  = Maths::angleAxis(m_yaw_angle, Maths::Vector3(0.0f, 1.0f, 0.0f));
         Maths::Quaternion quat_around_x  = Maths::angleAxis(m_pitch_angle, Maths::Vector3(1.0f, 0.0f, 0.0f));
-        Maths::Quaternion quat_around_yx = quat_around_y * quat_around_x;
+        Maths::Quaternion quat_around_z  = Maths::angleAxis(0.0f, Maths::Vector3(0.0f, 0.0f, 1.0f));
+        Maths::Quaternion quat_around_zyx = quat_around_z * quat_around_y * quat_around_x;
 
-        m_forward  = Maths::rotate(Maths::normalize(quat_around_yx), Maths::normalize(m_forward));
+        m_forward  = Maths::rotate(Maths::normalize(quat_around_zyx), Maths::normalize(m_forward));
         m_position = m_target + (m_radius * m_forward);
         m_forward  = Maths::normalize(m_position - m_target);
 
@@ -54,9 +55,10 @@ namespace ZEngine::Rendering::Cameras {
 
         auto quat_around_y  = Maths::angleAxis(yaw_radians, m_up);
         auto quat_around_x  = Maths::angleAxis(pitch_radians, m_right);
-        auto quat_around_xy = quat_around_y * quat_around_x;
+        Maths::Quaternion quat_around_z  = Maths::angleAxis(0.0f, Maths::Vector3(0.0f, 0.0f, 1.0f));
+        auto quat_around_zyx = quat_around_z * quat_around_y * quat_around_x;
 
-        m_forward  = Maths::rotate(Maths::normalize(quat_around_xy), m_forward);
+        m_forward  = Maths::rotate(Maths::normalize(quat_around_zyx), m_forward);
         m_position = m_target + (m_radius * m_forward);
 
         PerspectiveCamera::UpdateCoordinateVectors();

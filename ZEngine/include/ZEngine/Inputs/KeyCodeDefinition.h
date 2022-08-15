@@ -196,11 +196,11 @@
 #define ZENGINE_KEY_KP_OCTAL ZEngine::Inputs::Key::KP_OCTAL
 #define ZENGINE_KEY_KP_DECIMAL ZEngine::Inputs::Key::KP_DECIMAL
 #define ZENGINE_KEY_KP_HEXADECIMAL ZEngine::Inputs::Key::KP_HEXADECIMAL
-#define ZENGINE_KEY_LCTRL ZEngine::Inputs::Key::LCTRL
+#define ZENGINE_KEY_LEFT_CONTROL ZEngine::Inputs::Key::LCTRL
 #define ZENGINE_KEY_LSHIFT ZEngine::Inputs::Key::LSHIFT
 #define ZENGINE_KEY_LALT ZEngine::Inputs::Key::LALT
 #define ZENGINE_KEY_LGUI ZEngine::Inputs::Key::LGUI
-#define ZENGINE_KEY_RCTRL ZEngine::Inputs::Key::RCTRL
+#define ZENGINE_KEY_RIGHT_CONTROL ZEngine::Inputs::Key::RCTRL
 #define ZENGINE_KEY_RSHIFT ZEngine::Inputs::Key::RSHIFT
 #define ZENGINE_KEY_RALT ZEngine::Inputs::Key::RALT
 #define ZENGINE_KEY_RGUI ZEngine::Inputs::Key::RGUI
