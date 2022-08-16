@@ -101,10 +101,10 @@ namespace Tetragrama::Components {
         }
 
         if (m_selected_scene_entity) {
-            auto primary_scene_camera = m_active_editor_camera.lock()->GetCamera();
-            if (primary_scene_camera) {
-                const auto& camera_projection  = primary_scene_camera->GetProjectionMatrix();
-                auto        camera_view_matrix = primary_scene_camera->GetViewMatrix();
+            auto camera = m_active_editor_camera.lock()->GetCamera();
+            if (camera) {
+                const auto& camera_projection  = camera->GetProjectionMatrix();
+                const auto& camera_view_matrix = camera->GetViewMatrix();
 
                 auto& entity_transform_component = m_selected_scene_entity.GetComponent<TransformComponent>();
 
