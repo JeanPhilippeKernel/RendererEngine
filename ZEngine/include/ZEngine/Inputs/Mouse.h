@@ -46,11 +46,10 @@ namespace ZEngine::Inputs {
         }
 
         std::array<double, 2> GetMousePosition(const Ref<Window::CoreWindow>& window) const {
+            double x, y;
 #ifdef ZENGINE_KEY_MAPPING_SDL
-            int        x, y;
             const auto state = SDL_GetMouseState(&x, &y);
 #else
-            double x, y;
             glfwGetCursorPos(static_cast<GLFWwindow*>(window->GetNativeWindow()), &x, &y);
 #endif
             return std::array<double, 2>{x, y};
