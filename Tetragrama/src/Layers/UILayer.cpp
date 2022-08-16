@@ -65,6 +65,11 @@ namespace Tetragrama::Layers {
             std::bind(&Components::HierarchyViewUIComponent::SceneAvailableMessageHandler,
                 reinterpret_cast<Components::HierarchyViewUIComponent*>(m_hierarchy_view_component.get()), std::placeholders::_1));
 
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<ZEngine::Ref<EditorCameraController>>>(m_hierarchy_view_component,
+            EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE,
+            std::bind(&Components::HierarchyViewUIComponent::EditorCameraAvailableMessageHandler,
+                reinterpret_cast<Components::HierarchyViewUIComponent*>(m_hierarchy_view_component.get()), std::placeholders::_1));
+
         IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<bool>>(m_hierarchy_view_component, EDITOR_COMPONENT_HIERARCHYVIEW_REQUEST_RESUME_OR_PAUSE_RENDER,
             std::bind(&Components::HierarchyViewUIComponent::RequestStartOrPauseRenderMessageHandler,
                 reinterpret_cast<Components::HierarchyViewUIComponent*>(m_hierarchy_view_component.get()), std::placeholders::_1));

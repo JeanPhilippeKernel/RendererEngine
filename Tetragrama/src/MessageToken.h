@@ -25,6 +25,7 @@ namespace Tetragrama {
     static std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION = "editor::render_layer::scene::request::deserialization";
     static std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE        = "editor::render_layer::scene::request::newscene";
     static std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE       = "editor::render_layer::scene::request::openscene";
+    static std::string_view EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE   = "editor::render_layer::scene::camera_controller_available";
 
     static std::string_view EDITOR_COMPONENT_LOG_RECEIVE_LOG_MESSAGE = "editor::component::log::receive_log_message";
 } // namespace Tetragrama

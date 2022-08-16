@@ -39,7 +39,8 @@ namespace ZEngine::Rendering::Scenes {
         void SetShouldReactToEvent(bool value);
         bool ShouldReactToEvent() const;
 
-        void SetWindowParent(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window);
+        void                             SetCameraController(const Ref<Controllers::ICameraController>& camera_controller);
+        void                             SetWindowParent(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window);
         Ref<ZEngine::Window::CoreWindow> GetWindowParent() const;
 
         Entities::GraphicSceneEntity GetPrimariyCameraEntity() const;
@@ -58,15 +59,16 @@ namespace ZEngine::Rendering::Scenes {
         std::function<void(uint32_t)> OnSceneRenderCompleted;
 
     protected:
-        Ref<Cameras::Camera>              m_scene_camera;
-        Scope<Renderers::GraphicRenderer> m_renderer;
-        std::vector<Ref<Meshes::Mesh>>    m_mesh_list;
+        WeakRef<Controllers::ICameraController> m_camera_controller;
+        WeakRef<Cameras::Camera>                m_scene_camera;
+        Scope<Renderers::GraphicRenderer>       m_renderer;
+        std::vector<Ref<Meshes::Mesh>>          m_mesh_list;
 
     private:
-        bool                    m_should_react_to_event{true};
-        std::pair<float, float> m_scene_requested_size{0.0f, 0.0f};
-        std::pair<float, float> m_last_scene_requested_size{0.0f, 0.0f};
-        Ref<entt::registry>     m_entity_registry;
+        bool                                          m_should_react_to_event{true};
+        std::pair<float, float>                       m_scene_requested_size{0.0f, 0.0f};
+        std::pair<float, float>                       m_last_scene_requested_size{0.0f, 0.0f};
+        Ref<entt::registry>                           m_entity_registry;
         ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_parent_window;
 
         friend class ZEngine::Serializers::GraphicScene3DSerializer;

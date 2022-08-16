@@ -38,15 +38,15 @@ namespace ZEngine::Rendering::Cameras {
             return m_view_projection;
         }
 
-        virtual const Maths::Vector3& GetUp() const {
+        virtual const Maths::Vector3& GetUp() {
             return m_up;
         }
 
-        virtual const Maths::Vector3& GetForward() const {
+        virtual const Maths::Vector3& GetForward() {
             return m_forward;
         }
 
-        virtual const Maths::Vector3& GetRight() const {
+        virtual const Maths::Vector3& GetRight() {
             return m_right;
         }
 

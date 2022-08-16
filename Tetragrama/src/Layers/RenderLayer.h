@@ -7,6 +7,7 @@
 #include <Components/Events/SceneViewportUnfocusedEvent.h>
 #include <Components/Events/SceneTextureAvailableEvent.h>
 #include <Messengers/Message.h>
+#include <EditorCameraController.h>
 
 namespace Tetragrama::Layers {
     class RenderLayer : public ZEngine::Layers::Layer {
@@ -38,6 +39,7 @@ namespace Tetragrama::Layers {
     private:
         ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>     m_scene;
         ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;
+        ZEngine::Ref<EditorCameraController>                       m_editor_camera_controller;
         std::queue<std::function<void(void)>>                      m_deferral_operation;
 
     private:

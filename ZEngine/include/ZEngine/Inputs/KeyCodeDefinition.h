@@ -198,7 +198,7 @@
 #define ZENGINE_KEY_KP_HEXADECIMAL ZEngine::Inputs::Key::KP_HEXADECIMAL
 #define ZENGINE_KEY_LEFT_CONTROL ZEngine::Inputs::Key::LCTRL
 #define ZENGINE_KEY_LSHIFT ZEngine::Inputs::Key::LSHIFT
-#define ZENGINE_KEY_LALT ZEngine::Inputs::Key::LALT
+#define ZENGINE_KEY_LEFT_ALT ZEngine::Inputs::Key::LALT
 #define ZENGINE_KEY_LGUI ZEngine::Inputs::Key::LGUI
 #define ZENGINE_KEY_RIGHT_CONTROL ZEngine::Inputs::Key::RCTRL
 #define ZENGINE_KEY_RSHIFT ZEngine::Inputs::Key::RSHIFT
@@ -235,7 +235,7 @@
 
 #define ZENGINE_KEY_MOUSE_LEFT ZEngine::Inputs::Key::MOUSE_LEFT
 #define ZENGINE_KEY_MOUSE_RIGHT ZEngine::Inputs::Key::MOUSE_RIGHT
-#define ZENGINE_KEY_MOUSE_WHEEL ZEngine::Inputs::Key::MOUSE_WHEEL
+#define ZENGINE_KEY_MOUSE_MIDDLE ZEngine::Inputs::Key::MOUSE_WHEEL
 
 #else
 
