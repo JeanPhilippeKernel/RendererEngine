@@ -76,7 +76,8 @@ namespace Tetragrama {
     }
 
     const glm::vec3& EditorCamera::GetRight() {
-        return glm::rotate(GetOrientation(), glm::vec3(1.0f, 0.0f, 0.0f));
+        m_right = glm::rotate(GetOrientation(), glm::vec3(1.0f, 0.0f, 0.0f));
+        return m_right;
     }
 
     const glm::vec3& EditorCamera::GetForward() {
