@@ -34,11 +34,24 @@ namespace Tetragrama::Components {
     }
 
     void HierarchyViewUIComponent::SceneAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message) {
-        m_active_scene = message.GetValue();
+        {
+            std::unique_lock lock(m_mutex);
+            m_active_scene = message.GetValue();
+        }
+    }
+
+    void HierarchyViewUIComponent::EditorCameraAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<EditorCameraController>>& message) {
+        {
+            std::unique_lock lock(m_mutex);
+            m_active_editor_camera = message.GetValue();
+        }
     }
 
     void HierarchyViewUIComponent::RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>& message) {
-        m_is_allowed_to_render = message.GetValue();
+        {
+            std::unique_lock lock(m_mutex);
+            m_is_allowed_to_render = message.GetValue();
+        }
     }
 
     bool HierarchyViewUIComponent::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) {
@@ -88,12 +101,10 @@ namespace Tetragrama::Components {
         }
 
         if (m_selected_scene_entity) {
-            auto primary_scene_camera = m_active_scene.lock()->GetPrimariyCameraEntity();
+            auto primary_scene_camera = m_active_editor_camera.lock()->GetCamera();
             if (primary_scene_camera) {
-                auto&       camera_component   = primary_scene_camera.GetComponent<CameraComponent>();
-                auto        camera             = camera_component.GetCamera();
-                const auto& camera_projection  = camera->GetProjectionMatrix();
-                auto        camera_view_matrix = camera->GetViewMatrix();
+                const auto& camera_projection  = primary_scene_camera->GetProjectionMatrix();
+                auto        camera_view_matrix = primary_scene_camera->GetViewMatrix();
 
                 auto& entity_transform_component = m_selected_scene_entity.GetComponent<TransformComponent>();
 

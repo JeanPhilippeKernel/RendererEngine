@@ -25,17 +25,24 @@ namespace Tetragrama::Layers {
 
     void RenderLayer::Initialize() {
 
+        m_editor_camera_controller = CreateRef<EditorCameraController>(GetAttachedWindow(), 300.0f, 0.f, 30.f);
+
         m_scene = CreateRef<GraphicScene3D>();
         m_scene->Initialize();
+        m_scene->SetCameraController(m_editor_camera_controller);
         m_scene->SetWindowParent(GetAttachedWindow());
         m_scene->OnSceneRenderCompleted = std::bind(&RenderLayer::OnSceneRenderCompletedCallback, this, std::placeholders::_1);
         m_scene_serializer              = CreateRef<Serializers::GraphicScene3DSerializer>(m_scene);
 
         Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<Ref<GraphicScene>>>(
             EDITOR_RENDER_LAYER_SCENE_AVAILABLE, Messengers::GenericMessage<Ref<GraphicScene>>{m_scene});
+
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<Ref<EditorCameraController>>>(
+            EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE, Messengers::GenericMessage<Ref<EditorCameraController>>{m_editor_camera_controller});
     }
 
     void RenderLayer::Update(TimeStep dt) {
+        m_editor_camera_controller->Update(dt);
         m_scene->Update(dt);
 
         if (!m_deferral_operation.empty()) {
@@ -46,6 +53,7 @@ namespace Tetragrama::Layers {
     }
 
     bool RenderLayer::OnEvent(CoreEvent& e) {
+        m_editor_camera_controller->OnEvent(e);
         if (m_scene->ShouldReactToEvent()) {
             m_scene->OnEvent(e);
         }
@@ -58,6 +66,7 @@ namespace Tetragrama::Layers {
 
     void RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message) {
         const auto& value = message.GetValue();
+        m_editor_camera_controller->SetViewportSize(value.first, value.second);
         m_scene->RequestNewSize(value.first, value.second);
     }
 

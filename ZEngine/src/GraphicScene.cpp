@@ -106,6 +106,10 @@ namespace ZEngine::Rendering::Scenes {
         return m_should_react_to_event;
     }
 
+    void GraphicScene::SetCameraController(const Ref<Controllers::ICameraController>& camera_controller) {
+        m_camera_controller = camera_controller;
+    }
+
     void GraphicScene::SetWindowParent(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window) {
         m_parent_window = window;
     }
@@ -128,21 +132,11 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::Update(Core::TimeStep dt) {
-        m_entity_registry->view<CameraComponent>().each([&dt, this](CameraComponent& component) {
-            if (component.IsPrimaryCamera) {
-                m_scene_camera = component.GetCamera();
-                component.GetCameraController()->Update(dt);
-            }
-        });
-
         if ((m_scene_requested_size.first > 0.0f) && (m_scene_requested_size.second > 0.0f)) {
-            m_entity_registry->view<CameraComponent>().each([&, this](CameraComponent& component) {
-                if (component.IsPrimaryCamera) {
-                    auto controller = component.GetCameraController();
-                    controller->SetAspectRatio(m_scene_requested_size.first / m_scene_requested_size.second);
-                    m_renderer->GetFrameBuffer()->Resize(m_scene_requested_size.first, m_scene_requested_size.second);
-                }
-            });
+            if (auto controller = m_camera_controller.lock()) {
+                controller->SetAspectRatio(m_scene_requested_size.first / m_scene_requested_size.second);
+            }
+            m_renderer->GetFrameBuffer()->Resize(m_scene_requested_size.first, m_scene_requested_size.second);
             m_last_scene_requested_size = m_scene_requested_size;
             m_scene_requested_size      = {0.0f, 0.0f};
         }
@@ -183,8 +177,12 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::Render() {
-        if (m_scene_camera) {
-            m_renderer->StartScene(m_scene_camera);
+        if (auto controller = m_camera_controller.lock()) {
+            m_scene_camera = controller->GetCamera();
+        }
+
+        if (!m_scene_camera.expired()) {
+            m_renderer->StartScene(m_scene_camera.lock());
             m_renderer->AddMesh(m_mesh_list);
             m_renderer->EndScene();
 
