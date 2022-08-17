@@ -27,6 +27,7 @@
 #include "Rendering/Components/MaterialComponent.h"
 #include "Rendering/Components/LightComponent.h"
 #include "Rendering/Components/CameraComponent.h"
+#include "Rendering/Components/ValidComponent.h"
 
 #include "Rendering/Renderers/GraphicRenderer.h"
 #include "Rendering/Renderers/GraphicRenderer2D.h"

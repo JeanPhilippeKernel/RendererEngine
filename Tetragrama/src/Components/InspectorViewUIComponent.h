@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <mutex>
 #include <ZEngine/ZEngine.h>
 #include <Message.h>
 
@@ -27,5 +28,6 @@ namespace Tetragrama::Components {
         bool                                              m_recieved_unselected_request{false};
         bool                                              m_recieved_deleted_request{false};
         ZEngine::Rendering::Entities::GraphicSceneEntity* m_scene_entity{nullptr};
+        std::mutex                                        m_mutex;
     };
 } // namespace Tetragrama::Components

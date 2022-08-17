@@ -52,9 +52,13 @@ namespace ZEngine::Rendering::Scenes {
         Entities::GraphicSceneEntity GetEntity(std::string_view entity_name);
         void                         RemoveEntity(const Entities::GraphicSceneEntity& entity);
         void                         RemoveAllEntities();
+        void                         RemoveInvalidEntities();
+        void                         InvalidateAllEntities();
         Ref<entt::registry>          GetRegistry() const;
 
         bool HasEntities() const;
+        bool HasInvalidEntities() const;
+        bool IsValidEntity(const Entities::GraphicSceneEntity&) const;
 
         std::function<void(uint32_t)> OnSceneRenderCompleted;
 

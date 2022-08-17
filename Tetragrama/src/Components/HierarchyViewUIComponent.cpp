@@ -63,11 +63,16 @@ namespace Tetragrama::Components {
 
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
-        if (!m_active_scene.expired()) {
-            auto scene_ptr = m_active_scene.lock();
-            scene_ptr->GetRegistry()->view<NameComponent>().each([&scene_ptr, this](entt::entity handle, NameComponent&) {
-                ZEngine::Rendering::Entities::GraphicSceneEntity scene_entity(handle, scene_ptr->GetRegistry());
-                RenderEntityNode(std::move(scene_entity));
+        if (auto scene_ptr = m_active_scene.lock()) {
+            if(scene_ptr->HasInvalidEntities()) {
+                scene_ptr->RemoveInvalidEntities(); // We perform a cleanup before any render operation
+            }
+
+            scene_ptr->GetRegistry()->view<NameComponent, ValidComponent>().each([&scene_ptr, this](entt::entity handle, NameComponent&, ValidComponent& valid_component) {
+                 ZEngine::Rendering::Entities::GraphicSceneEntity scene_entity(handle, scene_ptr->GetRegistry());
+                if (valid_component.IsValid) {
+                    RenderEntityNode(std::move(scene_entity));
+                }
             });
         }
 
@@ -100,7 +105,8 @@ namespace Tetragrama::Components {
                 EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::PointerValueMessage<GraphicSceneEntity>{&m_selected_scene_entity});
         }
 
-        if (m_selected_scene_entity) {
+        auto scene_ptr = m_active_scene.lock();
+        if (m_selected_scene_entity && scene_ptr->IsValidEntity(m_selected_scene_entity)) {
             auto camera = m_active_editor_camera.lock()->GetCamera();
             if (camera) {
                 const auto& camera_projection  = camera->GetProjectionMatrix();
