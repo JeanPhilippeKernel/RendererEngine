@@ -10,6 +10,7 @@
 #include <Rendering/Entities/GraphicSceneEntity.h>
 #include <Rendering/Materials/StandardMaterial.h>
 #include <ZEngine/Rendering/Components/UUIComponent.h>
+#include <ZEngine/Rendering/Components/ValidComponent.h>
 
 using namespace ZEngine::Controllers;
 using namespace ZEngine::Rendering::Components;
@@ -24,6 +25,7 @@ namespace ZEngine::Rendering::Scenes {
     GraphicSceneEntity GraphicScene::CreateEntity(std::string_view entity_name) {
         GraphicSceneEntity graphic_entity(m_entity_registry->create(), m_entity_registry);
         graphic_entity.AddComponent<UUIComponent>();
+        graphic_entity.AddComponent<ValidComponent>(true);
         graphic_entity.AddComponent<NameComponent>(entity_name);
         graphic_entity.AddComponent<TransformComponent>();
         return graphic_entity;
@@ -32,6 +34,7 @@ namespace ZEngine::Rendering::Scenes {
     GraphicSceneEntity GraphicScene::CreateEntity(uuids::uuid uuid, std::string_view entity_name) {
         GraphicSceneEntity graphic_entity(m_entity_registry->create(), m_entity_registry);
         graphic_entity.AddComponent<UUIComponent>(uuid);
+        graphic_entity.AddComponent<ValidComponent>(true);
         graphic_entity.AddComponent<NameComponent>(entity_name);
         graphic_entity.AddComponent<TransformComponent>();
         return graphic_entity;
@@ -40,6 +43,7 @@ namespace ZEngine::Rendering::Scenes {
     GraphicSceneEntity GraphicScene::CreateEntity(std::string_view uuid_string, std::string_view entity_name) {
         GraphicSceneEntity graphic_entity(m_entity_registry->create(), m_entity_registry);
         graphic_entity.AddComponent<UUIComponent>(uuid_string);
+        graphic_entity.AddComponent<ValidComponent>(true);
         graphic_entity.AddComponent<NameComponent>(entity_name);
         graphic_entity.AddComponent<TransformComponent>();
         return graphic_entity;
@@ -75,12 +79,43 @@ namespace ZEngine::Rendering::Scenes {
         m_entity_registry->clear();
     }
 
+    void GraphicScene::RemoveInvalidEntities() {
+        m_entity_registry->view<ValidComponent>().each([&](entt::entity handle, ValidComponent& component) {
+            if (!component.IsValid) {
+                m_entity_registry->destroy(handle);
+            }
+        });
+    }
+
+    void GraphicScene::InvalidateAllEntities() {
+        m_entity_registry->view<ValidComponent>().each([&](ValidComponent& component) {
+            component.IsValid = false;
+        });
+    }
+
     Ref<entt::registry> GraphicScene::GetRegistry() const {
         return m_entity_registry;
     }
 
     bool GraphicScene::HasEntities() const {
         return !m_entity_registry->empty();
+    }
+
+    bool GraphicScene::HasInvalidEntities() const {
+        bool found = false;
+        auto view = m_entity_registry->view<ValidComponent>();
+        for (auto entity : view) {
+            auto& component = view.get<ValidComponent>(entity);
+            if (!component.IsValid) {
+                found = true;
+                break;
+            }
+        }
+        return found;
+    }
+
+    bool GraphicScene::IsValidEntity(const Entities::GraphicSceneEntity& entity) const {
+        return m_entity_registry->valid(entity);
     }
 
     bool GraphicScene::OnEvent(Event::CoreEvent& e) {

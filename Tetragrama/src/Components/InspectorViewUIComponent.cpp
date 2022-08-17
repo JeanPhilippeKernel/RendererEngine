@@ -20,19 +20,31 @@ namespace Tetragrama::Components {
     }
 
     void InspectorViewUIComponent::SceneEntitySelectedMessageHandler(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>& message) {
-        m_scene_entity = message.GetValue();
+        {
+            std::unique_lock lock(m_mutex);
+            m_scene_entity = message.GetValue();
+        }
     }
 
     void InspectorViewUIComponent::SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage& message) {
-        m_recieved_unselected_request = true;
+        {
+            std::unique_lock lock(m_mutex);
+            m_recieved_unselected_request = true;
+        }
     }
 
     void InspectorViewUIComponent::SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&) {
-        m_recieved_deleted_request = true;
+        {
+            std::unique_lock lock(m_mutex);
+            m_recieved_deleted_request = true;
+        }
     }
 
     void InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>& message) {
-        m_is_allowed_to_render = message.GetValue();
+        {
+            std::unique_lock lock(m_mutex);
+            m_is_allowed_to_render = message.GetValue();
+        }
     }
 
     void InspectorViewUIComponent::Render() {
@@ -47,6 +59,12 @@ namespace Tetragrama::Components {
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
         if (m_scene_entity) {
+            auto& valid_component = m_scene_entity->GetComponent<ValidComponent>();
+            if (!valid_component.IsValid) {
+                ImGui::End();
+                return;
+            }
+
             Helpers::DrawEntityComponentControl<NameComponent>("Name", *m_scene_entity, m_node_flag, false, [](NameComponent& component) {
                 ImGui::Dummy(ImVec2(0, 3));
                 Helpers::DrawInputTextControl("Entity name", component.Name, [&component](std::string_view value) { component.Name = value; });

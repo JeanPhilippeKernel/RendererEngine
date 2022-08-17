@@ -28,7 +28,6 @@ namespace Tetragrama::Components {
     private:
         ImGuiTreeNodeFlags                                         m_node_flag;
         bool                                                       m_is_node_opened{false};
-        bool                                                       m_has_recieved_reset_request{false};
         ZEngine::Rendering::Entities::GraphicSceneEntity           m_selected_scene_entity{entt::null, nullptr};
         ZEngine::WeakRef<ZEngine::Rendering::Scenes::GraphicScene> m_active_scene;
         ZEngine::WeakRef<EditorCameraController>                   m_active_editor_camera;

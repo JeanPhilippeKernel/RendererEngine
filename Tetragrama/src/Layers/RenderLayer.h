@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <queue>
+#include <mutex>
 #include <ZEngine/ZEngine.h>
 #include <Components/Events/SceneViewportResizedEvent.h>
 #include <Components/Events/SceneViewportFocusedEvent.h>
@@ -41,6 +42,7 @@ namespace Tetragrama::Layers {
         ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;
         ZEngine::Ref<EditorCameraController>                       m_editor_camera_controller;
         std::queue<std::function<void(void)>>                      m_deferral_operation;
+        std::mutex                                                 m_mutex;
 
     private:
         void HandleNewSceneMessage(const Messengers::EmptyMessage&);
