@@ -183,7 +183,7 @@ namespace ZEngine::Rendering::Scenes {
         auto view_material    = m_entity_registry->view<MaterialComponent>();
         for (auto entity : view_material) {
             auto& material_component = view_material.get<MaterialComponent>(entity);
-            auto  material           = material_component.GetMaterial();
+            auto  material           = material_component.GetMaterials()[0]; // Todo : need to be fix to consider collection of materials
 
             if (light_entity_ptr != entt::null) {
                 auto light = m_entity_registry->get<LightComponent>(light_entity_ptr).GetLight();
@@ -206,7 +206,7 @@ namespace ZEngine::Rendering::Scenes {
                 auto geometry = geometry_component.GetGeometry();
                 geometry->SetTransform(transform_component.GetTransform());
 
-                auto mesh = CreateRef<Meshes::Mesh>(std::move(geometry), material_component.GetMaterial());
+                auto mesh = CreateRef<Meshes::Mesh>(std::move(geometry), material_component.GetMaterials());
                 m_mesh_list.push_back(std::move(mesh));
             });
     }

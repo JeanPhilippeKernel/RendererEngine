@@ -18,25 +18,30 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
             GraphicRendererInformationRecord record;
 
             const auto& geometry             = mesh.GetGeometry();
-            const auto& material             = mesh.GetMaterial();
-            const auto  shader_built_in_type = material->GetShaderBuiltInType();
 
             information.GeometryCollection.push_back(geometry);
             record.GeometryIndex = information.GeometryCollectionCount++;
 
-            information.MaterialCollection.push_back(material);
-            record.MaterialIndex = information.MaterialCollectionCount++;
+            const auto& materials             = mesh.GetMaterials();
 
-            size_t item_index{0};
-            for (const auto& item : shader_collection) {
-                if (item.first == shader_built_in_type) {
-                    break;
+            for (const auto& material : materials) {
+                const auto shader_built_in_type = material->GetShaderBuiltInType();
+
+                information.MaterialCollection.push_back(material);
+                record.MaterialIndex = information.MaterialCollectionCount++;
+
+                size_t item_index{0};
+                for (const auto& item : shader_collection) {
+                    if (item.first == shader_built_in_type) {
+                        break;
+                    }
+                    item_index++;
                 }
-                item_index++;
-            }
-            record.ShaderIndex = item_index;
+                record.ShaderIndex = item_index;
 
-            information.RecordCollection.push_back(std::move(record));
+                GraphicRendererInformationRecord information_record = record;
+                information.RecordCollection.push_back(std::move(information_record));
+            }
         });
     }
 

@@ -1,41 +1,27 @@
 #pragma once
+#include <vector>
+#include <ZEngineDef.h>
 #include <Rendering/Materials/ShaderMaterial.h>
 #include <Rendering/Geometries/IGeometry.h>
-
-#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Meshes {
 
     class Mesh {
     public:
         explicit Mesh();
-        explicit Mesh(Ref<Geometries::IGeometry>&& geometry, Ref<Materials::ShaderMaterial>&& material);
-        explicit Mesh(Ref<Geometries::IGeometry>& geometry, Ref<Materials::ShaderMaterial>& material);
-        explicit Mesh(Geometries::IGeometry* const geometry, Materials::ShaderMaterial* const material);
+        explicit Mesh(const Ref<Geometries::IGeometry>& geometry, const std::vector<Ref<Materials::ShaderMaterial>>& materials);
+        explicit Mesh(Ref<Geometries::IGeometry>&& geometry, std::vector<Ref<Materials::ShaderMaterial>>&& materials);
 
         virtual ~Mesh() = default;
 
-        void SetUniqueIdentifier(unsigned int value);
-        void SetMaterial(const Ref<Materials::ShaderMaterial>& material);
-        void SetMaterial(Ref<Materials::ShaderMaterial>& material);
-        void SetMaterial(Materials::ShaderMaterial* const material);
-
         void SetGeometry(const Ref<Geometries::IGeometry>& geometry);
-        void SetGeometry(Ref<Geometries::IGeometry>& geometry);
-        void SetGeometry(Geometries::IGeometry* const geometry);
+        void SetGeometry(Ref<Geometries::IGeometry>&& geometry);
 
-        unsigned int                          GetUniqueIdentifier() const;
-        const Ref<Materials::ShaderMaterial>& GetMaterial() const;
-        const Ref<Geometries::IGeometry>&     GetGeometry() const;
-
-        bool IsLight() const;
-
-    protected:
-        bool m_is_light_mesh_object{false};
+        Ref<Geometries::IGeometry>                         GetGeometry() const;
+        const std::vector<Ref<Materials::ShaderMaterial>>& GetMaterials() const;
 
     private:
-        unsigned int                   m_unique_identifier;
-        Ref<Materials::ShaderMaterial> m_material{nullptr};
-        Ref<Geometries::IGeometry>     m_geometry{nullptr};
+        std::vector<Ref<Materials::ShaderMaterial>> m_material_collection;
+        Ref<Geometries::IGeometry>                  m_geometry{nullptr};
     };
 } // namespace ZEngine::Rendering::Meshes

@@ -20,21 +20,28 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
         while (!information.GraphicStorageCollection.empty()) {
             const auto& storage = information.GraphicStorageCollection.front();
 
-            const auto& material = storage.GetMaterial();
             const auto& geometry = storage.GetGeometry();
 
-            const auto& shader = storage.GetShader();
-            shader->CreateProgram();
+            const auto& shader_material_pair_collection = storage.GetShaderMaterialPairCollection();
+            for (const auto& shader_material_pair : shader_material_pair_collection) {
+                auto& shader   = std::get<0>(shader_material_pair);
+                auto& material = std::get<1>(shader_material_pair);
 
-            material->Apply(shader.get());
+                shader->CreateProgram();
+                material->Apply(shader.get());
 
-            // Todo : As used by many shader, we should moved it out to an Uniform Buffer
-            shader->SetUniform("model", geometry->GetTransform());
-            shader->SetUniform("view", camera->GetViewMatrix());
-            shader->SetUniform("projection", camera->GetProjectionMatrix());
+                // Todo : As used by many shader, we should moved it out to an Uniform Buffer
+                shader->SetUniform("model", geometry->GetTransform());
+                shader->SetUniform("view", camera->GetViewMatrix());
+                shader->SetUniform("projection", camera->GetProjectionMatrix());
+            }
 
-            const auto& vertex_array = storage.GetVertexArray();
-            RendererCommand::DrawIndexed(shader, vertex_array);
+            for (const auto& shader_material_pair : shader_material_pair_collection) {
+                auto& shader   = std::get<0>(shader_material_pair);
+
+                const auto& vertex_array = storage.GetVertexArray();
+                RendererCommand::DrawIndexed(shader, vertex_array);
+            }
 
             information.GraphicStorageCollection.pop();
         }

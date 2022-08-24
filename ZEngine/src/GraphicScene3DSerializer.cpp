@@ -307,7 +307,7 @@ namespace ZEngine::Serializers {
         });
 
         SerializeSceneEntityComponent<MaterialComponent>(emitter, entity, [](YAML::Emitter& emitter, MaterialComponent& component) {
-            auto material             = component.GetMaterial();
+            auto material             = component.GetMaterials()[0];         // Todo : need to change to consider the list
             auto material_shader_type = material->GetShaderBuiltInType();
 
             emitter << YAML::Key << "MaterialComponent";
