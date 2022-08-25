@@ -32,7 +32,7 @@ namespace ZEngine::Rendering::Materials {
         shader->SetUniform("texture_sampler_1", 1);
         shader->SetUniform("material.interpolation_factor", m_interpolate_factor);
 
-        m_texture->Bind();
+        //m_texture->Bind();
         m_second_texture->Bind(1);
     }
 

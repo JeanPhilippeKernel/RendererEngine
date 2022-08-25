@@ -23,13 +23,7 @@ namespace ZEngine::Rendering::Materials {
         void Apply(Shaders::Shader* const shader) override;
 
         void SetSpecularMap(const Ref<Textures::Texture>& texture);
-        void SetSpecularMap(Textures::Texture* const texture);
-
         void SetDiffuseMap(const Ref<Textures::Texture>& texture);
-        void SetDiffuseMap(Textures::Texture* const texture);
-
-        void SetTexture(Textures::Texture* const texture) override;
-        void SetTexture(const Ref<Textures::Texture>& texture) override;
 
         float                 GetTileFactor() const;
         float                 GetShininess() const;
@@ -42,6 +36,7 @@ namespace ZEngine::Rendering::Materials {
         float                  m_shininess;
         float                  m_tile_factor;
         glm::vec4              m_tint_color;
+        Ref<Textures::Texture> m_diffuse_map;
         Ref<Textures::Texture> m_specular_map;
 
     private:

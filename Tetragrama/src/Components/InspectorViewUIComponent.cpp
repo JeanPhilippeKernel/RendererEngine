@@ -4,6 +4,7 @@
 
 using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Components;
+using namespace ZEngine::Rendering::Textures;
 
 namespace Tetragrama::Components {
     InspectorViewUIComponent::InspectorViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {
@@ -231,8 +232,8 @@ namespace Tetragrama::Components {
                     ZEngine::Ref<StandardMaterial> material = ZEngine::CreateRef<StandardMaterial>();
                     material->SetTileFactor(20.f);
                     material->SetShininess(10.0f);
-                    material->SetDiffuseMap(ZEngine::Rendering::Textures::CreateTexture(1, 1));
-                    material->SetSpecularMap(ZEngine::Rendering::Textures::CreateTexture(1, 1));
+                    material->SetDiffuseMap(ZEngine::Ref<Texture>(CreateTexture(1, 1)));
+                    material->SetSpecularMap(ZEngine::Ref<Texture>(CreateTexture(1, 1)));
 
                     m_scene_entity->AddComponent<MaterialComponent>(std::move(material));
                     ImGui::CloseCurrentPopup();

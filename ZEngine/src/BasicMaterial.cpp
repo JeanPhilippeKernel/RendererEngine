@@ -8,6 +8,14 @@ namespace ZEngine::Rendering::Materials {
         m_texture.reset(Textures::CreateTexture(1, 1));
     }
 
+    void BasicMaterial::SetTexture(const Ref<Textures::Texture>& texture) {
+        m_texture = texture;
+    }
+
+    Ref<Textures::Texture> BasicMaterial::GetTexture() const {
+        return m_texture;
+    }
+
     void BasicMaterial::Apply(Shaders::Shader* const shader) {
         ShaderMaterial::Apply(shader);
         m_texture->Bind();
