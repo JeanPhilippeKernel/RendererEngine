@@ -67,7 +67,7 @@ namespace ZEngine::Rendering::Materials {
         return m_diffuse_map;
     }
 
-    void StandardMaterial::Apply(Shaders::Shader* const shader) {
+    void StandardMaterial::Apply(const Ref<Shaders::Shader>& shader) {
         ShaderMaterial::Apply(shader);
 
         shader->SetUniform("material.tiling_factor", m_tile_factor);

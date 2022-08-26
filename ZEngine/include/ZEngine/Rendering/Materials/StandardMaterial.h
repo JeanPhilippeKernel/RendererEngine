@@ -20,7 +20,7 @@ namespace ZEngine::Rendering::Materials {
         bool HasLight() const;
         void SetViewPosition(const glm::vec3& position);
 
-        void Apply(Shaders::Shader* const shader) override;
+        void Apply(const Ref<Shaders::Shader>&) override;
 
         void SetSpecularMap(const Ref<Textures::Texture>& texture);
         void SetDiffuseMap(const Ref<Textures::Texture>& texture);

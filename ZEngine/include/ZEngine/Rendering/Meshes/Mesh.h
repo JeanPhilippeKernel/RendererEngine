@@ -22,6 +22,6 @@ namespace ZEngine::Rendering::Meshes {
 
     private:
         std::vector<Ref<Materials::ShaderMaterial>> m_material_collection;
-        Ref<Geometries::IGeometry>                  m_geometry{nullptr};
+        Ref<Geometries::IGeometry>                  m_geometry;
     };
 } // namespace ZEngine::Rendering::Meshes

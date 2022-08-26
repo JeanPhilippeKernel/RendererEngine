@@ -11,7 +11,7 @@ namespace ZEngine::Rendering::Materials {
         void                   SetTexture(const Ref<Textures::Texture>&);
         Ref<Textures::Texture> GetTexture() const;
 
-        void Apply(Shaders::Shader* const shader) override;
+        void Apply(const Ref<Shaders::Shader>&) override;
 
     private:
         Ref<Textures::Texture> m_texture;

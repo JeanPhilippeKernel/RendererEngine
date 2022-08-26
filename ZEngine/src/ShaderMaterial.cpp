@@ -7,7 +7,7 @@ namespace ZEngine::Rendering::Materials {
         m_shader_built_in_type = type;
     }
 
-    void ShaderMaterial::Apply(Shaders::Shader* const shader) {
+    void ShaderMaterial::Apply(const Ref<Shaders::Shader>& shader) {
         assert(shader != nullptr);
 
         shader->Bind();

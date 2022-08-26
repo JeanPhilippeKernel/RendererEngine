@@ -28,7 +28,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
                 auto& material = std::get<1>(shader_material_pair);
 
                 shader->CreateProgram();
-                material->Apply(shader.get());
+                material->Apply(shader);
 
                 // Todo : As used by many shader, we should moved it out to an Uniform Buffer
                 shader->SetUniform("model", geometry->GetTransform());
