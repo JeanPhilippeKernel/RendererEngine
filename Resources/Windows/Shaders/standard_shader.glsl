@@ -4,11 +4,15 @@
 precision mediump float;
 
 /*
- * Vertex global variables
+ * Uniform global variables
  */
+layout (std140, binding = 0) uniform ViewProjectionMatrices
+{
+	mat4 view;
+	mat4 projection;
+};
+
 uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
 
 /*
  * Vertex input variables
@@ -38,6 +42,11 @@ void main()
 
 precision mediump float;
 
+layout (std140, binding = 1) uniform ViewProperties
+{
+	vec3 view_position;
+};
+
 struct StandardMaterial
 {
 	float tiling_factor;
@@ -64,7 +73,6 @@ in vec2 texture_coord;
 in vec3 fragment_position;
 in vec3 normal_vec;
 
-uniform vec3 view_position;
 uniform StandardMaterial material;
 uniform LightMaterial light;
 

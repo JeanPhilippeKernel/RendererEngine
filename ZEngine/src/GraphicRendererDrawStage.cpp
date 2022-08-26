@@ -6,7 +6,9 @@
 
 namespace ZEngine::Rendering::Renderers::Pipelines {
     GraphicRendererDrawStage::GraphicRendererDrawStage() {
-        m_next_stage = std::make_shared<GraphicRendererEndFrameBindingStage>();
+        m_uniform_view_projection_buffer   = CreateScope<Buffers::UniformBuffer<Maths::Matrix4>>();
+        m_uniform_camera_properties_buffer = CreateScope<Buffers::UniformBuffer<Maths::Vector3>>(1);
+        m_next_stage                       = CreateRef<GraphicRendererEndFrameBindingStage>();
     }
 
     GraphicRendererDrawStage::~GraphicRendererDrawStage() {}
@@ -16,6 +18,12 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
         auto const  pipeline = reinterpret_cast<GraphicRendererPipelineContext*>(m_context);
         auto const  renderer = pipeline->GetRenderer();
         const auto& camera   = renderer->GetCamera();
+
+        m_uniform_view_projection_buffer->SetData({camera->GetViewMatrix(), camera->GetProjectionMatrix()});
+        m_uniform_camera_properties_buffer->SetData({camera->GetPosition()});
+
+        m_uniform_view_projection_buffer->Bind();
+        m_uniform_camera_properties_buffer->Bind();
 
         while (!information.GraphicStorageCollection.empty()) {
             const auto& storage = information.GraphicStorageCollection.front();
@@ -30,14 +38,11 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
                 shader->CreateProgram();
                 material->Apply(shader);
 
-                // Todo : As used by many shader, we should moved it out to an Uniform Buffer
                 shader->SetUniform("model", geometry->GetTransform());
-                shader->SetUniform("view", camera->GetViewMatrix());
-                shader->SetUniform("projection", camera->GetProjectionMatrix());
             }
 
             for (const auto& shader_material_pair : shader_material_pair_collection) {
-                auto& shader   = std::get<0>(shader_material_pair);
+                auto& shader = std::get<0>(shader_material_pair);
 
                 const auto& vertex_array = storage.GetVertexArray();
                 RendererCommand::DrawIndexed(shader, vertex_array);

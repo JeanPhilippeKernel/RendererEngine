@@ -28,10 +28,6 @@ namespace ZEngine::Rendering::Materials {
         return m_light.use_count() > 0;
     }
 
-    void StandardMaterial::SetViewPosition(const glm::vec3& position) {
-        m_view_position = position;
-    }
-
     void StandardMaterial::SetSpecularMap(const Ref<Textures::Texture>& texture) {
         m_specular_map = texture;
     }
@@ -69,8 +65,6 @@ namespace ZEngine::Rendering::Materials {
         shader->SetUniform("material.diffuse", 0);
         shader->SetUniform("material.specular", 1);
         shader->SetUniform("material.shininess", m_shininess);
-
-        shader->SetUniform("view_position", m_view_position);
 
         if (!m_light.expired()) {
             const auto light = m_light.lock();
