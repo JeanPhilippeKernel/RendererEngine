@@ -18,7 +18,6 @@ namespace ZEngine::Rendering::Materials {
             m_material_name = typeid(*this).name();
         }
 
-
         explicit IMaterial(Ref<Textures::Texture>&& texture) {
             m_material_name = typeid(*this).name();
         }
@@ -37,10 +36,6 @@ namespace ZEngine::Rendering::Materials {
             return m_shader_built_in_type;
         }
 
-        // THIS PART NEED TO BE MOVED TO AN INTERFACE....
-        virtual unsigned int GetHashCode() {
-            return static_cast<unsigned int>((int) m_shader_built_in_type);
-        }
 
     protected:
         std::string                m_material_name;

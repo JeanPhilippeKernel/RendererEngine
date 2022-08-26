@@ -8,13 +8,6 @@ namespace ZEngine::Rendering::Materials {
         m_material_name = typeid(*this).name();
     }
 
-    unsigned int StandardMaterial::GetHashCode() {
-        auto hash = static_cast<unsigned int>(m_tile_factor) ^ static_cast<unsigned int>(m_tint_color.x) ^ static_cast<unsigned int>(m_tint_color.y)
-                  ^ static_cast<unsigned int>(m_tint_color.z);
-
-        return hash ^ ShaderMaterial::GetHashCode();
-    }
-
     void StandardMaterial::SetTileFactor(float value) {
         m_tile_factor = value;
     }

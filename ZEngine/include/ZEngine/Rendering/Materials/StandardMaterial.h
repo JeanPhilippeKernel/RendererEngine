@@ -9,8 +9,6 @@ namespace ZEngine::Rendering::Materials {
         explicit StandardMaterial();
         virtual ~StandardMaterial() = default;
 
-        unsigned int GetHashCode() override;
-
         void SetTileFactor(float value);
         void SetTintColor(const glm::vec4& value);
 
