@@ -8,13 +8,6 @@ namespace ZEngine::Rendering::Materials {
         m_material_name = typeid(*this).name();
     }
 
-    unsigned int StandardMaterial::GetHashCode() {
-        auto hash = static_cast<unsigned int>(m_tile_factor) ^ static_cast<unsigned int>(m_tint_color.x) ^ static_cast<unsigned int>(m_tint_color.y)
-                  ^ static_cast<unsigned int>(m_tint_color.z);
-
-        return hash ^ ShaderMaterial::GetHashCode();
-    }
-
     void StandardMaterial::SetTileFactor(float value) {
         m_tile_factor = value;
     }
@@ -43,20 +36,8 @@ namespace ZEngine::Rendering::Materials {
         m_specular_map = texture;
     }
 
-    void StandardMaterial::SetSpecularMap(Textures::Texture* const texture) {
-        m_specular_map.reset(texture);
-    }
-
     void StandardMaterial::SetDiffuseMap(const Ref<Textures::Texture>& texture) {
-        m_texture = texture;
-    }
-
-    void StandardMaterial::SetDiffuseMap(Textures::Texture* const texture) {
-        m_texture.reset(texture);
-    }
-
-    void StandardMaterial::SetTexture(const Ref<Textures::Texture>& texture) {
-        SetDiffuseMap(texture);
+        m_diffuse_map = texture;
     }
 
     float StandardMaterial::GetTileFactor() const {
@@ -76,14 +57,10 @@ namespace ZEngine::Rendering::Materials {
     }
 
     Ref<Textures::Texture> StandardMaterial::GetDiffuseMap() const {
-        return m_texture;
+        return m_diffuse_map;
     }
 
-    void StandardMaterial::SetTexture(Textures::Texture* const texture) {
-        SetDiffuseMap(texture);
-    }
-
-    void StandardMaterial::Apply(Shaders::Shader* const shader) {
+    void StandardMaterial::Apply(const Ref<Shaders::Shader>& shader) {
         ShaderMaterial::Apply(shader);
 
         shader->SetUniform("material.tiling_factor", m_tile_factor);
@@ -104,7 +81,7 @@ namespace ZEngine::Rendering::Materials {
             shader->SetUniform("light.specular", light->GetSpecularColor());
         }
 
-        m_texture->Bind();
+        m_diffuse_map->Bind();
         m_specular_map->Bind(1);
     }
 } // namespace ZEngine::Rendering::Materials

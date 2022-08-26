@@ -9,8 +9,6 @@ namespace ZEngine::Rendering::Materials {
         explicit StandardMaterial();
         virtual ~StandardMaterial() = default;
 
-        unsigned int GetHashCode() override;
-
         void SetTileFactor(float value);
         void SetTintColor(const glm::vec4& value);
 
@@ -20,16 +18,10 @@ namespace ZEngine::Rendering::Materials {
         bool HasLight() const;
         void SetViewPosition(const glm::vec3& position);
 
-        void Apply(Shaders::Shader* const shader) override;
+        void Apply(const Ref<Shaders::Shader>&) override;
 
         void SetSpecularMap(const Ref<Textures::Texture>& texture);
-        void SetSpecularMap(Textures::Texture* const texture);
-
         void SetDiffuseMap(const Ref<Textures::Texture>& texture);
-        void SetDiffuseMap(Textures::Texture* const texture);
-
-        void SetTexture(Textures::Texture* const texture) override;
-        void SetTexture(const Ref<Textures::Texture>& texture) override;
 
         float                 GetTileFactor() const;
         float                 GetShininess() const;
@@ -42,6 +34,7 @@ namespace ZEngine::Rendering::Materials {
         float                  m_shininess;
         float                  m_tile_factor;
         glm::vec4              m_tint_color;
+        Ref<Textures::Texture> m_diffuse_map;
         Ref<Textures::Texture> m_specular_map;
 
     private:

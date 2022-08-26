@@ -1,5 +1,4 @@
 #pragma once
-#include <string>
 #include <Rendering/Materials/IMaterial.h>
 #include <Rendering/Shaders/Shader.h>
 
@@ -11,6 +10,6 @@ namespace ZEngine::Rendering::Materials {
 
         virtual ~ShaderMaterial() = default;
 
-        virtual void Apply(Shaders::Shader* const);
+        virtual void Apply(const Ref<Shaders::Shader>&);
     };
 } // namespace ZEngine::Rendering::Materials

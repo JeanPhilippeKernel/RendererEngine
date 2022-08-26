@@ -47,7 +47,6 @@
 #include "Rendering/Materials/ShaderMaterial.h"
 #include "Rendering/Materials/BasicMaterial.h"
 #include "Rendering/Materials/StandardMaterial.h"
-#include "Rendering/Materials/MixedTextureMaterial.h"
 
 #include "Rendering/Meshes/Mesh.h"
 #include "Rendering/Lights/Light.h"

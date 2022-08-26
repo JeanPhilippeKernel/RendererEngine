@@ -62,7 +62,7 @@ namespace ZEngine::Rendering::Textures {
         bool m_is_from_file{false};
 
         // Those value are only set if SetDat(...) is using
-        float m_r{0}, m_g{}, m_b{0}, m_a{0};
+        float m_r{0}, m_g{0}, m_b{0}, m_a{0};
     };
 
     Texture* CreateTexture(const char* path);

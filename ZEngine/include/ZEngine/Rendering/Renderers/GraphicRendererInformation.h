@@ -17,12 +17,10 @@ namespace ZEngine::Rendering::Renderers {
             ShaderCollection = {
 #ifdef _WIN32
                 {Shaders::ShaderBuiltInType::BASIC, "Resources/Windows/Shaders/basic_shader.glsl"},
-                {Shaders::ShaderBuiltInType::STANDARD, "Resources/Windows/Shaders/standard_shader.glsl"},
-                {Shaders::ShaderBuiltInType::MIXED_TEXTURE, "Resources/Windows/Shaders/mixed_texture_shader.glsl"}
+                {Shaders::ShaderBuiltInType::STANDARD, "Resources/Windows/Shaders/standard_shader.glsl"}
 #else
                 {Shaders::ShaderBuiltInType::BASIC, "Resources/Unix/Shaders/basic_shader.glsl"},
-                {Shaders::ShaderBuiltInType::STANDARD, "Resources/Unix/Shaders/standard_shader.glsl"},
-                {Shaders::ShaderBuiltInType::MIXED_TEXTURE, "Resources/Unix/Shaders/mixed_texture_shader.glsl"}
+                {Shaders::ShaderBuiltInType::STANDARD, "Resources/Unix/Shaders/standard_shader.glsl"}
 #endif
             };
             ShaderCollectionCount = ShaderCollection.size();

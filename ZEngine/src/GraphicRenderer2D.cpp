@@ -14,23 +14,23 @@ namespace ZEngine::Rendering::Renderers {
     }
 
     void GraphicRenderer2D::AddMesh(Meshes::Mesh& mesh) {
-        const auto& material          = mesh.GetMaterial();
-        const auto& material_hashcode = material->GetHashCode();
+        // const auto& material          = mesh.GetMaterial();
+        // const auto& material_hashcode = material->GetHashCode();
 
-        auto it = std::find_if(std::begin(m_mesh_map), std::end(m_mesh_map),
-            [&material_hashcode](const std::pair<unsigned int, std::vector<Meshes::Mesh>>& value) { return value.first == material_hashcode; });
+        // auto it = std::find_if(std::begin(m_mesh_map), std::end(m_mesh_map),
+        //     [&material_hashcode](const std::pair<unsigned int, std::vector<Meshes::Mesh>>& value) { return value.first == material_hashcode; });
 
-        if (it == std::end(m_mesh_map)) {
-            std::vector<Meshes::Mesh> meshes = {mesh};
-            mesh.SetUniqueIdentifier(0);
-            m_mesh_map.emplace(material_hashcode, meshes);
-        }
+        // if (it == std::end(m_mesh_map)) {
+        //     std::vector<Meshes::Mesh> meshes = {mesh};
+        //     // mesh.SetUniqueIdentifier(0);
+        //     m_mesh_map.emplace(material_hashcode, meshes);
+        // }
 
-        else {
-            unsigned int mesh_identifier_id = it->second.size();
-            mesh.SetUniqueIdentifier(mesh_identifier_id);
-            it->second.push_back(mesh);
-        }
+        // else {
+        //     unsigned int mesh_identifier_id = it->second.size();
+        //     // mesh.SetUniqueIdentifier(mesh_identifier_id);
+        //     it->second.push_back(mesh);
+        // }
     }
 
     void GraphicRenderer2D::EndScene() {
