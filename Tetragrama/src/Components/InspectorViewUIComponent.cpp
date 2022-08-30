@@ -5,6 +5,7 @@
 using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Rendering::Textures;
+using namespace ZEngine::Rendering::Lights;
 
 namespace Tetragrama::Components {
     InspectorViewUIComponent::InspectorViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {
@@ -96,7 +97,7 @@ namespace Tetragrama::Components {
             });
 
             Helpers::DrawEntityComponentControl<MaterialComponent>("Materials", *m_scene_entity, m_node_flag, true, [](MaterialComponent& component) {
-                auto material             = component.GetMaterials()[0];  // Todo : need to be refactor to consider the collection of materials
+                auto material             = component.GetMaterials()[0]; // Todo : need to be refactor to consider the collection of materials
                 auto material_shader_type = material->GetShaderBuiltInType();
 
                 const char* built_in_shader_type[] = {"Basic", "Standard"};
@@ -119,35 +120,50 @@ namespace Tetragrama::Components {
                     Helpers::DrawDragFloatControl("Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetShininess(value); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    auto tint_color      = standard_material->GetTintColor();
-                    auto diffuse_texture = standard_material->GetDiffuseMap();
-                    Helpers::DrawTextureColorControl("Diffuse Map", reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), tint_color, true, nullptr,
-                        [standard_material](auto& value) { standard_material->SetTintColor(value); });
+                    auto diffuse_tint_color = standard_material->GetDiffuseTintColor();
+                    auto diffuse_texture    = standard_material->GetDiffuseMap();
+                    Helpers::DrawTextureColorControl("Diffuse Map", reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), diffuse_tint_color, true, nullptr,
+                        [standard_material](auto& value) { standard_material->SetDiffuseTintColor(value); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
+                    auto specular_tint_color = standard_material->GetSpecularTintColor();
                     auto specular_texture    = standard_material->GetSpecularMap();
-                    auto specular_tint_color = ZEngine::Maths::Vector4{1, 1, 1, 1};
-                    Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color);
+                    Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color, true, nullptr,
+                        [standard_material](auto& value) { standard_material->SetSpecularTintColor(value); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             });
 
             Helpers::DrawEntityComponentControl<LightComponent>("Lighting", *m_scene_entity, m_node_flag, true, [](LightComponent& component) {
-                auto light = component.GetLight();
+                auto light      = component.GetLight();
+                auto light_type = light->GetLightType();
+
+                const char* built_in_light_type[] = {"Directional Light", "Point Light", "Spot Light"};
 
                 ImGui::Dummy(ImVec2(0, 3));
+                Helpers::DrawInputTextControl("Light Type", built_in_light_type[(int) light_type], nullptr, true);
 
-                auto ambient_color = light->GetAmbientColor();
-                Helpers::DrawColorEdit3Control("Ambient", ambient_color, [&light](ZEngine::Maths::Vector3& value) { light->SetAmbientColor(value); });
-                ImGui::Dummy(ImVec2(0, 0.5f));
+                if (light_type == LightType::DIRECTIONAL_LIGHT) {
+                    auto light_ptr = reinterpret_cast<DirectionalLight*>(light.get());
 
-                auto diffuse_color = light->GetDiffuseColor();
-                Helpers::DrawColorEdit3Control("Diffuse", diffuse_color, [&light](ZEngine::Maths::Vector3& value) { light->SetDiffuseColor(value); });
-                ImGui::Dummy(ImVec2(0, 0.5f));
+                    ImGui::Dummy(ImVec2(0, 0.5f));
 
-                auto specular_color = light->GetSpecularColor();
-                Helpers::DrawColorEdit3Control("Specular", specular_color, [&light](ZEngine::Maths::Vector3& value) { light->SetSpecularColor(value); });
-                ImGui::Dummy(ImVec2(0, 0.5f));
+                    auto direction = light_ptr->GetDirection();
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](ZEngine::Maths::Vector3& value) { light_ptr->SetDirection(value); });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    auto ambient_color = light_ptr->GetAmbientColor();
+                    Helpers::DrawColorEdit3Control("Ambient", ambient_color, [light_ptr](ZEngine::Maths::Vector3& value) { light_ptr->SetAmbientColor(value); });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    auto diffuse_color = light_ptr->GetDiffuseColor();
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse_color, [light_ptr](ZEngine::Maths::Vector3& value) { light_ptr->SetDiffuseColor(value); });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    auto specular_color = light_ptr->GetSpecularColor();
+                    Helpers::DrawColorEdit3Control("Specular", specular_color, [light_ptr](ZEngine::Maths::Vector3& value) { light_ptr->SetSpecularColor(value); });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+                }
             });
 
             // Camera
@@ -239,13 +255,20 @@ namespace Tetragrama::Components {
                     ImGui::CloseCurrentPopup();
                 }
 
-                if (ImGui::MenuItem("Light")) {
-                    m_scene_entity->AddComponent<LightComponent>(
-                        ZEngine::Maths::Vector3{0.2f, 0.2f, 0.2f}, ZEngine::Maths::Vector3{0.5f, 0.5f, 0.5f}, ZEngine::Maths::Vector3{1.0f, 1.0f, 1.0f});
+                if (ImGui::BeginMenu("Lights")) {
+                    if (ImGui::MenuItem("Directional Light")) {
+                        m_scene_entity->AddComponent<LightComponent>(ZEngine::CreateRef<DirectionalLight>());
+                        ImGui::CloseCurrentPopup();
+                    }
 
-                    ImGui::CloseCurrentPopup();
+                    if (ImGui::MenuItem("Point Light")) {
+                    }
+
+                    if (ImGui::MenuItem("Spot Light")) {
+                    }
+
+                    ImGui::EndMenu();
                 }
-
                 ImGui::EndPopup();
             }
         }

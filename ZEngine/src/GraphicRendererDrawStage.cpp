@@ -7,7 +7,7 @@
 namespace ZEngine::Rendering::Renderers::Pipelines {
     GraphicRendererDrawStage::GraphicRendererDrawStage() {
         m_uniform_view_projection_buffer   = CreateScope<Buffers::UniformBuffer<Maths::Matrix4>>();
-        m_uniform_camera_properties_buffer = CreateScope<Buffers::UniformBuffer<Maths::Vector3>>(1);
+        m_uniform_camera_properties_buffer = CreateScope<Buffers::UniformBuffer<Maths::Vector4>>(1);
         m_next_stage                       = CreateRef<GraphicRendererEndFrameBindingStage>();
     }
 
@@ -20,7 +20,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
         const auto& camera   = renderer->GetCamera();
 
         m_uniform_view_projection_buffer->SetData({camera->GetViewMatrix(), camera->GetProjectionMatrix()});
-        m_uniform_camera_properties_buffer->SetData({camera->GetPosition()});
+        m_uniform_camera_properties_buffer->SetData({Maths::Vector4(camera->GetPosition(), 1.0f)});
 
         m_uniform_view_projection_buffer->Bind();
         m_uniform_camera_properties_buffer->Bind();

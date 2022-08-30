@@ -20,6 +20,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
 
     private:
         Scope<Buffers::UniformBuffer<Maths::Matrix4>> m_uniform_view_projection_buffer;
-        Scope<Buffers::UniformBuffer<Maths::Vector3>> m_uniform_camera_properties_buffer;
+        Scope<Buffers::UniformBuffer<Maths::Vector4>> m_uniform_camera_properties_buffer;
     };
 } // namespace ZEngine::Rendering::Renderers::Pipelines

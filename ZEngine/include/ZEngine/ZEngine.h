@@ -50,6 +50,7 @@
 
 #include "Rendering/Meshes/Mesh.h"
 #include "Rendering/Lights/Light.h"
+#include "Rendering/Lights/DirectionalLight.h"
 #include "Rendering/Meshes/MeshBuilder.h"
 #include "Rendering/Textures/Texture.h"
 
