@@ -178,14 +178,15 @@ namespace ZEngine::Rendering::Scenes {
 
         // Todo : Should be refactored
         //
+        std::vector<Meshes::Mesh> meshes;
         m_entity_registry->view<TransformComponent, GeometryComponent, MaterialComponent>().each(
-            [this](entt::entity handle, TransformComponent& transform_component, GeometryComponent& geometry_component, MaterialComponent& material_component) {
+            [this, &meshes](entt::entity handle, TransformComponent& transform_component, GeometryComponent& geometry_component, MaterialComponent& material_component) {
                 auto geometry = geometry_component.GetGeometry();
                 geometry->SetTransform(transform_component.GetTransform());
 
-                auto mesh = CreateRef<Meshes::Mesh>(std::move(geometry), material_component.GetMaterials());
-                m_mesh_list.push_back(std::move(mesh));
+                meshes.emplace_back(std::move(geometry), material_component.GetMaterials());
             });
+        m_renderer->AddMesh(std::move(meshes));
     }
 
     void GraphicScene::Render() {
@@ -195,11 +196,7 @@ namespace ZEngine::Rendering::Scenes {
 
         if (!m_scene_camera.expired()) {
             m_renderer->StartScene(m_scene_camera.lock());
-            m_renderer->AddMesh(m_mesh_list);
             m_renderer->EndScene();
-
-            m_mesh_list.clear();
-            m_mesh_list.shrink_to_fit();
         }
 
         if (OnSceneRenderCompleted) {

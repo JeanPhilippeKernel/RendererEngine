@@ -3,7 +3,7 @@
 namespace ZEngine::Rendering::Lights {
     DirectionalLight::DirectionalLight() {
         m_light_type               = LightType::DIRECTIONAL_LIGHT;
-        m_directional_light_buffer = CreateScope<Buffers::UniformBuffer<Maths::Vector4>>(2);
+        m_directional_light_buffer = CreateScope<Buffers::UniformBuffer<Maths::Vector4>>(1);
     }
 
     void DirectionalLight::SetAmbientColor(const Maths::Vector3& value) {

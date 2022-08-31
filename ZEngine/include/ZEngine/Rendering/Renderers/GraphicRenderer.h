@@ -5,6 +5,7 @@
 #include <Rendering/Cameras/Camera.h>
 #include <Rendering/Renderers/Pipelines/GraphicRendererPipelineContext.h>
 #include <Rendering/Renderers/GraphicRendererInformation.h>
+#include <Rendering/Buffers/UniformBuffer.h>
 
 namespace ZEngine::Rendering::Renderers::Pipelines {
     class GraphicRendererPipelineContext;
@@ -17,24 +18,24 @@ namespace ZEngine::Rendering::Renderers {
         GraphicRenderer();
         virtual ~GraphicRenderer() = default;
 
-        virtual void AddMesh(Meshes::Mesh& mesh) = 0;
-
-        virtual void AddMesh(Ref<Meshes::Mesh>& mesh);
-        virtual void AddMesh(std::vector<Meshes::Mesh>& meshes);
-        virtual void AddMesh(std::vector<Ref<Meshes::Mesh>>& meshes);
+        virtual void AddMesh(std::vector<Meshes::Mesh>&& meshes);
 
     public:
-        const Ref<Buffers::FrameBuffer>&       GetFrameBuffer() const;
-        const Ref<Rendering::Cameras::Camera>& GetCamera() const;
-        virtual void                           StartScene(const Ref<Rendering::Cameras::Camera>& camera);
-        virtual void                           EndScene() = 0;
+        Ref<Buffers::FrameBuffer>       GetFrameBuffer() const;
+        Ref<Rendering::Cameras::Camera> GetCamera() const;
+        virtual void                    StartScene(const Ref<Rendering::Cameras::Camera>& camera);
+        virtual void                    EndScene() = 0;
 
         virtual const Ref<GraphicRendererInformation>& GetRendererInformation() const;
 
     protected:
+        std::vector<Rendering::Meshes::Mesh>             m_mesh_collection;
         Ref<Rendering::Cameras::Camera>                  m_camera;
         Ref<Buffers::FrameBuffer>                        m_framebuffer;
         Ref<GraphicRendererInformation>                  m_renderer_information;
         Scope<Pipelines::GraphicRendererPipelineContext> m_renderer_pipeline_context;
+
+    private:
+        Scope<Buffers::UniformBuffer<Maths::Vector4>> m_uniform_camera_properties_buffer;
     };
 } // namespace ZEngine::Rendering::Renderers
