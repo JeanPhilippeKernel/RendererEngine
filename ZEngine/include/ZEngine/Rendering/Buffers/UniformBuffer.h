@@ -43,6 +43,19 @@ namespace ZEngine::Rendering::Buffers {
             glBindBufferRange(GL_UNIFORM_BUFFER, m_binding_index, m_uniform_buffer_id, 0, this->m_byte_size);
         }
 
+
+        void SetData(const void* data, size_t byte_size) {
+            this->m_data_size = 1;
+            this->m_byte_size = byte_size;
+            glBindBuffer(GL_UNIFORM_BUFFER, m_uniform_buffer_id);
+            glBufferData(GL_UNIFORM_BUFFER, this->m_byte_size, nullptr, GL_DYNAMIC_DRAW);
+
+            glBufferSubData(GL_UNIFORM_BUFFER, 0, this->m_byte_size, data);
+            glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+            glBindBufferRange(GL_UNIFORM_BUFFER, m_binding_index, m_uniform_buffer_id, 0, this->m_byte_size);
+        }
+
         ~UniformBuffer() {
             glDeleteBuffers(1, &m_uniform_buffer_id);
         }

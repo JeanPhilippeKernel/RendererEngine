@@ -40,11 +40,11 @@ namespace ZEngine::Rendering::Renderers::Storages {
             return m_shader_material_pair_collection;
         }
 
-        const Ref<Buffers::VertexArray<T, K>>& GetVertexArray() const {
+        Ref<Buffers::VertexArray<T, K>> GetVertexArray() const {
             return m_vertex_array;
         }
 
-        const Ref<Geometries::IGeometry>& GetGeometry() const {
+        Ref<Geometries::IGeometry> GetGeometry() const {
             return m_geometry;
         }
 

@@ -9,8 +9,9 @@
 #include <Rendering/Components/CameraComponent.h>
 #include <Rendering/Entities/GraphicSceneEntity.h>
 #include <Rendering/Materials/StandardMaterial.h>
-#include <ZEngine/Rendering/Components/UUIComponent.h>
-#include <ZEngine/Rendering/Components/ValidComponent.h>
+#include <Rendering/Components/UUIComponent.h>
+#include <Rendering/Components/ValidComponent.h>
+#include <Rendering/Lights/DirectionalLight.h>
 
 using namespace ZEngine::Controllers;
 using namespace ZEngine::Rendering::Components;
@@ -88,9 +89,7 @@ namespace ZEngine::Rendering::Scenes {
     }
 
     void GraphicScene::InvalidateAllEntities() {
-        m_entity_registry->view<ValidComponent>().each([&](ValidComponent& component) {
-            component.IsValid = false;
-        });
+        m_entity_registry->view<ValidComponent>().each([&](ValidComponent& component) { component.IsValid = false; });
     }
 
     Ref<entt::registry> GraphicScene::GetRegistry() const {
@@ -103,7 +102,7 @@ namespace ZEngine::Rendering::Scenes {
 
     bool GraphicScene::HasInvalidEntities() const {
         bool found = false;
-        auto view = m_entity_registry->view<ValidComponent>();
+        auto view  = m_entity_registry->view<ValidComponent>();
         for (auto entity : view) {
             auto& component = view.get<ValidComponent>(entity);
             if (!component.IsValid) {
@@ -155,6 +154,7 @@ namespace ZEngine::Rendering::Scenes {
 
     Entities::GraphicSceneEntity GraphicScene::GetPrimariyCameraEntity() const {
         Entities::GraphicSceneEntity camera_entity;
+
         auto view_cameras = m_entity_registry->view<CameraComponent>();
         for (auto entity : view_cameras) {
             auto& component = view_cameras.get<CameraComponent>(entity);
@@ -178,37 +178,15 @@ namespace ZEngine::Rendering::Scenes {
 
         // Todo : Should be refactored
         //
-        // Update Light property for material that don't have it
-        auto light_entity_ptr = m_entity_registry->view<LightComponent>().front();
-        auto view_material    = m_entity_registry->view<MaterialComponent>();
-        for (auto entity : view_material) {
-            auto& material_component = view_material.get<MaterialComponent>(entity);
-            auto  material           = material_component.GetMaterials()[0]; // Todo : need to be fix to consider collection of materials
-
-            if (light_entity_ptr != entt::null) {
-                auto light = m_entity_registry->get<LightComponent>(light_entity_ptr).GetLight();
-                if (material->GetShaderBuiltInType() == Rendering::Shaders::ShaderBuiltInType::STANDARD) {
-                    auto material_ptr = reinterpret_cast<Rendering::Materials::StandardMaterial*>(material.get());
-                    if (!material_ptr->HasLight()) {
-                        material_ptr->SetLight(light);
-                    }
-                }
-            }
-        }
-
-        m_entity_registry->view<LightComponent, TransformComponent>().each([](entt::entity handle, LightComponent& light_component, TransformComponent& transform_component) {
-            // We update light position with its transform's position, so we have the correct light's source position
-            light_component.GetLight()->SetPosition(transform_component.GetPosition());
-        });
-
+        std::vector<Meshes::Mesh> meshes;
         m_entity_registry->view<TransformComponent, GeometryComponent, MaterialComponent>().each(
-            [this](entt::entity handle, TransformComponent& transform_component, GeometryComponent& geometry_component, MaterialComponent& material_component) {
+            [this, &meshes](entt::entity handle, TransformComponent& transform_component, GeometryComponent& geometry_component, MaterialComponent& material_component) {
                 auto geometry = geometry_component.GetGeometry();
                 geometry->SetTransform(transform_component.GetTransform());
 
-                auto mesh = CreateRef<Meshes::Mesh>(std::move(geometry), material_component.GetMaterials());
-                m_mesh_list.push_back(std::move(mesh));
+                meshes.emplace_back(std::move(geometry), material_component.GetMaterials());
             });
+        m_renderer->AddMesh(std::move(meshes));
     }
 
     void GraphicScene::Render() {
@@ -218,11 +196,7 @@ namespace ZEngine::Rendering::Scenes {
 
         if (!m_scene_camera.expired()) {
             m_renderer->StartScene(m_scene_camera.lock());
-            m_renderer->AddMesh(m_mesh_list);
             m_renderer->EndScene();
-
-            m_mesh_list.clear();
-            m_mesh_list.shrink_to_fit();
         }
 
         if (OnSceneRenderCompleted) {

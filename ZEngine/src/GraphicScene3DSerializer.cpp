@@ -12,9 +12,10 @@
 #include <Managers/TextureManager.h>
 #include <Rendering/Materials/StandardMaterial.h>
 #include <Rendering/Materials/BasicMaterial.h>
-#include <ZEngine/Rendering/Components/CameraComponent.h>
-#include <ZEngine/Controllers/PerspectiveCameraController.h>
-#include <ZEngine/Controllers/OrbitCameraController.h>
+#include <Rendering/Components/CameraComponent.h>
+#include <Controllers/PerspectiveCameraController.h>
+#include <Controllers/OrbitCameraController.h>
+#include <Rendering/Lights/DirectionalLight.h>
 
 using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Components;
@@ -184,7 +185,8 @@ namespace ZEngine::Serializers {
                             Ref<StandardMaterial> standard_material = CreateRef<StandardMaterial>();
                             standard_material->SetShininess(material_component["Shininess"].as<float>());
                             standard_material->SetTileFactor(material_component["TileFactor"].as<float>());
-                            standard_material->SetTintColor(material_component["TintColor"].as<Maths::Vector4>());
+                            standard_material->SetDiffuseTintColor(material_component["DiffuseTintColor"].as<Maths::Vector4>());
+                            standard_material->SetSpecularTintColor(material_component["SpecularTintColor"].as<Maths::Vector4>());
 
                             auto diffuse_map = material_component["DiffuseMap"];
                             if (diffuse_map["FromFile"].as<bool>()) {
@@ -219,11 +221,20 @@ namespace ZEngine::Serializers {
                     // LightComponent
                     auto light_component = entity["LightComponent"];
                     if (light_component) {
-                        auto ambient_color  = light_component["AmbientColor"].as<Maths::Vector3>();
-                        auto diffuse_color  = light_component["DiffuseColor"].as<Maths::Vector3>();
-                        auto specular_color = light_component["SpecularColor"].as<Maths::Vector3>();
+                        auto light_type = light_component["LightType"].as<int>();
+                        if (light_type == static_cast<int>(ZEngine::Rendering::Lights::LightType::DIRECTIONAL_LIGHT)) {
+                            auto direction      = light_component["Direction"].as<Maths::Vector3>();
+                            auto ambient_color  = light_component["AmbientColor"].as<Maths::Vector3>();
+                            auto diffuse_color  = light_component["DiffuseColor"].as<Maths::Vector3>();
+                            auto specular_color = light_component["SpecularColor"].as<Maths::Vector3>();
 
-                        scene_entity.AddComponent<LightComponent>(ambient_color, diffuse_color, specular_color);
+                            auto directional_light = CreateRef<ZEngine::Rendering::Lights::DirectionalLight>();
+                            directional_light->SetAmbientColor(ambient_color);
+                            directional_light->SetDiffuseColor(diffuse_color);
+                            directional_light->SetSpecularColor(specular_color);
+                            directional_light->SetDirection(direction);
+                            scene_entity.AddComponent<LightComponent>(std::move(directional_light));
+                        }
                     }
 
                     // CameraComponent
@@ -307,7 +318,7 @@ namespace ZEngine::Serializers {
         });
 
         SerializeSceneEntityComponent<MaterialComponent>(emitter, entity, [](YAML::Emitter& emitter, MaterialComponent& component) {
-            auto material             = component.GetMaterials()[0];         // Todo : need to change to consider the list
+            auto material             = component.GetMaterials()[0]; // Todo : need to change to consider the list
             auto material_shader_type = material->GetShaderBuiltInType();
 
             emitter << YAML::Key << "MaterialComponent";
@@ -315,16 +326,18 @@ namespace ZEngine::Serializers {
             emitter << YAML::Key << "MaterialShaderType" << YAML::Value << static_cast<int>(material_shader_type);
 
             if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::STANDARD) {
-                auto standard_material = reinterpret_cast<ZEngine::Rendering::Materials::StandardMaterial*>(material.get());
-                auto shininess         = standard_material->GetShininess();
-                auto tile_factor       = standard_material->GetTileFactor();
-                auto tint_color        = standard_material->GetTintColor();
-                auto diffuse_map       = standard_material->GetDiffuseMap();
-                auto specular_map      = standard_material->GetSpecularMap();
+                auto standard_material   = reinterpret_cast<ZEngine::Rendering::Materials::StandardMaterial*>(material.get());
+                auto shininess           = standard_material->GetShininess();
+                auto tile_factor         = standard_material->GetTileFactor();
+                auto diffuse_tint_color  = standard_material->GetDiffuseTintColor();
+                auto specular_tint_color = standard_material->GetSpecularTintColor();
+                auto diffuse_map         = standard_material->GetDiffuseMap();
+                auto specular_map        = standard_material->GetSpecularMap();
 
                 emitter << YAML::Key << "Shininess" << YAML::Value << shininess;
                 emitter << YAML::Key << "TileFactor" << YAML::Value << tile_factor;
-                emitter << YAML::Key << "TintColor" << YAML::Value << tint_color;
+                emitter << YAML::Key << "DiffuseTintColor" << YAML::Value << diffuse_tint_color;
+                emitter << YAML::Key << "SpecularTintColor" << YAML::Value << specular_tint_color;
 
                 {
                     emitter << YAML::Key << "DiffuseMap";
@@ -373,16 +386,21 @@ namespace ZEngine::Serializers {
 
 
         SerializeSceneEntityComponent<LightComponent>(emitter, entity, [](YAML::Emitter& emitter, LightComponent& component) {
-            auto light          = component.GetLight();
-            auto ambient_color  = light->GetAmbientColor();
-            auto diffuse_color  = light->GetDiffuseColor();
-            auto specular_color = light->GetSpecularColor();
+            auto light      = component.GetLight();
+            auto light_type = light->GetLightType();
 
             emitter << YAML::Key << "LightComponent";
             emitter << YAML::BeginMap;
-            emitter << YAML::Key << "AmbientColor" << YAML::Value << ambient_color;
-            emitter << YAML::Key << "DiffuseColor" << YAML::Value << diffuse_color;
-            emitter << YAML::Key << "SpecularColor" << YAML::Value << specular_color;
+
+            if (light_type == ZEngine::Rendering::Lights::LightType::DIRECTIONAL_LIGHT) {
+                auto directional_light = reinterpret_cast<ZEngine::Rendering::Lights::DirectionalLight*>(light.get());
+                emitter << YAML::Key << "LightType" << YAML::Value << static_cast<int>(light_type);
+                emitter << YAML::Key << "Direction" << YAML::Value << directional_light->GetDirection();
+                emitter << YAML::Key << "AmbientColor" << YAML::Value << directional_light->GetAmbientColor();
+                emitter << YAML::Key << "DiffuseColor" << YAML::Value << directional_light->GetDiffuseColor();
+                emitter << YAML::Key << "SpecularColor" << YAML::Value << directional_light->GetSpecularColor();
+            }
+
             emitter << YAML::EndMap;
         });
 

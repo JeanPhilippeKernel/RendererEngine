@@ -4,7 +4,12 @@
 namespace ZEngine::Rendering::Materials {
 
     StandardMaterial::StandardMaterial()
-        : ShaderMaterial(Shaders::ShaderBuiltInType::STANDARD), m_tile_factor(1.0f), m_tint_color(glm::vec4(1.0f)), m_specular_map(Textures::CreateTexture(1, 1)) {
+        : ShaderMaterial(Shaders::ShaderBuiltInType::STANDARD),
+          m_tile_factor(1.0f),
+          m_diffuse_tint_color(glm::vec4(1.0f)),
+          m_specular_tint_color(glm::vec4(1.0f)),
+          m_diffuse_map(Textures::CreateTexture(1, 1)),
+          m_specular_map(Textures::CreateTexture(1, 1)) {
         m_material_name = typeid(*this).name();
     }
 
@@ -12,20 +17,16 @@ namespace ZEngine::Rendering::Materials {
         m_tile_factor = value;
     }
 
-    void StandardMaterial::SetTintColor(const glm::vec4& value) {
-        m_tint_color = value;
+    void StandardMaterial::SetDiffuseTintColor(const glm::vec4& value) {
+        m_diffuse_tint_color = value;
+    }
+
+    void StandardMaterial::SetSpecularTintColor(const glm::vec4& value) {
+        m_specular_tint_color = value;
     }
 
     void StandardMaterial::SetShininess(float value) {
         m_shininess = value;
-    }
-
-    void StandardMaterial::SetLight(const Ref<Lights::BasicLight>& light) {
-        m_light = light;
-    }
-
-    bool StandardMaterial::HasLight() const {
-        return m_light.use_count() > 0;
     }
 
     void StandardMaterial::SetSpecularMap(const Ref<Textures::Texture>& texture) {
@@ -44,8 +45,12 @@ namespace ZEngine::Rendering::Materials {
         return m_shininess;
     }
 
-    const Maths::Vector4& StandardMaterial::GetTintColor() const {
-        return m_tint_color;
+    const Maths::Vector4& StandardMaterial::GetDiffuseTintColor() const {
+        return m_diffuse_tint_color;
+    }
+
+    const Maths::Vector4& StandardMaterial::GetSpecularTintColor() const {
+        return m_specular_tint_color;
     }
 
     Ref<Textures::Texture> StandardMaterial::GetSpecularMap() const {
@@ -60,20 +65,12 @@ namespace ZEngine::Rendering::Materials {
         ShaderMaterial::Apply(shader);
 
         shader->SetUniform("material.tiling_factor", m_tile_factor);
-        shader->SetUniform("material.tint_color", m_tint_color);
+        shader->SetUniform("material.diffuse_tint_color", m_diffuse_tint_color);
+        shader->SetUniform("material.specular_tint_color", m_specular_tint_color);
 
         shader->SetUniform("material.diffuse", 0);
         shader->SetUniform("material.specular", 1);
         shader->SetUniform("material.shininess", m_shininess);
-
-        if (!m_light.expired()) {
-            const auto light = m_light.lock();
-
-            shader->SetUniform("light.position", light->GetPosition());
-            shader->SetUniform("light.ambient", light->GetAmbientColor());
-            shader->SetUniform("light.diffuse", light->GetDiffuseColor());
-            shader->SetUniform("light.specular", light->GetSpecularColor());
-        }
 
         m_diffuse_map->Bind();
         m_specular_map->Bind(1);

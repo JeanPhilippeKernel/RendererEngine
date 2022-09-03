@@ -6,11 +6,12 @@ precision mediump float;
 /*
  * Uniform global variables
  */
-layout (std140, binding = 0) uniform ViewProjectionMatrices
+layout (std140, binding = 0) uniform CameraProperties
 {
+	vec4 position;
 	mat4 view;
 	mat4 projection;
-};
+} Camera;
 
 uniform mat4 model;
 
@@ -22,19 +23,26 @@ layout (location = 1) in vec3 a_normal;
 layout (location = 2) in vec2 a_texture_coord;
 
 /*
- * Vertex output variables 
+ * Vertex output variables
  */
-out vec3 fragment_position;
-out vec3 normal_vec;
-out vec2 texture_coord;
+struct VertexOutput
+{
+	vec2 TextureCoord;
+	vec3 FragmentPosition;
+	vec3 Normal;
+	vec4 CameraPosition;
+};
+
+layout (location = 0) out VertexOutput Output;
 
 void main()
 {
-	gl_Position = projection * view * model * vec4(a_position, 1.0f);
-	
-	fragment_position = vec3(model * vec4(a_position, 1.0f));
-	normal_vec = a_normal;
-	texture_coord = a_texture_coord;
+	Output.FragmentPosition = vec3((model * vec4(a_position, 1.0f)).xyz);
+	Output.Normal = mat3(transpose(inverse(model))) * a_normal;
+	Output.TextureCoord = a_texture_coord;
+	Output.CameraPosition = Camera.position;
+
+	gl_Position = Camera.projection * Camera.view * vec4(Output.FragmentPosition, 1.0);
 }
 
 #type fragment
@@ -42,39 +50,38 @@ void main()
 
 precision mediump float;
 
-layout (std140, binding = 1) uniform ViewProperties
+layout (std140, binding = 1) uniform DirectionalLightProperties
 {
-	vec3 view_position;
-};
+	vec4 direction;
+    vec4 ambient;
+    vec4 diffuse;
+    vec4 specular;
+} DirectionalLight;
 
 struct StandardMaterial
 {
 	float tiling_factor;
-	vec4 tint_color;
-
 	float shininess;
-    sampler2D specular;
+	vec4 diffuse_tint_color;
+	vec4 specular_tint_color;
     sampler2D diffuse;
-};
-
-struct LightMaterial
-{
-	vec3 position;
-
-    vec3 ambient;
-    vec3 diffuse;
-    vec3 specular;
+    sampler2D specular;
 };
 
 /*
  * Fragment input variables
  */
-in vec2 texture_coord;
-in vec3 fragment_position;
-in vec3 normal_vec;
+struct VertexOutput
+{
+	vec2 TextureCoord;
+	vec3 FragmentPosition;
+	vec3 Normal;
+	vec4 CameraPosition;
+};
+
+layout (location = 0) in VertexOutput Output;
 
 uniform StandardMaterial material;
-uniform LightMaterial light;
 
 /*
  * Fragment output variables
@@ -83,20 +90,23 @@ out vec4 output_color;
 
 void main()
 {
+	vec4 diffuse_map_texture = texture(material.diffuse, Output.TextureCoord * material.tiling_factor) * material.diffuse_tint_color;
+	vec4 specular_map_texture = texture(material.specular, Output.TextureCoord * material.tiling_factor) * material.specular_tint_color;
+
 	// ambient color
-	vec3 ambient = light.ambient * vec3(texture(material.diffuse, texture_coord * material.tiling_factor) * material.tint_color);
+	vec3 ambient = DirectionalLight.ambient.xyz * diffuse_map_texture.xyz;
 
 	// diffuse color
-	vec3 norm = normalize(normal_vec);
-	vec3 light_direction = normalize(light.position - fragment_position);
+	vec3 norm = normalize(Output.Normal);
+	vec3 light_direction = normalize(-DirectionalLight.direction.xyz);
 	float diff = max(dot(norm, light_direction), 0.0);
-	vec3 diffuse = light.diffuse * diff * vec3(texture(material.diffuse, texture_coord * material.tiling_factor) * material.tint_color);
+	vec3 diffuse = DirectionalLight.diffuse.xyz * diff * diffuse_map_texture.xyz;
 	
 	//specular color
-	vec3 view_direction = normalize(view_position - fragment_position);
+	vec3 view_direction = normalize(Output.CameraPosition.xyz - Output.FragmentPosition);
 	vec3 reflect_direction = reflect(-light_direction, norm);
 	float spec = pow(max(dot(view_direction, reflect_direction), 0.0), material.shininess);
-	vec3 specular = light.specular * spec * vec3(texture(material.specular, texture_coord * material.tiling_factor) * material.tint_color);;
+	vec3 specular = DirectionalLight.specular.xyz * spec * specular_map_texture.xyz;
 
 	vec4 result = vec4(ambient + diffuse + specular, 1.0);
 	

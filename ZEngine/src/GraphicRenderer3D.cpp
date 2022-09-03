@@ -4,7 +4,7 @@
 
 namespace ZEngine::Rendering::Renderers {
 
-    GraphicRenderer3D::GraphicRenderer3D() : GraphicRenderer(), m_mesh_collection() {
+    GraphicRenderer3D::GraphicRenderer3D() : GraphicRenderer() {
         m_renderer_pipeline_context                = std::make_unique<Pipelines::GraphicRendererPipelineContext>(this);
         m_renderer_information->GraphicStorageType = Storages::GraphicRendererStorageType::GRAPHIC_3D_STORAGE_TYPE;
 
@@ -25,10 +25,6 @@ namespace ZEngine::Rendering::Renderers {
         // enable Z-depth and stencil testing
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_STENCIL_TEST);
-    }
-
-    void GraphicRenderer3D::AddMesh(Meshes::Mesh& mesh) {
-        m_mesh_collection.push_back(mesh);
     }
 
     void GraphicRenderer3D::EndScene() {
