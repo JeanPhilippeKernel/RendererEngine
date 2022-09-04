@@ -64,13 +64,13 @@ namespace ZEngine::Rendering::Materials {
     void StandardMaterial::Apply(const Ref<Shaders::Shader>& shader) {
         ShaderMaterial::Apply(shader);
 
-        shader->SetUniform("material.tiling_factor", m_tile_factor);
-        shader->SetUniform("material.diffuse_tint_color", m_diffuse_tint_color);
-        shader->SetUniform("material.specular_tint_color", m_specular_tint_color);
+        shader->SetUniform("Material.TilingFactor", m_tile_factor);
+        shader->SetUniform("Material.Shininess", m_shininess);
+        shader->SetUniform("Material.DiffuseTintColor", m_diffuse_tint_color);
+        shader->SetUniform("Material.SpecularTintColor", m_specular_tint_color);
 
-        shader->SetUniform("material.diffuse", 0);
-        shader->SetUniform("material.specular", 1);
-        shader->SetUniform("material.shininess", m_shininess);
+        shader->SetUniform("Material.Diffuse", 0);
+        shader->SetUniform("Material.Specular", 1);
 
         m_diffuse_map->Bind();
         m_specular_map->Bind(1);
