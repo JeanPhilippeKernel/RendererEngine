@@ -2,9 +2,11 @@
 #include <string>
 #include <chrono>
 
-namespace ZEngine::Logging {
+namespace ZEngine::Logging
+{
 
-    struct LoggerConfiguration {
+    struct LoggerConfiguration
+    {
         std::string EngineLoggerName = "ENGINE";
         std::string EditorLoggerName = "EDITOR";
 
@@ -12,8 +14,8 @@ namespace ZEngine::Logging {
         std::string EngineLogFile   = "engine_dump.log";
         std::string EditorLogFile   = "editor_dump.log";
 
-        std::chrono::seconds PeriodicFlush                  = std::chrono::seconds(1);
-        std::chrono::seconds PeriodicInvokeCallbackInterval = std::chrono::seconds(1);
+        std::chrono::milliseconds PeriodicFlush                  = std::chrono::milliseconds(3);
+        std::chrono::milliseconds PeriodicInvokeCallbackInterval = std::chrono::milliseconds(1);
 
         std::function<void(std::vector<std::string>)> MessageCallback;
     };

@@ -86,7 +86,8 @@ uniform StandardMaterial Material;
 /*
  * Fragment output variables
  */
-out vec4 outputColor;
+layout (location = 0) out vec4 outputColor;
+layout (location = 1) out int outputColor2;
 
 vec4 ComputeDirectionalLight(vec4 diffuseTexture, vec4 specularTexture, float shininess)
 {
@@ -116,4 +117,5 @@ void main()
 	vec4 specularMapTexture = texture(Material.Specular, Input.TextureCoord * Material.TilingFactor) * Material.SpecularTintColor;
 
 	outputColor = ComputeDirectionalLight(diffuseMapTexture, specularMapTexture, Material.Shininess);
+	outputColor2 = 150;
 }

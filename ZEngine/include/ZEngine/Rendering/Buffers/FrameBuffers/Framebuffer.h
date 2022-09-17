@@ -1,38 +1,40 @@
 #pragma once
+#include <vector>
 #include <Core/IGraphicObject.h>
 #include <Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h>
+#include <Rendering/Buffers/PixelBuffer.h>
 
-namespace ZEngine::Rendering::Buffers {
+namespace ZEngine::Rendering::Buffers
+{
 
-    class FrameBuffer : public Core::IGraphicObject {
+    class FrameBuffer : public Core::IGraphicObject
+    {
     public:
         FrameBuffer(const FrameBufferSpecification&);
-        ~FrameBuffer();
+        virtual ~FrameBuffer();
 
         virtual GLuint GetIdentifier() const override;
 
-        void Resize();
         void Resize(uint32_t width, uint32_t height);
 
-        void Bind() const;
-        void Unbind() const;
+        void Bind();
+        void Unbind();
 
-        const FrameBufferSpecification& GetSpecification() const {
-            return m_specification;
-        }
+        void ClearColorAttachments();
 
-        FrameBufferSpecification& GetSpecification() {
-            return m_specification;
-        }
+        const FrameBufferSpecification& GetSpecification() const;
+        FrameBufferSpecification&       GetSpecification();
 
-        unsigned int GetTexture() const {
-            return m_texture_color_attachment_identifier;
-        }
+        uint32_t GetTexture(uint32_t color_attachment_index = 0) const;
+
+        int ReadPixelAt(int32_t pixel_pos_x, int32_t pixel_pos_y, uint32_t color_attachment_index = 0);
 
     private:
+        bool                     m_is_binding{false};
         GLuint                   m_framebuffer_identifier;
-        GLuint                   m_texture_color_attachment_identifier;
-        GLuint                   m_texture_color_depth_attachment;
+        GLuint                   m_texture_depth_attachment;
+        std::vector<GLuint>      m_texture_color_attachments;
         FrameBufferSpecification m_specification;
+        PixelBuffer<int>         m_pixel_buffer;
     };
 } // namespace ZEngine::Rendering::Buffers
