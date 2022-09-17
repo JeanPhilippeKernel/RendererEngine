@@ -7,10 +7,14 @@ source_group (TREE ${PROJECT_SOURCE_DIR}/src PREFIX "Header Files" FILES ${HEADE
 source_group (TREE ${PROJECT_SOURCE_DIR}/src PREFIX "Source Files" FILES ${CPP_FILES})
 
 set (TARGET_NAME tetragrama)
-add_executable (${TARGET_NAME} 
-    ${HEADER_FILES}
-    ${CPP_FILES}
-)
+
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+    add_executable (${TARGET_NAME} WIN32)
+else()
+    add_executable (${TARGET_NAME})
+endif()
+
+target_sources(${TARGET_NAME} PUBLIC ${HEADER_FILES} ${CPP_FILES})
 
 # We set this debugger directory to find assets and resources file
 # after being copied to Debug and Release output directories 
