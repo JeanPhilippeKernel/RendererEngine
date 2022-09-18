@@ -6,7 +6,6 @@
 
 namespace ZEngine::Rendering::Buffers
 {
-
     class FrameBuffer : public Core::IGraphicObject
     {
     public:

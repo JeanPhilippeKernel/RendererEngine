@@ -5,7 +5,6 @@
 
 namespace ZEngine::Rendering::Buffers
 {
-
     FrameBuffer::FrameBuffer(const FrameBufferSpecification& specification) : m_specification(specification)
     {
         m_pixel_buffer = {};
@@ -14,7 +13,6 @@ namespace ZEngine::Rendering::Buffers
 
     FrameBuffer::~FrameBuffer()
     {
-
         glDeleteTextures(m_texture_color_attachments.size(), m_texture_color_attachments.data());
         glDeleteTextures(1, &m_texture_depth_attachment);
 
@@ -51,7 +49,6 @@ namespace ZEngine::Rendering::Buffers
 
     void FrameBuffer::ClearColorAttachments()
     {
-
         auto& color_attachement_specification_0 = m_specification.ColorAttachmentSpecifications[0];
         glClearTexImage(m_texture_color_attachments[0], 0, GL_RGBA, color_attachement_specification_0.ClearColorType, color_attachement_specification_0.ClearColor);
 
@@ -113,13 +110,21 @@ namespace ZEngine::Rendering::Buffers
 #ifdef _WIN32
         glCreateFramebuffers(1, &m_framebuffer_identifier);
         glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer_identifier);
+#else
+        glGenFramebuffers(1, &m_framebuffer_identifier);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer_identifier);
+#endif
 
         if (!m_specification.ColorAttachmentSpecifications.empty())
         {
             m_texture_color_attachments.resize(m_specification.ColorAttachmentSpecifications.size());
             if (m_specification.Samples > 1)
             {
+#ifdef _WIN32
                 glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, m_specification.ColorAttachmentSpecifications.size(), m_texture_color_attachments.data());
+#else
+                glGenTextures(m_specification.ColorAttachmentSpecifications.size(), m_texture_color_attachments.data());
+#endif
                 for (auto i = 0; i < m_texture_color_attachments.size(); ++i)
                 {
                     const auto& color_attachement_specification = m_specification.ColorAttachmentSpecifications[i];
@@ -132,7 +137,11 @@ namespace ZEngine::Rendering::Buffers
             }
             else
             {
+#ifdef _WIN32
                 glCreateTextures(GL_TEXTURE_2D, m_specification.ColorAttachmentSpecifications.size(), m_texture_color_attachments.data());
+#else
+                glGenTextures(m_specification.ColorAttachmentSpecifications.size(), m_texture_color_attachments.data());
+#endif
                 for (auto i = 0; i < m_texture_color_attachments.size(); ++i)
                 {
                     const auto& color_attachement_specification = m_specification.ColorAttachmentSpecifications[i];
@@ -151,13 +160,22 @@ namespace ZEngine::Rendering::Buffers
         {
             if (m_specification.Samples > 1)
             {
+#ifdef _WIN32
                 glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, 1, &m_texture_depth_attachment);
+#else
+                glGenTextures(1, &m_texture_depth_attachment);
+#endif
+
                 Helpers::CreateFrameBufferTexture2DMultiSampleDepthAttachment(
                     m_texture_depth_attachment, 0, GL_DEPTH32F_STENCIL8, m_specification.Samples, m_specification.Width, m_specification.Height, GL_DEPTH_STENCIL_ATTACHMENT);
             }
             else
             {
+#ifdef _WIN32
                 glCreateTextures(GL_TEXTURE_2D, 1, &m_texture_depth_attachment);
+#else
+                glGenTextures(1, &m_texture_depth_attachment);
+#endif
                 Helpers::CreateFrameBufferTexture2DDepthAttachment(
                     m_texture_depth_attachment, 0, GL_DEPTH32F_STENCIL8, m_specification.Width, m_specification.Height, GL_DEPTH_STENCIL_ATTACHMENT);
             }
@@ -175,30 +193,10 @@ namespace ZEngine::Rendering::Buffers
             // depth pass
             glDrawBuffer(GL_NONE);
         }
-#else
-        glGenFramebuffers(1, &m_framebuffer_identifier);
-        glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer_identifier);
 
-        glGenTextures(1, &m_texture_color_attachment_identifier);
-        glBindTexture(GL_TEXTURE_2D, m_texture_color_attachment_identifier);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_specification.Width, m_specification.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_texture_color_attachment_identifier, 0);
-
-        if (m_specification.HasStencil && m_specification.HasDepth)
-        {
-            glGenTextures(1, &m_texture_color_depth_attachment);
-            glBindTexture(GL_TEXTURE_2D, m_texture_color_depth_attachment);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, m_specification.Width, m_specification.Height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_texture_color_depth_attachment, 0);
-        }
-
-#endif
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
-            ZENGINE_CORE_CRITICAL("Framebuffer is incomplete");
+            ZENGINE_CORE_CRITICAL("Framebuffer is incomplete")
             ZENGINE_EXIT_FAILURE();
         }
 
