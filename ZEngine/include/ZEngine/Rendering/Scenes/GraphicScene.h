@@ -14,15 +14,19 @@
 #include <entt/entt.hpp>
 #include <uuid.h>
 
-namespace ZEngine::Serializers {
+namespace ZEngine::Serializers
+{
     class GraphicScene3DSerializer;
 }
 
-namespace ZEngine::Rendering::Scenes {
-    class GraphicScene : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable, public Core::IEventable {
+namespace ZEngine::Rendering::Scenes
+{
+    class GraphicScene : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable, public Core::IEventable
+    {
 
     public:
-        GraphicScene() {
+        GraphicScene()
+        {
             m_entity_registry = std::make_shared<entt::registry>();
         }
 
@@ -50,6 +54,7 @@ namespace ZEngine::Rendering::Scenes {
         Entities::GraphicSceneEntity CreateEntity(uuids::uuid uuid, std::string_view entity_name = "empty entity");
         Entities::GraphicSceneEntity CreateEntity(std::string_view uuid_string, std::string_view entity_name = "empty entity");
         Entities::GraphicSceneEntity GetEntity(std::string_view entity_name);
+        Entities::GraphicSceneEntity GetEntity(int mouse_pos_x, int mouse_pos_y);
         void                         RemoveEntity(const Entities::GraphicSceneEntity& entity);
         void                         RemoveAllEntities();
         void                         RemoveInvalidEntities();

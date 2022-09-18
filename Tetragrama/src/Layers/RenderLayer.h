@@ -10,8 +10,10 @@
 #include <Messengers/Message.h>
 #include <EditorCameraController.h>
 
-namespace Tetragrama::Layers {
-    class RenderLayer : public ZEngine::Layers::Layer {
+namespace Tetragrama::Layers
+{
+    class RenderLayer : public ZEngine::Layers::Layer
+    {
     public:
         RenderLayer(std::string_view name = "Rendering layer");
 
@@ -33,6 +35,8 @@ namespace Tetragrama::Layers {
 
         void SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage&);
         void SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>&);
+
+        void SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>&);
 
     protected:
         void OnSceneRenderCompletedCallback(uint32_t);

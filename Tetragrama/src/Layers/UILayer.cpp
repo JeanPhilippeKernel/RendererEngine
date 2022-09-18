@@ -5,9 +5,11 @@
 
 using namespace Tetragrama::Messengers;
 
-namespace Tetragrama::Layers {
+namespace Tetragrama::Layers
+{
 
-    void UILayer::Initialize() {
+    void UILayer::Initialize()
+    {
         ImguiLayer::Initialize();
 
         m_dockspace_component  = std::make_shared<Components::DockspaceUIComponent>();
@@ -50,6 +52,10 @@ namespace Tetragrama::Layers {
 
         IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<std::pair<float, float>>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_RESIZED,
             std::bind(&Components::SceneViewportUIComponent::SceneViewportResizedMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
+                std::placeholders::_1));
+
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<std::pair<int, int>>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_CLICKED,
+            std::bind(&Components::SceneViewportUIComponent::SceneViewportClickedMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
                 std::placeholders::_1));
 
         IMessenger::Register<ZEngine::Components::UI::UIComponent, EmptyMessage>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_REQUEST_RECOMPUTATION,

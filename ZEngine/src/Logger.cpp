@@ -8,23 +8,27 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/details/thread_pool.h>
 
-namespace ZEngine::Logging {
+namespace ZEngine::Logging
+{
     Ref<spdlog::logger>                           Logger::m_engine_logger;
     Ref<spdlog::logger>                           Logger::m_editor_logger;
     Ref<spdlog::logger>                           Logger::m_aggregate_logger;
     std::vector<spdlog::sink_ptr>                 Logger::m_sink_collection;
     std::thread                                   Logger::m_callback_invoker;
     bool                                          Logger::m_is_invoker_running;
-    std::chrono::seconds                          Logger::m_periodic_invoke_callback_interval;
+    std::chrono::milliseconds                     Logger::m_periodic_invoke_callback_interval;
     std::function<void(std::vector<std::string>)> Logger::m_message_callback;
 
-    void Logger::Initialize(const LoggerConfiguration& configuration) {
+    void Logger::Initialize(const LoggerConfiguration& configuration)
+    {
         const auto current_directoy   = std::filesystem::current_path();
         const auto log_directory      = fmt::format("{0}/{1}", current_directoy.string(), configuration.OutputDirectory);
         auto       log_directory_path = std::filesystem::path(log_directory);
-        if (!std::filesystem::exists(log_directory_path)) {
+        if (!std::filesystem::exists(log_directory_path))
+        {
             auto dir_created = std::filesystem::create_directory(log_directory_path);
-            if (!dir_created) {
+            if (!dir_created)
+            {
                 ZENGINE_CORE_ERROR("failed to create Logs directory");
             }
         }
@@ -49,26 +53,30 @@ namespace ZEngine::Logging {
         spdlog::register_logger(m_editor_logger);
         spdlog::register_logger(m_aggregate_logger);
 
-        spdlog::flush_every(configuration.PeriodicFlush);
+        spdlog::flush_every(std::chrono::duration_cast<std::chrono::seconds>(configuration.PeriodicFlush));
 
         m_is_invoker_running                = true;
         m_periodic_invoke_callback_interval = configuration.PeriodicInvokeCallbackInterval;
         m_message_callback                  = configuration.MessageCallback;
 
         std::thread::id empty_id;
-        if (m_callback_invoker.get_id() == empty_id) {
+        if (m_callback_invoker.get_id() == empty_id)
+        {
             m_callback_invoker = std::thread([&]() {
                 auto current_time = std::chrono::system_clock::now();
 
-                while (m_is_invoker_running) {
-                    auto elapsed_time        = std::chrono::system_clock::now() - current_time;
-                    auto elapsed_time_second = std::chrono::duration_cast<std::chrono::seconds>(elapsed_time);
+                while (m_is_invoker_running)
+                {
+                    auto elapsed_time             = std::chrono::system_clock::now() - current_time;
+                    auto elapsed_time_millisecond = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_time);
 
-                    if (elapsed_time_second.count() >= m_periodic_invoke_callback_interval.count()) {
+                    if (elapsed_time_millisecond.count() >= m_periodic_invoke_callback_interval.count())
+                    {
                         current_time           = std::chrono::system_clock::now();
                         auto& current_sink_ptr = m_aggregate_logger->sinks().at(0);
                         auto  ringbuffer_sink  = reinterpret_cast<spdlog::sinks::ringbuffer_sink_mt*>(current_sink_ptr.get());
-                        if (m_message_callback) {
+                        if (m_message_callback)
+                        {
                             auto message = ringbuffer_sink->last_formatted(200);
                             current_sink_ptr.reset(new spdlog::sinks::ringbuffer_sink_mt{200});
                             m_message_callback(message);
@@ -79,26 +87,31 @@ namespace ZEngine::Logging {
         }
     }
 
-    void Logger::Flush() {
+    void Logger::Flush()
+    {
         m_engine_logger->flush();
         m_editor_logger->flush();
         m_aggregate_logger->flush();
 
-        if (m_callback_invoker.joinable()) {
+        if (m_callback_invoker.joinable())
+        {
             m_is_invoker_running = false;
             m_callback_invoker.join();
         }
     }
 
-    Ref<spdlog::logger>& Logger::GetEngineLogger() {
+    Ref<spdlog::logger> Logger::GetEngineLogger()
+    {
         return m_engine_logger;
     }
 
-    Ref<spdlog::logger>& Logger::GetEditorLogger() {
+    Ref<spdlog::logger> Logger::GetEditorLogger()
+    {
         return m_editor_logger;
     }
 
-    Ref<spdlog::logger>& Logger::GetLogger() {
+    Ref<spdlog::logger> Logger::GetLogger()
+    {
         return m_aggregate_logger;
     }
 } // namespace ZEngine::Logging

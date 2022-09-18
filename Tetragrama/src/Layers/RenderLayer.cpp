@@ -19,11 +19,13 @@ using namespace ZEngine::Maths;
 using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Rendering::Geometries;
 
-namespace Tetragrama::Layers {
+namespace Tetragrama::Layers
+{
 
     RenderLayer::RenderLayer(std::string_view name) : Layer(name.data()) {}
 
-    void RenderLayer::Initialize() {
+    void RenderLayer::Initialize()
+    {
 
         m_editor_camera_controller = CreateRef<EditorCameraController>(GetAttachedWindow(), 300.0f, 0.f, 30.f);
 
@@ -41,57 +43,69 @@ namespace Tetragrama::Layers {
             EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE, Messengers::GenericMessage<Ref<EditorCameraController>>{m_editor_camera_controller});
     }
 
-    void RenderLayer::Update(TimeStep dt) {
+    void RenderLayer::Update(TimeStep dt)
+    {
         m_editor_camera_controller->Update(dt);
         m_scene->Update(dt);
 
-        if (!m_deferral_operation.empty()) {
+        if (!m_deferral_operation.empty())
+        {
             auto& operation = m_deferral_operation.front();
             operation();
             m_deferral_operation.pop();
         }
     }
 
-    bool RenderLayer::OnEvent(CoreEvent& e) {
+    bool RenderLayer::OnEvent(CoreEvent& e)
+    {
         m_editor_camera_controller->OnEvent(e);
-        if (m_scene->ShouldReactToEvent()) {
+        if (m_scene->ShouldReactToEvent())
+        {
             m_scene->OnEvent(e);
         }
         return false;
     }
 
-    void RenderLayer::Render() {
+    void RenderLayer::Render()
+    {
         m_scene->Render();
     }
 
-    void RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message) {
+    void RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message)
+    {
         const auto& value = message.GetValue();
         m_editor_camera_controller->SetViewportSize(value.first, value.second);
         m_scene->RequestNewSize(value.first, value.second);
     }
 
-    void RenderLayer::SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>& message) {
+    void RenderLayer::SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>& message)
+    {
         m_scene->SetShouldReactToEvent(message.GetValue());
     }
 
-    void RenderLayer::SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>& message) {
+    void RenderLayer::SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>& message)
+    {
         m_scene->SetShouldReactToEvent(message.GetValue());
     }
 
-    void RenderLayer::SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>& message) {
+    void RenderLayer::SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>& message)
+    {
         // Todo: We need to replace this whole part by using system FileDialog API
-        if (!m_scene->HasEntities()) {
+        if (!m_scene->HasEntities())
+        {
             ZENGINE_EDITOR_WARN("There are no entities in the current scene to serialize")
             return;
         }
 
         auto scene_filename = message.GetValue();
-        if (scene_filename.empty()) {
+        if (scene_filename.empty())
+        {
             scene_filename = "SampleScene.zengine";
         }
 
         auto process_info = m_scene_serializer->Serialize(scene_filename);
-        if (!process_info.IsSuccess) {
+        if (!process_info.IsSuccess)
+        {
             ZENGINE_EDITOR_ERROR("Scene Serialization process failed with following errors : \n {0}", process_info.ErrorMessage)
             return;
         }
@@ -99,18 +113,21 @@ namespace Tetragrama::Layers {
         ZENGINE_EDITOR_INFO("Scene Serialization succeeded")
     }
 
-    void RenderLayer::SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>& message) {
+    void RenderLayer::SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>& message)
+    {
         {
             std::unique_lock lock(m_mutex);
             // Todo: We need to replace this whole part by using system FileDialog API
             auto scene_filename = message.GetValue();
-            if (scene_filename.empty()) {
+            if (scene_filename.empty())
+            {
                 scene_filename = "SampleScene.zengine";
             }
 
             m_deferral_operation.push([this, scene_filename] {
                 auto process_info = m_scene_serializer->Deserialize(scene_filename);
-                if (!process_info.IsSuccess) {
+                if (!process_info.IsSuccess)
+                {
                     ZENGINE_EDITOR_ERROR("Scene Deserialization process failed with following errors : \n {0}", process_info.ErrorMessage)
                     return;
                 }
@@ -123,12 +140,13 @@ namespace Tetragrama::Layers {
         }
     }
 
-    void RenderLayer::SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage& message) {
+    void RenderLayer::SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage& message)
+    {
         {
             std::unique_lock lock(m_mutex);
 
-            if (m_scene->HasEntities()) {
-                // m_scene->InvalidateAllEntities();
+            if (m_scene->HasEntities())
+            {
                 Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
                     EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
             }
@@ -137,12 +155,13 @@ namespace Tetragrama::Layers {
         }
     }
 
-    void RenderLayer::SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>& message) {
+    void RenderLayer::SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>& message)
+    {
         {
             std::unique_lock lock(m_mutex);
 
-            if (m_scene->HasEntities()) {
-                // m_scene->InvalidateAllEntities();
+            if (m_scene->HasEntities())
+            {
                 Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
                     EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
             }
@@ -151,16 +170,26 @@ namespace Tetragrama::Layers {
         }
     }
 
-    void RenderLayer::OnSceneRenderCompletedCallback(uint32_t scene_texture_id) {
+    void RenderLayer::SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>& mouse_position)
+    {
+        const auto& value  = mouse_position.GetValue();
+        auto        entity = m_scene->GetEntity(value.first, value.second);
+        ZENGINE_EDITOR_INFO("Mouse Pos: X={} -- Y={}", value.first, value.second)
+    }
+
+    void RenderLayer::OnSceneRenderCompletedCallback(uint32_t scene_texture_id)
+    {
         Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<uint32_t>>(
             EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE, Messengers::GenericMessage<uint32_t>{scene_texture_id});
     }
 
-    void RenderLayer::HandleNewSceneMessage(const Messengers::EmptyMessage&) {
+    void RenderLayer::HandleNewSceneMessage(const Messengers::EmptyMessage&)
+    {
         m_deferral_operation.push([this]() { m_scene->InvalidateAllEntities(); });
     }
 
-    void RenderLayer::HandleOpenSceneMessage(const Messengers::GenericMessage<std::string>& message) {
+    void RenderLayer::HandleOpenSceneMessage(const Messengers::GenericMessage<std::string>& message)
+    {
         m_deferral_operation.push([this, message]() {
             m_scene->InvalidateAllEntities();
 
