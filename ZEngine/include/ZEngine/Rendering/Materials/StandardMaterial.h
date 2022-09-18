@@ -9,31 +9,21 @@ namespace ZEngine::Rendering::Materials {
         explicit StandardMaterial();
         virtual ~StandardMaterial() = default;
 
-        unsigned int GetHashCode() override;
-
         void SetTileFactor(float value);
-        void SetTintColor(const glm::vec4& value);
+        void SetDiffuseTintColor(const glm::vec4& value);
+        void SetSpecularTintColor(const glm::vec4& value);
 
         void SetShininess(float value);
 
-        void SetLight(const Ref<Lights::BasicLight>& light);
-        bool HasLight() const;
-        void SetViewPosition(const glm::vec3& position);
-
-        void Apply(Shaders::Shader* const shader) override;
+        void Apply(const Ref<Shaders::Shader>&) override;
 
         void SetSpecularMap(const Ref<Textures::Texture>& texture);
-        void SetSpecularMap(Textures::Texture* const texture);
-
         void SetDiffuseMap(const Ref<Textures::Texture>& texture);
-        void SetDiffuseMap(Textures::Texture* const texture);
-
-        void SetTexture(Textures::Texture* const texture) override;
-        void SetTexture(const Ref<Textures::Texture>& texture) override;
 
         float                 GetTileFactor() const;
         float                 GetShininess() const;
-        const Maths::Vector4& GetTintColor() const;
+        const Maths::Vector4& GetDiffuseTintColor() const;
+        const Maths::Vector4& GetSpecularTintColor() const;
 
         Ref<Textures::Texture> GetSpecularMap() const;
         Ref<Textures::Texture> GetDiffuseMap() const;
@@ -41,11 +31,9 @@ namespace ZEngine::Rendering::Materials {
     private:
         float                  m_shininess;
         float                  m_tile_factor;
-        glm::vec4              m_tint_color;
+        Maths::Vector4         m_diffuse_tint_color;
+        Maths::Vector4         m_specular_tint_color;
+        Ref<Textures::Texture> m_diffuse_map;
         Ref<Textures::Texture> m_specular_map;
-
-    private:
-        glm::vec3                   m_view_position;
-        WeakRef<Lights::BasicLight> m_light;
     };
 } // namespace ZEngine::Rendering::Materials

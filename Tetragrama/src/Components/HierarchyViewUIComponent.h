@@ -2,6 +2,8 @@
 #include <string>
 #include <ZEngine/ZEngine.h>
 #include <Message.h>
+#include <EditorCameraController.h>
+#include <mutex>
 
 namespace Tetragrama::Components {
     class HierarchyViewUIComponent : public ZEngine::Components::UI::UIComponent {
@@ -16,6 +18,8 @@ namespace Tetragrama::Components {
 
     public:
         void SceneAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>&);
+        void EditorCameraAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<EditorCameraController>>&);
+        void RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>&);
 
     protected:
         void         RenderEntityNode(ZEngine::Rendering::Entities::GraphicSceneEntity&&);
@@ -26,5 +30,8 @@ namespace Tetragrama::Components {
         bool                                                       m_is_node_opened{false};
         ZEngine::Rendering::Entities::GraphicSceneEntity           m_selected_scene_entity{entt::null, nullptr};
         ZEngine::WeakRef<ZEngine::Rendering::Scenes::GraphicScene> m_active_scene;
+        ZEngine::WeakRef<EditorCameraController>                   m_active_editor_camera;
+        int                                                        m_gizmo_operation{-1};
+        std::mutex                                                 m_mutex;
     };
 } // namespace Tetragrama::Components

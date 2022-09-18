@@ -11,8 +11,6 @@ jobs:
     runs-on: macos-12
     strategy:
       matrix:
-          buildSystem: [Darwin]
-          buildPlatform: [x64]
           buildConfiguration: [Debug, Release]
 
     steps:      
@@ -23,5 +21,5 @@ jobs:
       run: git submodule update --init --recursive
 
     - name: CMake Build
-      run: .\Scripts\BuildEngine.ps1 -SystemNames ${{matrix.buildSystem}} -Architectures ${{matrix.buildPlatform}} -Configurations ${{matrix.buildConfiguration}}
+      run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh

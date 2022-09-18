@@ -3,7 +3,7 @@
 AccessModifierOffset: -4
 AlignConsecutiveAssignments: Consecutive
 AlignConsecutiveDeclarations: Consecutive
-BasedOnStyle: LLVM
+BasedOnStyle: Microsoft
 ColumnLimit: 180
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 ConstructorInitializerIndentWidth : 4

@@ -2,6 +2,7 @@
 #include <Controllers/IController.h>
 #include <Rendering/Cameras/Camera.h>
 #include <Window/CoreWindow.h>
+#include <Controllers/CameraControllerTypeEnums.h>
 
 namespace ZEngine::Controllers {
 
@@ -48,6 +49,10 @@ namespace ZEngine::Controllers {
             return m_aspect_ratio;
         }
 
+        CameraControllerType GetControllerType() const {
+            return m_controller_type;
+        }
+
         virtual void SetPosition(const Maths::Vector3& position) = 0;
 
         void SetRotationAngle(float angle) {
@@ -68,6 +73,7 @@ namespace ZEngine::Controllers {
 
         void SetAspectRatio(float ar) {
             m_aspect_ratio = ar;
+            UpdateProjectionMatrix();
         }
 
         virtual const ZEngine::Ref<Rendering::Cameras::Camera> GetCamera() const = 0;
@@ -85,6 +91,7 @@ namespace ZEngine::Controllers {
 
         bool m_can_rotate{false};
 
+        CameraControllerType m_controller_type;
         ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;
     };
 } // namespace ZEngine::Controllers

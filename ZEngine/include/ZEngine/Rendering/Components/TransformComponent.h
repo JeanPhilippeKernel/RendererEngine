@@ -3,9 +3,9 @@
 
 namespace ZEngine::Rendering::Components {
     struct TransformComponent {
-        TransformComponent(const Maths::Vector3& position = {0.0f, 0.0f, 0.0f}, const Maths::Vector3& scale_size = {10.0f, 10.0f, 10.0f},
-            const Maths::Vector3& rotation_axis = {0.0f, 1.0f, 0.0f}, float rotation_angle = 0.0f)
-            : m_position(position), m_scale_size(scale_size), m_rotation_axis(rotation_axis), m_rotation_angle(rotation_angle) {}
+        TransformComponent(
+            const Maths::Vector3& position = {0.0f, 0.0f, 0.0f}, const Maths::Vector3& scale_size = {10.0f, 10.0f, 10.0f}, const Maths::Vector3& rotation = {0.0f, 0.0f, 0.0f})
+            : m_position(position), m_scale_size(scale_size), m_rotation(rotation), m_transform(Maths::Matrix4(1.0f)) {}
 
         ~TransformComponent() = default;
 
@@ -17,12 +17,12 @@ namespace ZEngine::Rendering::Components {
             m_scale_size = value;
         }
 
-        void SetRotationAxis(const Maths::Vector3& value) {
-            m_rotation_axis = value;
+        void SetRotation(const Maths::Vector3& rad_angles) {
+            m_rotation = rad_angles;
         }
 
-        void SetRotationAngle(float value) {
-            m_rotation_angle = value;
+        void SetRotationEulerAngles(const Maths::Vector3& euler_angles) {
+            m_rotation = Maths::radians(euler_angles);
         }
 
         const Maths::Vector3& GetPosition() const {
@@ -33,18 +33,24 @@ namespace ZEngine::Rendering::Components {
             return m_scale_size;
         }
 
-        const Maths::Vector3& GetRotationAxis() const {
-            return m_rotation_axis;
+        const Maths::Vector3& GetRotation() const {
+            return m_rotation;
         }
 
-        float GetRotationAngle() const {
-            return m_rotation_angle;
+        Maths::Vector3 GetRotationEulerAngles() const {
+            return Maths::degrees(m_rotation);
+        }
+
+        const Maths::mat4& GetTransform() {
+            auto rotation_mat = Maths::toMat4(Maths::quat(m_rotation));
+            m_transform       = translate(Maths::Matrix4(1.0f), m_position) * rotation_mat * scale(Maths::Matrix4(1.0f), m_scale_size);
+            return m_transform;
         }
 
     private:
         Maths::Vector3 m_position;
-        Maths::Vector3 m_rotation_axis;
+        Maths::Vector3 m_rotation;
         Maths::Vector3 m_scale_size;
-        float          m_rotation_angle;
+        Maths::mat4    m_transform;
     };
 } // namespace ZEngine::Rendering::Components

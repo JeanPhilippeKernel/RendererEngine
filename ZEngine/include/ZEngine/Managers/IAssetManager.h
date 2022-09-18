@@ -16,7 +16,7 @@ namespace ZEngine::Managers {
          * @param filename Path to find the asset file in the system
          * @return An asset instance
          */
-        virtual Ref<T>& Add(const char* name, const char* filename) = 0;
+        virtual Ref<T> Add(const char* name, const char* filename) = 0;
 
         /**
          * Add a asset to the Asset manager store
@@ -24,7 +24,7 @@ namespace ZEngine::Managers {
          * @param filename Path to find the asset file in the system
          * @return An asset instance
          */
-        virtual Ref<T>& Load(const char* filename) = 0;
+        virtual Ref<T> Load(const char* filename) = 0;
 
         /**
          * Get an asset instance from the Asset manager store
@@ -33,7 +33,7 @@ namespace ZEngine::Managers {
          * @return An asset instance.
          *		  The asset must exists in the store, otherwise an assertion will be raised
          */
-        ZEngine::Ref<T>& Obtains(const char* name) {
+        ZEngine::Ref<T> Obtains(const char* name) {
             const auto key    = std::string(name).append(this->m_suffix);
             const auto result = IManager<std::string, ZEngine::Ref<T>>::Get(key);
             assert(result.has_value() == true);

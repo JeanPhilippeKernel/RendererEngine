@@ -2,6 +2,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <tuple>
 #include <Rendering/Renderers/Storages/GraphicVertex.h>
 #include <Rendering/Buffers/VertexArray.h>
 #include <Rendering/Buffers/VertexBuffer.h>
@@ -17,52 +18,50 @@ namespace ZEngine::Rendering::Renderers::Storages {
     template <typename T, typename K>
     class GraphicRendererStorage {
     public:
-        explicit GraphicRendererStorage(const Ref<Shaders::Shader>& shader, const std::vector<Ref<Buffers::VertexBuffer<T>>>& vertex_buffer_list,
-            const Ref<Materials::ShaderMaterial>& material, GraphicRendererStorageType storage_type);
+        explicit GraphicRendererStorage(const std::vector<Ref<Buffers::VertexBuffer<T>>>& vertex_buffer_list, GraphicRendererStorageType storage_type);
 
-        explicit GraphicRendererStorage(const Ref<Shaders::Shader>& shader, const std::vector<Renderers::Storages::GraphicVertex>& vertices_list,
-            const Ref<Materials::ShaderMaterial>& material, GraphicRendererStorageType storage_type);
+        explicit GraphicRendererStorage(const std::vector<Renderers::Storages::GraphicVertex>& vertices_list, GraphicRendererStorageType storage_type);
 
-        explicit GraphicRendererStorage(const Ref<Shaders::Shader>& shader, const Ref<Rendering::Geometries::IGeometry>& geometry, const Ref<Materials::ShaderMaterial>& material,
-            GraphicRendererStorageType storage_type);
+        explicit GraphicRendererStorage(const Ref<Rendering::Geometries::IGeometry>& geometry, GraphicRendererStorageType storage_type);
 
         ~GraphicRendererStorage() = default;
 
-        void SetShader(const Ref<Shaders::Shader>& shader) {
-            m_shader = shader;
+        void AddShaderMaterialPair(const std::vector<std::tuple<Ref<Shaders::Shader>, Ref<Materials::ShaderMaterial>>>& pair) {
+            std::copy(std::begin(pair), std::end(pair), std::back_inserter(m_shader_material_pair_collection));
         }
 
-        const Ref<Shaders::Shader>& GetShader() const {
-            return m_shader;
+        void AddShaderMaterialPair(std::vector<std::tuple<Ref<Shaders::Shader>, Ref<Materials::ShaderMaterial>>>&& pair) {
+            for (auto&& item : pair) {
+                m_shader_material_pair_collection.push_back(std::move(item));
+            }
         }
 
-        const Ref<Buffers::VertexArray<T, K>>& GetVertexArray() const {
+        const std::vector<std::tuple<Ref<Shaders::Shader>, Ref<Materials::ShaderMaterial>>>& GetShaderMaterialPairCollection() const {
+            return m_shader_material_pair_collection;
+        }
+
+        Ref<Buffers::VertexArray<T, K>> GetVertexArray() const {
             return m_vertex_array;
         }
 
-        const Ref<Materials::ShaderMaterial>& GetMaterial() const {
-            return m_shader_material;
-        }
-
-        const Ref<Geometries::IGeometry>& GetGeometry() const {
+        Ref<Geometries::IGeometry> GetGeometry() const {
             return m_geometry;
         }
 
     private:
-        Ref<Shaders::Shader>            m_shader;
-        Ref<Materials::ShaderMaterial>  m_shader_material;
-        Ref<Geometries::IGeometry>      m_geometry;
-        Ref<Buffers::VertexBuffer<T>>   m_vertex_buffer;
-        Ref<Buffers::IndexBuffer<K>>    m_index_buffer;
-        Ref<Buffers::VertexArray<T, K>> m_vertex_array;
+        std::vector<std::tuple<Ref<Shaders::Shader>, Ref<Materials::ShaderMaterial>>> m_shader_material_pair_collection;
+        Ref<Geometries::IGeometry>                                                    m_geometry;
+        Ref<Buffers::VertexBuffer<T>>                                                 m_vertex_buffer;
+        Ref<Buffers::IndexBuffer<K>>                                                  m_index_buffer;
+        Ref<Buffers::VertexArray<T, K>>                                               m_vertex_array;
     };
 
     template <typename T, typename K>
-    inline GraphicRendererStorage<T, K>::GraphicRendererStorage(const Ref<Shaders::Shader>& shader, const std::vector<Ref<Buffers::VertexBuffer<T>>>& vertex_buffer_list,
-        const Ref<Materials::ShaderMaterial>& material, GraphicRendererStorageType storage_type)
-        : m_shader(shader), m_shader_material(material) {
-        unsigned int vertex_count = std::accumulate(std::begin(vertex_buffer_list), std::end(vertex_buffer_list), 0,
-            [](unsigned int init, const Ref<Buffers::VertexBuffer<T>>& buffer) { return std::move(init) + buffer->GetVertexCount(); });
+    inline GraphicRendererStorage<T, K>::GraphicRendererStorage(const std::vector<Ref<Buffers::VertexBuffer<T>>>& vertex_buffer_list, GraphicRendererStorageType storage_type) {
+        unsigned int vertex_count = 0;
+        for (const Ref<Buffers::VertexBuffer<T>>& vertex_buffer : vertex_buffer_list) {
+            vertex_count += vertex_buffer->GetVertexCount();
+        }
 
         std::vector<T> raw_vertices               = std::vector<T>(vertex_count * (sizeof(IVertex) / sizeof(float)), 0.0f);
         T*             raw_vertices_buffer_cursor = raw_vertices.data();
@@ -120,9 +119,7 @@ namespace ZEngine::Rendering::Renderers::Storages {
     }
 
     template <typename T, typename K>
-    inline GraphicRendererStorage<T, K>::GraphicRendererStorage(const Ref<Shaders::Shader>& shader, const std::vector<GraphicVertex>& vertices_list,
-        const Ref<Materials::ShaderMaterial>& material, GraphicRendererStorageType storage_type)
-        : m_shader(shader), m_shader_material(material) {
+    inline GraphicRendererStorage<T, K>::GraphicRendererStorage(const std::vector<GraphicVertex>& vertices_list, GraphicRendererStorageType storage_type) {
 
         unsigned int   vertex_count = static_cast<unsigned int>(vertices_list.size());
         std::vector<T> raw_vertices;
@@ -178,10 +175,8 @@ namespace ZEngine::Rendering::Renderers::Storages {
 
 
     template <typename T, typename K>
-    inline GraphicRendererStorage<T, K>::GraphicRendererStorage(const Ref<Shaders::Shader>& shader, const Ref<Rendering::Geometries::IGeometry>& geometry,
-        const Ref<Materials::ShaderMaterial>& material, GraphicRendererStorageType storage_type)
-        : GraphicRendererStorage(shader, geometry->GetVertices(), material, storage_type) {
+    inline GraphicRendererStorage<T, K>::GraphicRendererStorage(const Ref<Rendering::Geometries::IGeometry>& geometry, GraphicRendererStorageType storage_type)
+        : GraphicRendererStorage(geometry->GetVertices(), storage_type) {
         m_geometry = geometry;
     }
-
 } // namespace ZEngine::Rendering::Renderers::Storages

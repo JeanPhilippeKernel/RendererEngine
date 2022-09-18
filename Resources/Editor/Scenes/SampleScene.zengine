@@ -1,0 +1,119 @@
+Scene: Untitled
+Entities:
+  - Entity: c439f98c-96f5-4f24-bb20-d3854b020193
+    NameComponent:
+      Name: Main camera
+    TransformComponent:
+      Position: [-0.100000001, 0, 0]
+      Rotation: [0, 1, 0]
+      Scale: [10, 10, 10]
+    CameraComponent:
+      IsPrimary: true
+      CameraType: 0
+      AspectRatio: 1.75812614
+      FielOfViewDegree: 99
+      Near: 0.100000001
+      Far: 3000
+      CameraControllerType:
+        ControllerType: 1
+        Radius: 162.002441
+        YawAngleDegree: 10
+        PitchAngleDegree: -20
+        Position: [-114.289993, 114.587776, -7.22724295]
+  - Entity: e31544e2-9451-49c3-972d-0a2060fb488f
+    NameComponent:
+      Name: Directional Light
+    TransformComponent:
+      Position: [-134.349045, 712.173279, 188.72049]
+      Rotation: [0, -0, 0]
+      Scale: [9.99998188, 9.99995613, 10.0001411]
+    LightComponent:
+      LightType: 0
+      Direction: [7.5999999, 10.3999996, -0.300000012]
+      AmbientColor: [0.840071917, 0.870967746, 0.839359999]
+      DiffuseColor: [1, 1, 1]
+      SpecularColor: [1, 1, 1]
+  - Entity: 4243d0af-1713-4acd-bd1c-83aa8d617aee
+    NameComponent:
+      Name: Checkboard
+    TransformComponent:
+      Position: [69.2282104, -21.0210457, -30.6402969]
+      Rotation: [0, -0, 0]
+      Scale: [1000, 5, 1000]
+    GeometryComponent:
+      GeometryType: 1
+    MaterialComponent:
+      MaterialShaderType: 1
+      Shininess: 394.600006
+      TileFactor: 16.7999992
+      DiffuseTintColor: [0.462962985, 0.462962985, 0.462962985, 0.980392158]
+      SpecularTintColor: [0.0407407284, 0.0401371643, 0.0401371643, 1]
+      DiffuseMap:
+        FromFile: true
+        TexturePath: Assets/Images/Checkerboard_2.png
+      SpecularMap:
+        FromFile: false
+        TextureColor: [60, 60, 60, 100]
+  - Entity: b1608184-9d94-4457-b839-2c872ecdd4c3
+    NameComponent:
+      Name: box
+    TransformComponent:
+      Position: [0, 10, 0]
+      Rotation: [0, 1, 0]
+      Scale: [10, 10, 10]
+    GeometryComponent:
+      GeometryType: 1
+    MaterialComponent:
+      MaterialShaderType: 1
+      Shininess: 100
+      TileFactor: 1
+      DiffuseTintColor: [0.580392182, 0.580392182, 0.580392182, 0.968627453]
+      SpecularTintColor: [1, 1, 1, 1]
+      DiffuseMap:
+        FromFile: true
+        TexturePath: Assets/Images/container2.png
+      SpecularMap:
+        FromFile: true
+        TexturePath: Assets/Images/container2_specular.png
+  - Entity: 4725732f-2d72-42c7-8108-711e141e87b2
+    NameComponent:
+      Name: Orange Box
+    TransformComponent:
+      Position: [-25, 14.3999996, -67.0999985]
+      Rotation: [0, 1, 0]
+      Scale: [10, 10, 10]
+    GeometryComponent:
+      GeometryType: 1
+    MaterialComponent:
+      MaterialShaderType: 1
+      Shininess: 32
+      TileFactor: 1
+      DiffuseTintColor: [0.713725507, 0.713725507, 0.713725507, 0.97647059]
+      SpecularTintColor: [1, 1, 1, 1]
+      DiffuseMap:
+        FromFile: false
+        TextureColor: [255, 127, 79, 255]
+      SpecularMap:
+        FromFile: false
+        TextureColor: [255, 255, 255, 255]
+  - Entity: c9138406-c252-46df-a5a3-c172fc92e4a2
+    NameComponent:
+      Name: Green Box
+    TransformComponent:
+      Position: [93.3000031, 53.4000015, -44.2999992]
+      Rotation: [-0.389732271, 0.920927942, -22.9396343]
+      Scale: [0.799999774, 64.5, 48.4999962]
+    GeometryComponent:
+      GeometryType: 1
+    MaterialComponent:
+      MaterialShaderType: 1
+      Shininess: 10
+      TileFactor: 20
+      DiffuseTintColor: [0.376470596, 0.596078455, 0.36470589, 0.960784316]
+      SpecularTintColor: [1, 1, 1, 1]
+      DiffuseMap:
+        FromFile: false
+        TextureColor: [255, 255, 255, 255]
+      SpecularMap:
+        FromFile: false
+        TextureColor: [255, 255, 255, 255]

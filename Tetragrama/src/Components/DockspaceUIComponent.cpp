@@ -3,6 +3,8 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <Event/EventDispatcher.h>
 #include <imgui/src/imgui_internal.h>
+#include <MessageToken.h>
+#include <Messengers/Messenger.h>
 
 using namespace ZEngine::Components::UI::Event;
 
@@ -50,25 +52,43 @@ namespace Tetragrama::Components {
         if (ImGui::BeginMenuBar()) {
             if (ImGui::BeginMenu("File")) {
                 if (ImGui::MenuItem("New Scene")) {
+#ifdef _WIN32
+                    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::EmptyMessage>(
+                        EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE, Messengers::EmptyMessage{});
+#else
+                    Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::EmptyMessage>(
+                        EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE, Messengers::EmptyMessage{});
+#endif
                 }
 
                 if (ImGui::MenuItem("Open Scene")) {
+#ifdef _WIN32
+                    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+                        EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>{""});
+#else
+                    Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+                        EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>{""});
+#endif
                 }
 
                 ImGui::Separator();
 
                 if (ImGui::MenuItem("Save")) {
+                    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+                        EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION, Messengers::GenericMessage<std::string>{""});
                 }
 
                 if (ImGui::MenuItem("Save As ...")) {
+                    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+                        EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION, Messengers::GenericMessage<std::string>{""});
                 }
 
                 ImGui::Separator();
 
                 if (ImGui::MenuItem("Exit")) {
                     ZEngine::Event::WindowClosedEvent app_close_event{};
-                    ZEngine::Event::EventDispatcher   event_dispatcher(app_close_event);
-                    event_dispatcher.Dispatch<ZEngine::Event::WindowClosedEvent>(std::bind(&DockspaceUIComponent::OnRequestExit, this, std::placeholders::_1));
+                    Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>>(
+                        EDITOR_COMPONENT_DOCKSPACE_REQUEST_EXIT, Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>{std::move(app_close_event)});
                 }
 
                 ImGui::EndMenu();
@@ -83,28 +103,12 @@ namespace Tetragrama::Components {
         ImGui::End();
     }
 
-    bool DockspaceUIComponent::OnRequestCreateScene(ZEngine::Components::UI::Event::UIComponentEvent& event) {
-        return true;
-    }
-
-    bool DockspaceUIComponent::OnRequestOpenScene(ZEngine::Components::UI::Event::UIComponentEvent& event) {
-        return true;
-    }
-
-    bool DockspaceUIComponent::OnRequestSave(ZEngine::Components::UI::Event::UIComponentEvent& event) {
-        return true;
-    }
-
-    bool DockspaceUIComponent::OnRequestSaveAs(ZEngine::Components::UI::Event::UIComponentEvent& event) {
-        return true;
-    }
-
-    bool DockspaceUIComponent::OnRequestExit(ZEngine::Event::WindowClosedEvent& event) {
+    void DockspaceUIComponent::RequestExitMessageHandler(Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>& message) {
         if (!m_parent_layer.expired()) {
-            m_parent_layer.lock()->OnEvent(event);
+            auto layer = m_parent_layer.lock();
+            layer->OnEvent(message.GetValue());
 
-            ZENGINE_EDITOR_WARN("zEngine editor stopped");
+            ZENGINE_EDITOR_WARN("zEngine editor stopped")
         }
-        return true;
     }
 } // namespace Tetragrama::Components

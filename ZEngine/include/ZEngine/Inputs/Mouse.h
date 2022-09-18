@@ -45,19 +45,16 @@ namespace ZEngine::Inputs {
             return !IsKeyPressed(key, window);
         }
 
-#ifdef ZENGINE_KEY_MAPPING_SDL
-        std::array<int, 2> GetMousePosition() const {
-            int        x, y;
-            const auto state = SDL_GetMouseState(&x, &y);
-            return std::array<int, 2>{x, y};
-        }
-#else
         std::array<double, 2> GetMousePosition(const Ref<Window::CoreWindow>& window) const {
+#ifdef ZENGINE_KEY_MAPPING_SDL
+            int x, y;
+            const auto state = SDL_GetMouseState(&x, &y);
+#else
             double x, y;
             glfwGetCursorPos(static_cast<GLFWwindow*>(window->GetNativeWindow()), &x, &y);
+#endif
             return std::array<double, 2>{x, y};
         }
-#endif
         // virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
         // 	auto state = glfwGetMouseButton(static_cast<GLFWwindow*>(window->GetNativeWindow()), (int)key);
         // 	return state == GLFW_PRESS;

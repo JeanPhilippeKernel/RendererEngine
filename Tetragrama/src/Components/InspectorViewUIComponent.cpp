@@ -4,6 +4,8 @@
 
 using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Components;
+using namespace ZEngine::Rendering::Textures;
+using namespace ZEngine::Rendering::Lights;
 
 namespace Tetragrama::Components {
     InspectorViewUIComponent::InspectorViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {
@@ -20,21 +22,51 @@ namespace Tetragrama::Components {
     }
 
     void InspectorViewUIComponent::SceneEntitySelectedMessageHandler(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>& message) {
-        m_scene_entity = message.GetValue();
+        {
+            std::unique_lock lock(m_mutex);
+            m_scene_entity = message.GetValue();
+        }
     }
 
     void InspectorViewUIComponent::SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage& message) {
-        m_scene_entity = nullptr;
+        {
+            std::unique_lock lock(m_mutex);
+            m_recieved_unselected_request = true;
+        }
     }
 
     void InspectorViewUIComponent::SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&) {
-        m_scene_entity = nullptr;
+        {
+            std::unique_lock lock(m_mutex);
+            m_recieved_deleted_request = true;
+        }
+    }
+
+    void InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>& message) {
+        {
+            std::unique_lock lock(m_mutex);
+            m_is_allowed_to_render = message.GetValue();
+        }
     }
 
     void InspectorViewUIComponent::Render() {
+        if (m_recieved_deleted_request || m_recieved_unselected_request) {
+            m_scene_entity                = nullptr;
+            m_recieved_deleted_request    = false;
+            m_recieved_unselected_request = false;
+        }
+
+        CHECK_IF_ALLOWED_TO_RENDER()
+
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 
         if (m_scene_entity) {
+            auto& valid_component = m_scene_entity->GetComponent<ValidComponent>();
+            if (!valid_component.IsValid) {
+                ImGui::End();
+                return;
+            }
+
             Helpers::DrawEntityComponentControl<NameComponent>("Name", *m_scene_entity, m_node_flag, false, [](NameComponent& component) {
                 ImGui::Dummy(ImVec2(0, 3));
                 Helpers::DrawInputTextControl("Entity name", component.Name, [&component](std::string_view value) { component.Name = value; });
@@ -45,8 +77,8 @@ namespace Tetragrama::Components {
                 auto position = component.GetPosition();
                 Helpers::DrawVec3Control("Position", position, [&component](ZEngine::Maths::Vector3& value) { component.SetPosition(value); });
 
-                auto rotation_axis = component.GetRotationAxis();
-                Helpers::DrawVec3Control("Rotation", rotation_axis, [&component](ZEngine::Maths::Vector3& value) { component.SetRotationAxis(value); });
+                auto rotation_axis_degree = component.GetRotationEulerAngles();
+                Helpers::DrawVec3Control("Rotation", rotation_axis_degree, [&component](ZEngine::Maths::Vector3& value) { component.SetRotationEulerAngles(value); });
 
                 auto scale_size = component.GetScaleSize();
                 Helpers::DrawVec3Control(
@@ -65,7 +97,7 @@ namespace Tetragrama::Components {
             });
 
             Helpers::DrawEntityComponentControl<MaterialComponent>("Materials", *m_scene_entity, m_node_flag, true, [](MaterialComponent& component) {
-                auto material             = component.GetMaterial();
+                auto material             = component.GetMaterials()[0]; // Todo : need to be refactor to consider the collection of materials
                 auto material_shader_type = material->GetShaderBuiltInType();
 
                 const char* built_in_shader_type[] = {"Basic", "Standard"};
@@ -88,15 +120,48 @@ namespace Tetragrama::Components {
                     Helpers::DrawDragFloatControl("Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetShininess(value); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    auto tint_color      = standard_material->GetTintColor();
-                    auto diffuse_texture = standard_material->GetDiffuseMap();
-                    Helpers::DrawTextureColorControl("Diffuse Map", reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), tint_color, true, nullptr,
-                        [standard_material](auto& value) { standard_material->SetTintColor(value); });
+                    auto diffuse_tint_color = standard_material->GetDiffuseTintColor();
+                    auto diffuse_texture    = standard_material->GetDiffuseMap();
+                    Helpers::DrawTextureColorControl("Diffuse Map", reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), diffuse_tint_color, true, nullptr,
+                        [standard_material](auto& value) { standard_material->SetDiffuseTintColor(value); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
+                    auto specular_tint_color = standard_material->GetSpecularTintColor();
                     auto specular_texture    = standard_material->GetSpecularMap();
-                    auto specular_tint_color = ZEngine::Maths::Vector4{1, 1, 1, 1};
-                    Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color);
+                    Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color, true, nullptr,
+                        [standard_material](auto& value) { standard_material->SetSpecularTintColor(value); });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+                }
+            });
+
+            Helpers::DrawEntityComponentControl<LightComponent>("Lighting", *m_scene_entity, m_node_flag, true, [](LightComponent& component) {
+                auto light      = component.GetLight();
+                auto light_type = light->GetLightType();
+
+                const char* built_in_light_type[] = {"Directional Light", "Point Light", "Spot Light"};
+
+                ImGui::Dummy(ImVec2(0, 3));
+                Helpers::DrawInputTextControl("Light Type", built_in_light_type[(int) light_type], nullptr, true);
+
+                if (light_type == LightType::DIRECTIONAL_LIGHT) {
+                    auto light_ptr = reinterpret_cast<DirectionalLight*>(light.get());
+
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    auto direction = light_ptr->GetDirection();
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](ZEngine::Maths::Vector3& value) { light_ptr->SetDirection(value); });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    auto ambient_color = light_ptr->GetAmbientColor();
+                    Helpers::DrawColorEdit3Control("Ambient", ambient_color, [light_ptr](ZEngine::Maths::Vector3& value) { light_ptr->SetAmbientColor(value); });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    auto diffuse_color = light_ptr->GetDiffuseColor();
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse_color, [light_ptr](ZEngine::Maths::Vector3& value) { light_ptr->SetDiffuseColor(value); });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    auto specular_color = light_ptr->GetSpecularColor();
+                    Helpers::DrawColorEdit3Control("Specular", specular_color, [light_ptr](ZEngine::Maths::Vector3& value) { light_ptr->SetSpecularColor(value); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             });
@@ -141,7 +206,8 @@ namespace Tetragrama::Components {
                     ImGui::Dummy(ImVec2(0, 3));
 
                     // Camera Controller Type
-                    if (auto orbit_controller = dynamic_cast<ZEngine::Controllers::OrbitCameraController*>(camera_controller)) {
+                    if (camera_controller->GetControllerType() == ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER) {
+                        auto orbit_controller = reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(camera_controller);
                         if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(orbit_controller).hash_code()), m_node_flag, "%s", "Controller (Orbit)")) {
                             auto       camera       = orbit_controller->GetCamera();
                             auto const orbit_camera = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
@@ -182,13 +248,27 @@ namespace Tetragrama::Components {
                     ZEngine::Ref<StandardMaterial> material = ZEngine::CreateRef<StandardMaterial>();
                     material->SetTileFactor(20.f);
                     material->SetShininess(10.0f);
-                    material->SetDiffuseMap(ZEngine::Rendering::Textures::CreateTexture(1, 1));
-                    material->SetSpecularMap(ZEngine::Rendering::Textures::CreateTexture(1, 1));
+                    material->SetDiffuseMap(ZEngine::Ref<Texture>(CreateTexture(1, 1)));
+                    material->SetSpecularMap(ZEngine::Ref<Texture>(CreateTexture(1, 1)));
 
                     m_scene_entity->AddComponent<MaterialComponent>(std::move(material));
                     ImGui::CloseCurrentPopup();
                 }
 
+                if (ImGui::BeginMenu("Lights")) {
+                    if (ImGui::MenuItem("Directional Light")) {
+                        m_scene_entity->AddComponent<LightComponent>(ZEngine::CreateRef<DirectionalLight>());
+                        ImGui::CloseCurrentPopup();
+                    }
+
+                    if (ImGui::MenuItem("Point Light")) {
+                    }
+
+                    if (ImGui::MenuItem("Spot Light")) {
+                    }
+
+                    ImGui::EndMenu();
+                }
                 ImGui::EndPopup();
             }
         }

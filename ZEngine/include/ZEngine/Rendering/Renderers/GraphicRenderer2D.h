@@ -10,8 +10,6 @@ namespace ZEngine::Rendering::Renderers {
 
         void Initialize() override;
 
-        void AddMesh(Meshes::Mesh& mesh) override;
-
         virtual void EndScene() override;
 
     private:

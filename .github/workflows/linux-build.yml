@@ -8,11 +8,9 @@ on:
     
 jobs:
   Linux-Build:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-          buildSystem: [Linux]
-          buildPlatform: [x64]
           buildConfiguration: [Debug, Release]
 
     steps:
@@ -55,5 +53,5 @@ jobs:
       run: sudo apt install -y g++-11
 
     - name: CMake Build
-      run: .\Scripts\BuildEngine.ps1 -SystemNames ${{matrix.buildSystem}} -Architectures ${{matrix.buildPlatform}} -Configurations ${{matrix.buildConfiguration}}
+      run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh

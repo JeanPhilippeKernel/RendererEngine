@@ -6,15 +6,18 @@
 namespace ZEngine::Controllers {
 
     class FirstPersonShooterCameraController : public PerspectiveCameraController {
-
     public:
-        explicit FirstPersonShooterCameraController() = default;
+        explicit FirstPersonShooterCameraController() {
+            m_controller_type = CameraControllerType::PERSPECTIVE_FPS_CONTROLLER;
+        }
+
         explicit FirstPersonShooterCameraController(
             const ZEngine::Ref<ZEngine::Window::CoreWindow>& window, Maths::Vector3 position, float yaw_angle_degree, float pitch_angle_degree)
             : PerspectiveCameraController(window) {
             m_perspective_camera.reset(new Rendering::Cameras::FirstPersonShooterCamera(
                 m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far, Maths::radians(yaw_angle_degree), Maths::radians(pitch_angle_degree)));
             m_position = position;
+            m_controller_type = CameraControllerType::PERSPECTIVE_FPS_CONTROLLER;
         }
 
         virtual ~FirstPersonShooterCameraController() = default;

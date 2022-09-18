@@ -3,6 +3,8 @@
 
 #include "Engine.h"
 
+#include "Core/Coroutine.h"
+
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/Buffers/VertexBuffer.h"
 #include "Rendering/Buffers/IndexBuffer.h"
@@ -14,6 +16,9 @@
 #include "Rendering/Scenes/GraphicScene2D.h"
 #include "Rendering/Scenes/GraphicScene3D.h"
 
+#include "Serializers/GraphicSceneSerializer.h"
+#include "Serializers/GraphicScene3DSerializer.h"
+
 #include "Rendering/Entities/GraphicSceneEntity.h"
 
 #include "Rendering/Components/NameComponent.h"
@@ -22,6 +27,7 @@
 #include "Rendering/Components/MaterialComponent.h"
 #include "Rendering/Components/LightComponent.h"
 #include "Rendering/Components/CameraComponent.h"
+#include "Rendering/Components/ValidComponent.h"
 
 #include "Rendering/Renderers/GraphicRenderer.h"
 #include "Rendering/Renderers/GraphicRenderer2D.h"
@@ -41,10 +47,10 @@
 #include "Rendering/Materials/ShaderMaterial.h"
 #include "Rendering/Materials/BasicMaterial.h"
 #include "Rendering/Materials/StandardMaterial.h"
-#include "Rendering/Materials/MixedTextureMaterial.h"
 
 #include "Rendering/Meshes/Mesh.h"
 #include "Rendering/Lights/Light.h"
+#include "Rendering/Lights/DirectionalLight.h"
 #include "Rendering/Meshes/MeshBuilder.h"
 #include "Rendering/Textures/Texture.h"
 
@@ -77,3 +83,5 @@
 
 #include "Event/EventCategory.h"
 #include "Event/EventType.h"
+
+#include <ImGuizmo/ImGuizmo.h>

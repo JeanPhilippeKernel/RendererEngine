@@ -10,20 +10,32 @@ namespace ZEngine::Controllers {
     class PerspectiveCameraController : public ICameraController, public Inputs::IMouseEventCallback, public Window::ICoreWindowEventCallback {
 
     public:
-        explicit PerspectiveCameraController() = default;
+        explicit PerspectiveCameraController() {
+            m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
+        }
+
         explicit PerspectiveCameraController(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window)
             : ICameraController(window), m_perspective_camera(new Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far)) {
             m_position = {0.0f, 0.0f, 1.5f};
+            m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
         }
 
         explicit PerspectiveCameraController(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window, Rendering::Cameras::PerspectiveCamera* const camera)
             : ICameraController(window), m_perspective_camera(camera) {
             m_position = {0.0f, 0.0f, 1.5f};
+            m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
+        }
+
+        explicit PerspectiveCameraController(float aspect_ratio, Rendering::Cameras::PerspectiveCamera* const camera)
+            : ICameraController(aspect_ratio), m_perspective_camera(camera) {
+            m_position        = {0.0f, 0.0f, 1.5f};
+            m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
         }
 
         explicit PerspectiveCameraController(float aspect_ratio)
             : ICameraController(aspect_ratio), m_perspective_camera(new Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far)) {
             m_position = {0.0f, 0.0f, 1.5f};
+            m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
         }
 
         virtual ~PerspectiveCameraController() = default;

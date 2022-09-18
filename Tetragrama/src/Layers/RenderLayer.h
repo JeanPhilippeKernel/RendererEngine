@@ -1,14 +1,19 @@
 #pragma once
 #include <vector>
+#include <queue>
+#include <mutex>
 #include <ZEngine/ZEngine.h>
 #include <Components/Events/SceneViewportResizedEvent.h>
 #include <Components/Events/SceneViewportFocusedEvent.h>
 #include <Components/Events/SceneViewportUnfocusedEvent.h>
 #include <Components/Events/SceneTextureAvailableEvent.h>
 #include <Messengers/Message.h>
+#include <EditorCameraController.h>
 
-namespace Tetragrama::Layers {
-    class RenderLayer : public ZEngine::Layers::Layer {
+namespace Tetragrama::Layers
+{
+    class RenderLayer : public ZEngine::Layers::Layer
+    {
     public:
         RenderLayer(std::string_view name = "Rendering layer");
 
@@ -25,13 +30,27 @@ namespace Tetragrama::Layers {
         void SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>&);
         void SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>&);
         void SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>&);
+        void SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>&);
+        void SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>&);
+
+        void SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage&);
+        void SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>&);
+
+        void SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>&);
 
     protected:
         void OnSceneRenderCompletedCallback(uint32_t);
 
     private:
-        ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene> m_scene;
-        ZEngine::Ref<ZEngine::Managers::TextureManager>        m_texture_manager;
+        ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>     m_scene;
+        ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;
+        ZEngine::Ref<EditorCameraController>                       m_editor_camera_controller;
+        std::queue<std::function<void(void)>>                      m_deferral_operation;
+        std::mutex                                                 m_mutex;
+
+    private:
+        void HandleNewSceneMessage(const Messengers::EmptyMessage&);
+        void HandleOpenSceneMessage(const Messengers::GenericMessage<std::string>&);
     };
 
 } // namespace Tetragrama::Layers

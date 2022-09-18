@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <mutex>
 #include <ZEngine/ZEngine.h>
 #include <Message.h>
 
@@ -17,12 +18,16 @@ namespace Tetragrama::Components {
         void SceneEntitySelectedMessageHandler(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>&);
         void SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage&);
         void SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&);
+        void RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>&);
 
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
 
     private:
         ImGuiTreeNodeFlags                                m_node_flag;
+        bool                                              m_recieved_unselected_request{false};
+        bool                                              m_recieved_deleted_request{false};
         ZEngine::Rendering::Entities::GraphicSceneEntity* m_scene_entity{nullptr};
+        std::mutex                                        m_mutex;
     };
 } // namespace Tetragrama::Components

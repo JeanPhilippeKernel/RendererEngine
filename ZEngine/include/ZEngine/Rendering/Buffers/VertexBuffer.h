@@ -1,10 +1,8 @@
 #pragma once
 
+#include <ZEngineDef.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
 #include <Rendering/Buffers/BufferLayout.h>
-
-#include <ZEngineDef.h>
-
 #include <Rendering/Renderers/Storages/IVertex.h>
 #include <Core/IGraphicObject.h>
 
@@ -52,8 +50,39 @@ namespace ZEngine::Rendering::Buffers {
             return m_vertex_buffer_id;
         }
 
+        void SetLayout(const Layout::BufferLayout<T>& layout) {
+            m_layout = layout;
+            UpdateLayout();
+        }
+
+        void SetLayout(Layout::BufferLayout<T>&& layout) {
+            m_layout = std::move(layout);
+            UpdateLayout();
+        }
+
+        const Layout::BufferLayout<T>& GetLayout() const {
+            return m_layout;
+        }
+
+    protected:
+        void UpdateLayout() {
+            auto& elements = m_layout.GetElementLayout();
+
+            auto start = std::next(std::begin(elements)); // We start at the second element since the offset of this first element should be zero
+            auto end   = std::end(elements);
+
+            while (start != end) {
+                auto current = std::prev(start);
+                auto value   = current->GetSize() + current->GetOffset();
+                start->SetOffset(value);
+
+                start = std::next(start);
+            }
+        }
+
     private:
-        GLuint       m_vertex_buffer_id{0};
-        unsigned int m_vertex_count{0};
+        GLuint                  m_vertex_buffer_id{0};
+        unsigned int            m_vertex_count{0};
+        Layout::BufferLayout<T> m_layout;
     };
 } // namespace ZEngine::Rendering::Buffers

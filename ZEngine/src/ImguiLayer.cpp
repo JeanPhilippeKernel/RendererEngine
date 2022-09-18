@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <Layers/ImguiLayer.h>
+#include <ImGuizmo/ImGuizmo.h>
 #include <ZEngineDef.h>
 #include <fmt/format.h>
 
@@ -116,6 +117,7 @@ namespace ZEngine::Layers {
 #endif
 
         ImGui::NewFrame();
+        ImGuizmo::BeginFrame();
         for (const auto& component : m_ui_components) {
             if (component->GetVisibility() == true) {
                 component->Render();
