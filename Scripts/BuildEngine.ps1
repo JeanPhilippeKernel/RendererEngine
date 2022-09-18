@@ -70,7 +70,7 @@ function Build([string]$systemName, [string]$architecture, [string]$configuratio
     # Define CMake build arguments
     #
     if($systemName -eq "Windows") {
-        $CMakeGenerator = "-G `"Visual Studio 16 2019`" -A $architecture"
+        $CMakeGenerator = "-G `"Visual Studio 17 2022`" -A $architecture"
         $CMakeCacheVariableOverride += " -DCMAKE_CONFIGURATION_TYPES=Debug;Release"
     }
     elseif ($systemName -eq "Darwin") {
