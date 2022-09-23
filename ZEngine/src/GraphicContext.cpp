@@ -1,11 +1,8 @@
 #include <pch.h>
 #include <ZEngineDef.h>
 
-#ifdef ZENGINE_WINDOW_SDL
-#include <Rendering/Graphics/SDLGraphic/OpenGLContext.h>
-#else
+
 #include <Rendering/Graphics/GlfwGraphic/OpenGLContext.h>
-#endif
 
 #include <Rendering/Graphics/GraphicContext.h>
 

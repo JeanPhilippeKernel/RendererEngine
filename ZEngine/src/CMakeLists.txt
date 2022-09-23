@@ -12,17 +12,11 @@ source_group (TREE ${PROJECT_SOURCE_DIR}/../Resources PREFIX "Resources Files" F
 #
 list (APPEND Sources ${CPP_FILES_LIST})
 
-if ((APPLE) OR (${CMAKE_SYSTEM_NAME} STREQUAL "Windows"))
-	list (APPEND Sources 
-			GlfwWindow/OpenGLContext.cpp
-			GlfwWindow/OpenGLWindow.cpp
-	)
-else ()
-	list (APPEND Sources 
-			SDL2Window/OpenGLContext.cpp
-			SDL2Window/OpenGLWindow.cpp
-	)
-endif ()
+
+list (APPEND Sources 
+		GlfwWindow/OpenGLContext.cpp
+		GlfwWindow/OpenGLWindow.cpp
+)
 
 add_library (zEngineLib
 	STATIC
@@ -53,11 +47,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	target_link_libraries(zEngineLib PRIVATE stdc++fs)
 endif ()
 
-if (USE_SDL_LIBS)
-	target_link_libraries (zEngineLib PUBLIC imported::sdl2)
-else ()
-	target_link_libraries (zEngineLib PUBLIC imported::glfw)
-endif ()
+target_link_libraries (zEngineLib PUBLIC imported::glfw)
 
 target_link_libraries (zEngineLib
 	PUBLIC

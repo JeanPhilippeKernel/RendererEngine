@@ -4,11 +4,8 @@
 #include <ZEngineDef.h>
 #include <fmt/format.h>
 
-#ifdef ZENGINE_WINDOW_SDL
-#include <SDL.h>
-#else
+
 #include <GLFW/glfw3.h>
-#endif
 
 namespace ZEngine::Layers {
 
@@ -19,11 +16,8 @@ namespace ZEngine::Layers {
         if (m_initialized) {
             ImGui_ImplOpenGL3_Shutdown();
 
-#ifdef ZENGINE_WINDOW_SDL
-            ImGui_ImplSDL2_Shutdown();
-#else
+
             ImGui_ImplGlfw_Shutdown();
-#endif
             ImGui::DestroyContext();
 
             m_initialized = false;
@@ -56,11 +50,8 @@ namespace ZEngine::Layers {
             style.WindowBorderSize = 0.f;
             style.ChildBorderSize  = 0.f;
 
-#ifdef ZENGINE_WINDOW_SDL
-            ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow()), m_window.lock()->GetNativeContext());
-#else
+
             ImGui_ImplGlfw_InitForOpenGL(static_cast<GLFWwindow*>(m_window.lock()->GetNativeWindow()), false);
-#endif
 
             // we should get Version information from attached Window...
 #ifdef _WIN32
@@ -110,11 +101,8 @@ namespace ZEngine::Layers {
 
     void ImguiLayer::Render() {
         ImGui_ImplOpenGL3_NewFrame();
-#ifdef ZENGINE_WINDOW_SDL
-        ImGui_ImplSDL2_NewFrame(static_cast<SDL_Window*>(m_window.lock()->GetNativeWindow()));
-#else
+
         ImGui_ImplGlfw_NewFrame();
-#endif
 
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
@@ -129,20 +117,13 @@ namespace ZEngine::Layers {
 
         ImGuiIO& io = ImGui::GetIO();
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-#ifdef ZENGINE_WINDOW_SDL
-            SDL_Window*   backup_current_window  = SDL_GL_GetCurrentWindow();
-            SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
-#else
+
             GLFWwindow* backup_current_context = static_cast<GLFWwindow*>(m_window.lock()->GetNativeContext());
-#endif
             ImGui::UpdatePlatformWindows();
             ImGui::RenderPlatformWindowsDefault();
 
-#ifdef ZENGINE_WINDOW_SDL
-            SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
-#else
+
             glfwMakeContextCurrent(backup_current_context);
-#endif
         }
     }
 

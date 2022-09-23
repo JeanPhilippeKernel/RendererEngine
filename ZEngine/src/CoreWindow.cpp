@@ -2,11 +2,7 @@
 #include <Window/CoreWindow.h>
 #include <ZEngineDef.h>
 
-#ifdef ZENGINE_WINDOW_SDL
-#include <Window/SDLWin/OpenGLWindow.h>
-#else
 #include <Window/GlfwWindow/OpenGLWindow.h>
-#endif
 
 using namespace ZEngine;
 using namespace ZEngine::Event;

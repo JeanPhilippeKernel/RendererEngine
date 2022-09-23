@@ -4,11 +4,7 @@
 #include <imgui.h>
 #include <imconfig.h>
 
-#ifdef ZENGINE_WINDOW_SDL
-#include <backends/imgui_impl_sdl.h>
-#else
 #include <backends/imgui_impl_glfw.h>
-#endif
 
 #include <backends/imgui_impl_opengl3.h>
 
