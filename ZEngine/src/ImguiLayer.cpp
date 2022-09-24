@@ -4,7 +4,6 @@
 #include <ZEngineDef.h>
 #include <fmt/format.h>
 
-
 #include <GLFW/glfw3.h>
 
 namespace ZEngine::Layers {

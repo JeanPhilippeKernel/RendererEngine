@@ -24,7 +24,6 @@ namespace ZEngine::Controllers {
     }
 
     void FirstPersonShooterCameraController::Update(Core::TimeStep dt) {
-
         GLFWwindow* current_window = static_cast<GLFWwindow*>(m_window.lock()->GetNativeWindow());
         glfwSetInputMode(current_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         glfwSetCursorPos(current_window, m_window.lock()->GetWidth() / 2.0, m_window.lock()->GetHeight() / 2.0);

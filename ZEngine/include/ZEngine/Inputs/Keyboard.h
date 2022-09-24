@@ -11,14 +11,11 @@ namespace ZEngine::Inputs {
         ~Keyboard() = default;
 
         virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
-
             auto state = glfwGetKey(static_cast<GLFWwindow*>(window->GetNativeWindow()), (int) key);
             return state == GLFW_PRESS;
-
         }
 
         virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const override {
-
             auto state = glfwGetKey(static_cast<GLFWwindow*>(window->GetNativeWindow()), (int) key);
             return state == GLFW_RELEASE;
         }

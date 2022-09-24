@@ -1,7 +1,6 @@
 #pragma once
 #include <array>
 #include <Inputs/IDevice.h>
-
 #include <GLFW/glfw3.h>
 
 namespace ZEngine::Inputs {
@@ -21,7 +20,6 @@ namespace ZEngine::Inputs {
         }
 
         std::array<double, 2> GetMousePosition(const Ref<Window::CoreWindow>& window) const {
-
             double x, y;
             glfwGetCursorPos(static_cast<GLFWwindow*>(window->GetNativeWindow()), &x, &y);
             return std::array<double, 2>{x, y};
