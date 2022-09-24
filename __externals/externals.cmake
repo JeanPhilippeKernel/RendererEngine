@@ -27,8 +27,6 @@ set_target_properties(imported::imgui PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "
 target_link_libraries(imported::imgui INTERFACE imgui)
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	target_link_libraries(imported::imgui INTERFACE ${CMAKE_DL_LIBS})
-else()
-	target_link_libraries(imported::imgui INTERFACE imgui)
 endif()
 
 # spdlog
