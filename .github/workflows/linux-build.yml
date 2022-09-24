@@ -21,7 +21,7 @@ jobs:
       run: git submodule update --init --recursive
 
     - name: Install development library
-      run: sudo apt-get install libasound2-dev libgl1-mesa-dev libpulse-dev libudev-dev libdbus-1-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxt-dev libxxf86vm-dev
+      run: sudo apt-get install libasound2-dev libgl1-mesa-dev libpulse-dev libdbus-1-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxt-dev libxxf86vm-dev
 
     - name: Install CMake
       uses: jwlawson/actions-setup-cmake@v1.9
