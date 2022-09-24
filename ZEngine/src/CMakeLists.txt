@@ -46,8 +46,13 @@ target_precompile_headers(zEngineLib PRIVATE ${PROJECT_SOURCE_DIR}/include/ZEngi
 target_compile_definitions (zEngineLib
 	PUBLIC
 		ZENGINE_PLATFORM
+		ENABLE_VULKAN_VALIDATION_LAYER # We should control it by using buildEngine parameter
 		YAML_CPP_STATIC_DEFINE
 )
+
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	target_compile_definitions (zEngineLib PUBLIC VK_USE_PLATFORM_WIN32_KHR)
+endif()
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	target_link_libraries(zEngineLib PRIVATE stdc++fs)
@@ -70,5 +75,5 @@ target_link_libraries (zEngineLib
 		imported::assimp
 		imported::stduuid
 		imported::yaml-cpp
-		OpenGL::GL
+		imported::vulkan
 )

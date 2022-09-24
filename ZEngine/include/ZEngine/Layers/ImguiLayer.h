@@ -24,17 +24,20 @@
 #include <functional>
 #include <vector>
 
-namespace ZEngine::Components::UI {
+namespace ZEngine::Components::UI
+{
     class UIComponent;
 }
 
-namespace ZEngine::Layers {
+namespace ZEngine::Layers
+{
     class ImguiLayer : public Layer,
                        public Inputs::IKeyboardEventCallback,
                        public Inputs::IMouseEventCallback,
                        public Inputs::ITextInputEventCallback,
                        public Window::ICoreWindowEventCallback,
-                       public std::enable_shared_from_this<ImguiLayer> {
+                       public std::enable_shared_from_this<ImguiLayer>
+    {
 
     public:
         ImguiLayer(const char* name = "ImGUI Layer") : Layer(name) {}
@@ -43,7 +46,8 @@ namespace ZEngine::Layers {
 
         void Initialize() override;
 
-        bool OnEvent(Event::CoreEvent& event) override {
+        bool OnEvent(Event::CoreEvent& event) override
+        {
             Event::EventDispatcher event_dispatcher(event);
 
             event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&ImguiLayer::OnKeyPressed, this, std::placeholders::_1));
@@ -79,16 +83,20 @@ namespace ZEngine::Layers {
         bool OnTextInputRaised(Event::TextInputEvent&) override;
 
         bool OnWindowClosed(Event::WindowClosedEvent&) override;
-        bool OnWindowResized(Event::WindowResizedEvent&) override {
+        bool OnWindowResized(Event::WindowResizedEvent&) override
+        {
             return false;
         }
-        bool OnWindowMinimized(Event::WindowMinimizedEvent&) override {
+        bool OnWindowMinimized(Event::WindowMinimizedEvent&) override
+        {
             return false;
         }
-        bool OnWindowMaximized(Event::WindowMaximizedEvent&) override {
+        bool OnWindowMaximized(Event::WindowMaximizedEvent&) override
+        {
             return false;
         }
-        bool OnWindowRestored(Event::WindowRestoredEvent&) override {
+        bool OnWindowRestored(Event::WindowRestoredEvent&) override
+        {
             return false;
         }
 
@@ -96,6 +104,10 @@ namespace ZEngine::Layers {
 
     private:
         static bool                                   m_initialized;
+        VkDescriptorPool                              m_descriptor_pool;
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
+
+
+        static void __imguiVulkanCallback(VkResult err);
     };
 } // namespace ZEngine::Layers

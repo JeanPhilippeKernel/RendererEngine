@@ -1,6 +1,12 @@
 # Packages
 #
-find_package(OpenGL REQUIRED)
+
+# vulkan
+find_package(Vulkan REQUIRED)
+
+add_library(imported::vulkan INTERFACE IMPORTED)
+target_include_directories(imported::vulkan INTERFACE ${Vulkan_INCLUDE_DIRS})
+target_link_libraries(imported::vulkan INTERFACE Vulkan::Vulkan)
 
 # fmt
 add_library (imported::fmt INTERFACE IMPORTED)

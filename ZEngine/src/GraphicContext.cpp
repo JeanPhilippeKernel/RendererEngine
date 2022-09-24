@@ -15,7 +15,7 @@ namespace ZEngine::Rendering::Graphics {
         return new ZENGINE_OPENGL_CONTEXT();
     }
 
-    GraphicContext* CreateContext(const CoreWindow* window) {
+    GraphicContext* CreateContext(const ZEngine::Window::CoreWindow* window) {
         return new ZENGINE_OPENGL_CONTEXT(window);
     }
 } // namespace ZEngine::Rendering::Graphics
