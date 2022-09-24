@@ -25,12 +25,9 @@ add_library (imported::imgui INTERFACE IMPORTED)
 set (IMGUI_INCLUDE_PATH ${EXTERNAL_DIR}/imgui/src)
 set_target_properties(imported::imgui PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${IMGUI_INCLUDE_PATH}")
 target_link_libraries(imported::imgui INTERFACE imgui)
-
-# SDL2
-add_library (imported::sdl2 INTERFACE IMPORTED)
-set (SDL2_INCLUDE_PATH ${EXTERNAL_DIR}/SDL2/include)
-set_target_properties(imported::sdl2 PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${SDL2_INCLUDE_PATH}")
-target_link_libraries(imported::sdl2 INTERFACE SDL2-static)
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	target_link_libraries(imported::imgui INTERFACE ${CMAKE_DL_LIBS})
+endif()
 
 # spdlog
 add_library (imported::spdlog INTERFACE IMPORTED)
@@ -80,7 +77,6 @@ list (APPEND EXTERNAL_INCLUDE_DIRS
 	${GLAD_INCLUDE_PATH}
 	${GLM_INCLUDE_PATH}
 	${IMGUI_INCLUDE_PATH}
-	${SDL2_INCLUDE_PATH}
 	${SPDLOG_INCLUDE_PATH}
 	${GLFW_INCLUDE_PATH}
 	${ENTT_INCLUDE_PATH}

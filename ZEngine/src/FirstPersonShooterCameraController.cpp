@@ -17,23 +17,17 @@ namespace ZEngine::Controllers {
         m_move_speed     = 0.05f;
         m_rotation_speed = 0.05f;
 
-#ifdef ZENGINE_WINDOW_SDL
-        SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
-#else
+
         GLFWwindow* current_window = static_cast<GLFWwindow*>(m_window.lock()->GetNativeWindow());
         glfwSetInputMode(current_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         glfwSetCursorPos(current_window, m_window.lock()->GetWidth() / 2.0, m_window.lock()->GetHeight() / 2.0);
-#endif
     }
 
     void FirstPersonShooterCameraController::Update(Core::TimeStep dt) {
-#ifdef ZENGINE_WINDOW_SDL
-        SDL_WarpMouseInWindow(NULL, m_window.lock()->GetWidth() / 2.0f, m_window.lock()->GetHeight() / 2.0f);
-#else
         GLFWwindow* current_window = static_cast<GLFWwindow*>(m_window.lock()->GetNativeWindow());
         glfwSetInputMode(current_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         glfwSetCursorPos(current_window, m_window.lock()->GetWidth() / 2.0, m_window.lock()->GetHeight() / 2.0);
-#endif
+        
         auto camera = std::dynamic_pointer_cast<Rendering::Cameras::FirstPersonShooterCamera>(m_perspective_camera);
 
         if (IDevice::As<Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_W, m_window.lock())) {

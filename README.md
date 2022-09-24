@@ -64,8 +64,7 @@ You can also do  `git submodule update --init --recursive`.
 ## Dependencies
 
 The project uses the following dependencies : 
- - [SDL2](https://www.libsdl.org/download-2.0.php) for window creation and user input management for Linux,
- - [GLFW](https://github.com/glfw/glfw) for window creation and user input management for Window and MacOS,
+ - [GLFW](https://github.com/glfw/glfw) for window creation and user input management for Window, Linux and MacOS,
  - [GLM](https://glm.g-truc.net/0.9.9/index.html) for functions and mathematical calculations,
  - [GLAD](https://glad.dav1d.de/) for openGL functions 
  - [STB](https://github.com/nothings/stb) for loading and manipulating image files for textures.
