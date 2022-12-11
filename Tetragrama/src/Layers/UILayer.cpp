@@ -7,7 +7,7 @@ using namespace Tetragrama::Messengers;
 
 namespace Tetragrama::Layers
 {
-
+    UILayer::~UILayer() {}
     void UILayer::Initialize()
     {
         ImguiLayer::Initialize();

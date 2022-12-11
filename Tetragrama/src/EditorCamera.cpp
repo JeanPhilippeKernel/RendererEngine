@@ -5,8 +5,9 @@ using namespace ZEngine::Rendering::Cameras;
 
 namespace Tetragrama {
 
-    EditorCamera::EditorCamera(float field_of_view, float aspect_ratio, float near, float far, float yaw_rad, float pitch_rad)
-        : PerspectiveCamera(field_of_view, aspect_ratio, near, far) {
+    EditorCamera::EditorCamera(float field_of_view, float aspect_ratio, float clipping_near, float clipping_far, float yaw_rad, float pitch_rad)
+        : PerspectiveCamera(field_of_view, aspect_ratio, clipping_near, clipping_far)
+    {
         m_yaw_angle   = yaw_rad;
         m_pitch_angle = pitch_rad;
         UpdateViewMatrix();

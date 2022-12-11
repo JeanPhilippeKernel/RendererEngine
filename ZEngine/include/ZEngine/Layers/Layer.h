@@ -41,6 +41,5 @@ namespace ZEngine::Layers {
     protected:
         std::string                                   m_name;
         ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;
-        std::vector<Ref<Layer>>                       m_subscribers;
     };
 } // namespace ZEngine::Layers

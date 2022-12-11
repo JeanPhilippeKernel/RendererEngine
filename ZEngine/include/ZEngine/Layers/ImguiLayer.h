@@ -4,13 +4,8 @@
 #include <imgui.h>
 #include <imconfig.h>
 
-#ifdef ZENGINE_WINDOW_SDL
-#include <backends/imgui_impl_sdl.h>
-#else
 #include <backends/imgui_impl_glfw.h>
-#endif
-
-#include <backends/imgui_impl_opengl3.h>
+#include <backends/imgui_impl_vulkan.h>
 
 #include <Core/TimeStep.h>
 #include <Inputs/KeyCode.h>
@@ -44,7 +39,8 @@ namespace ZEngine::Layers
 
         virtual ~ImguiLayer();
 
-        void Initialize() override;
+        virtual void Initialize() override;
+        virtual void Deinitialize() override;
 
         bool OnEvent(Event::CoreEvent& event) override
         {
@@ -104,10 +100,12 @@ namespace ZEngine::Layers
 
     private:
         static bool                                   m_initialized;
+        bool                                          m_swap_chain_rebuild{false};
         VkDescriptorPool                              m_descriptor_pool;
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
 
-
         static void __imguiVulkanCallback(VkResult err);
+
+        void __frameRenderAndPresent(const Ref<Window::CoreWindow>& wd, ImDrawData* draw_data);
     };
 } // namespace ZEngine::Layers

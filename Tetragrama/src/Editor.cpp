@@ -17,7 +17,11 @@ namespace Tetragrama
 
     Editor::Editor() {}
 
-    Editor::~Editor() {}
+    Editor::~Editor() {
+        m_ui_layer.reset();
+        m_render_layer.reset();
+        m_engine.reset();
+    }
 
     void Editor::Initialize()
     {

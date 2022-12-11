@@ -246,8 +246,8 @@ namespace ZEngine::Serializers {
                         if (camera_type == static_cast<int>(Rendering::Cameras::CameraType::PERSPECTIVE)) {
                             auto aspect_ratio         = camera_component["AspectRatio"].as<float>();
                             auto field_of_view_degree = camera_component["FielOfViewDegree"].as<float>();
-                            auto near                 = camera_component["Near"].as<float>();
-                            auto far                  = camera_component["Far"].as<float>();
+                            auto camera_clipping_near                 = camera_component["Near"].as<float>();
+                            auto camera_clipping_far  = camera_component["Far"].as<float>();
 
                             auto camera_controller_type = camera_component["CameraControllerType"];
                             if (!camera_controller_type) {
@@ -264,8 +264,8 @@ namespace ZEngine::Serializers {
                                 auto window_parent    = scene->m_parent_window.lock();
                                 auto orbit_controller = CreateRef<ZEngine::Controllers::OrbitCameraController>(window_parent, position, yaw_angle_degree, pitch_angle_degree);
                                 orbit_controller->SetAspectRatio(scene->m_last_scene_requested_size.first / scene->m_last_scene_requested_size.second);
-                                orbit_controller->SetNear(near);
-                                orbit_controller->SetFar(far);
+                                orbit_controller->SetNear(camera_clipping_near);
+                                orbit_controller->SetFar(camera_clipping_far);
                                 orbit_controller->SetFieldOfView(Maths::radians(field_of_view_degree));
 
                                 auto       camera       = orbit_controller->GetCamera();

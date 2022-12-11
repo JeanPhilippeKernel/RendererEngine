@@ -88,7 +88,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     $cMakeOptions = " -DCMAKE_SYSTEM_NAME=$systemName", " -DCMAKE_BUILD_TYPE=$configuration"
     $submoduleCMakeOptions = @{
         'ENTT'= @("-DENTT_INCLUDE_HEADERS=ON")
-        'SDL2' = @("-DSDL_STATIC=ON", "-DSDL_SHARED=OFF");
         'SPDLOG' = @("-DSPDLOG_BUILD_SHARED=OFF", "-DBUILD_STATIC_LIBS=ON", "-DSPDLOG_FMT_EXTERNAL=ON", "-DSPDLOG_FMT_EXTERNAL_HO=OFF");
         'GLFW '= @("-DGLFW_BUILD_DOCS=OFF", "-DGLFW_BUILD_EXAMPLES=OFF", "-DGLFW_INSTALL=OFF");
         'ASSIMP'=@("-DASSIMP_BUILD_TESTS=OFF", "-DASSIMP_INSTALL=OFF", "-DASSIMP_BUILD_SAMPLES=OFF", "-DASSIMP_BUILD_ASSIMP_TOOLS=OFF");
@@ -117,7 +116,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         }
         "Linux" { 
             $cMakeGenerator = "-G `"Unix Makefiles`""
-            $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SDL2 -join ' ' 
 
             # Set Linux build compiler
             $env:CC = '/usr/bin/gcc-11'

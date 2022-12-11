@@ -24,15 +24,21 @@
 #include <Layers/LayerStack.h>
 #include <Window/WindowConfiguration.h>
 
-namespace ZEngine {
+#include <Hardwares/VulkanInstance.h>
+
+namespace ZEngine
+{
     class Engine;
 }
-namespace ZEngine::Layers {
+
+namespace ZEngine::Layers
+{
     class Layer;
     class LayerStack;
 } // namespace ZEngine::Layers
 
-namespace ZEngine::Window {
+namespace ZEngine::Window
+{
 
     class CoreWindow : public std::enable_shared_from_this<CoreWindow>,
                        public Inputs::IKeyboardEventCallback,
@@ -42,14 +48,15 @@ namespace ZEngine::Window {
                        public Core::IRenderable,
                        public Core::IEventable,
                        public Core::IInitializable,
-                       public ICoreWindowEventCallback {
+                       public ICoreWindowEventCallback
+    {
 
     public:
         using EventCallbackFn = std::function<void(Event::CoreEvent&)>;
 
     public:
         CoreWindow();
-        virtual ~CoreWindow() = default;
+        virtual ~CoreWindow();
 
         virtual unsigned int       GetHeight() const                = 0;
         virtual unsigned int       GetWidth() const                 = 0;
@@ -61,10 +68,6 @@ namespace ZEngine::Window {
         virtual void SetCallbackFunction(const EventCallbackFn& callback) = 0;
 
         virtual void* GetNativeWindow() const  = 0;
-        virtual void* GetNativeContext() const = 0;
-
-        virtual bool HasContext() const       = 0;
-        virtual void CreateAndActiveContext() = 0;
 
         virtual const WindowProperty& GetWindowProperty() const = 0;
 
@@ -74,6 +77,8 @@ namespace ZEngine::Window {
         virtual void ForwardEventToLayers(Event::CoreEvent& event);
 
         virtual void SetAttachedEngine(ZEngine::Engine* const engine);
+
+        virtual ZEngine::Engine* GetAttachedEngine();
 
         virtual void PushOverlayLayer(const Ref<Layers::Layer>& layer);
         virtual void PushLayer(const Ref<Layers::Layer>& layer);
@@ -89,6 +94,5 @@ namespace ZEngine::Window {
         ZEngine::Engine*                            m_engine{nullptr};
     };
 
-    CoreWindow* Create(WindowProperty prop = {});
-    CoreWindow* Create(const WindowConfiguration&);
+    CoreWindow* Create(const WindowConfiguration&, ZEngine::Engine&);
 } // namespace ZEngine::Window

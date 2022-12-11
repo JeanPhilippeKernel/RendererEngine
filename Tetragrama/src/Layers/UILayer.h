@@ -13,7 +13,7 @@ namespace Tetragrama::Layers {
     public:
         UILayer(std::string_view name = "user interface layer") : ImguiLayer(name.data()) {}
 
-        virtual ~UILayer() = default;
+        virtual ~UILayer();
 
         void Initialize() override;
 

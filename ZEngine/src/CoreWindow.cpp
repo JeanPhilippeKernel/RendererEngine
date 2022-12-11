@@ -2,11 +2,7 @@
 #include <Window/CoreWindow.h>
 #include <ZEngineDef.h>
 
-#ifdef ZENGINE_WINDOW_SDL
-#include <Window/SDLWin/OpenGLWindow.h>
-#else
 #include <Window/GlfwWindow/OpenGLWindow.h>
-#endif
 
 #include <ZEngine/Engine.h>
 
@@ -21,6 +17,10 @@ namespace ZEngine::Window
     CoreWindow::CoreWindow()
     {
         m_layer_stack_ptr = CreateScope<LayerStack>();
+    }
+
+    CoreWindow::~CoreWindow()
+    {
     }
 
     void CoreWindow::SetAttachedEngine(Engine* const engine)

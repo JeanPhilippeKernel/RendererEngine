@@ -13,9 +13,12 @@
 #include <Core/IInitializable.h>
 #include <EngineConfiguration.h>
 
-namespace ZEngine {
+#include <Hardwares/VulkanInstance.h>
 
-    class Engine : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable {
+namespace ZEngine
+{
+    class Engine : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable
+    {
 
     public:
         explicit Engine(const EngineConfiguration&);
@@ -29,29 +32,34 @@ namespace ZEngine {
     public:
         void Start();
 
-        const Ref<ZEngine::Window::CoreWindow>& GetWindow() const {
+        const Ref<ZEngine::Window::CoreWindow>& GetWindow() const
+        {
             return m_window;
         }
 
-        static Core::TimeStep GetDeltaTime() {
+        static Core::TimeStep GetDeltaTime()
+        {
             return m_delta_time;
         }
+
+        Hardwares::VulkanInstance& GetVulkanInstance();
 
     protected:
         void         Run();
         virtual void ProcessEvent();
 
+        virtual void Deinitialize() override;
+
     public:
         bool OnEngineClosed(Event::EngineClosedEvent&);
 
     private:
-        static Core::TimeStep m_delta_time;
-
         bool                             m_request_terminate;
         float                            m_last_frame_time;
         Ref<ZEngine::Window::CoreWindow> m_window;
+        Hardwares::VulkanInstance        m_vulkan_instance;
+        static Core::TimeStep            m_delta_time;
     };
 
-    Engine* CreateEngine();
     Engine* CreateEngine(const EngineConfiguration&);
 } // namespace ZEngine

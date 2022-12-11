@@ -5,54 +5,92 @@
 #include <Rendering/Renderers/RenderCommand.h>
 #include <Logging/LoggerDefinition.h>
 
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+
 using namespace ZEngine;
 using namespace ZEngine::Rendering::Graphics;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Event;
 
-namespace ZEngine::Window::GLFWWindow {
-
-    OpenGLWindow::OpenGLWindow(WindowProperty& prop)
-        : CoreWindow()
-
+namespace ZEngine::Window::GLFWWindow
+{
+    OpenGLWindow::OpenGLWindow(WindowProperty& prop, Hardwares::VulkanInstance& vulkan_instance) : CoreWindow()
     {
         m_property    = prop;
         int glfw_init = glfwInit();
 
-        if (glfw_init == GLFW_FALSE) {
+        if (glfw_init == GLFW_FALSE)
+        {
             ZENGINE_CORE_CRITICAL("Unable to initialize glfw..");
             ZENGINE_EXIT_FAILURE();
         }
 
-        glfwWindowHint(GLFW_DEPTH_BITS, 32);
-        glfwWindowHint(GLFW_STENCIL_BITS, 8);
-        glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
-
-#ifdef __APPLE__
-        m_desired_gl_context_major_version = 4;
-        m_desired_gl_context_minor_version = 1;
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, m_desired_gl_context_major_version);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, m_desired_gl_context_minor_version);
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
         glfwSetErrorCallback([](int error, const char* description) {
-            ZENGINE_CORE_CRITICAL(description);
-            ZENGINE_EXIT_FAILURE();
+            ZENGINE_CORE_CRITICAL(description)
+            ZENGINE_EXIT_FAILURE()
         });
 
         m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
         glfwMaximizeWindow(m_native_window);
 
-        int          window_width = 0, window_height = 0;
+        int window_width = 0, window_height = 0;
         glfwGetWindowSize(m_native_window, &window_width, &window_height);
-        if ((window_width > 0) && (window_height > 0)) {
+        if ((window_width > 0) && (window_height > 0))
+        {
             m_property.SetWidth(window_width);
             m_property.SetHeight(window_height);
         }
 
-        ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height);
+        ZENGINE_VALIDATE_ASSERT(
+            glfwCreateWindowSurface(vulkan_instance.GetNativeHandle(), m_native_window, nullptr, &m_vulkan_surface) == VK_SUCCESS, "Failed Window Surface from GLFW")
+
+        vulkan_instance.ConfigureDevices(&m_vulkan_surface);
+
+        const auto& current_device        = vulkan_instance.GetHighPerformantDevice();
+        auto        current_device_handle = current_device.GetNativePhysicalDeviceHandle();
+
+        uint32_t formatCount{0};
+        vkGetPhysicalDeviceSurfaceFormatsKHR(current_device_handle, m_vulkan_surface, &formatCount, nullptr);
+        if (formatCount != 0)
+        {
+            m_surface_format_collection.resize(formatCount);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(current_device_handle, m_vulkan_surface, &formatCount, m_surface_format_collection.data());
+        }
+
+        uint32_t presentModeCount;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(current_device_handle, m_vulkan_surface, &presentModeCount, nullptr);
+        if (presentModeCount != 0)
+        {
+            m_present_mode_collection.resize(presentModeCount);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(current_device_handle, m_vulkan_surface, &presentModeCount, m_present_mode_collection.data());
+        }
+
+        m_surface_format = (m_surface_format_collection.size() > 0) ? m_surface_format_collection[0] : VkSurfaceFormatKHR{};
+        for (const VkSurfaceFormatKHR& format_khr : m_surface_format_collection)
+        {
+            if ((format_khr.format == VK_FORMAT_B8G8R8A8_SRGB) && (format_khr.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR))
+            {
+                m_surface_format = format_khr;
+                break;
+            }
+        }
+
+        m_vulkan_present_mode = VK_PRESENT_MODE_FIFO_KHR;
+        for (const VkPresentModeKHR& present_mode_khr : m_present_mode_collection)
+        {
+            if (present_mode_khr == VK_PRESENT_MODE_MAILBOX_KHR)
+            {
+                m_vulkan_present_mode = present_mode_khr;
+                break;
+            }
+        }
+
+        RecreateSwapChain(nullptr, current_device);
+
+        ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height)
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
@@ -71,73 +109,115 @@ namespace ZEngine::Window::GLFWWindow {
         glfwSetCharCallback(m_native_window, OpenGLWindow::__OnGlfwTextInputRaised);
     }
 
-    bool OpenGLWindow::HasContext() const {
-        return m_context != nullptr;
-    }
-
-    void OpenGLWindow::CreateAndActiveContext() {
-        m_context = CreateContext(this);
-        m_context->MarkActive();
-
-        SetVSync(true);
-
-        int glad_init = gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
-        if (glad_init == 0) {
-            ZENGINE_CORE_CRITICAL("Unable to initialize glad library...");
-            ZENGINE_EXIT_FAILURE();
-        }
-
-        RendererCommand::SetViewport(0, 0, m_property.Width, m_property.Height);
-    }
-
-    void OpenGLWindow::Initialize() {
+    void OpenGLWindow::Initialize()
+    {
         auto& layer_stack = *m_layer_stack_ptr;
 
         // Initialize in reverse order, so overlay layers can be initialize first
         // this give us opportunity to initialize UI-like layers before graphic render-like layers
-        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it) {
+        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
+        {
             (*rlayer_it)->SetAttachedWindow(shared_from_this());
             (*rlayer_it)->Initialize();
         }
     }
 
-    void OpenGLWindow::PollEvent() {
-        glfwPollEvents();
-    }
-
-    void OpenGLWindow::__OnGlfwFrameBufferSizeChanged(GLFWwindow* window, int width, int height) {
-
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
-            property->SetWidth(width);
-            property->SetHeight(height);
-
-            ZENGINE_CORE_INFO("Window size updated, Properties : Width = {0}, Height = {1}", property->Width, property->Height);
-
-            RendererCommand::SetViewport(0, 0, property->Width, property->Height);
+    void OpenGLWindow::Deinitialize()
+    {
+        auto& layer_stack = *m_layer_stack_ptr;
+        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
+        {
+            (*rlayer_it)->Deinitialize();
         }
     }
 
-    void OpenGLWindow::__OnGlfwWindowClose(GLFWwindow* window) {
+    void OpenGLWindow::PollEvent()
+    {
+        glfwPollEvents();
+    }
+
+    void OpenGLWindow::__OnGlfwFrameBufferSizeChanged(GLFWwindow* window, int width, int height)
+    {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
+        if (property)
+        {
+            property->SetWidth(width);
+            property->SetHeight(height);
+
+            ZENGINE_CORE_INFO("Window size updated, Properties : Width = {0}, Height = {1}", property->Width, property->Height)
+        }
+    }
+
+    void OpenGLWindow::MarkVulkanInternalObjectDirty(const Hardwares::VulkanDevice& device)
+    {
+        vkQueueWaitIdle(device.GetCurrentGraphicQueue(true));
+
+        for (uint32_t i = 0; i < m_frame_collection.size(); i++)
+        {
+            vkDestroyFence(device.GetNativeDeviceHandle(), m_frame_collection[i].Fence, nullptr);
+            vkFreeCommandBuffers(device.GetNativeDeviceHandle(), m_frame_collection[i].CommandPool, 1, &(m_frame_collection[i].CommandBuffer));
+            vkDestroyCommandPool(device.GetNativeDeviceHandle(), m_frame_collection[i].CommandPool, nullptr);
+            m_frame_collection[i].Fence         = {};
+            m_frame_collection[i].CommandBuffer = {};
+            m_frame_collection[i].CommandPool   = {};
+
+            vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_semaphore_collection[i].ImageAcquiredSemaphore, nullptr);
+            vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_semaphore_collection[i].RenderCompleteSemaphore, nullptr);
+
+            m_frame_semaphore_collection[i].ImageAcquiredSemaphore  = {};
+            m_frame_semaphore_collection[i].RenderCompleteSemaphore = {};
+        }
+        m_frame_collection.clear();
+        m_frame_collection.shrink_to_fit();
+
+        for (uint32_t i = 0; i < m_swapchain_image_view_collection.size(); i++)
+        {
+            vkDestroyImageView(device.GetNativeDeviceHandle(), m_swapchain_image_view_collection[i], nullptr);
+        }
+        m_swapchain_image_view_collection.clear();
+        m_swapchain_image_view_collection.shrink_to_fit();
+
+        for (uint32_t i = 0; i < m_framebuffer_collection.size(); i++)
+        {
+            vkDestroyFramebuffer(device.GetNativeDeviceHandle(), m_framebuffer_collection[i], nullptr);
+        }
+        m_framebuffer_collection.clear();
+        m_framebuffer_collection.shrink_to_fit();
+
+        if (m_render_pass)
+        {
+            vkDestroyRenderPass(device.GetNativeDeviceHandle(), m_render_pass, nullptr);
+            m_render_pass = VK_NULL_HANDLE;
+        }
+    }
+
+    void OpenGLWindow::__OnGlfwWindowClose(GLFWwindow* window)
+    {
+        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        if (property)
+        {
             WindowClosedEvent e;
             property->CallbackFn(e);
         }
     }
 
-    void OpenGLWindow::__OnGlfwWindowResized(GLFWwindow* window, int width, int height) {
+    void OpenGLWindow::__OnGlfwWindowResized(GLFWwindow* window, int width, int height)
+    {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
+        if (property)
+        {
             Event::WindowResizedEvent e{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
             property->CallbackFn(e);
         }
     }
 
-    void OpenGLWindow::__OnGlfwWindowMaximized(GLFWwindow* window, int maximized) {
+    void OpenGLWindow::__OnGlfwWindowMaximized(GLFWwindow* window, int maximized)
+    {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
-            if (maximized == GLFW_TRUE) {
+        if (property)
+        {
+            if (maximized == GLFW_TRUE)
+            {
                 Event::WindowMaximizedEvent e;
                 property->CallbackFn(e);
                 return;
@@ -148,10 +228,13 @@ namespace ZEngine::Window::GLFWWindow {
         }
     }
 
-    void OpenGLWindow::__OnGlfwWindowMinimized(GLFWwindow* window, int minimized) {
+    void OpenGLWindow::__OnGlfwWindowMinimized(GLFWwindow* window, int minimized)
+    {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
-            if (minimized == GLFW_TRUE) {
+        if (property)
+        {
+            if (minimized == GLFW_TRUE)
+            {
                 Event::WindowMinimizedEvent e;
                 property->CallbackFn(e);
                 return;
@@ -161,10 +244,13 @@ namespace ZEngine::Window::GLFWWindow {
         }
     }
 
-    void OpenGLWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods) {
+    void OpenGLWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
+    {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
-            if (action == GLFW_PRESS) {
+        if (property)
+        {
+            if (action == GLFW_PRESS)
+            {
                 Event::MouseButtonPressedEvent e{static_cast<Inputs::GlfwKeyCode>(button)};
                 property->CallbackFn(e);
                 return;
@@ -175,25 +261,31 @@ namespace ZEngine::Window::GLFWWindow {
         }
     }
 
-    void OpenGLWindow::__OnGlfwMouseScrollRaised(GLFWwindow* window, double xoffset, double yoffset) {
+    void OpenGLWindow::__OnGlfwMouseScrollRaised(GLFWwindow* window, double xoffset, double yoffset)
+    {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
+        if (property)
+        {
             MouseButtonWheelEvent e{xoffset, yoffset};
             property->CallbackFn(e);
         }
     }
 
-    void OpenGLWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset) {
+    void OpenGLWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset)
+    {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
+        if (property)
+        {
             MouseButtonMovedEvent e{xoffset, yoffset};
             property->CallbackFn(e);
         }
     }
 
-    void OpenGLWindow::__OnGlfwTextInputRaised(GLFWwindow* window, unsigned int character) {
+    void OpenGLWindow::__OnGlfwTextInputRaised(GLFWwindow* window, unsigned int character)
+    {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
+        if (property)
+        {
             std::string arr;
             arr.append(1, character);
             TextInputEvent e{arr.c_str()};
@@ -201,10 +293,13 @@ namespace ZEngine::Window::GLFWWindow {
         }
     }
 
-    void OpenGLWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    void OpenGLWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
+    {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property) {
-            switch (action) {
+        if (property)
+        {
+            switch (action)
+            {
             case GLFW_PRESS:
                 {
                     Event::KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
@@ -227,36 +322,332 @@ namespace ZEngine::Window::GLFWWindow {
                 }
             }
 
-            if (key == GLFW_KEY_ESCAPE) {
+            if (key == GLFW_KEY_ESCAPE)
+            {
                 WindowClosedEvent e;
                 property->CallbackFn(e);
             }
         }
     }
 
-    void OpenGLWindow::Update(Core::TimeStep delta_time) {
-        for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr) {
+    void OpenGLWindow::Update(Core::TimeStep delta_time)
+    {
+        for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
+        {
             layer->Update(delta_time);
         }
     }
 
-    void OpenGLWindow::Render() {
-        for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr) {
+    void OpenGLWindow::Render()
+    {
+        for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
+        {
             layer->Render();
         }
-
-        glfwSwapBuffers(m_native_window);
     }
 
-    OpenGLWindow::~OpenGLWindow() {
-        delete m_context;
+    uint32_t OpenGLWindow::GetSwapChainMinImageCount() const
+    {
+        return m_min_image_count;
+    }
+
+    const std::vector<VkImage>& OpenGLWindow::GetSwapChainImageCollection() const
+    {
+        return m_swapchain_image_collection;
+    }
+
+    const std::vector<VkImageView>& OpenGLWindow::GetSwapChainImageViewCollection() const
+    {
+        return m_swapchain_image_view_collection;
+    }
+
+    const std::vector<VkFramebuffer>& OpenGLWindow::GetFramebufferCollection() const
+    {
+        return m_framebuffer_collection;
+    }
+
+    int32_t OpenGLWindow::GetCurrentWindowFrameIndex() const
+    {
+        return m_current_frame_index;
+    }
+
+    int32_t OpenGLWindow::GetCurrentWindowFrameSemaphoreIndex() const
+    {
+        return m_current_frame_semaphore_index;
+    }
+
+    void OpenGLWindow::IncrementWindowFrameSemaphoreIndex(int32_t step)
+    {
+        auto frame_semaphore_count      = (int32_t) m_frame_semaphore_collection.size();
+        m_current_frame_semaphore_index = (m_current_frame_semaphore_index + step) % frame_semaphore_count;
+    }
+
+    void OpenGLWindow::IncrementWindowFrameIndex(int32_t step)
+    {
+        auto frame_count      = (int32_t) m_frame_collection.size();
+        m_current_frame_index = (m_current_frame_index + step) % frame_count;
+    }
+
+    std::vector<VulkanWindowFrame>& OpenGLWindow::GetWindowFrameCollection()
+    {
+        return m_frame_collection;
+    }
+
+    const std::vector<VulkanWindowFrameSemaphore>& OpenGLWindow::GetWindowFrameSemaphoreCollection() const
+    {
+        return m_frame_semaphore_collection;
+    }
+
+    void OpenGLWindow::RecreateSwapChain(VkSwapchainKHR old_swapchain, const Hardwares::VulkanDevice& device)
+    {
+        MarkVulkanInternalObjectDirty(device);
+
+        // Surface capabilities
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device.GetNativePhysicalDeviceHandle(), m_vulkan_surface, &m_surface_capabilities);
+        if (m_surface_capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+        {
+            m_vulkan_extent_2d = m_surface_capabilities.currentExtent;
+        }
+        else
+        {
+            int width, height;
+            glfwGetFramebufferSize(m_native_window, &width, &height);
+
+            m_vulkan_extent_2d        = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+            m_vulkan_extent_2d.width  = std::clamp(m_vulkan_extent_2d.width, m_surface_capabilities.minImageExtent.width, m_surface_capabilities.maxImageExtent.width);
+            m_vulkan_extent_2d.height = std::clamp(m_vulkan_extent_2d.height, m_surface_capabilities.minImageExtent.height, m_surface_capabilities.maxImageExtent.height);
+        }
+
+        m_min_image_count = std::clamp(m_min_image_count, m_surface_capabilities.minImageCount + 1, m_surface_capabilities.maxImageCount);
+
+        /* Create SwapChain */
+        m_swapchain = VK_NULL_HANDLE;
+
+        VkSwapchainCreateInfoKHR createInfo{};
+        createInfo.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        createInfo.surface          = m_vulkan_surface;
+        createInfo.minImageCount    = m_min_image_count;
+        createInfo.imageFormat      = m_surface_format.format;
+        createInfo.imageColorSpace  = m_surface_format.colorSpace;
+        createInfo.imageExtent      = m_vulkan_extent_2d;
+        createInfo.imageArrayLayers = m_surface_capabilities.maxImageArrayLayers;
+        createInfo.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+        auto device_graphic_queue_family_index_collection = device.GetGraphicQueueFamilyIndexCollection(true);
+        if (!device_graphic_queue_family_index_collection.empty())
+        {
+            const auto index_count = device_graphic_queue_family_index_collection.size();
+
+            createInfo.imageSharingMode      = (index_count > 1) ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+            createInfo.queueFamilyIndexCount = index_count;
+            createInfo.pQueueFamilyIndices   = device_graphic_queue_family_index_collection.data();
+        }
+
+        createInfo.preTransform   = m_surface_capabilities.currentTransform;
+        createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        createInfo.presentMode    = m_vulkan_present_mode;
+        createInfo.clipped        = VK_TRUE;
+        createInfo.oldSwapchain   = old_swapchain;
+
+        ZENGINE_VALIDATE_ASSERT(vkCreateSwapchainKHR(device.GetNativeDeviceHandle(), &createInfo, nullptr, &m_swapchain) == VK_SUCCESS, "Failed to create Swapchain")
+
+        if (old_swapchain)
+        {
+            vkDestroySwapchainKHR(device.GetNativeDeviceHandle(), old_swapchain, nullptr);
+        }
+
+        uint32_t swapchain_image_count{0};
+        ZENGINE_VALIDATE_ASSERT(
+            vkGetSwapchainImagesKHR(device.GetNativeDeviceHandle(), m_swapchain, &swapchain_image_count, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
+
+        m_swapchain_image_collection.resize(swapchain_image_count);
+        ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(device.GetNativeDeviceHandle(), m_swapchain, &swapchain_image_count, m_swapchain_image_collection.data()) == VK_SUCCESS,
+            "Failed to get Images from Swapchain")
+
+        /* Create ImageView */
+        m_swapchain_image_view_collection.resize(m_swapchain_image_collection.size());
+        for (size_t i = 0; i < m_swapchain_image_collection.size(); ++i)
+        {
+            VkImageViewCreateInfo createInfo{};
+            createInfo.sType        = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            createInfo.image        = m_swapchain_image_collection[i];
+            createInfo.viewType     = VK_IMAGE_VIEW_TYPE_2D;
+            createInfo.format       = m_surface_format.format;
+            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+            createInfo.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            createInfo.subresourceRange.baseMipLevel   = 0;
+            createInfo.subresourceRange.levelCount     = 1;
+            createInfo.subresourceRange.baseArrayLayer = 0;
+            createInfo.subresourceRange.layerCount     = 1;
+
+            ZENGINE_VALIDATE_ASSERT(vkCreateImageView(device.GetNativeDeviceHandle(), &createInfo, nullptr, &(m_swapchain_image_view_collection[i])) == VK_SUCCESS,
+                "Failed to create Swapchain ImageView")
+        }
+
+
+        /* Create RenderPass */
+        VkAttachmentDescription colorAttachment = {};
+        colorAttachment.format                  = m_surface_format.format;
+        colorAttachment.samples                 = VK_SAMPLE_COUNT_1_BIT;
+        colorAttachment.loadOp                  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp                 = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.stencilLoadOp           = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp          = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.initialLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout             = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        VkAttachmentReference colorAttachmentRef = {};
+        colorAttachmentRef.attachment            = 0;
+        colorAttachmentRef.layout                = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription subpass = {};
+        subpass.pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments    = &colorAttachmentRef;
+
+        VkSubpassDependency dependency = {};
+        dependency.srcSubpass          = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass          = 0;
+        dependency.srcStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask       = 0;
+        dependency.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+
+        VkRenderPassCreateInfo renderPassInfo = {};
+        renderPassInfo.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        renderPassInfo.attachmentCount        = 1;
+        renderPassInfo.pAttachments           = &colorAttachment;
+        renderPassInfo.subpassCount           = 1;
+        renderPassInfo.pSubpasses             = &subpass;
+        renderPassInfo.dependencyCount        = 1;
+        renderPassInfo.pDependencies          = &dependency;
+
+        ZENGINE_VALIDATE_ASSERT(vkCreateRenderPass(device.GetNativeDeviceHandle(), &renderPassInfo, nullptr, &m_render_pass) == VK_SUCCESS, "Failed to create RenderPass")
+
+        m_framebuffer_collection.resize(m_swapchain_image_view_collection.size());
+        for (size_t i = 0; i < m_swapchain_image_view_collection.size(); i++)
+        {
+            VkImageView attachments[] = {m_swapchain_image_view_collection[i]};
+
+            VkFramebufferCreateInfo framebufferInfo = {};
+            framebufferInfo.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebufferInfo.renderPass              = m_render_pass;
+            framebufferInfo.attachmentCount         = 1;
+            framebufferInfo.pAttachments            = attachments;
+            framebufferInfo.width                   = m_vulkan_extent_2d.width;
+            framebufferInfo.height                  = m_vulkan_extent_2d.height;
+            framebufferInfo.layers                  = 1;
+
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateFramebuffer(device.GetNativeDeviceHandle(), &framebufferInfo, nullptr, &m_framebuffer_collection[i]) == VK_SUCCESS, "Failed to create Framebuffer")
+        }
+
+        // Create Frame & FrameSemaphore
+        m_frame_collection.resize(m_swapchain_image_collection.size());
+        if (!m_frame_collection.empty())
+        {
+            m_current_frame_index = 0;
+        }
+
+        for (uint32_t i = 0; i < m_frame_collection.size(); ++i)
+        {
+            m_frame_collection[i]                = {};
+            m_frame_collection[i].Backbuffer     = m_swapchain_image_collection[i];
+            m_frame_collection[i].BackbufferView = m_swapchain_image_view_collection[i];
+            m_frame_collection[i].Framebuffer    = m_framebuffer_collection[i];
+        }
+
+        m_frame_semaphore_collection.resize(m_swapchain_image_collection.size());
+        if (!m_frame_semaphore_collection.empty())
+        {
+            m_current_frame_semaphore_index = 0;
+        }
+        for (uint32_t i = 0; i < m_frame_semaphore_collection.size(); ++i)
+        {
+            m_frame_semaphore_collection[i] = {};
+        }
+
+        // Create Command Buffers
+        for (uint32_t i = 0; i < m_swapchain_image_collection.size(); i++)
+        {
+            auto& frame           = m_frame_collection[i];
+            auto& frame_semaphore = m_frame_semaphore_collection[i];
+
+            // ToDo : We should have one CommandPool
+            VkCommandPoolCreateInfo command_pool_create_info = {};
+            command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            command_pool_create_info.queueFamilyIndex        = device.GetGraphicQueueFamilyIndexCollection(true).at(0);
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateCommandPool(device.GetNativeDeviceHandle(), &command_pool_create_info, nullptr, &(frame.CommandPool)) == VK_SUCCESS, "Failed to create Command Pool")
+
+            VkCommandBufferAllocateInfo command_buffer_create_info = {};
+            command_buffer_create_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            command_buffer_create_info.commandPool                 = frame.CommandPool;
+            command_buffer_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            command_buffer_create_info.commandBufferCount          = 1;
+            ZENGINE_VALIDATE_ASSERT(
+                vkAllocateCommandBuffers(device.GetNativeDeviceHandle(), &command_buffer_create_info, &(frame.CommandBuffer)) == VK_SUCCESS, "Failed to allocate Command Buffer")
+
+            VkFenceCreateInfo fence_create_info = {};
+            fence_create_info.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            fence_create_info.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
+            ZENGINE_VALIDATE_ASSERT(vkCreateFence(device.GetNativeDeviceHandle(), &fence_create_info, nullptr, &(frame.Fence)) == VK_SUCCESS, "Failed to create Fence")
+
+            VkSemaphoreCreateInfo semaphore_create_info = {};
+            semaphore_create_info.sType                 = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+            ZENGINE_VALIDATE_ASSERT(vkCreateSemaphore(device.GetNativeDeviceHandle(), &semaphore_create_info, nullptr, &(frame_semaphore.ImageAcquiredSemaphore)) == VK_SUCCESS,
+                "Failed to create Image acquired Semaphore")
+            ZENGINE_VALIDATE_ASSERT(vkCreateSemaphore(device.GetNativeDeviceHandle(), &semaphore_create_info, nullptr, &(frame_semaphore.RenderCompleteSemaphore)) == VK_SUCCESS,
+                "Failed to create Render complete Semaphore")
+        }
+    }
+
+    VkRenderPass OpenGLWindow::GetRenderPass() const
+    {
+        return m_render_pass;
+    }
+
+    VkSurfaceKHR OpenGLWindow::GetSurface() const
+    {
+        return m_vulkan_surface;
+    }
+
+    VkSurfaceFormatKHR OpenGLWindow::GetSurfaceFormat() const
+    {
+        return m_surface_format;
+    }
+
+    VkPresentModeKHR OpenGLWindow::GetPresentMode() const
+    {
+        return m_vulkan_present_mode;
+    }
+
+    VkSwapchainKHR OpenGLWindow::GetSwapChain() const
+    {
+        return m_swapchain;
+    }
+
+    OpenGLWindow::~OpenGLWindow()
+    {
+        const auto& device = m_engine->GetVulkanInstance().GetHighPerformantDevice();
+        MarkVulkanInternalObjectDirty(device);
+
+        vkDestroySwapchainKHR(device.GetNativeDeviceHandle(), m_swapchain, nullptr);
+        vkDestroySurfaceKHR(m_engine->GetVulkanInstance().GetNativeHandle(), m_vulkan_surface, nullptr);
 
         glfwSetErrorCallback(NULL);
         glfwDestroyWindow(m_native_window);
         glfwTerminate();
     }
 
-    bool OpenGLWindow::OnWindowClosed(WindowClosedEvent& event) {
+    bool OpenGLWindow::OnWindowClosed(WindowClosedEvent& event)
+    {
         glfwSetWindowShouldClose(m_native_window, GLFW_TRUE);
         ZENGINE_CORE_INFO("Window has been closed");
 
@@ -266,7 +657,13 @@ namespace ZEngine::Window::GLFWWindow {
         return true;
     }
 
-    bool OpenGLWindow::OnWindowResized(WindowResizedEvent& event) {
+    bool OpenGLWindow::OnWindowResized(WindowResizedEvent& event)
+    {
+        if (event.GetWidth() > 0 && event.GetHeight() > 0)
+        {
+            RecreateSwapChain(m_swapchain, m_engine->GetVulkanInstance().GetHighPerformantDevice());
+        }
+
         ZENGINE_CORE_INFO("Window has been resized");
 
         Event::EventDispatcher event_dispatcher(event);
@@ -274,7 +671,8 @@ namespace ZEngine::Window::GLFWWindow {
         return false;
     }
 
-    bool OpenGLWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event) {
+    bool OpenGLWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event)
+    {
         ZENGINE_CORE_INFO("Window has been minimized");
 
         m_property.IsMinimized = true;
@@ -283,7 +681,8 @@ namespace ZEngine::Window::GLFWWindow {
         return false;
     }
 
-    bool OpenGLWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event) {
+    bool OpenGLWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event)
+    {
         ZENGINE_CORE_INFO("Window has been maximized");
 
         Event::EventDispatcher event_dispatcher(event);
@@ -291,7 +690,8 @@ namespace ZEngine::Window::GLFWWindow {
         return false;
     }
 
-    bool OpenGLWindow::OnWindowRestored(Event::WindowRestoredEvent& event) {
+    bool OpenGLWindow::OnWindowRestored(Event::WindowRestoredEvent& event)
+    {
         ZENGINE_CORE_INFO("Window has been restored");
 
         m_property.IsMinimized = false;
@@ -300,43 +700,50 @@ namespace ZEngine::Window::GLFWWindow {
         return false;
     }
 
-    bool OpenGLWindow::OnKeyPressed(KeyPressedEvent& event) {
+    bool OpenGLWindow::OnKeyPressed(KeyPressedEvent& event)
+    {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::KeyPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnKeyReleased(KeyReleasedEvent& event) {
+    bool OpenGLWindow::OnKeyReleased(KeyReleasedEvent& event)
+    {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::KeyReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event) {
+    bool OpenGLWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event)
+    {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event) {
+    bool OpenGLWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event)
+    {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event) {
+    bool OpenGLWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event)
+    {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonMovedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event) {
+    bool OpenGLWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event)
+    {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonWheelEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnTextInputRaised(TextInputEvent& event) {
+    bool OpenGLWindow::OnTextInputRaised(TextInputEvent& event)
+    {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::TextInputEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;

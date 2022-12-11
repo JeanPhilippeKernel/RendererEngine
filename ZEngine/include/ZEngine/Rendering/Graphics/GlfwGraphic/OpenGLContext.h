@@ -1,16 +1,13 @@
 #pragma once
 #include <GLFW/glfw3.h>
-
 #include <Rendering/Graphics/GraphicContext.h>
-
-using namespace ZEngine::Rendering::Graphics;
 
 namespace ZEngine::Rendering::Graphics::GLFWGraphic {
 
     class OpenGLContext : public GraphicContext {
     public:
         OpenGLContext() = default;
-        OpenGLContext(const CoreWindow* window) : GraphicContext(window) {}
+        OpenGLContext(const ZEngine::Window::CoreWindow* window) : GraphicContext(window) {}
 
         ~OpenGLContext() {}
 
