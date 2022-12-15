@@ -39,7 +39,6 @@ namespace ZEngine::Logging
             if (!dir_created)
             {
                 ZENGINE_EXIT_FAILURE()
-                // ZENGINE_CORE_ERROR("failed to create Logs directory")
             }
         }
 
@@ -50,7 +49,7 @@ namespace ZEngine::Logging
         m_sink_collection.push_back(
             std::make_shared<spdlog::sinks::rotating_file_sink_mt>(fmt::format("{0}/{1}", configuration.OutputDirectory, configuration.EditorLogFile), 1024 * 1024, 5, false));
 
-        m_sink_collection.push_back(std::make_shared<spdlog::sinks::ostream_sink_mt>(m_log_message));
+        m_sink_collection.push_back(std::make_shared<spdlog::sinks::ostream_sink_mt>(m_log_message, true));
 
         m_engine_logger    = std::make_shared<spdlog::async_logger>(configuration.EngineLoggerName, m_sink_collection[0], spdlog::thread_pool());
         m_editor_logger    = std::make_shared<spdlog::async_logger>(configuration.EditorLoggerName, m_sink_collection[1], spdlog::thread_pool());
@@ -135,6 +134,10 @@ namespace ZEngine::Logging
         {
             message = LoggerMessage{.Color = {1.f, 1.f, 1.f, 0.5f}, .Message = std::move(message_string)};
         }
+
+        // clear old buffer content
+        m_log_message.str("");
+        m_log_message.clear();
 
         return true;
     }

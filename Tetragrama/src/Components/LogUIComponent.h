@@ -22,10 +22,14 @@ namespace Tetragrama::Components
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
 
+        void ClearLog();
+
     private:
         bool                            m_auto_scroll{true};
         bool                            m_is_copy_button_pressed{false};
         bool                            m_is_clear_button_pressed{false};
+        ImGuiTextBuffer                 m_content_buffer;
+        ImVector<int>                   m_line_offset;
         ZEngine::Logging::LoggerMessage m_logger_message;
     };
 } // namespace Tetragrama::Components
