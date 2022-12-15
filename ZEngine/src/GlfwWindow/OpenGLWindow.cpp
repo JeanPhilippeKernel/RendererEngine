@@ -71,7 +71,9 @@ namespace ZEngine::Window::GLFWWindow
         m_surface_format = (m_surface_format_collection.size() > 0) ? m_surface_format_collection[0] : VkSurfaceFormatKHR{};
         for (const VkSurfaceFormatKHR& format_khr : m_surface_format_collection)
         {
-            if ((format_khr.format == VK_FORMAT_B8G8R8A8_SRGB) && (format_khr.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR))
+            // default is: VK_FORMAT_B8G8R8A8_SRGB
+            // but Imgui wants : VK_FORMAT_B8G8R8A8_UNORM ...
+            if ((format_khr.format == VK_FORMAT_B8G8R8A8_UNORM) && (format_khr.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR))
             {
                 m_surface_format = format_khr;
                 break;
@@ -79,7 +81,7 @@ namespace ZEngine::Window::GLFWWindow
         }
 
         m_vulkan_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-        for (const VkPresentModeKHR& present_mode_khr : m_present_mode_collection)
+        for (const VkPresentModeKHR present_mode_khr : m_present_mode_collection)
         {
             if (present_mode_khr == VK_PRESENT_MODE_MAILBOX_KHR)
             {
@@ -393,9 +395,21 @@ namespace ZEngine::Window::GLFWWindow
         return m_frame_collection;
     }
 
+    VulkanWindowFrame& OpenGLWindow::GetWindowFrame(uint32_t index)
+    {
+        ZENGINE_VALIDATE_ASSERT(index < m_frame_collection.size(), "index is out of bound of available window frame")
+        return m_frame_collection[index];
+    }
+
     const std::vector<VulkanWindowFrameSemaphore>& OpenGLWindow::GetWindowFrameSemaphoreCollection() const
     {
         return m_frame_semaphore_collection;
+    }
+
+    VulkanWindowFrameSemaphore& OpenGLWindow::GetWindowFrameSemaphore(uint32_t index)
+    {
+        ZENGINE_VALIDATE_ASSERT(index < m_frame_semaphore_collection.size(), "index is out of bound of available window frame semaphore")
+        return m_frame_semaphore_collection[index];
     }
 
     void OpenGLWindow::RecreateSwapChain(VkSwapchainKHR old_swapchain, const Hardwares::VulkanDevice& device)

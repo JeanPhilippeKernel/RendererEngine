@@ -104,8 +104,6 @@ namespace ZEngine::Layers
         VkDescriptorPool                              m_descriptor_pool;
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
 
-        static void __imguiVulkanCallback(VkResult err);
-
         void __frameRenderAndPresent(const Ref<Window::CoreWindow>& wd, ImDrawData* draw_data);
     };
 } // namespace ZEngine::Layers

@@ -32,6 +32,10 @@ namespace ZEngine::Layers
             auto current_vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::OpenGLWindow*>(current_window_ptr);
             auto current_engine_ptr        = current_window->GetAttachedEngine();
 
+            const auto& performant_device = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice();
+            auto        device_handle     = performant_device.GetNativeDeviceHandle();
+            auto        present_queue     = performant_device.GetCurrentGraphicQueue(true);
+
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
             StyleDarkTheme();
@@ -72,24 +76,21 @@ namespace ZEngine::Layers
             pool_info.poolSizeCount              = pool_sizes.size();
             pool_info.pPoolSizes                 = pool_sizes.data();
 
-            ZENGINE_VALIDATE_ASSERT(
-                vkCreateDescriptorPool(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativeDeviceHandle(), &pool_info, nullptr, &m_descriptor_pool)
-                    == VK_SUCCESS,
-                "Failed to create DescriptorPool -- ImGuiLayer");
+            ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(device_handle, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool -- ImGuiLayer");
 
 
             ImGui_ImplVulkan_InitInfo imgui_vulkan_init_info = {};
             imgui_vulkan_init_info.Instance                  = current_engine_ptr->GetVulkanInstance().GetNativeHandle();
-            imgui_vulkan_init_info.PhysicalDevice            = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativePhysicalDeviceHandle();
-            imgui_vulkan_init_info.Device                    = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativeDeviceHandle();
-            imgui_vulkan_init_info.QueueFamily               = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetGraphicQueueFamilyIndexCollection(true).at(0);
-            imgui_vulkan_init_info.Queue                     = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetCurrentGraphicQueue(true);
+            imgui_vulkan_init_info.PhysicalDevice            = performant_device.GetNativePhysicalDeviceHandle();
+            imgui_vulkan_init_info.Device                    = device_handle;
+            imgui_vulkan_init_info.QueueFamily               = performant_device.GetGraphicQueueFamilyIndexCollection(true).at(0);
+            imgui_vulkan_init_info.Queue                     = present_queue;
             imgui_vulkan_init_info.PipelineCache             = nullptr;
             imgui_vulkan_init_info.DescriptorPool            = m_descriptor_pool;
             imgui_vulkan_init_info.Allocator                 = nullptr;
             imgui_vulkan_init_info.MinImageCount             = current_vulkan_window_ptr->GetSwapChainMinImageCount();
             imgui_vulkan_init_info.ImageCount                = current_vulkan_window_ptr->GetSwapChainImageCollection().size();
-            imgui_vulkan_init_info.CheckVkResultFn           = __imguiVulkanCallback;
+            imgui_vulkan_init_info.CheckVkResultFn           = nullptr;
 
             ImGui_ImplVulkan_Init(&imgui_vulkan_init_info, current_vulkan_window_ptr->GetRenderPass());
 
@@ -100,9 +101,7 @@ namespace ZEngine::Layers
             const auto selected_frame_index       = requested_frame % available_frame_collection.size();
             auto&      selected_frame             = available_frame_collection[selected_frame_index];
 
-            ZENGINE_VALIDATE_ASSERT(
-                vkResetCommandPool(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativeDeviceHandle(), selected_frame.CommandPool, 0) == VK_SUCCESS,
-                "Failed to reset Command Pool -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, selected_frame.CommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool -- ImGuiLayer")
 
             VkCommandBufferBeginInfo command_buffer_begin_info = {};
             command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -119,11 +118,9 @@ namespace ZEngine::Layers
 
             ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(selected_frame.CommandBuffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
 
-            ZENGINE_VALIDATE_ASSERT(
-                vkQueueSubmit(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetCurrentGraphicQueue(true), 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS,
-                "Failed to submit Command Buffer on Present Queue -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(present_queue, 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit Command Buffer on Present Queue -- ImGuiLayer")
 
-            ZENGINE_VALIDATE_ASSERT(vkDeviceWaitIdle(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativeDeviceHandle()) == VK_SUCCESS, "")
+            ZENGINE_VALIDATE_ASSERT(vkDeviceWaitIdle(device_handle) == VK_SUCCESS, "Failed to wait for GPU device -- ImGuiLayer")
 
             ImGui_ImplVulkan_DestroyFontUploadObjects();
 
@@ -137,12 +134,12 @@ namespace ZEngine::Layers
         {
             if (auto current_window = m_window.lock())
             {
-                auto current_engine_ptr = current_window->GetAttachedEngine();
+                auto        current_engine_ptr = current_window->GetAttachedEngine();
+                const auto& performant_device  = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice();
 
-                ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetCurrentGraphicQueue(true)) == VK_SUCCESS,
-                    "Failed to wait for Present Queue -- ImGuiLayer");
+                ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(performant_device.GetCurrentGraphicQueue(true)) == VK_SUCCESS, "Failed to wait for Present Queue -- ImGuiLayer");
 
-                vkDestroyDescriptorPool(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativeDeviceHandle(), m_descriptor_pool, nullptr);
+                vkDestroyDescriptorPool(performant_device.GetNativeDeviceHandle(), m_descriptor_pool, nullptr);
 
                 ImGui_ImplVulkan_Shutdown();
                 ImGui_ImplGlfw_Shutdown();
@@ -188,12 +185,14 @@ namespace ZEngine::Layers
 
     void ImguiLayer::AddUIComponent(std::vector<Ref<Components::UI::UIComponent>>&& components)
     {
-        std::for_each(std::begin(components), std::end(components), [this](Ref<Components::UI::UIComponent>& component) {
-            if (!component->HasParentLayer())
+        std::for_each(std::begin(components), std::end(components),
+            [this](Ref<Components::UI::UIComponent>& component)
             {
-                component->SetParentLayer(shared_from_this());
-            }
-        });
+                if (!component->HasParentLayer())
+                {
+                    component->SetParentLayer(shared_from_this());
+                }
+            });
 
         std::move(std::begin(components), std::end(components), std::back_inserter(m_ui_components));
     }
@@ -229,18 +228,13 @@ namespace ZEngine::Layers
 
             ImDrawData* main_draw_data = ImGui::GetDrawData();
 
-            if (!window_ptr->GetWindowProperty().IsMinimized)
+            if (window_ptr->GetWindowProperty().IsMinimized)
             {
-                // Render and Present Main Platform Window
-                __frameRenderAndPresent(window_ptr, main_draw_data);
+                return;
             }
 
-            ImGuiIO& io = ImGui::GetIO();
-            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-            {
-                ImGui::UpdatePlatformWindows();
-                ImGui::RenderPlatformWindowsDefault();
-            }
+            // Render and Present Main Platform Window
+            __frameRenderAndPresent(window_ptr, main_draw_data);
         }
     }
 
@@ -346,46 +340,31 @@ namespace ZEngine::Layers
         colors[ImGuiCol_CheckMark]        = ImVec4{1.0f, 1.f, 1.0f, 1.f};
     }
 
-    void ImguiLayer::__imguiVulkanCallback(VkResult result)
-    {
-        if (result == 0)
-            return;
-
-        if (result < 0)
-        {
-            ZENGINE_CORE_ERROR("Imgui Vulkan Error: {}", result)
-            ZENGINE_EXIT_FAILURE()
-        }
-
-        ZENGINE_CORE_ERROR("Imgui Vulkan Error: {}", result)
-    }
-
     void ImguiLayer::__frameRenderAndPresent(const Ref<ZEngine::Window::CoreWindow>& window, ImDrawData* draw_data)
     {
         auto       vulkan_window_ptr       = reinterpret_cast<Window::GLFWWindow::OpenGLWindow*>(window.get());
         auto const current_frame_index     = vulkan_window_ptr->GetCurrentWindowFrameIndex();
-        auto&      current_frame           = vulkan_window_ptr->GetWindowFrameCollection().at(current_frame_index);
-        auto&      current_frame_semaphore = vulkan_window_ptr->GetWindowFrameSemaphoreCollection().at(current_frame_index);
+        auto&      current_frame           = vulkan_window_ptr->GetWindowFrame(current_frame_index);
+        auto&      current_frame_semaphore = vulkan_window_ptr->GetWindowFrameSemaphore(current_frame_index);
 
         if (auto current_window = m_window.lock())
         {
-            auto current_engine_ptr = current_window->GetAttachedEngine();
+            auto        current_engine_ptr = current_window->GetAttachedEngine();
+            const auto& performant_device  = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice();
+            auto        device_handle      = performant_device.GetNativeDeviceHandle();
+            auto        present_queue      = performant_device.GetCurrentGraphicQueue(true);
 
-            ZENGINE_VALIDATE_ASSERT(
-                vkWaitForFences(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativeDeviceHandle(), 1, &(current_frame.Fence), VK_TRUE, UINT64_MAX)
-                    == VK_SUCCESS,
+            ZENGINE_VALIDATE_ASSERT(vkWaitForFences(device_handle, 1, &(current_frame.Fence), VK_TRUE, UINT64_MAX) == VK_SUCCESS,
                 "Failed to wait for Fence semaphore -- ImGuiLayer") // wait indefinitely instead of periodically checking
 
-            ZENGINE_VALIDATE_ASSERT(
-                vkResetFences(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativeDeviceHandle(), 1, &(current_frame.Fence)) == VK_SUCCESS, "Failed to reset Fence semaphore -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkResetFences(device_handle, 1, &(current_frame.Fence)) == VK_SUCCESS, "Failed to reset Fence semaphore -- ImGuiLayer")
 
-            ZENGINE_VALIDATE_ASSERT(
-                vkResetCommandPool(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativeDeviceHandle(), current_frame.CommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, current_frame.CommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool -- ImGuiLayer")
 
 
             uint32_t image_index;
-            VkResult acquire_image_result = vkAcquireNextImageKHR(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetNativeDeviceHandle(),
-                vulkan_window_ptr->GetSwapChain(), UINT64_MAX, current_frame_semaphore.ImageAcquiredSemaphore, VK_NULL_HANDLE, &image_index);
+            VkResult acquire_image_result =
+                vkAcquireNextImageKHR(device_handle, vulkan_window_ptr->GetSwapChain(), UINT64_MAX, current_frame_semaphore.ImageAcquiredSemaphore, VK_NULL_HANDLE, &image_index);
             if (acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_image_result == VK_SUBOPTIMAL_KHR)
             {
                 m_swap_chain_rebuild = true;
@@ -431,27 +410,28 @@ namespace ZEngine::Layers
 
             ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(current_frame.CommandBuffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
 
-            ZENGINE_VALIDATE_ASSERT(
-                vkQueueSubmit(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetCurrentGraphicQueue(true), 1, &submit_info, current_frame.Fence) == VK_SUCCESS,
-                "Failed to submit Frame rendering commands -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(present_queue, 1, &submit_info, current_frame.Fence) == VK_SUCCESS, "Failed to submit Frame rendering commands -- ImGuiLayer")
 
-            /*Window Frame presentation operation*/
-            if (m_swap_chain_rebuild)
+
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
             {
-                return;
+                ImGui::UpdatePlatformWindows();
+                ImGui::RenderPlatformWindowsDefault();
             }
 
-            VkSwapchainKHR   present_swapchain_array[] = {vulkan_window_ptr->GetSwapChain()};
-            VkSemaphore      present_semaphore_array[] = {current_frame_semaphore.RenderCompleteSemaphore};
-            VkPresentInfoKHR present_info              = {};
-            present_info.sType                         = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-            present_info.waitSemaphoreCount            = 1;
-            present_info.pWaitSemaphores               = present_semaphore_array;
-            present_info.swapchainCount                = 1;
-            present_info.pSwapchains                   = present_swapchain_array;
-            present_info.pImageIndices                 = &image_index;
+            /*Window Frame presentation operation*/
+            std::vector<VkSwapchainKHR> present_swapchain_collection = {vulkan_window_ptr->GetSwapChain()};
+            std::vector<VkSemaphore>    present_semaphore_collection = {current_frame_semaphore.RenderCompleteSemaphore};
+            VkPresentInfoKHR            present_info                 = {};
+            present_info.sType                                       = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+            present_info.waitSemaphoreCount                          = present_semaphore_collection.size();
+            present_info.pWaitSemaphores                             = present_semaphore_collection.data();
+            present_info.swapchainCount                              = present_swapchain_collection.size();
+            present_info.pSwapchains                                 = present_swapchain_collection.data();
+            present_info.pImageIndices                               = &image_index;
 
-            VkResult present_result = vkQueuePresentKHR(current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice().GetCurrentGraphicQueue(true), &present_info);
+            VkResult present_result = vkQueuePresentKHR(present_queue, &present_info);
             if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
             {
                 m_swap_chain_rebuild = true;
@@ -459,8 +439,8 @@ namespace ZEngine::Layers
             }
 
             ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS, "Failed to present current frame on Window -- ImGuiLayer")
-        }
 
-        vulkan_window_ptr->IncrementWindowFrameIndex();
+            vulkan_window_ptr->IncrementWindowFrameIndex();
+        }
     }
 } // namespace ZEngine::Layers

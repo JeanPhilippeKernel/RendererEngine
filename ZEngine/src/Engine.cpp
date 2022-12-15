@@ -5,33 +5,43 @@
 
 namespace ZEngine
 {
-
     Core::TimeStep Engine::m_delta_time = {0.0f};
 
-    Engine::Engine(const EngineConfiguration& configuration) : m_request_terminate(false), m_last_frame_time(0.0f), m_vulkan_instance("ZEngine")
+    Engine::Engine(const EngineConfiguration& configuration)
+        : m_engine_configuration(configuration), m_request_terminate(false), m_last_frame_time(0.0f), m_vulkan_instance("ZEngine")
     {
-        Logging::Logger::Initialize(configuration.LoggerConfiguration);
-
-        m_vulkan_instance.CreateInstance();
-
-        m_window.reset(ZEngine::Window::Create(configuration.WindowConfiguration, *this));
-        m_window->SetAttachedEngine(this);
-
-        ZENGINE_CORE_INFO("Engine created")
     }
 
     Engine::~Engine()
     {
         m_request_terminate = false;
         m_window.reset();
-        ZENGINE_CORE_INFO("Engine destroyed");
+        ZENGINE_CORE_INFO("Engine destroyed")
         Logging::Logger::Flush();
     }
 
     void Engine::Initialize()
     {
+        Logging::Logger::Initialize(m_engine_configuration.LoggerConfiguration);
+
+        m_vulkan_instance.CreateInstance();
+
+        m_window.reset(ZEngine::Window::Create(m_engine_configuration.WindowConfiguration, *this));
+
+        for (const auto& layer : m_engine_configuration.WindowConfiguration.RenderingLayerCollection)
+        {
+            m_window->PushLayer(layer);
+        }
+
+        for (const auto& layer : m_engine_configuration.WindowConfiguration.OverlayLayerCollection)
+        {
+            m_window->PushOverlayLayer(layer);
+        }
+
+        m_window->SetAttachedEngine(this);
         m_window->Initialize();
-        ZENGINE_CORE_INFO("Engine initialized");
+
+        ZENGINE_CORE_INFO("Engine initialized")
     }
 
     void Engine::ProcessEvent()
@@ -73,10 +83,8 @@ namespace ZEngine
 
     void Engine::Run()
     {
-
         while (true)
         {
-
             if (m_request_terminate)
             {
                 break;
@@ -87,11 +95,14 @@ namespace ZEngine
             m_last_frame_time = (m_delta_time >= 1.0f) ? m_last_frame_time : time + 1.0f; // waiting 1s to update
 
             ProcessEvent();
-            if (!m_window->GetWindowProperty().IsMinimized)
+
+            if (m_window->IsMinimized())
             {
-                Update(m_delta_time);
-                Render();
+                continue;
             }
+
+            Update(m_delta_time);
+            Render();
         }
 
         if (m_request_terminate)

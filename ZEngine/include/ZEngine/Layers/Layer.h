@@ -10,28 +10,34 @@
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
 
-namespace ZEngine::Window {
+namespace ZEngine::Window
+{
     class CoreWindow;
 }
 
-namespace ZEngine::Layers {
+namespace ZEngine::Layers
+{
 
-    class Layer : public Core::IInitializable, public Core::IUpdatable, public Core::IEventable, public Core::IRenderable {
+    class Layer : public Core::IInitializable, public Core::IUpdatable, public Core::IEventable, public Core::IRenderable
+    {
 
     public:
         Layer(const char* name = "default_layer") : m_name(name) {}
 
         virtual ~Layer() = default;
 
-        std::string_view GetName() const {
+        std::string_view GetName() const
+        {
             return m_name;
         }
 
-        void SetAttachedWindow(const ZEngine::Ref<Window::CoreWindow>& window) {
+        void SetAttachedWindow(const ZEngine::Ref<Window::CoreWindow>& window)
+        {
             m_window = window;
         }
 
-        ZEngine::Ref<ZEngine::Window::CoreWindow> GetAttachedWindow() const {
+        ZEngine::Ref<ZEngine::Window::CoreWindow> GetAttachedWindow() const
+        {
             if (!m_window.expired())
                 return m_window.lock();
 

@@ -62,10 +62,6 @@ namespace Tetragrama::Layers
             std::bind(&Components::SceneViewportUIComponent::SceneViewportRequestRecomputationMessageHandler,
                 reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()), std::placeholders::_1));
 
-        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<std::vector<std::string>>>(m_editor_log_component, EDITOR_COMPONENT_LOG_RECEIVE_LOG_MESSAGE,
-            std::bind(
-                &Components::LogUIComponent::ReceiveLogMessageMessageHandler, reinterpret_cast<Components::LogUIComponent*>(m_editor_log_component.get()), std::placeholders::_1));
-
         IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>>(m_hierarchy_view_component,
             EDITOR_RENDER_LAYER_SCENE_AVAILABLE,
             std::bind(&Components::HierarchyViewUIComponent::SceneAvailableMessageHandler,

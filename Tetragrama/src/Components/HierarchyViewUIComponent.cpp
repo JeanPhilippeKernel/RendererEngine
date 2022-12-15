@@ -76,7 +76,7 @@ namespace Tetragrama::Components {
             });
         }
 
-        if (ImGui::BeginPopupContextWindow(0, 1, false)) {
+        if (ImGui::BeginPopupContextWindow(0, 1)) {
             if (ImGui::MenuItem("Create Empty")) {
                 if (auto scene_ptr = m_active_scene.lock()) {
                     scene_ptr->CreateEntity();

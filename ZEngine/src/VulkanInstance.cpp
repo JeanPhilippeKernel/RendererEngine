@@ -28,7 +28,7 @@ namespace ZEngine::Hardwares
         app_info.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         app_info.pApplicationName   = m_application_name.data();
         app_info.pEngineName        = m_application_name.data();
-        app_info.apiVersion         = VK_API_VERSION_1_3;
+        app_info.apiVersion         = VK_API_VERSION_1_2;
         app_info.engineVersion      = 1;
         app_info.applicationVersion = 1;
         app_info.pNext              = nullptr;
@@ -82,10 +82,14 @@ namespace ZEngine::Hardwares
 
         if (result == VK_ERROR_INCOMPATIBLE_DRIVER)
         {
+            ZENGINE_CORE_CRITICAL("Failed to create Vulkan Instance. Incompatible driver")
+            ZENGINE_EXIT_FAILURE()
         }
 
         if (result == VK_INCOMPLETE)
         {
+            ZENGINE_CORE_CRITICAL("Failed to create Vulkan Instance. Confugration incomplete!")
+            ZENGINE_EXIT_FAILURE()
         }
 
         /*Create Message Callback*/
@@ -175,7 +179,7 @@ namespace ZEngine::Hardwares
     VkBool32 VulkanInstance::__debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType,
         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
     {
-        ZENGINE_CORE_INFO(pCallbackData->pMessage)
+        ZENGINE_CORE_TRACE(pCallbackData->pMessage)
         return VK_FALSE;
     }
 

@@ -17,6 +17,6 @@ namespace ZEngine::Logging
         std::chrono::milliseconds PeriodicFlush                  = std::chrono::milliseconds(3);
         std::chrono::milliseconds PeriodicInvokeCallbackInterval = std::chrono::milliseconds(1);
 
-        std::function<void(std::vector<std::string>)> MessageCallback;
+        std::function<void(std::string)> MessageCallback;
     };
 } // namespace ZEngine::Logging

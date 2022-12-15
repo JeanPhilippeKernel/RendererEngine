@@ -67,7 +67,7 @@ namespace Tetragrama::Components
         ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
 
         // Scene texture representation
-        ImGui::Image(reinterpret_cast<void*>(m_scene_texture_identifier), m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+        //ImGui::Image(reinterpret_cast<void*>(m_scene_texture_identifier), m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
 
         // ViewPort bound computation
         ImVec2 viewport_windows_size = ImGui::GetWindowSize();

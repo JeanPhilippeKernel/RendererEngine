@@ -35,7 +35,7 @@ namespace ZEngine::Hardwares
 
             if (extension_result != VK_SUCCESS)
             {
-                ZENGINE_CORE_WARN("LayerName: {}\nError Message: Failed to find layer extensions", property.layerName)
+                ZENGINE_CORE_ERROR("LayerName: {}\nError Message: Failed to find layer extensions", property.layerName)
             }
             layer_property_collection.push_back(std::move(layer_property));
         }
@@ -72,7 +72,7 @@ namespace ZEngine::Hardwares
         {
             for (const auto& extension : layer_property.ExtensionCollection)
             {
-                ZENGINE_CORE_INFO("ExtensionName: {0} --- SpecificationVersion: {1}", extension.extensionName, extension.specVersion)
+                ZENGINE_CORE_TRACE("ExtensionName: {0} --- SpecificationVersion: {1}", extension.extensionName, extension.specVersion)
             }
         }
 
@@ -80,7 +80,7 @@ namespace ZEngine::Hardwares
         {
             for (const auto& extension : layer_property.DeviceExtensionCollection)
             {
-                ZENGINE_CORE_INFO("ExtensionName: {0} --- SpecificationVersion: {1}", extension.extensionName, extension.specVersion)
+                ZENGINE_CORE_TRACE("ExtensionName: {0} --- SpecificationVersion: {1}", extension.extensionName, extension.specVersion)
             }
         }
 

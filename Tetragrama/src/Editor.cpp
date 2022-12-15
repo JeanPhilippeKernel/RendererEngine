@@ -15,9 +15,22 @@ using namespace Tetragrama::Messengers;
 namespace Tetragrama
 {
 
-    Editor::Editor() {}
+    Editor::Editor()
+    {
+        m_engine_configuration = ZEngine::CreateRef<ZEngine::EngineConfiguration>();
+        m_ui_layer             = ZEngine::CreateRef<Layers::UILayer>();
+        m_render_layer         = ZEngine::CreateRef<Layers::RenderLayer>();
 
-    Editor::~Editor() {
+        m_engine_configuration->LoggerConfiguration = {.PeriodicInvokeCallbackInterval = 50ms};
+
+        m_engine_configuration->WindowConfiguration = {
+            .Width = 1500, .Height = 800, .EnableVsync = true, .Title = "Tetragramma editor", .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
+
+        m_engine = ZEngine::CreateScope<ZEngine::Engine>(*m_engine_configuration);
+    }
+
+    Editor::~Editor()
+    {
         m_ui_layer.reset();
         m_render_layer.reset();
         m_engine.reset();
@@ -25,22 +38,7 @@ namespace Tetragrama
 
     void Editor::Initialize()
     {
-        m_engine_configuration                                      = std::make_shared<ZEngine::EngineConfiguration>();
-        m_engine_configuration->LoggerConfiguration                 = {.PeriodicInvokeCallbackInterval = 50ms};
-        m_engine_configuration->LoggerConfiguration.MessageCallback = std::bind(&Editor::LoggerMessageCallback, this, std::placeholders::_1);
-
-        m_engine_configuration->WindowConfiguration             = {};
-        m_engine_configuration->WindowConfiguration.EnableVsync = true;
-        m_engine_configuration->WindowConfiguration.Title       = "Tetragramma editor";
-        m_engine_configuration->WindowConfiguration.Width       = 1500;
-        m_engine_configuration->WindowConfiguration.Height      = 800;
-
-        m_ui_layer     = ZEngine::CreateRef<Layers::UILayer>();
-        m_render_layer = ZEngine::CreateRef<Layers::RenderLayer>();
-
-        m_engine = ZEngine::CreateScope<ZEngine::Engine>(*m_engine_configuration);
-        m_engine->GetWindow()->PushLayer(m_render_layer);
-        m_engine->GetWindow()->PushOverlayLayer(m_ui_layer);
+        m_engine->Initialize();
 
         // Register components
         IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<std::pair<float, float>>>(m_render_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE,
@@ -70,18 +68,11 @@ namespace Tetragrama
 
     void Editor::Run()
     {
-        m_engine->Initialize();
         m_engine->Start();
     }
 
     ZEngine::Ref<ZEngine::EngineConfiguration> Editor::GetCurrentEngineConfiguration() const
     {
         return m_engine_configuration;
-    }
-
-    void Editor::LoggerMessageCallback(std::vector<std::string> message) const
-    {
-        IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, GenericMessage<std::vector<std::string>>>(
-            EDITOR_COMPONENT_LOG_RECEIVE_LOG_MESSAGE, GenericMessage<std::vector<std::string>>{std::move(message)});
     }
 } // namespace Tetragrama

@@ -58,6 +58,7 @@ namespace ZEngine
         float                            m_last_frame_time;
         Ref<ZEngine::Window::CoreWindow> m_window;
         Hardwares::VulkanInstance        m_vulkan_instance;
+        const EngineConfiguration&       m_engine_configuration;
         static Core::TimeStep            m_delta_time;
     };
 

@@ -62,12 +62,13 @@ namespace ZEngine::Window
         virtual unsigned int       GetWidth() const                 = 0;
         virtual const std::string& GetTitle() const                 = 0;
         virtual void               SetTitle(std::string_view title) = 0;
+        virtual bool               IsMinimized() const              = 0;
 
         virtual bool IsVSyncEnable() const                                = 0;
         virtual void SetVSync(bool value)                                 = 0;
         virtual void SetCallbackFunction(const EventCallbackFn& callback) = 0;
 
-        virtual void* GetNativeWindow() const  = 0;
+        virtual void* GetNativeWindow() const = 0;
 
         virtual const WindowProperty& GetWindowProperty() const = 0;
 

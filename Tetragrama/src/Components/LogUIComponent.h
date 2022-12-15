@@ -1,10 +1,16 @@
 #pragma once
 #include <string>
+#include <mutex>
+#include <regex>
+#include <condition_variable>
 #include <ZEngine/ZEngine.h>
 #include <Message.h>
+#include <ZEngine/Logging/Logger.h>
 
-namespace Tetragrama::Components {
-    class LogUIComponent : public ZEngine::Components::UI::UIComponent {
+namespace Tetragrama::Components
+{
+    class LogUIComponent : public ZEngine::Components::UI::UIComponent
+    {
     public:
         LogUIComponent(std::string_view name = "Log", bool visibility = true);
         virtual ~LogUIComponent();
@@ -13,18 +19,13 @@ namespace Tetragrama::Components {
 
         virtual void Render() override;
 
-    public:
-        void ReceiveLogMessageMessageHandler(Messengers::GenericMessage<std::vector<std::string>>&);
-
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
 
-
     private:
-        bool            m_auto_scroll{true};
-        bool            m_is_copy_button_pressed{false};
-        bool            m_is_clear_button_pressed{false};
-        ImGuiTextBuffer m_content;
-        ImVector<int>   m_content_line_offsets;
+        bool                            m_auto_scroll{true};
+        bool                            m_is_copy_button_pressed{false};
+        bool                            m_is_clear_button_pressed{false};
+        ZEngine::Logging::LoggerMessage m_logger_message;
     };
 } // namespace Tetragrama::Components

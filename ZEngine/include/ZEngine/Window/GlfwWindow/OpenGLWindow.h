@@ -47,6 +47,11 @@ namespace ZEngine::Window::GLFWWindow
             return m_property.Title;
         }
 
+        bool IsMinimized() const 
+        {
+            return m_property.IsMinimized;
+        }
+
         void SetTitle(std::string_view title) override
         {
             m_property.Title = title;
@@ -96,17 +101,18 @@ namespace ZEngine::Window::GLFWWindow
         virtual void Update(Core::TimeStep delta_time) override;
         virtual void Render() override;
 
-        uint32_t                          GetSwapChainMinImageCount() const;
-        const std::vector<VkImage>&       GetSwapChainImageCollection() const;
-        const std::vector<VkImageView>&   GetSwapChainImageViewCollection() const;
-        const std::vector<VkFramebuffer>& GetFramebufferCollection() const;
-
+        uint32_t                                       GetSwapChainMinImageCount() const;
+        const std::vector<VkImage>&                    GetSwapChainImageCollection() const;
+        const std::vector<VkImageView>&                GetSwapChainImageViewCollection() const;
+        const std::vector<VkFramebuffer>&              GetFramebufferCollection() const;
         int32_t                                        GetCurrentWindowFrameIndex() const;
         int32_t                                        GetCurrentWindowFrameSemaphoreIndex() const;
         void                                           IncrementWindowFrameSemaphoreIndex(int32_t step = 1);
         void                                           IncrementWindowFrameIndex(int32_t step = 1);
-        std::vector<VulkanWindowFrame>&          GetWindowFrameCollection();
+        std::vector<VulkanWindowFrame>&                GetWindowFrameCollection();
+        VulkanWindowFrame&                             GetWindowFrame(uint32_t index);
         const std::vector<VulkanWindowFrameSemaphore>& GetWindowFrameSemaphoreCollection() const;
+        VulkanWindowFrameSemaphore&                    GetWindowFrameSemaphore(uint32_t index);
 
         void RecreateSwapChain(VkSwapchainKHR old_swap_chain, const Hardwares::VulkanDevice& device);
 
