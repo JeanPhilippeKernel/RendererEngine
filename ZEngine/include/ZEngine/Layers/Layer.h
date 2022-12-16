@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <string_view>
 #include <Event/CoreEvent.h>
 #include <ZEngineDef.h>
 #include <Core/TimeStep.h>
@@ -22,7 +23,7 @@ namespace ZEngine::Layers
     {
 
     public:
-        Layer(const char* name = "default_layer") : m_name(name) {}
+        Layer(std::string_view name = "default_layer") : m_name(name) {}
 
         virtual ~Layer() = default;
 

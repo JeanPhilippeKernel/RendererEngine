@@ -1,15 +1,12 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
-
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <Window/CoreWindow.h>
-#include <Rendering/Graphics/GraphicContext.h>
 
 namespace ZEngine::Window::GLFWWindow
 {
-
     struct VulkanWindowFrame
     {
         VkCommandPool   CommandPool;
@@ -26,11 +23,11 @@ namespace ZEngine::Window::GLFWWindow
         VkSemaphore RenderCompleteSemaphore;
     };
 
-    class OpenGLWindow : public CoreWindow
+    class VulkanWindow : public CoreWindow
     {
     public:
-        OpenGLWindow(WindowProperty& prop, Hardwares::VulkanInstance& vulkan_instance);
-        virtual ~OpenGLWindow();
+        VulkanWindow(WindowProperty& prop, Hardwares::VulkanInstance& vulkan_instance);
+        virtual ~VulkanWindow();
 
         unsigned int GetHeight() const override
         {
@@ -47,7 +44,7 @@ namespace ZEngine::Window::GLFWWindow
             return m_property.Title;
         }
 
-        bool IsMinimized() const 
+        bool IsMinimized() const
         {
             return m_property.IsMinimized;
         }
@@ -63,18 +60,7 @@ namespace ZEngine::Window::GLFWWindow
             return m_property.VSync;
         }
 
-        void SetVSync(bool value) override
-        {
-            m_property.VSync = value;
-            if (value)
-            {
-                glfwSwapInterval(1);
-            }
-            else
-            {
-                glfwSwapInterval(0);
-            }
-        }
+        void SetVSync(bool value) override;
 
         void SetCallbackFunction(const EventCallbackFn& callback) override
         {
@@ -124,29 +110,7 @@ namespace ZEngine::Window::GLFWWindow
 
 
     public:
-        bool OnEvent(Event::CoreEvent& event) override
-        {
-
-            Event::EventDispatcher event_dispatcher(event);
-            event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&OpenGLWindow::OnWindowClosed, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&OpenGLWindow::OnWindowResized, this, std::placeholders::_1));
-
-            event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&OpenGLWindow::OnKeyPressed, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&OpenGLWindow::OnKeyReleased, this, std::placeholders::_1));
-
-            event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&OpenGLWindow::OnMouseButtonPressed, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&OpenGLWindow::OnMouseButtonReleased, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&OpenGLWindow::OnMouseButtonMoved, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&OpenGLWindow::OnMouseButtonWheelMoved, this, std::placeholders::_1));
-
-            event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&OpenGLWindow::OnTextInputRaised, this, std::placeholders::_1));
-
-            event_dispatcher.Dispatch<Event::WindowMinimizedEvent>(std::bind(&OpenGLWindow::OnWindowMinimized, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::WindowMaximizedEvent>(std::bind(&OpenGLWindow::OnWindowMaximized, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::WindowRestoredEvent>(std::bind(&OpenGLWindow::OnWindowRestored, this, std::placeholders::_1));
-
-            return true;
-        }
+        bool OnEvent(Event::CoreEvent& event) override;
 
     protected:
         virtual bool OnKeyPressed(Event::KeyPressedEvent&) override;

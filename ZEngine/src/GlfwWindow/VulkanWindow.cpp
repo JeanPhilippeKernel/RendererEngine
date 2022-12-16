@@ -1,5 +1,5 @@
 #include <pch.h>
-#include <Window/GlfwWindow/OpenGLWindow.h>
+#include <Window/GlfwWindow/VulkanWindow.h>
 #include <Engine.h>
 #include <Inputs/KeyCode.h>
 #include <Rendering/Renderers/RenderCommand.h>
@@ -9,13 +9,12 @@
 #include <GLFW/glfw3native.h>
 
 using namespace ZEngine;
-using namespace ZEngine::Rendering::Graphics;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Event;
 
 namespace ZEngine::Window::GLFWWindow
 {
-    OpenGLWindow::OpenGLWindow(WindowProperty& prop, Hardwares::VulkanInstance& vulkan_instance) : CoreWindow()
+    VulkanWindow::VulkanWindow(WindowProperty& prop, Hardwares::VulkanInstance& vulkan_instance) : CoreWindow()
     {
         m_property    = prop;
         int glfw_init = glfwInit();
@@ -28,10 +27,12 @@ namespace ZEngine::Window::GLFWWindow
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        glfwSetErrorCallback([](int error, const char* description) {
-            ZENGINE_CORE_CRITICAL(description)
-            ZENGINE_EXIT_FAILURE()
-        });
+        glfwSetErrorCallback(
+            [](int error, const char* description)
+            {
+                ZENGINE_CORE_CRITICAL(description)
+                ZENGINE_EXIT_FAILURE()
+            });
 
         m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
         glfwMaximizeWindow(m_native_window);
@@ -96,22 +97,35 @@ namespace ZEngine::Window::GLFWWindow
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
-        glfwSetFramebufferSizeCallback(m_native_window, OpenGLWindow::__OnGlfwFrameBufferSizeChanged);
+        glfwSetFramebufferSizeCallback(m_native_window, VulkanWindow::__OnGlfwFrameBufferSizeChanged);
 
-        glfwSetWindowCloseCallback(m_native_window, OpenGLWindow::__OnGlfwWindowClose);
-        glfwSetWindowSizeCallback(m_native_window, OpenGLWindow::__OnGlfwWindowResized);
-        glfwSetWindowMaximizeCallback(m_native_window, OpenGLWindow::__OnGlfwWindowMaximized);
-        glfwSetWindowIconifyCallback(m_native_window, OpenGLWindow::__OnGlfwWindowMinimized);
+        glfwSetWindowCloseCallback(m_native_window, VulkanWindow::__OnGlfwWindowClose);
+        glfwSetWindowSizeCallback(m_native_window, VulkanWindow::__OnGlfwWindowResized);
+        glfwSetWindowMaximizeCallback(m_native_window, VulkanWindow::__OnGlfwWindowMaximized);
+        glfwSetWindowIconifyCallback(m_native_window, VulkanWindow::__OnGlfwWindowMinimized);
 
-        glfwSetMouseButtonCallback(m_native_window, OpenGLWindow::__OnGlfwMouseButtonRaised);
-        glfwSetScrollCallback(m_native_window, OpenGLWindow::__OnGlfwMouseScrollRaised);
-        glfwSetKeyCallback(m_native_window, OpenGLWindow::__OnGlfwKeyboardRaised);
+        glfwSetMouseButtonCallback(m_native_window, VulkanWindow::__OnGlfwMouseButtonRaised);
+        glfwSetScrollCallback(m_native_window, VulkanWindow::__OnGlfwMouseScrollRaised);
+        glfwSetKeyCallback(m_native_window, VulkanWindow::__OnGlfwKeyboardRaised);
 
-        glfwSetCursorPosCallback(m_native_window, OpenGLWindow::__OnGlfwCursorMoved);
-        glfwSetCharCallback(m_native_window, OpenGLWindow::__OnGlfwTextInputRaised);
+        glfwSetCursorPosCallback(m_native_window, VulkanWindow::__OnGlfwCursorMoved);
+        glfwSetCharCallback(m_native_window, VulkanWindow::__OnGlfwTextInputRaised);
     }
 
-    void OpenGLWindow::Initialize()
+    void VulkanWindow::SetVSync(bool value)
+    {
+        m_property.VSync = value;
+        if (value)
+        {
+            glfwSwapInterval(1);
+        }
+        else
+        {
+            glfwSwapInterval(0);
+        }
+    }
+
+    void VulkanWindow::Initialize()
     {
         auto& layer_stack = *m_layer_stack_ptr;
 
@@ -124,7 +138,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::Deinitialize()
+    void VulkanWindow::Deinitialize()
     {
         auto& layer_stack = *m_layer_stack_ptr;
         for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
@@ -133,14 +147,14 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::PollEvent()
+    void VulkanWindow::PollEvent()
     {
         glfwPollEvents();
     }
 
-    void OpenGLWindow::__OnGlfwFrameBufferSizeChanged(GLFWwindow* window, int width, int height)
+    void VulkanWindow::__OnGlfwFrameBufferSizeChanged(GLFWwindow* window, int width, int height)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             property->SetWidth(width);
@@ -150,8 +164,9 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::MarkVulkanInternalObjectDirty(const Hardwares::VulkanDevice& device)
+    void VulkanWindow::MarkVulkanInternalObjectDirty(const Hardwares::VulkanDevice& device)
     {
+        vkDeviceWaitIdle(device.GetNativeDeviceHandle());
         vkQueueWaitIdle(device.GetCurrentGraphicQueue(true));
 
         for (uint32_t i = 0; i < m_frame_collection.size(); i++)
@@ -193,7 +208,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::__OnGlfwWindowClose(GLFWwindow* window)
+    void VulkanWindow::__OnGlfwWindowClose(GLFWwindow* window)
     {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -203,7 +218,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::__OnGlfwWindowResized(GLFWwindow* window, int width, int height)
+    void VulkanWindow::__OnGlfwWindowResized(GLFWwindow* window, int width, int height)
     {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -213,7 +228,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::__OnGlfwWindowMaximized(GLFWwindow* window, int maximized)
+    void VulkanWindow::__OnGlfwWindowMaximized(GLFWwindow* window, int maximized)
     {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -230,7 +245,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::__OnGlfwWindowMinimized(GLFWwindow* window, int minimized)
+    void VulkanWindow::__OnGlfwWindowMinimized(GLFWwindow* window, int minimized)
     {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -246,7 +261,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
+    void VulkanWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
     {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -263,7 +278,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::__OnGlfwMouseScrollRaised(GLFWwindow* window, double xoffset, double yoffset)
+    void VulkanWindow::__OnGlfwMouseScrollRaised(GLFWwindow* window, double xoffset, double yoffset)
     {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -273,7 +288,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset)
+    void VulkanWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset)
     {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -283,7 +298,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::__OnGlfwTextInputRaised(GLFWwindow* window, unsigned int character)
+    void VulkanWindow::__OnGlfwTextInputRaised(GLFWwindow* window, unsigned int character)
     {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -295,7 +310,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
+    void VulkanWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
         WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -332,7 +347,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::Update(Core::TimeStep delta_time)
+    void VulkanWindow::Update(Core::TimeStep delta_time)
     {
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
@@ -340,7 +355,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void OpenGLWindow::Render()
+    void VulkanWindow::Render()
     {
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
@@ -348,71 +363,71 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    uint32_t OpenGLWindow::GetSwapChainMinImageCount() const
+    uint32_t VulkanWindow::GetSwapChainMinImageCount() const
     {
         return m_min_image_count;
     }
 
-    const std::vector<VkImage>& OpenGLWindow::GetSwapChainImageCollection() const
+    const std::vector<VkImage>& VulkanWindow::GetSwapChainImageCollection() const
     {
         return m_swapchain_image_collection;
     }
 
-    const std::vector<VkImageView>& OpenGLWindow::GetSwapChainImageViewCollection() const
+    const std::vector<VkImageView>& VulkanWindow::GetSwapChainImageViewCollection() const
     {
         return m_swapchain_image_view_collection;
     }
 
-    const std::vector<VkFramebuffer>& OpenGLWindow::GetFramebufferCollection() const
+    const std::vector<VkFramebuffer>& VulkanWindow::GetFramebufferCollection() const
     {
         return m_framebuffer_collection;
     }
 
-    int32_t OpenGLWindow::GetCurrentWindowFrameIndex() const
+    int32_t VulkanWindow::GetCurrentWindowFrameIndex() const
     {
         return m_current_frame_index;
     }
 
-    int32_t OpenGLWindow::GetCurrentWindowFrameSemaphoreIndex() const
+    int32_t VulkanWindow::GetCurrentWindowFrameSemaphoreIndex() const
     {
         return m_current_frame_semaphore_index;
     }
 
-    void OpenGLWindow::IncrementWindowFrameSemaphoreIndex(int32_t step)
+    void VulkanWindow::IncrementWindowFrameSemaphoreIndex(int32_t step)
     {
         auto frame_semaphore_count      = (int32_t) m_frame_semaphore_collection.size();
         m_current_frame_semaphore_index = (m_current_frame_semaphore_index + step) % frame_semaphore_count;
     }
 
-    void OpenGLWindow::IncrementWindowFrameIndex(int32_t step)
+    void VulkanWindow::IncrementWindowFrameIndex(int32_t step)
     {
         auto frame_count      = (int32_t) m_frame_collection.size();
         m_current_frame_index = (m_current_frame_index + step) % frame_count;
     }
 
-    std::vector<VulkanWindowFrame>& OpenGLWindow::GetWindowFrameCollection()
+    std::vector<VulkanWindowFrame>& VulkanWindow::GetWindowFrameCollection()
     {
         return m_frame_collection;
     }
 
-    VulkanWindowFrame& OpenGLWindow::GetWindowFrame(uint32_t index)
+    VulkanWindowFrame& VulkanWindow::GetWindowFrame(uint32_t index)
     {
         ZENGINE_VALIDATE_ASSERT(index < m_frame_collection.size(), "index is out of bound of available window frame")
         return m_frame_collection[index];
     }
 
-    const std::vector<VulkanWindowFrameSemaphore>& OpenGLWindow::GetWindowFrameSemaphoreCollection() const
+    const std::vector<VulkanWindowFrameSemaphore>& VulkanWindow::GetWindowFrameSemaphoreCollection() const
     {
         return m_frame_semaphore_collection;
     }
 
-    VulkanWindowFrameSemaphore& OpenGLWindow::GetWindowFrameSemaphore(uint32_t index)
+    VulkanWindowFrameSemaphore& VulkanWindow::GetWindowFrameSemaphore(uint32_t index)
     {
         ZENGINE_VALIDATE_ASSERT(index < m_frame_semaphore_collection.size(), "index is out of bound of available window frame semaphore")
         return m_frame_semaphore_collection[index];
     }
 
-    void OpenGLWindow::RecreateSwapChain(VkSwapchainKHR old_swapchain, const Hardwares::VulkanDevice& device)
+    void VulkanWindow::RecreateSwapChain(VkSwapchainKHR old_swapchain, const Hardwares::VulkanDevice& device)
     {
         MarkVulkanInternalObjectDirty(device);
 
@@ -622,32 +637,32 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    VkRenderPass OpenGLWindow::GetRenderPass() const
+    VkRenderPass VulkanWindow::GetRenderPass() const
     {
         return m_render_pass;
     }
 
-    VkSurfaceKHR OpenGLWindow::GetSurface() const
+    VkSurfaceKHR VulkanWindow::GetSurface() const
     {
         return m_vulkan_surface;
     }
 
-    VkSurfaceFormatKHR OpenGLWindow::GetSurfaceFormat() const
+    VkSurfaceFormatKHR VulkanWindow::GetSurfaceFormat() const
     {
         return m_surface_format;
     }
 
-    VkPresentModeKHR OpenGLWindow::GetPresentMode() const
+    VkPresentModeKHR VulkanWindow::GetPresentMode() const
     {
         return m_vulkan_present_mode;
     }
 
-    VkSwapchainKHR OpenGLWindow::GetSwapChain() const
+    VkSwapchainKHR VulkanWindow::GetSwapChain() const
     {
         return m_swapchain;
     }
 
-    OpenGLWindow::~OpenGLWindow()
+    VulkanWindow::~VulkanWindow()
     {
         const auto& device = m_engine->GetVulkanInstance().GetHighPerformantDevice();
         MarkVulkanInternalObjectDirty(device);
@@ -660,7 +675,7 @@ namespace ZEngine::Window::GLFWWindow
         glfwTerminate();
     }
 
-    bool OpenGLWindow::OnWindowClosed(WindowClosedEvent& event)
+    bool VulkanWindow::OnWindowClosed(WindowClosedEvent& event)
     {
         glfwSetWindowShouldClose(m_native_window, GLFW_TRUE);
         ZENGINE_CORE_INFO("Window has been closed");
@@ -671,7 +686,7 @@ namespace ZEngine::Window::GLFWWindow
         return true;
     }
 
-    bool OpenGLWindow::OnWindowResized(WindowResizedEvent& event)
+    bool VulkanWindow::OnWindowResized(WindowResizedEvent& event)
     {
         if (event.GetWidth() > 0 && event.GetHeight() > 0)
         {
@@ -685,7 +700,7 @@ namespace ZEngine::Window::GLFWWindow
         return false;
     }
 
-    bool OpenGLWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event)
+    bool VulkanWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been minimized");
 
@@ -695,7 +710,7 @@ namespace ZEngine::Window::GLFWWindow
         return false;
     }
 
-    bool OpenGLWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event)
+    bool VulkanWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been maximized");
 
@@ -704,7 +719,7 @@ namespace ZEngine::Window::GLFWWindow
         return false;
     }
 
-    bool OpenGLWindow::OnWindowRestored(Event::WindowRestoredEvent& event)
+    bool VulkanWindow::OnWindowRestored(Event::WindowRestoredEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been restored");
 
@@ -714,49 +729,72 @@ namespace ZEngine::Window::GLFWWindow
         return false;
     }
 
-    bool OpenGLWindow::OnKeyPressed(KeyPressedEvent& event)
+    bool VulkanWindow::OnEvent(Event::CoreEvent& event)
+    {
+        Event::EventDispatcher event_dispatcher(event);
+        event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&VulkanWindow::OnWindowClosed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&VulkanWindow::OnWindowResized, this, std::placeholders::_1));
+
+        event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&VulkanWindow::OnKeyPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&VulkanWindow::OnKeyReleased, this, std::placeholders::_1));
+
+        event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&VulkanWindow::OnMouseButtonPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&VulkanWindow::OnMouseButtonReleased, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&VulkanWindow::OnMouseButtonMoved, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&VulkanWindow::OnMouseButtonWheelMoved, this, std::placeholders::_1));
+
+        event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&VulkanWindow::OnTextInputRaised, this, std::placeholders::_1));
+
+        event_dispatcher.Dispatch<Event::WindowMinimizedEvent>(std::bind(&VulkanWindow::OnWindowMinimized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::WindowMaximizedEvent>(std::bind(&VulkanWindow::OnWindowMaximized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::WindowRestoredEvent>(std::bind(&VulkanWindow::OnWindowRestored, this, std::placeholders::_1));
+
+        return true;
+    }
+
+    bool VulkanWindow::OnKeyPressed(KeyPressedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::KeyPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnKeyReleased(KeyReleasedEvent& event)
+    bool VulkanWindow::OnKeyReleased(KeyReleasedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::KeyReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event)
+    bool VulkanWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event)
+    bool VulkanWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event)
+    bool VulkanWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonMovedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event)
+    bool VulkanWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonWheelEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool OpenGLWindow::OnTextInputRaised(TextInputEvent& event)
+    bool VulkanWindow::OnTextInputRaised(TextInputEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::TextInputEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));

@@ -8,7 +8,7 @@
 
 #include <backends/imgui_impl_vulkan.h>
 #include <Engine.h>
-#include <ZEngine/Window/GlfwWindow/OpenGLWindow.h>
+#include <ZEngine/Window/GlfwWindow/VulkanWindow.h>
 #include <Logging/LoggerDefinition.h>
 
 namespace ZEngine::Layers
@@ -29,7 +29,7 @@ namespace ZEngine::Layers
 
             auto current_window            = m_window.lock();
             auto current_window_ptr        = current_window.get();
-            auto current_vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::OpenGLWindow*>(current_window_ptr);
+            auto current_vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(current_window_ptr);
             auto current_engine_ptr        = current_window->GetAttachedEngine();
 
             const auto& performant_device = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice();
@@ -150,6 +150,24 @@ namespace ZEngine::Layers
         }
     }
 
+    bool ImguiLayer::OnEvent(Event::CoreEvent& event)
+    {
+        Event::EventDispatcher event_dispatcher(event);
+
+        event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&ImguiLayer::OnKeyPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&ImguiLayer::OnKeyReleased, this, std::placeholders::_1));
+
+        event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&ImguiLayer::OnMouseButtonPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&ImguiLayer::OnMouseButtonReleased, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&ImguiLayer::OnMouseButtonMoved, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&ImguiLayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
+
+        event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
+
+        return false;
+    }
+
     void ImguiLayer::Update(Core::TimeStep dt)
     {
         ImGuiIO& io = ImGui::GetIO();
@@ -206,7 +224,7 @@ namespace ZEngine::Layers
             {
                 if (window_ptr->GetHeight() > 0 && window_ptr->GetWidth() > 0)
                 {
-                    ImGui_ImplVulkan_SetMinImageCount(reinterpret_cast<Window::GLFWWindow::OpenGLWindow*>(window_ptr.get())->GetSwapChainMinImageCount());
+                    ImGui_ImplVulkan_SetMinImageCount(reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(window_ptr.get())->GetSwapChainMinImageCount());
                 }
                 m_swap_chain_rebuild = false;
             }
@@ -234,7 +252,7 @@ namespace ZEngine::Layers
             }
 
             // Render and Present Main Platform Window
-            __frameRenderAndPresent(window_ptr, main_draw_data);
+            FrameRenderAndPresent(window_ptr, main_draw_data);
         }
     }
 
@@ -302,6 +320,26 @@ namespace ZEngine::Layers
         return true;
     }
 
+    bool ImguiLayer::OnWindowResized(Event::WindowResizedEvent&)
+    {
+        return false;
+    }
+
+    bool ImguiLayer::OnWindowMinimized(Event::WindowMinimizedEvent&)
+    {
+        return false;
+    }
+
+    bool ImguiLayer::OnWindowMaximized(Event::WindowMaximizedEvent&)
+    {
+        return false;
+    }
+
+    bool ImguiLayer::OnWindowRestored(Event::WindowRestoredEvent&)
+    {
+        return false;
+    }
+
     void ImguiLayer::StyleDarkTheme()
     {
         auto& colors              = ImGui::GetStyle().Colors;
@@ -340,9 +378,9 @@ namespace ZEngine::Layers
         colors[ImGuiCol_CheckMark]        = ImVec4{1.0f, 1.f, 1.0f, 1.f};
     }
 
-    void ImguiLayer::__frameRenderAndPresent(const Ref<ZEngine::Window::CoreWindow>& window, ImDrawData* draw_data)
+    void ImguiLayer::FrameRenderAndPresent(const Ref<ZEngine::Window::CoreWindow>& window, ImDrawData* draw_data)
     {
-        auto       vulkan_window_ptr       = reinterpret_cast<Window::GLFWWindow::OpenGLWindow*>(window.get());
+        auto       vulkan_window_ptr       = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(window.get());
         auto const current_frame_index     = vulkan_window_ptr->GetCurrentWindowFrameIndex();
         auto&      current_frame           = vulkan_window_ptr->GetWindowFrame(current_frame_index);
         auto&      current_frame_semaphore = vulkan_window_ptr->GetWindowFrameSemaphore(current_frame_index);

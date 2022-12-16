@@ -1,23 +1,19 @@
 #pragma once
+#include <functional>
+#include <vector>
+#include <string_view>
 #include <Layers/Layer.h>
-
 #include <imgui.h>
 #include <imconfig.h>
-
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
-
 #include <Core/TimeStep.h>
 #include <Inputs/KeyCode.h>
-
 #include <Inputs/IKeyboardEventCallback.h>
 #include <Inputs/IMouseEventCallback.h>
 #include <Inputs/ITextInputEventCallback.h>
 #include <Window/ICoreWindowEventCallback.h>
 #include <Components/UIComponent.h>
-
-#include <functional>
-#include <vector>
 
 namespace ZEngine::Components::UI
 {
@@ -35,38 +31,22 @@ namespace ZEngine::Layers
     {
 
     public:
-        ImguiLayer(const char* name = "ImGUI Layer") : Layer(name) {}
+        ImguiLayer(std::string_view name = "ImGUI Layer") : Layer(name) {}
 
         virtual ~ImguiLayer();
 
         virtual void Initialize() override;
         virtual void Deinitialize() override;
 
-        bool OnEvent(Event::CoreEvent& event) override
-        {
-            Event::EventDispatcher event_dispatcher(event);
-
-            event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&ImguiLayer::OnKeyPressed, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&ImguiLayer::OnKeyReleased, this, std::placeholders::_1));
-
-            event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&ImguiLayer::OnMouseButtonPressed, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&ImguiLayer::OnMouseButtonReleased, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&ImguiLayer::OnMouseButtonMoved, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&ImguiLayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
-            event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
-
-            event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
-
-            return false;
-        }
+        bool OnEvent(Event::CoreEvent& event) override;
 
         void Update(Core::TimeStep dt) override;
+
+        void Render() override;
 
         virtual void AddUIComponent(const Ref<Components::UI::UIComponent>& component);
         virtual void AddUIComponent(Ref<Components::UI::UIComponent>&& component);
         virtual void AddUIComponent(std::vector<Ref<Components::UI::UIComponent>>&& components);
-
-        void Render() override;
 
     protected:
         bool OnKeyPressed(Event::KeyPressedEvent&) override;
@@ -79,31 +59,19 @@ namespace ZEngine::Layers
         bool OnTextInputRaised(Event::TextInputEvent&) override;
 
         bool OnWindowClosed(Event::WindowClosedEvent&) override;
-        bool OnWindowResized(Event::WindowResizedEvent&) override
-        {
-            return false;
-        }
-        bool OnWindowMinimized(Event::WindowMinimizedEvent&) override
-        {
-            return false;
-        }
-        bool OnWindowMaximized(Event::WindowMaximizedEvent&) override
-        {
-            return false;
-        }
-        bool OnWindowRestored(Event::WindowRestoredEvent&) override
-        {
-            return false;
-        }
+        bool OnWindowResized(Event::WindowResizedEvent&) override;
+        bool OnWindowMinimized(Event::WindowMinimizedEvent&) override;
+        bool OnWindowMaximized(Event::WindowMaximizedEvent&) override;
+        bool OnWindowRestored(Event::WindowRestoredEvent&) override;
 
         virtual void StyleDarkTheme();
 
     private:
         static bool                                   m_initialized;
         bool                                          m_swap_chain_rebuild{false};
-        VkDescriptorPool                              m_descriptor_pool;
+        VkDescriptorPool                              m_descriptor_pool{VK_NULL_HANDLE};
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
 
-        void __frameRenderAndPresent(const Ref<Window::CoreWindow>& wd, ImDrawData* draw_data);
+        void FrameRenderAndPresent(const Ref<Window::CoreWindow>& wd, ImDrawData* draw_data);
     };
 } // namespace ZEngine::Layers

@@ -14,8 +14,7 @@ list (APPEND Sources ${CPP_FILES_LIST})
 
 
 list (APPEND Sources
-		GlfwWindow/OpenGLContext.cpp
-		GlfwWindow/OpenGLWindow.cpp
+		GlfwWindow/VulkanWindow.cpp
 )
 
 add_library (zEngineLib

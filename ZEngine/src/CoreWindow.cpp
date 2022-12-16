@@ -2,7 +2,7 @@
 #include <Window/CoreWindow.h>
 #include <ZEngineDef.h>
 
-#include <Window/GlfwWindow/OpenGLWindow.h>
+#include <Window/GlfwWindow/VulkanWindow.h>
 
 #include <ZEngine/Engine.h>
 
@@ -74,7 +74,7 @@ namespace ZEngine::Window
         prop.Title          = configuration.Title;
         prop.VSync          = configuration.EnableVsync;
 
-        auto core_window = new ZENGINE_OPENGL_WINDOW(prop, engine.GetVulkanInstance());
+        auto core_window = new GLFWWindow::VulkanWindow(prop, engine.GetVulkanInstance());
         core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
         return core_window;
     }

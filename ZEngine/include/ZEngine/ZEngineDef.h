@@ -5,14 +5,11 @@
 #define BIT(x) (1 << (x))
 #define ZENGINE_EXIT_FAILURE() exit(EXIT_FAILURE);
 
-#define ZENGINE_OPENGL_WINDOW GLFWWindow::OpenGLWindow
-#define ZENGINE_OPENGL_CONTEXT GLFWGraphic::OpenGLContext
 
 #define ZENGINE_KEYCODE ZEngine::Inputs::GlfwKeyCode
 
 namespace ZEngine
 {
-
     template <typename T>
     using Ref = std::shared_ptr<T>;
 
