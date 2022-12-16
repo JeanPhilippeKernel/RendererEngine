@@ -26,7 +26,7 @@ namespace ZEngine
 
         m_vulkan_instance.CreateInstance();
 
-        m_window.reset(ZEngine::Window::Create(m_engine_configuration.WindowConfiguration, *this));
+        m_window.reset(ZEngine::Window::Create(m_engine_configuration.WindowConfiguration));
 
         for (const auto& layer : m_engine_configuration.WindowConfiguration.RenderingLayerCollection)
         {

@@ -14,7 +14,7 @@ using namespace ZEngine::Event;
 
 namespace ZEngine::Window::GLFWWindow
 {
-    VulkanWindow::VulkanWindow(WindowProperty& prop, Hardwares::VulkanInstance& vulkan_instance) : CoreWindow()
+    VulkanWindow::VulkanWindow(WindowProperty& prop) : CoreWindow()
     {
         m_property    = prop;
         int glfw_init = glfwInit();
@@ -35,15 +35,81 @@ namespace ZEngine::Window::GLFWWindow
             });
 
         m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
-        glfwMaximizeWindow(m_native_window);
+
+        if (!m_native_window)
+        {
+            ZENGINE_CORE_CRITICAL("Failed to create GLFW Window")
+            ZENGINE_EXIT_FAILURE()
+        }
 
         int window_width = 0, window_height = 0;
         glfwGetWindowSize(m_native_window, &window_width, &window_height);
-        if ((window_width > 0) && (window_height > 0))
+        if ((window_width > 0) && (window_height > 0) && (m_property.Width != window_width) && (m_property.Height != window_height))
         {
             m_property.SetWidth(window_width);
             m_property.SetHeight(window_height);
         }
+
+        ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height)
+    }
+
+    uint32_t VulkanWindow::GetWidth() const
+    {
+        return m_property.Width;
+    }
+
+    std::string_view VulkanWindow::GetTitle() const
+    {
+        return m_property.Title;
+    }
+
+    bool VulkanWindow::IsMinimized() const
+    {
+        return m_property.IsMinimized;
+    }
+
+    void VulkanWindow::SetTitle(std::string_view title)
+    {
+        m_property.Title = title;
+        glfwSetWindowTitle(m_native_window, m_property.Title.c_str());
+    }
+
+    bool VulkanWindow::IsVSyncEnable() const
+    {
+        return m_property.VSync;
+    }
+
+    void VulkanWindow::SetVSync(bool value)
+    {
+        m_property.VSync = value;
+        if (value)
+        {
+            glfwSwapInterval(1);
+        }
+        else
+        {
+            glfwSwapInterval(0);
+        }
+    }
+
+    void VulkanWindow::SetCallbackFunction(const EventCallbackFn& callback)
+    {
+        m_property.CallbackFn = callback;
+    }
+
+    void* VulkanWindow::GetNativeWindow() const
+    {
+        return m_native_window;
+    }
+
+    const WindowProperty& VulkanWindow::GetWindowProperty() const
+    {
+        return m_property;
+    }
+
+    void VulkanWindow::Initialize()
+    {
+        auto& vulkan_instance = m_engine->GetVulkanInstance();
 
         ZENGINE_VALIDATE_ASSERT(
             glfwCreateWindowSurface(vulkan_instance.GetNativeHandle(), m_native_window, nullptr, &m_vulkan_surface) == VK_SUCCESS, "Failed Window Surface from GLFW")
@@ -93,7 +159,15 @@ namespace ZEngine::Window::GLFWWindow
 
         RecreateSwapChain(nullptr, current_device);
 
-        ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height)
+        auto& layer_stack = *m_layer_stack_ptr;
+
+        // Initialize in reverse order, so overlay layers can be initialize first
+        // this give us opportunity to initialize UI-like layers before graphic render-like layers
+        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
+        {
+            (*rlayer_it)->SetAttachedWindow(shared_from_this());
+            (*rlayer_it)->Initialize();
+        }
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
@@ -110,32 +184,8 @@ namespace ZEngine::Window::GLFWWindow
 
         glfwSetCursorPosCallback(m_native_window, VulkanWindow::__OnGlfwCursorMoved);
         glfwSetCharCallback(m_native_window, VulkanWindow::__OnGlfwTextInputRaised);
-    }
 
-    void VulkanWindow::SetVSync(bool value)
-    {
-        m_property.VSync = value;
-        if (value)
-        {
-            glfwSwapInterval(1);
-        }
-        else
-        {
-            glfwSwapInterval(0);
-        }
-    }
-
-    void VulkanWindow::Initialize()
-    {
-        auto& layer_stack = *m_layer_stack_ptr;
-
-        // Initialize in reverse order, so overlay layers can be initialize first
-        // this give us opportunity to initialize UI-like layers before graphic render-like layers
-        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
-        {
-            (*rlayer_it)->SetAttachedWindow(shared_from_this());
-            (*rlayer_it)->Initialize();
-        }
+        glfwMaximizeWindow(m_native_window);
     }
 
     void VulkanWindow::Deinitialize()
@@ -150,6 +200,11 @@ namespace ZEngine::Window::GLFWWindow
     void VulkanWindow::PollEvent()
     {
         glfwPollEvents();
+    }
+
+    float VulkanWindow::GetTime()
+    {
+        return (float) glfwGetTime();
     }
 
     void VulkanWindow::__OnGlfwFrameBufferSizeChanged(GLFWwindow* window, int width, int height)
@@ -210,7 +265,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::__OnGlfwWindowClose(GLFWwindow* window)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             WindowClosedEvent e;
@@ -220,7 +275,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::__OnGlfwWindowResized(GLFWwindow* window, int width, int height)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             Event::WindowResizedEvent e{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
@@ -230,7 +285,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::__OnGlfwWindowMaximized(GLFWwindow* window, int maximized)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             if (maximized == GLFW_TRUE)
@@ -247,7 +302,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::__OnGlfwWindowMinimized(GLFWwindow* window, int minimized)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             if (minimized == GLFW_TRUE)
@@ -263,7 +318,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             if (action == GLFW_PRESS)
@@ -280,7 +335,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::__OnGlfwMouseScrollRaised(GLFWwindow* window, double xoffset, double yoffset)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             MouseButtonWheelEvent e{xoffset, yoffset};
@@ -290,7 +345,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             MouseButtonMovedEvent e{xoffset, yoffset};
@@ -300,7 +355,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::__OnGlfwTextInputRaised(GLFWwindow* window, unsigned int character)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             std::string arr;
@@ -312,7 +367,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
-        WindowProperty* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
             switch (action)
@@ -673,6 +728,11 @@ namespace ZEngine::Window::GLFWWindow
         glfwSetErrorCallback(NULL);
         glfwDestroyWindow(m_native_window);
         glfwTerminate();
+    }
+
+    uint32_t VulkanWindow::GetHeight() const
+    {
+        return m_property.Height;
     }
 
     bool VulkanWindow::OnWindowClosed(WindowClosedEvent& event)

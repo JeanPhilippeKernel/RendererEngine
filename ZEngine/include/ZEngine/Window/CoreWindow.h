@@ -58,11 +58,11 @@ namespace ZEngine::Window
         CoreWindow();
         virtual ~CoreWindow();
 
-        virtual unsigned int       GetHeight() const                = 0;
-        virtual unsigned int       GetWidth() const                 = 0;
-        virtual const std::string& GetTitle() const                 = 0;
-        virtual void               SetTitle(std::string_view title) = 0;
-        virtual bool               IsMinimized() const              = 0;
+        virtual uint32_t         GetHeight() const                = 0;
+        virtual uint32_t         GetWidth() const                 = 0;
+        virtual std::string_view GetTitle() const                 = 0;
+        virtual void             SetTitle(std::string_view title) = 0;
+        virtual bool             IsMinimized() const              = 0;
 
         virtual bool IsVSyncEnable() const                                = 0;
         virtual void SetVSync(bool value)                                 = 0;
@@ -95,5 +95,5 @@ namespace ZEngine::Window
         ZEngine::Engine*                            m_engine{nullptr};
     };
 
-    CoreWindow* Create(const WindowConfiguration&, ZEngine::Engine&);
+    CoreWindow* Create(const WindowConfiguration&);
 } // namespace ZEngine::Window

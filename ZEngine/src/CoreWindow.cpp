@@ -66,7 +66,7 @@ namespace ZEngine::Window
         }
     }
 
-    CoreWindow* Create(const WindowConfiguration& configuration, ZEngine::Engine& engine)
+    CoreWindow* Create(const WindowConfiguration& configuration)
     {
         WindowProperty prop = {};
         prop.Height         = configuration.Height;
@@ -74,7 +74,7 @@ namespace ZEngine::Window
         prop.Title          = configuration.Title;
         prop.VSync          = configuration.EnableVsync;
 
-        auto core_window = new GLFWWindow::VulkanWindow(prop, engine.GetVulkanInstance());
+        auto core_window = new GLFWWindow::VulkanWindow(prop);
         core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
         return core_window;
     }

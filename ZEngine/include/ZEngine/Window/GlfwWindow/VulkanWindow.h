@@ -26,64 +26,35 @@ namespace ZEngine::Window::GLFWWindow
     class VulkanWindow : public CoreWindow
     {
     public:
-        VulkanWindow(WindowProperty& prop, Hardwares::VulkanInstance& vulkan_instance);
+        VulkanWindow(WindowProperty& prop);
         virtual ~VulkanWindow();
 
-        unsigned int GetHeight() const override
-        {
-            return m_property.Height;
-        }
+        uint32_t GetHeight() const override;
 
-        unsigned int GetWidth() const override
-        {
-            return m_property.Width;
-        }
+        uint32_t GetWidth() const override;
 
-        const std::string& GetTitle() const override
-        {
-            return m_property.Title;
-        }
+        std::string_view GetTitle() const override;
 
-        bool IsMinimized() const
-        {
-            return m_property.IsMinimized;
-        }
+        bool IsMinimized() const override;
 
-        void SetTitle(std::string_view title) override
-        {
-            m_property.Title = title;
-            glfwSetWindowTitle(m_native_window, m_property.Title.c_str());
-        }
+        void SetTitle(std::string_view title) override;
 
-        bool IsVSyncEnable() const override
-        {
-            return m_property.VSync;
-        }
+        bool IsVSyncEnable() const override;
 
         void SetVSync(bool value) override;
 
-        void SetCallbackFunction(const EventCallbackFn& callback) override
-        {
-            m_property.CallbackFn = callback;
-        }
+        void SetCallbackFunction(const EventCallbackFn& callback) override;
 
-        void* GetNativeWindow() const override
-        {
-            return m_native_window;
-        }
+        void* GetNativeWindow() const override;
 
-        virtual const WindowProperty& GetWindowProperty() const override
-        {
-            return m_property;
-        }
+        virtual const WindowProperty& GetWindowProperty() const override;
 
-        virtual void  Initialize() override;
-        virtual void  Deinitialize() override;
+        virtual void Initialize() override;
+        virtual void Deinitialize() override;
+
         virtual void  PollEvent() override;
-        virtual float GetTime() override
-        {
-            return (float) glfwGetTime();
-        }
+        virtual float GetTime() override;
+
         virtual void Update(Core::TimeStep delta_time) override;
         virtual void Render() override;
 

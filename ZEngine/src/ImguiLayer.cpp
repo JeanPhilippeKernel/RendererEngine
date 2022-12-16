@@ -246,7 +246,7 @@ namespace ZEngine::Layers
 
             ImDrawData* main_draw_data = ImGui::GetDrawData();
 
-            if (window_ptr->GetWindowProperty().IsMinimized)
+            if (window_ptr->IsMinimized())
             {
                 return;
             }
