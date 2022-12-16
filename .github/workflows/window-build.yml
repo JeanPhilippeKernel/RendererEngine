@@ -25,6 +25,9 @@ jobs:
       with:
         cmake-version: '3.20.x'
 
+    - name: Dump Environment Variable
+      run: env
+
     - name: Checkout repository
       uses: actions/checkout@v2
 
