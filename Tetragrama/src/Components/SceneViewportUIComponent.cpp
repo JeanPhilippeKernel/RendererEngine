@@ -106,8 +106,8 @@ namespace Tetragrama::Components
 
     void SceneViewportUIComponent::SceneViewportClickedMessageHandler(Messengers::GenericMessage<std::pair<int, int>>& e)
     {
-        Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<int, int>>>(
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, Messengers::GenericMessage<std::pair<int, int>>{e});
+        //Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<int, int>>>(
+        //    EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, Messengers::GenericMessage<std::pair<int, int>>{e});
     }
 
     void SceneViewportUIComponent::SceneViewportFocusedMessageHandler(Messengers::GenericMessage<bool>& e)
