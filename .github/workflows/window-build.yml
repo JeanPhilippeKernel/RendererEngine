@@ -14,6 +14,12 @@ jobs:
           buildConfiguration: [Debug, Release]
 
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Checkout submodules
+      run: git submodule update --init --recursive
+
     - name: Install Vulkan SDK
       uses: humbletim/install-vulkan-sdk@v1.1.1
       with:
@@ -27,12 +33,6 @@ jobs:
 
     - name: Dump Environment Variable
       run: env
-
-    - name: Checkout repository
-      uses: actions/checkout@v2
-
-    - name: Checkout submodules
-      run: git submodule update --init --recursive
 
     - name: CMake Build
       run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
