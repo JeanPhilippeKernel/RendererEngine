@@ -23,7 +23,7 @@ jobs:
     - name: Install CMake
       uses: jwlawson/actions-setup-cmake@v1.9
       with:
-        cmake-version: '3.20.x'
+        cmake-version: '3.21.x'
 
     - name: Dump Environment Variable
       run: env
