@@ -60,13 +60,9 @@ namespace ZEngine::Rendering::Buffers
             vkFreeMemory(device_handle, m_vertex_buffer_device_memory, nullptr);
         }
 
-        void Bind() const override
-        {
-        }
+        void Bind() const override {}
 
-        void Unbind() const override
-        {
-        }
+        void Unbind() const override {}
 
         void SetLayout(const Layout::BufferLayout<T>& layout)
         {
