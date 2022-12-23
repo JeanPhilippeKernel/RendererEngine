@@ -20,6 +20,8 @@ namespace ZEngine::Hardwares
         const VulkanDevice&              GetHighPerformantDevice() const;
         const VkInstance                 GetNativeHandle() const;
 
+        VulkanDevice&                    GetHighPerformantDevice();
+
     private:
         std::string               m_application_name;
         VulkanLayer               m_layer;

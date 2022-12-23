@@ -17,49 +17,36 @@
 
 namespace ZEngine
 {
-    class Engine : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable
+    struct Engine
     {
+        Engine()              = delete;
+        Engine(const Engine&) = delete;
+        ~Engine()             = delete;
 
-    public:
-        explicit Engine(const EngineConfiguration&);
-        virtual ~Engine();
+        static void Initialize(const EngineConfiguration&);
 
-    public:
-        virtual void Initialize() override;
-        virtual void Update(Core::TimeStep delta_time) override;
-        virtual void Render() override;
+        static void ProcessEvent();
+        static void Update(Core::TimeStep delta_time);
+        static void Render();
 
-    public:
-        void Start();
+        static void Start();
 
-        const Ref<ZEngine::Window::CoreWindow>& GetWindow() const
-        {
-            return m_window;
-        }
+        static Core::TimeStep                   GetDeltaTime();
+        static Ref<ZEngine::Window::CoreWindow> GetWindow();
+        static Hardwares::VulkanInstance*       GetVulkanInstance();
 
-        static Core::TimeStep GetDeltaTime()
-        {
-            return m_delta_time;
-        }
+        static void Deinitialize();
+        static void Dispose();
 
-        Hardwares::VulkanInstance& GetVulkanInstance();
-
-    protected:
-        void         Run();
-        virtual void ProcessEvent();
-
-        virtual void Deinitialize() override;
-
-    public:
-        bool OnEngineClosed(Event::EngineClosedEvent&);
+        static bool OnEngineClosed(Event::EngineClosedEvent&);
 
     private:
-        bool                             m_request_terminate;
-        float                            m_last_frame_time;
-        Ref<ZEngine::Window::CoreWindow> m_window;
-        Hardwares::VulkanInstance        m_vulkan_instance;
-        const EngineConfiguration&       m_engine_configuration;
-        static Core::TimeStep            m_delta_time;
+        static void                             Run();
+        static bool                             m_request_terminate;
+        static float                            m_last_frame_time;
+        static Core::TimeStep                   m_delta_time;
+        static Ref<ZEngine::Window::CoreWindow> m_window;
+        static Scope<Hardwares::VulkanInstance> m_vulkan_instance;
     };
 
     Engine* CreateEngine(const EngineConfiguration&);

@@ -12,17 +12,17 @@ namespace ZEngine::Core {
         Utility(const Utility&) = default;
         ~Utility()              = delete;
 
-        static unsigned int ToGraphicCardType(const std::string& type_name) {
+        static unsigned int ToGraphicCardType(std::string_view type_name) {
 
-            if (strcmp(typeid(float).name(), type_name.c_str()) == 0) {
+            if (strcmp(typeid(float).name(), type_name.data()) == 0) {
                 return 0x1406;
             }
 
-            else if (strcmp(typeid(int).name(), type_name.c_str()) == 0) {
+            else if (strcmp(typeid(int).name(), type_name.data()) == 0) {
                 return 0x1404;
             }
 
-            else if (strcmp(typeid(unsigned int).name(), type_name.c_str()) == 0) {
+            else if (strcmp(typeid(unsigned int).name(), type_name.data()) == 0) {
                 return 0x1405;
             }
 

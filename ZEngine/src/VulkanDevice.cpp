@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <ZEngineDef.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Logging/LoggerDefinition.h>
 
@@ -45,12 +46,18 @@ namespace ZEngine::Hardwares
                         }
                     }
                 }
+                else if (m_physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_TRANSFER_BIT)
+                {
+
+                    m_transfer_queue_family_index_collection.push_back(index);
+                }
             }
         }
 
         std::vector<VkDeviceQueueCreateInfo> device_queue_create_info_collection;
         std::vector<float>                   graphic_queue_priorities;
         std::vector<float>                   graphic_with_present_queue_priorities;
+        std::vector<float>                   transfer_queue_priorities;
 
         for (auto graphic_queue_family_index : m_graphic_queue_family_index_collection)
         {
@@ -86,6 +93,23 @@ namespace ZEngine::Hardwares
             device_queue_create_info_collection.emplace_back(std::move(queue_info));
         }
 
+        for (auto transfer_queue_family_index : m_transfer_queue_family_index_collection)
+        {
+            VkDeviceQueueCreateInfo queue_info = {};
+            queue_info.sType                   = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+
+
+            transfer_queue_priorities.resize(m_physical_device_queue_family_collection[transfer_queue_family_index].queueCount);
+            std::fill(std::begin(transfer_queue_priorities), std::end(transfer_queue_priorities), 1.0f);
+
+            queue_info.pQueuePriorities = transfer_queue_priorities.data();
+            queue_info.queueFamilyIndex = transfer_queue_family_index;
+            queue_info.queueCount       = m_physical_device_queue_family_collection[transfer_queue_family_index].queueCount;
+            queue_info.pNext            = nullptr;
+
+            device_queue_create_info_collection.emplace_back(std::move(queue_info));
+        }
+
         VkDeviceCreateInfo device_create_info   = {};
         device_create_info.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_create_info.queueCreateInfoCount = static_cast<uint32_t>(device_queue_create_info_collection.size());
@@ -108,6 +132,11 @@ namespace ZEngine::Hardwares
         if (!m_graphic_with_present_queue_family_index_collection.empty())
         {
             vkGetDeviceQueue(m_logical_device, m_graphic_with_present_queue_family_index_collection[0], 0, &m_graphic_with_present_support_queue);
+        }
+
+        if (!m_transfer_queue_family_index_collection.empty())
+        {
+            vkGetDeviceQueue(m_logical_device, m_transfer_queue_family_index_collection[0], 0, &m_transfer_queue);
         }
     }
 
@@ -138,6 +167,12 @@ namespace ZEngine::Hardwares
         return m_graphic_queue;
     }
 
+    VkQueue VulkanDevice::GetCurrentTransferQueue() const
+    {
+        assert(m_transfer_queue != VK_NULL_HANDLE);
+        return m_transfer_queue;
+    }
+
     std::vector<uint32_t> VulkanDevice::GetGraphicQueueFamilyIndexCollection(bool with_present_support) const
     {
         auto queue_family_indice = std::unordered_set<uint32_t>{std::begin(m_graphic_queue_family_index_collection), std::end(m_graphic_queue_family_index_collection)};
@@ -148,8 +183,38 @@ namespace ZEngine::Hardwares
         return std::vector<uint32_t>{std::begin(queue_family_indice), std::end(queue_family_indice)};
     }
 
+
+    std::vector<uint32_t> VulkanDevice::GetTransferQueueFamilyIndexCollection() const
+    {
+        return m_transfer_queue_family_index_collection;
+    }
+
+    VkCommandPool VulkanDevice::GetTransferCommandPool()
+    {
+        if (m_transfer_command_pool)
+        {
+            return m_transfer_command_pool;
+        }
+
+        if (!m_transfer_queue_family_index_collection.empty())
+        {
+            VkCommandPoolCreateInfo command_pool_create_info = {};
+            command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+            command_pool_create_info.queueFamilyIndex        = m_transfer_queue_family_index_collection.at(0);
+
+            ZENGINE_VALIDATE_ASSERT(vkCreateCommandPool(m_logical_device, &command_pool_create_info, nullptr, &m_transfer_command_pool) == VK_SUCCESS, "Failed to create Transfer Command Pool")
+        }
+        return m_transfer_command_pool;
+    }
+
     VkPhysicalDevice VulkanDevice::GetNativePhysicalDeviceHandle() const
     {
         return m_physical_device;
+    }
+
+    const VkPhysicalDeviceMemoryProperties& VulkanDevice::GetPhysicalDeviceMemoryProperties() const
+    {
+        return m_physical_device_memory_properties;
     }
 } // namespace ZEngine::Hardwares

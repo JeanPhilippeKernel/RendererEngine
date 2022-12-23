@@ -168,6 +168,23 @@ namespace ZEngine::Hardwares
 
         assert(high_performant_device_index != -1);
 
+        return m_device_collection.at(high_performant_device_index);
+    }
+
+    VulkanDevice& VulkanInstance::GetHighPerformantDevice()
+    {
+        int high_performant_device_index{-1};
+        for (size_t index = 0; index < m_device_collection.size(); ++index)
+        {
+            if (m_device_collection[index].IsHighPerformant())
+            {
+                high_performant_device_index = index;
+                break;
+            }
+        }
+
+        assert(high_performant_device_index != -1);
+
         return m_device_collection[high_performant_device_index];
     }
 

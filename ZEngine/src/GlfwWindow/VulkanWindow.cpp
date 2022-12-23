@@ -14,14 +14,17 @@ using namespace ZEngine::Event;
 
 namespace ZEngine::Window::GLFWWindow
 {
-    VulkanWindow::VulkanWindow(WindowProperty& prop) : CoreWindow()
+    VulkanWindow::VulkanWindow(const WindowConfiguration& configuration) : CoreWindow()
     {
-        m_property    = prop;
-        int glfw_init = glfwInit();
+        m_property.Height = configuration.Height;
+        m_property.Width  = configuration.Width;
+        m_property.Title  = configuration.Title;
+        m_property.VSync  = configuration.EnableVsync;
 
+        int glfw_init = glfwInit();
         if (glfw_init == GLFW_FALSE)
         {
-            ZENGINE_CORE_CRITICAL("Unable to initialize glfw..");
+            ZENGINE_CORE_CRITICAL("Unable to initialize glfw..")
             ZENGINE_EXIT_FAILURE();
         }
 
@@ -99,7 +102,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void* VulkanWindow::GetNativeWindow() const
     {
-        return m_native_window;
+        return reinterpret_cast<void*>(m_native_window);
     }
 
     const WindowProperty& VulkanWindow::GetWindowProperty() const
@@ -109,14 +112,14 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::Initialize()
     {
-        auto& vulkan_instance = m_engine->GetVulkanInstance();
+        auto vulkan_instance = ZEngine::Engine::GetVulkanInstance();
 
         ZENGINE_VALIDATE_ASSERT(
-            glfwCreateWindowSurface(vulkan_instance.GetNativeHandle(), m_native_window, nullptr, &m_vulkan_surface) == VK_SUCCESS, "Failed Window Surface from GLFW")
+            glfwCreateWindowSurface(vulkan_instance->GetNativeHandle(), m_native_window, nullptr, &m_vulkan_surface) == VK_SUCCESS, "Failed Window Surface from GLFW")
 
-        vulkan_instance.ConfigureDevices(&m_vulkan_surface);
+        vulkan_instance->ConfigureDevices(&m_vulkan_surface);
 
-        const auto& current_device        = vulkan_instance.GetHighPerformantDevice();
+        const auto& current_device        = vulkan_instance->GetHighPerformantDevice();
         auto        current_device_handle = current_device.GetNativePhysicalDeviceHandle();
 
         uint32_t formatCount{0};
@@ -223,15 +226,20 @@ namespace ZEngine::Window::GLFWWindow
     {
         vkDeviceWaitIdle(device.GetNativeDeviceHandle());
         vkQueueWaitIdle(device.GetCurrentGraphicQueue(true));
+        vkQueueWaitIdle(device.GetCurrentTransferQueue());
 
         for (uint32_t i = 0; i < m_frame_collection.size(); i++)
         {
             vkDestroyFence(device.GetNativeDeviceHandle(), m_frame_collection[i].Fence, nullptr);
-            vkFreeCommandBuffers(device.GetNativeDeviceHandle(), m_frame_collection[i].CommandPool, 1, &(m_frame_collection[i].CommandBuffer));
-            vkDestroyCommandPool(device.GetNativeDeviceHandle(), m_frame_collection[i].CommandPool, nullptr);
-            m_frame_collection[i].Fence         = {};
-            m_frame_collection[i].CommandBuffer = {};
-            m_frame_collection[i].CommandPool   = {};
+            vkFreeCommandBuffers(device.GetNativeDeviceHandle(), m_frame_collection[i].GraphicCommandPool, 1, &(m_frame_collection[i].GraphicCommandBuffer));
+            vkDestroyCommandPool(device.GetNativeDeviceHandle(), m_frame_collection[i].GraphicCommandPool, nullptr);
+            vkFreeCommandBuffers(device.GetNativeDeviceHandle(), m_frame_collection[i].TransferCommandPool, 1, &(m_frame_collection[i].TransferCommandBuffer));
+            vkDestroyCommandPool(device.GetNativeDeviceHandle(), m_frame_collection[i].TransferCommandPool, nullptr);
+            m_frame_collection[i].Fence                 = {};
+            m_frame_collection[i].GraphicCommandBuffer  = {};
+            m_frame_collection[i].GraphicCommandPool    = {};
+            m_frame_collection[i].TransferCommandBuffer = {};
+            m_frame_collection[i].TransferCommandPool   = {};
 
             vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_semaphore_collection[i].ImageAcquiredSemaphore, nullptr);
             vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_semaphore_collection[i].RenderCompleteSemaphore, nullptr);
@@ -517,14 +525,20 @@ namespace ZEngine::Window::GLFWWindow
         createInfo.imageArrayLayers = m_surface_capabilities.maxImageArrayLayers;
         createInfo.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        auto device_graphic_queue_family_index_collection = device.GetGraphicQueueFamilyIndexCollection(true);
-        if (!device_graphic_queue_family_index_collection.empty())
+        auto device_graphic_queue_family_index_collection  = device.GetGraphicQueueFamilyIndexCollection(true);
+        auto device_transfer_queue_family_index_collection = device.GetTransferQueueFamilyIndexCollection();
+
+        std::vector<uint32_t> device_family_indice;
+        if (!device_graphic_queue_family_index_collection.empty() || !device_transfer_queue_family_index_collection.empty())
         {
-            const auto index_count = device_graphic_queue_family_index_collection.size();
+            const auto index_count = device_graphic_queue_family_index_collection.size() + device_transfer_queue_family_index_collection.size();
+
+            std::copy(std::begin(device_graphic_queue_family_index_collection), std::end(device_graphic_queue_family_index_collection), std::back_inserter(device_family_indice));
+            std::copy(std::begin(device_transfer_queue_family_index_collection), std::end(device_transfer_queue_family_index_collection), std::back_inserter(device_family_indice));
 
             createInfo.imageSharingMode      = (index_count > 1) ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
             createInfo.queueFamilyIndexCount = index_count;
-            createInfo.pQueueFamilyIndices   = device_graphic_queue_family_index_collection.data();
+            createInfo.pQueueFamilyIndices   = device_family_indice.data();
         }
 
         createInfo.preTransform   = m_surface_capabilities.currentTransform;
@@ -662,21 +676,39 @@ namespace ZEngine::Window::GLFWWindow
             auto& frame           = m_frame_collection[i];
             auto& frame_semaphore = m_frame_semaphore_collection[i];
 
-            // ToDo : We should have one CommandPool
-            VkCommandPoolCreateInfo command_pool_create_info = {};
-            command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            command_pool_create_info.queueFamilyIndex        = device.GetGraphicQueueFamilyIndexCollection(true).at(0);
-            ZENGINE_VALIDATE_ASSERT(
-                vkCreateCommandPool(device.GetNativeDeviceHandle(), &command_pool_create_info, nullptr, &(frame.CommandPool)) == VK_SUCCESS, "Failed to create Command Pool")
+            // ToDo : We should have one CommandPool for graphic and other one for transfer
 
-            VkCommandBufferAllocateInfo command_buffer_create_info = {};
-            command_buffer_create_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            command_buffer_create_info.commandPool                 = frame.CommandPool;
-            command_buffer_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            command_buffer_create_info.commandBufferCount          = 1;
-            ZENGINE_VALIDATE_ASSERT(
-                vkAllocateCommandBuffers(device.GetNativeDeviceHandle(), &command_buffer_create_info, &(frame.CommandBuffer)) == VK_SUCCESS, "Failed to allocate Command Buffer")
+            /* Graphic Command Pool & Command Buffer */
+            VkCommandPoolCreateInfo graphic_command_pool_create_info = {};
+            graphic_command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            graphic_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            graphic_command_pool_create_info.queueFamilyIndex        = device.GetGraphicQueueFamilyIndexCollection(true).at(0);
+            ZENGINE_VALIDATE_ASSERT(vkCreateCommandPool(device.GetNativeDeviceHandle(), &graphic_command_pool_create_info, nullptr, &(frame.GraphicCommandPool)) == VK_SUCCESS,
+                "Failed to create Command Pool")
+
+            VkCommandBufferAllocateInfo graphic_command_buffer_create_info = {};
+            graphic_command_buffer_create_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            graphic_command_buffer_create_info.commandPool                 = frame.GraphicCommandPool;
+            graphic_command_buffer_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            graphic_command_buffer_create_info.commandBufferCount          = 1;
+            ZENGINE_VALIDATE_ASSERT(vkAllocateCommandBuffers(device.GetNativeDeviceHandle(), &graphic_command_buffer_create_info, &(frame.GraphicCommandBuffer)) == VK_SUCCESS,
+                "Failed to allocate Command Buffer")
+
+            /* Transfer Command Pool & Command Buffer */
+            VkCommandPoolCreateInfo transfer_command_pool_create_info = {};
+            transfer_command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            transfer_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            transfer_command_pool_create_info.queueFamilyIndex        = device.GetTransferQueueFamilyIndexCollection().at(0);
+            ZENGINE_VALIDATE_ASSERT(vkCreateCommandPool(device.GetNativeDeviceHandle(), &transfer_command_pool_create_info, nullptr, &(frame.TransferCommandPool)) == VK_SUCCESS,
+                "Failed to create Command Pool")
+
+            VkCommandBufferAllocateInfo transfer_command_buffer_create_info = {};
+            transfer_command_buffer_create_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            transfer_command_buffer_create_info.commandPool                 = frame.TransferCommandPool;
+            transfer_command_buffer_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            transfer_command_buffer_create_info.commandBufferCount          = 1;
+            ZENGINE_VALIDATE_ASSERT(vkAllocateCommandBuffers(device.GetNativeDeviceHandle(), &transfer_command_buffer_create_info, &(frame.TransferCommandBuffer)) == VK_SUCCESS,
+                "Failed to allocate Command Buffer")
 
             VkFenceCreateInfo fence_create_info = {};
             fence_create_info.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
@@ -719,11 +751,11 @@ namespace ZEngine::Window::GLFWWindow
 
     VulkanWindow::~VulkanWindow()
     {
-        const auto& device = m_engine->GetVulkanInstance().GetHighPerformantDevice();
+        const auto& device = ZEngine::Engine::GetVulkanInstance()->GetHighPerformantDevice();
         MarkVulkanInternalObjectDirty(device);
 
         vkDestroySwapchainKHR(device.GetNativeDeviceHandle(), m_swapchain, nullptr);
-        vkDestroySurfaceKHR(m_engine->GetVulkanInstance().GetNativeHandle(), m_vulkan_surface, nullptr);
+        vkDestroySurfaceKHR(ZEngine::Engine::GetVulkanInstance()->GetNativeHandle(), m_vulkan_surface, nullptr);
 
         glfwSetErrorCallback(NULL);
         glfwDestroyWindow(m_native_window);
@@ -738,11 +770,11 @@ namespace ZEngine::Window::GLFWWindow
     bool VulkanWindow::OnWindowClosed(WindowClosedEvent& event)
     {
         glfwSetWindowShouldClose(m_native_window, GLFW_TRUE);
-        ZENGINE_CORE_INFO("Window has been closed");
+        ZENGINE_CORE_INFO("Window has been closed")
 
         Event::EngineClosedEvent e(event.GetName().c_str());
         Event::EventDispatcher   event_dispatcher(e);
-        event_dispatcher.Dispatch<Event::EngineClosedEvent>(std::bind(&Engine::OnEngineClosed, m_engine, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::EngineClosedEvent>(std::bind(&Engine::OnEngineClosed, std::placeholders::_1));
         return true;
     }
 
@@ -750,10 +782,10 @@ namespace ZEngine::Window::GLFWWindow
     {
         if (event.GetWidth() > 0 && event.GetHeight() > 0)
         {
-            RecreateSwapChain(m_swapchain, m_engine->GetVulkanInstance().GetHighPerformantDevice());
+            RecreateSwapChain(m_swapchain, ZEngine::Engine::GetVulkanInstance()->GetHighPerformantDevice());
         }
 
-        ZENGINE_CORE_INFO("Window has been resized");
+        ZENGINE_CORE_INFO("Window has been resized")
 
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::WindowResizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
@@ -762,7 +794,7 @@ namespace ZEngine::Window::GLFWWindow
 
     bool VulkanWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event)
     {
-        ZENGINE_CORE_INFO("Window has been minimized");
+        ZENGINE_CORE_INFO("Window has been minimized")
 
         m_property.IsMinimized = true;
         Event::EventDispatcher event_dispatcher(event);
@@ -772,7 +804,7 @@ namespace ZEngine::Window::GLFWWindow
 
     bool VulkanWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event)
     {
-        ZENGINE_CORE_INFO("Window has been maximized");
+        ZENGINE_CORE_INFO("Window has been maximized")
 
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::WindowMaximizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
@@ -781,7 +813,7 @@ namespace ZEngine::Window::GLFWWindow
 
     bool VulkanWindow::OnWindowRestored(Event::WindowRestoredEvent& event)
     {
-        ZENGINE_CORE_INFO("Window has been restored");
+        ZENGINE_CORE_INFO("Window has been restored")
 
         m_property.IsMinimized = false;
         Event::EventDispatcher event_dispatcher(event);

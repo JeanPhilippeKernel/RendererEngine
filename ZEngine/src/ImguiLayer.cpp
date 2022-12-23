@@ -30,9 +30,8 @@ namespace ZEngine::Layers
             auto current_window            = m_window.lock();
             auto current_window_ptr        = current_window.get();
             auto current_vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(current_window_ptr);
-            auto current_engine_ptr        = current_window->GetAttachedEngine();
 
-            const auto& performant_device = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice();
+            const auto& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
             auto        device_handle     = performant_device.GetNativeDeviceHandle();
             auto        present_queue     = performant_device.GetCurrentGraphicQueue(true);
 
@@ -80,7 +79,7 @@ namespace ZEngine::Layers
 
 
             ImGui_ImplVulkan_InitInfo imgui_vulkan_init_info = {};
-            imgui_vulkan_init_info.Instance                  = current_engine_ptr->GetVulkanInstance().GetNativeHandle();
+            imgui_vulkan_init_info.Instance                  = Engine::GetVulkanInstance()->GetNativeHandle();
             imgui_vulkan_init_info.PhysicalDevice            = performant_device.GetNativePhysicalDeviceHandle();
             imgui_vulkan_init_info.Device                    = device_handle;
             imgui_vulkan_init_info.QueueFamily               = performant_device.GetGraphicQueueFamilyIndexCollection(true).at(0);
@@ -101,22 +100,23 @@ namespace ZEngine::Layers
             const auto selected_frame_index       = requested_frame % available_frame_collection.size();
             auto&      selected_frame             = available_frame_collection[selected_frame_index];
 
-            ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, selected_frame.CommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, selected_frame.GraphicCommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool -- ImGuiLayer")
 
             VkCommandBufferBeginInfo command_buffer_begin_info = {};
             command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             command_buffer_begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(selected_frame.CommandBuffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin Command Buffer -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(
+                vkBeginCommandBuffer(selected_frame.GraphicCommandBuffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin Command Buffer -- ImGuiLayer")
 
-            ImGui_ImplVulkan_CreateFontsTexture(selected_frame.CommandBuffer);
+            ImGui_ImplVulkan_CreateFontsTexture(selected_frame.GraphicCommandBuffer);
 
-            VkCommandBuffer submit_info_command_buffer_array[] = {selected_frame.CommandBuffer};
+            VkCommandBuffer submit_info_command_buffer_array[] = {selected_frame.GraphicCommandBuffer};
             VkSubmitInfo    submit_info                        = {};
             submit_info.sType                                  = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submit_info.commandBufferCount                     = 1;
             submit_info.pCommandBuffers                        = submit_info_command_buffer_array;
 
-            ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(selected_frame.CommandBuffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(selected_frame.GraphicCommandBuffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
 
             ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(present_queue, 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit Command Buffer on Present Queue -- ImGuiLayer")
 
@@ -134,8 +134,7 @@ namespace ZEngine::Layers
         {
             if (auto current_window = m_window.lock())
             {
-                auto        current_engine_ptr = current_window->GetAttachedEngine();
-                const auto& performant_device  = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice();
+                const auto& performant_device  = Engine::GetVulkanInstance()->GetHighPerformantDevice();
 
                 ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(performant_device.GetCurrentGraphicQueue(true)) == VK_SUCCESS, "Failed to wait for Present Queue -- ImGuiLayer");
 
@@ -387,8 +386,7 @@ namespace ZEngine::Layers
 
         if (auto current_window = m_window.lock())
         {
-            auto        current_engine_ptr = current_window->GetAttachedEngine();
-            const auto& performant_device  = current_engine_ptr->GetVulkanInstance().GetHighPerformantDevice();
+            const auto& performant_device  = Engine::GetVulkanInstance()->GetHighPerformantDevice();
             auto        device_handle      = performant_device.GetNativeDeviceHandle();
             auto        present_queue      = performant_device.GetCurrentGraphicQueue(true);
 
@@ -397,7 +395,7 @@ namespace ZEngine::Layers
 
             ZENGINE_VALIDATE_ASSERT(vkResetFences(device_handle, 1, &(current_frame.Fence)) == VK_SUCCESS, "Failed to reset Fence semaphore -- ImGuiLayer")
 
-            ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, current_frame.CommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, current_frame.GraphicCommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool -- ImGuiLayer")
 
 
             uint32_t image_index;
@@ -414,7 +412,8 @@ namespace ZEngine::Layers
             VkCommandBufferBeginInfo command_buffer_begin_info = {};
             command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             command_buffer_begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(current_frame.CommandBuffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin Command Buffer -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(
+                vkBeginCommandBuffer(current_frame.GraphicCommandBuffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin Command Buffer -- ImGuiLayer")
 
             VkRenderPassBeginInfo render_pass_begin_info    = {};
             render_pass_begin_info.sType                    = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -426,13 +425,13 @@ namespace ZEngine::Layers
 
             VkClearValue clear_value            = {};
             render_pass_begin_info.pClearValues = &clear_value;
-            vkCmdBeginRenderPass(current_frame.CommandBuffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBeginRenderPass(current_frame.GraphicCommandBuffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
             // Record dear imgui primitives into command buffer
-            ImGui_ImplVulkan_RenderDrawData(draw_data, current_frame.CommandBuffer);
+            ImGui_ImplVulkan_RenderDrawData(draw_data, current_frame.GraphicCommandBuffer);
 
             // Submit command buffer
-            vkCmdEndRenderPass(current_frame.CommandBuffer);
+            vkCmdEndRenderPass(current_frame.GraphicCommandBuffer);
 
             std::vector<VkSemaphore> submit_info_semaphore_collection = {current_frame_semaphore.ImageAcquiredSemaphore};
             VkSubmitInfo             submit_info                      = {};
@@ -442,11 +441,11 @@ namespace ZEngine::Layers
             submit_info.pWaitSemaphores                               = submit_info_semaphore_collection.data();
             submit_info.pWaitDstStageMask                             = &wait_stage;
             submit_info.commandBufferCount                            = 1;
-            submit_info.pCommandBuffers                               = &(current_frame.CommandBuffer);
+            submit_info.pCommandBuffers                               = &(current_frame.GraphicCommandBuffer);
             submit_info.signalSemaphoreCount                          = 1;
             submit_info.pSignalSemaphores                             = &(current_frame_semaphore.RenderCompleteSemaphore);
 
-            ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(current_frame.CommandBuffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(current_frame.GraphicCommandBuffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
 
             ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(present_queue, 1, &submit_info, current_frame.Fence) == VK_SUCCESS, "Failed to submit Frame rendering commands -- ImGuiLayer")
 

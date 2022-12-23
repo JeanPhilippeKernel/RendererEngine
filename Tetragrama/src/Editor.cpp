@@ -25,20 +25,18 @@ namespace Tetragrama
 
         m_engine_configuration->WindowConfiguration = {
             .Width = 1500, .Height = 800, .EnableVsync = true, .Title = "Tetragramma editor", .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
-
-        m_engine = ZEngine::CreateScope<ZEngine::Engine>(*m_engine_configuration);
     }
 
     Editor::~Editor()
     {
         m_ui_layer.reset();
         m_render_layer.reset();
-        m_engine.reset();
+        ZEngine::Engine::Dispose();
     }
 
     void Editor::Initialize()
     {
-        m_engine->Initialize();
+        ZEngine::Engine::Initialize(*m_engine_configuration);
 
         // Register components
         IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<std::pair<float, float>>>(m_render_layer, EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE,
@@ -68,7 +66,7 @@ namespace Tetragrama
 
     void Editor::Run()
     {
-        m_engine->Start();
+        ZEngine::Engine::Start();
     }
 
     ZEngine::Ref<ZEngine::EngineConfiguration> Editor::GetCurrentEngineConfiguration() const
