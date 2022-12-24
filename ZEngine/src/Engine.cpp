@@ -5,40 +5,31 @@
 
 namespace ZEngine
 {
-    Core::TimeStep Engine::m_delta_time = {0.0f};
+    bool                             Engine::m_request_terminate{false};
+    float                            Engine::m_last_frame_time{0.0f};
+    Core::TimeStep                   Engine::m_delta_time{0.0f};
+    Ref<ZEngine::Window::CoreWindow> Engine::m_window{nullptr};
+    Scope<Hardwares::VulkanInstance> Engine::m_vulkan_instance{nullptr};
 
-    Engine::Engine(const EngineConfiguration& configuration)
-        : m_engine_configuration(configuration), m_request_terminate(false), m_last_frame_time(0.0f), m_vulkan_instance("ZEngine")
+    void Engine::Initialize(const EngineConfiguration& engine_configuration)
     {
-    }
+        Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
 
-    Engine::~Engine()
-    {
-        m_request_terminate = false;
-        m_window.reset();
-        ZENGINE_CORE_INFO("Engine destroyed")
-        Logging::Logger::Flush();
-    }
+        m_vulkan_instance = CreateScope<Hardwares::VulkanInstance>("ZEngine");
+        m_vulkan_instance->CreateInstance();
 
-    void Engine::Initialize()
-    {
-        Logging::Logger::Initialize(m_engine_configuration.LoggerConfiguration);
+        m_window.reset(ZEngine::Window::Create(engine_configuration.WindowConfiguration));
 
-        m_vulkan_instance.CreateInstance();
-
-        m_window.reset(ZEngine::Window::Create(m_engine_configuration.WindowConfiguration));
-
-        for (const auto& layer : m_engine_configuration.WindowConfiguration.RenderingLayerCollection)
+        for (const auto& layer : engine_configuration.WindowConfiguration.RenderingLayerCollection)
         {
             m_window->PushLayer(layer);
         }
 
-        for (const auto& layer : m_engine_configuration.WindowConfiguration.OverlayLayerCollection)
+        for (const auto& layer : engine_configuration.WindowConfiguration.OverlayLayerCollection)
         {
             m_window->PushOverlayLayer(layer);
         }
 
-        m_window->SetAttachedEngine(this);
         m_window->Initialize();
 
         ZENGINE_CORE_INFO("Engine initialized")
@@ -52,6 +43,16 @@ namespace ZEngine
     void Engine::Deinitialize()
     {
         m_window->Deinitialize();
+    }
+
+    void Engine::Dispose()
+    {
+        m_request_terminate = false;
+        m_window.reset();
+        m_vulkan_instance.reset();
+
+        ZENGINE_CORE_INFO("Engine destroyed")
+        Logging::Logger::Flush();
     }
 
     void Engine::Update(Core::TimeStep delta_time)
@@ -76,9 +77,19 @@ namespace ZEngine
         Run();
     }
 
-    Hardwares::VulkanInstance& Engine::GetVulkanInstance()
+    Ref<ZEngine::Window::CoreWindow> Engine::GetWindow()
     {
-        return m_vulkan_instance;
+        return m_window;
+    }
+
+    Core::TimeStep Engine::GetDeltaTime()
+    {
+        return m_delta_time;
+    }
+
+    Hardwares::VulkanInstance* Engine::GetVulkanInstance()
+    {
+        return m_vulkan_instance.get();
     }
 
     void Engine::Run()

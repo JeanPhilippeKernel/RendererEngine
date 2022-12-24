@@ -77,22 +77,14 @@ namespace ZEngine::Window
 
         virtual void ForwardEventToLayers(Event::CoreEvent& event);
 
-        virtual void SetAttachedEngine(ZEngine::Engine* const engine);
-
-        virtual ZEngine::Engine* GetAttachedEngine();
-
         virtual void PushOverlayLayer(const Ref<Layers::Layer>& layer);
-        virtual void PushLayer(const Ref<Layers::Layer>& layer);
-
         virtual void PushOverlayLayer(Ref<Layers::Layer>&& layer);
+        virtual void PushLayer(const Ref<Layers::Layer>& layer);
         virtual void PushLayer(Ref<Layers::Layer>&& layer);
 
     protected:
-        static const char* ATTACHED_PROPERTY;
-
         WindowProperty                              m_property;
         ZEngine::Scope<ZEngine::Layers::LayerStack> m_layer_stack_ptr{nullptr};
-        ZEngine::Engine*                            m_engine{nullptr};
     };
 
     CoreWindow* Create(const WindowConfiguration&);

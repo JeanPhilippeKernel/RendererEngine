@@ -4,13 +4,16 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <Window/CoreWindow.h>
+#include <Window/WindowConfiguration.h>
 
 namespace ZEngine::Window::GLFWWindow
 {
     struct VulkanWindowFrame
     {
-        VkCommandPool   CommandPool;
-        VkCommandBuffer CommandBuffer;
+        VkCommandPool   GraphicCommandPool;
+        VkCommandPool   TransferCommandPool;
+        VkCommandBuffer GraphicCommandBuffer;
+        VkCommandBuffer TransferCommandBuffer;
         VkFence         Fence;
         VkImage         Backbuffer;
         VkImageView     BackbufferView;
@@ -26,37 +29,26 @@ namespace ZEngine::Window::GLFWWindow
     class VulkanWindow : public CoreWindow
     {
     public:
-        VulkanWindow(WindowProperty& prop);
+        VulkanWindow(const WindowConfiguration& configuration);
         virtual ~VulkanWindow();
 
-        uint32_t GetHeight() const override;
-
-        uint32_t GetWidth() const override;
-
-        std::string_view GetTitle() const override;
-
-        bool IsMinimized() const override;
-
-        void SetTitle(std::string_view title) override;
-
-        bool IsVSyncEnable() const override;
-
-        void SetVSync(bool value) override;
-
-        void SetCallbackFunction(const EventCallbackFn& callback) override;
-
-        void* GetNativeWindow() const override;
-
+        uint32_t                      GetHeight() const override;
+        uint32_t                      GetWidth() const override;
+        std::string_view              GetTitle() const override;
+        bool                          IsMinimized() const override;
+        void                          SetTitle(std::string_view title) override;
+        bool                          IsVSyncEnable() const override;
+        void                          SetVSync(bool value) override;
+        void                          SetCallbackFunction(const EventCallbackFn& callback) override;
+        void*                         GetNativeWindow() const override;
         virtual const WindowProperty& GetWindowProperty() const override;
 
-        virtual void Initialize() override;
-        virtual void Deinitialize() override;
-
+        virtual void  Initialize() override;
+        virtual void  Deinitialize() override;
         virtual void  PollEvent() override;
         virtual float GetTime() override;
-
-        virtual void Update(Core::TimeStep delta_time) override;
-        virtual void Render() override;
+        virtual void  Update(Core::TimeStep delta_time) override;
+        virtual void  Render() override;
 
         uint32_t                                       GetSwapChainMinImageCount() const;
         const std::vector<VkImage>&                    GetSwapChainImageCollection() const;
@@ -71,7 +63,7 @@ namespace ZEngine::Window::GLFWWindow
         const std::vector<VulkanWindowFrameSemaphore>& GetWindowFrameSemaphoreCollection() const;
         VulkanWindowFrameSemaphore&                    GetWindowFrameSemaphore(uint32_t index);
 
-        void RecreateSwapChain(VkSwapchainKHR old_swap_chain, const Hardwares::VulkanDevice& device);
+        void RecreateSwapChain(VkSwapchainKHR old_swapchain, const Hardwares::VulkanDevice& device);
 
         VkRenderPass       GetRenderPass() const;
         VkSurfaceKHR       GetSurface() const;

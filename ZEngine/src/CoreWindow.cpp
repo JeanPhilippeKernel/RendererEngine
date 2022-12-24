@@ -1,9 +1,7 @@
 #include <pch.h>
 #include <Window/CoreWindow.h>
 #include <ZEngineDef.h>
-
 #include <Window/GlfwWindow/VulkanWindow.h>
-
 #include <ZEngine/Engine.h>
 
 using namespace ZEngine;
@@ -12,8 +10,6 @@ using namespace ZEngine::Layers;
 
 namespace ZEngine::Window
 {
-    const char* CoreWindow::ATTACHED_PROPERTY = "WINDOW_ATTACHED_PROPERTY";
-
     CoreWindow::CoreWindow()
     {
         m_layer_stack_ptr = CreateScope<LayerStack>();
@@ -21,17 +17,6 @@ namespace ZEngine::Window
 
     CoreWindow::~CoreWindow()
     {
-    }
-
-    void CoreWindow::SetAttachedEngine(Engine* const engine)
-    {
-        m_engine = engine;
-    }
-
-    ZEngine::Engine* CoreWindow::GetAttachedEngine()
-    {
-        assert(m_engine != nullptr);
-        return m_engine;
     }
 
     void CoreWindow::PushOverlayLayer(const Ref<Layer>& layer)
@@ -68,13 +53,7 @@ namespace ZEngine::Window
 
     CoreWindow* Create(const WindowConfiguration& configuration)
     {
-        WindowProperty prop = {};
-        prop.Height         = configuration.Height;
-        prop.Width          = configuration.Width;
-        prop.Title          = configuration.Title;
-        prop.VSync          = configuration.EnableVsync;
-
-        auto core_window = new GLFWWindow::VulkanWindow(prop);
+        auto core_window = new GLFWWindow::VulkanWindow(configuration);
         core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
         return core_window;
     }

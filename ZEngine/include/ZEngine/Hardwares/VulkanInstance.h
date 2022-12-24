@@ -20,11 +20,13 @@ namespace ZEngine::Hardwares
         const VulkanDevice&              GetHighPerformantDevice() const;
         const VkInstance                 GetNativeHandle() const;
 
+        VulkanDevice&                    GetHighPerformantDevice();
+
     private:
         std::string               m_application_name;
         VulkanLayer               m_layer;
-        VkInstance                m_vulkan_instance;
-        VkDebugUtilsMessengerEXT  m_debug_messenger;
+        VkInstance                m_vulkan_instance{VK_NULL_HANDLE};
+        VkDebugUtilsMessengerEXT  m_debug_messenger{VK_NULL_HANDLE};
         std::vector<VulkanDevice> m_device_collection;
 
     private:
@@ -33,5 +35,7 @@ namespace ZEngine::Hardwares
 
         static VKAPI_ATTR VkBool32 VKAPI_CALL __debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType,
             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
+
+        int GetHighPerformantDeviceIndex() const;
     };
 } // namespace ZEngine::Hardwares

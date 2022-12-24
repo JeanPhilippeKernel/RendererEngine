@@ -154,7 +154,7 @@ namespace ZEngine::Hardwares
         return m_device_collection;
     }
 
-    const VulkanDevice& VulkanInstance::GetHighPerformantDevice() const
+    int VulkanInstance::GetHighPerformantDeviceIndex() const
     {
         int high_performant_device_index{-1};
         for (size_t index = 0; index < m_device_collection.size(); ++index)
@@ -165,10 +165,23 @@ namespace ZEngine::Hardwares
                 break;
             }
         }
+        return high_performant_device_index;
+    }
 
-        assert(high_performant_device_index != -1);
+    const VulkanDevice& VulkanInstance::GetHighPerformantDevice() const
+    {
+        auto device_index = GetHighPerformantDeviceIndex();
+        assert(device_index != -1);
 
-        return m_device_collection[high_performant_device_index];
+        return m_device_collection.at(device_index);
+    }
+
+    VulkanDevice& VulkanInstance::GetHighPerformantDevice()
+    {
+        auto device_index = GetHighPerformantDeviceIndex();
+        assert(device_index != -1);
+
+        return m_device_collection[device_index];
     }
 
     const VkInstance VulkanInstance::GetNativeHandle() const
@@ -182,5 +195,4 @@ namespace ZEngine::Hardwares
         ZENGINE_CORE_TRACE(pCallbackData->pMessage)
         return VK_FALSE;
     }
-
 } // namespace ZEngine::Hardwares

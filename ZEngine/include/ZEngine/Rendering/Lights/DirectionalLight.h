@@ -1,7 +1,7 @@
 #pragma once
 #include <Rendering/Lights/Light.h>
 #include <Maths/Math.h>
-#include <Rendering/Buffers/UniformBuffer.h>
+// #include <Rendering/Buffers/UniformBuffer.h>
 
 namespace ZEngine::Rendering::Lights {
 
@@ -28,6 +28,6 @@ namespace ZEngine::Rendering::Lights {
         Maths::Vector3 m_ambient_color{1.0f};
         Maths::Vector3 m_diffuse_color{1.0f};
         Maths::Vector3 m_specular_color{1.0f};
-        Scope<Buffers::UniformBuffer<Maths::Vector4>> m_directional_light_buffer;
+        // Scope<Buffers::UniformBuffer<Maths::Vector4>> m_directional_light_buffer;
     };
 } // namespace ZEngine::Rendering::Lights
