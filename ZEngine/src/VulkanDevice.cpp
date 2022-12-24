@@ -48,7 +48,6 @@ namespace ZEngine::Hardwares
                 }
                 else if (m_physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_TRANSFER_BIT)
                 {
-
                     m_transfer_queue_family_index_collection.push_back(index);
                 }
             }
@@ -63,7 +62,6 @@ namespace ZEngine::Hardwares
         {
             VkDeviceQueueCreateInfo queue_info = {};
             queue_info.sType                   = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-
 
             graphic_queue_priorities.resize(m_physical_device_queue_family_collection[graphic_queue_family_index].queueCount);
             std::fill(std::begin(graphic_queue_priorities), std::end(graphic_queue_priorities), 0.0f);
@@ -81,7 +79,6 @@ namespace ZEngine::Hardwares
             VkDeviceQueueCreateInfo queue_info = {};
             queue_info.sType                   = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 
-
             graphic_with_present_queue_priorities.resize(m_physical_device_queue_family_collection[present_queue_family_index].queueCount);
             std::fill(std::begin(graphic_with_present_queue_priorities), std::end(graphic_with_present_queue_priorities), 1.0f);
 
@@ -97,7 +94,6 @@ namespace ZEngine::Hardwares
         {
             VkDeviceQueueCreateInfo queue_info = {};
             queue_info.sType                   = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-
 
             transfer_queue_priorities.resize(m_physical_device_queue_family_collection[transfer_queue_family_index].queueCount);
             std::fill(std::begin(transfer_queue_priorities), std::end(transfer_queue_priorities), 1.0f);
