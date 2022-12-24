@@ -1,79 +1,81 @@
 #pragma once
+#include <ZEngine.h>
+#include <Helpers/BufferHelper.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
-#include <Rendering/Buffers/BufferLayout.h>
-#include <ZEngineDef.h>
 
-#include <Core/IGraphicObject.h>
-
-namespace ZEngine::Rendering::Buffers {
+namespace ZEngine::Rendering::Buffers
+{
 
     template <typename T>
-    class UniformBuffer : public GraphicBuffer<T>, public Core::IGraphicObject {
-
+    class UniformBuffer : public GraphicBuffer<T>
+    {
     public:
-        UniformBuffer(GLuint binding_index = 0) : GraphicBuffer<T>() {
-#ifdef _WIN32
-            glCreateBuffers(1, &m_uniform_buffer_id);
-#else
-            glGenBuffers(1, &m_uniform_buffer_id);
-#endif
-            m_binding_index = binding_index;
+        UniformBuffer(unsigned int binding_index = 0) : GraphicBuffer<T>()
+        {
+            //m_binding_index = binding_index;
         }
 
-        void SetData(const std::vector<T>& data) override {
-            GraphicBuffer<T>::SetData(data);
-            glBindBuffer(GL_UNIFORM_BUFFER, m_uniform_buffer_id);
-            glBufferData(GL_UNIFORM_BUFFER, this->m_byte_size, nullptr, GL_DYNAMIC_DRAW);
+        void SetData(const std::vector<T>& content) override
+        {
+            CleanUpMemory();
 
-            if constexpr (
-                std::is_same_v<T,
-                    Maths::
-                        Matrix4> || std::is_same_v<T, Maths::Matrix2> || std::is_same_v<T, Maths::Matrix3> || std::is_same_v<T, Maths::Vector4> || std::is_same_v<T, Maths::Vector3> || std::is_same_v<T, Maths::Vector2> || std::is_same_v<T, Maths::Vector1>) {
-                size_t byte_size = 0;
-                for (auto& value : data) {
-                    glBufferSubData(GL_UNIFORM_BUFFER, byte_size, sizeof(T), Maths::value_ptr(value));
-                    byte_size += sizeof(T);
-                }
-            } else {
-                glBufferSubData(GL_UNIFORM_BUFFER, 0, this->m_byte_size, this->m_data.data());
-            }
+            GraphicBuffer<T>::SetData(content);
 
-            glBindBuffer(GL_UNIFORM_BUFFER, 0);
+            Hardwares::VulkanDevice& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
+            auto                     device_handle     = performant_device.GetNativeDeviceHandle();
+            const auto&              memory_properties = performant_device.GetPhysicalDeviceMemoryProperties();
 
-            glBindBufferRange(GL_UNIFORM_BUFFER, m_binding_index, m_uniform_buffer_id, 0, this->m_byte_size);
+            Helpers::CreateBuffer(performant_device, m_uniform_buffer, m_uniform_buffer_device_memory, static_cast<VkDeviceSize>(this->m_byte_size),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, memory_properties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+            ZENGINE_VALIDATE_ASSERT(
+                vkMapMemory(device_handle, m_uniform_buffer_device_memory, 0, this->m_byte_size, 0, &m_uniform_buffer_mapped) == VK_SUCCESS, "Failed to map the memory")
+            std::memcpy(m_uniform_buffer_mapped, content.data(), this->m_byte_size);
         }
 
 
-        void SetData(const void* data, size_t byte_size) {
+        void SetData(const void* data, size_t byte_size)
+        {
+            CleanUpMemory();
+
             this->m_data_size = 1;
             this->m_byte_size = byte_size;
-            glBindBuffer(GL_UNIFORM_BUFFER, m_uniform_buffer_id);
-            glBufferData(GL_UNIFORM_BUFFER, this->m_byte_size, nullptr, GL_DYNAMIC_DRAW);
 
-            glBufferSubData(GL_UNIFORM_BUFFER, 0, this->m_byte_size, data);
-            glBindBuffer(GL_UNIFORM_BUFFER, 0);
+            Hardwares::VulkanDevice& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
+            auto                     device_handle     = performant_device.GetNativeDeviceHandle();
+            const auto&              memory_properties = performant_device.GetPhysicalDeviceMemoryProperties();
 
-            glBindBufferRange(GL_UNIFORM_BUFFER, m_binding_index, m_uniform_buffer_id, 0, this->m_byte_size);
+            Helpers::CreateBuffer(performant_device, m_uniform_buffer, m_uniform_buffer_device_memory, static_cast<VkDeviceSize>(this->m_byte_size),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, memory_properties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+            ZENGINE_VALIDATE_ASSERT(
+                vkMapMemory(device_handle, m_uniform_buffer_device_memory, 0, this->m_byte_size, 0, &m_uniform_buffer_mapped) == VK_SUCCESS, "Failed to map the memory")
+            std::memcpy(m_uniform_buffer_mapped, data, this->m_byte_size);
         }
 
-        ~UniformBuffer() {
-            glDeleteBuffers(1, &m_uniform_buffer_id);
+        ~UniformBuffer()
+        {
+            CleanUpMemory();
         }
 
-        void Bind() const override {
-            glBindBuffer(GL_UNIFORM_BUFFER, m_uniform_buffer_id);
-        }
+        void Bind() const override {}
 
-        void Unbind() const override {
-            glBindBuffer(GL_UNIFORM_BUFFER, 0);
-        }
+        void Unbind() const override {}
 
-        GLuint GetIdentifier() const override {
-            return m_uniform_buffer_id;
+    private:
+        void CleanUpMemory()
+        {
+            if (m_uniform_buffer && m_uniform_buffer_device_memory)
+            {
+                auto device_handle = Engine::GetVulkanInstance()->GetHighPerformantDevice().GetNativeDeviceHandle();
+                vkDestroyBuffer(device_handle, m_uniform_buffer, nullptr);
+                vkFreeMemory(device_handle, m_uniform_buffer_device_memory, nullptr);
+            }
         }
 
     private:
-        GLuint m_uniform_buffer_id;
-        GLuint m_binding_index;
+        void*          m_uniform_buffer_mapped{nullptr};
+        VkBuffer       m_uniform_buffer{VK_NULL_HANDLE};
+        VkDeviceMemory m_uniform_buffer_device_memory{VK_NULL_HANDLE};
     };
 } // namespace ZEngine::Rendering::Buffers
