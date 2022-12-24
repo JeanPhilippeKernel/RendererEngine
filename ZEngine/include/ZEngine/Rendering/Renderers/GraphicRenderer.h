@@ -5,15 +5,18 @@
 #include <Rendering/Cameras/Camera.h>
 #include <Rendering/Renderers/Pipelines/GraphicRendererPipelineContext.h>
 #include <Rendering/Renderers/GraphicRendererInformation.h>
-#include <Rendering/Buffers/UniformBuffer.h>
+// #include <Rendering/Buffers/UniformBuffer.h>
 
-namespace ZEngine::Rendering::Renderers::Pipelines {
+namespace ZEngine::Rendering::Renderers::Pipelines
+{
     class GraphicRendererPipelineContext;
 }
 
-namespace ZEngine::Rendering::Renderers {
+namespace ZEngine::Rendering::Renderers
+{
 
-    class GraphicRenderer : public Core::IInitializable {
+    class GraphicRenderer : public Core::IInitializable
+    {
     public:
         GraphicRenderer();
         virtual ~GraphicRenderer() = default;
@@ -36,6 +39,6 @@ namespace ZEngine::Rendering::Renderers {
         Scope<Pipelines::GraphicRendererPipelineContext> m_renderer_pipeline_context;
 
     private:
-        Scope<Buffers::UniformBuffer<Maths::Vector4>> m_uniform_camera_properties_buffer;
+        // Scope<Buffers::UniformBuffer<Maths::Vector4>> m_uniform_camera_properties_buffer;
     };
 } // namespace ZEngine::Rendering::Renderers
