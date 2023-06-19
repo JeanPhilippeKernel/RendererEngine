@@ -16,5 +16,16 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
          * @param information A Graphic renderer pipeline information
          */
         virtual void Run(GraphicRendererPipelineInformation& information) override;
+
+
+        /**
+         * Run asynchronously renderer stage
+         *
+         * @param information Collection of shader information
+         */
+        virtual std::future<void> RunAsync(GraphicRendererPipelineInformation& information) override
+        {
+            return std::future<void>();
+        }
     };
 } // namespace ZEngine::Rendering::Renderers::Pipelines

@@ -10,6 +10,11 @@
 #include <Engine.h>
 #include <ZEngine/Window/GlfwWindow/VulkanWindow.h>
 #include <Logging/LoggerDefinition.h>
+#include <Rendering/Renderers/RenderPasses/RenderPassSpecification.h>
+#include <Helpers/RendererHelper.h>
+#include <Helpers/BufferHelper.h>
+
+using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine::Layers
 {
@@ -25,15 +30,15 @@ namespace ZEngine::Layers
     {
         if (!m_initialized)
         {
-            assert(!m_window.expired(), "The Current Window instance has been destroyed");
+            ZENGINE_VALIDATE_ASSERT(!m_window.expired(), "The Current Window instance has been destroyed");
 
             auto current_window            = m_window.lock();
             auto current_window_ptr        = current_window.get();
             auto current_vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(current_window_ptr);
 
-            const auto& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-            auto        device_handle     = performant_device.GetNativeDeviceHandle();
-            auto        present_queue     = performant_device.GetCurrentGraphicQueue(true);
+            auto& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
+            auto  device_handle     = performant_device.GetNativeDeviceHandle();
+            auto  present_queue     = performant_device.GetCurrentGraphicQueue(true);
 
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
@@ -63,10 +68,18 @@ namespace ZEngine::Layers
             ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window_ptr->GetNativeWindow()), false);
 
             // Create Descriptor Pool
-            std::vector<VkDescriptorPoolSize> pool_sizes = {{VK_DESCRIPTOR_TYPE_SAMPLER, 1000}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
-                {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000}, {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000}, {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
-                {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000}, {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
-                {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000}, {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000}, {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}};
+            std::vector<VkDescriptorPoolSize> pool_sizes = {
+                {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
+                {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+                {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
+                {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
+                {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
+                {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
+                {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
+                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
+                {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
+                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
+                {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}};
 
             VkDescriptorPoolCreateInfo pool_info = {};
             pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -76,7 +89,6 @@ namespace ZEngine::Layers
             pool_info.pPoolSizes                 = pool_sizes.data();
 
             ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(device_handle, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool -- ImGuiLayer");
-
 
             ImGui_ImplVulkan_InitInfo imgui_vulkan_init_info = {};
             imgui_vulkan_init_info.Instance                  = Engine::GetVulkanInstance()->GetNativeHandle();
@@ -95,28 +107,34 @@ namespace ZEngine::Layers
 
             // Upload Fonts
             // Use any command queue from any available Window Frame
-            uint32_t   requested_frame{0};
-            auto       available_frame_collection = current_vulkan_window_ptr->GetWindowFrameCollection();
-            const auto selected_frame_index       = requested_frame % available_frame_collection.size();
-            auto&      selected_frame             = available_frame_collection[selected_frame_index];
+            auto& selected_frame = current_vulkan_window_ptr->GetCurrentWindowFrame();
 
             ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, selected_frame.GraphicCommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool -- ImGuiLayer")
+
+            VkCommandBuffer             command_buffer                     = VK_NULL_HANDLE;
+            VkCommandBufferAllocateInfo graphic_command_buffer_create_info = {};
+            graphic_command_buffer_create_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            graphic_command_buffer_create_info.commandPool                 = selected_frame.GraphicCommandPool;
+            graphic_command_buffer_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            graphic_command_buffer_create_info.commandBufferCount          = 1;
+            ZENGINE_VALIDATE_ASSERT(
+                vkAllocateCommandBuffers(performant_device.GetNativeDeviceHandle(), &graphic_command_buffer_create_info, &command_buffer) == VK_SUCCESS,
+                "Failed to allocate Command Buffer")
 
             VkCommandBufferBeginInfo command_buffer_begin_info = {};
             command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             command_buffer_begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            ZENGINE_VALIDATE_ASSERT(
-                vkBeginCommandBuffer(selected_frame.GraphicCommandBuffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin Command Buffer -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin Command Buffer -- ImGuiLayer")
 
-            ImGui_ImplVulkan_CreateFontsTexture(selected_frame.GraphicCommandBuffer);
+            ImGui_ImplVulkan_CreateFontsTexture(command_buffer);
 
-            VkCommandBuffer submit_info_command_buffer_array[] = {selected_frame.GraphicCommandBuffer};
+            ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(command_buffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
+
+            VkCommandBuffer submit_info_command_buffer_array[] = {command_buffer};
             VkSubmitInfo    submit_info                        = {};
             submit_info.sType                                  = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submit_info.commandBufferCount                     = 1;
             submit_info.pCommandBuffers                        = submit_info_command_buffer_array;
-
-            ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(selected_frame.GraphicCommandBuffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
 
             ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(present_queue, 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit Command Buffer on Present Queue -- ImGuiLayer")
 
@@ -214,47 +232,6 @@ namespace ZEngine::Layers
         std::move(std::begin(components), std::end(components), std::back_inserter(m_ui_components));
     }
 
-    void ImguiLayer::Render()
-    {
-        if (auto window_ptr = m_window.lock())
-        {
-            // Resize swap chain?
-            if (m_swap_chain_rebuild)
-            {
-                if (window_ptr->GetHeight() > 0 && window_ptr->GetWidth() > 0)
-                {
-                    ImGui_ImplVulkan_SetMinImageCount(reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(window_ptr.get())->GetSwapChainMinImageCount());
-                }
-                m_swap_chain_rebuild = false;
-            }
-
-            ImGui_ImplVulkan_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-
-            ImGui::NewFrame();
-            ImGuizmo::BeginFrame();
-            for (const auto& component : m_ui_components)
-            {
-                if (component->GetVisibility() == true)
-                {
-                    component->Render();
-                }
-            }
-
-            ImGui::Render();
-
-            ImDrawData* main_draw_data = ImGui::GetDrawData();
-
-            if (window_ptr->IsMinimized())
-            {
-                return;
-            }
-
-            // Render and Present Main Platform Window
-            FrameRenderAndPresent(window_ptr, main_draw_data);
-        }
-    }
-
     bool ImguiLayer::OnKeyPressed(Event::KeyPressedEvent& e)
     {
         ImGuiIO& io                       = ImGui::GetIO();
@@ -294,13 +271,21 @@ namespace ZEngine::Layers
     {
         ImGuiIO& io = ImGui::GetIO();
         if (e.GetOffetX() > 0)
+        {
             io.MouseWheelH += 1;
+        }
         if (e.GetOffetX() < 0)
+        {
             io.MouseWheelH -= 1;
+        }
         if (e.GetOffetY() > 0)
+        {
             io.MouseWheel += 1;
+        }
         if (e.GetOffetY() < 0)
+        {
             io.MouseWheel -= 1;
+        }
         return false;
     }
 
@@ -308,7 +293,9 @@ namespace ZEngine::Layers
     {
         ImGuiIO& io = ImGui::GetIO();
         for (unsigned char c : event.GetText())
+        {
             io.AddInputCharacter(c);
+        }
         return false;
     }
 
@@ -377,78 +364,39 @@ namespace ZEngine::Layers
         colors[ImGuiCol_CheckMark]        = ImVec4{1.0f, 1.f, 1.0f, 1.f};
     }
 
-    void ImguiLayer::FrameRenderAndPresent(const Ref<ZEngine::Window::CoreWindow>& window, ImDrawData* draw_data)
+    void ImguiLayer::Render()
     {
-        auto       vulkan_window_ptr       = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(window.get());
-        auto const current_frame_index     = vulkan_window_ptr->GetCurrentWindowFrameIndex();
-        auto&      current_frame           = vulkan_window_ptr->GetWindowFrame(current_frame_index);
-        auto&      current_frame_semaphore = vulkan_window_ptr->GetWindowFrameSemaphore(current_frame_index);
-
-        if (auto current_window = m_window.lock())
+        if (auto window_ptr = m_window.lock())
         {
-            const auto& performant_device  = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-            auto        device_handle      = performant_device.GetNativeDeviceHandle();
-            auto        present_queue      = performant_device.GetCurrentGraphicQueue(true);
-
-            ZENGINE_VALIDATE_ASSERT(vkWaitForFences(device_handle, 1, &(current_frame.Fence), VK_TRUE, UINT64_MAX) == VK_SUCCESS,
-                "Failed to wait for Fence semaphore -- ImGuiLayer") // wait indefinitely instead of periodically checking
-
-            ZENGINE_VALIDATE_ASSERT(vkResetFences(device_handle, 1, &(current_frame.Fence)) == VK_SUCCESS, "Failed to reset Fence semaphore -- ImGuiLayer")
-
-            ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, current_frame.GraphicCommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool -- ImGuiLayer")
-
-
-            uint32_t image_index;
-            VkResult acquire_image_result =
-                vkAcquireNextImageKHR(device_handle, vulkan_window_ptr->GetSwapChain(), UINT64_MAX, current_frame_semaphore.ImageAcquiredSemaphore, VK_NULL_HANDLE, &image_index);
-            if (acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_image_result == VK_SUBOPTIMAL_KHR)
+            if (window_ptr->IsMinimized())
             {
-                m_swap_chain_rebuild = true;
                 return;
             }
 
-            ZENGINE_VALIDATE_ASSERT(acquire_image_result == VK_SUCCESS, "Failed to acquire image from Swapchain")
+            auto current_vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(window_ptr.get());
 
-            VkCommandBufferBeginInfo command_buffer_begin_info = {};
-            command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            command_buffer_begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            ZENGINE_VALIDATE_ASSERT(
-                vkBeginCommandBuffer(current_frame.GraphicCommandBuffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin Command Buffer -- ImGuiLayer")
+            // Resize swap chain?
+            if (current_vulkan_window_ptr->HasSwapChainRebuilt())
+            {
+                if (window_ptr->GetHeight() > 0 && window_ptr->GetWidth() > 0)
+                {
+                    ImGui_ImplVulkan_SetMinImageCount(current_vulkan_window_ptr->GetSwapChainMinImageCount());
+                }
+            }
 
-            VkRenderPassBeginInfo render_pass_begin_info    = {};
-            render_pass_begin_info.sType                    = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            render_pass_begin_info.renderPass               = vulkan_window_ptr->GetRenderPass();
-            render_pass_begin_info.framebuffer              = current_frame.Framebuffer;
-            render_pass_begin_info.renderArea.extent.width  = window->GetWidth();
-            render_pass_begin_info.renderArea.extent.height = window->GetHeight();
-            render_pass_begin_info.clearValueCount          = 1;
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
 
-            VkClearValue clear_value            = {};
-            render_pass_begin_info.pClearValues = &clear_value;
-            vkCmdBeginRenderPass(current_frame.GraphicCommandBuffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-            // Record dear imgui primitives into command buffer
-            ImGui_ImplVulkan_RenderDrawData(draw_data, current_frame.GraphicCommandBuffer);
-
-            // Submit command buffer
-            vkCmdEndRenderPass(current_frame.GraphicCommandBuffer);
-
-            std::vector<VkSemaphore> submit_info_semaphore_collection = {current_frame_semaphore.ImageAcquiredSemaphore};
-            VkSubmitInfo             submit_info                      = {};
-            VkPipelineStageFlags     wait_stage                       = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            submit_info.sType                                         = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            submit_info.waitSemaphoreCount                            = submit_info_semaphore_collection.size();
-            submit_info.pWaitSemaphores                               = submit_info_semaphore_collection.data();
-            submit_info.pWaitDstStageMask                             = &wait_stage;
-            submit_info.commandBufferCount                            = 1;
-            submit_info.pCommandBuffers                               = &(current_frame.GraphicCommandBuffer);
-            submit_info.signalSemaphoreCount                          = 1;
-            submit_info.pSignalSemaphores                             = &(current_frame_semaphore.RenderCompleteSemaphore);
-
-            ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(current_frame.GraphicCommandBuffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
-
-            ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(present_queue, 1, &submit_info, current_frame.Fence) == VK_SUCCESS, "Failed to submit Frame rendering commands -- ImGuiLayer")
-
+            ImGui::NewFrame();
+            ImGuizmo::BeginFrame();
+            for (const auto& component : m_ui_components)
+            {
+                if (component->GetVisibility() == true)
+                {
+                    component->Render();
+                }
+            }
+            ImGui::Render();
 
             ImGuiIO& io = ImGui::GetIO();
             if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
@@ -456,28 +404,62 @@ namespace ZEngine::Layers
                 ImGui::UpdatePlatformWindows();
                 ImGui::RenderPlatformWindowsDefault();
             }
+        }
+    }
 
-            /*Window Frame presentation operation*/
-            std::vector<VkSwapchainKHR> present_swapchain_collection = {vulkan_window_ptr->GetSwapChain()};
-            std::vector<VkSemaphore>    present_semaphore_collection = {current_frame_semaphore.RenderCompleteSemaphore};
-            VkPresentInfoKHR            present_info                 = {};
-            present_info.sType                                       = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-            present_info.waitSemaphoreCount                          = present_semaphore_collection.size();
-            present_info.pWaitSemaphores                             = present_semaphore_collection.data();
-            present_info.swapchainCount                              = present_swapchain_collection.size();
-            present_info.pSwapchains                                 = present_swapchain_collection.data();
-            present_info.pImageIndices                               = &image_index;
-
-            VkResult present_result = vkQueuePresentKHR(present_queue, &present_info);
-            if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
+    void ImguiLayer::PrepareFrame(uint32_t frame_index, VkQueue& present_queue)
+    {
+        if (auto current_window = m_window.lock())
+        {
+            if (current_window->IsMinimized())
             {
-                m_swap_chain_rebuild = true;
                 return;
             }
 
-            ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS, "Failed to present current frame on Window -- ImGuiLayer")
+            auto  vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(current_window.get());
+            auto& window_frame      = vulkan_window_ptr->GetWindowFrame(frame_index);
+            auto& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
 
-            vulkan_window_ptr->IncrementWindowFrameIndex();
+            VkCommandBuffer             command_buffer                     = VK_NULL_HANDLE;
+            VkCommandBufferAllocateInfo graphic_command_buffer_create_info = {};
+            graphic_command_buffer_create_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            graphic_command_buffer_create_info.commandPool                 = window_frame.GraphicCommandPool;
+            graphic_command_buffer_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            graphic_command_buffer_create_info.commandBufferCount          = 1;
+            ZENGINE_VALIDATE_ASSERT(
+                vkAllocateCommandBuffers(performant_device.GetNativeDeviceHandle(), &graphic_command_buffer_create_info, &command_buffer) == VK_SUCCESS,
+                "Failed to allocate Command Buffer")
+
+            VkCommandBufferBeginInfo command_buffer_begin_info = {};
+            command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            command_buffer_begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin Command Buffer -- ImGuiLayer")
+
+            // Begin RenderPass
+            {
+                VkRenderPassBeginInfo render_pass_begin_info    = {};
+                render_pass_begin_info.sType                    = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+                render_pass_begin_info.renderPass               = vulkan_window_ptr->GetRenderPass();
+                render_pass_begin_info.framebuffer              = window_frame.Framebuffer;
+                render_pass_begin_info.renderArea.extent.width  = current_window->GetWidth();
+                render_pass_begin_info.renderArea.extent.height = current_window->GetHeight();
+
+                std::array<VkClearValue, 2> clear_values   = {};
+                clear_values[0].color                    = {{0.0f, 0.0f, 0.0f, 1.0f}};
+                clear_values[1].depthStencil               = {1.0f, 0};
+                render_pass_begin_info.clearValueCount     = clear_values.size();
+                render_pass_begin_info.pClearValues        = clear_values.data();
+                vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+                // Record dear imgui primitives into command buffer
+                ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
+
+                vkCmdEndRenderPass(command_buffer);
+            }
+
+            ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(command_buffer) == VK_SUCCESS, "Failed to end Command Buffer -- ImGuiLayer")
+
+            window_frame.GraphicCommandBuffers.push_back(std::move(command_buffer));
         }
     }
 } // namespace ZEngine::Layers

@@ -54,7 +54,8 @@ namespace ZEngine::Hardwares
         // std::copy(std::begin(validation_layer_name_collection), std::end(validation_layer_name_collection), std::back_inserter(instance_layer_name_collection));
 #endif
 
-        std::unordered_set<std::string> extension_layer_name_collection = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+        std::unordered_set<std::string> extension_layer_name_collection = {
+            VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
 
         auto layer_properties = m_layer.GetInstanceLayerProperties();
         for (const LayerProperty& layer : layer_properties)
@@ -131,7 +132,8 @@ namespace ZEngine::Hardwares
             }
         }
 
-        std::unordered_set<std::string> device_extension_layer_name_collection = {"VK_KHR_swapchain" /*, "VK_KHR_portability_subset"*/};
+        // std::unordered_set<std::string> device_extension_layer_name_collection = {"VK_KHR_swapchain", "VK_KHR_buffer_device_address", "VK_KHR_shader_non_semantic_info" /*, "VK_KHR_portability_subset"*/};
+        std::unordered_set<std::string> device_extension_layer_name_collection = {"VK_KHR_swapchain", /*, "VK_KHR_portability_subset"*/};
         for (LayerProperty& layer : layer_properties)
         {
             for (const auto& device_extension : layer.DeviceExtensionCollection)
@@ -192,7 +194,16 @@ namespace ZEngine::Hardwares
     VkBool32 VulkanInstance::__debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType,
         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
     {
-        ZENGINE_CORE_TRACE(pCallbackData->pMessage)
+        if (messageSeverity == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        {
+            ZENGINE_CORE_ERROR(pCallbackData->pMessage)
+        }
+
+        if (messageSeverity == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        {
+            ZENGINE_CORE_WARN(pCallbackData->pMessage)
+        }
+
         return VK_FALSE;
     }
 } // namespace ZEngine::Hardwares

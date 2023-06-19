@@ -12,6 +12,7 @@ namespace ZEngine::Hardwares
         bool IsHighPerformant() const;
 
         VkPhysicalDevice                        GetNativePhysicalDeviceHandle() const;
+        const VkPhysicalDeviceProperties&       GetPhysicalDeviceProperties() const;
         const VkPhysicalDeviceMemoryProperties& GetPhysicalDeviceMemoryProperties() const;
         VkDevice                                GetNativeDeviceHandle() const;
         VkQueue                                 GetCurrentGraphicQueue(bool with_present_support = false) const;

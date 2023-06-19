@@ -28,5 +28,5 @@ namespace ZEngine::Rendering::Shaders {
         SUCCESS = 0
     };
 
-    enum class ShaderBuiltInType : int { BASIC = 0, STANDARD, MIXED_TEXTURE };
+    enum class ShaderBuiltInType : int { BASIC = 0, BASIC_2, STANDARD, MIXED_TEXTURE };
 } // namespace ZEngine::Rendering::Shaders

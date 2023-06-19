@@ -40,6 +40,7 @@ namespace ZEngine
         if (!(condition))                           \
         {                                           \
             ZENGINE_CORE_CRITICAL(message)          \
+            assert(condition && message);           \
             __debugbreak();                         \
         }                                           \
     }

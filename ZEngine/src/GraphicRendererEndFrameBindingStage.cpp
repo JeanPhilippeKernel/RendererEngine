@@ -1,7 +1,6 @@
 #include <pch.h>
 #include <Rendering/Renderers/Pipelines/GraphicRendererEndFrameBindingStage.h>
 #include <Rendering/Renderers/Pipelines/GraphicRendererCleanupStage.h>
-#include <Rendering/Renderers/Pipelines/GraphicRendererPipelineContext.h>
 
 namespace ZEngine::Rendering::Renderers::Pipelines {
     GraphicRendererEndFrameBindingStage::GraphicRendererEndFrameBindingStage() {
@@ -11,9 +10,9 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
     GraphicRendererEndFrameBindingStage::~GraphicRendererEndFrameBindingStage() {}
 
     void GraphicRendererEndFrameBindingStage::Run(GraphicRendererPipelineInformation& information) {
-        auto const pipeline = reinterpret_cast<GraphicRendererPipelineContext*>(m_context);
-        auto const renderer = pipeline->GetRenderer();
+        //auto const pipeline = reinterpret_cast<GraphicRendererPipelineContext*>(m_context);
+        //auto const renderer = pipeline->GetRenderer();
 
-        renderer->GetFrameBuffer()->Unbind();
+        //renderer->GetFrameBuffer()->Unbind();
     }
 } // namespace ZEngine::Rendering::Renderers::Pipelines

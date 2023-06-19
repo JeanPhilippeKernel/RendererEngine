@@ -1,24 +1,29 @@
 #pragma once
 #include <string>
 #include <Rendering/Shaders/ShaderEnums.h>
-#include <glad/glad.h>
+#include <vulkan/vulkan.h>
 
-namespace ZEngine::Rendering::Shaders {
+namespace ZEngine::Rendering::Shaders
+{
 
-    struct ShaderInformation {
+    struct ShaderInformation
+    {
+        VkPipelineShaderStageCreateInfo ShaderStageCreateInfo;
+        VkShaderModule                  ShaderModule;
+        std::vector<uint32_t>           BinarySource;
         /**
          * Shader identifier
          */
-        GLuint ShaderId;
+        unsigned int ShaderId;
         /**
          * Shader program identifier
          */
-        GLuint ProgramId;
+        unsigned int ProgramId;
         /**
          * Enumeration of shader
          * @see https://docs.gl/gl4/glCreateShader
          */
-        GLenum InternalType;
+        unsigned int InternalType;
         /**
          * Wether the shader has been compiled once
          */

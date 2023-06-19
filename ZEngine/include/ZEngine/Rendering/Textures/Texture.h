@@ -1,11 +1,13 @@
 #pragma once
 #include <string>
 #include <array>
-#include <glad/include/glad/glad.h>
+#include <vulkan/vulkan.h>
 #include <Core/IGraphicObject.h>
 
-namespace ZEngine::Rendering::Textures {
-    class Texture : public Core::IGraphicObject {
+namespace ZEngine::Rendering::Textures
+{
+    class Texture : public Core::IGraphicObject
+    {
     public:
         Texture(const char* path) : m_path(path) {}
         Texture(unsigned int width, unsigned int height) : m_width(width), m_height(height) {}
@@ -17,47 +19,56 @@ namespace ZEngine::Rendering::Textures {
 
         virtual void                 SetData(void* const data)                   = 0;
         virtual void                 SetData(float r, float g, float b, float a) = 0;
-        virtual std::array<float, 4> GetData() const {
+        virtual std::array<float, 4> GetData() const
+        {
             return {m_r, m_g, m_b, m_a};
         }
 
-        virtual bool operator==(const Texture& right) {
-            return m_texture_id == right.m_texture_id;
+        virtual bool operator==(const Texture& right)
+        {
+            return m_texture_image == right.m_texture_image;
         }
 
-        virtual bool operator!=(const Texture& right) {
-            return m_texture_id != right.m_texture_id;
+        virtual bool operator!=(const Texture& right)
+        {
+            return m_texture_image != right.m_texture_image;
         }
 
-        GLuint GetIdentifier() const override {
-            return m_texture_id;
+        uint32_t GetIdentifier() const override
+        {
+            return 0;
         }
 
-        unsigned int GetWidth() const {
+        unsigned int GetWidth() const
+        {
             return m_width;
         }
 
-        unsigned int GetHeight() const {
+        unsigned int GetHeight() const
+        {
             return m_height;
         }
 
-        std::string_view GetFilePath() {
+        std::string_view GetFilePath()
+        {
             return m_path;
         }
 
-        bool IsFromFile() const {
+        bool IsFromFile() const
+        {
             return m_is_from_file;
         }
 
     protected:
-        std::string m_path;
-        GLuint      m_texture_id{0};
-
-        unsigned int m_width{0};
-        unsigned int m_height{0};
-
-        unsigned int m_data_format{0};
-        unsigned int m_internal_format{0};
+        std::string    m_path;
+        unsigned int   m_width{0};
+        unsigned int   m_height{0};
+        unsigned int   m_byte_per_pixel{0};
+        VkDeviceSize   m_buffer_size{0};
+        VkImageView    m_texture_image_view{VK_NULL_HANDLE};
+        VkImage        m_texture_image{VK_NULL_HANDLE};
+        VkDeviceMemory m_texture_memory{VK_NULL_HANDLE};
+        VkSampler      m_texture_sampler{VK_NULL_HANDLE};
 
         bool m_is_from_file{false};
 

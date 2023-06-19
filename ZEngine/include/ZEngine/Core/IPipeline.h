@@ -2,12 +2,14 @@
 #include <string>
 #include <ZEngineDef.h>
 
-namespace ZEngine::Core {
+namespace ZEngine::Core
+{
 
     struct IPipelineContext;
     struct IPipelineStage;
 
-    struct StageInformation {
+    struct StageInformation
+    {
         /**
          * A boolean that describes whether the stage was a success or not.
          */
@@ -19,7 +21,8 @@ namespace ZEngine::Core {
         std::string ErrorMessage;
     };
 
-    struct IPipelineStage {
+    struct IPipelineStage
+    {
         /**
          * Initialize a new IPipelineStage instance.
          */
@@ -51,7 +54,8 @@ namespace ZEngine::Core {
          *
          * @return An information related to the pipeline stage
          */
-        virtual const Core::StageInformation& GetInformation() const {
+        virtual const Core::StageInformation& GetInformation() const
+        {
             return m_information;
         }
 
@@ -61,7 +65,8 @@ namespace ZEngine::Core {
         Ref<IPipelineStage> m_next_stage{nullptr};
     };
 
-    struct IPipelineContext {
+    struct IPipelineContext
+    {
         IPipelineContext()          = default;
         virtual ~IPipelineContext() = default;
 

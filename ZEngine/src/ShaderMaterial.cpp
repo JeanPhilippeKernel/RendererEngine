@@ -10,6 +10,6 @@ namespace ZEngine::Rendering::Materials {
     void ShaderMaterial::Apply(const Ref<Shaders::Shader>& shader) {
         assert(shader != nullptr);
 
-        shader->Bind();
+        //shader->Bind();
     }
 } // namespace ZEngine::Rendering::Materials

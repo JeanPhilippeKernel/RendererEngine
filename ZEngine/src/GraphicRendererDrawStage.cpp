@@ -1,29 +1,33 @@
 #include <pch.h>
 #include <Rendering/Renderers/Pipelines/GraphicRendererDrawStage.h>
 #include <Rendering/Renderers/Pipelines/GraphicRendererEndFrameBindingStage.h>
-#include <Rendering/Renderers/Pipelines/GraphicRendererPipelineContext.h>
 #include <Rendering/Renderers/RenderCommand.h>
+#include <Core/Coroutine.h>
 
-namespace ZEngine::Rendering::Renderers::Pipelines {
-    GraphicRendererDrawStage::GraphicRendererDrawStage() {
-        m_next_stage = CreateRef<GraphicRendererEndFrameBindingStage>();
+namespace ZEngine::Rendering::Renderers::Pipelines
+{
+    GraphicRendererDrawStage::GraphicRendererDrawStage()
+    {
+        // m_next_stage = CreateRef<GraphicRendererEndFrameBindingStage>();
     }
 
     GraphicRendererDrawStage::~GraphicRendererDrawStage() {}
 
-    void GraphicRendererDrawStage::Run(GraphicRendererPipelineInformation& information) {
-
-        auto const pipeline = reinterpret_cast<GraphicRendererPipelineContext*>(m_context);
+    void GraphicRendererDrawStage::Run(GraphicRendererPipelineInformation& information)
+    {
+       /* auto const pipeline = reinterpret_cast<GraphicRendererPipelineContext*>(m_context);
         auto const renderer = pipeline->GetRenderer();
         const auto camera   = renderer->GetCamera();
 
-        while (!information.GraphicStorageCollection.empty()) {
+        while (!information.GraphicStorageCollection.empty())
+        {
             const auto& storage = information.GraphicStorageCollection.front();
 
             const auto& geometry = storage.GetGeometry();
 
             const auto& shader_material_pair_collection = storage.GetShaderMaterialPairCollection();
-            for (const auto& shader_material_pair : shader_material_pair_collection) {
+            for (const auto& shader_material_pair : shader_material_pair_collection)
+            {
                 auto& shader   = std::get<0>(shader_material_pair);
                 auto& material = std::get<1>(shader_material_pair);
 
@@ -33,7 +37,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
                 shader->SetUniform("model", geometry->GetTransform());
             }
 
-            for (const auto& shader_material_pair : shader_material_pair_collection) {
+            for (const auto& shader_material_pair : shader_material_pair_collection)
+            {
                 auto& shader = std::get<0>(shader_material_pair);
 
                 const auto& vertex_array = storage.GetVertexArray();
@@ -41,7 +46,14 @@ namespace ZEngine::Rendering::Renderers::Pipelines {
             }
 
             information.GraphicStorageCollection.pop();
-        }
+        }*/
+    }
+
+    std::future<void> GraphicRendererDrawStage::RunAsync(GraphicRendererPipelineInformation& information)
+    {
+        std::unique_lock _(m_mutex);
+
+        co_return;
     }
 
 } // namespace ZEngine::Rendering::Renderers::Pipelines

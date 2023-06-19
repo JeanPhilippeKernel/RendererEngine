@@ -4,6 +4,7 @@
 #include <Inputs/KeyCode.h>
 #include <Rendering/Renderers/RenderCommand.h>
 #include <Logging/LoggerDefinition.h>
+#include <Helpers/RendererHelper.h>
 
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
@@ -30,12 +31,10 @@ namespace ZEngine::Window::GLFWWindow
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        glfwSetErrorCallback(
-            [](int error, const char* description)
-            {
-                ZENGINE_CORE_CRITICAL(description)
-                ZENGINE_EXIT_FAILURE()
-            });
+        glfwSetErrorCallback([](int error, const char* description) {
+            ZENGINE_CORE_CRITICAL(description)
+            ZENGINE_EXIT_FAILURE()
+        });
 
         m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
 
@@ -119,8 +118,8 @@ namespace ZEngine::Window::GLFWWindow
 
         vulkan_instance->ConfigureDevices(&m_vulkan_surface);
 
-        const auto& current_device        = vulkan_instance->GetHighPerformantDevice();
-        auto        current_device_handle = current_device.GetNativePhysicalDeviceHandle();
+        auto& current_device        = vulkan_instance->GetHighPerformantDevice();
+        auto  current_device_handle = current_device.GetNativePhysicalDeviceHandle();
 
         uint32_t formatCount{0};
         vkGetPhysicalDeviceSurfaceFormatsKHR(current_device_handle, m_vulkan_surface, &formatCount, nullptr);
@@ -232,20 +231,30 @@ namespace ZEngine::Window::GLFWWindow
         {
             vkDestroyFence(device.GetNativeDeviceHandle(), m_frame_collection[i].Fence, nullptr);
             vkFreeCommandBuffers(device.GetNativeDeviceHandle(), m_frame_collection[i].GraphicCommandPool, 1, &(m_frame_collection[i].GraphicCommandBuffer));
+            if (!m_frame_collection[i].GraphicCommandBuffers.empty())
+            {
+                vkFreeCommandBuffers(
+                    device.GetNativeDeviceHandle(),
+                    m_frame_collection[i].GraphicCommandPool,
+                    m_frame_collection[i].GraphicCommandBuffers.size(),
+                    m_frame_collection[i].GraphicCommandBuffers.data());
+            }
             vkDestroyCommandPool(device.GetNativeDeviceHandle(), m_frame_collection[i].GraphicCommandPool, nullptr);
             vkFreeCommandBuffers(device.GetNativeDeviceHandle(), m_frame_collection[i].TransferCommandPool, 1, &(m_frame_collection[i].TransferCommandBuffer));
             vkDestroyCommandPool(device.GetNativeDeviceHandle(), m_frame_collection[i].TransferCommandPool, nullptr);
-            m_frame_collection[i].Fence                 = {};
-            m_frame_collection[i].GraphicCommandBuffer  = {};
+            m_frame_collection[i].Fence                = {};
+            m_frame_collection[i].GraphicCommandBuffer = {};
+            m_frame_collection[i].GraphicCommandBuffers.clear();
+            m_frame_collection[i].GraphicCommandBuffers.shrink_to_fit();
             m_frame_collection[i].GraphicCommandPool    = {};
             m_frame_collection[i].TransferCommandBuffer = {};
             m_frame_collection[i].TransferCommandPool   = {};
 
-            vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_semaphore_collection[i].ImageAcquiredSemaphore, nullptr);
-            vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_semaphore_collection[i].RenderCompleteSemaphore, nullptr);
+            vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_collection[i].ImageAcquiredSemaphore, nullptr);
+            vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_collection[i].RenderCompleteSemaphore, nullptr);
 
-            m_frame_semaphore_collection[i].ImageAcquiredSemaphore  = {};
-            m_frame_semaphore_collection[i].RenderCompleteSemaphore = {};
+            m_frame_collection[i].ImageAcquiredSemaphore  = {};
+            m_frame_collection[i].RenderCompleteSemaphore = {};
         }
         m_frame_collection.clear();
         m_frame_collection.shrink_to_fit();
@@ -256,6 +265,17 @@ namespace ZEngine::Window::GLFWWindow
         }
         m_swapchain_image_view_collection.clear();
         m_swapchain_image_view_collection.shrink_to_fit();
+
+        if (m_depth_image_view)
+        {
+            vkDestroyImageView(device.GetNativeDeviceHandle(), m_depth_image_view, nullptr);
+            m_depth_image_view = VK_NULL_HANDLE;
+        }
+        if (m_depth_image)
+        {
+            vkDestroyImage(device.GetNativeDeviceHandle(), m_depth_image, nullptr);
+            m_depth_image = VK_NULL_HANDLE;
+        }
 
         for (uint32_t i = 0; i < m_framebuffer_collection.size(); i++)
         {
@@ -380,21 +400,21 @@ namespace ZEngine::Window::GLFWWindow
         {
             switch (action)
             {
-            case GLFW_PRESS:
+                case GLFW_PRESS:
                 {
                     Event::KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
                     property->CallbackFn(e);
                     break;
                 }
 
-            case GLFW_RELEASE:
+                case GLFW_RELEASE:
                 {
                     Event::KeyReleasedEvent e{static_cast<Inputs::GlfwKeyCode>(key)};
                     property->CallbackFn(e);
                     break;
                 }
 
-            case GLFW_REPEAT:
+                case GLFW_REPEAT:
                 {
                     Event::KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
                     property->CallbackFn(e);
@@ -420,10 +440,89 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::Render()
     {
+        auto&       current_frame     = this->GetCurrentWindowFrame();
+        const auto& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
+        auto        device_handle     = performant_device.GetNativeDeviceHandle();
+        auto        present_queue     = performant_device.GetCurrentGraphicQueue(true);
+
+        VkResult wait_for_fences_result = vkWaitForFences(device_handle, 1, &(current_frame.Fence), VK_TRUE, UINT64_MAX); // wait indefinitely instead of periodically checking
+        if (wait_for_fences_result == VK_TIMEOUT)
+        {
+            return;
+        }
+
+        ZENGINE_VALIDATE_ASSERT(vkResetFences(device_handle, 1, &current_frame.Fence) == VK_SUCCESS, "Failed to reset Fence semaphore")
+
+        uint32_t image_index;
+        VkResult acquire_image_result = vkAcquireNextImageKHR(device_handle, m_swapchain, UINT64_MAX, current_frame.ImageAcquiredSemaphore, VK_NULL_HANDLE, &image_index);
+        if (acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_image_result == VK_SUBOPTIMAL_KHR || acquire_image_result == VK_NOT_READY || acquire_image_result == VK_TIMEOUT)
+        {
+            return;
+        }
+        ZENGINE_VALIDATE_ASSERT(acquire_image_result == VK_SUCCESS, "Failed to acquire image from Swapchain")
+
+        if (!current_frame.GraphicCommandBuffers.empty())
+        {
+            vkFreeCommandBuffers(
+                performant_device.GetNativeDeviceHandle(),
+                current_frame.GraphicCommandPool,
+                current_frame.GraphicCommandBuffers.size(),
+                current_frame.GraphicCommandBuffers.data());
+
+            current_frame.GraphicCommandBuffers.clear();
+            current_frame.GraphicCommandBuffers.shrink_to_fit();
+        }
+
+        ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, current_frame.GraphicCommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool")
+
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
             layer->Render();
+            layer->PrepareFrame(image_index, present_queue);
         }
+
+        // Submit command buffers
+        std::vector<VkSemaphore> wait_semaphore_collection = {current_frame.ImageAcquiredSemaphore};
+        VkPipelineStageFlags     wait_stage                = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        VkSubmitInfo             submit_info               = {};
+        submit_info.sType                                  = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit_info.waitSemaphoreCount                     = wait_semaphore_collection.size();
+        submit_info.pWaitSemaphores                        = wait_semaphore_collection.data();
+        submit_info.pWaitDstStageMask                      = &wait_stage;
+        submit_info.commandBufferCount                     = current_frame.GraphicCommandBuffers.size();
+        submit_info.pCommandBuffers                        = current_frame.GraphicCommandBuffers.data();
+        submit_info.signalSemaphoreCount                   = 1;
+        submit_info.pSignalSemaphores                      = &(current_frame.RenderCompleteSemaphore);
+
+        VkResult queue_submit_result = vkQueueSubmit(present_queue, 1, &submit_info, current_frame.Fence);
+        if (queue_submit_result == VK_ERROR_OUT_OF_HOST_MEMORY || queue_submit_result == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+        {
+            return;
+        }
+
+        /*Window Frame presentation operation*/
+        std::vector<VkSwapchainKHR> present_swapchain_collection = {m_swapchain};
+        std::vector<VkSemaphore>    present_semaphore_collection = {current_frame.RenderCompleteSemaphore};
+        VkPresentInfoKHR            present_info                 = {};
+        present_info.sType                                       = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        present_info.waitSemaphoreCount                          = present_semaphore_collection.size();
+        present_info.pWaitSemaphores                             = present_semaphore_collection.data();
+        present_info.swapchainCount                              = present_swapchain_collection.size();
+        present_info.pSwapchains                                 = present_swapchain_collection.data();
+        present_info.pImageIndices                               = &image_index;
+
+        VkResult present_result = vkQueuePresentKHR(present_queue, &present_info);
+        if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
+        {
+            return;
+        }
+
+        ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS, "Failed to present current frame on Window")
+
+        this->IncrementWindowFrameIndex();
+
+        /*Reset the swapchain state info for next frame*/
+        m_has_swap_chain_rebuilt = false;
     }
 
     uint32_t VulkanWindow::GetSwapChainMinImageCount() const
@@ -451,15 +550,17 @@ namespace ZEngine::Window::GLFWWindow
         return m_current_frame_index;
     }
 
-    int32_t VulkanWindow::GetCurrentWindowFrameSemaphoreIndex() const
+    VulkanWindowFrame& VulkanWindow::GetCurrentWindowFrame()
     {
-        return m_current_frame_semaphore_index;
+        int32_t frame_index = GetCurrentWindowFrameIndex();
+        return m_frame_collection[frame_index];
     }
 
-    void VulkanWindow::IncrementWindowFrameSemaphoreIndex(int32_t step)
+    const VulkanWindowFrame& VulkanWindow::GetCurrentWindowFrame() const
     {
-        auto frame_semaphore_count      = (int32_t) m_frame_semaphore_collection.size();
-        m_current_frame_semaphore_index = (m_current_frame_semaphore_index + step) % frame_semaphore_count;
+        // TODO: insert return statement here
+        int32_t frame_index = GetCurrentWindowFrameIndex();
+        return m_frame_collection[frame_index];
     }
 
     void VulkanWindow::IncrementWindowFrameIndex(int32_t step)
@@ -479,18 +580,12 @@ namespace ZEngine::Window::GLFWWindow
         return m_frame_collection[index];
     }
 
-    const std::vector<VulkanWindowFrameSemaphore>& VulkanWindow::GetWindowFrameSemaphoreCollection() const
+    const VkExtent2D& VulkanWindow::GetSwapchainExtent() const
     {
-        return m_frame_semaphore_collection;
+        return m_vulkan_extent_2d;
     }
 
-    VulkanWindowFrameSemaphore& VulkanWindow::GetWindowFrameSemaphore(uint32_t index)
-    {
-        ZENGINE_VALIDATE_ASSERT(index < m_frame_semaphore_collection.size(), "index is out of bound of available window frame semaphore")
-        return m_frame_semaphore_collection[index];
-    }
-
-    void VulkanWindow::RecreateSwapChain(VkSwapchainKHR old_swapchain, const Hardwares::VulkanDevice& device)
+    void VulkanWindow::RecreateSwapChain(VkSwapchainKHR old_swapchain, Hardwares::VulkanDevice& device)
     {
         MarkVulkanInternalObjectDirty(device);
 
@@ -559,90 +654,78 @@ namespace ZEngine::Window::GLFWWindow
             vkGetSwapchainImagesKHR(device.GetNativeDeviceHandle(), m_swapchain, &swapchain_image_count, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
 
         m_swapchain_image_collection.resize(swapchain_image_count);
-        ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(device.GetNativeDeviceHandle(), m_swapchain, &swapchain_image_count, m_swapchain_image_collection.data()) == VK_SUCCESS,
+        ZENGINE_VALIDATE_ASSERT(
+            vkGetSwapchainImagesKHR(device.GetNativeDeviceHandle(), m_swapchain, &swapchain_image_count, m_swapchain_image_collection.data()) == VK_SUCCESS,
             "Failed to get Images from Swapchain")
+
+        /* Create Depth Image and ImageView*/
+        const auto& memory_properties = device.GetPhysicalDeviceMemoryProperties();
+        VkFormat    depth_format      = Helpers::FindDepthFormat(device);
+        m_depth_image                 = Helpers::CreateImage(
+            device,
+            m_vulkan_extent_2d.width,
+            m_vulkan_extent_2d.height,
+            VK_IMAGE_TYPE_2D,
+            depth_format,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            VK_SHARING_MODE_EXCLUSIVE,
+            VK_SAMPLE_COUNT_1_BIT,
+            m_depth_image_device_memory,
+            memory_properties,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        m_depth_image_view = Helpers::CreateImageView(device, m_depth_image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
 
         /* Create ImageView */
         m_swapchain_image_view_collection.resize(m_swapchain_image_collection.size());
         for (size_t i = 0; i < m_swapchain_image_collection.size(); ++i)
         {
-            VkImageViewCreateInfo createInfo{};
-            createInfo.sType        = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            createInfo.image        = m_swapchain_image_collection[i];
-            createInfo.viewType     = VK_IMAGE_VIEW_TYPE_2D;
-            createInfo.format       = m_surface_format.format;
-            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-
-            createInfo.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            createInfo.subresourceRange.baseMipLevel   = 0;
-            createInfo.subresourceRange.levelCount     = 1;
-            createInfo.subresourceRange.baseArrayLayer = 0;
-            createInfo.subresourceRange.layerCount     = 1;
-
-            ZENGINE_VALIDATE_ASSERT(vkCreateImageView(device.GetNativeDeviceHandle(), &createInfo, nullptr, &(m_swapchain_image_view_collection[i])) == VK_SUCCESS,
-                "Failed to create Swapchain ImageView")
+            m_swapchain_image_view_collection[i] = Helpers::CreateImageView(device, m_swapchain_image_collection[i], m_surface_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
         }
 
-
         /* Create RenderPass */
-        VkAttachmentDescription colorAttachment = {};
-        colorAttachment.format                  = m_surface_format.format;
-        colorAttachment.samples                 = VK_SAMPLE_COUNT_1_BIT;
-        colorAttachment.loadOp                  = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp                 = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachment.stencilLoadOp           = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp          = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachment.initialLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachment.finalLayout             = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        RenderPasses::RenderPassSpecification render_pass_specification = {
+            .ColorAttachements = {
+                VkAttachmentDescription{
+                    .format        = m_surface_format.format,
+                    .samples       = VK_SAMPLE_COUNT_1_BIT,
+                    .loadOp        = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp       = VK_ATTACHMENT_STORE_OP_STORE,
+                    .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                    .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                    .finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR},
+                VkAttachmentDescription{
+                    .format         = Helpers::FindDepthFormat(device),
+                    .samples        = VK_SAMPLE_COUNT_1_BIT,
+                    .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                    .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+                    .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL}}};
+        RenderPasses::SubPassSpecification sub_pass_specification = {};
+        sub_pass_specification.ColorAttachementReferences         = {VkAttachmentReference{.attachment = 0, .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}};
+        sub_pass_specification.DepthStencilAttachementReference   = VkAttachmentReference{.attachment = 1, .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+        sub_pass_specification.SubpassDescription                 = VkSubpassDescription{.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS};
+        render_pass_specification.SubpassDependencies             = {VkSubpassDependency{
+                        .srcSubpass    = VK_SUBPASS_EXTERNAL,
+                        .dstSubpass    = 0,
+                        .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                        .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                        .srcAccessMask = 0,
+                        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT}};
 
-        VkAttachmentReference colorAttachmentRef = {};
-        colorAttachmentRef.attachment            = 0;
-        colorAttachmentRef.layout                = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        render_pass_specification.SubpassSpecifications = {sub_pass_specification};
+        m_render_pass                                   = Helpers::CreateRenderPass(device, render_pass_specification);
 
-        VkSubpassDescription subpass = {};
-        subpass.pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments    = &colorAttachmentRef;
-
-        VkSubpassDependency dependency = {};
-        dependency.srcSubpass          = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass          = 0;
-        dependency.srcStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.srcAccessMask       = 0;
-        dependency.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-
-        VkRenderPassCreateInfo renderPassInfo = {};
-        renderPassInfo.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        renderPassInfo.attachmentCount        = 1;
-        renderPassInfo.pAttachments           = &colorAttachment;
-        renderPassInfo.subpassCount           = 1;
-        renderPassInfo.pSubpasses             = &subpass;
-        renderPassInfo.dependencyCount        = 1;
-        renderPassInfo.pDependencies          = &dependency;
-
-        ZENGINE_VALIDATE_ASSERT(vkCreateRenderPass(device.GetNativeDeviceHandle(), &renderPassInfo, nullptr, &m_render_pass) == VK_SUCCESS, "Failed to create RenderPass")
-
+        /* Create Framebuffer */
         m_framebuffer_collection.resize(m_swapchain_image_view_collection.size());
         for (size_t i = 0; i < m_swapchain_image_view_collection.size(); i++)
         {
-            VkImageView attachments[] = {m_swapchain_image_view_collection[i]};
-
-            VkFramebufferCreateInfo framebufferInfo = {};
-            framebufferInfo.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            framebufferInfo.renderPass              = m_render_pass;
-            framebufferInfo.attachmentCount         = 1;
-            framebufferInfo.pAttachments            = attachments;
-            framebufferInfo.width                   = m_vulkan_extent_2d.width;
-            framebufferInfo.height                  = m_vulkan_extent_2d.height;
-            framebufferInfo.layers                  = 1;
-
-            ZENGINE_VALIDATE_ASSERT(
-                vkCreateFramebuffer(device.GetNativeDeviceHandle(), &framebufferInfo, nullptr, &m_framebuffer_collection[i]) == VK_SUCCESS, "Failed to create Framebuffer")
+            auto attachments            = std::vector<VkImageView>{m_swapchain_image_view_collection[i], m_depth_image_view};
+            m_framebuffer_collection[i] = Helpers::CreateFramebuffer(device, attachments, m_render_pass, m_vulkan_extent_2d);
         }
 
         // Create Frame & FrameSemaphore
@@ -654,52 +737,36 @@ namespace ZEngine::Window::GLFWWindow
 
         for (uint32_t i = 0; i < m_frame_collection.size(); ++i)
         {
-            m_frame_collection[i]                = {};
-            m_frame_collection[i].Backbuffer     = m_swapchain_image_collection[i];
-            m_frame_collection[i].BackbufferView = m_swapchain_image_view_collection[i];
-            m_frame_collection[i].Framebuffer    = m_framebuffer_collection[i];
-        }
-
-        m_frame_semaphore_collection.resize(m_swapchain_image_collection.size());
-        if (!m_frame_semaphore_collection.empty())
-        {
-            m_current_frame_semaphore_index = 0;
-        }
-        for (uint32_t i = 0; i < m_frame_semaphore_collection.size(); ++i)
-        {
-            m_frame_semaphore_collection[i] = {};
+            m_frame_collection[i]                         = {};
+            m_frame_collection[i].FrameIndex              = i;
+            m_frame_collection[i].Backbuffer              = m_swapchain_image_collection[i];
+            m_frame_collection[i].BackbufferView          = m_swapchain_image_view_collection[i];
+            m_frame_collection[i].Framebuffer             = m_framebuffer_collection[i];
+            m_frame_collection[i].ImageAcquiredSemaphore  = {};
+            m_frame_collection[i].RenderCompleteSemaphore = {};
         }
 
         // Create Command Buffers
         for (uint32_t i = 0; i < m_swapchain_image_collection.size(); i++)
         {
-            auto& frame           = m_frame_collection[i];
-            auto& frame_semaphore = m_frame_semaphore_collection[i];
-
-            // ToDo : We should have one CommandPool for graphic and other one for transfer
+            auto& frame = m_frame_collection[i];
 
             /* Graphic Command Pool & Command Buffer */
             VkCommandPoolCreateInfo graphic_command_pool_create_info = {};
             graphic_command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             graphic_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             graphic_command_pool_create_info.queueFamilyIndex        = device.GetGraphicQueueFamilyIndexCollection(true).at(0);
-            ZENGINE_VALIDATE_ASSERT(vkCreateCommandPool(device.GetNativeDeviceHandle(), &graphic_command_pool_create_info, nullptr, &(frame.GraphicCommandPool)) == VK_SUCCESS,
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateCommandPool(device.GetNativeDeviceHandle(), &graphic_command_pool_create_info, nullptr, &(frame.GraphicCommandPool)) == VK_SUCCESS,
                 "Failed to create Command Pool")
-
-            VkCommandBufferAllocateInfo graphic_command_buffer_create_info = {};
-            graphic_command_buffer_create_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            graphic_command_buffer_create_info.commandPool                 = frame.GraphicCommandPool;
-            graphic_command_buffer_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            graphic_command_buffer_create_info.commandBufferCount          = 1;
-            ZENGINE_VALIDATE_ASSERT(vkAllocateCommandBuffers(device.GetNativeDeviceHandle(), &graphic_command_buffer_create_info, &(frame.GraphicCommandBuffer)) == VK_SUCCESS,
-                "Failed to allocate Command Buffer")
 
             /* Transfer Command Pool & Command Buffer */
             VkCommandPoolCreateInfo transfer_command_pool_create_info = {};
             transfer_command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             transfer_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             transfer_command_pool_create_info.queueFamilyIndex        = device.GetTransferQueueFamilyIndexCollection().at(0);
-            ZENGINE_VALIDATE_ASSERT(vkCreateCommandPool(device.GetNativeDeviceHandle(), &transfer_command_pool_create_info, nullptr, &(frame.TransferCommandPool)) == VK_SUCCESS,
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateCommandPool(device.GetNativeDeviceHandle(), &transfer_command_pool_create_info, nullptr, &(frame.TransferCommandPool)) == VK_SUCCESS,
                 "Failed to create Command Pool")
 
             VkCommandBufferAllocateInfo transfer_command_buffer_create_info = {};
@@ -707,7 +774,8 @@ namespace ZEngine::Window::GLFWWindow
             transfer_command_buffer_create_info.commandPool                 = frame.TransferCommandPool;
             transfer_command_buffer_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             transfer_command_buffer_create_info.commandBufferCount          = 1;
-            ZENGINE_VALIDATE_ASSERT(vkAllocateCommandBuffers(device.GetNativeDeviceHandle(), &transfer_command_buffer_create_info, &(frame.TransferCommandBuffer)) == VK_SUCCESS,
+            ZENGINE_VALIDATE_ASSERT(
+                vkAllocateCommandBuffers(device.GetNativeDeviceHandle(), &transfer_command_buffer_create_info, &(frame.TransferCommandBuffer)) == VK_SUCCESS,
                 "Failed to allocate Command Buffer")
 
             VkFenceCreateInfo fence_create_info = {};
@@ -717,16 +785,15 @@ namespace ZEngine::Window::GLFWWindow
 
             VkSemaphoreCreateInfo semaphore_create_info = {};
             semaphore_create_info.sType                 = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-            ZENGINE_VALIDATE_ASSERT(vkCreateSemaphore(device.GetNativeDeviceHandle(), &semaphore_create_info, nullptr, &(frame_semaphore.ImageAcquiredSemaphore)) == VK_SUCCESS,
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateSemaphore(device.GetNativeDeviceHandle(), &semaphore_create_info, nullptr, &(frame.ImageAcquiredSemaphore)) == VK_SUCCESS,
                 "Failed to create Image acquired Semaphore")
-            ZENGINE_VALIDATE_ASSERT(vkCreateSemaphore(device.GetNativeDeviceHandle(), &semaphore_create_info, nullptr, &(frame_semaphore.RenderCompleteSemaphore)) == VK_SUCCESS,
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateSemaphore(device.GetNativeDeviceHandle(), &semaphore_create_info, nullptr, &(frame.RenderCompleteSemaphore)) == VK_SUCCESS,
                 "Failed to create Render complete Semaphore")
         }
-    }
 
-    VkRenderPass VulkanWindow::GetRenderPass() const
-    {
-        return m_render_pass;
+        m_has_swap_chain_rebuilt = true;
     }
 
     VkSurfaceKHR VulkanWindow::GetSurface() const
@@ -747,6 +814,17 @@ namespace ZEngine::Window::GLFWWindow
     VkSwapchainKHR VulkanWindow::GetSwapChain() const
     {
         return m_swapchain;
+    }
+
+    VkRenderPass VulkanWindow::GetRenderPass() const
+    {
+        ZENGINE_VALIDATE_ASSERT(m_render_pass != VK_NULL_HANDLE, "")
+        return m_render_pass;
+    }
+
+    bool VulkanWindow::HasSwapChainRebuilt() const
+    {
+        return m_has_swap_chain_rebuilt;
     }
 
     VulkanWindow::~VulkanWindow()

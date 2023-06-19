@@ -12,7 +12,8 @@ namespace ZEngine::Hardwares
         vkGetPhysicalDeviceMemoryProperties(m_physical_device, &m_physical_device_memory_properties);
         vkGetPhysicalDeviceFeatures(m_physical_device, &m_physical_device_feature);
 
-        if ((m_physical_device_feature.geometryShader == VK_TRUE) && (m_physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU))
+        if ((m_physical_device_feature.geometryShader == VK_TRUE)
+            &&(m_physical_device_feature.samplerAnisotropy == VK_TRUE) && (m_physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU))
         {
             m_high_performant_device = true;
         }
@@ -110,11 +111,12 @@ namespace ZEngine::Hardwares
         device_create_info.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_create_info.queueCreateInfoCount = static_cast<uint32_t>(device_queue_create_info_collection.size());
         device_create_info.pQueueCreateInfos    = device_queue_create_info_collection.data();
-        device_create_info.enabledLayerCount    = 0;
 
         device_create_info.enabledExtensionCount   = static_cast<uint32_t>(device_extension_layer.size());
         device_create_info.ppEnabledExtensionNames = (device_extension_layer.size() > 0) ? device_extension_layer.data() : nullptr;
-        device_create_info.ppEnabledLayerNames     = nullptr;
+        auto layer                                 = std::array{"VK_LAYER_KHRONOS_validation"};
+        device_create_info.enabledLayerCount       = 1;
+        device_create_info.ppEnabledLayerNames     = layer.data();
         device_create_info.pEnabledFeatures        = nullptr;
         device_create_info.pNext                   = nullptr;
 
@@ -139,6 +141,7 @@ namespace ZEngine::Hardwares
     VulkanDevice::~VulkanDevice()
     {
         vkDeviceWaitIdle(m_logical_device);
+        vkDestroyCommandPool(m_logical_device, m_transfer_command_pool, nullptr);
         vkDestroyDevice(m_logical_device, nullptr);
     }
 
@@ -207,6 +210,11 @@ namespace ZEngine::Hardwares
     VkPhysicalDevice VulkanDevice::GetNativePhysicalDeviceHandle() const
     {
         return m_physical_device;
+    }
+
+    const VkPhysicalDeviceProperties& VulkanDevice::GetPhysicalDeviceProperties() const
+    {
+        return m_physical_device_properties;
     }
 
     const VkPhysicalDeviceMemoryProperties& VulkanDevice::GetPhysicalDeviceMemoryProperties() const

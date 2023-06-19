@@ -1,9 +1,11 @@
 #pragma once
 #include <Rendering/Shaders/Compilers/ICompilerStage.h>
 
-namespace ZEngine::Rendering::Shaders::Compilers {
+namespace ZEngine::Rendering::Shaders::Compilers
+{
 
-    class CompilationStage : public ICompilerStage {
+    class CompilationStage : public ICompilerStage
+    {
     public:
         /**
          * Initialize a new CompilationStage instance.
@@ -14,8 +16,15 @@ namespace ZEngine::Rendering::Shaders::Compilers {
         /**
          * Run Compiler stage
          *
-         * @param information    Collection of shader information
+         * @param information Collection of shader information
          */
         virtual void Run(std::vector<ShaderInformation>& information) override;
+
+        /**
+         * Run asynchronously compiler stage
+         *
+         * @param information Collection of shader information
+         */
+        virtual std::future<void> RunAsync(std::vector<ShaderInformation>& information) override;
     };
 } // namespace ZEngine::Rendering::Shaders::Compilers

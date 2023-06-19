@@ -2,10 +2,15 @@
 #include <Rendering/Shaders/Compilers/LinkageStage.h>
 #include <Rendering/Shaders/Compilers/ValidationStage.h>
 #include <Logging/LoggerDefinition.h>
+#include <Core/Coroutine.h>
+#include <vulkan/vulkan.h>
+#include <ZEngine.h>
 
-namespace ZEngine::Rendering::Shaders::Compilers {
+namespace ZEngine::Rendering::Shaders::Compilers
+{
 
-    LinkageStage::LinkageStage() {
+    LinkageStage::LinkageStage()
+    {
 #ifdef __APPLE__
         // we dont perform validation stage on macOs for the moment as it considers generated shader program as invalid
 #else
@@ -15,39 +20,51 @@ namespace ZEngine::Rendering::Shaders::Compilers {
 
     LinkageStage::~LinkageStage() {}
 
-    void LinkageStage::Run(std::vector<ShaderInformation>& information_list) {
+    void LinkageStage::Run(std::vector<ShaderInformation>& information_list) {}
 
-        GLuint shader_program = glCreateProgram();
-        std::for_each(
-            std::begin(information_list), std::end(information_list), [&shader_program](const ShaderInformation& info) { glAttachShader(shader_program, info.ShaderId); });
-        glLinkProgram(shader_program);
+    std::future<void> LinkageStage::RunAsync(std::vector<ShaderInformation>& information_list)
+    {
+        std::unique_lock lock(m_mutex);
 
-        GLint linking_status;
-        glGetProgramiv(shader_program, GL_LINK_STATUS, &linking_status);
-        if (linking_status == GL_FALSE) {
-            GLint log_info_length = 0;
-            glGetProgramiv(shader_program, GL_INFO_LOG_LENGTH, &log_info_length);
+        auto& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
 
-            std::vector<GLchar> log_message(log_info_length);
-            if (log_info_length > 0) {
-                glGetProgramInfoLog(shader_program, log_info_length, &log_info_length, &log_message[0]);
+        for (ShaderInformation& shader_info : information_list)
+        {
+            VkShaderModuleCreateInfo shader_module_create_info = {};
+            shader_module_create_info.sType                    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            shader_module_create_info.codeSize                 = sizeof(uint32_t) * shader_info.BinarySource.size();
+            shader_module_create_info.pCode                    = shader_info.BinarySource.data();
+
+            VkResult create_shader_result = vkCreateShaderModule(performant_device.GetNativeDeviceHandle(), &shader_module_create_info, nullptr, &(shader_info.ShaderModule));
+
+            if (create_shader_result != VK_SUCCESS)
+            {
+                this->m_information.IsSuccess    = this->m_information.IsSuccess && false;
+                this->m_information.ErrorMessage = "Failed to create ShaderModule";
+                this->m_information.ErrorMessage.append(" for " + shader_info.Name);
+                ZENGINE_CORE_ERROR("------> Failed to create ShaderModule for {}", shader_info.Name)
             }
-            glDeleteProgram(shader_program);
 
-            this->m_information.IsSuccess = this->m_information.IsSuccess && false;
-            this->m_information.ErrorMessage.append(std::begin(log_message), std::end(log_message));
-            ZENGINE_CORE_ERROR("------> Failed to create shader program {} shader");
+            shader_info.ShaderStageCreateInfo       = {};
+            shader_info.ShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            if (shader_info.Type == ShaderType::VERTEX)
+            {
+                shader_info.ShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+            }
+            else if (shader_info.Type == ShaderType::FRAGMENT)
+            {
+                shader_info.ShaderStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            }
+            shader_info.ShaderStageCreateInfo.module = shader_info.ShaderModule;
+            shader_info.ShaderStageCreateInfo.pName  = "main";
         }
 
-        if (!this->m_information.IsSuccess) {
-            ZENGINE_CORE_ERROR("------> Linking stage completed with errors");
-            ZENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage);
-            return;
+        if (!this->m_information.IsSuccess)
+        {
+            ZENGINE_CORE_ERROR("------> Linking stage completed with errors")
+            ZENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage)
         }
 
-        std::for_each(std::begin(information_list), std::end(information_list), [&shader_program](ShaderInformation& info) {
-            info.ProgramId = shader_program;
-            glDetachShader(shader_program, info.ShaderId);
-        });
+        co_return;
     }
 } // namespace ZEngine::Rendering::Shaders::Compilers

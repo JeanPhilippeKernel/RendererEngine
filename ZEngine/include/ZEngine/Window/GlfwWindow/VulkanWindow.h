@@ -10,20 +10,25 @@ namespace ZEngine::Window::GLFWWindow
 {
     struct VulkanWindowFrame
     {
-        VkCommandPool   GraphicCommandPool;
-        VkCommandPool   TransferCommandPool;
-        VkCommandBuffer GraphicCommandBuffer;
-        VkCommandBuffer TransferCommandBuffer;
-        VkFence         Fence;
-        VkImage         Backbuffer;
-        VkImageView     BackbufferView;
-        VkFramebuffer   Framebuffer;
+        int32_t         FrameIndex{-1};
+        VkCommandPool   GraphicCommandPool{VK_NULL_HANDLE};
+        VkCommandPool   TransferCommandPool{VK_NULL_HANDLE};
+        VkCommandBuffer GraphicCommandBuffer{VK_NULL_HANDLE};
+        std::vector<VkCommandBuffer> GraphicCommandBuffers;
+        VkCommandBuffer TransferCommandBuffer{VK_NULL_HANDLE};
+        VkFence         Fence{VK_NULL_HANDLE};
+        VkImage         Backbuffer{VK_NULL_HANDLE};
+        VkImageView     BackbufferView{VK_NULL_HANDLE};
+        VkFramebuffer   Framebuffer{VK_NULL_HANDLE};
+        VkSemaphore     ImageAcquiredSemaphore{VK_NULL_HANDLE};
+        VkSemaphore     RenderCompleteSemaphore{VK_NULL_HANDLE};
     };
 
-    struct VulkanWindowFrameSemaphore
+    struct WindowFramePrepareInfo
     {
-        VkSemaphore ImageAcquiredSemaphore;
-        VkSemaphore RenderCompleteSemaphore;
+        uint32_t FrameIndex;
+        VkQueue  GraphicQueue;
+        std::vector<VkCommandBuffer>& CommandBufferQueue;
     };
 
     class VulkanWindow : public CoreWindow
@@ -55,22 +60,22 @@ namespace ZEngine::Window::GLFWWindow
         const std::vector<VkImageView>&                GetSwapChainImageViewCollection() const;
         const std::vector<VkFramebuffer>&              GetFramebufferCollection() const;
         int32_t                                        GetCurrentWindowFrameIndex() const;
-        int32_t                                        GetCurrentWindowFrameSemaphoreIndex() const;
-        void                                           IncrementWindowFrameSemaphoreIndex(int32_t step = 1);
+        VulkanWindowFrame&                             GetCurrentWindowFrame();
+        const VulkanWindowFrame&                       GetCurrentWindowFrame() const;
         void                                           IncrementWindowFrameIndex(int32_t step = 1);
         std::vector<VulkanWindowFrame>&                GetWindowFrameCollection();
         VulkanWindowFrame&                             GetWindowFrame(uint32_t index);
-        const std::vector<VulkanWindowFrameSemaphore>& GetWindowFrameSemaphoreCollection() const;
-        VulkanWindowFrameSemaphore&                    GetWindowFrameSemaphore(uint32_t index);
+        const VkExtent2D&                              GetSwapchainExtent() const;
 
-        void RecreateSwapChain(VkSwapchainKHR old_swapchain, const Hardwares::VulkanDevice& device);
+        void RecreateSwapChain(VkSwapchainKHR old_swapchain, Hardwares::VulkanDevice& device);
 
-        VkRenderPass       GetRenderPass() const;
         VkSurfaceKHR       GetSurface() const;
         VkSurfaceFormatKHR GetSurfaceFormat() const;
         VkPresentModeKHR   GetPresentMode() const;
         VkSwapchainKHR     GetSwapChain() const;
+        VkRenderPass       GetRenderPass() const;
 
+        bool HasSwapChainRebuilt() const;
 
     public:
         bool OnEvent(Event::CoreEvent& event) override;
@@ -121,15 +126,21 @@ namespace ZEngine::Window::GLFWWindow
         VkSwapchainKHR                  m_swapchain{VK_NULL_HANDLE};
         VkSurfaceFormatKHR              m_surface_format;
         uint32_t                        m_min_image_count{0};
+        VkImage                         m_depth_image{VK_NULL_HANDLE};
+        VkDeviceMemory                  m_depth_image_device_memory{VK_NULL_HANDLE};
+        VkImageView                     m_depth_image_view{VK_NULL_HANDLE};
         std::vector<VkImage>            m_swapchain_image_collection;
         std::vector<VkImageView>        m_swapchain_image_view_collection;
         std::vector<VkFramebuffer>      m_framebuffer_collection;
         VkRenderPass                    m_render_pass{VK_NULL_HANDLE};
 
-        int32_t                                 m_current_frame_index{-1};
-        int32_t                                 m_current_frame_semaphore_index{-1};
-        std::vector<VulkanWindowFrame>          m_frame_collection;
-        std::vector<VulkanWindowFrameSemaphore> m_frame_semaphore_collection;
+        int32_t                        m_current_frame_index{-1};
+        std::vector<VulkanWindowFrame> m_frame_collection;
+
+        bool m_has_swap_chain_rebuilt{false};
+
+    private:
+        std::vector<VkCommandBuffer> m_command_buffer_collection;
     };
 
 } // namespace ZEngine::Window::GLFWWindow

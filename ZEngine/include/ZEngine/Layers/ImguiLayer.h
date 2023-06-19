@@ -42,6 +42,7 @@ namespace ZEngine::Layers
 
         void Update(Core::TimeStep dt) override;
 
+        void PrepareFrame(uint32_t frame_index, VkQueue& present_queue) override;
         void Render() override;
 
         virtual void AddUIComponent(const Ref<Components::UI::UIComponent>& component);
@@ -68,10 +69,7 @@ namespace ZEngine::Layers
 
     private:
         static bool                                   m_initialized;
-        bool                                          m_swap_chain_rebuild{false};
         VkDescriptorPool                              m_descriptor_pool{VK_NULL_HANDLE};
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
-
-        void FrameRenderAndPresent(const Ref<Window::CoreWindow>& wd, ImDrawData* draw_data);
     };
 } // namespace ZEngine::Layers

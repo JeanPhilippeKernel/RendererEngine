@@ -1,12 +1,35 @@
 #pragma once
 #include <vector>
 #include <ZEngineDef.h>
+#include <Maths/Math.h>
 #include <Rendering/Materials/ShaderMaterial.h>
 #include <Rendering/Geometries/IGeometry.h>
 
-namespace ZEngine::Rendering::Meshes {
+namespace ZEngine::Rendering::Meshes
+{
 
-    class Mesh {
+    enum class MeshType
+    {
+        CUSTOM = 0,
+        CUBE   = 1,
+        QUAD   = 2,
+        SQUARE = 3
+    };
+
+    struct MeshVNext
+    {
+        uint32_t                                             MaterialID{0xFFFFFFFF};
+        MeshType                                             Type{MeshType::CUSTOM};
+        uint32_t                                             VertexCount{0};
+        Maths::Matrix4                                       LocalTransform{Maths::Matrix4(1.0f)};
+        uint32_t                                             VertexOffset{sizeof(Rendering::Renderers::Storages::IVertex)};
+        std::vector<float>                                   Vertices;
+        std::vector<float>                                   Indices;
+    };
+
+    /*Need to be deprecated*/
+    class Mesh
+    {
     public:
         explicit Mesh();
         explicit Mesh(const Ref<Geometries::IGeometry>& geometry, const std::vector<Ref<Materials::ShaderMaterial>>& materials);

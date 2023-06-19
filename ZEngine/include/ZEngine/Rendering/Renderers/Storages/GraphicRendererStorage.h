@@ -110,12 +110,12 @@ namespace ZEngine::Rendering::Renderers::Storages {
             }
         }
 
-        m_index_buffer.reset(new Buffers::IndexBuffer<K>());
-        m_index_buffer->SetData(raw_indexes);
+        //m_index_buffer.reset(new Buffers::IndexBuffer<K>());
+        //m_index_buffer->SetData(raw_indexes);
 
-        m_vertex_array.reset(new Buffers::VertexArray<T, K>());
-        m_vertex_array->AddVertexBuffer(m_vertex_buffer);
-        m_vertex_array->SetIndexBuffer(m_index_buffer);
+        //m_vertex_array.reset(new Buffers::VertexArray<T, K>());
+        //m_vertex_array->AddVertexBuffer(m_vertex_buffer);
+        //m_vertex_array->SetIndexBuffer(m_index_buffer);
     }
 
     template <typename T, typename K>
@@ -129,9 +129,9 @@ namespace ZEngine::Rendering::Renderers::Storages {
             std::move(std::begin(data), std::end(data), std::back_inserter(raw_vertices));
         });
 
-        m_vertex_buffer.reset(new Buffers::VertexBuffer<T>(vertex_count));
-        m_vertex_buffer->SetLayout(GraphicVertex::Descriptor::GetLayout());
-        m_vertex_buffer->SetData(raw_vertices);
+        //m_vertex_buffer.reset(new Buffers::VertexBuffer<T>(vertex_count));
+        //m_vertex_buffer->SetLayout(GraphicVertex::Descriptor::GetLayout());
+        //m_vertex_buffer->SetData(raw_vertices);
 
         unsigned int   index_count{0};
         std::vector<K> raw_indexes;
@@ -165,12 +165,12 @@ namespace ZEngine::Rendering::Renderers::Storages {
             }
         }
 
-        m_index_buffer.reset(new Buffers::IndexBuffer<K>());
-        m_index_buffer->SetData(raw_indexes);
+        //m_index_buffer.reset(new Buffers::IndexBuffer<K>());
+        //m_index_buffer->SetData(raw_indexes);
 
-        m_vertex_array.reset(new Buffers::VertexArray<T, K>());
-        m_vertex_array->AddVertexBuffer(m_vertex_buffer);
-        m_vertex_array->SetIndexBuffer(m_index_buffer);
+        //m_vertex_array.reset(new Buffers::VertexArray<T, K>());
+        //m_vertex_array->AddVertexBuffer(m_vertex_buffer);
+        //m_vertex_array->SetIndexBuffer(m_index_buffer);
     }
 
 

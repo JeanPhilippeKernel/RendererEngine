@@ -4,11 +4,14 @@
 #include <Rendering/Renderers/GraphicRenderer3D.h>
 #include <Controllers/PerspectiveCameraController.h>
 
-namespace ZEngine::Rendering::Scenes {
+namespace ZEngine::Rendering::Scenes
+{
 
-    class GraphicScene3D : public GraphicScene {
+    class GraphicScene3D : public GraphicScene
+    {
     public:
-        GraphicScene3D() : GraphicScene() {
+        GraphicScene3D() : GraphicScene()
+        {
             m_renderer = CreateScope<Renderers::GraphicRenderer3D>();
         }
 

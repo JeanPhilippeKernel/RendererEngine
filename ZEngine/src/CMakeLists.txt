@@ -65,4 +65,5 @@ target_link_libraries (zEngineLib
 		imported::stduuid
 		imported::yaml-cpp
 		imported::vulkan
+		"$ENV{VULKAN_SDK}/Lib/shaderc_combinedd.lib"
 )

@@ -10,6 +10,7 @@
 #include <Core/IEventable.h>
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Window
 {
@@ -44,6 +45,8 @@ namespace ZEngine::Layers
 
             return nullptr;
         }
+
+        virtual void PrepareFrame(uint32_t frame_index, VkQueue& present_queue) = 0;
 
     protected:
         std::string                                   m_name;

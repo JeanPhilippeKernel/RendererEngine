@@ -1,13 +1,16 @@
 #pragma once
 #include <string>
+#include <future>
 #include <unordered_map>
 #include <ZEngineDef.h>
 #include <Maths/Math.h>
 #include <Core/IGraphicObject.h>
 #include <Rendering/Shaders/Compilers/ShaderCompiler.h>
 
-namespace ZEngine::Rendering::Shaders {
-    class Shader : public Core::IGraphicObject {
+namespace ZEngine::Rendering::Shaders
+{
+    class Shader : public Core::IGraphicObject
+    {
     public:
         /**
          * Initialize a new Shader instance.
@@ -32,6 +35,11 @@ namespace ZEngine::Rendering::Shaders {
          * Compile and create shader program
          */
         void CreateProgram();
+
+        /**
+         * Compile and create asynchronously shader program
+         */
+        std::future<void> CreateProgramAsync();
 
         /**
          * Make active and uses the shader program

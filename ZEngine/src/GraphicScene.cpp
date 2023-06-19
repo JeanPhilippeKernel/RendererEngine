@@ -19,10 +19,19 @@ using namespace ZEngine::Rendering::Entities;
 
 namespace ZEngine::Rendering::Scenes
 {
+    GraphicScene::~GraphicScene()
+    {
+        m_renderer.reset();
+    }
 
     void GraphicScene::Initialize()
     {
         m_renderer->Initialize();
+    }
+
+    void GraphicScene::Deinitialize()
+    {
+        m_renderer->Deinitialize();
     }
 
     GraphicSceneEntity GraphicScene::CreateEntity(std::string_view entity_name)
@@ -79,8 +88,8 @@ namespace ZEngine::Rendering::Scenes
 
     Entities::GraphicSceneEntity GraphicScene::GetEntity(int mouse_pos_x, int mouse_pos_y)
     {
-        int entity_id = m_renderer->GetFrameBuffer()->ReadPixelAt(mouse_pos_x, mouse_pos_y, 1);
-        ZENGINE_CORE_WARN("Pixel ID: {}", entity_id)
+        //int entity_id = m_renderer->GetFrameBuffer()->ReadPixelAt(mouse_pos_x, mouse_pos_y, 1);
+        //ZENGINE_CORE_WARN("Pixel ID: {}", entity_id)
         return Entities::GraphicSceneEntity();
     }
 
@@ -101,12 +110,14 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::RemoveInvalidEntities()
     {
-        m_entity_registry->view<ValidComponent>().each([&](entt::entity handle, ValidComponent& component) {
-            if (!component.IsValid)
+        m_entity_registry->view<ValidComponent>().each(
+            [&](entt::entity handle, ValidComponent& component)
             {
-                m_entity_registry->destroy(handle);
-            }
-        });
+                if (!component.IsValid)
+                {
+                    m_entity_registry->destroy(handle);
+                }
+            });
     }
 
     void GraphicScene::InvalidateAllEntities()
@@ -145,14 +156,44 @@ namespace ZEngine::Rendering::Scenes
         return m_entity_registry->valid(entity);
     }
 
+    int32_t GraphicScene::AddMesh(Meshes::MeshVNext&& mesh)
+    {
+        int32_t index{-1};
+        {
+            std::unique_lock lock(this->m_mutex);
+            m_mesh_vnext_list.push_back(std::move(mesh));
+
+            index = (m_mesh_vnext_list.size() - 1);
+        }
+        return index;
+    }
+
+    const Meshes::MeshVNext& GraphicScene::GetMesh(int32_t mesh_id) const
+    {
+        std::unique_lock lock(this->m_mutex);
+
+        ZENGINE_VALIDATE_ASSERT(mesh_id >= 0 && mesh_id < (m_mesh_vnext_list.size() - 1), "Mesh ID is invalid")
+        return m_mesh_vnext_list.at(mesh_id);
+    }
+
+    Meshes::MeshVNext& GraphicScene::GetMesh(int32_t mesh_id)
+    {
+        std::unique_lock lock(this->m_mutex);
+
+        ZENGINE_VALIDATE_ASSERT(mesh_id >= 0 && mesh_id < m_mesh_vnext_list.size(), "Mesh ID is invalid")
+        return m_mesh_vnext_list[mesh_id];
+    }
+
     bool GraphicScene::OnEvent(Event::CoreEvent& e)
     {
-        m_entity_registry->view<CameraComponent>().each([&](CameraComponent& component) {
-            if (component.IsPrimaryCamera)
+        m_entity_registry->view<CameraComponent>().each(
+            [&](CameraComponent& component)
             {
-                component.GetCameraController()->OnEvent(e);
-            }
-        });
+                if (component.IsPrimaryCamera)
+                {
+                    component.GetCameraController()->OnEvent(e);
+                }
+            });
         return false;
     }
 
@@ -214,22 +255,10 @@ namespace ZEngine::Rendering::Scenes
             {
                 controller->SetAspectRatio(m_scene_requested_size.first / m_scene_requested_size.second);
             }
-            m_renderer->GetFrameBuffer()->Resize(m_scene_requested_size.first, m_scene_requested_size.second);
+            m_renderer->RequestOutputImageSize(m_scene_requested_size.first, m_scene_requested_size.second);
             m_last_scene_requested_size = m_scene_requested_size;
             m_scene_requested_size      = {0.0f, 0.0f};
         }
-
-        // Todo : Should be refactored
-        //
-        std::vector<Meshes::Mesh> meshes;
-        m_entity_registry->view<TransformComponent, GeometryComponent, MaterialComponent>().each(
-            [this, &meshes](entt::entity handle, TransformComponent& transform_component, GeometryComponent& geometry_component, MaterialComponent& material_component) {
-                auto geometry = geometry_component.GetGeometry();
-                geometry->SetTransform(transform_component.GetTransform());
-
-                meshes.emplace_back(std::move(geometry), material_component.GetMaterials());
-            });
-        m_renderer->AddMesh(std::move(meshes));
     }
 
     void GraphicScene::Render()
@@ -239,21 +268,32 @@ namespace ZEngine::Rendering::Scenes
             m_scene_camera = controller->GetCamera();
         }
 
-        if (!m_scene_camera.expired())
-        {
-            m_renderer->StartScene(m_scene_camera.lock());
-            m_renderer->EndScene();
-        }
+        //if (OnSceneRenderCompleted)
+        //{
+        //    OnSceneRenderCompleted(ToTextureRepresentation());
+        //}
+        //  Todo : Should be refactored
+        // m_entity_registry->view<TransformComponent, MeshComponent>().each(
+        //     [this](entt::entity handle, TransformComponent& transform_component, MeshComponent& mesh_component)
+        //     {
+        //         auto& mesh          = mesh_component.GetMesh();
+        //         mesh.LocalTransform = transform_component.GetTransform();
+        //     });
+    }
 
-        if (OnSceneRenderCompleted)
+    void GraphicScene::UploadFrameInfo(uint32_t frame_index, VkQueue& present_queue)
+    {
+        if (auto camera = m_scene_camera.lock())
         {
-            OnSceneRenderCompleted(ToTextureRepresentation());
+            m_renderer->StartScene({.FrameIndex = frame_index, .GraphicQueue = present_queue, .SceneCamera = std::move(camera), .MeshCollection = m_mesh_vnext_list});
+            m_renderer->EndScene();
         }
     }
 
     unsigned int GraphicScene::ToTextureRepresentation() const
     {
-        return m_renderer->GetFrameBuffer()->GetTexture();
+        return 0;
+        // return m_renderer->GetFrameBuffer()->GetTexture();
     }
 
 } // namespace ZEngine::Rendering::Scenes

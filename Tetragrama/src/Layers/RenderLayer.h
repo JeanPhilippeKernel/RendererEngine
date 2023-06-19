@@ -17,11 +17,13 @@ namespace Tetragrama::Layers
     public:
         RenderLayer(std::string_view name = "Rendering layer");
 
-        virtual ~RenderLayer() = default;
+        virtual ~RenderLayer();
 
         virtual void Initialize() override;
+        virtual void Deinitialize() override;
         virtual void Update(ZEngine::Core::TimeStep dt) override;
 
+        void         PrepareFrame(uint32_t frame_index, VkQueue& present_queue) override;
         virtual void Render() override;
 
         virtual bool OnEvent(ZEngine::Event::CoreEvent& e) override;
