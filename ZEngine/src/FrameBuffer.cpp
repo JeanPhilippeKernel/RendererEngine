@@ -217,23 +217,39 @@ namespace ZEngine::Rendering::Buffers
             performant_device,
             specification.Width,
             specification.Height,
-            (VkImageType) color_attachment_specification.ImageType,
-            (VkFormat) color_attachment_specification.Format,
-            (VkImageTiling) color_attachment_specification.Tiling,
-            (VkImageLayout) color_attachment_specification.InitialLayout,
+            static_cast<VkImageType>(color_attachment_specification.ImageType),
+            static_cast<VkFormat>(color_attachment_specification.Format),
+            static_cast<VkImageTiling>(color_attachment_specification.Tiling),
+            static_cast<VkImageLayout>(color_attachment_specification.InitialLayout),
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
             VK_SHARING_MODE_EXCLUSIVE,
-            (VkSampleCountFlagBits) color_attachment_specification.SampleCount,
+            static_cast<VkSampleCountFlagBits>(color_attachment_specification.SampleCount),
             m_color_image_memory,
             memory_properties,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        /*Transition Image to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL*/
+        Helpers::TransitionImageLayout(
+            performant_device,
+            m_color_image_attachment,
+            static_cast<VkFormat>(color_attachment_specification.Format),
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        /* Transition to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL */
+        Helpers::TransitionImageLayout(
+            performant_device,
+            m_color_image_attachment,
+            static_cast<VkFormat>(color_attachment_specification.Format),
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
         AttachmentCollection[0] =
             Helpers::CreateImageView(performant_device, m_color_image_attachment, (VkFormat) color_attachment_specification.Format, VK_IMAGE_ASPECT_COLOR_BIT);
 
         /*Depth Attachment*/
         const auto& depth_attachment_specification = specification.AttachmentSpecifications[1].Specification;
-        m_color_image_attachment                   = Helpers::CreateImage(
+        m_depth_image_attachment                   = Helpers::CreateImage(
             performant_device,
             specification.Width,
             specification.Height,
@@ -244,12 +260,12 @@ namespace ZEngine::Rendering::Buffers
             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
             VK_SHARING_MODE_EXCLUSIVE,
             (VkSampleCountFlagBits) depth_attachment_specification.SampleCount,
-            m_color_image_memory,
+            m_depth_image_memory,
             memory_properties,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         AttachmentCollection[1] =
-            Helpers::CreateImageView(performant_device, m_color_image_attachment, (VkFormat) depth_attachment_specification.Format, VK_IMAGE_ASPECT_DEPTH_BIT);
+            Helpers::CreateImageView(performant_device, m_depth_image_attachment, (VkFormat) depth_attachment_specification.Format, VK_IMAGE_ASPECT_DEPTH_BIT);
 
         /* Create the actual Framebuffer */
         this->Framebuffer = Helpers::CreateFramebuffer(
@@ -259,6 +275,7 @@ namespace ZEngine::Rendering::Buffers
             VkExtent2D{.width = specification.Width, .height = specification.Height},
             specification.Layers);
 
+        /* Create Sampler */
         this->Sampler = Helpers::CreateTextureSampler(performant_device);
     }
 

@@ -67,7 +67,10 @@ namespace Tetragrama::Components
         ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
 
         // Scene texture representation
-        //ImGui::Image(reinterpret_cast<void*>(m_scene_texture_identifier), m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+        if (m_current_scene_texture_view != VK_NULL_HANDLE)
+        {
+            ImGui::Image(m_current_scene_texture_view, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+        }
 
         // ViewPort bound computation
         ImVec2 viewport_windows_size = ImGui::GetWindowSize();
@@ -85,14 +88,10 @@ namespace Tetragrama::Components
         ImGui::PopStyleVar();
     }
 
-    void SceneViewportUIComponent::SetSceneTexture(uint32_t scene_texture)
+    void SceneViewportUIComponent::SceneTextureAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>& message)
     {
-        m_scene_texture_identifier = scene_texture;
-    }
-
-    void SceneViewportUIComponent::SceneTextureAvailableMessageHandler(Messengers::GenericMessage<uint32_t>& message)
-    {
-        SetSceneTexture(message.GetValue());
+        const auto& view_layout      = message.GetValue();
+        m_current_scene_texture_view = view_layout.Handle;
     }
 
     void SceneViewportUIComponent::SceneViewportResizedMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& e)

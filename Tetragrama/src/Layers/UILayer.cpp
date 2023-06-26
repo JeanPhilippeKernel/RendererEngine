@@ -38,7 +38,7 @@ namespace Tetragrama::Layers
             std::bind(&Components::DockspaceUIComponent::RequestExitMessageHandler, reinterpret_cast<Components::DockspaceUIComponent*>(m_dockspace_component.get()),
                 std::placeholders::_1));
 
-        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<uint32_t>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE,
+        IMessenger::Register<ZEngine::Components::UI::UIComponent, GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>>(m_scene_component, EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE,
             std::bind(&Components::SceneViewportUIComponent::SceneTextureAvailableMessageHandler, reinterpret_cast<Components::SceneViewportUIComponent*>(m_scene_component.get()),
                 std::placeholders::_1));
 

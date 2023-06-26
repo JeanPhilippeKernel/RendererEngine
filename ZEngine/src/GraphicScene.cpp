@@ -32,6 +32,10 @@ namespace ZEngine::Rendering::Scenes
     void GraphicScene::Deinitialize()
     {
         m_renderer->Deinitialize();
+        for (auto& mesh : m_mesh_vnext_list)
+        {
+            mesh.Flush();
+        }
     }
 
     GraphicSceneEntity GraphicScene::CreateEntity(std::string_view entity_name)
@@ -259,6 +263,12 @@ namespace ZEngine::Rendering::Scenes
             m_last_scene_requested_size = m_scene_requested_size;
             m_scene_requested_size      = {0.0f, 0.0f};
         }
+
+        //  Todo : Should be refactored
+        m_entity_registry->view<TransformComponent, MeshComponent>().each([this](entt::entity handle, TransformComponent& transform_component, MeshComponent& mesh_component) {
+            auto& mesh          = m_mesh_vnext_list[mesh_component.GetMeshID()];
+            mesh.LocalTransform = transform_component.GetTransform();
+        });
     }
 
     void GraphicScene::Render()
@@ -267,33 +277,33 @@ namespace ZEngine::Rendering::Scenes
         {
             m_scene_camera = controller->GetCamera();
         }
-
-        //if (OnSceneRenderCompleted)
-        //{
-        //    OnSceneRenderCompleted(ToTextureRepresentation());
-        //}
-        //  Todo : Should be refactored
-        // m_entity_registry->view<TransformComponent, MeshComponent>().each(
-        //     [this](entt::entity handle, TransformComponent& transform_component, MeshComponent& mesh_component)
-        //     {
-        //         auto& mesh          = mesh_component.GetMesh();
-        //         mesh.LocalTransform = transform_component.GetTransform();
-        //     });
     }
 
     void GraphicScene::UploadFrameInfo(uint32_t frame_index, VkQueue& present_queue)
     {
         if (auto camera = m_scene_camera.lock())
         {
-            m_renderer->StartScene({.FrameIndex = frame_index, .GraphicQueue = present_queue, .SceneCamera = std::move(camera), .MeshCollection = m_mesh_vnext_list});
+            /*ToDo: you revisit this ID system*/
+            std::vector<uint32_t> mesh_idx;
+            for (uint32_t i = 0; i < m_mesh_vnext_list.size(); ++i)
+            {
+                mesh_idx.push_back(i);
+            }
+            m_renderer->StartScene(
+                {.FrameIndex = frame_index, .GraphicQueue = present_queue, .SceneCamera = std::move(camera), .MeshCollectionIdentifiers = mesh_idx, .GraphicScenePtr = this});
             m_renderer->EndScene();
+        }
+
+        if (OnSceneRenderCompleted)
+        {
+            OnSceneRenderCompleted(m_renderer->GetOutputImage(frame_index));
         }
     }
 
     unsigned int GraphicScene::ToTextureRepresentation() const
     {
         return 0;
-        // return m_renderer->GetFrameBuffer()->GetTexture();
+        //return m_renderer->GetFrameBuffer()->GetTexture();
     }
 
 } // namespace ZEngine::Rendering::Scenes

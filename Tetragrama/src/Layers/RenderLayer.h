@@ -41,7 +41,7 @@ namespace Tetragrama::Layers
         void SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>&);
 
     protected:
-        void OnSceneRenderCompletedCallback(uint32_t);
+        void OnSceneRenderCompletedCallback(ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout);
 
     private:
         ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>     m_scene;

@@ -290,7 +290,7 @@ namespace Tetragrama::Components
                     int32_t mesh_id{-1};
                     if (auto active_scene = m_active_scene.lock())
                     {
-                        auto cube_mesh = ZEngine::Helpers::CreateBuiltInMesh(ZEngine::Rendering::Meshes::MeshType::CUBE);
+                        auto cube_mesh = ZEngine::Helpers::CreateBuiltInMesh(ZEngine::Rendering::Meshes::MeshType::CUSTOM);
                         mesh_id = active_scene->AddMesh(std::move(cube_mesh));
                     }
 

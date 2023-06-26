@@ -28,7 +28,7 @@ namespace ZEngine::Rendering::Scenes
     public:
         GraphicScene()
         {
-            m_entity_registry = std::make_shared<entt::registry>();
+            m_entity_registry = CreateRef<entt::registry>();
         }
 
         virtual ~GraphicScene();
@@ -69,12 +69,11 @@ namespace ZEngine::Rendering::Scenes
         bool HasInvalidEntities() const;
         bool IsValidEntity(const Entities::GraphicSceneEntity&) const;
 
-
         int32_t                  AddMesh(Meshes::MeshVNext&& mesh);
         const Meshes::MeshVNext& GetMesh(int32_t mesh_id) const;
         Meshes::MeshVNext&       GetMesh(int32_t mesh_id);
 
-        std::function<void(uint32_t)> OnSceneRenderCompleted;
+        std::function<void(Renderers::Contracts::FramebufferViewLayout)> OnSceneRenderCompleted;
 
     protected:
         WeakRef<Controllers::ICameraController> m_camera_controller;
@@ -88,7 +87,7 @@ namespace ZEngine::Rendering::Scenes
         std::pair<float, float>                       m_last_scene_requested_size{0.0f, 0.0f};
         Ref<entt::registry>                           m_entity_registry;
         ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_parent_window;
-        mutable std::mutex                                    m_mutex;
+        mutable std::mutex                            m_mutex;
 
         friend class ZEngine::Serializers::GraphicScene3DSerializer;
     };

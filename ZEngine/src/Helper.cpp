@@ -9,6 +9,8 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
+#include <Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h>
+
 using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine::Helpers
@@ -37,7 +39,8 @@ namespace ZEngine::Helpers
         uint32_t memory_type_index{0};
         for (; memory_type_index < memory_properties.memoryTypeCount; ++memory_type_index)
         {
-            if ((memory_requirement.memoryTypeBits & (1 << memory_type_index)) && (memory_properties.memoryTypes[memory_type_index].propertyFlags & requested_properties) == requested_properties)
+            if ((memory_requirement.memoryTypeBits & (1 << memory_type_index)) &&
+                (memory_properties.memoryTypes[memory_type_index].propertyFlags & requested_properties) == requested_properties)
             {
                 memory_type_index_found = true;
                 break;
@@ -56,13 +59,16 @@ namespace ZEngine::Helpers
 
         // ToDo : Call of vkAllocateMemory(...) isn't optimal because it is limited by maxMemoryAllocationCount
         // It should be replaced by VulkanMemoryAllocator SDK (see :  https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
-        ZENGINE_VALIDATE_ASSERT(vkAllocateMemory(device.GetNativeDeviceHandle(), &memory_allocate_info, nullptr, &device_memory) == VK_SUCCESS, "Failed to allocate memory for vertex buffer")
+        ZENGINE_VALIDATE_ASSERT(
+            vkAllocateMemory(device.GetNativeDeviceHandle(), &memory_allocate_info, nullptr, &device_memory) == VK_SUCCESS, "Failed to allocate memory for vertex buffer")
         ZENGINE_VALIDATE_ASSERT(vkBindBufferMemory(device.GetNativeDeviceHandle(), buffer, device_memory, 0) == VK_SUCCESS, "Failed to bind the memory to the vertex buffer")
     }
 
     void CopyBuffer(Hardwares::VulkanDevice& device, VkBuffer& source_buffer, VkBuffer& destination_buffer, VkDeviceSize byte_size)
     {
-        VkCommandBuffer command_buffer = BeginOneTimeCommandBuffer(device);
+        auto            transfer_queue_view = device.GetAnyTransferQueue();
+        auto            command_pool        = device.GetTransferCommandPool(transfer_queue_view.FamilyIndex);
+        VkCommandBuffer command_buffer      = BeginOneTimeCommandBuffer(device, command_pool);
 
         VkBufferCopy buffer_copy = {};
         buffer_copy.srcOffset    = 0;
@@ -71,16 +77,16 @@ namespace ZEngine::Helpers
 
         vkCmdCopyBuffer(command_buffer, source_buffer, destination_buffer, 1, &buffer_copy);
 
-        EndOneTimeCommandBuffer(command_buffer, device);
+        EndOneTimeCommandBuffer(command_buffer, device, transfer_queue_view.Queue, command_pool);
     }
 
-    VkCommandBuffer BeginOneTimeCommandBuffer(Hardwares::VulkanDevice& device)
+    VkCommandBuffer BeginOneTimeCommandBuffer(Hardwares::VulkanDevice& device, VkCommandPool pool)
     {
         VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
         command_buffer_allocate_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         command_buffer_allocate_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         command_buffer_allocate_info.commandBufferCount          = 1;
-        command_buffer_allocate_info.commandPool                 = device.GetTransferCommandPool();
+        command_buffer_allocate_info.commandPool                 = pool;
 
         VkCommandBuffer command_buffer;
         ZENGINE_VALIDATE_ASSERT(vkAllocateCommandBuffers(device.GetNativeDeviceHandle(), &command_buffer_allocate_info, &command_buffer) == VK_SUCCESS, "")
@@ -93,7 +99,7 @@ namespace ZEngine::Helpers
         return command_buffer;
     }
 
-    void EndOneTimeCommandBuffer(VkCommandBuffer& command_buffer, Hardwares::VulkanDevice& device)
+    void EndOneTimeCommandBuffer(VkCommandBuffer& command_buffer, Hardwares::VulkanDevice& device, VkQueue queue, VkCommandPool pool)
     {
         ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(command_buffer) == VK_SUCCESS, "Failed to end the Command Buffer")
 
@@ -102,15 +108,17 @@ namespace ZEngine::Helpers
         submit_info.commandBufferCount = 1;
         submit_info.pCommandBuffers    = &command_buffer;
 
-        vkQueueSubmit(device.GetCurrentTransferQueue(), 1, &submit_info, VK_NULL_HANDLE);
-        vkQueueWaitIdle(device.GetCurrentTransferQueue());
+        vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE);
+        vkQueueWaitIdle(queue);
 
-        vkFreeCommandBuffers(device.GetNativeDeviceHandle(), device.GetTransferCommandPool(), 1, &command_buffer);
+        vkFreeCommandBuffers(device.GetNativeDeviceHandle(), pool, 1, &command_buffer);
     }
 
     void CopyBufferToImage(Hardwares::VulkanDevice& device, VkBuffer source_buffer, VkImage destination_image, uint32_t width, uint32_t height)
     {
-        VkCommandBuffer command_buffer = BeginOneTimeCommandBuffer(device);
+        auto            transfer_queue_view = device.GetAnyTransferQueue();
+        auto            command_pool        = device.GetTransferCommandPool(transfer_queue_view.FamilyIndex);
+        VkCommandBuffer command_buffer      = BeginOneTimeCommandBuffer(device, command_pool);
 
         VkBufferImageCopy buffer_image_copy = {};
         buffer_image_copy.bufferOffset      = 0;
@@ -127,7 +135,7 @@ namespace ZEngine::Helpers
 
         vkCmdCopyBufferToImage(command_buffer, source_buffer, destination_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
 
-        EndOneTimeCommandBuffer(command_buffer, device);
+        EndOneTimeCommandBuffer(command_buffer, device, transfer_queue_view.Queue, command_pool);
     }
 
     VkRenderPass CreateRenderPass(Hardwares::VulkanDevice& device, RenderPasses::RenderPassSpecification& specification)
@@ -173,7 +181,8 @@ namespace ZEngine::Helpers
     VkPipelineLayout CreatePipelineLayout(Hardwares::VulkanDevice& device, const VkPipelineLayoutCreateInfo& pipeline_layout_create_info)
     {
         VkPipelineLayout out_pipeline_layout{VK_NULL_HANDLE};
-        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(device.GetNativeDeviceHandle(), &pipeline_layout_create_info, nullptr, &out_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
+        ZENGINE_VALIDATE_ASSERT(
+            vkCreatePipelineLayout(device.GetNativeDeviceHandle(), &pipeline_layout_create_info, nullptr, &out_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
 
         return out_pipeline_layout;
     }
@@ -248,7 +257,8 @@ namespace ZEngine::Helpers
         framebuffer_create_info.height                  = swapchain_extent.height;
         framebuffer_create_info.layers                  = layer_number;
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateFramebuffer(device.GetNativeDeviceHandle(), &framebuffer_create_info, nullptr, &m_framebuffer) == VK_SUCCESS, "Failed to create Framebuffer")
+        ZENGINE_VALIDATE_ASSERT(
+            vkCreateFramebuffer(device.GetNativeDeviceHandle(), &framebuffer_create_info, nullptr, &m_framebuffer) == VK_SUCCESS, "Failed to create Framebuffer")
 
         return m_framebuffer;
     }
@@ -375,7 +385,9 @@ namespace ZEngine::Helpers
 
     void TransitionImageLayout(Hardwares::VulkanDevice& device, VkImage image, VkFormat image_format, VkImageLayout old_image_layout, VkImageLayout new_image_layout)
     {
-        VkCommandBuffer      command_buffer = BeginOneTimeCommandBuffer(device);
+        auto                 graphic_queue  = device.GetAnyGraphicQueue();
+        auto                 command_pool   = device.GetGraphicCommandPool(graphic_queue.FamilyIndex);
+        VkCommandBuffer      command_buffer = BeginOneTimeCommandBuffer(device, command_pool);
         VkImageMemoryBarrier memory_barrier = {};
         memory_barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         memory_barrier.oldLayout            = old_image_layout;
@@ -417,7 +429,7 @@ namespace ZEngine::Helpers
 
         vkCmdPipelineBarrier(command_buffer, source_stage_mask, destination_stage_mask, 0, 0, nullptr, 0, nullptr, 1, &memory_barrier);
 
-        EndOneTimeCommandBuffer(command_buffer, device);
+        EndOneTimeCommandBuffer(command_buffer, device, graphic_queue.Queue, command_pool);
     }
 
     VkFormat FindSupportedFormat(Hardwares::VulkanDevice& device, const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags)
@@ -433,7 +445,7 @@ namespace ZEngine::Helpers
             {
                 supported_format = format_collection[i];
             }
-            else if(image_tiling == VK_IMAGE_TILING_OPTIMAL && (format_properties.optimalTilingFeatures & feature_flags) == feature_flags)
+            else if (image_tiling == VK_IMAGE_TILING_OPTIMAL && (format_properties.optimalTilingFeatures & feature_flags) == feature_flags)
             {
                 supported_format = format_collection[i];
             }
@@ -450,17 +462,12 @@ namespace ZEngine::Helpers
             device, {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
     }
 
-    Pipelines::StandardGraphicPipeline CreateStandardGraphicPipeline(
-        Hardwares::VulkanDevice&        device,
-        const VkExtent2D&               extent,
-        VkRenderPass                    render_pass,
-        const std::vector<VkImageView>& framebuffer_image_view_collection,
-        const std::vector<VkSampler>&   framebuffer_sampler_collection,
-        uint32_t                        frame_count)
+    Pipelines::StandardGraphicPipeline CreateStandardGraphicPipeline(Hardwares::VulkanDevice& device, const VkExtent2D& extent, VkRenderPass render_pass, uint32_t frame_count)
     {
         std::string_view                                         shader_file       = "Resources/Windows/Shaders/standard_shader_light.glsl";
         Rendering::Renderers::Pipelines::StandardGraphicPipeline standard_pipeline = {};
 
+        standard_pipeline.FrameCount = frame_count;
         standard_pipeline.UBOCameraPropertiesCollection.resize(frame_count);
         standard_pipeline.UBOModelPropertiesCollection.resize(frame_count);
 
@@ -503,86 +510,133 @@ namespace ZEngine::Helpers
         ubo_model_layout_binding.stageFlags                   = VK_SHADER_STAGE_VERTEX_BIT;
         ubo_model_layout_binding.pImmutableSamplers           = nullptr;
 
-        standard_pipeline.DescriptorSetLayoutBindingCollection = {ubo_camera_layout_binding, ubo_model_layout_binding};
+        VkDescriptorSetLayoutBinding fragment_sampler_binding = {};
+        fragment_sampler_binding.binding                      = 0;
+        fragment_sampler_binding.descriptorCount              = 1;
+        fragment_sampler_binding.descriptorType               = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        fragment_sampler_binding.stageFlags                   = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragment_sampler_binding.pImmutableSamplers           = nullptr;
+
+        standard_pipeline.DescriptorSetLayoutBindingCollection         = {ubo_camera_layout_binding, ubo_model_layout_binding};
+        standard_pipeline.FragmentDescriptorSetLayoutBindingCollection = {fragment_sampler_binding};
 
         VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info = {};
         descriptor_set_layout_create_info.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         descriptor_set_layout_create_info.bindingCount                    = standard_pipeline.DescriptorSetLayoutBindingCollection.size();
         descriptor_set_layout_create_info.pBindings                       = standard_pipeline.DescriptorSetLayoutBindingCollection.data();
 
+        VkDescriptorSetLayoutCreateInfo fragment_descriptor_set_layout_create_info = {};
+        fragment_descriptor_set_layout_create_info.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        fragment_descriptor_set_layout_create_info.bindingCount                    = standard_pipeline.FragmentDescriptorSetLayoutBindingCollection.size();
+        fragment_descriptor_set_layout_create_info.pBindings                       = standard_pipeline.FragmentDescriptorSetLayoutBindingCollection.data();
+
         ZENGINE_VALIDATE_ASSERT(
             vkCreateDescriptorSetLayout(device.GetNativeDeviceHandle(), &descriptor_set_layout_create_info, nullptr, &standard_pipeline.DescriptorSetLayout) == VK_SUCCESS,
             "Failed to create DescriptorSetLayout")
 
-        pipeline_specification.StateSpecification.LayoutCreateInfo.setLayoutCount = 1;
-        pipeline_specification.StateSpecification.LayoutCreateInfo.pSetLayouts    = &standard_pipeline.DescriptorSetLayout;
+        ZENGINE_VALIDATE_ASSERT(
+            vkCreateDescriptorSetLayout(device.GetNativeDeviceHandle(), &fragment_descriptor_set_layout_create_info, nullptr, &standard_pipeline.FragmentDescriptorSetLayout) ==
+                VK_SUCCESS,
+            "Failed to create DescriptorSetLayout")
 
-        /*RenderPass Creation*/
-        standard_pipeline.RenderPass = render_pass;
+        std::array<VkDescriptorSetLayout, 2> descriptor_set_layout_collection     = {standard_pipeline.DescriptorSetLayout, standard_pipeline.FragmentDescriptorSetLayout};
+        pipeline_specification.StateSpecification.LayoutCreateInfo.setLayoutCount = descriptor_set_layout_collection.size();
+        pipeline_specification.StateSpecification.LayoutCreateInfo.pSetLayouts    = descriptor_set_layout_collection.data();
 
         /*Pipeline layout Creation*/
         standard_pipeline.PipelineLayout = Helpers::CreatePipelineLayout(device, pipeline_specification.StateSpecification.LayoutCreateInfo);
 
         /*Graphic Pipeline Creation */
-        standard_pipeline.Pipeline =
-            Helpers::CreateGraphicPipeline(device, standard_pipeline.PipelineLayout, standard_pipeline.RenderPass, pipeline_specification.StateSpecification);
+        standard_pipeline.Pipeline = Helpers::CreateGraphicPipeline(device, standard_pipeline.PipelineLayout, render_pass, pipeline_specification.StateSpecification);
 
-        VkDescriptorPoolSize descriptor_pool_size = {};
-        descriptor_pool_size.type                 = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptor_pool_size.descriptorCount      = frame_count * 2; // Each frame has 2 Descriptors that ref 2 Uniform Buffers
+        /*Framebuffer Creation*/
+        standard_pipeline.FramebufferSpecification                          = {};
+        standard_pipeline.FramebufferSpecification.RenderPass               = render_pass;
+        standard_pipeline.FramebufferSpecification.AttachmentSpecifications = {
+            Rendering::Buffers::FrameBuffers::FrameBufferAttachmentSpecificationVNext{
+                {.ImageType     = VK_IMAGE_TYPE_2D,
+                 .Format        = VK_FORMAT_R8G8B8A8_UNORM,
+                 .Tiling        = VK_IMAGE_TILING_OPTIMAL,
+                 .InitialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                 .SampleCount   = VK_SAMPLE_COUNT_1_BIT}},
+            Rendering::Buffers::FrameBuffers::FrameBufferAttachmentSpecificationVNext{
+                {.ImageType     = VK_IMAGE_TYPE_2D,
+                 .Format        = (uint32_t) Helpers::FindDepthFormat(device),
+                 .Tiling        = VK_IMAGE_TILING_OPTIMAL,
+                 .InitialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                 .SampleCount   = VK_SAMPLE_COUNT_1_BIT}}};
 
-        VkDescriptorPoolCreateInfo descriptor_pool_create_info = {};
-        descriptor_pool_create_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        descriptor_pool_create_info.poolSizeCount              = 1;
-        descriptor_pool_create_info.pPoolSizes                 = std::array{descriptor_pool_size}.data();
-        descriptor_pool_create_info.maxSets                    = frame_count; // A Set is a collection of 2 Descriptors, so a Set per Frame
+        standard_pipeline.FramebufferCollection.resize(frame_count);
+        ZENGINE_VALIDATE_ASSERT(!standard_pipeline.FramebufferCollection.empty(), "Framebuffer collection can't be empty")
+        standard_pipeline.CreateOrResizeFramebuffer(extent.width, extent.height);
 
-        ZENGINE_VALIDATE_ASSERT(
-            vkCreateDescriptorPool(device.GetNativeDeviceHandle(), &descriptor_pool_create_info, nullptr, &standard_pipeline.DescriptorPool) == VK_SUCCESS,
-            "Failed to create DescriptorPool")
-
-        VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
-        descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptor_set_allocate_info.descriptorPool              = standard_pipeline.DescriptorPool;
-
-        std::vector<VkDescriptorSetLayout> set_layout_collection;
-        set_layout_collection.resize(frame_count);
-        for (uint32_t i = 0; i < frame_count; ++i)
+        /*DescriptorSet Creation*/
         {
-            set_layout_collection[i] = standard_pipeline.DescriptorSetLayout;
+            std::array<VkDescriptorPoolSize, 1> descriptor_pool_size = {};
+            descriptor_pool_size[0].type                             = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptor_pool_size[0].descriptorCount                  = frame_count * 2; // Each frame has 2 Descriptors that ref 2 Uniform Buffers
+
+            VkDescriptorPoolCreateInfo descriptor_pool_create_info = {};
+            descriptor_pool_create_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            descriptor_pool_create_info.poolSizeCount              = descriptor_pool_size.size();
+            descriptor_pool_create_info.pPoolSizes                 = descriptor_pool_size.data();
+            descriptor_pool_create_info.maxSets                    = frame_count; // A Set is a collection of 3 Descriptors, so a Set per Frame
+
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateDescriptorPool(device.GetNativeDeviceHandle(), &descriptor_pool_create_info, nullptr, &standard_pipeline.DescriptorPool) == VK_SUCCESS,
+                "Failed to create DescriptorPool")
+
+            VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
+            descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            descriptor_set_allocate_info.descriptorPool              = standard_pipeline.DescriptorPool;
+
+            std::vector<VkDescriptorSetLayout> set_layout_collection;
+            set_layout_collection.resize(frame_count);
+            for (uint32_t i = 0; i < frame_count; ++i)
+            {
+                set_layout_collection[i] = standard_pipeline.DescriptorSetLayout;
+            }
+            descriptor_set_allocate_info.descriptorSetCount = set_layout_collection.size();
+            descriptor_set_allocate_info.pSetLayouts        = set_layout_collection.data();
+
+            standard_pipeline.DescriptorSetCollection.resize(frame_count, VK_NULL_HANDLE);
+            ZENGINE_VALIDATE_ASSERT(
+                vkAllocateDescriptorSets(device.GetNativeDeviceHandle(), &descriptor_set_allocate_info, standard_pipeline.DescriptorSetCollection.data()) == VK_SUCCESS,
+                "Failed to create DescriptorSet")
         }
-        descriptor_set_allocate_info.descriptorSetCount = set_layout_collection.size();
-        descriptor_set_allocate_info.pSetLayouts        = set_layout_collection.data();
 
-        standard_pipeline.DescriptorSetCollection.resize(frame_count, VK_NULL_HANDLE);
-        ZENGINE_VALIDATE_ASSERT(
-            vkAllocateDescriptorSets(device.GetNativeDeviceHandle(), &descriptor_set_allocate_info, standard_pipeline.DescriptorSetCollection.data()) == VK_SUCCESS,
-            "Failed to create DescriptorSet")
-
-        for (size_t i = 0; i < frame_count; ++i)
         {
-            std::array<VkDescriptorBufferInfo, 2> buffer_infos = {};
-            buffer_infos[0].buffer                             = standard_pipeline.UBOCameraPropertiesCollection[i].GetNativeBufferHandle();
-            buffer_infos[0].range                              = VK_WHOLE_SIZE;
-            buffer_infos[0].offset                             = 0;
-            buffer_infos[1].buffer                             = standard_pipeline.UBOModelPropertiesCollection[i].GetNativeBufferHandle();
-            buffer_infos[1].range                              = VK_WHOLE_SIZE;
-            buffer_infos[1].offset                             = 0;
+            std::array<VkDescriptorPoolSize, 1> fragment_descriptor_pool_size = {};
+            fragment_descriptor_pool_size[0].type                             = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            fragment_descriptor_pool_size[0].descriptorCount                  = frame_count * 1; // Each frame has 1 Descriptors that ref 1 Sampler
 
-            VkWriteDescriptorSet write_descriptor_set = {};
-            write_descriptor_set.sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            write_descriptor_set.dstSet               = standard_pipeline.DescriptorSetCollection[i];
-            write_descriptor_set.dstBinding           = 0;
-            write_descriptor_set.dstArrayElement      = 0;
-            write_descriptor_set.descriptorType       = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            write_descriptor_set.descriptorCount      = 2;
-            write_descriptor_set.pBufferInfo          = buffer_infos.data();
-            write_descriptor_set.pImageInfo           = nullptr; // Optional
-            write_descriptor_set.pTexelBufferView     = nullptr; // Optional
-            write_descriptor_set.pNext                = nullptr;
+            VkDescriptorPoolCreateInfo descriptor_pool_create_info = {};
+            descriptor_pool_create_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            descriptor_pool_create_info.poolSizeCount              = fragment_descriptor_pool_size.size();
+            descriptor_pool_create_info.pPoolSizes                 = fragment_descriptor_pool_size.data();
+            descriptor_pool_create_info.maxSets                    = frame_count; // A Set is a collection of 3 Descriptors, so a Set per Frame
 
-            auto writers = std::array{write_descriptor_set};
-            vkUpdateDescriptorSets(device.GetNativeDeviceHandle(), writers.size(), writers.data(), 0, nullptr);
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateDescriptorPool(device.GetNativeDeviceHandle(), &descriptor_pool_create_info, nullptr, &standard_pipeline.FragmentDescriptorPool) == VK_SUCCESS,
+                "Failed to create DescriptorPool")
+
+            VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
+            descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            descriptor_set_allocate_info.descriptorPool              = standard_pipeline.FragmentDescriptorPool;
+
+            std::vector<VkDescriptorSetLayout> fragmen_set_layout_collection;
+            fragmen_set_layout_collection.resize(frame_count);
+            for (uint32_t i = 0; i < frame_count; ++i)
+            {
+                fragmen_set_layout_collection[i] = standard_pipeline.FragmentDescriptorSetLayout;
+            }
+            descriptor_set_allocate_info.descriptorSetCount = fragmen_set_layout_collection.size();
+            descriptor_set_allocate_info.pSetLayouts        = fragmen_set_layout_collection.data();
+
+            standard_pipeline.FragmentDescriptorSetCollection.resize(frame_count, VK_NULL_HANDLE);
+            ZENGINE_VALIDATE_ASSERT(
+                vkAllocateDescriptorSets(device.GetNativeDeviceHandle(), &descriptor_set_allocate_info, standard_pipeline.FragmentDescriptorSetCollection.data()) == VK_SUCCESS,
+                "Failed to create DescriptorSet")
         }
 
         return standard_pipeline;
@@ -603,7 +657,7 @@ namespace ZEngine::Helpers
         const VkPhysicalDeviceMemoryProperties& memory_properties,
         VkMemoryPropertyFlags                   requested_properties)
     {
-        VkImage       image{VK_NULL_HANDLE};
+        VkImage           image{VK_NULL_HANDLE};
         VkImageCreateInfo image_create_info = {};
         image_create_info.sType             = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         image_create_info.flags             = 0;
@@ -629,7 +683,8 @@ namespace ZEngine::Helpers
         uint32_t memory_type_index{0};
         for (; memory_type_index < memory_properties.memoryTypeCount; ++memory_type_index)
         {
-            if ((memory_requirement.memoryTypeBits & (1 << memory_type_index)) && (memory_properties.memoryTypes[memory_type_index].propertyFlags & requested_properties) == requested_properties)
+            if ((memory_requirement.memoryTypeBits & (1 << memory_type_index)) &&
+                (memory_properties.memoryTypes[memory_type_index].propertyFlags & requested_properties) == requested_properties)
             {
                 memory_type_index_found = true;
                 break;
@@ -693,14 +748,14 @@ namespace ZEngine::Helpers
             const auto& device_properties     = device.GetPhysicalDeviceProperties();
             sampler_create_info.maxAnisotropy = device_properties.limits.maxSamplerAnisotropy;
         }
-        sampler_create_info.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+        sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         sampler_create_info.unnormalizedCoordinates = VK_FALSE;
         sampler_create_info.compareEnable           = VK_FALSE;
         sampler_create_info.compareOp               = VK_COMPARE_OP_ALWAYS;
         sampler_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
         sampler_create_info.mipLodBias              = 0.0f;
-        sampler_create_info.minLod                  = 0.0f;
-        sampler_create_info.maxLod                  = 0.0f;
+        sampler_create_info.minLod                  = -1000.0f;
+        sampler_create_info.maxLod                  = 1000.0f;
 
         ZENGINE_VALIDATE_ASSERT(vkCreateSampler(device.GetNativeDeviceHandle(), &sampler_create_info, nullptr, &sampler) == VK_SUCCESS, "Failed to create Texture Sampler")
 
@@ -709,18 +764,18 @@ namespace ZEngine::Helpers
 
     Rendering::Meshes::MeshVNext CreateBuiltInMesh(Rendering::Meshes::MeshType mesh_type)
     {
-        Rendering::Meshes::MeshVNext cube_mesh = {};
-        //std::string_view             mesh_cube = "Assets/Meshes/duck.obj";
-        //std::string_view             mesh_cube = "Assets/Meshes/cube.obj";
-        std::string_view             mesh_cube = "Assets/Meshes/viking_room.obj";
+        Rendering::Meshes::MeshVNext custom_mesh = {std::vector<float>{}, std::vector<uint32_t>{}, 0};
+        // std::string_view             custom_mesh = "Assets/Meshes/duck.obj";
+         //std::string_view             custom_mesh = "Assets/Meshes/cube.obj";
+         std::string_view mesh_file = "Assets/Meshes/viking_room.obj";
 
         Assimp::Importer importer = {};
 
-        const aiScene* scene_ptr = importer.ReadFile(mesh_cube.data(), aiProcess_Triangulate | aiProcess_FlipUVs);
+        const aiScene* scene_ptr = importer.ReadFile(mesh_file.data(), aiProcess_Triangulate | aiProcess_FlipUVs);
 
         if ((!scene_ptr) || scene_ptr->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene_ptr->mRootNode)
         {
-            cube_mesh.VertexCount = 0xFFFFFFFF;
+            custom_mesh.VertexCount = 0xFFFFFFFF;
         }
         else
         {
@@ -733,15 +788,15 @@ namespace ZEngine::Helpers
                 /*The cube obj model is actually one Mesh, so we are safe */
                 if (!meshes.empty())
                 {
-                    cube_mesh = std::move(meshes.front());
+                    custom_mesh = std::move(meshes.front());
                 }
             }
         }
 
         importer.FreeScene();
 
-        cube_mesh.Type = mesh_type;
-        return cube_mesh;
+        custom_mesh.Type = mesh_type;
+        return custom_mesh;
     }
 
     bool ExtractMeshFromAssimpSceneNode(aiNode* const root_node, std::vector<uint32_t>* const mesh_id_collection_ptr)
@@ -773,46 +828,50 @@ namespace ZEngine::Helpers
 
         for (int i = 0; i < assimp_mesh_ids.size(); ++i)
         {
-            Rendering::Meshes::MeshVNext zengine_mesh = {};
-            aiMesh*                      assimp_mesh  = assimp_scene->mMeshes[assimp_mesh_ids[i]];
+            aiMesh* assimp_mesh = assimp_scene->mMeshes[assimp_mesh_ids[i]];
+
+            uint32_t              vertex_count{0};
+            std::vector<float>    vertices = {};
+            std::vector<uint32_t> indices  = {};
 
             /* Vertice processing */
             for (int x = 0; x < assimp_mesh->mNumVertices; ++x)
             {
-                zengine_mesh.Vertices.push_back(assimp_mesh->mVertices[x].x);
-                zengine_mesh.Vertices.push_back(assimp_mesh->mVertices[x].y);
-                zengine_mesh.Vertices.push_back(assimp_mesh->mVertices[x].z);
+                vertices.push_back(assimp_mesh->mVertices[x].x);
+                vertices.push_back(assimp_mesh->mVertices[x].y);
+                vertices.push_back(assimp_mesh->mVertices[x].z);
 
-                zengine_mesh.Vertices.push_back(assimp_mesh->mNormals[x].x);
-                zengine_mesh.Vertices.push_back(assimp_mesh->mNormals[x].y);
-                zengine_mesh.Vertices.push_back(assimp_mesh->mNormals[x].z);
+                vertices.push_back(assimp_mesh->mNormals[x].x);
+                vertices.push_back(assimp_mesh->mNormals[x].y);
+                vertices.push_back(assimp_mesh->mNormals[x].z);
 
-                if (assimp_mesh->HasTextureCoords(0))
+                if (assimp_mesh->mTextureCoords[0])
                 {
-                    zengine_mesh.Vertices.push_back(assimp_mesh->mTextureCoords[0][i].x);
-                    zengine_mesh.Vertices.push_back(assimp_mesh->mTextureCoords[0][i].y);
+                    vertices.push_back(assimp_mesh->mTextureCoords[0][x].x);
+                    vertices.push_back(assimp_mesh->mTextureCoords[0][x].y);
                 }
                 else
                 {
-                    zengine_mesh.Vertices.push_back(0.0f);
-                    zengine_mesh.Vertices.push_back(0.0f);
+                    vertices.push_back(0.0f);
+                    vertices.push_back(0.0f);
                 }
 
-                zengine_mesh.VertexCount++;
+                vertex_count++;
             }
 
             /* Face and Indices processing */
-            for (int i = 0; i < assimp_mesh->mNumFaces; ++i)
+            for (int ix = 0; ix < assimp_mesh->mNumFaces; ++ix)
             {
-                aiFace& assimp_mesh_face = assimp_mesh->mFaces[i];
+                aiFace assimp_mesh_face = assimp_mesh->mFaces[ix];
 
-                ZENGINE_VALIDATE_ASSERT(assimp_mesh_face.mNumIndices == 3, "Assimp Face should have 3 indices per Polygon")
-                zengine_mesh.Indices.push_back(assimp_mesh_face.mIndices[0]);
-                zengine_mesh.Indices.push_back(assimp_mesh_face.mIndices[1]);
-                zengine_mesh.Indices.push_back(assimp_mesh_face.mIndices[2]);
+                for (int j = 0; j < assimp_mesh_face.mNumIndices; ++j)
+                {
+                    indices.push_back(assimp_mesh_face.mIndices[j]);
+                }
             }
 
-            meshes.push_back(zengine_mesh);
+            Rendering::Meshes::MeshVNext zengine_mesh = {std::move(vertices), std::move(indices), vertex_count};
+            meshes.push_back(std::move(zengine_mesh));
         }
 
         return meshes;

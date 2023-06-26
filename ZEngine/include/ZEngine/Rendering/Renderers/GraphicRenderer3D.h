@@ -19,12 +19,13 @@ namespace ZEngine::Rendering::Renderers
         virtual void EndScene() override;
         virtual void RequestOutputImageSize(uint32_t width = 1, uint32_t height = 1) override;
 
-    private:
-        void MarkVulkanInternalObjectDirty(Hardwares::VulkanDevice& device);
+        Contracts::FramebufferViewLayout GetOutputImage(uint32_t frame_index) const override;
 
     private:
-        Pipelines::StandardGraphicPipeline        m_standard_pipeline;
-        Buffers::VertexBuffer<std::vector<float>> m_vertex_buffer;
-        Buffers::IndexBuffer<std::vector<float>>  m_index_buffer;
+        void MarkVulkanInternalObjectDirty();
+
+    private:
+        VkRenderPass                       m_renderpass{VK_NULL_HANDLE};
+        Pipelines::StandardGraphicPipeline m_standard_pipeline;
     };
 } // namespace ZEngine::Rendering::Renderers

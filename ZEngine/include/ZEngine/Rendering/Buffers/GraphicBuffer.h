@@ -113,4 +113,56 @@ namespace ZEngine::Rendering::Buffers
         std::vector<float> m_data;
     };
 
+    template <>
+    class GraphicBuffer<std::vector<uint32_t>>
+    {
+    public:
+        explicit GraphicBuffer() : m_data()
+        {
+            m_byte_size = sizeof(uint32_t);
+        }
+
+        explicit GraphicBuffer(const std::vector<uint32_t>& data) : m_data(data)
+        {
+            m_byte_size = sizeof(uint32_t) * data.size();
+            m_data      = data;
+        }
+
+        virtual ~GraphicBuffer() = default;
+
+        virtual void Bind() const   = 0;
+        virtual void Unbind() const = 0;
+
+        virtual void SetData(const std::vector<uint32_t>& data)
+        {
+            this->m_byte_size = sizeof(uint32_t) * data.size();
+            this->m_data      = data;
+        }
+
+        virtual void SetData(std::vector<uint32_t>&& data)
+        {
+            this->m_data      = std::move(data);
+            this->m_byte_size = sizeof(uint32_t) * m_data.size();
+        }
+
+        virtual const std::vector<uint32_t>& GetData() const
+        {
+            return m_data;
+        }
+
+        virtual size_t GetByteSize() const
+        {
+            return m_byte_size;
+        }
+
+        virtual size_t GetDataSize() const
+        {
+            return m_data_size;
+        }
+
+    protected:
+        size_t             m_byte_size{0};
+        size_t             m_data_size{0};
+        std::vector<uint32_t> m_data;
+    };
 } // namespace ZEngine::Rendering::Buffers

@@ -38,7 +38,7 @@ namespace ZEngine::Layers
 
             auto& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
             auto  device_handle     = performant_device.GetNativeDeviceHandle();
-            auto  present_queue     = performant_device.GetCurrentGraphicQueue(true);
+            auto  present_queue     = performant_device.GetCurrentGraphicQueueWithPresentSupport().Queue;
 
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
@@ -54,7 +54,7 @@ namespace ZEngine::Layers
                 io.IniFilename = default_layout_ini.data();
             }
 
-            io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+            //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
             io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
             io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
@@ -94,7 +94,7 @@ namespace ZEngine::Layers
             imgui_vulkan_init_info.Instance                  = Engine::GetVulkanInstance()->GetNativeHandle();
             imgui_vulkan_init_info.PhysicalDevice            = performant_device.GetNativePhysicalDeviceHandle();
             imgui_vulkan_init_info.Device                    = device_handle;
-            imgui_vulkan_init_info.QueueFamily               = performant_device.GetGraphicQueueFamilyIndexCollection(true).at(0);
+            imgui_vulkan_init_info.QueueFamily               = performant_device.GetGraphicQueueFamilyIndexCollection().front();
             imgui_vulkan_init_info.Queue                     = present_queue;
             imgui_vulkan_init_info.PipelineCache             = nullptr;
             imgui_vulkan_init_info.DescriptorPool            = m_descriptor_pool;
@@ -138,7 +138,7 @@ namespace ZEngine::Layers
 
             ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(present_queue, 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit Command Buffer on Present Queue -- ImGuiLayer")
 
-            ZENGINE_VALIDATE_ASSERT(vkDeviceWaitIdle(device_handle) == VK_SUCCESS, "Failed to wait for GPU device -- ImGuiLayer")
+            ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(present_queue) == VK_SUCCESS, "Failed to wait for GPU device -- ImGuiLayer")
 
             ImGui_ImplVulkan_DestroyFontUploadObjects();
 
@@ -154,10 +154,8 @@ namespace ZEngine::Layers
             {
                 const auto& performant_device  = Engine::GetVulkanInstance()->GetHighPerformantDevice();
 
-                ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(performant_device.GetCurrentGraphicQueue(true)) == VK_SUCCESS, "Failed to wait for Present Queue -- ImGuiLayer");
-
+                //ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(performant_device.GetCurrentGraphicQueue(true)) == VK_SUCCESS, "Failed to wait for Present Queue -- ImGuiLayer");
                 vkDestroyDescriptorPool(performant_device.GetNativeDeviceHandle(), m_descriptor_pool, nullptr);
-
                 ImGui_ImplVulkan_Shutdown();
                 ImGui_ImplGlfw_Shutdown();
                 ImGui::DestroyContext();

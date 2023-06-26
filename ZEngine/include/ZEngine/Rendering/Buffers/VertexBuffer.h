@@ -58,7 +58,7 @@ namespace ZEngine::Rendering::Buffers
 
         ~VertexBuffer()
         {
-            Dispose();
+            CleanUpMemory();
         }
 
         VkBuffer GetNativeBufferHandle() const
@@ -71,7 +71,7 @@ namespace ZEngine::Rendering::Buffers
             if (!m_disposed)
             {
                 CleanUpMemory();
-                m_disposed = true;
+                //m_disposed = true;
             }
         }
 

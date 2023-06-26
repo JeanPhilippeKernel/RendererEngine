@@ -42,11 +42,9 @@ namespace ZEngine::Helpers
     VkFormat FindDepthFormat(Hardwares::VulkanDevice& device);
     /*Build-in pipelines*/
     Rendering::Renderers::Pipelines::StandardGraphicPipeline CreateStandardGraphicPipeline(
-        Hardwares::VulkanDevice&        device,
-        const VkExtent2D&               extent,
-        VkRenderPass                    render_pass,
-        const std::vector<VkImageView>& framebuffer_image_view_collection,
-        const std::vector<VkSampler>&   framebuffer_sampler_collection,
-        uint32_t                        frame_count);
+        Hardwares::VulkanDevice& device,
+        const VkExtent2D&        extent,
+        VkRenderPass             render_pass,
+        uint32_t                 frame_count);
 
 } // namespace ZEngine::Helpers

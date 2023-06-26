@@ -21,9 +21,18 @@ namespace ZEngine::Rendering::Renderers::Contracts
 
     struct GraphicSceneLayout
     {
-        uint32_t                       FrameIndex;
-        VkQueue                        GraphicQueue;
-        Ref<Cameras::Camera>           SceneCamera;
-        std::vector<Meshes::MeshVNext> MeshCollection;
+        uint32_t              FrameIndex;
+        VkQueue               GraphicQueue;
+        Ref<Cameras::Camera>  SceneCamera;
+        std::vector<uint32_t> MeshCollectionIdentifiers;
+        void*                 GraphicScenePtr{nullptr};
+    };
+
+    struct FramebufferViewLayout
+    {
+        uint32_t FrameId{0xff};
+        VkSampler Sampler{VK_NULL_HANDLE};
+        VkImageView View{VK_NULL_HANDLE};
+        VkDescriptorSet Handle{VK_NULL_HANDLE};
     };
 } // namespace ZEngine::Rendering::Renderers::Contracts

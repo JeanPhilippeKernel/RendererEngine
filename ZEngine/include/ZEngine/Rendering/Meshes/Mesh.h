@@ -5,6 +5,9 @@
 #include <Rendering/Materials/ShaderMaterial.h>
 #include <Rendering/Geometries/IGeometry.h>
 
+#include <Rendering/Buffers/VertexBuffer.h>
+#include <Rendering/Buffers/IndexBuffer.h>
+
 namespace ZEngine::Rendering::Meshes
 {
 
@@ -18,13 +21,24 @@ namespace ZEngine::Rendering::Meshes
 
     struct MeshVNext
     {
-        uint32_t                                             MaterialID{0xFFFFFFFF};
-        MeshType                                             Type{MeshType::CUSTOM};
-        uint32_t                                             VertexCount{0};
-        Maths::Matrix4                                       LocalTransform{Maths::Matrix4(1.0f)};
-        uint32_t                                             VertexOffset{sizeof(Rendering::Renderers::Storages::IVertex)};
-        std::vector<float>                                   Vertices;
-        std::vector<float>                                   Indices;
+        MeshVNext(const std::vector<float>& vertices, const std::vector<uint32_t>& indices, uint32_t vertex_count);
+        MeshVNext(std::vector<float>&& vertices, std::vector<uint32_t>&& indices, uint32_t vertex_count);
+        ~MeshVNext();
+        uint32_t              MaterialID{0xFFFFFFFF};
+        MeshType              Type{MeshType::CUSTOM};
+        uint32_t              VertexCount{0};
+        Maths::Matrix4        LocalTransform{Maths::Matrix4(1.0f)};
+        uint32_t              VertexOffset{sizeof(Rendering::Renderers::Storages::IVertex)};
+        std::vector<float>    Vertices;
+        std::vector<uint32_t> Indices;
+
+        void Draw(VkCommandBuffer command_buffer);
+
+        void Flush();
+
+    private:
+        Buffers::VertexBuffer<std::vector<float>>   m_vertex_buffer;
+        Buffers::IndexBuffer<std::vector<uint32_t>> m_index_buffer;
     };
 
     /*Need to be deprecated*/

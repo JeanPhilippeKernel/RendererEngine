@@ -23,10 +23,10 @@ namespace ZEngine::Rendering::Buffers
         void Dispose();
 
     private:
-        VkImage        m_color_image_attachment{VK_NULL_HANDLE};
-        VkDeviceMemory m_color_image_memory{VK_NULL_HANDLE};
-        VkImage        m_depth_image_attachment{VK_NULL_HANDLE};
-        VkDeviceMemory m_depth_image_memory{VK_NULL_HANDLE};
+        VkImage         m_color_image_attachment{VK_NULL_HANDLE};
+        VkDeviceMemory  m_color_image_memory{VK_NULL_HANDLE};
+        VkImage         m_depth_image_attachment{VK_NULL_HANDLE};
+        VkDeviceMemory  m_depth_image_memory{VK_NULL_HANDLE};
     };
 
     //class FrameBuffer : public Core::IGraphicObject

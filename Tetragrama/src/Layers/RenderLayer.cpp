@@ -31,7 +31,7 @@ namespace Tetragrama::Layers
 
     void RenderLayer::Initialize()
     {
-        m_editor_camera_controller = CreateRef<EditorCameraController>(GetAttachedWindow(), 100.0f, 0.f, 30.f);
+        m_editor_camera_controller = CreateRef<EditorCameraController>(GetAttachedWindow(), 300.0f, 0.f, 30.f);
 
         m_scene = CreateRef<GraphicScene3D>();
         m_scene->Initialize();
@@ -75,14 +75,14 @@ namespace Tetragrama::Layers
         return false;
     }
 
-    void RenderLayer::PrepareFrame(uint32_t frame_index, VkQueue& present_queue)
-    {
-        m_scene->UploadFrameInfo(frame_index, present_queue);
-    }
-
     void RenderLayer::Render()
     {
         m_scene->Render();
+    }
+
+    void RenderLayer::PrepareFrame(uint32_t frame_index, VkQueue& present_queue)
+    {
+        m_scene->UploadFrameInfo(frame_index, present_queue);
     }
 
     void RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message)
@@ -188,10 +188,10 @@ namespace Tetragrama::Layers
         // ZENGINE_EDITOR_INFO("Mouse Pos: X={} -- Y={}", value.first, value.second)
     }
 
-    void RenderLayer::OnSceneRenderCompletedCallback(uint32_t scene_texture_id)
+    void RenderLayer::OnSceneRenderCompletedCallback(ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout framebuffer_view)
     {
-        /* Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<uint32_t>>(
-             EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE, Messengers::GenericMessage<uint32_t>{scene_texture_id});*/
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>>(
+            EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE, Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>{framebuffer_view});
     }
 
     void RenderLayer::HandleNewSceneMessage(const Messengers::EmptyMessage&)

@@ -223,9 +223,8 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::MarkVulkanInternalObjectDirty(const Hardwares::VulkanDevice& device)
     {
-        vkDeviceWaitIdle(device.GetNativeDeviceHandle());
-        vkQueueWaitIdle(device.GetCurrentGraphicQueue(true));
-        vkQueueWaitIdle(device.GetCurrentTransferQueue());
+        vkQueueWaitIdle(device.GetCurrentGraphicQueueWithPresentSupport().Queue);
+        vkQueueWaitIdle(device.GetCurrentTransferQueue().Queue);
 
         for (uint32_t i = 0; i < m_frame_collection.size(); i++)
         {
@@ -443,7 +442,7 @@ namespace ZEngine::Window::GLFWWindow
         auto&       current_frame     = this->GetCurrentWindowFrame();
         const auto& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
         auto        device_handle     = performant_device.GetNativeDeviceHandle();
-        auto        present_queue     = performant_device.GetCurrentGraphicQueue(true);
+        auto        present_queue     = performant_device.GetCurrentGraphicQueueWithPresentSupport().Queue;
 
         VkResult wait_for_fences_result = vkWaitForFences(device_handle, 1, &(current_frame.Fence), VK_TRUE, UINT64_MAX); // wait indefinitely instead of periodically checking
         if (wait_for_fences_result == VK_TIMEOUT)
@@ -620,7 +619,7 @@ namespace ZEngine::Window::GLFWWindow
         createInfo.imageArrayLayers = m_surface_capabilities.maxImageArrayLayers;
         createInfo.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        auto device_graphic_queue_family_index_collection  = device.GetGraphicQueueFamilyIndexCollection(true);
+        auto device_graphic_queue_family_index_collection  = device.GetGraphicQueueFamilyIndexCollection();
         auto device_transfer_queue_family_index_collection = device.GetTransferQueueFamilyIndexCollection();
 
         std::vector<uint32_t> device_family_indice;
@@ -755,7 +754,7 @@ namespace ZEngine::Window::GLFWWindow
             VkCommandPoolCreateInfo graphic_command_pool_create_info = {};
             graphic_command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             graphic_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            graphic_command_pool_create_info.queueFamilyIndex        = device.GetGraphicQueueFamilyIndexCollection(true).at(0);
+            graphic_command_pool_create_info.queueFamilyIndex        = device.GetGraphicQueueFamilyIndexCollection().front();
             ZENGINE_VALIDATE_ASSERT(
                 vkCreateCommandPool(device.GetNativeDeviceHandle(), &graphic_command_pool_create_info, nullptr, &(frame.GraphicCommandPool)) == VK_SUCCESS,
                 "Failed to create Command Pool")
@@ -763,8 +762,8 @@ namespace ZEngine::Window::GLFWWindow
             /* Transfer Command Pool & Command Buffer */
             VkCommandPoolCreateInfo transfer_command_pool_create_info = {};
             transfer_command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            transfer_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            transfer_command_pool_create_info.queueFamilyIndex        = device.GetTransferQueueFamilyIndexCollection().at(0);
+            transfer_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+            transfer_command_pool_create_info.queueFamilyIndex        = device.GetTransferQueueFamilyIndexCollection().front();
             ZENGINE_VALIDATE_ASSERT(
                 vkCreateCommandPool(device.GetNativeDeviceHandle(), &transfer_command_pool_create_info, nullptr, &(frame.TransferCommandPool)) == VK_SUCCESS,
                 "Failed to create Command Pool")

@@ -44,7 +44,13 @@ namespace ZEngine::Rendering::Textures
 
             VkBuffer       staging_buffer{VK_NULL_HANDLE};
             VkDeviceMemory staging_buffer_memory{VK_NULL_HANDLE};
-            Helpers::CreateBuffer(performant_device, staging_buffer, staging_buffer_memory, m_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, memory_properties,
+            Helpers::CreateBuffer(
+                performant_device,
+                staging_buffer,
+                staging_buffer_memory,
+                m_buffer_size,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                memory_properties,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
             void* memory_region;
@@ -53,10 +59,20 @@ namespace ZEngine::Rendering::Textures
             std::memcpy(memory_region, image_data, static_cast<size_t>(m_buffer_size));
             vkUnmapMemory(performant_device.GetNativeDeviceHandle(), staging_buffer_memory);
 
-
             /* Create VkImage */
-            m_texture_image = Helpers::CreateImage(performant_device, width, height, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, m_texture_memory, memory_properties,
+            m_texture_image = Helpers::CreateImage(
+                performant_device,
+                width,
+                height,
+                VK_IMAGE_TYPE_2D,
+                VK_FORMAT_R8G8B8A8_SRGB,
+                VK_IMAGE_TILING_OPTIMAL,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                VK_SHARING_MODE_EXCLUSIVE,
+                VK_SAMPLE_COUNT_1_BIT,
+                m_texture_memory,
+                memory_properties,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
             /*Transition Image to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL and Copy buffer to image*/
@@ -98,7 +114,13 @@ namespace ZEngine::Rendering::Textures
 
         VkBuffer       staging_buffer{VK_NULL_HANDLE};
         VkDeviceMemory staging_buffer_memory{VK_NULL_HANDLE};
-        Helpers::CreateBuffer(performant_device, staging_buffer, staging_buffer_memory, m_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, memory_properties,
+        Helpers::CreateBuffer(
+            performant_device,
+            staging_buffer,
+            staging_buffer_memory,
+            m_buffer_size,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            memory_properties,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
         void* memory_region;
@@ -117,8 +139,19 @@ namespace ZEngine::Rendering::Textures
             vkFreeMemory(performant_device.GetNativeDeviceHandle(), m_texture_memory, nullptr);
         }
 
-        m_texture_image = Helpers::CreateImage(performant_device , m_width, m_height, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, m_texture_memory, memory_properties,
+        m_texture_image = Helpers::CreateImage(
+            performant_device,
+            m_width,
+            m_height,
+            VK_IMAGE_TYPE_2D,
+            VK_FORMAT_R8G8B8A8_SRGB,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            VK_SHARING_MODE_EXCLUSIVE,
+            VK_SAMPLE_COUNT_1_BIT,
+            m_texture_memory,
+            memory_properties,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         /*Transition Image to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL and Copy buffer to image*/
