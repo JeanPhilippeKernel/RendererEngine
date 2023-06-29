@@ -25,6 +25,8 @@ namespace ZEngine::Rendering::Renderers
         void MarkVulkanInternalObjectDirty();
 
     private:
+        VkViewport                         m_viewport;
+        VkRect2D                           m_scissor;
         VkRenderPass                       m_renderpass{VK_NULL_HANDLE};
         Pipelines::StandardGraphicPipeline m_standard_pipeline;
     };

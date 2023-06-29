@@ -1,6 +1,7 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include <unordered_map>
+#include <vulkan/vulkan.h>
+#include <Hardwares/VulkanLayer.h>
 
 namespace ZEngine::Hardwares
 {
@@ -13,7 +14,11 @@ namespace ZEngine::Hardwares
     class VulkanDevice
     {
     public:
-        VulkanDevice(const VkPhysicalDevice& physical_device, const std::vector<const char*>& device_extension_layer = {}, const VkSurfaceKHR* surface = nullptr);
+        VulkanDevice(
+            const VkPhysicalDevice&         physical_device,
+            const std::vector<const char*>& requested_device_layer_collection = {},
+            const std::vector<const char*>& requested_device_extension_layer  = {},
+            const VkSurfaceKHR*             surface                           = nullptr);
         ~VulkanDevice();
 
         bool IsHighPerformant() const;
@@ -22,9 +27,7 @@ namespace ZEngine::Hardwares
         const VkPhysicalDeviceProperties&       GetPhysicalDeviceProperties() const;
         const VkPhysicalDeviceMemoryProperties& GetPhysicalDeviceMemoryProperties() const;
         VkDevice                                GetNativeDeviceHandle() const;
-        QueueView                               GetAnyGraphicQueue() const;
         QueueView                               GetCurrentGraphicQueueWithPresentSupport() const;
-        QueueView                               GetAnyTransferQueue() const;
         QueueView                               GetCurrentTransferQueue() const;
         std::vector<uint32_t>                   GetGraphicQueueFamilyIndexCollection() const;
         std::vector<uint32_t>                   GetTransferQueueFamilyIndexCollection() const;
@@ -34,6 +37,7 @@ namespace ZEngine::Hardwares
 
     private:
         bool                                               m_high_performant_device{false};
+        VulkanLayer                                        m_layer;
         VkDevice                                           m_logical_device{VK_NULL_HANDLE};
         VkPhysicalDevice                                   m_physical_device{VK_NULL_HANDLE};
         VkPhysicalDeviceProperties                         m_physical_device_properties;

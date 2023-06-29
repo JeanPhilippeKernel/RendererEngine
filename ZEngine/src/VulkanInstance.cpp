@@ -21,10 +21,9 @@ namespace ZEngine::Hardwares
         vkDestroyInstance(m_vulkan_instance, nullptr);
     }
 
-    void VulkanInstance::CreateInstance()
+    void VulkanInstance::CreateInstance(const std::vector<const char*>& additional_extension_layer_name_collection)
     {
-        VkApplicationInfo app_info = {};
-
+        VkApplicationInfo app_info  = {};
         app_info.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         app_info.pApplicationName   = m_application_name.data();
         app_info.pEngineName        = m_application_name.data();
@@ -33,29 +32,23 @@ namespace ZEngine::Hardwares
         app_info.applicationVersion = 1;
         app_info.pNext              = nullptr;
 
-
         VkInstanceCreateInfo instance_create_info = {};
         instance_create_info.sType                = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instance_create_info.pApplicationInfo     = &app_info;
         instance_create_info.pNext                = nullptr;
         instance_create_info.flags                = 0;
 
-#ifdef ENABLE_VULKAN_VALIDATION_LAYER
-        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump"};
-#endif
-
         std::unordered_set<std::string> instance_layer_name_collection;
 
 #ifdef ENABLE_VULKAN_VALIDATION_LAYER
+        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump"};
         for (auto layer_name : validation_layer_name_collection)
         {
             instance_layer_name_collection.insert(layer_name);
         }
-        // std::copy(std::begin(validation_layer_name_collection), std::end(validation_layer_name_collection), std::back_inserter(instance_layer_name_collection));
 #endif
 
-        std::unordered_set<std::string> extension_layer_name_collection = {
-            VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+        std::unordered_set<std::string> extension_layer_name_collection = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
 
         auto layer_properties = m_layer.GetInstanceLayerProperties();
         for (const LayerProperty& layer : layer_properties)
@@ -67,15 +60,26 @@ namespace ZEngine::Hardwares
             }
         }
 
+        if (!additional_extension_layer_name_collection.empty())
+        {
+            for (const auto& extension : additional_extension_layer_name_collection)
+            {
+                extension_layer_name_collection.insert(extension);
+            }
+        }
+
         std::vector<const char*> enabled_layer_name;
-        std::transform(std::begin(instance_layer_name_collection), std::end(instance_layer_name_collection), std::back_inserter(enabled_layer_name),
-            [](std::string_view name) { return name.data(); });
+        std::transform(std::begin(instance_layer_name_collection), std::end(instance_layer_name_collection), std::back_inserter(enabled_layer_name), [](std::string_view name) {
+            return name.data();
+        });
         instance_create_info.enabledLayerCount   = instance_layer_name_collection.size();
         instance_create_info.ppEnabledLayerNames = enabled_layer_name.data();
 
         std::vector<const char*> enabled_extension_layer_name;
-        std::transform(std::begin(extension_layer_name_collection), std::end(extension_layer_name_collection), std::back_inserter(enabled_extension_layer_name),
-            [](std::string_view name) { return name.data(); });
+        std::transform(
+            std::begin(extension_layer_name_collection), std::end(extension_layer_name_collection), std::back_inserter(enabled_extension_layer_name), [](std::string_view name) {
+                return name.data();
+            });
         instance_create_info.enabledExtensionCount   = extension_layer_name_collection.size();
         instance_create_info.ppEnabledExtensionNames = enabled_extension_layer_name.data();
 
@@ -96,8 +100,8 @@ namespace ZEngine::Hardwares
         /*Create Message Callback*/
         VkDebugUtilsMessengerCreateInfoEXT messenger_create_info = {};
         messenger_create_info.sType                              = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-        messenger_create_info.messageSeverity                    = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
-                                              | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+        messenger_create_info.messageSeverity                    = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+        messenger_create_info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
         messenger_create_info.messageType =
             VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
         messenger_create_info.pfnUserCallback = __debugCallback;
@@ -126,28 +130,36 @@ namespace ZEngine::Hardwares
 
         for (const VkPhysicalDevice& physical_device : physical_device_collection)
         {
+            std::unordered_set<std::string_view> device_enabled_layer_name_collection;
+            std::unordered_set<std::string_view> device_extension_layer_name_collection = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
             for (LayerProperty& layer : layer_properties)
             {
                 m_layer.GetExtensionProperties(layer, &physical_device);
-            }
-        }
 
-        // std::unordered_set<std::string> device_extension_layer_name_collection = {"VK_KHR_swapchain", "VK_KHR_buffer_device_address", "VK_KHR_shader_non_semantic_info" /*, "VK_KHR_portability_subset"*/};
-        std::unordered_set<std::string> device_extension_layer_name_collection = {"VK_KHR_swapchain", /*, "VK_KHR_portability_subset"*/};
-        for (LayerProperty& layer : layer_properties)
-        {
-            for (const auto& device_extension : layer.DeviceExtensionCollection)
+                if (!layer.DeviceExtensionCollection.empty())
+                {
+                    device_enabled_layer_name_collection.insert(layer.Properties.layerName);
+                    for (const auto& extension_property : layer.DeviceExtensionCollection)
+                    {
+                        device_extension_layer_name_collection.insert(extension_property.extensionName);
+                    }
+                }
+            }
+
+            std::vector<const char*> requested_device_enabled_layer_name_collection   = {};
+            std::vector<const char*> requested_device_extension_layer_name_collection = {};
+            for (auto layer_name : device_enabled_layer_name_collection)
             {
-                device_extension_layer_name_collection.insert(device_extension.extensionName);
+                requested_device_enabled_layer_name_collection.push_back(layer_name.data());
             }
-        }
 
-        std::vector<const char*> enabled_device_layer_name_collection;
-        std::transform(std::begin(device_extension_layer_name_collection), std::end(device_extension_layer_name_collection),
-            std::back_inserter(enabled_device_layer_name_collection), [](std::string_view name) { return name.data(); });
-        for (const VkPhysicalDevice& physical_device : physical_device_collection)
-        {
-            m_device_collection.emplace_back(physical_device, enabled_device_layer_name_collection, surface);
+            for (auto extension_name : device_extension_layer_name_collection)
+            {
+                requested_device_extension_layer_name_collection.push_back(extension_name.data());
+            }
+
+            m_device_collection.emplace_back(physical_device, requested_device_enabled_layer_name_collection, requested_device_extension_layer_name_collection, surface);
         }
     }
 
@@ -191,15 +203,18 @@ namespace ZEngine::Hardwares
         return m_vulkan_instance;
     }
 
-    VkBool32 VulkanInstance::__debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType,
-        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
+    VkBool32 VulkanInstance::__debugCallback(
+        VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
+        VkDebugUtilsMessageTypeFlagsEXT             messageType,
+        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+        void*                                       pUserData)
     {
-        if (messageSeverity == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
         {
             ZENGINE_CORE_ERROR(pCallbackData->pMessage)
         }
 
-        if (messageSeverity == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
         {
             ZENGINE_CORE_WARN(pCallbackData->pMessage)
         }

@@ -111,7 +111,14 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::Initialize()
     {
+        const char** glfw_extensions_layer_name_collection;
+        uint32_t     glfw_extensions_layer_name_count = 0;
+        glfw_extensions_layer_name_collection         = glfwGetRequiredInstanceExtensions(&glfw_extensions_layer_name_count);
+        std::vector<const char*> window_additional_extension_layer_name_collection(
+            glfw_extensions_layer_name_collection, glfw_extensions_layer_name_collection + glfw_extensions_layer_name_count);
+
         auto vulkan_instance = ZEngine::Engine::GetVulkanInstance();
+        vulkan_instance->CreateInstance(window_additional_extension_layer_name_collection);
 
         ZENGINE_VALIDATE_ASSERT(
             glfwCreateWindowSurface(vulkan_instance->GetNativeHandle(), m_native_window, nullptr, &m_vulkan_surface) == VK_SUCCESS, "Failed Window Surface from GLFW")
@@ -460,19 +467,13 @@ namespace ZEngine::Window::GLFWWindow
         }
         ZENGINE_VALIDATE_ASSERT(acquire_image_result == VK_SUCCESS, "Failed to acquire image from Swapchain")
 
+        ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, current_frame.GraphicCommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool")
+
         if (!current_frame.GraphicCommandBuffers.empty())
         {
-            vkFreeCommandBuffers(
-                performant_device.GetNativeDeviceHandle(),
-                current_frame.GraphicCommandPool,
-                current_frame.GraphicCommandBuffers.size(),
-                current_frame.GraphicCommandBuffers.data());
-
             current_frame.GraphicCommandBuffers.clear();
             current_frame.GraphicCommandBuffers.shrink_to_fit();
         }
-
-        ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, current_frame.GraphicCommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool")
 
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
@@ -609,39 +610,40 @@ namespace ZEngine::Window::GLFWWindow
         /* Create SwapChain */
         m_swapchain = VK_NULL_HANDLE;
 
-        VkSwapchainCreateInfoKHR createInfo{};
-        createInfo.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-        createInfo.surface          = m_vulkan_surface;
-        createInfo.minImageCount    = m_min_image_count;
-        createInfo.imageFormat      = m_surface_format.format;
-        createInfo.imageColorSpace  = m_surface_format.colorSpace;
-        createInfo.imageExtent      = m_vulkan_extent_2d;
-        createInfo.imageArrayLayers = m_surface_capabilities.maxImageArrayLayers;
-        createInfo.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        VkSwapchainCreateInfoKHR swapchain_create_info{};
+        swapchain_create_info.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        swapchain_create_info.surface          = m_vulkan_surface;
+        swapchain_create_info.minImageCount    = m_min_image_count;
+        swapchain_create_info.imageFormat      = m_surface_format.format;
+        swapchain_create_info.imageColorSpace  = m_surface_format.colorSpace;
+        swapchain_create_info.imageExtent      = m_vulkan_extent_2d;
+        swapchain_create_info.imageArrayLayers = m_surface_capabilities.maxImageArrayLayers;
+        swapchain_create_info.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
         auto device_graphic_queue_family_index_collection  = device.GetGraphicQueueFamilyIndexCollection();
         auto device_transfer_queue_family_index_collection = device.GetTransferQueueFamilyIndexCollection();
 
-        std::vector<uint32_t> device_family_indice;
-        if (!device_graphic_queue_family_index_collection.empty() || !device_transfer_queue_family_index_collection.empty())
+        std::unordered_set<uint32_t> device_family_indices;
+        for (auto graphic_queue : device_graphic_queue_family_index_collection)
         {
-            const auto index_count = device_graphic_queue_family_index_collection.size() + device_transfer_queue_family_index_collection.size();
-
-            std::copy(std::begin(device_graphic_queue_family_index_collection), std::end(device_graphic_queue_family_index_collection), std::back_inserter(device_family_indice));
-            std::copy(std::begin(device_transfer_queue_family_index_collection), std::end(device_transfer_queue_family_index_collection), std::back_inserter(device_family_indice));
-
-            createInfo.imageSharingMode      = (index_count > 1) ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
-            createInfo.queueFamilyIndexCount = index_count;
-            createInfo.pQueueFamilyIndices   = device_family_indice.data();
+            device_family_indices.insert(graphic_queue);
         }
+        for (auto transfer_queue : device_transfer_queue_family_index_collection)
+        {
+            device_family_indices.insert(transfer_queue);
+        }
+        auto final_family_indices_collection = std::vector<uint32_t>{device_family_indices.begin(), device_family_indices.end()};
 
-        createInfo.preTransform   = m_surface_capabilities.currentTransform;
-        createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        createInfo.presentMode    = m_vulkan_present_mode;
-        createInfo.clipped        = VK_TRUE;
-        createInfo.oldSwapchain   = old_swapchain;
+        swapchain_create_info.imageSharingMode      = (final_family_indices_collection.size() > 1) ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+        swapchain_create_info.queueFamilyIndexCount = final_family_indices_collection.size();
+        swapchain_create_info.pQueueFamilyIndices   = final_family_indices_collection.data();
+        swapchain_create_info.preTransform          = m_surface_capabilities.currentTransform;
+        swapchain_create_info.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        swapchain_create_info.presentMode           = m_vulkan_present_mode;
+        swapchain_create_info.clipped               = VK_TRUE;
+        swapchain_create_info.oldSwapchain          = old_swapchain;
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateSwapchainKHR(device.GetNativeDeviceHandle(), &createInfo, nullptr, &m_swapchain) == VK_SUCCESS, "Failed to create Swapchain")
+        ZENGINE_VALIDATE_ASSERT(vkCreateSwapchainKHR(device.GetNativeDeviceHandle(), &swapchain_create_info, nullptr, &m_swapchain) == VK_SUCCESS, "Failed to create Swapchain")
 
         if (old_swapchain)
         {
@@ -669,7 +671,7 @@ namespace ZEngine::Window::GLFWWindow
             VK_IMAGE_TILING_OPTIMAL,
             VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-            VK_SHARING_MODE_EXCLUSIVE,
+            swapchain_create_info.imageSharingMode,
             VK_SAMPLE_COUNT_1_BIT,
             m_depth_image_device_memory,
             memory_properties,

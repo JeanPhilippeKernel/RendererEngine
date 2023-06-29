@@ -66,7 +66,7 @@ namespace ZEngine::Helpers
 
     void CopyBuffer(Hardwares::VulkanDevice& device, VkBuffer& source_buffer, VkBuffer& destination_buffer, VkDeviceSize byte_size)
     {
-        auto            transfer_queue_view = device.GetAnyTransferQueue();
+        auto            transfer_queue_view = device.GetCurrentTransferQueue();
         auto            command_pool        = device.GetTransferCommandPool(transfer_queue_view.FamilyIndex);
         VkCommandBuffer command_buffer      = BeginOneTimeCommandBuffer(device, command_pool);
 
@@ -116,7 +116,7 @@ namespace ZEngine::Helpers
 
     void CopyBufferToImage(Hardwares::VulkanDevice& device, VkBuffer source_buffer, VkImage destination_image, uint32_t width, uint32_t height)
     {
-        auto            transfer_queue_view = device.GetAnyTransferQueue();
+        auto            transfer_queue_view = device.GetCurrentTransferQueue();
         auto            command_pool        = device.GetTransferCommandPool(transfer_queue_view.FamilyIndex);
         VkCommandBuffer command_buffer      = BeginOneTimeCommandBuffer(device, command_pool);
 
@@ -385,7 +385,7 @@ namespace ZEngine::Helpers
 
     void TransitionImageLayout(Hardwares::VulkanDevice& device, VkImage image, VkFormat image_format, VkImageLayout old_image_layout, VkImageLayout new_image_layout)
     {
-        auto                 graphic_queue  = device.GetAnyGraphicQueue();
+        auto                 graphic_queue  = device.GetCurrentGraphicQueueWithPresentSupport();
         auto                 command_pool   = device.GetGraphicCommandPool(graphic_queue.FamilyIndex);
         VkCommandBuffer      command_buffer = BeginOneTimeCommandBuffer(device, command_pool);
         VkImageMemoryBarrier memory_barrier = {};

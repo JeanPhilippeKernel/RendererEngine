@@ -12,7 +12,7 @@ namespace ZEngine::Hardwares
         VulkanInstance(std::string_view app_name);
         ~VulkanInstance();
 
-        void CreateInstance();
+        void CreateInstance(const std::vector<const char*>& additional_extension_layer_name_collection);
 
         void ConfigureDevices(const VkSurfaceKHR* surface = nullptr);
 
@@ -20,7 +20,7 @@ namespace ZEngine::Hardwares
         const VulkanDevice&              GetHighPerformantDevice() const;
         const VkInstance                 GetNativeHandle() const;
 
-        VulkanDevice&                    GetHighPerformantDevice();
+        VulkanDevice& GetHighPerformantDevice();
 
     private:
         std::string               m_application_name;
@@ -33,8 +33,11 @@ namespace ZEngine::Hardwares
         PFN_vkCreateDebugUtilsMessengerEXT  __createDebugMessengerPtr{nullptr};
         PFN_vkDestroyDebugUtilsMessengerEXT __destroyDebugMessengerPtr{nullptr};
 
-        static VKAPI_ATTR VkBool32 VKAPI_CALL __debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType,
-            const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
+        static VKAPI_ATTR VkBool32 VKAPI_CALL __debugCallback(
+            VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
+            VkDebugUtilsMessageTypeFlagsEXT             messageType,
+            const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+            void*                                       pUserData);
 
         int GetHighPerformantDeviceIndex() const;
     };

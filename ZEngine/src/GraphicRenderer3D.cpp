@@ -23,6 +23,20 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer3D::Initialize()
     {
+        /*Viewport definition*/
+        m_viewport = {};
+        m_viewport.x        = 0.0f;
+        m_viewport.y        = 0.0f;
+        m_viewport.width    = m_viewport_width;
+        m_viewport.height   = m_viewport_height;
+        m_viewport.minDepth = 0.0f;
+        m_viewport.maxDepth = 1.0f;
+
+        /*Scissor definition*/
+        m_scissor        = {};
+        m_scissor.offset = {0, 0};
+        m_scissor.extent = {m_viewport_width, m_viewport_height};
+
         /*RenderPass definition*/
         auto&                                 performant_device        = Engine::GetVulkanInstance()->GetHighPerformantDevice();
         RenderPasses::RenderPassSpecification renderpass_specification = {};
@@ -140,24 +154,17 @@ namespace ZEngine::Rendering::Renderers
 
             vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
             {
+                m_viewport.width  = m_viewport_width;
+                m_viewport.height = m_viewport_height;
+                vkCmdSetViewport(command_buffer, 0, 1, &m_viewport);
+
+                m_scissor.extent = {m_viewport_width, m_viewport_height};
+                vkCmdSetScissor(command_buffer, 0, 1, &m_scissor);
+
                 vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_standard_pipeline.Pipeline);
 
-                VkViewport viewport{};
-                viewport.x        = 0.0f;
-                viewport.y        = 0.0f;
-                viewport.width    = m_viewport_width;
-                viewport.height   = m_viewport_height;
-                viewport.minDepth = 0.0f;
-                viewport.maxDepth = 1.0f;
-                vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-
-                VkRect2D scissor{};
-                scissor.offset = {0, 0};
-                scissor.extent = {m_viewport_width, m_viewport_height};
-                vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-                auto descriptor_set_collection = std::array{
-                    m_standard_pipeline.DescriptorSetCollection[m_scene_data.FrameIndex], m_standard_pipeline.FragmentDescriptorSetCollection[m_scene_data.FrameIndex]};
+                auto descriptor_set_collection =
+                    std::array{m_standard_pipeline.DescriptorSetCollection[m_scene_data.FrameIndex], m_standard_pipeline.FragmentDescriptorSetCollection[m_scene_data.FrameIndex]};
                 vkCmdBindDescriptorSets(
                     command_buffer,
                     VK_PIPELINE_BIND_POINT_GRAPHICS,

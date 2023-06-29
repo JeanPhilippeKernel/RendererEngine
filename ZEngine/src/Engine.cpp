@@ -16,7 +16,6 @@ namespace ZEngine
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
 
         m_vulkan_instance = CreateScope<Hardwares::VulkanInstance>("ZEngine");
-        m_vulkan_instance->CreateInstance();
 
         m_window.reset(ZEngine::Window::Create(engine_configuration.WindowConfiguration));
 
