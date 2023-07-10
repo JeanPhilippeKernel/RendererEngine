@@ -23,11 +23,12 @@ namespace ZEngine::Hardwares
         VulkanDevice& GetHighPerformantDevice();
 
     private:
-        std::string               m_application_name;
-        VulkanLayer               m_layer;
-        VkInstance                m_vulkan_instance{VK_NULL_HANDLE};
-        VkDebugUtilsMessengerEXT  m_debug_messenger{VK_NULL_HANDLE};
-        std::vector<VulkanDevice> m_device_collection;
+        std::string                m_application_name;
+        VulkanLayer                m_layer;
+        VkInstance                 m_vulkan_instance{VK_NULL_HANDLE};
+        VkDebugUtilsMessengerEXT   m_debug_messenger{VK_NULL_HANDLE};
+        std::vector<VulkanDevice>  m_device_collection;
+        std::vector<LayerProperty> m_selected_layer_property_collection;
 
     private:
         PFN_vkCreateDebugUtilsMessengerEXT  __createDebugMessengerPtr{nullptr};
