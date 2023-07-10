@@ -38,25 +38,35 @@ namespace ZEngine::Hardwares
         instance_create_info.pNext                = nullptr;
         instance_create_info.flags                = 0;
 
-        std::unordered_set<std::string> instance_layer_name_collection;
+        auto layer_properties = m_layer.GetInstanceLayerProperties();
+
+        std::vector<const char*> enabled_layer_name_collection;
 
 #ifdef ENABLE_VULKAN_VALIDATION_LAYER
-        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump"};
-        for (auto layer_name : validation_layer_name_collection)
+        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_screenshot"};
+
+        for (std::string_view layer_name : validation_layer_name_collection)
         {
-            instance_layer_name_collection.insert(layer_name);
+            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) {
+                return std::string_view(layer_property.Properties.layerName) == layer_name;
+            });
+            if (find_it == std::end(layer_properties))
+            {
+                continue;
+            }
+
+            enabled_layer_name_collection.push_back(find_it->Properties.layerName);
+            m_selected_layer_property_collection.push_back(*find_it);
         }
 #endif
 
-        std::unordered_set<std::string> extension_layer_name_collection = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+        std::vector<const char*> enabled_extension_layer_name_collection;
 
-        auto layer_properties = m_layer.GetInstanceLayerProperties();
-        for (const LayerProperty& layer : layer_properties)
+        for (const LayerProperty& layer : m_selected_layer_property_collection)
         {
-            instance_layer_name_collection.insert(layer.Properties.layerName);
             for (const auto& extension : layer.ExtensionCollection)
             {
-                extension_layer_name_collection.insert(extension.extensionName);
+                enabled_extension_layer_name_collection.push_back(extension.extensionName);
             }
         }
 
@@ -64,24 +74,14 @@ namespace ZEngine::Hardwares
         {
             for (const auto& extension : additional_extension_layer_name_collection)
             {
-                extension_layer_name_collection.insert(extension);
+                enabled_extension_layer_name_collection.push_back(extension);
             }
         }
 
-        std::vector<const char*> enabled_layer_name;
-        std::transform(std::begin(instance_layer_name_collection), std::end(instance_layer_name_collection), std::back_inserter(enabled_layer_name), [](std::string_view name) {
-            return name.data();
-        });
-        instance_create_info.enabledLayerCount   = instance_layer_name_collection.size();
-        instance_create_info.ppEnabledLayerNames = enabled_layer_name.data();
-
-        std::vector<const char*> enabled_extension_layer_name;
-        std::transform(
-            std::begin(extension_layer_name_collection), std::end(extension_layer_name_collection), std::back_inserter(enabled_extension_layer_name), [](std::string_view name) {
-                return name.data();
-            });
-        instance_create_info.enabledExtensionCount   = extension_layer_name_collection.size();
-        instance_create_info.ppEnabledExtensionNames = enabled_extension_layer_name.data();
+        instance_create_info.enabledLayerCount       = enabled_layer_name_collection.size();
+        instance_create_info.ppEnabledLayerNames     = enabled_layer_name_collection.data();
+        instance_create_info.enabledExtensionCount   = enabled_extension_layer_name_collection.size();
+        instance_create_info.ppEnabledExtensionNames = enabled_extension_layer_name_collection.data();
 
         VkResult result = vkCreateInstance(&instance_create_info, nullptr, &m_vulkan_instance);
 
@@ -117,9 +117,7 @@ namespace ZEngine::Hardwares
 
     void VulkanInstance::ConfigureDevices(const VkSurfaceKHR* surface)
     {
-        assert(m_vulkan_instance != VK_NULL_HANDLE);
-
-        auto layer_properties = m_layer.GetInstanceLayerProperties();
+        ZENGINE_VALIDATE_ASSERT(m_vulkan_instance != VK_NULL_HANDLE, "A Vulkan Instance must be created first!")
 
         /*Create devices*/
         uint32_t gpu_device_count{0};
@@ -130,33 +128,21 @@ namespace ZEngine::Hardwares
 
         for (const VkPhysicalDevice& physical_device : physical_device_collection)
         {
-            std::unordered_set<std::string_view> device_enabled_layer_name_collection;
-            std::unordered_set<std::string_view> device_extension_layer_name_collection = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+            std::vector<const char*> requested_device_enabled_layer_name_collection   = {};
+            std::vector<const char*> requested_device_extension_layer_name_collection = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-            for (LayerProperty& layer : layer_properties)
+            for (LayerProperty& layer : m_selected_layer_property_collection)
             {
                 m_layer.GetExtensionProperties(layer, &physical_device);
 
                 if (!layer.DeviceExtensionCollection.empty())
                 {
-                    device_enabled_layer_name_collection.insert(layer.Properties.layerName);
+                    requested_device_enabled_layer_name_collection.push_back(layer.Properties.layerName);
                     for (const auto& extension_property : layer.DeviceExtensionCollection)
                     {
-                        device_extension_layer_name_collection.insert(extension_property.extensionName);
+                        requested_device_extension_layer_name_collection.push_back(extension_property.extensionName);
                     }
                 }
-            }
-
-            std::vector<const char*> requested_device_enabled_layer_name_collection   = {};
-            std::vector<const char*> requested_device_extension_layer_name_collection = {};
-            for (auto layer_name : device_enabled_layer_name_collection)
-            {
-                requested_device_enabled_layer_name_collection.push_back(layer_name.data());
-            }
-
-            for (auto extension_name : device_extension_layer_name_collection)
-            {
-                requested_device_extension_layer_name_collection.push_back(extension_name.data());
             }
 
             m_device_collection.emplace_back(physical_device, requested_device_enabled_layer_name_collection, requested_device_extension_layer_name_collection, surface);
