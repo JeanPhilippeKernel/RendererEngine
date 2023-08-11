@@ -12,7 +12,6 @@
 #include "Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h"
 
 #include "Rendering/Scenes/GraphicScene.h"
-#include "Rendering/Scenes/GraphicScene2D.h"
 #include "Rendering/Scenes/GraphicScene3D.h"
 
 #include "Serializers/GraphicSceneSerializer.h"
