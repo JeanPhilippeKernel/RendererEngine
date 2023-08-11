@@ -742,6 +742,64 @@ namespace ZEngine::Hardwares
         return buffer_image;
     }
 
+    VkSampler VulkanDevice::CreateImageSampler()
+    {
+        VkSampler sampler{VK_NULL_HANDLE};
+
+        VkSamplerCreateInfo sampler_create_info = {};
+        sampler_create_info.sType               = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler_create_info.minFilter           = VK_FILTER_LINEAR;
+        sampler_create_info.magFilter           = VK_FILTER_NEAREST;
+        sampler_create_info.addressModeU        = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_create_info.addressModeV        = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_create_info.addressModeW        = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        {
+            sampler_create_info.maxAnisotropy = m_physical_device_properties.limits.maxSamplerAnisotropy;
+        }
+        sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        sampler_create_info.unnormalizedCoordinates = VK_FALSE;
+        sampler_create_info.compareEnable           = VK_FALSE;
+        sampler_create_info.compareOp               = VK_COMPARE_OP_ALWAYS;
+        sampler_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sampler_create_info.mipLodBias              = 0.0f;
+        sampler_create_info.minLod                  = -1000.0f;
+        sampler_create_info.maxLod                  = 1000.0f;
+
+        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(m_logical_device, &sampler_create_info, nullptr, &sampler) == VK_SUCCESS, "Failed to create Texture Sampler")
+
+        return sampler;
+    }
+
+    VkFormat VulkanDevice::FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags)
+    {
+        VkFormat supported_format = VK_FORMAT_UNDEFINED;
+        auto     physical_device  = Hardwares::VulkanDevice::GetNativePhysicalDeviceHandle();
+        for (uint32_t i = 0; i < format_collection.size(); ++i)
+        {
+            VkFormatProperties format_properties;
+            vkGetPhysicalDeviceFormatProperties(physical_device, format_collection[i], &format_properties);
+
+            if (image_tiling == VK_IMAGE_TILING_LINEAR && (format_properties.linearTilingFeatures & feature_flags) == feature_flags)
+            {
+                supported_format = format_collection[i];
+            }
+            else if (image_tiling == VK_IMAGE_TILING_OPTIMAL && (format_properties.optimalTilingFeatures & feature_flags) == feature_flags)
+            {
+                supported_format = format_collection[i];
+            }
+        }
+
+        ZENGINE_VALIDATE_ASSERT(supported_format != VK_FORMAT_UNDEFINED, "Failed to find supported Image format")
+
+        return supported_format;
+    }
+
+    VkFormat VulkanDevice::FindDepthFormat()
+    {
+        return FindSupportedFormat(
+            {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+    }
+
     VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag)
     {
         VkImageView           image_view{VK_NULL_HANDLE};
@@ -750,7 +808,7 @@ namespace ZEngine::Hardwares
         image_view_create_info.format                          = image_format;
         image_view_create_info.image                           = image;
         image_view_create_info.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
-        image_view_create_info.subresourceRange.aspectMask     = image_aspect_flag /*VK_IMAGE_ASPECT_COLOR_BIT*/;
+        image_view_create_info.subresourceRange.aspectMask     = image_aspect_flag;
         image_view_create_info.components.r                    = VK_COMPONENT_SWIZZLE_R;
         image_view_create_info.components.g                    = VK_COMPONENT_SWIZZLE_G;
         image_view_create_info.components.b                    = VK_COMPONENT_SWIZZLE_B;
@@ -785,6 +843,28 @@ namespace ZEngine::Hardwares
             vkCmdCopyBufferToImage(command_buffer->GetHandle(), source.Handle, destination.Handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
         }
         EndInstantCommandBuffer(command_buffer);
+    }
+
+    VkFramebuffer VulkanDevice::CreateFramebuffer(
+        const std::vector<VkImageView>& attachments,
+        const VkRenderPass&             render_pass,
+        uint32_t                        width,
+        uint32_t                        height,
+        uint32_t                        layer_number)
+    {
+        VkFramebuffer           framebuffer{VK_NULL_HANDLE};
+        VkFramebufferCreateInfo framebuffer_create_info = {};
+        framebuffer_create_info.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_create_info.renderPass              = render_pass;
+        framebuffer_create_info.attachmentCount         = attachments.size();
+        framebuffer_create_info.pAttachments            = attachments.data();
+        framebuffer_create_info.width                   = width;
+        framebuffer_create_info.height                  = height;
+        framebuffer_create_info.layers                  = layer_number;
+
+        ZENGINE_VALIDATE_ASSERT(vkCreateFramebuffer(m_logical_device, &framebuffer_create_info, nullptr, &framebuffer) == VK_SUCCESS, "Failed to create Framebuffer")
+
+        return framebuffer;
     }
 
     Rendering::Buffers::CommandBuffer* VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType type)

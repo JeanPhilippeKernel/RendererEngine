@@ -95,8 +95,17 @@ namespace ZEngine::Hardwares
             VkMemoryPropertyFlags requested_properties,
             VkImageAspectFlagBits image_aspect_flag);
 
-        static VkImageView CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag);
-        static void        CopyBufferToImage(const BufferView& source, BufferImage& destination, uint32_t width, uint32_t height);
+        static VkSampler     CreateImageSampler();
+        static VkFormat      FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
+        static VkFormat      FindDepthFormat();
+        static VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag);
+        static void          CopyBufferToImage(const BufferView& source, BufferImage& destination, uint32_t width, uint32_t height);
+        static VkFramebuffer CreateFramebuffer(
+            const std::vector<VkImageView>& attachments,
+            const VkRenderPass&             render_pass,
+            uint32_t                        width,
+            uint32_t                        height,
+            uint32_t                        layer_number = 1);
 
         static Rendering::Buffers::CommandBuffer* BeginInstantCommandBuffer(Rendering::QueueType type);
         static void                               EndInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const command);

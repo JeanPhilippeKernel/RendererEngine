@@ -3,8 +3,7 @@
 #include <Helpers/RendererHelper.h>
 #include <Helpers/MeshHelper.h>
 #include <Rendering/Renderers/Storages/IVertex.h>
-#include <Rendering/Shaders/Compilers/ShaderCompiler.h>
-
+#include <Hardwares/VulkanDevice.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
@@ -63,29 +62,6 @@ namespace ZEngine::Helpers
             vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &out_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
 
         return out_pipeline_layout;
-    }
-
-    VkFramebuffer CreateFramebuffer(
-        const std::vector<VkImageView>& attachments,
-        const VkRenderPass&             render_pass,
-        uint32_t                        width,
-        uint32_t                        height,
-        uint32_t                        layer_number)
-    {
-        VkFramebuffer           framebuffer{VK_NULL_HANDLE};
-        VkFramebufferCreateInfo framebuffer_create_info = {};
-        framebuffer_create_info.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebuffer_create_info.renderPass              = render_pass;
-        framebuffer_create_info.attachmentCount         = attachments.size();
-        framebuffer_create_info.pAttachments            = attachments.data();
-        framebuffer_create_info.width                   = width;
-        framebuffer_create_info.height                  = height;
-        framebuffer_create_info.layers                  = layer_number;
-
-        auto device                                     = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        ZENGINE_VALIDATE_ASSERT(vkCreateFramebuffer(device, &framebuffer_create_info, nullptr, &framebuffer) == VK_SUCCESS, "Failed to create Framebuffer")
-
-        return framebuffer;
     }
 
     void FillDefaultPipelineFixedStates(Rendering::Renderers::Pipelines::GraphicRendererPipelineStateSpecification& specification)
@@ -207,66 +183,6 @@ namespace ZEngine::Helpers
         specification.VertexInputStateCreateInfo.vertexBindingDescriptionCount   = vertex_input_binding_description_collection.size();
         specification.VertexInputStateCreateInfo.pVertexBindingDescriptions      = vertex_input_binding_description_collection.data();
         specification.VertexInputStateCreateInfo.pNext                           = nullptr;
-    }
-
-    VkFormat FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags)
-    {
-        VkFormat supported_format = VK_FORMAT_UNDEFINED;
-        auto     physical_device = Hardwares::VulkanDevice::GetNativePhysicalDeviceHandle();
-        for (uint32_t i = 0; i < format_collection.size(); ++i)
-        {
-            VkFormatProperties format_properties;
-            vkGetPhysicalDeviceFormatProperties(physical_device, format_collection[i], &format_properties);
-
-            if (image_tiling == VK_IMAGE_TILING_LINEAR && (format_properties.linearTilingFeatures & feature_flags) == feature_flags)
-            {
-                supported_format = format_collection[i];
-            }
-            else if (image_tiling == VK_IMAGE_TILING_OPTIMAL && (format_properties.optimalTilingFeatures & feature_flags) == feature_flags)
-            {
-                supported_format = format_collection[i];
-            }
-        }
-
-        ZENGINE_VALIDATE_ASSERT(supported_format != VK_FORMAT_UNDEFINED, "Failed to find supported Image format")
-
-        return supported_format;
-    }
-
-    VkFormat FindDepthFormat()
-    {
-        return FindSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-    }
-
-    VkSampler CreateTextureSampler()
-    {
-        VkSampler sampler{VK_NULL_HANDLE};
-
-        auto device          = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        auto device_property = Hardwares::VulkanDevice::GetPhysicalDeviceProperties();
-
-        VkSamplerCreateInfo sampler_create_info = {};
-        sampler_create_info.sType               = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        sampler_create_info.minFilter           = VK_FILTER_LINEAR;
-        sampler_create_info.magFilter           = VK_FILTER_NEAREST;
-        sampler_create_info.addressModeU        = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.addressModeV        = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.addressModeW        = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        {
-            sampler_create_info.maxAnisotropy = device_property.limits.maxSamplerAnisotropy;
-        }
-        sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-        sampler_create_info.unnormalizedCoordinates = VK_FALSE;
-        sampler_create_info.compareEnable           = VK_FALSE;
-        sampler_create_info.compareOp               = VK_COMPARE_OP_ALWAYS;
-        sampler_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        sampler_create_info.mipLodBias              = 0.0f;
-        sampler_create_info.minLod                  = -1000.0f;
-        sampler_create_info.maxLod                  = 1000.0f;
-
-        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(device, &sampler_create_info, nullptr, &sampler) == VK_SUCCESS, "Failed to create Texture Sampler")
-
-        return sampler;
     }
 
     Rendering::Meshes::MeshVNext CreateBuiltInMesh(Rendering::Meshes::MeshType mesh_type)

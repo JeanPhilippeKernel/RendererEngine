@@ -94,7 +94,7 @@ namespace ZEngine::Rendering::Textures
             Hardwares::VulkanDevice::CopyBufferToImage(staging_buffer, m_image_2d_buffer->GetBuffer(), m_width, m_height);
 
             /* Create Sampler */
-            m_texture_sampler = Helpers::CreateTextureSampler();
+            m_texture_sampler = Hardwares::VulkanDevice::CreateImageSampler();
 
             /* Cleanup resource */
             Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, staging_buffer.Handle);

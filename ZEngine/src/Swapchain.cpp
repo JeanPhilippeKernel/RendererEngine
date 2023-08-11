@@ -191,7 +191,7 @@ namespace ZEngine::Rendering
         }
 
         /*Depth Image*/
-        VkFormat depth_format = Helpers::FindDepthFormat();
+        VkFormat depth_format = Hardwares::VulkanDevice::FindDepthFormat();
         m_depth_buffer = CreateRef<Buffers::Image2DBuffer>(extent.width, extent.height, depth_format, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
 
         /* Create RenderPass */
@@ -208,7 +208,7 @@ namespace ZEngine::Rendering
                         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                         .finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR},
                     VkAttachmentDescription{
-                        .format         = Helpers::FindDepthFormat(),
+                        .format         = depth_format,
                         .samples        = VK_SAMPLE_COUNT_1_BIT,
                         .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
                         .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
@@ -236,7 +236,7 @@ namespace ZEngine::Rendering
         for (size_t i = 0; i < m_framebuffer_collection.size(); i++)
         {
             auto attachments            = std::vector<VkImageView>{m_image_view_collection[i], m_depth_buffer->GetImageViewHandle()};
-            m_framebuffer_collection[i] = Helpers::CreateFramebuffer(attachments, m_render_pass, extent.width, extent.height);
+            m_framebuffer_collection[i] = Hardwares::VulkanDevice::CreateFramebuffer(attachments, m_render_pass, extent.width, extent.height);
         }
 
         /*Swapchain semaphore*/

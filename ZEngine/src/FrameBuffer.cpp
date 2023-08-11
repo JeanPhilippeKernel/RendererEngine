@@ -44,7 +44,7 @@ namespace ZEngine::Rendering::Buffers
             }
             else if (image_format == Buffers::FrameBuffers::ImageFormat::DEPTH_STENCIL)
             {
-                auto depth_format  = Helpers::FindDepthFormat();
+                auto depth_format  = Hardwares::VulkanDevice::FindDepthFormat();
                 m_depth_attachment = CreateRef<Image2DBuffer>(m_width, m_height, depth_format, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
 
                 VkAttachmentDescription depth_attachment_description = {};
@@ -99,10 +99,10 @@ namespace ZEngine::Rendering::Buffers
         }
         attachment_view_collection.push_back(m_depth_attachment->GetImageViewHandle());
 
-        this->m_handle = Helpers::CreateFramebuffer(attachment_view_collection, m_renderpass, specification.Width, specification.Height, specification.Layers);
+        this->m_handle = Hardwares::VulkanDevice::CreateFramebuffer(attachment_view_collection, m_renderpass, specification.Width, specification.Height, specification.Layers);
 
         /* Create Sampler */
-        this->m_sampler = Helpers::CreateTextureSampler();
+        this->m_sampler = Hardwares::VulkanDevice::CreateImageSampler();
     }
 
     FramebufferVNext::~FramebufferVNext()
