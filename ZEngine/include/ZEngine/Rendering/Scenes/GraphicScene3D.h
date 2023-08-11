@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Rendering/Scenes/GraphicScene.h>
-#include <Rendering/Renderers/GraphicRenderer3D.h>
+#include <Rendering/Renderers/GraphicRenderer.h>
 #include <Controllers/PerspectiveCameraController.h>
 
 namespace ZEngine::Rendering::Scenes
@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Scenes
     public:
         GraphicScene3D() : GraphicScene()
         {
-            m_renderer = CreateScope<Renderers::GraphicRenderer3D>();
+            //m_renderer = CreateScope<Renderers::GraphicRenderer>();
         }
 
         ~GraphicScene3D() = default;

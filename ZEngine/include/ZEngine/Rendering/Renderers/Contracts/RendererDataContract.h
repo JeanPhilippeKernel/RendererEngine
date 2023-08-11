@@ -1,9 +1,8 @@
 #pragma once
 #include <ZEngine/Maths/Math.h>
 #include <vector>
+#include <functional>
 #include <vulkan/vulkan.h>
-#include <Rendering/Cameras/Camera.h>
-#include <Rendering/Meshes/Mesh.h>
 
 namespace ZEngine::Rendering::Renderers::Contracts
 {
@@ -21,11 +20,13 @@ namespace ZEngine::Rendering::Renderers::Contracts
 
     struct GraphicSceneLayout
     {
-        uint32_t              FrameIndex;
-        VkQueue               GraphicQueue;
-        Ref<Cameras::Camera>  SceneCamera;
-        std::vector<uint32_t> MeshCollectionIdentifiers;
-        void*                 GraphicScenePtr{nullptr};
+        uint32_t                                                 FrameIndex;
+        VkQueue                                                  GraphicQueue;
+        std::vector<uint32_t>                                    MeshCollectionIdentifiers;
+        uint32_t                                                 ViewportWidth  = 1;
+        uint32_t                                                 ViewportHeight = 1;
+        std::function<void(void)>                                DrawingOperationFunc;
+        void*                                                    GraphicScenePtr{nullptr};
     };
 
     struct FramebufferViewLayout

@@ -1,8 +1,7 @@
 #include <pch.h>
 #include <Rendering/Textures/Texture2D.h>
-#include <Helpers/BufferHelper.h>
+#include <Hardwares/VulkanDevice.h>
 #include <Helpers/RendererHelper.h>
-#include <Engine.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__
@@ -36,62 +35,70 @@ namespace ZEngine::Rendering::Textures
         if (image_data != nullptr)
         {
             m_byte_per_pixel = channel;
+            m_buffer_size    = width * height * m_byte_per_pixel;
 
-            auto&       performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-            const auto& memory_properties = performant_device.GetPhysicalDeviceMemoryProperties();
-
-            m_buffer_size = width * height * m_byte_per_pixel;
-
-            VkBuffer       staging_buffer{VK_NULL_HANDLE};
-            VkDeviceMemory staging_buffer_memory{VK_NULL_HANDLE};
-            Helpers::CreateBuffer(
-                performant_device,
-                staging_buffer,
-                staging_buffer_memory,
-                m_buffer_size,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                memory_properties,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            auto                  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+            Hardwares::BufferView staging_buffer =
+                Hardwares::VulkanDevice::CreateBuffer(m_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
             void* memory_region;
-            ZENGINE_VALIDATE_ASSERT(
-                vkMapMemory(performant_device.GetNativeDeviceHandle(), staging_buffer_memory, 0, m_buffer_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
+            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, staging_buffer.Memory, 0, m_buffer_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
             std::memcpy(memory_region, image_data, static_cast<size_t>(m_buffer_size));
-            vkUnmapMemory(performant_device.GetNativeDeviceHandle(), staging_buffer_memory);
+            vkUnmapMemory(device, staging_buffer.Memory);
 
             /* Create VkImage */
-            m_texture_image = Helpers::CreateImage(
-                performant_device,
-                width,
-                height,
-                VK_IMAGE_TYPE_2D,
-                VK_FORMAT_R8G8B8A8_SRGB,
-                VK_IMAGE_TILING_OPTIMAL,
-                VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                VK_SHARING_MODE_EXCLUSIVE,
-                VK_SAMPLE_COUNT_1_BIT,
-                m_texture_memory,
-                memory_properties,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            m_image_2d_buffer =
+                CreateRef<Buffers::Image2DBuffer>(width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
-            /*Transition Image to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL and Copy buffer to image*/
-            Helpers::TransitionImageLayout(performant_device, m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-            Helpers::CopyBufferToImage(performant_device, staging_buffer, m_texture_image, width, height);
+            /*Transition Image from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL and Copy buffer to image*/
+            auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
+            {
+                std::array<VkImageMemoryBarrier, 2> memory_barrier = {};
+                memory_barrier[0].sType                            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                memory_barrier[0].oldLayout                        = VK_IMAGE_LAYOUT_UNDEFINED;
+                memory_barrier[0].newLayout                        = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                memory_barrier[0].srcQueueFamilyIndex              = VK_QUEUE_FAMILY_IGNORED;
+                memory_barrier[0].dstQueueFamilyIndex              = VK_QUEUE_FAMILY_IGNORED;
+                memory_barrier[0].image                            = m_image_2d_buffer->GetHandle();
+                memory_barrier[0].subresourceRange.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
+                memory_barrier[0].subresourceRange.baseMipLevel    = 0;
+                memory_barrier[0].subresourceRange.baseArrayLayer  = 0;
+                memory_barrier[0].subresourceRange.layerCount      = 1;
+                memory_barrier[0].subresourceRange.levelCount      = 1;
+                memory_barrier[0].srcAccessMask                    = 0;
+                memory_barrier[0].dstAccessMask                    = VK_ACCESS_TRANSFER_WRITE_BIT;
+                VkPipelineStageFlagBits source_stage_mask_0        = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                VkPipelineStageFlagBits destination_stage_mask_0   = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                vkCmdPipelineBarrier(command_buffer->GetHandle(), source_stage_mask_0, destination_stage_mask_0, 0, 0, nullptr, 0, nullptr, 1, &memory_barrier[0]);
 
-            /* Transition to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL */
-            Helpers::TransitionImageLayout(
-                performant_device, m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                memory_barrier[1].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                memory_barrier[1].oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                memory_barrier[1].newLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                memory_barrier[1].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+                memory_barrier[1].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+                memory_barrier[1].image                           = m_image_2d_buffer->GetHandle();
+                memory_barrier[1].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+                memory_barrier[1].subresourceRange.baseMipLevel   = 0;
+                memory_barrier[1].subresourceRange.baseArrayLayer = 0;
+                memory_barrier[1].subresourceRange.layerCount     = 1;
+                memory_barrier[1].subresourceRange.levelCount     = 1;
+                memory_barrier[1].srcAccessMask                   = 0;
+                memory_barrier[1].srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+                memory_barrier[1].dstAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+                VkPipelineStageFlagBits source_stage_mask_1       = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                VkPipelineStageFlagBits destination_stage_mask_1  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                vkCmdPipelineBarrier(command_buffer->GetHandle(), source_stage_mask_1, destination_stage_mask_1, 0, 0, nullptr, 0, nullptr, 1, &memory_barrier[1]);
+            }
+            Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
 
-            /* Create ImageView */
-            m_texture_image_view = Helpers::CreateImageView(performant_device, m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+            Hardwares::VulkanDevice::CopyBufferToImage(staging_buffer, m_image_2d_buffer->GetBuffer(), m_width, m_height);
 
             /* Create Sampler */
-            m_texture_sampler = Helpers::CreateTextureSampler(performant_device);
+            m_texture_sampler = Helpers::CreateTextureSampler();
 
             /* Cleanup resource */
-            vkDestroyBuffer(performant_device.GetNativeDeviceHandle(), staging_buffer, nullptr);
-            vkFreeMemory(performant_device.GetNativeDeviceHandle(), staging_buffer_memory, nullptr);
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, staging_buffer.Handle);
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, staging_buffer.Memory);
         }
 
         stbi_image_free(image_data);
@@ -109,64 +116,6 @@ namespace ZEngine::Rendering::Textures
 
     void Texture2D::SetData(void* const data)
     {
-        auto&       performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-        const auto& memory_properties = performant_device.GetPhysicalDeviceMemoryProperties();
-
-        VkBuffer       staging_buffer{VK_NULL_HANDLE};
-        VkDeviceMemory staging_buffer_memory{VK_NULL_HANDLE};
-        Helpers::CreateBuffer(
-            performant_device,
-            staging_buffer,
-            staging_buffer_memory,
-            m_buffer_size,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            memory_properties,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        void* memory_region;
-        ZENGINE_VALIDATE_ASSERT(
-            vkMapMemory(performant_device.GetNativeDeviceHandle(), staging_buffer_memory, 0, m_buffer_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
-        std::memcpy(memory_region, data, static_cast<size_t>(m_buffer_size));
-        vkUnmapMemory(performant_device.GetNativeDeviceHandle(), staging_buffer_memory);
-
-        /* Create VkImage */
-        if (m_texture_image)
-        {
-            vkDestroyImage(performant_device.GetNativeDeviceHandle(), m_texture_image, nullptr);
-        }
-        if (m_texture_memory)
-        {
-            vkFreeMemory(performant_device.GetNativeDeviceHandle(), m_texture_memory, nullptr);
-        }
-
-        m_texture_image = Helpers::CreateImage(
-            performant_device,
-            m_width,
-            m_height,
-            VK_IMAGE_TYPE_2D,
-            VK_FORMAT_R8G8B8A8_SRGB,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            VK_SHARING_MODE_EXCLUSIVE,
-            VK_SAMPLE_COUNT_1_BIT,
-            m_texture_memory,
-            memory_properties,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        /*Transition Image to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL and Copy buffer to image*/
-        Helpers::TransitionImageLayout(performant_device, m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        Helpers::CopyBufferToImage(performant_device, staging_buffer, m_texture_image, m_width, m_height);
-
-        /* Transition to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL */
-        Helpers::TransitionImageLayout(performant_device, m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-        /* Create ImageView */
-        m_texture_image_view = Helpers::CreateImageView(performant_device, m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
-
-        /* Create Sampler */
-        m_texture_sampler = Helpers::CreateTextureSampler(performant_device);
-
         m_is_from_file = false;
 
         auto data_ptr = reinterpret_cast<unsigned char*>(data);
@@ -174,10 +123,6 @@ namespace ZEngine::Rendering::Textures
         m_g           = *(data_ptr + 1);
         m_b           = *(data_ptr + 2);
         m_a           = *(data_ptr + 3);
-
-        /* Cleanup resource */
-        vkDestroyBuffer(performant_device.GetNativeDeviceHandle(), staging_buffer, nullptr);
-        vkFreeMemory(performant_device.GetNativeDeviceHandle(), staging_buffer_memory, nullptr);
     }
 
     void Texture2D::SetData(float r, float g, float b, float a)
@@ -193,14 +138,5 @@ namespace ZEngine::Rendering::Textures
 
     Texture2D::~Texture2D()
     {
-        auto device_handle = Engine::GetVulkanInstance()->GetHighPerformantDevice().GetNativeDeviceHandle();
-        vkDestroyImageView(device_handle, m_texture_image_view, nullptr);
-        vkDestroyImage(device_handle, m_texture_image, nullptr);
-        vkFreeMemory(device_handle, m_texture_memory, nullptr);
     }
-
-    void Texture2D::Bind(int slot) const {}
-
-    void Texture2D::Unbind(int slot) const {}
-
 } // namespace ZEngine::Rendering::Textures

@@ -2,15 +2,12 @@
 #include <Window/GlfwWindow/VulkanWindow.h>
 #include <Engine.h>
 #include <Inputs/KeyCode.h>
-#include <Rendering/Renderers/RenderCommand.h>
 #include <Logging/LoggerDefinition.h>
-#include <Helpers/RendererHelper.h>
 
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 
 using namespace ZEngine;
-using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Event;
 
 namespace ZEngine::Window::GLFWWindow
@@ -117,56 +114,9 @@ namespace ZEngine::Window::GLFWWindow
         std::vector<const char*> window_additional_extension_layer_name_collection(
             glfw_extensions_layer_name_collection, glfw_extensions_layer_name_collection + glfw_extensions_layer_name_count);
 
-        auto vulkan_instance = ZEngine::Engine::GetVulkanInstance();
-        vulkan_instance->CreateInstance(window_additional_extension_layer_name_collection);
+        Hardwares::VulkanDevice::Initialize(m_native_window, window_additional_extension_layer_name_collection);
 
-        ZENGINE_VALIDATE_ASSERT(
-            glfwCreateWindowSurface(vulkan_instance->GetNativeHandle(), m_native_window, nullptr, &m_vulkan_surface) == VK_SUCCESS, "Failed Window Surface from GLFW")
-
-        vulkan_instance->ConfigureDevices(&m_vulkan_surface);
-
-        auto& current_device        = vulkan_instance->GetHighPerformantDevice();
-        auto  current_device_handle = current_device.GetNativePhysicalDeviceHandle();
-
-        uint32_t formatCount{0};
-        vkGetPhysicalDeviceSurfaceFormatsKHR(current_device_handle, m_vulkan_surface, &formatCount, nullptr);
-        if (formatCount != 0)
-        {
-            m_surface_format_collection.resize(formatCount);
-            vkGetPhysicalDeviceSurfaceFormatsKHR(current_device_handle, m_vulkan_surface, &formatCount, m_surface_format_collection.data());
-        }
-
-        uint32_t presentModeCount;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(current_device_handle, m_vulkan_surface, &presentModeCount, nullptr);
-        if (presentModeCount != 0)
-        {
-            m_present_mode_collection.resize(presentModeCount);
-            vkGetPhysicalDeviceSurfacePresentModesKHR(current_device_handle, m_vulkan_surface, &presentModeCount, m_present_mode_collection.data());
-        }
-
-        m_surface_format = (m_surface_format_collection.size() > 0) ? m_surface_format_collection[0] : VkSurfaceFormatKHR{};
-        for (const VkSurfaceFormatKHR& format_khr : m_surface_format_collection)
-        {
-            // default is: VK_FORMAT_B8G8R8A8_SRGB
-            // but Imgui wants : VK_FORMAT_B8G8R8A8_UNORM ...
-            if ((format_khr.format == VK_FORMAT_B8G8R8A8_UNORM) && (format_khr.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR))
-            {
-                m_surface_format = format_khr;
-                break;
-            }
-        }
-
-        m_vulkan_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-        for (const VkPresentModeKHR present_mode_khr : m_present_mode_collection)
-        {
-            if (present_mode_khr == VK_PRESENT_MODE_MAILBOX_KHR)
-            {
-                m_vulkan_present_mode = present_mode_khr;
-                break;
-            }
-        }
-
-        RecreateSwapChain(nullptr, current_device);
+        m_swapchain = CreateRef<Rendering::Swapchain>(m_native_window);
 
         auto& layer_stack = *m_layer_stack_ptr;
 
@@ -204,6 +154,9 @@ namespace ZEngine::Window::GLFWWindow
         {
             (*rlayer_it)->Deinitialize();
         }
+
+        m_swapchain.reset();
+        Hardwares::VulkanDevice::Deinitialize();
     }
 
     void VulkanWindow::PollEvent()
@@ -225,75 +178,6 @@ namespace ZEngine::Window::GLFWWindow
             property->SetHeight(height);
 
             ZENGINE_CORE_INFO("Window size updated, Properties : Width = {0}, Height = {1}", property->Width, property->Height)
-        }
-    }
-
-    void VulkanWindow::MarkVulkanInternalObjectDirty(const Hardwares::VulkanDevice& device)
-    {
-        vkQueueWaitIdle(device.GetCurrentGraphicQueueWithPresentSupport().Queue);
-        vkQueueWaitIdle(device.GetCurrentTransferQueue().Queue);
-
-        for (uint32_t i = 0; i < m_frame_collection.size(); i++)
-        {
-            vkDestroyFence(device.GetNativeDeviceHandle(), m_frame_collection[i].Fence, nullptr);
-            vkFreeCommandBuffers(device.GetNativeDeviceHandle(), m_frame_collection[i].GraphicCommandPool, 1, &(m_frame_collection[i].GraphicCommandBuffer));
-            if (!m_frame_collection[i].GraphicCommandBuffers.empty())
-            {
-                vkFreeCommandBuffers(
-                    device.GetNativeDeviceHandle(),
-                    m_frame_collection[i].GraphicCommandPool,
-                    m_frame_collection[i].GraphicCommandBuffers.size(),
-                    m_frame_collection[i].GraphicCommandBuffers.data());
-            }
-            vkDestroyCommandPool(device.GetNativeDeviceHandle(), m_frame_collection[i].GraphicCommandPool, nullptr);
-            vkFreeCommandBuffers(device.GetNativeDeviceHandle(), m_frame_collection[i].TransferCommandPool, 1, &(m_frame_collection[i].TransferCommandBuffer));
-            vkDestroyCommandPool(device.GetNativeDeviceHandle(), m_frame_collection[i].TransferCommandPool, nullptr);
-            m_frame_collection[i].Fence                = {};
-            m_frame_collection[i].GraphicCommandBuffer = {};
-            m_frame_collection[i].GraphicCommandBuffers.clear();
-            m_frame_collection[i].GraphicCommandBuffers.shrink_to_fit();
-            m_frame_collection[i].GraphicCommandPool    = {};
-            m_frame_collection[i].TransferCommandBuffer = {};
-            m_frame_collection[i].TransferCommandPool   = {};
-
-            vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_collection[i].ImageAcquiredSemaphore, nullptr);
-            vkDestroySemaphore(device.GetNativeDeviceHandle(), m_frame_collection[i].RenderCompleteSemaphore, nullptr);
-
-            m_frame_collection[i].ImageAcquiredSemaphore  = {};
-            m_frame_collection[i].RenderCompleteSemaphore = {};
-        }
-        m_frame_collection.clear();
-        m_frame_collection.shrink_to_fit();
-
-        for (uint32_t i = 0; i < m_swapchain_image_view_collection.size(); i++)
-        {
-            vkDestroyImageView(device.GetNativeDeviceHandle(), m_swapchain_image_view_collection[i], nullptr);
-        }
-        m_swapchain_image_view_collection.clear();
-        m_swapchain_image_view_collection.shrink_to_fit();
-
-        if (m_depth_image_view)
-        {
-            vkDestroyImageView(device.GetNativeDeviceHandle(), m_depth_image_view, nullptr);
-            m_depth_image_view = VK_NULL_HANDLE;
-        }
-        if (m_depth_image)
-        {
-            vkDestroyImage(device.GetNativeDeviceHandle(), m_depth_image, nullptr);
-            m_depth_image = VK_NULL_HANDLE;
-        }
-
-        for (uint32_t i = 0; i < m_framebuffer_collection.size(); i++)
-        {
-            vkDestroyFramebuffer(device.GetNativeDeviceHandle(), m_framebuffer_collection[i], nullptr);
-        }
-        m_framebuffer_collection.clear();
-        m_framebuffer_collection.shrink_to_fit();
-
-        if (m_render_pass)
-        {
-            vkDestroyRenderPass(device.GetNativeDeviceHandle(), m_render_pass, nullptr);
-            m_render_pass = VK_NULL_HANDLE;
         }
     }
 
@@ -446,396 +330,26 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::Render()
     {
-        auto&       current_frame     = this->GetCurrentWindowFrame();
-        const auto& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-        auto        device_handle     = performant_device.GetNativeDeviceHandle();
-        auto        present_queue     = performant_device.GetCurrentGraphicQueueWithPresentSupport().Queue;
-
-        VkResult wait_for_fences_result = vkWaitForFences(device_handle, 1, &(current_frame.Fence), VK_TRUE, UINT64_MAX); // wait indefinitely instead of periodically checking
-        if (wait_for_fences_result == VK_TIMEOUT)
-        {
-            return;
-        }
-
-        ZENGINE_VALIDATE_ASSERT(vkResetFences(device_handle, 1, &current_frame.Fence) == VK_SUCCESS, "Failed to reset Fence semaphore")
-
-        uint32_t image_index;
-        VkResult acquire_image_result = vkAcquireNextImageKHR(device_handle, m_swapchain, UINT64_MAX, current_frame.ImageAcquiredSemaphore, VK_NULL_HANDLE, &image_index);
-        if (acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR || acquire_image_result == VK_SUBOPTIMAL_KHR || acquire_image_result == VK_NOT_READY || acquire_image_result == VK_TIMEOUT)
-        {
-            return;
-        }
-        ZENGINE_VALIDATE_ASSERT(acquire_image_result == VK_SUCCESS, "Failed to acquire image from Swapchain")
-
-        ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device_handle, current_frame.GraphicCommandPool, 0) == VK_SUCCESS, "Failed to reset Command Pool")
-
-        if (!current_frame.GraphicCommandBuffers.empty())
-        {
-            current_frame.GraphicCommandBuffers.clear();
-            current_frame.GraphicCommandBuffers.shrink_to_fit();
-        }
-
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
             layer->Render();
-            layer->PrepareFrame(image_index, present_queue);
         }
 
-        // Submit command buffers
-        std::vector<VkSemaphore> wait_semaphore_collection = {current_frame.ImageAcquiredSemaphore};
-        VkPipelineStageFlags     wait_stage                = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        VkSubmitInfo             submit_info               = {};
-        submit_info.sType                                  = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit_info.waitSemaphoreCount                     = wait_semaphore_collection.size();
-        submit_info.pWaitSemaphores                        = wait_semaphore_collection.data();
-        submit_info.pWaitDstStageMask                      = &wait_stage;
-        submit_info.commandBufferCount                     = current_frame.GraphicCommandBuffers.size();
-        submit_info.pCommandBuffers                        = current_frame.GraphicCommandBuffers.data();
-        submit_info.signalSemaphoreCount                   = 1;
-        submit_info.pSignalSemaphores                      = &(current_frame.RenderCompleteSemaphore);
+        m_swapchain->Present();
 
-        VkResult queue_submit_result = vkQueueSubmit(present_queue, 1, &submit_info, current_frame.Fence);
-        if (queue_submit_result == VK_ERROR_OUT_OF_HOST_MEMORY || queue_submit_result == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+        if (Hardwares::VulkanDevice::HasPendingCleanupResource())
         {
-            return;
+            Hardwares::VulkanDevice::CleanupResource();
         }
-
-        /*Window Frame presentation operation*/
-        std::vector<VkSwapchainKHR> present_swapchain_collection = {m_swapchain};
-        std::vector<VkSemaphore>    present_semaphore_collection = {current_frame.RenderCompleteSemaphore};
-        VkPresentInfoKHR            present_info                 = {};
-        present_info.sType                                       = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        present_info.waitSemaphoreCount                          = present_semaphore_collection.size();
-        present_info.pWaitSemaphores                             = present_semaphore_collection.data();
-        present_info.swapchainCount                              = present_swapchain_collection.size();
-        present_info.pSwapchains                                 = present_swapchain_collection.data();
-        present_info.pImageIndices                               = &image_index;
-
-        VkResult present_result = vkQueuePresentKHR(present_queue, &present_info);
-        if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
-        {
-            return;
-        }
-
-        ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS, "Failed to present current frame on Window")
-
-        this->IncrementWindowFrameIndex();
-
-        /*Reset the swapchain state info for next frame*/
-        m_has_swap_chain_rebuilt = false;
     }
 
-    uint32_t VulkanWindow::GetSwapChainMinImageCount() const
-    {
-        return m_min_image_count;
-    }
-
-    const std::vector<VkImage>& VulkanWindow::GetSwapChainImageCollection() const
-    {
-        return m_swapchain_image_collection;
-    }
-
-    const std::vector<VkImageView>& VulkanWindow::GetSwapChainImageViewCollection() const
-    {
-        return m_swapchain_image_view_collection;
-    }
-
-    const std::vector<VkFramebuffer>& VulkanWindow::GetFramebufferCollection() const
-    {
-        return m_framebuffer_collection;
-    }
-
-    int32_t VulkanWindow::GetCurrentWindowFrameIndex() const
-    {
-        return m_current_frame_index;
-    }
-
-    VulkanWindowFrame& VulkanWindow::GetCurrentWindowFrame()
-    {
-        int32_t frame_index = GetCurrentWindowFrameIndex();
-        return m_frame_collection[frame_index];
-    }
-
-    const VulkanWindowFrame& VulkanWindow::GetCurrentWindowFrame() const
-    {
-        // TODO: insert return statement here
-        int32_t frame_index = GetCurrentWindowFrameIndex();
-        return m_frame_collection[frame_index];
-    }
-
-    void VulkanWindow::IncrementWindowFrameIndex(int32_t step)
-    {
-        auto frame_count      = (int32_t) m_frame_collection.size();
-        m_current_frame_index = (m_current_frame_index + step) % frame_count;
-    }
-
-    std::vector<VulkanWindowFrame>& VulkanWindow::GetWindowFrameCollection()
-    {
-        return m_frame_collection;
-    }
-
-    VulkanWindowFrame& VulkanWindow::GetWindowFrame(uint32_t index)
-    {
-        ZENGINE_VALIDATE_ASSERT(index < m_frame_collection.size(), "index is out of bound of available window frame")
-        return m_frame_collection[index];
-    }
-
-    const VkExtent2D& VulkanWindow::GetSwapchainExtent() const
-    {
-        return m_vulkan_extent_2d;
-    }
-
-    void VulkanWindow::RecreateSwapChain(VkSwapchainKHR old_swapchain, Hardwares::VulkanDevice& device)
-    {
-        MarkVulkanInternalObjectDirty(device);
-
-        // Surface capabilities
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device.GetNativePhysicalDeviceHandle(), m_vulkan_surface, &m_surface_capabilities);
-        if (m_surface_capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
-        {
-            m_vulkan_extent_2d = m_surface_capabilities.currentExtent;
-        }
-        else
-        {
-            int width, height;
-            glfwGetFramebufferSize(m_native_window, &width, &height);
-
-            m_vulkan_extent_2d        = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
-            m_vulkan_extent_2d.width  = std::clamp(m_vulkan_extent_2d.width, m_surface_capabilities.minImageExtent.width, m_surface_capabilities.maxImageExtent.width);
-            m_vulkan_extent_2d.height = std::clamp(m_vulkan_extent_2d.height, m_surface_capabilities.minImageExtent.height, m_surface_capabilities.maxImageExtent.height);
-        }
-
-        m_min_image_count = std::clamp(m_min_image_count, m_surface_capabilities.minImageCount + 1, m_surface_capabilities.maxImageCount);
-
-        /* Create SwapChain */
-        m_swapchain = VK_NULL_HANDLE;
-
-        VkSwapchainCreateInfoKHR swapchain_create_info{};
-        swapchain_create_info.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-        swapchain_create_info.surface          = m_vulkan_surface;
-        swapchain_create_info.minImageCount    = m_min_image_count;
-        swapchain_create_info.imageFormat      = m_surface_format.format;
-        swapchain_create_info.imageColorSpace  = m_surface_format.colorSpace;
-        swapchain_create_info.imageExtent      = m_vulkan_extent_2d;
-        swapchain_create_info.imageArrayLayers = m_surface_capabilities.maxImageArrayLayers;
-        swapchain_create_info.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-        auto device_graphic_queue_family_index_collection  = device.GetGraphicQueueFamilyIndexCollection();
-        auto device_transfer_queue_family_index_collection = device.GetTransferQueueFamilyIndexCollection();
-
-        std::unordered_set<uint32_t> device_family_indices;
-        for (auto graphic_queue : device_graphic_queue_family_index_collection)
-        {
-            device_family_indices.insert(graphic_queue);
-        }
-        for (auto transfer_queue : device_transfer_queue_family_index_collection)
-        {
-            device_family_indices.insert(transfer_queue);
-        }
-        auto final_family_indices_collection = std::vector<uint32_t>{device_family_indices.begin(), device_family_indices.end()};
-
-        swapchain_create_info.imageSharingMode      = (final_family_indices_collection.size() > 1) ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
-        swapchain_create_info.queueFamilyIndexCount = final_family_indices_collection.size();
-        swapchain_create_info.pQueueFamilyIndices   = final_family_indices_collection.data();
-        swapchain_create_info.preTransform          = m_surface_capabilities.currentTransform;
-        swapchain_create_info.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        swapchain_create_info.presentMode           = m_vulkan_present_mode;
-        swapchain_create_info.clipped               = VK_TRUE;
-        swapchain_create_info.oldSwapchain          = old_swapchain;
-
-        ZENGINE_VALIDATE_ASSERT(vkCreateSwapchainKHR(device.GetNativeDeviceHandle(), &swapchain_create_info, nullptr, &m_swapchain) == VK_SUCCESS, "Failed to create Swapchain")
-
-        if (old_swapchain)
-        {
-            vkDestroySwapchainKHR(device.GetNativeDeviceHandle(), old_swapchain, nullptr);
-        }
-
-        uint32_t swapchain_image_count{0};
-        ZENGINE_VALIDATE_ASSERT(
-            vkGetSwapchainImagesKHR(device.GetNativeDeviceHandle(), m_swapchain, &swapchain_image_count, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
-
-        m_swapchain_image_collection.resize(swapchain_image_count);
-        ZENGINE_VALIDATE_ASSERT(
-            vkGetSwapchainImagesKHR(device.GetNativeDeviceHandle(), m_swapchain, &swapchain_image_count, m_swapchain_image_collection.data()) == VK_SUCCESS,
-            "Failed to get Images from Swapchain")
-
-        /* Create Depth Image and ImageView*/
-        const auto& memory_properties = device.GetPhysicalDeviceMemoryProperties();
-        VkFormat    depth_format      = Helpers::FindDepthFormat(device);
-        m_depth_image                 = Helpers::CreateImage(
-            device,
-            m_vulkan_extent_2d.width,
-            m_vulkan_extent_2d.height,
-            VK_IMAGE_TYPE_2D,
-            depth_format,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-            swapchain_create_info.imageSharingMode,
-            VK_SAMPLE_COUNT_1_BIT,
-            m_depth_image_device_memory,
-            memory_properties,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        m_depth_image_view = Helpers::CreateImageView(device, m_depth_image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-        /* Create ImageView */
-        m_swapchain_image_view_collection.resize(m_swapchain_image_collection.size());
-        for (size_t i = 0; i < m_swapchain_image_collection.size(); ++i)
-        {
-            m_swapchain_image_view_collection[i] = Helpers::CreateImageView(device, m_swapchain_image_collection[i], m_surface_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
-        }
-
-        /* Create RenderPass */
-        RenderPasses::RenderPassSpecification render_pass_specification = {
-            .ColorAttachements = {
-                VkAttachmentDescription{
-                    .format        = m_surface_format.format,
-                    .samples       = VK_SAMPLE_COUNT_1_BIT,
-                    .loadOp        = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    .storeOp       = VK_ATTACHMENT_STORE_OP_STORE,
-                    .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                    .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                    .finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR},
-                VkAttachmentDescription{
-                    .format         = Helpers::FindDepthFormat(device),
-                    .samples        = VK_SAMPLE_COUNT_1_BIT,
-                    .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                    .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                    .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                    .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-                    .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL}}};
-        RenderPasses::SubPassSpecification sub_pass_specification = {};
-        sub_pass_specification.ColorAttachementReferences         = {VkAttachmentReference{.attachment = 0, .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}};
-        sub_pass_specification.DepthStencilAttachementReference   = VkAttachmentReference{.attachment = 1, .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
-        sub_pass_specification.SubpassDescription                 = VkSubpassDescription{.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS};
-        render_pass_specification.SubpassDependencies             = {VkSubpassDependency{
-                        .srcSubpass    = VK_SUBPASS_EXTERNAL,
-                        .dstSubpass    = 0,
-                        .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                        .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                        .srcAccessMask = 0,
-                        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT}};
-
-        render_pass_specification.SubpassSpecifications = {sub_pass_specification};
-        m_render_pass                                   = Helpers::CreateRenderPass(device, render_pass_specification);
-
-        /* Create Framebuffer */
-        m_framebuffer_collection.resize(m_swapchain_image_view_collection.size());
-        for (size_t i = 0; i < m_swapchain_image_view_collection.size(); i++)
-        {
-            auto attachments            = std::vector<VkImageView>{m_swapchain_image_view_collection[i], m_depth_image_view};
-            m_framebuffer_collection[i] = Helpers::CreateFramebuffer(device, attachments, m_render_pass, m_vulkan_extent_2d);
-        }
-
-        // Create Frame & FrameSemaphore
-        m_frame_collection.resize(m_swapchain_image_collection.size());
-        if (!m_frame_collection.empty())
-        {
-            m_current_frame_index = 0;
-        }
-
-        for (uint32_t i = 0; i < m_frame_collection.size(); ++i)
-        {
-            m_frame_collection[i]                         = {};
-            m_frame_collection[i].FrameIndex              = i;
-            m_frame_collection[i].Backbuffer              = m_swapchain_image_collection[i];
-            m_frame_collection[i].BackbufferView          = m_swapchain_image_view_collection[i];
-            m_frame_collection[i].Framebuffer             = m_framebuffer_collection[i];
-            m_frame_collection[i].ImageAcquiredSemaphore  = {};
-            m_frame_collection[i].RenderCompleteSemaphore = {};
-        }
-
-        // Create Command Buffers
-        for (uint32_t i = 0; i < m_swapchain_image_collection.size(); i++)
-        {
-            auto& frame = m_frame_collection[i];
-
-            /* Graphic Command Pool & Command Buffer */
-            VkCommandPoolCreateInfo graphic_command_pool_create_info = {};
-            graphic_command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            graphic_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            graphic_command_pool_create_info.queueFamilyIndex        = device.GetGraphicQueueFamilyIndexCollection().front();
-            ZENGINE_VALIDATE_ASSERT(
-                vkCreateCommandPool(device.GetNativeDeviceHandle(), &graphic_command_pool_create_info, nullptr, &(frame.GraphicCommandPool)) == VK_SUCCESS,
-                "Failed to create Command Pool")
-
-            /* Transfer Command Pool & Command Buffer */
-            VkCommandPoolCreateInfo transfer_command_pool_create_info = {};
-            transfer_command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            transfer_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-            transfer_command_pool_create_info.queueFamilyIndex        = device.GetTransferQueueFamilyIndexCollection().front();
-            ZENGINE_VALIDATE_ASSERT(
-                vkCreateCommandPool(device.GetNativeDeviceHandle(), &transfer_command_pool_create_info, nullptr, &(frame.TransferCommandPool)) == VK_SUCCESS,
-                "Failed to create Command Pool")
-
-            VkCommandBufferAllocateInfo transfer_command_buffer_create_info = {};
-            transfer_command_buffer_create_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            transfer_command_buffer_create_info.commandPool                 = frame.TransferCommandPool;
-            transfer_command_buffer_create_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            transfer_command_buffer_create_info.commandBufferCount          = 1;
-            ZENGINE_VALIDATE_ASSERT(
-                vkAllocateCommandBuffers(device.GetNativeDeviceHandle(), &transfer_command_buffer_create_info, &(frame.TransferCommandBuffer)) == VK_SUCCESS,
-                "Failed to allocate Command Buffer")
-
-            VkFenceCreateInfo fence_create_info = {};
-            fence_create_info.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            fence_create_info.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
-            ZENGINE_VALIDATE_ASSERT(vkCreateFence(device.GetNativeDeviceHandle(), &fence_create_info, nullptr, &(frame.Fence)) == VK_SUCCESS, "Failed to create Fence")
-
-            VkSemaphoreCreateInfo semaphore_create_info = {};
-            semaphore_create_info.sType                 = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-            ZENGINE_VALIDATE_ASSERT(
-                vkCreateSemaphore(device.GetNativeDeviceHandle(), &semaphore_create_info, nullptr, &(frame.ImageAcquiredSemaphore)) == VK_SUCCESS,
-                "Failed to create Image acquired Semaphore")
-            ZENGINE_VALIDATE_ASSERT(
-                vkCreateSemaphore(device.GetNativeDeviceHandle(), &semaphore_create_info, nullptr, &(frame.RenderCompleteSemaphore)) == VK_SUCCESS,
-                "Failed to create Render complete Semaphore")
-        }
-
-        m_has_swap_chain_rebuilt = true;
-    }
-
-    VkSurfaceKHR VulkanWindow::GetSurface() const
-    {
-        return m_vulkan_surface;
-    }
-
-    VkSurfaceFormatKHR VulkanWindow::GetSurfaceFormat() const
-    {
-        return m_surface_format;
-    }
-
-    VkPresentModeKHR VulkanWindow::GetPresentMode() const
-    {
-        return m_vulkan_present_mode;
-    }
-
-    VkSwapchainKHR VulkanWindow::GetSwapChain() const
+    Ref<Rendering::Swapchain> VulkanWindow::GetSwapchain() const
     {
         return m_swapchain;
     }
 
-    VkRenderPass VulkanWindow::GetRenderPass() const
-    {
-        ZENGINE_VALIDATE_ASSERT(m_render_pass != VK_NULL_HANDLE, "")
-        return m_render_pass;
-    }
-
-    bool VulkanWindow::HasSwapChainRebuilt() const
-    {
-        return m_has_swap_chain_rebuilt;
-    }
-
     VulkanWindow::~VulkanWindow()
     {
-        const auto& device = ZEngine::Engine::GetVulkanInstance()->GetHighPerformantDevice();
-        MarkVulkanInternalObjectDirty(device);
-
-        vkDestroySwapchainKHR(device.GetNativeDeviceHandle(), m_swapchain, nullptr);
-        vkDestroySurfaceKHR(ZEngine::Engine::GetVulkanInstance()->GetNativeHandle(), m_vulkan_surface, nullptr);
-
         glfwSetErrorCallback(NULL);
         glfwDestroyWindow(m_native_window);
         glfwTerminate();
@@ -861,7 +375,7 @@ namespace ZEngine::Window::GLFWWindow
     {
         if (event.GetWidth() > 0 && event.GetHeight() > 0)
         {
-            RecreateSwapChain(m_swapchain, ZEngine::Engine::GetVulkanInstance()->GetHighPerformantDevice());
+            m_swapchain->Resize();
         }
 
         ZENGINE_CORE_INFO("Window has been resized")

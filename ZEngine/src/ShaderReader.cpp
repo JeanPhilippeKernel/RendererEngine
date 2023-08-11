@@ -21,6 +21,24 @@ namespace ZEngine::Rendering::Shaders
         return ShaderOperationResult::FAILURE;
     }
 
+    std::vector<char> ShaderReader::ReadAsBinary(std::string_view filename)
+    {
+        std::ifstream file_stream = {};
+        file_stream.open(filename, std::ifstream::binary | std::ifstream::ate);
+        if (!file_stream.is_open())
+        {
+            ZENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename.data())
+            ZENGINE_EXIT_FAILURE()
+        }
+
+        size_t            buffer_size = static_cast<size_t>(file_stream.tellg());
+        std::vector<char> buffer(buffer_size);
+        file_stream.seekg(std::ifstream::beg);
+        file_stream.read(buffer.data(), buffer_size);
+
+        return buffer;
+    }
+
     std::future<ShaderOperationResult> ShaderReader::ReadAsync(std::string_view filename)
     {
         std::unique_lock<std::mutex> lock(m_lock);

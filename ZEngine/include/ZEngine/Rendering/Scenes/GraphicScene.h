@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <vector>
 #include <functional>
+#include <future>
 #include <Rendering/Cameras/Camera.h>
 #include <ZEngineDef.h>
 #include <Core/IRenderable.h>
@@ -41,7 +42,7 @@ namespace ZEngine::Rendering::Scenes
 
         virtual void UploadFrameInfo(uint32_t frame_index, VkQueue& present_queue);
 
-        virtual void RequestNewSize(float, float);
+        virtual std::future<void> RequestNewSizeAsync(float, float);
         uint32_t     ToTextureRepresentation() const;
 
         void SetShouldReactToEvent(bool value);
@@ -78,7 +79,6 @@ namespace ZEngine::Rendering::Scenes
     protected:
         WeakRef<Controllers::ICameraController> m_camera_controller;
         WeakRef<Cameras::Camera>                m_scene_camera;
-        Scope<Renderers::GraphicRenderer>       m_renderer;
         std::vector<Meshes::MeshVNext>          m_mesh_vnext_list;
 
     private:

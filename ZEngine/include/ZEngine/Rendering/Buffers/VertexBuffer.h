@@ -1,59 +1,58 @@
 #pragma once
-#include <Engine.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
-#include <Rendering/Buffers/BufferLayout.h>
-#include <Rendering/Renderers/Storages/IVertex.h>
-#include <Helpers/BufferHelper.h>
+#include <Hardwares/VulkanDevice.h>
 
 namespace ZEngine::Rendering::Buffers
 {
 
-    template <typename T>
-    class VertexBuffer : public GraphicBuffer<T>
+    class VertexBuffer : public IGraphicBuffer
     {
     public:
-        explicit VertexBuffer() : GraphicBuffer<T>() {}
+        explicit VertexBuffer() : IGraphicBuffer() {}
 
-        void SetData(const T& content) override
+        void SetData(const void* data, size_t byte_size)
         {
-            Hardwares::VulkanDevice& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-            auto                     device_handle     = performant_device.GetNativeDeviceHandle();
-            const auto&              memory_properties = performant_device.GetPhysicalDeviceMemoryProperties();
-
-            if (this->m_byte_size < sizeof(T))
+            if (!data)
             {
-                CleanUpMemory();
-                GraphicBuffer<T>::SetData(content);
-                Helpers::CreateBuffer(
-                    performant_device,
-                    m_vertex_buffer,
-                    m_vertex_buffer_device_memory,
-                    static_cast<VkDeviceSize>(this->m_byte_size),
-                    VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                    memory_properties,
-                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                ZENGINE_CORE_WARN("data is null")
+                return;
             }
 
-            VkBuffer       staging_buffer;
-            VkDeviceMemory staging_buffer_memory;
-            Helpers::CreateBuffer(
-                performant_device,
-                staging_buffer,
-                staging_buffer_memory,
-                static_cast<VkDeviceSize>(this->m_byte_size),
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                memory_properties,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            if (byte_size == 0)
+            {
+                ZENGINE_CORE_WARN("data byte size is null")
+                return;
+            }
 
+            if (this->m_byte_size < byte_size)
+            {
+                CleanUpMemory();
+                this->m_byte_size = byte_size;
+                m_vertex_buffer   = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            }
+
+            Hardwares::BufferView staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
+                static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+            auto  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
             void* memory_region;
-            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device_handle, staging_buffer_memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
-            std::memcpy(memory_region, &content, this->m_byte_size);
-            vkUnmapMemory(device_handle, staging_buffer_memory);
+            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, staging_buffer.Memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
+            std::memcpy(memory_region, data, this->m_byte_size);
+            vkUnmapMemory(device, staging_buffer.Memory);
 
-            Helpers::CopyBuffer(performant_device, staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
+            Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
 
-            vkDestroyBuffer(device_handle, staging_buffer, nullptr);
-            vkFreeMemory(device_handle, staging_buffer_memory, nullptr);
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, staging_buffer.Handle);
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, staging_buffer.Memory);
+            staging_buffer = {};
+        }
+
+        template <typename T>
+        inline void SetData(const std::vector<T>& content)
+        {
+            size_t byte_size = sizeof(T) * content.size();
+            this->SetData(content.data(), byte_size);
         }
 
         ~VertexBuffer()
@@ -63,83 +62,26 @@ namespace ZEngine::Rendering::Buffers
 
         VkBuffer GetNativeBufferHandle() const
         {
-            return m_vertex_buffer;
+            return m_vertex_buffer.Handle;
         }
 
         void Dispose()
         {
-            if (!m_disposed)
-            {
-                CleanUpMemory();
-                //m_disposed = true;
-            }
+            CleanUpMemory();
         }
-
-        void Bind() const override {}
-
-        void Unbind() const override {}
 
     private:
         void CleanUpMemory()
         {
-            if ((m_vertex_buffer != VK_NULL_HANDLE) && (m_vertex_buffer_device_memory != VK_NULL_HANDLE))
+            if (m_vertex_buffer)
             {
-                auto device_handle = Engine::GetVulkanInstance()->GetHighPerformantDevice().GetNativeDeviceHandle();
-
-                vkDestroyBuffer(device_handle, m_vertex_buffer, nullptr);
-                vkFreeMemory(device_handle, m_vertex_buffer_device_memory, nullptr);
-
-                m_vertex_buffer               = VK_NULL_HANDLE;
-                m_vertex_buffer_device_memory = VK_NULL_HANDLE;
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_vertex_buffer.Handle);
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_vertex_buffer.Memory);
+                m_vertex_buffer = {};
             }
         }
 
     private:
-        VkBuffer       m_vertex_buffer{VK_NULL_HANDLE};
-        VkDeviceMemory m_vertex_buffer_device_memory{VK_NULL_HANDLE};
-        bool           m_disposed{false};
+        Hardwares::BufferView m_vertex_buffer;
     };
-
-    template <>
-    inline void VertexBuffer<std::vector<float>>::SetData(const std::vector<float>& content)
-    {
-        Hardwares::VulkanDevice& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-        auto                     device_handle     = performant_device.GetNativeDeviceHandle();
-        const auto&              memory_properties = performant_device.GetPhysicalDeviceMemoryProperties();
-
-        if (this->m_byte_size < (content.size() * sizeof(float)))
-        {
-            CleanUpMemory();
-            GraphicBuffer<std::vector<float>>::SetData(content);
-            Helpers::CreateBuffer(
-                performant_device,
-                m_vertex_buffer,
-                m_vertex_buffer_device_memory,
-                static_cast<VkDeviceSize>(this->m_byte_size),
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                memory_properties,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        }
-
-        VkBuffer       staging_buffer;
-        VkDeviceMemory staging_buffer_memory;
-        Helpers::CreateBuffer(
-            performant_device,
-            staging_buffer,
-            staging_buffer_memory,
-            static_cast<VkDeviceSize>(this->m_byte_size),
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            memory_properties,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        void* memory_region;
-        ZENGINE_VALIDATE_ASSERT(vkMapMemory(device_handle, staging_buffer_memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
-        std::memcpy(memory_region, content.data(), this->m_byte_size);
-        vkUnmapMemory(device_handle, staging_buffer_memory);
-
-        Helpers::CopyBuffer(performant_device, staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
-
-        vkDestroyBuffer(device_handle, staging_buffer, nullptr);
-        vkFreeMemory(device_handle, staging_buffer_memory, nullptr);
-    }
 } // namespace ZEngine::Rendering::Buffers

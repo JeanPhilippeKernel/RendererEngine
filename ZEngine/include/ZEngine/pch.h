@@ -1,7 +1,6 @@
 #pragma once
 #include <algorithm>
 #include <cstdint>
-#include <glad/include/glad/glad.h>
 #include <imgui.h>
 #include <memory>
 #include <regex>

@@ -14,6 +14,7 @@
 #include <Inputs/ITextInputEventCallback.h>
 #include <Window/ICoreWindowEventCallback.h>
 #include <Components/UIComponent.h>
+#include <Rendering/Pools/CommandPool.h>
 
 namespace ZEngine::Components::UI
 {
@@ -42,7 +43,6 @@ namespace ZEngine::Layers
 
         void Update(Core::TimeStep dt) override;
 
-        void PrepareFrame(uint32_t frame_index, VkQueue& present_queue) override;
         void Render() override;
 
         virtual void AddUIComponent(const Ref<Components::UI::UIComponent>& component);
@@ -69,7 +69,7 @@ namespace ZEngine::Layers
 
     private:
         static bool                                   m_initialized;
-        VkDescriptorPool                              m_descriptor_pool{VK_NULL_HANDLE};
+        Rendering::Pools::CommandPool*                m_ui_command_pool{nullptr};
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
     };
 } // namespace ZEngine::Layers

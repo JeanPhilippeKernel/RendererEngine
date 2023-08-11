@@ -1,6 +1,5 @@
 ﻿#include <pch.h>
 #include <Rendering/Scenes/GraphicScene.h>
-#include <Rendering/Renderers/RenderCommand.h>
 #include <Rendering/Components/TransformComponent.h>
 #include <Rendering/Components/NameComponent.h>
 #include <Rendering/Components/MaterialComponent.h>
@@ -12,6 +11,7 @@
 #include <Rendering/Components/UUIComponent.h>
 #include <Rendering/Components/ValidComponent.h>
 #include <Rendering/Lights/DirectionalLight.h>
+#include <Core/Coroutine.h>
 
 using namespace ZEngine::Controllers;
 using namespace ZEngine::Rendering::Components;
@@ -21,17 +21,16 @@ namespace ZEngine::Rendering::Scenes
 {
     GraphicScene::~GraphicScene()
     {
-        m_renderer.reset();
     }
 
     void GraphicScene::Initialize()
     {
-        m_renderer->Initialize();
+        Renderers::GraphicRenderer::Initialize();
     }
 
     void GraphicScene::Deinitialize()
     {
-        m_renderer->Deinitialize();
+        Renderers::GraphicRenderer::Deinitialize();
         for (auto& mesh : m_mesh_vnext_list)
         {
             mesh.Flush();
@@ -201,12 +200,15 @@ namespace ZEngine::Rendering::Scenes
         return false;
     }
 
-    void GraphicScene::RequestNewSize(float width, float height)
+    std::future<void> GraphicScene::RequestNewSizeAsync(float width, float height)
     {
+        std::unique_lock lock(m_mutex);
+
         if ((width > 0.0f) && (height > 0.0f))
         {
             m_scene_requested_size = {width, height};
         }
+        co_return;
     }
 
     void GraphicScene::SetShouldReactToEvent(bool value)
@@ -253,17 +255,6 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::Update(Core::TimeStep dt)
     {
-        if ((m_scene_requested_size.first > 0.0f) && (m_scene_requested_size.second > 0.0f))
-        {
-            if (auto controller = m_camera_controller.lock())
-            {
-                controller->SetAspectRatio(m_scene_requested_size.first / m_scene_requested_size.second);
-            }
-            m_renderer->RequestOutputImageSize(m_scene_requested_size.first, m_scene_requested_size.second);
-            m_last_scene_requested_size = m_scene_requested_size;
-            m_scene_requested_size      = {0.0f, 0.0f};
-        }
-
         //  Todo : Should be refactored
         m_entity_registry->view<TransformComponent, MeshComponent>().each([this](entt::entity handle, TransformComponent& transform_component, MeshComponent& mesh_component) {
             auto& mesh          = m_mesh_vnext_list[mesh_component.GetMeshID()];
@@ -273,31 +264,48 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::Render()
     {
-        if (auto controller = m_camera_controller.lock())
         {
-            m_scene_camera = controller->GetCamera();
+            std::unique_lock lock(m_mutex);
+            if (auto controller = m_camera_controller.lock())
+            {
+                {
+                    if ((m_last_scene_requested_size.first != m_scene_requested_size.first) || (m_last_scene_requested_size.second != m_scene_requested_size.second))
+                    {
+                        controller->SetAspectRatio(m_scene_requested_size.first / m_scene_requested_size.second);
+                        m_last_scene_requested_size = m_scene_requested_size;
+                    }
+                }
+
+                m_scene_camera = controller->GetCamera();
+                if (auto camera = m_scene_camera.lock())
+                {
+                    /*ToDo: you revisit this ID system*/
+                    auto scene_information = Renderers::Contracts::GraphicSceneLayout{
+                        .ViewportWidth             = (uint32_t)m_scene_requested_size.first,
+                        .ViewportHeight            = (uint32_t)m_scene_requested_size.second,
+                        .GraphicScenePtr           = this};
+
+                    Renderers::GraphicRenderer::StartScene(camera);
+                    for (uint32_t i = 0; i < m_mesh_vnext_list.size(); ++i)
+                    {
+
+                        Renderers::GraphicRenderer::Submit(i);
+                    }
+                    Renderers::GraphicRenderer::EndScene();
+                    //m_renderer->EndScene();
+
+                    if (OnSceneRenderCompleted)
+                    {
+                        // OnSceneRenderCompleted(m_renderer->GetOutputImage(0));
+                    }
+                }
+            }
         }
     }
 
     void GraphicScene::UploadFrameInfo(uint32_t frame_index, VkQueue& present_queue)
     {
-        if (auto camera = m_scene_camera.lock())
-        {
-            /*ToDo: you revisit this ID system*/
-            std::vector<uint32_t> mesh_idx;
-            for (uint32_t i = 0; i < m_mesh_vnext_list.size(); ++i)
-            {
-                mesh_idx.push_back(i);
-            }
-            m_renderer->StartScene(
-                {.FrameIndex = frame_index, .GraphicQueue = present_queue, .SceneCamera = std::move(camera), .MeshCollectionIdentifiers = mesh_idx, .GraphicScenePtr = this});
-            m_renderer->EndScene();
-        }
 
-        if (OnSceneRenderCompleted)
-        {
-            OnSceneRenderCompleted(m_renderer->GetOutputImage(frame_index));
-        }
     }
 
     unsigned int GraphicScene::ToTextureRepresentation() const

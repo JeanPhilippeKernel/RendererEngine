@@ -5,10 +5,7 @@
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Geometries/IGeometry.h>
 #include <Rendering/Materials/ShaderMaterial.h>
-#include <Rendering/Renderers/Storages/GraphicRendererStorage.h>
 #include <Rendering/Shaders/ShaderEnums.h>
-
-#include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -34,6 +31,5 @@ namespace ZEngine::Rendering::Renderers
         std::vector<Ref<Geometries::IGeometry>>                           GeometryCollection;
         std::vector<Ref<Materials::ShaderMaterial>>                       MaterialCollection;
         std::vector<GraphicRendererInformationRecord>                     RecordCollection;
-        std::queue<Storages::GraphicRendererStorage<float, unsigned int>> GraphicStorageCollection;
     };
 } // namespace ZEngine::Rendering::Renderers

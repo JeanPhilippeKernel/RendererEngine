@@ -7,6 +7,8 @@
 
 #include <Rendering/Buffers/VertexBuffer.h>
 #include <Rendering/Buffers/IndexBuffer.h>
+#include <Rendering/Buffers/UniformBuffer.h>
+#include <Rendering/Renderers/Contracts/RendererDataContract.h>
 
 namespace ZEngine::Rendering::Meshes
 {
@@ -32,13 +34,17 @@ namespace ZEngine::Rendering::Meshes
         std::vector<float>    Vertices;
         std::vector<uint32_t> Indices;
 
-        void Draw(VkCommandBuffer command_buffer);
+        void                          UpdateUniformBuffers();
+        const Buffers::UniformBuffer& GetUniformBufferModel() const;
+        Ref<Buffers::UniformBuffer>   GetUniformBuffer() const;
+        void                          Draw(VkCommandBuffer command_buffer);
 
         void Flush();
 
     private:
-        Buffers::VertexBuffer<std::vector<float>>   m_vertex_buffer;
-        Buffers::IndexBuffer<std::vector<uint32_t>> m_index_buffer;
+        Ref<Buffers::VertexBuffer>  m_vertex_buffer;
+        Ref<Buffers::IndexBuffer>   m_index_buffer;
+        Ref<Buffers::UniformBuffer> m_uniform_buffer;
     };
 
     /*Need to be deprecated*/

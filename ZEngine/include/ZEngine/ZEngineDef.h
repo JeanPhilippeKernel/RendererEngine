@@ -44,3 +44,10 @@ namespace ZEngine
             __debugbreak();                         \
         }                                           \
     }
+
+#define ZENGINE_DESTROY_VULKAN_HANDLE(device, function, handle, ...) \
+    if (device && handle)                                            \
+    {                                                                \
+        function(device, handle, __VA_ARGS__);                       \
+        handle = nullptr;                                            \
+    }                                                                \

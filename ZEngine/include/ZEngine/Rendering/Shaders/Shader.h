@@ -189,16 +189,16 @@ namespace ZEngine::Rendering::Shaders
          *
          * @return Shader program identifier
          */
-        GLuint GetIdentifier() const override;
+        unsigned GetIdentifier() const override;
 
     private:
-        GLint _GetLocationUniform(const char* name);
+        int _GetLocationUniform(const char* name);
 
     private:
-        GLuint                                 m_program{0};
+        unsigned                               m_program{0};
         std::string                            m_filename;
         Scope<Compilers::ShaderCompiler>       m_compiler;
-        std::unordered_map<const char*, GLint> m_uniform_location_map;
+        std::unordered_map<const char*, int> m_uniform_location_map;
     };
 
     Shader* CreateShader(const char* filename, bool defer_program_creation = false);

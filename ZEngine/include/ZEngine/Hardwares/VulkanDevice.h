@@ -2,55 +2,141 @@
 #include <unordered_map>
 #include <vulkan/vulkan.h>
 #include <Hardwares/VulkanLayer.h>
+#include <Rendering/Primitives/Semaphore.h>
+#include <Rendering/Primitives/Fence.h>
+#include <Rendering/ResourceTypes.h>
+#include <Rendering/Pools/CommandPool.h>
+#include <GLFW/glfw3.h>
 
 namespace ZEngine::Hardwares
 {
     struct QueueView
     {
         uint32_t FamilyIndex{0xFFFFFFFF};
-        VkQueue  Queue{VK_NULL_HANDLE};
+        VkQueue  Handle{VK_NULL_HANDLE};
     };
 
-    class VulkanDevice
+    struct BufferView
     {
-    public:
-        VulkanDevice(
-            const VkPhysicalDevice&         physical_device,
-            const std::vector<const char*>& requested_device_layer_collection = {},
-            const std::vector<const char*>& requested_device_extension_layer  = {},
-            const VkSurfaceKHR*             surface                           = nullptr);
-        ~VulkanDevice();
+        VkBuffer       Handle{VK_NULL_HANDLE};
+        VkDeviceMemory Memory{VK_NULL_HANDLE};
 
-        bool IsHighPerformant() const;
+        operator bool() const
+        {
+            return (Handle != VK_NULL_HANDLE) && (Memory != VK_NULL_HANDLE);
+        }
+    };
 
-        VkPhysicalDevice                        GetNativePhysicalDeviceHandle() const;
-        const VkPhysicalDeviceProperties&       GetPhysicalDeviceProperties() const;
-        const VkPhysicalDeviceMemoryProperties& GetPhysicalDeviceMemoryProperties() const;
-        VkDevice                                GetNativeDeviceHandle() const;
-        QueueView                               GetCurrentGraphicQueueWithPresentSupport() const;
-        QueueView                               GetCurrentTransferQueue() const;
-        std::vector<uint32_t>                   GetGraphicQueueFamilyIndexCollection() const;
-        std::vector<uint32_t>                   GetTransferQueueFamilyIndexCollection() const;
+    struct BufferImage
+    {
+        VkImage        Handle{VK_NULL_HANDLE};
+        VkImageView    ViewHandle{VK_NULL_HANDLE};
+        VkDeviceMemory Memory{VK_NULL_HANDLE};
 
-        VkCommandPool GetTransferCommandPool(uint32_t family_index);
-        VkCommandPool GetGraphicCommandPool(uint32_t family_index);
+        operator bool() const
+        {
+            return (Handle != VK_NULL_HANDLE) && (Memory != VK_NULL_HANDLE);
+        }
+    };
+
+    struct VulkanDevice
+    {
+        VulkanDevice()                    = delete;
+        VulkanDevice(const VulkanDevice&) = delete;
+        ~VulkanDevice()                   = delete;
+
+        static void Initialize(GLFWwindow* const native_window, const std::vector<const char*>& additional_extension_layer_name_collection);
+        static void Deinitialize();
+
+        static VkPhysicalDevice                        GetNativePhysicalDeviceHandle();
+        static const VkPhysicalDeviceProperties&       GetPhysicalDeviceProperties();
+        static const VkPhysicalDeviceMemoryProperties& GetPhysicalDeviceMemoryProperties();
+        static VkDevice                                GetNativeDeviceHandle();
+        static VkInstance                              GetNativeInstanceHandle();
+
+        static void QueueSubmit(
+            Rendering::QueueType                    queue_type,
+            const VkPipelineStageFlags              wait_stage_flage,
+            VkCommandBuffer const                   buffer_handle,
+            Rendering::Primitives::Semaphore* const wait_semaphore,
+            Rendering::Primitives::Semaphore* const signal_semaphore,
+            Rendering::Primitives::Fence* const     fence);
+
+        static void EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
+        static void CleanupResource();
+        static bool HasPendingCleanupResource();
+        static void Present(VkSwapchainKHR swapchain, uint32_t* frame_image_index, const std::vector<Rendering::Primitives::Semaphore*>& wait_semaphore_collection);
+
+        static Rendering::Pools::CommandPool*                         CreateCommandPool(Rendering::QueueType queue_type, bool present_on_swapchain);
+        static const std::vector<Ref<Rendering::Pools::CommandPool>>& GetAllCommandPools();
+        static void                                                   DisposeCommandPool(const Rendering::Pools::CommandPool* pool);
+
+        static QueueView GetQueue(Rendering::QueueType type);
+        static void      QueueWait(Rendering::QueueType type);
+        static void      QueueWaitAll();
+
+        static VkSurfaceKHR       GetSurface();
+        static VkSurfaceFormatKHR GetSurfaceFormat();
+        static VkPresentModeKHR   GetPresentMode();
+        static VkDescriptorPool   GetDescriptorPool();
+
+        static BufferView  CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VkMemoryPropertyFlags requested_properties);
+        static void        CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size);
+        static BufferImage CreateImage(
+            uint32_t              width,
+            uint32_t              height,
+            VkImageType           image_type,
+            VkFormat              image_format,
+            VkImageTiling         image_tiling,
+            VkImageLayout         image_initial_layout,
+            VkImageUsageFlags     image_usage,
+            VkSharingMode         image_sharing_mode,
+            VkSampleCountFlagBits image_sample_count,
+            VkMemoryPropertyFlags requested_properties,
+            VkImageAspectFlagBits image_aspect_flag);
+
+        static VkImageView CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag);
+        static void        CopyBufferToImage(const BufferView& source, BufferImage& destination, uint32_t width, uint32_t height);
+
+        static Rendering::Buffers::CommandBuffer* BeginInstantCommandBuffer(Rendering::QueueType type);
+        static void                               EndInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const command);
 
     private:
-        bool                                               m_high_performant_device{false};
-        VulkanLayer                                        m_layer;
-        VkDevice                                           m_logical_device{VK_NULL_HANDLE};
-        VkPhysicalDevice                                   m_physical_device{VK_NULL_HANDLE};
-        VkPhysicalDeviceProperties                         m_physical_device_properties;
-        VkPhysicalDeviceFeatures                           m_physical_device_feature;
-        VkPhysicalDeviceMemoryProperties                   m_physical_device_memory_properties;
-        std::vector<VkQueueFamilyProperties>               m_physical_device_queue_family_collection;
-        std::vector<uint32_t>                              m_graphic_with_present_queue_family_index_collection;
-        std::vector<uint32_t>                              m_transfer_queue_family_index_collection;
-        std::unordered_map<uint32_t, std::vector<VkQueue>> m_graphic_with_present_support_queue_collection;
-        std::unordered_map<uint32_t, std::vector<VkQueue>> m_transfer_queue_collection;
+        static std::string                                       m_application_name;
+        static VulkanLayer                                       m_layer;
+        static VkInstance                                        m_vulkan_instance;
+        static VkSurfaceKHR                                      m_surface;
+        static uint32_t                                          m_graphic_family_index;
+        static uint32_t                                          m_transfer_family_index;
+        static std::unordered_map<Rendering::QueueType, VkQueue> m_queue_map;
+        static VkDevice                                          m_logical_device;
+        static VkPhysicalDevice                                  m_physical_device;
+        static VkPhysicalDeviceProperties                        m_physical_device_properties;
+        static VkPhysicalDeviceFeatures                          m_physical_device_feature;
+        static VkPhysicalDeviceMemoryProperties                  m_physical_device_memory_properties;
+        static VkDebugUtilsMessengerEXT                          m_debug_messenger;
+        static std::unordered_map<uint32_t, std::vector<void*>>  m_deletion_resource_queue;
+        static std::vector<Ref<Rendering::Pools::CommandPool>>   m_command_pool_collection;
+        static PFN_vkCreateDebugUtilsMessengerEXT                __createDebugMessengerPtr;
+        static PFN_vkDestroyDebugUtilsMessengerEXT               __destroyDebugMessengerPtr;
+        static std::vector<VkSurfaceFormatKHR>                   m_surface_format_collection;
+        static std::vector<VkPresentModeKHR>                     m_present_mode_collection;
+        static VkSurfaceFormatKHR                                m_surface_format;
+        static VkPresentModeKHR                                  m_present_mode;
+        static VkDescriptorPool                                  m_descriptor_pool;
+        static VKAPI_ATTR VkBool32 VKAPI_CALL                    __debugCallback(
+                               VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
+                               VkDebugUtilsMessageTypeFlagsEXT             messageType,
+                               const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                               void*                                       pUserData);
 
     private:
-        std::unordered_map<uint32_t, VkCommandPool> m_graphic_command_pool_collection;
-        std::unordered_map<uint32_t, VkCommandPool> m_transfer_command_pool_collection;
+        static std::mutex                                                                   m_queue_mutex;
+        static std::mutex                                                                   m_command_pool_mutex;
+        static std::mutex                                                                   m_deletion_queue_mutex;
+        static std::unordered_map<Rendering::QueueType, Ref<Rendering::Pools::CommandPool>> m_in_device_command_pool_map;
+        static std::condition_variable                                                      m_cond;
+        static std::atomic_bool                                                             m_is_executing_instant_command;
+        static std::mutex                                                                   m_instant_command_mutex;
     };
 } // namespace ZEngine::Hardwares

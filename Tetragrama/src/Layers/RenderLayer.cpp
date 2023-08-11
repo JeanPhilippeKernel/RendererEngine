@@ -22,7 +22,7 @@ using namespace ZEngine::Rendering::Geometries;
 namespace Tetragrama::Layers
 {
 
-    RenderLayer::RenderLayer(std::string_view name) : Layer(name.data()) {}
+    RenderLayer::RenderLayer(std::string_view name) : Layer(name) {}
 
     RenderLayer::~RenderLayer()
     {
@@ -56,13 +56,6 @@ namespace Tetragrama::Layers
     {
         m_editor_camera_controller->Update(dt);
         m_scene->Update(dt);
-
-        if (!m_deferral_operation.empty())
-        {
-            auto& operation = m_deferral_operation.front();
-            operation();
-            m_deferral_operation.pop();
-        }
     }
 
     bool RenderLayer::OnEvent(CoreEvent& e)
@@ -80,30 +73,30 @@ namespace Tetragrama::Layers
         m_scene->Render();
     }
 
-    void RenderLayer::PrepareFrame(uint32_t frame_index, VkQueue& present_queue)
-    {
-        m_scene->UploadFrameInfo(frame_index, present_queue);
-    }
-
     void RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message)
     {
+        std::unique_lock lock(m_message_handler_mutex);
+
         const auto& value = message.GetValue();
         m_editor_camera_controller->SetViewportSize(value.first, value.second);
-        m_scene->RequestNewSize(value.first, value.second);
+        m_scene->RequestNewSizeAsync(value.first, value.second);
     }
 
     void RenderLayer::SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>& message)
     {
+        std::unique_lock lock(m_message_handler_mutex);
         m_scene->SetShouldReactToEvent(message.GetValue());
     }
 
     void RenderLayer::SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>& message)
     {
+        std::unique_lock lock(m_message_handler_mutex);
         m_scene->SetShouldReactToEvent(message.GetValue());
     }
 
     void RenderLayer::SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>& message)
     {
+        std::unique_lock lock(m_message_handler_mutex);
         // Todo: We need to replace this whole part by using system FileDialog API
         if (!m_scene->HasEntities())
         {
@@ -130,7 +123,7 @@ namespace Tetragrama::Layers
     void RenderLayer::SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>& message)
     {
         {
-            std::unique_lock lock(m_mutex);
+            std::unique_lock lock(m_message_handler_mutex);
             // Todo: We need to replace this whole part by using system FileDialog API
             auto scene_filename = message.GetValue();
             if (scene_filename.empty())
@@ -154,7 +147,7 @@ namespace Tetragrama::Layers
     void RenderLayer::SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage& message)
     {
         {
-            std::unique_lock lock(m_mutex);
+            std::unique_lock lock(m_message_handler_mutex);
 
             if (m_scene->HasEntities())
             {
@@ -169,7 +162,7 @@ namespace Tetragrama::Layers
     void RenderLayer::SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>& message)
     {
         {
-            std::unique_lock lock(m_mutex);
+            std::unique_lock lock(m_message_handler_mutex);
 
             if (m_scene->HasEntities())
             {
@@ -196,17 +189,19 @@ namespace Tetragrama::Layers
 
     void RenderLayer::HandleNewSceneMessage(const Messengers::EmptyMessage&)
     {
-        m_deferral_operation.push([this]() { m_scene->InvalidateAllEntities(); });
+        {
+            std::unique_lock lock(m_message_handler_mutex);
+            m_scene->InvalidateAllEntities();
+        }
     }
 
     void RenderLayer::HandleOpenSceneMessage(const Messengers::GenericMessage<std::string>& message)
     {
-        m_deferral_operation.push(
-            [this, message]()
-            {
-                m_scene->InvalidateAllEntities();
-                Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-                    EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION, Messengers::GenericMessage<std::string>{message});
-            });
+        {
+            std::unique_lock lock(m_message_handler_mutex);
+            m_scene->InvalidateAllEntities();
+            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+                EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION, Messengers::GenericMessage<std::string>{message});
+        }
     }
 } // namespace Tetragrama::Layers

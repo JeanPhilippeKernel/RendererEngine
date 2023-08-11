@@ -13,8 +13,6 @@
 #include <Core/IInitializable.h>
 #include <EngineConfiguration.h>
 
-#include <Hardwares/VulkanInstance.h>
-
 namespace ZEngine
 {
     struct Engine
@@ -33,7 +31,6 @@ namespace ZEngine
 
         static Core::TimeStep                   GetDeltaTime();
         static Ref<ZEngine::Window::CoreWindow> GetWindow();
-        static Hardwares::VulkanInstance*       GetVulkanInstance();
 
         static void Deinitialize();
         static void Dispose();
@@ -46,7 +43,6 @@ namespace ZEngine
         static float                            m_last_frame_time;
         static Core::TimeStep                   m_delta_time;
         static Ref<ZEngine::Window::CoreWindow> m_window;
-        static Scope<Hardwares::VulkanInstance> m_vulkan_instance;
     };
 
     Engine* CreateEngine(const EngineConfiguration&);

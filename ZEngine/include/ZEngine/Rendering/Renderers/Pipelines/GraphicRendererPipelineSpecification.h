@@ -1,6 +1,7 @@
 #pragma once
-#include <Rendering/Renderers/RenderPasses/RenderPassSpecification.h>
 #include <Rendering/Shaders/ShaderInformation.h>
+#include <Rendering/Renderers/RenderPasses/RenderPassSpecification.h>
+#include <Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h>
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
@@ -26,7 +27,12 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         GraphicRendererPipelineSpecification() = default;
 
-        RenderPasses::RenderPassSpecification     RenderPassSpecification;
-        GraphicRendererPipelineStateSpecification StateSpecification;
+        std::string                                       DebugName;
+        std::string                                       VertexShaderFilename;
+        std::string                                       FragmentShaderFilename;
+        std::vector<VkDescriptorSetLayoutBinding>         LayoutBindingCollection;
+        std::vector<VkDescriptorSetLayout>                DescriptorSetLayoutCollection;
+        Rendering::Buffers::FrameBufferSpecificationVNext TargetFrameBufferSpecification;
+        GraphicRendererPipelineStateSpecification         StateSpecification;
     };
 }

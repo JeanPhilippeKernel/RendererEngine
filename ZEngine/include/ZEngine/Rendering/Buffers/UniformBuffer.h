@@ -1,55 +1,126 @@
 #pragma once
-#include <Engine.h>
-#include <Helpers/BufferHelper.h>
+#include <Hardwares/VulkanDevice.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
 
 namespace ZEngine::Rendering::Buffers
 {
 
-    template <typename T>
-    class UniformBuffer : public GraphicBuffer<T>
+    class UniformBuffer : public IGraphicBuffer
     {
     public:
-        explicit UniformBuffer() : GraphicBuffer<T>()
+        explicit UniformBuffer() : IGraphicBuffer()
         {
-            CleanUpMemory();
-            Hardwares::VulkanDevice& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-            auto                     device_handle     = performant_device.GetNativeDeviceHandle();
-            const auto&              memory_properties = performant_device.GetPhysicalDeviceMemoryProperties();
-
-            Helpers::CreateBuffer(
-                performant_device,
-                m_uniform_buffer,
-                m_uniform_buffer_device_memory,
-                static_cast<VkDeviceSize>(this->m_byte_size),
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                memory_properties,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-            ZENGINE_VALIDATE_ASSERT(
-                vkMapMemory(device_handle, m_uniform_buffer_device_memory, 0, this->m_byte_size, 0, &m_uniform_buffer_mapped) == VK_SUCCESS, "Failed to map the memory")
-            std::memset(m_uniform_buffer_mapped, 0, this->m_byte_size);
         }
 
-        void SetData(const T& content) override
+        explicit UniformBuffer(const UniformBuffer& rhs) = delete;
+
+        explicit UniformBuffer(UniformBuffer& rhs)
         {
-            GraphicBuffer<T>::SetData(content);
-            std::memset(m_uniform_buffer_mapped, 0, this->m_byte_size);
-            std::memcpy(m_uniform_buffer_mapped, &content, this->m_byte_size);
+            this->m_byte_size = rhs.m_byte_size;
+
+            std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
+            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
+
+            rhs.m_byte_size                    = 0;
+            rhs.m_uniform_buffer_mapped        = nullptr;
+            rhs.m_uniform_buffer               = {};
+        }
+
+        explicit UniformBuffer(UniformBuffer&& rhs) noexcept
+        {
+            this->m_byte_size = rhs.m_byte_size;
+
+            std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
+            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
+
+            rhs.m_byte_size                    = 0;
+            rhs.m_uniform_buffer_mapped        = nullptr;
+            rhs.m_uniform_buffer               = {};
+        }
+
+        UniformBuffer& operator=(const UniformBuffer& rhs) = delete;
+
+        UniformBuffer& operator=(UniformBuffer& rhs)
+        {
+            if (this == &rhs)
+            {
+                return *this;
+            }
+
+            this->m_byte_size = rhs.m_byte_size;
+
+            std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
+            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
+
+            rhs.m_byte_size                    = 0;
+            rhs.m_uniform_buffer_mapped        = nullptr;
+            rhs.m_uniform_buffer               = {};
+
+            return *this;
+        }
+
+        UniformBuffer& operator=(UniformBuffer&& rhs) noexcept
+        {
+            if (this == &rhs)
+            {
+                return *this;
+            }
+
+            this->m_byte_size = rhs.m_byte_size;
+
+            std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
+            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
+
+            rhs.m_byte_size                    = 0;
+            rhs.m_uniform_buffer_mapped        = nullptr;
+            rhs.m_uniform_buffer               = {};
+
+            return *this;
         }
 
         void SetData(const void* data, size_t byte_size)
         {
-            this->m_byte_size = byte_size;
-            this->m_data      = *(reinterpret_cast<T*>(data));
+            if (!data)
+            {
+                ZENGINE_CORE_WARN("data is null")
+                return;
+            }
 
+            if (byte_size == 0)
+            {
+                ZENGINE_CORE_WARN("data byte size is null")
+                return;
+            }
+
+            if (this->m_byte_size < byte_size || (!m_uniform_buffer_mapped))
+            {
+                CleanUpMemory();
+                this->m_byte_size = byte_size;
+                m_uniform_buffer  = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+                auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+                ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, m_uniform_buffer.Memory, 0, this->m_byte_size, 0, &m_uniform_buffer_mapped) == VK_SUCCESS, "Failed to map the memory")
+            }
             std::memset(m_uniform_buffer_mapped, 0, this->m_byte_size);
             std::memcpy(m_uniform_buffer_mapped, data, this->m_byte_size);
         }
 
+        template <typename T>
+        inline void SetData(const std::vector<T>& content)
+        {
+            size_t byte_size = sizeof(T) * content.size();
+            this->SetData(content.data(), byte_size);
+        }
+
         VkBuffer GetNativeBufferHandle() const
         {
-            return m_uniform_buffer;
+            return m_uniform_buffer.Handle;
+        }
+
+        void Dispose()
+        {
+            CleanUpMemory();
         }
 
         ~UniformBuffer()
@@ -57,36 +128,23 @@ namespace ZEngine::Rendering::Buffers
             CleanUpMemory();
         }
 
-        void Bind() const override {}
-
-        void Unbind() const override {}
-
     private:
         void CleanUpMemory()
         {
-            if ((m_uniform_buffer != VK_NULL_HANDLE) && (m_uniform_buffer_device_memory != VK_NULL_HANDLE))
+            if (m_uniform_buffer)
             {
-                auto device_handle = Engine::GetVulkanInstance()->GetHighPerformantDevice().GetNativeDeviceHandle();
-                vkDestroyBuffer(device_handle, m_uniform_buffer, nullptr);
-                vkFreeMemory(device_handle, m_uniform_buffer_device_memory, nullptr);
+                auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+                vkUnmapMemory(device, m_uniform_buffer.Memory);
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_uniform_buffer.Handle);
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_uniform_buffer.Memory);
 
-                m_uniform_buffer_mapped        = nullptr;
-                m_uniform_buffer               = VK_NULL_HANDLE;
-                m_uniform_buffer_device_memory = VK_NULL_HANDLE;
+                m_uniform_buffer_mapped = nullptr;
+                m_uniform_buffer        = {};
             }
         }
 
     private:
         void*          m_uniform_buffer_mapped{nullptr};
-        VkBuffer       m_uniform_buffer{VK_NULL_HANDLE};
-        VkDeviceMemory m_uniform_buffer_device_memory{VK_NULL_HANDLE};
+        Hardwares::BufferView m_uniform_buffer;
     };
-
-    template <>
-    inline void UniformBuffer<std::vector<float>>::SetData(const std::vector<float>& content)
-    {
-        GraphicBuffer<std::vector<float>>::SetData(content);
-        std::memset(m_uniform_buffer_mapped, 0, this->m_byte_size);
-        std::memcpy(m_uniform_buffer_mapped, content.data(), this->m_byte_size);
-    }
 } // namespace ZEngine::Rendering::Buffers

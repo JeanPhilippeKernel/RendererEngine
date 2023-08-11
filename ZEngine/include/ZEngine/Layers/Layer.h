@@ -46,8 +46,6 @@ namespace ZEngine::Layers
             return nullptr;
         }
 
-        virtual void PrepareFrame(uint32_t frame_index, VkQueue& present_queue) = 0;
-
     protected:
         std::string                                   m_name;
         ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;

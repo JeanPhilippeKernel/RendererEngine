@@ -30,15 +30,15 @@ namespace ZEngine::Rendering::Shaders::Compilers
          * @return Tuple of <ShaderOperationResult, GLuint> that represents status of the compile process (Success or Failure)
          *			and the identifier of generated shader program (0 in case of any errors)
          */
-        std::tuple<ShaderOperationResult, GLuint> Compile();
-        std::tuple<ShaderOperationResult, std::vector<ShaderInformation>> Compile2() = delete;
+        //std::tuple<ShaderOperationResult, unsigned> Compile();
+        //std::tuple<ShaderOperationResult, std::vector<ShaderInformation>> Compile2() = delete;
 
         /**
          * Compile shader source code
          * @return Tuple of <ShaderOperationResult, GLuint> that represents status of the compile process (Success or Failure)
          *			and the identifier of generated shader program (0 in case of any errors)
          */
-        std::future<std::tuple<ShaderOperationResult, GLuint>> CompileAsync();
+        std::future<std::tuple<ShaderOperationResult, unsigned>>                       CompileAsync();
         std::future<std::tuple<ShaderOperationResult, std::vector<ShaderInformation>>> CompileAsync2();
 
     private:

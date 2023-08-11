@@ -7,7 +7,6 @@
 #include <Rendering/Shaders/Shader.h>
 #include <Rendering/Geometries/IGeometry.h>
 #include <Rendering/Materials/ShaderMaterial.h>
-#include <Rendering/Renderers/Storages/GraphicRendererStorage.h>
 #include <Rendering/Shaders/ShaderEnums.h>
 
 namespace ZEngine::Rendering::Renderers
@@ -23,7 +22,7 @@ namespace ZEngine::Rendering::Renderers
         }
 
         uint32_t                                                    ShaderCollectionCount{0};
-        Storages::GraphicRendererStorageType                        GraphicStorageType{Storages::GraphicRendererStorageType::GRAPHIC_STORAGE_TYPE_UNDEFINED};
+        //Storages::GraphicRendererStorageType                        GraphicStorageType{Storages::GraphicRendererStorageType::GRAPHIC_STORAGE_TYPE_UNDEFINED};
         std::unordered_map<Shaders::ShaderBuiltInType, std::string> ShaderCollection;
     };
 } // namespace ZEngine::Rendering::Renderers

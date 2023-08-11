@@ -14,9 +14,6 @@ namespace ZEngine::Rendering::Textures
 
         virtual ~Texture() = default;
 
-        virtual void Bind(int slot = 0) const   = 0;
-        virtual void Unbind(int slot = 0) const = 0;
-
         virtual void                 SetData(void* const data)                   = 0;
         virtual void                 SetData(float r, float g, float b, float a) = 0;
         virtual std::array<float, 4> GetData() const
@@ -26,12 +23,14 @@ namespace ZEngine::Rendering::Textures
 
         virtual bool operator==(const Texture& right)
         {
-            return m_texture_image == right.m_texture_image;
+            return false;
+            //return m_texture_image == right.m_texture_image;
         }
 
         virtual bool operator!=(const Texture& right)
         {
-            return m_texture_image != right.m_texture_image;
+            return false;
+            //return m_texture_image != right.m_texture_image;
         }
 
         uint32_t GetIdentifier() const override
@@ -60,17 +59,13 @@ namespace ZEngine::Rendering::Textures
         }
 
     protected:
-        std::string    m_path;
-        unsigned int   m_width{0};
-        unsigned int   m_height{0};
-        unsigned int   m_byte_per_pixel{0};
-        VkDeviceSize   m_buffer_size{0};
-        VkImageView    m_texture_image_view{VK_NULL_HANDLE};
-        VkImage        m_texture_image{VK_NULL_HANDLE};
-        VkDeviceMemory m_texture_memory{VK_NULL_HANDLE};
-        VkSampler      m_texture_sampler{VK_NULL_HANDLE};
-
-        bool m_is_from_file{false};
+        std::string  m_path;
+        unsigned int m_width{0};
+        unsigned int m_height{0};
+        unsigned int m_byte_per_pixel{0};
+        VkDeviceSize m_buffer_size{0};
+        VkSampler    m_texture_sampler{VK_NULL_HANDLE};
+        bool         m_is_from_file{false};
 
         // Those value are only set if SetDat(...) is using
         float m_r{0}, m_g{0}, m_b{0}, m_a{0};

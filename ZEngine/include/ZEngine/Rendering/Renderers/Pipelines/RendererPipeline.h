@@ -1,38 +1,43 @@
 #pragma once
-#include <vector>
 #include <vulkan/vulkan.h>
-#include <Rendering/Renderers/Contracts/RendererDataContract.h>
-#include <Rendering/Buffers/UniformBuffer.h>
+#include <ZEngineDef.h>
 #include <Rendering/Buffers/FrameBuffers/Framebuffer.h>
+#include <Rendering/Buffers/UniformBuffer.h>
+#include <Rendering/Renderers/Pipelines/GraphicRendererPipelineSpecification.h>
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
-    struct StandardGraphicPipeline
+    struct GraphicPipeline
     {
-        //VkRenderPass     RenderPass{VK_NULL_HANDLE};
-        uint32_t         FrameCount;
-        VkPipelineLayout PipelineLayout{VK_NULL_HANDLE};
-        VkPipeline       Pipeline{VK_NULL_HANDLE};
-        /*Shader stage info*/
-        std::vector<VkDescriptorSetLayoutBinding> DescriptorSetLayoutBindingCollection;
-        VkDescriptorSetLayout                     DescriptorSetLayout{VK_NULL_HANDLE};
-        VkDescriptorPool                          DescriptorPool{VK_NULL_HANDLE};
-        std::vector<VkDescriptorSet>              DescriptorSetCollection;
-        /*Fragment stage info*/
-        std::vector<VkDescriptorSetLayoutBinding> FragmentDescriptorSetLayoutBindingCollection;
-        VkDescriptorSetLayout                     FragmentDescriptorSetLayout{VK_NULL_HANDLE};
-        VkDescriptorPool                          FragmentDescriptorPool{VK_NULL_HANDLE};
-        std::vector<VkDescriptorSet>              FragmentDescriptorSetCollection;
-        /*Uniform Buffer info*/
-        std::vector<Buffers::UniformBuffer<Contracts::UBOCameraLayout>> UBOCameraPropertiesCollection;
-        std::vector<Buffers::UniformBuffer<Contracts::UBOModelLayout>>  UBOModelPropertiesCollection;
-        /*Framebuffer info*/
-        std::vector<Buffers::FramebufferVNext>            FramebufferCollection;
-        Rendering::Buffers::FrameBufferSpecificationVNext FramebufferSpecification;
-        void                                              Dispose();
+    public:
+        GraphicPipeline() = default;
+        GraphicPipeline(Pipelines::GraphicRendererPipelineSpecification&& spec);
+        ~GraphicPipeline() = default;
 
-        void CreateOrResizeFramebuffer(uint32_t width, uint32_t height);
-        void UpdateDescriptorSet();
+        Pipelines::GraphicRendererPipelineSpecification& GetSpecification();
+        void                                             SetSpecification(Pipelines::GraphicRendererPipelineSpecification& spec);
+        void                                             Bake();
+        void                                             Dispose();
+
+        void SetUniformBuffer(Ref<Buffers::UniformBuffer>, uint32_t binding, uint32_t set = 0);
+
+        VkPipeline                     GetHandle() const;
+        VkPipelineLayout               GetPipelineLayout() const;
+        VkRenderPass                   GetRenderPassHandle() const;
+        Ref<Buffers::FramebufferVNext> GetTargetFrameBuffer() const;
+        std::vector<VkDescriptorSet>   GetDescriptorSetCollection() const;
+        const VkDescriptorSet*         GetDescriptorSetCollectionData() const;
+        uint32_t                       GetDescriptorSetCollectionCount() const;
+
+    public:
+        static Ref<GraphicPipeline> Create(Pipelines::GraphicRendererPipelineSpecification& spec);
+
+    protected:
+        VkPipeline                                      m_pipeline_handle{VK_NULL_HANDLE};
+        VkPipelineLayout                                m_pipeline_layout{VK_NULL_HANDLE};
+        VkDescriptorSetLayout                           m_descriptor_set_layout{VK_NULL_HANDLE};
+        std::vector<VkDescriptorSet>                    m_descriptor_set_collection;
+        Ref<Buffers::FramebufferVNext>                  m_target_framebuffer;
+        Pipelines::GraphicRendererPipelineSpecification m_pipeline_specification;
     };
-
 } // namespace ZEngine::Rendering::Renderers::Pipelines

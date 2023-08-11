@@ -23,7 +23,6 @@ namespace Tetragrama::Layers
         virtual void Deinitialize() override;
         virtual void Update(ZEngine::Core::TimeStep dt) override;
 
-        void         PrepareFrame(uint32_t frame_index, VkQueue& present_queue) override;
         virtual void Render() override;
 
         virtual bool OnEvent(ZEngine::Event::CoreEvent& e) override;
@@ -48,7 +47,9 @@ namespace Tetragrama::Layers
         ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;
         ZEngine::Ref<EditorCameraController>                       m_editor_camera_controller;
         std::queue<std::function<void(void)>>                      m_deferral_operation;
+        std::mutex                                                 m_message_handler_mutex;
         std::mutex                                                 m_mutex;
+        std::queue<std::pair<float, float>>                        m_viewport_requested_size_collection;
 
     private:
         void HandleNewSceneMessage(const Messengers::EmptyMessage&);

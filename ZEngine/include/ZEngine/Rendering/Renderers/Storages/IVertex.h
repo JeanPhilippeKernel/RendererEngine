@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <vulkan/vulkan.h>
 #include <glm/glm/glm.hpp>
 
@@ -11,22 +12,17 @@ namespace ZEngine::Rendering::Renderers::Storages
         glm::vec3 m_normal{0.0f, 0.0f, 0.0f};
         glm::vec2 m_texture_coord{0.0f, 0.0f};
 
-        static std::vector<VkVertexInputBindingDescription> GetVertexInputBindingDescription()
+        static const std::array<VkVertexInputBindingDescription, 1>& GetVertexInputBindingDescription()
         {
-            std::vector<VkVertexInputBindingDescription> m_binding_description;
-            m_binding_description.resize(1);
-            m_binding_description[0].binding = 0;
-            m_binding_description[0].stride  = sizeof(IVertex);
+            m_binding_description[0].binding   = 0;
+            m_binding_description[0].stride    = sizeof(IVertex);
             m_binding_description[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
             return m_binding_description;
         }
 
-        static std::vector<VkVertexInputAttributeDescription> GetVertexAttributeDescription()
+        static const std::array<VkVertexInputAttributeDescription, 3>& GetVertexAttributeDescription()
         {
-            std::vector<VkVertexInputAttributeDescription> m_attribute_description;
-            m_attribute_description.resize(3);
-
             m_attribute_description[0]          = {};
             m_attribute_description[0].binding  = 0;
             m_attribute_description[0].location = 0;
@@ -49,7 +45,7 @@ namespace ZEngine::Rendering::Renderers::Storages
         }
 
     private:
-        // inline static VkVertexInputBindingDescription m_binding_description = {};
-        // inline static std::vector<VkVertexInputAttributeDescription> m_attribute_description = {};
+        inline static std::array<VkVertexInputBindingDescription, 1>   m_binding_description   = {};
+        inline static std::array<VkVertexInputAttributeDescription, 3> m_attribute_description = {};
     };
 } // namespace ZEngine::Rendering::Renderers::Storages

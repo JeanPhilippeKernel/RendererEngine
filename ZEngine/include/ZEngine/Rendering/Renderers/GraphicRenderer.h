@@ -1,37 +1,34 @@
 #pragma once
-#include <Core/IInitializable.h>
 #include <Rendering/Cameras/Camera.h>
 #include <Rendering/Renderers/GraphicRendererInformation.h>
 #include <Rendering/Renderers/Contracts/RendererDataContract.h>
+#include <Rendering/Renderers/RenderPasses/RenderPass.h>
 
 namespace ZEngine::Rendering::Renderers
 {
-
-    class GraphicRenderer : public Core::IInitializable
+    struct GraphicRenderer
     {
+        GraphicRenderer()  = default;
+        ~GraphicRenderer() = default;
+        static void StartScene(Ref<Cameras::Camera> scene_camera);
+        static void Submit(uint32_t mesh_idx);
+        static void EndScene();
 
-    public:
-        GraphicRenderer();
-        virtual ~GraphicRenderer();
-        virtual void StartScene(const Contracts::GraphicSceneLayout& scene_data);
-        virtual void EndScene() = 0;
+        static void Initialize();
+        static void Deinitialize();
+
+        static void BeginRenderPass(const Buffers::CommandBuffer& command_buffer, const Ref<RenderPasses::RenderPass>&);
+        static void EndRenderPass(const Buffers::CommandBuffer& command_buffer);
 
         virtual const Ref<GraphicRendererInformation>& GetRendererInformation() const;
 
-        virtual void RequestOutputImageSize(uint32_t width = 1, uint32_t height = 1)
-        {
-            /*No Op*/
-        }
+        virtual Contracts::FramebufferViewLayout GetOutputImage(uint32_t frame_index);
 
-        virtual Contracts::FramebufferViewLayout GetOutputImage(uint32_t frame_index) const
-        {
-            return {};
-        }
-
-    protected:
-        uint32_t                               m_viewport_width{1};
-        uint32_t                               m_viewport_height{1};
-        Contracts::GraphicSceneLayout          m_scene_data;
-        Ref<GraphicRendererInformation>        m_renderer_information;
+    private:
+        static Pools::CommandPool*                                                                         m_command_pool;
+        static Ref<Buffers::UniformBuffer>                                                                 m_UBOCamera;
+        static Ref<RenderPasses::RenderPass>                                                               m_final_color_output_pass;
+        static Contracts::GraphicSceneLayout                                                               m_scene_information;
+        Ref<GraphicRendererInformation>                                                                    m_renderer_information;
     };
 } // namespace ZEngine::Rendering::Renderers
