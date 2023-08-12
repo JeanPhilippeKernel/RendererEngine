@@ -8,8 +8,8 @@
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/Buffers/VertexBuffer.h"
 #include "Rendering/Buffers/IndexBuffer.h"
-#include "Rendering/Buffers/FrameBuffers/Framebuffer.h"
-#include "Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h"
+#include "Rendering/Buffers/Framebuffer.h"
+#include "Rendering/Specifications/FrameBufferSpecification.h"
 
 #include "Rendering/Scenes/GraphicScene.h"
 #include "Rendering/Scenes/GraphicScene3D.h"

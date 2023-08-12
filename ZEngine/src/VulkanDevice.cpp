@@ -329,9 +329,15 @@ namespace ZEngine::Hardwares
 
         ZENGINE_DESTROY_VULKAN_HANDLE(m_logical_device, vkDestroyDescriptorPool, m_descriptor_pool, nullptr)
         ZENGINE_DESTROY_VULKAN_HANDLE(m_vulkan_instance, vkDestroySurfaceKHR, m_surface, nullptr)
-        vkDestroyDevice(m_logical_device, nullptr);
+    }
 
-        ZENGINE_DESTROY_VULKAN_HANDLE(m_vulkan_instance, __destroyDebugMessengerPtr, m_debug_messenger, nullptr)
+    void VulkanDevice::Dispose()
+    {
+        vkDestroyDevice(m_logical_device, nullptr);
+        if (__destroyDebugMessengerPtr)
+        {
+            ZENGINE_DESTROY_VULKAN_HANDLE(m_vulkan_instance, __destroyDebugMessengerPtr, m_debug_messenger, nullptr)
+        }
         vkDestroyInstance(m_vulkan_instance, nullptr);
 
         m_logical_device           = VK_NULL_HANDLE;

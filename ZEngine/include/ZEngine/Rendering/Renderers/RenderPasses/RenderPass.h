@@ -2,7 +2,6 @@
 #include <string>
 #include <ZEngineDef.h>
 #include <vulkan/vulkan.h>
-#include <Rendering/Renderers/RenderPasses/RenderPassSpecification.h>
 #include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses

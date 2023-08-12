@@ -5,7 +5,6 @@
 #include <Layers/Layer.h>
 #include <imgui.h>
 #include <imconfig.h>
-#include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <Core/TimeStep.h>
 #include <Inputs/KeyCode.h>
@@ -69,7 +68,6 @@ namespace ZEngine::Layers
 
     private:
         static bool                                   m_initialized;
-        Rendering::Pools::CommandPool*                m_ui_command_pool{nullptr};
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
     };
 } // namespace ZEngine::Layers

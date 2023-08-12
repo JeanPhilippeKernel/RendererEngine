@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <Engine.h>
 #include <Logging/LoggerDefinition.h>
+#include <Hardwares/VulkanDevice.h>
 
 namespace ZEngine
 {
@@ -47,6 +48,8 @@ namespace ZEngine
 
         ZENGINE_CORE_INFO("Engine destroyed")
         Logging::Logger::Flush();
+
+        Hardwares::VulkanDevice::Dispose();
     }
 
     void Engine::Update(Core::TimeStep delta_time)

@@ -6,14 +6,14 @@
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
-    GraphicPipeline::GraphicPipeline(Pipelines::GraphicRendererPipelineSpecification&& spec) :m_pipeline_specification(std::move(spec)) {}
+    GraphicPipeline::GraphicPipeline(Specifications::GraphicRendererPipelineSpecification&& spec) : m_pipeline_specification(std::move(spec)) {}
 
-    Pipelines::GraphicRendererPipelineSpecification& GraphicPipeline::GetSpecification()
+    Specifications::GraphicRendererPipelineSpecification& GraphicPipeline::GetSpecification()
     {
         return m_pipeline_specification;
     }
 
-    void GraphicPipeline::SetSpecification(Pipelines::GraphicRendererPipelineSpecification& spec)
+    void GraphicPipeline::SetSpecification(Specifications::GraphicRendererPipelineSpecification& spec)
     {
         m_pipeline_specification = std::move(spec);
     }
@@ -36,8 +36,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         vertex_shader_create_info.sType                                 = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         vertex_shader_create_info.codeSize                              = vertex_shader_binary_code.size();
         vertex_shader_create_info.pCode                                 = reinterpret_cast<const uint32_t*>(vertex_shader_binary_code.data());
-        ZENGINE_VALIDATE_ASSERT(
-            vkCreateShaderModule(device, &vertex_shader_create_info, nullptr, &vertex_module) == VK_SUCCESS, "Failed to create ShaderModule")
+        ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(device, &vertex_shader_create_info, nullptr, &vertex_module) == VK_SUCCESS, "Failed to create ShaderModule")
         vertex_shader_stage_create_info.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         vertex_shader_stage_create_info.stage  = VK_SHADER_STAGE_VERTEX_BIT;
         vertex_shader_stage_create_info.module = vertex_module;
@@ -50,8 +49,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         fragment_shader_create_info.sType                                 = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         fragment_shader_create_info.codeSize                              = fragment_shader_binary_code.size();
         fragment_shader_create_info.pCode                                 = reinterpret_cast<const uint32_t*>(fragment_shader_binary_code.data());
-        ZENGINE_VALIDATE_ASSERT(
-            vkCreateShaderModule(device, &fragment_shader_create_info, nullptr, &fragment_module) == VK_SUCCESS, "Failed to create ShaderModule")
+        ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(device, &fragment_shader_create_info, nullptr, &fragment_module) == VK_SUCCESS, "Failed to create ShaderModule")
         fragment_shader_stage_create_info.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         fragment_shader_stage_create_info.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
         fragment_shader_stage_create_info.module = fragment_module;
@@ -62,14 +60,13 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         descriptor_set_layout_create_info.bindingCount                    = m_pipeline_specification.LayoutBindingCollection.size();
         descriptor_set_layout_create_info.pBindings                       = m_pipeline_specification.LayoutBindingCollection.data();
         ZENGINE_VALIDATE_ASSERT(
-            vkCreateDescriptorSetLayout(device, &descriptor_set_layout_create_info, nullptr, &m_descriptor_set_layout) == VK_SUCCESS,
-            "Failed to create DescriptorSetLayout")
+            vkCreateDescriptorSetLayout(device, &descriptor_set_layout_create_info, nullptr, &m_descriptor_set_layout) == VK_SUCCESS, "Failed to create DescriptorSetLayout")
 
         /*Pipeline layout Creation*/
         std::array<VkDescriptorSetLayout, 1> descriptor_set_layout_collection       = {m_descriptor_set_layout};
         m_pipeline_specification.StateSpecification.LayoutCreateInfo.setLayoutCount = descriptor_set_layout_collection.size();
         m_pipeline_specification.StateSpecification.LayoutCreateInfo.pSetLayouts    = descriptor_set_layout_collection.data();
-        m_pipeline_layout = Helpers::CreatePipelineLayout(m_pipeline_specification.StateSpecification.LayoutCreateInfo);
+        m_pipeline_layout                                                           = Helpers::CreatePipelineLayout(m_pipeline_specification.StateSpecification.LayoutCreateInfo);
 
         /*Graphic Pipeline Creation */
         std::vector<VkPipelineShaderStageCreateInfo> shader_create_info_collection = {vertex_shader_stage_create_info, fragment_shader_stage_create_info};
@@ -93,8 +90,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.flags                                         = 0;              // Optional
         graphic_pipeline_create_info.pNext                                         = nullptr;        // Optional
         ZENGINE_VALIDATE_ASSERT(
-            vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS,
-            "Failed to create Graphics Pipeline")
+            vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
 
         // Cleanup ShaderModules
         vkDestroyShaderModule(device, vertex_module, nullptr);
@@ -108,8 +104,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             descriptor_set_allocate_info.descriptorPool              = Hardwares::VulkanDevice::GetDescriptorPool();
             descriptor_set_allocate_info.descriptorSetCount          = 1;
             descriptor_set_allocate_info.pSetLayouts                 = &(m_descriptor_set_layout);
-            ZENGINE_VALIDATE_ASSERT(
-                vkAllocateDescriptorSets(device, &descriptor_set_allocate_info, &descriptor_set) == VK_SUCCESS, "Failed to create DescriptorSet")
+            ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(device, &descriptor_set_allocate_info, &descriptor_set) == VK_SUCCESS, "Failed to create DescriptorSet")
             m_descriptor_set_collection.push_back(descriptor_set);
         }
     }
@@ -184,7 +179,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         return m_descriptor_set_collection.size();
     }
 
-    Ref<GraphicPipeline> GraphicPipeline::Create(Pipelines::GraphicRendererPipelineSpecification& spec)
+    Ref<GraphicPipeline> GraphicPipeline::Create(Specifications::GraphicRendererPipelineSpecification& spec)
     {
         auto pipeline = CreateRef<GraphicPipeline>(std::move(spec));
         return pipeline;

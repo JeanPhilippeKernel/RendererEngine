@@ -47,6 +47,7 @@ namespace ZEngine::Hardwares
 
         static void Initialize(GLFWwindow* const native_window, const std::vector<const char*>& additional_extension_layer_name_collection);
         static void Deinitialize();
+        static void Dispose();
 
         static VkPhysicalDevice                        GetNativePhysicalDeviceHandle();
         static const VkPhysicalDeviceProperties&       GetPhysicalDeviceProperties();

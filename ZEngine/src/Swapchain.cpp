@@ -3,10 +3,10 @@
 #include <GLFW/glfw3.h>
 #include <Rendering/Swapchain.h>
 #include <Helpers/RendererHelper.h>
-#include <Rendering/Renderers/RenderPasses/RenderPassSpecification.h>
+#include <Rendering/Specifications/AttachmentSpecification.h>
 #include <Hardwares/VulkanDevice.h>
 
-using namespace ZEngine::Rendering::Renderers;
+using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering
 {
@@ -83,7 +83,11 @@ namespace ZEngine::Rendering
 
     VkRenderPass Swapchain::GetRenderPass() const
     {
-        return m_render_pass;
+        if (m_attachment)
+        {
+            return m_attachment->GetHandle();
+        }
+        return VK_NULL_HANDLE;
     }
 
     VkFramebuffer Swapchain::GetCurrentFramebuffer()
@@ -190,53 +194,32 @@ namespace ZEngine::Rendering
             m_image_view_collection[i] = Hardwares::VulkanDevice::CreateImageView(m_image_collection[i], surface_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
         }
 
-        /*Depth Image*/
-        VkFormat depth_format = Hardwares::VulkanDevice::FindDepthFormat();
-        m_depth_buffer = CreateRef<Buffers::Image2DBuffer>(extent.width, extent.height, depth_format, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-        /* Create RenderPass */
-        if (m_render_pass == VK_NULL_HANDLE)
-        {
-            RenderPasses::AttachmentSpecification attachment_specification = {
-                .ColorAttachements = {
-                    VkAttachmentDescription{
-                        .format        = surface_format.format,
-                        .samples       = VK_SAMPLE_COUNT_1_BIT,
-                        .loadOp        = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                        .storeOp       = VK_ATTACHMENT_STORE_OP_STORE,
-                        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                        .finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR},
-                    VkAttachmentDescription{
-                        .format         = depth_format,
-                        .samples        = VK_SAMPLE_COUNT_1_BIT,
-                        .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                        .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                        .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                        .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-                        .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL}}};
-            RenderPasses::SubPassSpecification sub_pass_specification = {};
-            sub_pass_specification.ColorAttachementReferences         = {VkAttachmentReference{.attachment = 0, .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}};
-            sub_pass_specification.DepthStencilAttachementReference   = VkAttachmentReference{.attachment = 1, .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
-            sub_pass_specification.SubpassDescription                 = VkSubpassDescription{.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS};
-            attachment_specification.SubpassDependencies              = {VkSubpassDependency{
-                             .srcSubpass    = VK_SUBPASS_EXTERNAL,
-                             .dstSubpass    = 0,
-                             .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                             .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                             .srcAccessMask = 0,
-                             .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT}};
-
-            attachment_specification.SubpassSpecifications = {sub_pass_specification};
-            m_render_pass                                  = Helpers::CreateRenderPass(attachment_specification);
-        }
+        /* Create Attachment */
+        Specifications::AttachmentSpecification attachment_specification = {};
+        attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
+        // Color attachment Description
+        attachment_specification.ColorsMap[0]                 = {};
+        attachment_specification.ColorsMap[0].Format          = ImageFormat::FORMAT_FROM_DEVICE;
+        attachment_specification.ColorsMap[0].Load            = LoadOperation::CLEAR;
+        attachment_specification.ColorsMap[0].Store           = StoreOperation::STORE;
+        attachment_specification.ColorsMap[0].Initial         = ImageLayout::UNDEFINED;
+        attachment_specification.ColorsMap[0].Final           = ImageLayout::PRESENT_SRC;
+        attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+        // Attachment Dependencies
+        attachment_specification.DependenciesMap[0]                 = {};
+        attachment_specification.DependenciesMap[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
+        attachment_specification.DependenciesMap[0].dstSubpass      = 0;
+        attachment_specification.DependenciesMap[0].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        attachment_specification.DependenciesMap[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        attachment_specification.DependenciesMap[0].srcAccessMask   = 0;
+        attachment_specification.DependenciesMap[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        m_attachment = Renderers::RenderPasses::Attachment::Create(attachment_specification);
 
         /*Swapchain framebuffer*/
         for (size_t i = 0; i < m_framebuffer_collection.size(); i++)
         {
-            auto attachments            = std::vector<VkImageView>{m_image_view_collection[i], m_depth_buffer->GetImageViewHandle()};
-            m_framebuffer_collection[i] = Hardwares::VulkanDevice::CreateFramebuffer(attachments, m_render_pass, extent.width, extent.height);
+            auto attachments            = std::vector<VkImageView>{m_image_view_collection[i]};
+            m_framebuffer_collection[i] = Hardwares::VulkanDevice::CreateFramebuffer(attachments, m_attachment->GetHandle(), extent.width, extent.height);
         }
 
         /*Swapchain semaphore*/
@@ -263,13 +246,7 @@ namespace ZEngine::Rendering
                 Hardwares::VulkanDevice::EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, framebuffer);
             }
         }
-        m_depth_buffer.reset();
-
-        if (m_render_pass)
-        {
-            Hardwares::VulkanDevice::EnqueueForDeletion(DeviceResourceType::RENDERPASS, m_render_pass);
-            m_render_pass = VK_NULL_HANDLE;
-        }
+        m_attachment.reset();
 
         m_image_view_collection.clear();
         m_image_collection.clear();

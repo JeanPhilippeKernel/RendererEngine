@@ -7,52 +7,10 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
-#include <Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h>
-
 using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine::Helpers
 {
-
-    VkRenderPass CreateRenderPass(RenderPasses::AttachmentSpecification& specification)
-    {
-        VkRenderPass out_render_pass{VK_NULL_HANDLE};
-
-        /*Ensure Subpass is updated with its associated color attachment reference*/
-        for (RenderPasses::SubPassSpecification& subpass_specification : specification.SubpassSpecifications)
-        {
-            subpass_specification.SubpassDescription.colorAttachmentCount = subpass_specification.ColorAttachementReferences.size();
-            subpass_specification.SubpassDescription.pColorAttachments    = subpass_specification.ColorAttachementReferences.data();
-            if (subpass_specification.DepthStencilAttachementReference.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-            {
-                subpass_specification.SubpassDescription.pDepthStencilAttachment = &(subpass_specification.DepthStencilAttachementReference);
-            }
-        }
-
-        VkRenderPassCreateInfo render_pass_create_info = {};
-        render_pass_create_info.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        render_pass_create_info.attachmentCount        = (uint32_t) specification.ColorAttachements.size();
-        render_pass_create_info.pAttachments           = specification.ColorAttachements.data();
-
-        std::vector<VkSubpassDescription> sub_pass_descriptions;
-        std::transform(
-            std::begin(specification.SubpassSpecifications),
-            std::end(specification.SubpassSpecifications),
-            std::back_inserter(sub_pass_descriptions),
-            [](const auto& sub_pass_specification) {
-                return sub_pass_specification.SubpassDescription;
-            });
-
-        render_pass_create_info.subpassCount    = (uint32_t) sub_pass_descriptions.size();
-        render_pass_create_info.pSubpasses      = sub_pass_descriptions.data();
-        render_pass_create_info.dependencyCount = (uint32_t) specification.SubpassDependencies.size();
-        render_pass_create_info.pDependencies   = specification.SubpassDependencies.data();
-
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        ZENGINE_VALIDATE_ASSERT(vkCreateRenderPass(device, &render_pass_create_info, nullptr, &out_render_pass) == VK_SUCCESS, "Failed to create render pass")
-
-        return out_render_pass;
-    }
 
     VkPipelineLayout CreatePipelineLayout(const VkPipelineLayoutCreateInfo& pipeline_layout_create_info)
     {
@@ -64,7 +22,7 @@ namespace ZEngine::Helpers
         return out_pipeline_layout;
     }
 
-    void FillDefaultPipelineFixedStates(Rendering::Renderers::Pipelines::GraphicRendererPipelineStateSpecification& specification)
+    void FillDefaultPipelineFixedStates(Rendering::Specifications::GraphicRendererPipelineStateSpecification& specification)
     {
         /*Dynamic State*/
         specification.DynamicStates                            = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};

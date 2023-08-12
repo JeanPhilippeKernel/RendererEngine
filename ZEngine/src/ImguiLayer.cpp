@@ -1,17 +1,10 @@
 #include <pch.h>
 #include <Layers/ImguiLayer.h>
-#include <ImGuizmo/ImGuizmo.h>
 #include <ZEngineDef.h>
 #include <fmt/format.h>
-
-#include <GLFW/glfw3.h>
-
-#include <backends/imgui_impl_vulkan.h>
-#include <Engine.h>
 #include <ZEngine/Window/GlfwWindow/VulkanWindow.h>
 #include <Logging/LoggerDefinition.h>
-#include <Rendering/Renderers/RenderPasses/RenderPassSpecification.h>
-#include <Helpers/RendererHelper.h>
+#include <Rendering/Renderers/ImGUIRenderer.h>
 
 using namespace ZEngine::Rendering::Renderers;
 
@@ -39,8 +32,6 @@ namespace ZEngine::Layers
             auto current_vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(current_window_ptr);
             auto swapchain                 = current_vulkan_window_ptr->GetSwapchain();
 
-            m_ui_command_pool = Hardwares::VulkanDevice::CreateCommandPool(Rendering::QueueType::GRAPHIC_QUEUE, true);
-
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
             StyleDarkTheme();
@@ -66,30 +57,7 @@ namespace ZEngine::Layers
             io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Bold.ttf", 17.f);
             io.FontDefault = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f);
 
-            ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window_ptr->GetNativeWindow()), false);
-
-            ImGui_ImplVulkan_InitInfo imgui_vulkan_init_info = {};
-            imgui_vulkan_init_info.Instance                  = Hardwares::VulkanDevice::GetNativeInstanceHandle();
-            imgui_vulkan_init_info.PhysicalDevice            = Hardwares::VulkanDevice::GetNativePhysicalDeviceHandle();
-            imgui_vulkan_init_info.Device                    = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-            auto queue_view                                  = Hardwares::VulkanDevice::GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
-            imgui_vulkan_init_info.QueueFamily               = queue_view.FamilyIndex;
-            imgui_vulkan_init_info.Queue                     = queue_view.Handle;
-            imgui_vulkan_init_info.PipelineCache             = nullptr;
-            imgui_vulkan_init_info.DescriptorPool            = Hardwares::VulkanDevice::GetDescriptorPool();
-            imgui_vulkan_init_info.Allocator                 = nullptr;
-            imgui_vulkan_init_info.MinImageCount             = swapchain->GetMinImageCount();
-            imgui_vulkan_init_info.ImageCount                = swapchain->GetImageCount();
-            imgui_vulkan_init_info.CheckVkResultFn           = nullptr;
-
-            ImGui_ImplVulkan_Init(&imgui_vulkan_init_info, swapchain->GetRenderPass());
-
-            // Upload Fonts
-            auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
-            {
-                ImGui_ImplVulkan_CreateFontsTexture(command_buffer->GetHandle());
-            }
-            Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
+            ImGUIRenderer::Initialize(current_window_ptr->GetNativeWindow(), swapchain);
 
             m_initialized = true;
         }
@@ -99,12 +67,7 @@ namespace ZEngine::Layers
     {
         if (m_initialized)
         {
-            Hardwares::VulkanDevice::DisposeCommandPool(m_ui_command_pool);
-            ImGui_ImplVulkan_DestroyFontUploadObjects();
-            ImGui_ImplVulkan_Shutdown();
-            ImGui_ImplGlfw_Shutdown();
-            ImGui::DestroyContext();
-
+            ImGUIRenderer::Deinitialize();
             m_initialized = false;
         }
     }
@@ -318,11 +281,8 @@ namespace ZEngine::Layers
             auto current_vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(window_ptr.get());
             auto swapchain                 = current_vulkan_window_ptr->GetSwapchain();
 
-            ImGui_ImplVulkan_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
+            ImGUIRenderer::BeginFrame();
 
-            ImGui::NewFrame();
-            ImGuizmo::BeginFrame();
             for (const auto& component : m_ui_components)
             {
                 if (component->GetVisibility() == true)
@@ -331,44 +291,13 @@ namespace ZEngine::Layers
                 }
             }
             ImGui::Render();
-
             /*Frame and CommandBuffer preparing*/
-            ZENGINE_VALIDATE_ASSERT(m_ui_command_pool != nullptr, "UI Command pool can't be null")
-
-            auto command_buffer = m_ui_command_pool->GetCurrentCommmandBuffer();
-            command_buffer->Begin();
-            {
-                // Begin RenderPass
-                VkRenderPassBeginInfo render_pass_begin_info    = {};
-                render_pass_begin_info.sType                    = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-                render_pass_begin_info.renderPass               = swapchain->GetRenderPass();
-                render_pass_begin_info.framebuffer              = swapchain->GetCurrentFramebuffer();
-                render_pass_begin_info.renderArea.extent.width  = window_ptr->GetWidth();
-                render_pass_begin_info.renderArea.extent.height = window_ptr->GetHeight();
-
-                std::array<VkClearValue, 2> clear_values = {};
-                clear_values[0].color                    = {{0.0f, 0.0f, 0.0f, 1.0f}};
-                clear_values[1].depthStencil             = {1.0f, 0};
-                render_pass_begin_info.clearValueCount   = clear_values.size();
-                render_pass_begin_info.pClearValues      = clear_values.data();
-                vkCmdBeginRenderPass(command_buffer->GetHandle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-                // Record dear imgui primitives into command buffer
-                ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer->GetHandle());
-
-                vkCmdEndRenderPass(command_buffer->GetHandle());
-            }
-            command_buffer->End();
+            ImGUIRenderer::Draw(window_ptr->GetWidth(), window_ptr->GetHeight(), swapchain, ImGui::GetDrawData());
 
             // Submit UI Command buffer
-            command_buffer->Submit();
+            ImGUIRenderer::Submit();
 
-            ImGuiIO& io = ImGui::GetIO();
-            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-            {
-                ImGui::UpdatePlatformWindows();
-                ImGui::RenderPlatformWindowsDefault();
-            }
+            ImGUIRenderer::EndFrame();
         }
     }
 } // namespace ZEngine::Layers

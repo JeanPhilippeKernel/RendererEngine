@@ -1,16 +1,14 @@
 #include <pch.h>
-#include <Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h>
-#include <Rendering/Renderers/Pipelines/GraphicRendererPipelineSpecification.h>
+#include <Rendering/Specifications/FrameBufferSpecification.h>
+#include <Rendering/Specifications/GraphicRendererPipelineSpecification.h>
 #include <Rendering/Scenes/GraphicScene.h>
-
-using namespace ZEngine::Rendering::Buffers::FrameBuffers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    Pools::CommandPool*                                                                         GraphicRenderer::m_command_pool = nullptr;
-    Ref<Buffers::UniformBuffer>                                                                 GraphicRenderer::m_UBOCamera = CreateRef<Buffers::UniformBuffer>();
-    Ref<RenderPasses::RenderPass>                                                               GraphicRenderer::m_final_color_output_pass     = {};
-    Contracts::GraphicSceneLayout                                                               GraphicRenderer::m_scene_information           = {};
+    Pools::CommandPool*           GraphicRenderer::m_command_pool            = nullptr;
+    Ref<Buffers::UniformBuffer>   GraphicRenderer::m_UBOCamera               = CreateRef<Buffers::UniformBuffer>();
+    Ref<RenderPasses::RenderPass> GraphicRenderer::m_final_color_output_pass = {};
+    Contracts::GraphicSceneLayout GraphicRenderer::m_scene_information       = {};
 
     const Ref<GraphicRendererInformation>& GraphicRenderer::GetRendererInformation() const
     {
@@ -22,30 +20,29 @@ namespace ZEngine::Rendering::Renderers
         m_command_pool = Hardwares::VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, true);
 
         {
-            Buffers::FrameBufferSpecificationVNext framebuffer_specification = {};
-            framebuffer_specification.Width                                  = 1;
-            framebuffer_specification.Height                                 = 1;
-            framebuffer_specification.AttachmentSpecifications               = {ImageFormat::R8G8B8A8_UNORM, ImageFormat::DEPTH_STENCIL};
+            Specifications::FrameBufferSpecificationVNext framebuffer_specification = {};
+            framebuffer_specification.Width                                         = 1;
+            framebuffer_specification.Height                                        = 1;
+            framebuffer_specification.AttachmentSpecifications                      = {Specifications::ImageFormat::R8G8B8A8_UNORM, Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
 
-            Pipelines::GraphicRendererPipelineSpecification pipeline_spec = {};
-            pipeline_spec.DebugName                                       = "Standard-Pipeline";
-            pipeline_spec.TargetFrameBufferSpecification                  = framebuffer_specification;
-            pipeline_spec.VertexShaderFilename                            = "Resources/Windows/Shaders/standard_shader_light_vertex.spv";
-            pipeline_spec.FragmentShaderFilename                          = "Resources/Windows/Shaders/standard_shader_light_fragment.spv";
-            pipeline_spec.LayoutBindingCollection                         = {
+            Specifications::GraphicRendererPipelineSpecification pipeline_spec = {};
+            pipeline_spec.DebugName                                            = "Standard-Pipeline";
+            pipeline_spec.TargetFrameBufferSpecification                       = framebuffer_specification;
+            pipeline_spec.VertexShaderFilename                                 = "Resources/Windows/Shaders/standard_shader_light_vertex.spv";
+            pipeline_spec.FragmentShaderFilename                               = "Resources/Windows/Shaders/standard_shader_light_fragment.spv";
+            pipeline_spec.LayoutBindingCollection                              = {
                 VkDescriptorSetLayoutBinding{
-                                            .binding            = 0,
-                                            .descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                            .descriptorCount    = 1,
-                                            .stageFlags         = VK_SHADER_STAGE_VERTEX_BIT,
-                                            .pImmutableSamplers = nullptr},
+                                                 .binding            = 0,
+                                                 .descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                                 .descriptorCount    = 1,
+                                                 .stageFlags         = VK_SHADER_STAGE_VERTEX_BIT,
+                                                 .pImmutableSamplers = nullptr},
                 VkDescriptorSetLayoutBinding{
-                                            .binding            = 1,
-                                            .descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                            .descriptorCount    = 1,
-                                            .stageFlags         = VK_SHADER_STAGE_VERTEX_BIT,
-                                            .pImmutableSamplers = nullptr}};
-
+                                                 .binding            = 1,
+                                                 .descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                                 .descriptorCount    = 1,
+                                                 .stageFlags         = VK_SHADER_STAGE_VERTEX_BIT,
+                                                 .pImmutableSamplers = nullptr}};
 
             RenderPasses::RenderPassSpecification color_pass = {};
             color_pass.DebugName                             = "Final-Color-Attachment";
@@ -154,9 +151,7 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->Submit();
     }
 
-    void GraphicRenderer::EndScene()
-    {
-    }
+    void GraphicRenderer::EndScene() {}
 
     Contracts::FramebufferViewLayout GraphicRenderer::GetOutputImage(uint32_t frame_index)
     {
