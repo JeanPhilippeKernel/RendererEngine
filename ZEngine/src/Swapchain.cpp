@@ -1,18 +1,24 @@
 #include <pch.h>
 #include <ZEngineDef.h>
-#include <GLFW/glfw3.h>
 #include <Rendering/Swapchain.h>
 #include <Helpers/RendererHelper.h>
 #include <Rendering/Specifications/AttachmentSpecification.h>
 #include <Hardwares/VulkanDevice.h>
+#include <random>
 
 using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering
 {
-    Swapchain::Swapchain(void* native_window)
+    Swapchain::Swapchain(void* native_window, bool is_surface_from_device)
     {
-        m_native_window = native_window;
+        std::random_device                                rd;
+        std::mt19937                                      gen(rd());
+        std::uniform_int_distribution<unsigned long long> dis(std::numeric_limits<std::uint64_t>::min(), std::numeric_limits<std::uint64_t>::max());
+        m_identifier = dis(gen);
+
+        m_is_surface_from_device = is_surface_from_device;
+        m_native_window          = native_window;
 
         Create();
         AcquireNextImage();
@@ -21,6 +27,11 @@ namespace ZEngine::Rendering
     Swapchain::~Swapchain()
     {
         Dispose();
+        if (!m_is_surface_from_device)
+        {
+            auto instance = Hardwares::VulkanDevice::GetNativeInstanceHandle();
+            ZENGINE_DESTROY_VULKAN_HANDLE(instance, vkDestroySurfaceKHR, m_surface, nullptr)
+        }
         m_native_window = nullptr; // we are not responsible of the cleanup
     }
 
@@ -53,7 +64,7 @@ namespace ZEngine::Rendering
         m_wait_semaphore_collection.clear();
         m_wait_semaphore_collection.shrink_to_fit();
 
-        auto& command_pool_collection = Hardwares::VulkanDevice::GetAllCommandPools();
+        auto command_pool_collection = Hardwares::VulkanDevice::GetAllCommandPools(m_identifier);
         for (auto& command_pool : command_pool_collection)
         {
             auto semaphore_collection = command_pool->GetAllWaitSemaphoreCollection();
@@ -97,16 +108,60 @@ namespace ZEngine::Rendering
         return m_framebuffer_collection[m_current_frame_index];
     }
 
+    uint64_t Swapchain::GetIdentifier() const
+    {
+        return m_identifier;
+    }
+
+    VkSwapchainKHR Swapchain::GetHandle() const
+    {
+        return m_handle;
+    }
+
     void Swapchain::Create()
     {
         auto native_device   = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         auto physical_device = Hardwares::VulkanDevice::GetNativePhysicalDeviceHandle();
-        auto surface         = Hardwares::VulkanDevice::GetSurface();
-        auto surface_format  = Hardwares::VulkanDevice::GetSurfaceFormat();
+
+        if (m_surface == VK_NULL_HANDLE)
+        {
+            if (m_is_surface_from_device)
+            {
+                m_surface = Hardwares::VulkanDevice::GetSurface();
+                m_surface_format = Hardwares::VulkanDevice::GetSurfaceFormat();
+            }
+            else
+            {
+                auto instance = Hardwares::VulkanDevice::GetNativeInstanceHandle();
+                ZENGINE_VALIDATE_ASSERT(
+                    glfwCreateWindowSurface(instance, reinterpret_cast<GLFWwindow*>(m_native_window), nullptr, &m_surface) == VK_SUCCESS, "Failed Window Surface from GLFW");
+
+                uint32_t                        format_count                = 0;
+                std::vector<VkSurfaceFormatKHR> surface_format_collection = {};
+                vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, m_surface, &format_count, nullptr);
+                if (format_count != 0)
+                {
+                    surface_format_collection.resize(format_count);
+                    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, m_surface, &format_count, surface_format_collection.data());
+                }
+
+                m_surface_format = (surface_format_collection.size() > 0) ? surface_format_collection[0] : VkSurfaceFormatKHR{};
+                for (const VkSurfaceFormatKHR& format_khr : surface_format_collection)
+                {
+                    // default is: VK_FORMAT_B8G8R8A8_SRGB
+                    // but Imgui wants : VK_FORMAT_B8G8R8A8_UNORM ...
+                    if ((format_khr.format == VK_FORMAT_B8G8R8A8_UNORM) && (format_khr.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR))
+                    {
+                        m_surface_format = format_khr;
+                        break;
+                    }
+                }
+            }
+        }
 
         // Surface capabilities
         VkExtent2D extent = {};
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &m_capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, m_surface, &m_capabilities);
         if (m_capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
         {
             extent = m_capabilities.currentExtent;
@@ -125,10 +180,10 @@ namespace ZEngine::Rendering
 
         VkSwapchainCreateInfoKHR swapchain_create_info = {};
         swapchain_create_info.sType                    = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-        swapchain_create_info.surface                  = surface;
+        swapchain_create_info.surface                  = m_surface;
         swapchain_create_info.minImageCount            = m_min_image_count;
-        swapchain_create_info.imageFormat              = surface_format.format;
-        swapchain_create_info.imageColorSpace          = surface_format.colorSpace;
+        swapchain_create_info.imageFormat              = m_surface_format.format;
+        swapchain_create_info.imageColorSpace          = m_surface_format.colorSpace;
         swapchain_create_info.imageExtent              = extent;
         swapchain_create_info.imageArrayLayers         = m_capabilities.maxImageArrayLayers;
         swapchain_create_info.preTransform             = m_capabilities.currentTransform;
@@ -191,7 +246,7 @@ namespace ZEngine::Rendering
 
         for (size_t i = 0; i < m_image_view_collection.size(); ++i)
         {
-            m_image_view_collection[i] = Hardwares::VulkanDevice::CreateImageView(m_image_collection[i], surface_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
+            m_image_view_collection[i] = Hardwares::VulkanDevice::CreateImageView(m_image_collection[i], m_surface_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
         }
 
         /* Create Attachment */
@@ -262,7 +317,5 @@ namespace ZEngine::Rendering
 
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         ZENGINE_DESTROY_VULKAN_HANDLE(device, vkDestroySwapchainKHR, m_handle, nullptr)
-
-        m_handle = nullptr;
     }
 }

@@ -30,4 +30,4 @@
 	url = https://github.com/jbeder/yaml-cpp
 [submodule "__externals/ImGuizmo"]
 	path = __externals/ImGuizmo
-	url = https://github.com/CedricGuillemet/ImGuizmo
+	url = https://github.com/CedricGuillemet/ImGuizmo/tree/664cf2d73864a36b2a8b5091d33fc4578c885eca

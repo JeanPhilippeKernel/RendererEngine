@@ -21,15 +21,13 @@ namespace Tetragrama::Layers
         m_inspector_view_component = std::make_shared<Components::InspectorViewUIComponent>();
         m_hierarchy_view_component = std::make_shared<Components::HierarchyViewUIComponent>();
 
-        m_dockspace_component->AddChild(m_demo_component);
-        m_dockspace_component->AddChild(m_scene_component);
-        m_dockspace_component->AddChild(m_editor_log_component);
-
-        m_dockspace_component->AddChild(m_project_view_component);
-        m_dockspace_component->AddChild(m_inspector_view_component);
-        m_dockspace_component->AddChild(m_hierarchy_view_component);
-
         this->AddUIComponent(m_dockspace_component);
+        this->AddUIComponent(m_demo_component);
+        this->AddUIComponent(m_scene_component);
+        this->AddUIComponent(m_editor_log_component);
+        this->AddUIComponent(m_project_view_component);
+        this->AddUIComponent(m_inspector_view_component);
+        this->AddUIComponent(m_hierarchy_view_component);
 
         // Register components
 

@@ -49,6 +49,16 @@ namespace ZEngine::Window::GLFWWindow
             m_property.SetHeight(window_height);
         }
 
+#ifdef _WIN32
+        auto native_hwnd = glfwGetWin32Window(m_native_window);
+        m_property.Dpi   = GetDpiForWindow(native_hwnd);
+#endif // _WIN32
+
+        float x_scale, y_scale;
+        glfwGetWindowContentScale(m_native_window, &x_scale, &y_scale);
+        m_property.DpiScale = x_scale;
+
+
         ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height)
     }
 
