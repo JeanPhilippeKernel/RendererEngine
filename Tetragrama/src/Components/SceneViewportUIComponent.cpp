@@ -52,7 +52,7 @@ namespace Tetragrama::Components
     void SceneViewportUIComponent::Render()
     {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
+        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse /*| ImGuiWindowFlags_NoMove*/);
 
         auto viewport_offset = ImGui::GetCursorPos();
 

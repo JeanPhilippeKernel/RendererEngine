@@ -11,7 +11,7 @@ namespace Tetragrama::Components
     class SceneViewportUIComponent : public ZEngine::Components::UI::UIComponent
     {
     public:
-        SceneViewportUIComponent(std::string_view name = "Scene Viewport", bool visibility = true);
+        SceneViewportUIComponent(std::string_view name = "Scene", bool visibility = true);
         virtual ~SceneViewportUIComponent();
 
         void Update(ZEngine::Core::TimeStep dt) override;

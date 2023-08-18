@@ -12,7 +12,7 @@ namespace Tetragrama::Components
     class LogUIComponent : public ZEngine::Components::UI::UIComponent
     {
     public:
-        LogUIComponent(std::string_view name = "Log", bool visibility = true);
+        LogUIComponent(std::string_view name = "Console", bool visibility = true);
         virtual ~LogUIComponent();
 
         void Update(ZEngine::Core::TimeStep dt) override;

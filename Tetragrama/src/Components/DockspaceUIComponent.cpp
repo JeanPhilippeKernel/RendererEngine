@@ -68,9 +68,9 @@ namespace Tetragrama::Components {
                 // Dock windows
                 ImGui::DockBuilderDockWindow("Hierarchy", dock_right_id);
                 ImGui::DockBuilderDockWindow("Inspector", dock_right_down_id);
-                ImGui::DockBuilderDockWindow("Log", dock_down_id);
+                ImGui::DockBuilderDockWindow("Console", dock_down_id);
                 ImGui::DockBuilderDockWindow("Assets", dock_down_right_id);
-                ImGui::DockBuilderDockWindow("Scene Viewport", dock_main_id);
+                ImGui::DockBuilderDockWindow("Scene", dock_main_id);
 
                 ImGui::DockBuilderFinish(dock_main_id);
             }
