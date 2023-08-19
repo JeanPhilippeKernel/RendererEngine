@@ -59,6 +59,7 @@ namespace ZEngine::Layers
             auto& style            = ImGui::GetStyle();
             style.WindowBorderSize = 0.f;
             style.ChildBorderSize  = 0.f;
+            style.FrameRounding    = 7.0f;
 
             auto window_property = current_window->GetWindowProperty();
             io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Bold.ttf", 17.f * window_property.DpiScale);

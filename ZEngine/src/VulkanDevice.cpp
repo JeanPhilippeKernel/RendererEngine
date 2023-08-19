@@ -752,7 +752,6 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkBindImageMemory(m_logical_device, buffer_image.Handle, buffer_image.Memory, 0) == VK_SUCCESS, "Failed to bind the memory to image")
 
         buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_aspect_flag);
-
         return buffer_image;
     }
 

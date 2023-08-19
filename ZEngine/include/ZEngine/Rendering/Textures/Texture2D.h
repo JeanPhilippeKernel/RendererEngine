@@ -14,6 +14,8 @@ namespace ZEngine::Rendering::Textures {
         void SetData(void* const data) override;
         void SetData(float r, float g, float b, float a) override;
 
+         Ref<Buffers::Image2DBuffer> GetImage2DBuffer() const;
+
     private:
         Ref<Buffers::Image2DBuffer> m_image_2d_buffer;
     };

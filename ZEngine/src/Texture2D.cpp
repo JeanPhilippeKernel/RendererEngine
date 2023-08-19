@@ -36,6 +36,8 @@ namespace ZEngine::Rendering::Textures
         {
             m_byte_per_pixel = channel;
             m_buffer_size    = width * height * m_byte_per_pixel;
+            m_width          = width;
+            m_height         = height;
 
             auto                  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
             Hardwares::BufferView staging_buffer =
@@ -134,6 +136,11 @@ namespace ZEngine::Rendering::Textures
         data[3]               = static_cast<unsigned char>(std::clamp(a, .0f, 255.0f));
 
         SetData(data);
+    }
+
+    Ref<Buffers::Image2DBuffer> Texture2D::GetImage2DBuffer() const
+    {
+        return m_image_2d_buffer;
     }
 
     Texture2D::~Texture2D()
