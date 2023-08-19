@@ -57,7 +57,6 @@ target_link_libraries (zEngineLib
 	PUBLIC
 		imported::fmt
 		imported::spdlog
-		imported::glad
 		imported::glm
 		imported::imgui
 		imported::entt
@@ -65,5 +64,4 @@ target_link_libraries (zEngineLib
 		imported::stduuid
 		imported::yaml-cpp
 		imported::vulkan
-		"$ENV{VULKAN_SDK}/Lib/shaderc_combinedd.lib"
 )

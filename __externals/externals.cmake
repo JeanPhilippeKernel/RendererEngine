@@ -14,12 +14,6 @@ set (FMT_INCLUDE_PATH ${EXTERNAL_DIR}/fmt/include)
 set_target_properties(imported::fmt PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${FMT_INCLUDE_PATH}")
 target_link_libraries(imported::fmt INTERFACE fmt)
 
-# glad
-add_library (imported::glad INTERFACE IMPORTED)
-set (GLAD_INCLUDE_PATH ${EXTERNAL_DIR}/glad/include ${EXTERNAL_DIR}/glad/include/KHR)
-set_target_properties(imported::glad PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${GLAD_INCLUDE_PATH}")
-target_link_libraries(imported::glad INTERFACE glad)
-
 # glm
 add_library (imported::glm INTERFACE IMPORTED)
 set (GLM_INCLUDE_PATH ${EXTERNAL_DIR}/glm)

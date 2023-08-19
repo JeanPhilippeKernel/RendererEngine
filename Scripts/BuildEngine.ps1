@@ -164,7 +164,12 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
             $buildArguments = $buildArguments, $buildToolOptions -join " --"
         }
 
-        $buildProcess = Start-Process $cMakeProgram -ArgumentList $buildArguments -NoNewWindow -Wait -PassThru
+        $buildProcess = Start-Process $cMakeProgram -ArgumentList $buildArguments -NoNewWindow -PassThru
+
+        # Grab the process handle. When using `-NoNewWindow`, retrieving the ExitCode can return null once the process
+        # has exited. See:
+        # https://stackoverflow.com/questions/44057728/start-process-system-diagnostics-process-exitcode-is-null-with-nonewwindow
+        $processHandle = $buildProcess.Handle
         $buildProcess.WaitForExit();
         if ($buildProcess.ExitCode -ne 0) {
             throw "cmake failed build for '$buildArguments' with exit code '$buildProcess.ExitCode'"
