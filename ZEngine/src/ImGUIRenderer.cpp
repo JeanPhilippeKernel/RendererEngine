@@ -13,21 +13,33 @@ namespace ZEngine::Rendering::Renderers
 {
     Pools::CommandPool*                ImGUIRenderer::s_ui_command_pool = nullptr;
     Rendering::Buffers::CommandBuffer* ImGUIRenderer::s_command_buffer  = nullptr;
+    VkDescriptorPool                   ImGUIRenderer::s_descriptor_pool  = VK_NULL_HANDLE;
 
     void ImGUIRenderer::Initialize(void* window, const Ref<Swapchain>& swapchain)
     {
         s_ui_command_pool = VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, true);
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(window), false);
 
+        /*Create DescriptorPool*/
+        auto                              device     = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        std::vector<VkDescriptorPoolSize> pool_sizes = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, swapchain->GetImageCount()}};
+        VkDescriptorPoolCreateInfo        pool_info  = {};
+        pool_info.sType                              = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.flags                              = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool_info.maxSets                            = swapchain->GetImageCount();
+        pool_info.poolSizeCount                      = 1;
+        pool_info.pPoolSizes                         = pool_sizes.data();
+        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(device, &pool_info, nullptr, &s_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool -- ImGuiLayer")
+
         ImGui_ImplVulkan_InitInfo imgui_vulkan_init_info = {};
         imgui_vulkan_init_info.Instance                  = Hardwares::VulkanDevice::GetNativeInstanceHandle();
         imgui_vulkan_init_info.PhysicalDevice            = Hardwares::VulkanDevice::GetNativePhysicalDeviceHandle();
-        imgui_vulkan_init_info.Device                    = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        imgui_vulkan_init_info.Device                    = device;
         auto queue_view                                  = Hardwares::VulkanDevice::GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
         imgui_vulkan_init_info.QueueFamily               = queue_view.FamilyIndex;
         imgui_vulkan_init_info.Queue                     = queue_view.Handle;
         imgui_vulkan_init_info.PipelineCache             = nullptr;
-        imgui_vulkan_init_info.DescriptorPool            = Hardwares::VulkanDevice::GetDescriptorPool();
+        imgui_vulkan_init_info.DescriptorPool            = s_descriptor_pool;
         imgui_vulkan_init_info.Allocator                 = nullptr;
         imgui_vulkan_init_info.MinImageCount             = swapchain->GetMinImageCount();
         imgui_vulkan_init_info.ImageCount                = swapchain->GetImageCount();
@@ -50,6 +62,9 @@ namespace ZEngine::Rendering::Renderers
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
+
+        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        ZENGINE_DESTROY_VULKAN_HANDLE(device, vkDestroyDescriptorPool, s_descriptor_pool, nullptr)
     }
 
     void ImGUIRenderer::BeginFrame()

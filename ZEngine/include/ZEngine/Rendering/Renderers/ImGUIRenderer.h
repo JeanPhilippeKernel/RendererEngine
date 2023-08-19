@@ -25,6 +25,7 @@ namespace ZEngine::Rendering::Renderers
         static void __ImGUICreateOrResizeBuffer(VkBuffer& buffer, VkDeviceMemory& buffer_memory, VkDeviceSize& p_buffer_size, size_t new_size, VkBufferUsageFlagBits usage);
         static Rendering::Buffers::CommandBuffer* s_command_buffer;
         static Rendering::Pools::CommandPool*     s_ui_command_pool;
+        static VkDescriptorPool                   s_descriptor_pool;
     };
 
 }

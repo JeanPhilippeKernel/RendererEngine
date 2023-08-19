@@ -35,6 +35,7 @@ namespace ZEngine::Rendering
         uint32_t                                 m_image_width;
         uint32_t                                 m_image_height;
         uint32_t                                 m_min_image_count;
+        uint32_t                                 m_image_count;
         VkSurfaceCapabilitiesKHR                 m_capabilities;
         Ref<Renderers::RenderPasses::Attachment> m_attachment;
         std::vector<uint32_t>                    m_queue_family_index_collection;

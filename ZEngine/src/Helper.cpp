@@ -101,7 +101,7 @@ namespace ZEngine::Helpers
         /*Color blending*/
         // This configuration is per-framebuffer definition
         specification.ColorBlendAttachmentState.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        specification.ColorBlendAttachmentState.blendEnable         = VK_TRUE;
+        specification.ColorBlendAttachmentState.blendEnable         = VK_FALSE;
         specification.ColorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
         specification.ColorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
         specification.ColorBlendAttachmentState.colorBlendOp        = VK_BLEND_OP_ADD;
