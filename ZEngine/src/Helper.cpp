@@ -129,7 +129,7 @@ namespace ZEngine::Helpers
         specification.LayoutCreateInfo.pSetLayouts            = nullptr; // Optional
         specification.LayoutCreateInfo.pushConstantRangeCount = 0;       // Optional
         specification.LayoutCreateInfo.pPushConstantRanges    = nullptr; // Optional
-        specification.LayoutCreateInfo.flags                  = VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT;
+        specification.LayoutCreateInfo.flags                  = 0;
         specification.LayoutCreateInfo.pNext                  = nullptr;
 
         /*Vertex Input*/
