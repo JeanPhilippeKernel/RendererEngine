@@ -35,6 +35,7 @@ namespace ZEngine::Rendering::Renderers
         static void __ImGUIRenderDataChildViewport(void* data, void** user_data, VkCommandBuffer command_buffer, VkPipeline pipeline);
         static Rendering::Buffers::CommandBuffer* s_command_buffer;
         static Rendering::Pools::CommandPool*     s_ui_command_pool;
+        static VkDescriptorPool                   s_descriptor_pool;
     };
 
 } // namespace ZEngine::Rendering::Renderers

@@ -111,7 +111,7 @@ namespace ZEngine::Rendering
 
     uint32_t Swapchain::GetImageCount() const
     {
-        return m_image_collection.size();
+        return m_image_count;
     }
 
     VkRenderPass Swapchain::GetRenderPass() const
@@ -237,6 +237,7 @@ namespace ZEngine::Rendering
         uint32_t image_count{0};
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(native_device, m_handle, &image_count, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
 
+        m_image_count = image_count;
         m_image_collection.resize(image_count);
         m_image_view_collection.resize(image_count);
         m_framebuffer_collection.resize(image_count);
