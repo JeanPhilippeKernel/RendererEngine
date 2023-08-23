@@ -1,108 +1,87 @@
 #pragma once
-#include <Engine.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
-#include <Rendering/Buffers/BufferLayout.h>
-#include <Rendering/Renderers/Storages/IVertex.h>
-#include <Helpers/BufferHelper.h>
+#include <Hardwares/VulkanDevice.h>
 
 namespace ZEngine::Rendering::Buffers
 {
 
-    template <typename T>
-    class VertexBuffer : public GraphicBuffer<T>
+    class VertexBuffer : public IGraphicBuffer
     {
     public:
-        explicit VertexBuffer(unsigned int vertex_count) : GraphicBuffer<T>(), m_vertex_count(vertex_count)
+        explicit VertexBuffer() : IGraphicBuffer() {}
+
+        void SetData(const void* data, size_t byte_size)
         {
-            // ToDo : Should be moved to graphic pipeline
-            m_binding_description.binding   = 0;
-            m_binding_description.stride    = sizeof(Renderers::Storages::IVertex);
-            m_binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        }
+            if (!data)
+            {
+                ZENGINE_CORE_WARN("data is null")
+                return;
+            }
 
-        unsigned int GetVertexCount() const
-        {
-            return m_vertex_count;
-        }
+            if (byte_size == 0)
+            {
+                ZENGINE_CORE_WARN("data byte size is null")
+                return;
+            }
 
-        void SetData(const std::vector<T>& content) override
-        {
-            GraphicBuffer<T>::SetData(content);
+            if (this->m_byte_size < byte_size)
+            {
+                CleanUpMemory();
+                this->m_byte_size = byte_size;
+                m_vertex_buffer   = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            }
 
-            Hardwares::VulkanDevice& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-            auto                     device_handle     = performant_device.GetNativeDeviceHandle();
-            const auto&              memory_properties = performant_device.GetPhysicalDeviceMemoryProperties();
+            Hardwares::BufferView staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
+                static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-            VkBuffer       staging_buffer;
-            VkDeviceMemory staging_buffer_memory;
-            Helpers::CreateBuffer(performant_device, staging_buffer, staging_buffer_memory, static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                memory_properties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
+            auto  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
             void* memory_region;
-            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device_handle, staging_buffer_memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
-            std::memcpy(memory_region, content.data(), this->m_byte_size);
-            vkUnmapMemory(device_handle, staging_buffer_memory);
+            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, staging_buffer.Memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
+            std::memcpy(memory_region, data, this->m_byte_size);
+            vkUnmapMemory(device, staging_buffer.Memory);
 
-            Helpers::CreateBuffer(performant_device, m_vertex_buffer, m_vertex_buffer_device_memory, static_cast<VkDeviceSize>(this->m_byte_size),
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, memory_properties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
 
-            Helpers::CopyBuffer(performant_device, staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, staging_buffer.Handle);
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, staging_buffer.Memory);
+            staging_buffer = {};
+        }
 
-            vkDestroyBuffer(device_handle, staging_buffer, nullptr);
-            vkFreeMemory(device_handle, staging_buffer_memory, nullptr);
+        template <typename T>
+        inline void SetData(const std::vector<T>& content)
+        {
+            size_t byte_size = sizeof(T) * content.size();
+            this->SetData(content.data(), byte_size);
         }
 
         ~VertexBuffer()
         {
-            auto device_handle = Engine::GetVulkanInstance()->GetHighPerformantDevice().GetNativeDeviceHandle();
-
-            vkDestroyBuffer(device_handle, m_vertex_buffer, nullptr);
-            vkFreeMemory(device_handle, m_vertex_buffer_device_memory, nullptr);
+            CleanUpMemory();
         }
 
-        void Bind() const override {}
-
-        void Unbind() const override {}
-
-        void SetLayout(const Layout::BufferLayout<T>& layout)
+        VkBuffer GetNativeBufferHandle() const
         {
-            m_layout = layout;
-            UpdateLayout();
+            return m_vertex_buffer.Handle;
         }
 
-        void SetLayout(Layout::BufferLayout<T>&& layout)
+        void Dispose()
         {
-            m_layout = std::move(layout);
-            UpdateLayout();
+            CleanUpMemory();
         }
 
-        const Layout::BufferLayout<T>& GetLayout() const
+    private:
+        void CleanUpMemory()
         {
-            return m_layout;
-        }
-
-    protected:
-        void UpdateLayout()
-        {
-            std::vector<Layout::ElementLayout<T>>& elements = m_layout.GetElementLayout();
-
-            m_attribute_description_collection.resize(elements.size());
-
-            for (auto i = 0; i < m_attribute_description_collection.size(); ++i)
+            if (m_vertex_buffer)
             {
-                m_attribute_description_collection[i].binding  = 0;
-                m_attribute_description_collection[i].location = i;
-                m_attribute_description_collection[i].format   = (VkFormat) elements[i].GetFormat();
-                m_attribute_description_collection[i].offset   = elements[i].GetOffset();
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_vertex_buffer.Handle);
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_vertex_buffer.Memory);
+                m_vertex_buffer = {};
             }
         }
 
     private:
-        unsigned int                                   m_vertex_count{0}; // Todo : this property should be removed ?
-        VkBuffer                                       m_vertex_buffer{VK_NULL_HANDLE};
-        VkDeviceMemory                                 m_vertex_buffer_device_memory{VK_NULL_HANDLE};
-        VkVertexInputBindingDescription                m_binding_description{};
-        std::vector<VkVertexInputAttributeDescription> m_attribute_description_collection{};
-        Layout::BufferLayout<T>                        m_layout;
+        Hardwares::BufferView m_vertex_buffer;
     };
 } // namespace ZEngine::Rendering::Buffers

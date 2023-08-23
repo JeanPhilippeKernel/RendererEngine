@@ -1,58 +1,88 @@
 #pragma once
 #include <ZEngineDef.h>
+#include <Hardwares/VulkanDevice.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
-#include <Helpers/BufferHelper.h>
 
 namespace ZEngine::Rendering::Buffers
 {
 
-    template <typename T>
-    class IndexBuffer : public GraphicBuffer<T>
+    class IndexBuffer : public IGraphicBuffer
     {
     public:
-        IndexBuffer() : GraphicBuffer<T>() {}
+        IndexBuffer() : IGraphicBuffer() {}
 
-        void SetData(const std::vector<T>& content) override
+        void SetData(const void* data, size_t byte_size)
         {
-            GraphicBuffer<T>::SetData(content);
+            if (!data)
+            {
+                ZENGINE_CORE_WARN("data is null")
+                return;
+            }
 
-            Hardwares::VulkanDevice& performant_device = Engine::GetVulkanInstance()->GetHighPerformantDevice();
-            auto                     device_handle     = performant_device.GetNativeDeviceHandle();
-            const auto&              memory_properties = performant_device.GetPhysicalDeviceMemoryProperties();
+            if (byte_size == 0)
+            {
+                ZENGINE_CORE_WARN("data byte size is null")
+                return;
+            }
 
-            VkBuffer       staging_buffer;
-            VkDeviceMemory staging_buffer_memory;
-            Helpers::CreateBuffer(performant_device, staging_buffer, staging_buffer_memory, static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                memory_properties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            if (this->m_byte_size < byte_size)
+            {
+                CleanUpMemory();
+                this->m_byte_size = byte_size;
+                m_index_buffer    = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            }
 
+            Hardwares::BufferView staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
+                static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+            auto  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
             void* memory_region;
-            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device_handle, staging_buffer_memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
-            std::memcpy(memory_region, content.data(), this->m_byte_size);
-            vkUnmapMemory(device_handle, staging_buffer_memory);
+            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, staging_buffer.Memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
+            std::memcpy(memory_region, data, this->m_byte_size);
+            vkUnmapMemory(device, staging_buffer.Memory);
 
-            Helpers::CreateBuffer(performant_device, m_index_buffer, m_index_buffer_device_memory, static_cast<VkDeviceSize>(this->m_byte_size),
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, memory_properties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_index_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
 
-            Helpers::CopyBuffer(performant_device, staging_buffer, m_index_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, staging_buffer.Handle);
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, staging_buffer.Memory);
+            staging_buffer = {};
+        }
 
-            vkDestroyBuffer(device_handle, staging_buffer, nullptr);
-            vkFreeMemory(device_handle, staging_buffer_memory, nullptr);
+        template <typename T>
+        inline void SetData(const std::vector<T>& content)
+        {
+            size_t byte_size = sizeof(T) * content.size();
+            this->SetData(content.data(), byte_size);
         }
 
         ~IndexBuffer()
         {
-            auto device_handle = Engine::GetVulkanInstance()->GetHighPerformantDevice().GetNativeDeviceHandle();
-
-            vkDestroyBuffer(device_handle, m_index_buffer, nullptr);
-            vkFreeMemory(device_handle, m_index_buffer_device_memory, nullptr);
+            CleanUpMemory();
         }
 
-        void Bind() const override {}
+        VkBuffer GetNativeBufferHandle() const
+        {
+            return m_index_buffer.Handle;
+        }
 
-        void Unbind() const override {}
+        void Dispose()
+        {
+            CleanUpMemory();
+        }
 
     private:
-        VkBuffer       m_index_buffer{VK_NULL_HANDLE};
-        VkDeviceMemory m_index_buffer_device_memory{VK_NULL_HANDLE};
+        void CleanUpMemory()
+        {
+            if (m_index_buffer)
+            {
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_index_buffer.Handle);
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_index_buffer.Memory);
+                m_index_buffer = {};
+            }
+        }
+
+    private:
+        Hardwares::BufferView m_index_buffer;
     };
 } // namespace ZEngine::Rendering::Buffers

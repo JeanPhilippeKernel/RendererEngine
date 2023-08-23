@@ -1,35 +1,29 @@
-# Format Style Options - Created with Clang Power Tools
----
+Language: Cpp
+BasedOnStyle: Microsoft
 AccessModifierOffset: -4
+AlignAfterOpenBracket: AlwaysBreak
+AlignConsecutiveMacros: true # Only available in clang-format-10
 AlignConsecutiveAssignments: Consecutive
 AlignConsecutiveDeclarations: Consecutive
-BasedOnStyle: Microsoft
-ColumnLimit: 180
-ConstructorInitializerAllOnOneLineOrOnePerLine: true
-ConstructorInitializerIndentWidth : 4
-IndentWidth: 4
-Language: Cpp
-NamespaceIndentation: All
-SortIncludes: false
-Standard: c++17
-AlignAfterOpenBracket: DontAlign
 AlignEscapedNewlines: Left
-AlignOperands: AlignAfterOperator
-AlignTrailingComments: false
+AlignOperands: true
+AlignTrailingComments: true
+# AlignArrayOfStructures: Left
+# AllowAllArgumentsOnNextLine: true # Only available in clang-format-10
+AllowAllConstructorInitializersOnNextLine: false # Only available in clang-format-10
+AllowAllParametersOfDeclarationOnNextLine: false # Only available in clang-format-10
+AllowShortBlocksOnASingleLine: Empty # Only available in clang-format-10
+AllowShortCaseLabelsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: Empty # Only available in clang-format-10
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterDefinitionReturnType: None
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
-BreakBeforeBinaryOperators: NonAssignment
-DeriveLineEnding: false
-IncludeBlocks:   Regroup
-IndentCaseBlocks: true
-IndentRequires:  true
-IndentWidth:     4
-IndentWrappedFunctionNames: true
-MaxEmptyLinesToKeep: 2
-NamespaceIndentation: All
-PointerAlignment: Left
-SpaceAfterCStyleCast: true
-BreakBeforeBraces: Allman
+BinPackArguments: false
+BinPackParameters: false
 BraceWrapping:
   AfterCaseLabel:  true
   AfterClass: true
@@ -43,8 +37,89 @@ BraceWrapping:
   AfterExternBlock: true
   BeforeCatch: true
   BeforeElse: true
-  IndentBraces: true
+  IndentBraces: false
   SplitEmptyFunction: true
   SplitEmptyRecord: true
   SplitEmptyNamespace: true
-...
+BreakBeforeBinaryOperators: None
+BreakBeforeBraces: Custom
+BreakBeforeInheritanceComma: false
+BreakInheritanceList: BeforeColon
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializersBeforeComma: false
+BreakConstructorInitializers: BeforeColon
+BreakAfterJavaFieldAnnotations: false
+BreakStringLiterals: true
+ColumnLimit: 180
+CommentPragmas: '^ IWYU pragma:'
+CompactNamespaces: false
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+Cpp11BracedListStyle: true
+DerivePointerAlignment: false
+DisableFormat: false
+ExperimentalAutoDetectBinPacking: false
+FixNamespaceComments: true
+IncludeBlocks: Merge
+IncludeCategories:
+  - Regex:           'pch.h'
+    Priority:        -1
+  - Regex:           '.*\.g\..*'
+    Priority:        1
+  - Regex:           '^<.*\.h(pp)?>'
+    Priority:        2
+  - Regex:           '^<.*'
+    Priority:        3
+  - Regex:           '.*'
+    Priority:        4
+IncludeIsMainRegex: '(Test)?$'
+IndentCaseLabels: true
+# IndentGotoLabels: true # Only available in clang-format-10
+IndentPPDirectives: None
+IndentWidth: 4
+IndentWrappedFunctionNames: true
+JavaScriptQuotes: Leave
+JavaScriptWrapImports: true
+KeepEmptyLinesAtTheStartOfBlocks: true
+MacroBlockBegin: ''
+MacroBlockEnd: ''
+MaxEmptyLinesToKeep: 1
+NamespaceIndentation: All
+ObjCBinPackProtocolList: Auto
+ObjCBlockIndentWidth: 2
+ObjCSpaceAfterProperty: false
+ObjCSpaceBeforeProtocolList: true
+PenaltyBreakAssignment: 2
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakComment: 300
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakString: 1000
+PenaltyBreakTemplateDeclaration: 10
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 1000
+PointerAlignment: Left
+ReflowComments: true
+SortIncludes: true
+SortUsingDeclarations: true
+SpaceAfterCStyleCast: true
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyBlock: false
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 1
+SpacesInAngles: false
+SpacesInContainerLiterals: true
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+Standard: c++20
+TabWidth: 4
+UseTab: Never
+

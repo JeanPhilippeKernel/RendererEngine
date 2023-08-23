@@ -24,8 +24,6 @@
 #include <Layers/LayerStack.h>
 #include <Window/WindowConfiguration.h>
 
-#include <Hardwares/VulkanInstance.h>
-
 namespace ZEngine
 {
     class Engine;

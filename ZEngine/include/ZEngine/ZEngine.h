@@ -8,12 +8,10 @@
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/Buffers/VertexBuffer.h"
 #include "Rendering/Buffers/IndexBuffer.h"
-#include "Rendering/Buffers/VertexArray.h"
-#include "Rendering/Buffers/FrameBuffers/Framebuffer.h"
-#include "Rendering/Buffers/FrameBuffers/FrameBufferSpecification.h"
+#include "Rendering/Buffers/Framebuffer.h"
+#include "Rendering/Specifications/FrameBufferSpecification.h"
 
 #include "Rendering/Scenes/GraphicScene.h"
-#include "Rendering/Scenes/GraphicScene2D.h"
 #include "Rendering/Scenes/GraphicScene3D.h"
 
 #include "Serializers/GraphicSceneSerializer.h"
@@ -30,8 +28,6 @@
 #include "Rendering/Components/ValidComponent.h"
 
 #include "Rendering/Renderers/GraphicRenderer.h"
-#include "Rendering/Renderers/GraphicRenderer2D.h"
-#include "Rendering/Renderers/GraphicRenderer3D.h"
 
 #include "Rendering/Cameras/Camera.h"
 #include "Rendering/Cameras/OrthographicCamera.h"

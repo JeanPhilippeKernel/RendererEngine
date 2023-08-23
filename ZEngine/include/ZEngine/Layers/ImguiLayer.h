@@ -5,7 +5,6 @@
 #include <Layers/Layer.h>
 #include <imgui.h>
 #include <imconfig.h>
-#include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <Core/TimeStep.h>
 #include <Inputs/KeyCode.h>
@@ -14,6 +13,7 @@
 #include <Inputs/ITextInputEventCallback.h>
 #include <Window/ICoreWindowEventCallback.h>
 #include <Components/UIComponent.h>
+#include <Rendering/Pools/CommandPool.h>
 
 namespace ZEngine::Components::UI
 {
@@ -68,10 +68,6 @@ namespace ZEngine::Layers
 
     private:
         static bool                                   m_initialized;
-        bool                                          m_swap_chain_rebuild{false};
-        VkDescriptorPool                              m_descriptor_pool{VK_NULL_HANDLE};
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
-
-        void FrameRenderAndPresent(const Ref<Window::CoreWindow>& wd, ImDrawData* draw_data);
     };
 } // namespace ZEngine::Layers

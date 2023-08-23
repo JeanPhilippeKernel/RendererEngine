@@ -1,7 +1,7 @@
 #include <pch.h>
 #include <Engine.h>
-#include <Layers/ImguiLayer.h>
 #include <Logging/LoggerDefinition.h>
+#include <Hardwares/VulkanDevice.h>
 
 namespace ZEngine
 {
@@ -9,14 +9,10 @@ namespace ZEngine
     float                            Engine::m_last_frame_time{0.0f};
     Core::TimeStep                   Engine::m_delta_time{0.0f};
     Ref<ZEngine::Window::CoreWindow> Engine::m_window{nullptr};
-    Scope<Hardwares::VulkanInstance> Engine::m_vulkan_instance{nullptr};
 
     void Engine::Initialize(const EngineConfiguration& engine_configuration)
     {
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
-
-        m_vulkan_instance = CreateScope<Hardwares::VulkanInstance>("ZEngine");
-        m_vulkan_instance->CreateInstance();
 
         m_window.reset(ZEngine::Window::Create(engine_configuration.WindowConfiguration));
 
@@ -49,10 +45,11 @@ namespace ZEngine
     {
         m_request_terminate = false;
         m_window.reset();
-        m_vulkan_instance.reset();
 
         ZENGINE_CORE_INFO("Engine destroyed")
         Logging::Logger::Flush();
+
+        Hardwares::VulkanDevice::Dispose();
     }
 
     void Engine::Update(Core::TimeStep delta_time)
@@ -85,11 +82,6 @@ namespace ZEngine
     Core::TimeStep Engine::GetDeltaTime()
     {
         return m_delta_time;
-    }
-
-    Hardwares::VulkanInstance* Engine::GetVulkanInstance()
-    {
-        return m_vulkan_instance.get();
     }
 
     void Engine::Run()

@@ -10,6 +10,7 @@
 #include <Core/IEventable.h>
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Window
 {

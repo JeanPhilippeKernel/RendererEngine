@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Materials {
     }
 
     void BasicMaterial::Apply(const Ref<Shaders::Shader>& shader) {
-        ShaderMaterial::Apply(shader);
-        m_texture->Bind();
+        //ShaderMaterial::Apply(shader);
+        //m_texture->Bind();
     }
 } // namespace ZEngine::Rendering::Materials

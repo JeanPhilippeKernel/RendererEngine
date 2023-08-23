@@ -17,6 +17,8 @@
 #include <Controllers/OrbitCameraController.h>
 #include <Rendering/Lights/DirectionalLight.h>
 
+#include <Helpers/MeshHelper.h>
+
 using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Rendering::Scenes;
@@ -132,159 +134,188 @@ namespace ZEngine::Serializers {
             return SerializeInformation{false, "Unable to load the Scene file"};
         }
 
-        if (m_scene.expired()) {
-            return SerializeInformation{false, "Unable to continue the deserialization process because the scene ref is no longer valid"};
-        }
+        if (auto scene = m_scene.lock())
+        {
+            SerializeInformation deserialization_info{};
+            try
+            {
+                ZENGINE_CORE_INFO("Deserializing Scene file: {0}", filename)
 
-        SerializeInformation deserialization_info{};
-        try {
-            auto scene = m_scene.lock();
+                auto entities = scene_data["Entities"];
+                if (entities)
+                {
+                    for (auto entity : entities)
+                    {
+                        GraphicSceneEntity scene_entity;
 
-            ZENGINE_CORE_INFO("Deserializing Scene file: {0}", filename)
+                        // UUIComponent
+                        auto entity_uuid = entity["Entity"].as<std::string>();
 
-            auto entities = scene_data["Entities"];
-            if (entities) {
-                for (auto entity : entities) {
-                    GraphicSceneEntity scene_entity;
-
-                    // UUIComponent
-                    auto entity_uuid = entity["Entity"].as<std::string>();
-
-                    // NameComponent
-                    std::string name;
-                    auto        name_component = entity["NameComponent"];
-                    if (name_component) {
-                        name = name_component["Name"].as<std::string>();
-                    }
-
-                    scene_entity = scene->CreateEntity(entity_uuid, name);
-
-                    // TransformComponent
-                    auto transform_component = entity["TransformComponent"];
-                    if (transform_component) {
-                        auto& component = scene_entity.GetComponent<TransformComponent>();
-                        component.SetPosition(transform_component["Position"].as<Maths::Vector3>());
-                        component.SetRotationEulerAngles(transform_component["Rotation"].as<Maths::Vector3>());
-                        component.SetScaleSize(transform_component["Scale"].as<Maths::Vector3>());
-                    }
-
-                    // GeometryComponent
-                    auto geometry_component = entity["GeometryComponent"];
-                    if (geometry_component) {
-                        auto geometry_type = geometry_component["GeometryType"].as<int>();
-                        if (geometry_type == static_cast<int>(Rendering::Geometries::GeometryType::CUBE)) {
-                            scene_entity.AddComponent<GeometryComponent>(CreateRef<Rendering::Geometries::CubeGeometry>());
+                        // NameComponent
+                        std::string name;
+                        auto        name_component = entity["NameComponent"];
+                        if (name_component)
+                        {
+                            name = name_component["Name"].as<std::string>();
                         }
-                    }
 
-                    // MaterialComponent
-                    auto material_component = entity["MaterialComponent"];
-                    if (material_component) {
-                        auto material_shader_type = material_component["MaterialShaderType"].as<int>();
-                        if (material_shader_type == static_cast<int>(Rendering::Shaders::ShaderBuiltInType::STANDARD)) {
-                            Ref<StandardMaterial> standard_material = CreateRef<StandardMaterial>();
-                            standard_material->SetShininess(material_component["Shininess"].as<float>());
-                            standard_material->SetTileFactor(material_component["TileFactor"].as<float>());
-                            standard_material->SetDiffuseTintColor(material_component["DiffuseTintColor"].as<Maths::Vector4>());
-                            standard_material->SetSpecularTintColor(material_component["SpecularTintColor"].as<Maths::Vector4>());
+                        scene_entity = scene->CreateEntity(entity_uuid, name);
 
-                            auto diffuse_map = material_component["DiffuseMap"];
-                            if (diffuse_map["FromFile"].as<bool>()) {
-                                auto texture_path = diffuse_map["TexturePath"].as<std::string>();
-                                auto texture      = ZEngine::Managers::TextureManager::Load(texture_path);
-                                standard_material->SetDiffuseMap(std::move(texture));
-                            } else {
-                                auto texture_color = diffuse_map["TextureColor"].as<Maths::Vector4>();
-                                auto texture       = Ref<Rendering::Textures::Texture>(Rendering::Textures::CreateTexture(1, 1));
-                                texture->SetData(texture_color.r, texture_color.g, texture_color.b, texture_color.a);
-                                standard_material->SetDiffuseMap(std::move(texture));
-                            }
-
-                            auto specular_map = material_component["SpecularMap"];
-                            if (specular_map["FromFile"].as<bool>()) {
-                                auto texture_path = specular_map["TexturePath"].as<std::string>();
-                                auto texture      = ZEngine::Managers::TextureManager::Load(texture_path);
-                                standard_material->SetSpecularMap(std::move(texture));
-                            } else {
-                                auto texture_color = specular_map["TextureColor"].as<Maths::Vector4>();
-                                auto texture       = Ref<Rendering::Textures::Texture>(Rendering::Textures::CreateTexture(1, 1));
-                                texture->SetData(texture_color.r, texture_color.g, texture_color.b, texture_color.a);
-                                standard_material->SetSpecularMap(std::move(texture));
-                            }
-
-                            scene_entity.AddComponent<MaterialComponent>(std::move(standard_material));
-                        } else if (material_shader_type == static_cast<int>(Rendering::Shaders::ShaderBuiltInType::BASIC)) {
-                            scene_entity.AddComponent<MaterialComponent>(CreateRef<BasicMaterial>());
+                        // TransformComponent
+                        auto transform_component = entity["TransformComponent"];
+                        if (transform_component)
+                        {
+                            auto& component = scene_entity.GetComponent<TransformComponent>();
+                            component.SetPosition(transform_component["Position"].as<Maths::Vector3>());
+                            component.SetRotationEulerAngles(transform_component["Rotation"].as<Maths::Vector3>());
+                            component.SetScaleSize(transform_component["Scale"].as<Maths::Vector3>());
                         }
-                    }
 
-                    // LightComponent
-                    auto light_component = entity["LightComponent"];
-                    if (light_component) {
-                        auto light_type = light_component["LightType"].as<int>();
-                        if (light_type == static_cast<int>(ZEngine::Rendering::Lights::LightType::DIRECTIONAL_LIGHT)) {
-                            auto direction      = light_component["Direction"].as<Maths::Vector3>();
-                            auto ambient_color  = light_component["AmbientColor"].as<Maths::Vector3>();
-                            auto diffuse_color  = light_component["DiffuseColor"].as<Maths::Vector3>();
-                            auto specular_color = light_component["SpecularColor"].as<Maths::Vector3>();
-
-                            auto directional_light = CreateRef<ZEngine::Rendering::Lights::DirectionalLight>();
-                            directional_light->SetAmbientColor(ambient_color);
-                            directional_light->SetDiffuseColor(diffuse_color);
-                            directional_light->SetSpecularColor(specular_color);
-                            directional_light->SetDirection(direction);
-                            scene_entity.AddComponent<LightComponent>(std::move(directional_light));
-                        }
-                    }
-
-                    // CameraComponent
-                    auto camera_component = entity["CameraComponent"];
-                    if (camera_component) {
-                        auto is_primary  = camera_component["IsPrimary"].as<bool>();
-                        auto camera_type = camera_component["CameraType"].as<int>();
-
-                        if (camera_type == static_cast<int>(Rendering::Cameras::CameraType::PERSPECTIVE)) {
-                            auto aspect_ratio         = camera_component["AspectRatio"].as<float>();
-                            auto field_of_view_degree = camera_component["FielOfViewDegree"].as<float>();
-                            auto camera_clipping_near                 = camera_component["Near"].as<float>();
-                            auto camera_clipping_far  = camera_component["Far"].as<float>();
-
-                            auto camera_controller_type = camera_component["CameraControllerType"];
-                            if (!camera_controller_type) {
-                                // missing CameraControllerType .. report error
+                        // GeometryComponent
+                        auto geometry_component = entity["GeometryComponent"];
+                        if (geometry_component)
+                        {
+                            auto geometry_type = geometry_component["GeometryType"].as<int>();
+                            if (geometry_type == static_cast<int>(Rendering::Geometries::GeometryType::CUBE))
+                            {
+                                int32_t mesh_id{-1};
+                                auto    cube_mesh = ZEngine::Helpers::CreateBuiltInMesh(ZEngine::Rendering::Meshes::MeshType::CUBE);
+                                mesh_id           = scene->AddMesh(std::move(cube_mesh));
+                                scene_entity.AddComponent<MeshComponent>(mesh_id);
                             }
+                        }
 
-                            auto controller_type = camera_controller_type["ControllerType"].as<int>();
-                            if (controller_type == static_cast<int>(ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER)) {
-                                auto radius             = camera_controller_type["Radius"].as<float>();
-                                auto yaw_angle_degree   = camera_controller_type["YawAngleDegree"].as<float>();
-                                auto pitch_angle_degree = camera_controller_type["PitchAngleDegree"].as<float>();
-                                auto position           = camera_controller_type["Position"].as<Maths::Vector3>();
+                        // MaterialComponent
+                        auto material_component = entity["MaterialComponent"];
+                        if (material_component)
+                        {
+                            auto material_shader_type = material_component["MaterialShaderType"].as<int>();
+                            if (material_shader_type == static_cast<int>(Rendering::Shaders::ShaderBuiltInType::STANDARD))
+                            {
+                                Ref<StandardMaterial> standard_material = CreateRef<StandardMaterial>();
+                                standard_material->SetShininess(material_component["Shininess"].as<float>());
+                                standard_material->SetTileFactor(material_component["TileFactor"].as<float>());
+                                standard_material->SetDiffuseTintColor(material_component["DiffuseTintColor"].as<Maths::Vector4>());
+                                standard_material->SetSpecularTintColor(material_component["SpecularTintColor"].as<Maths::Vector4>());
 
-                                auto window_parent    = scene->m_parent_window.lock();
-                                auto orbit_controller = CreateRef<ZEngine::Controllers::OrbitCameraController>(window_parent, position, yaw_angle_degree, pitch_angle_degree);
-                                orbit_controller->SetAspectRatio(scene->m_last_scene_requested_size.first / scene->m_last_scene_requested_size.second);
-                                orbit_controller->SetNear(camera_clipping_near);
-                                orbit_controller->SetFar(camera_clipping_far);
-                                orbit_controller->SetFieldOfView(Maths::radians(field_of_view_degree));
+                                auto diffuse_map = material_component["DiffuseMap"];
+                                if (diffuse_map["FromFile"].as<bool>())
+                                {
+                                    auto texture_path = diffuse_map["TexturePath"].as<std::string>();
+                                    auto texture      = ZEngine::Managers::TextureManager::Load(texture_path);
+                                    standard_material->SetDiffuseMap(std::move(texture));
+                                }
+                                else
+                                {
+                                    auto texture_color = diffuse_map["TextureColor"].as<Maths::Vector4>();
+                                    auto texture       = Ref<Rendering::Textures::Texture>(Rendering::Textures::CreateTexture(1, 1));
+                                    texture->SetData(texture_color.r, texture_color.g, texture_color.b, texture_color.a);
+                                    standard_material->SetDiffuseMap(std::move(texture));
+                                }
 
-                                auto       camera       = orbit_controller->GetCamera();
-                                auto const orbit_camera = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
-                                orbit_camera->SetRadius(radius);
+                                auto specular_map = material_component["SpecularMap"];
+                                if (specular_map["FromFile"].as<bool>())
+                                {
+                                    auto texture_path = specular_map["TexturePath"].as<std::string>();
+                                    auto texture      = ZEngine::Managers::TextureManager::Load(texture_path);
+                                    standard_material->SetSpecularMap(std::move(texture));
+                                }
+                                else
+                                {
+                                    auto texture_color = specular_map["TextureColor"].as<Maths::Vector4>();
+                                    auto texture       = Ref<Rendering::Textures::Texture>(Rendering::Textures::CreateTexture(1, 1));
+                                    texture->SetData(texture_color.r, texture_color.g, texture_color.b, texture_color.a);
+                                    standard_material->SetSpecularMap(std::move(texture));
+                                }
 
-                                auto& component           = scene_entity.AddComponent<CameraComponent>(std::move(orbit_controller));
-                                component.IsPrimaryCamera = is_primary;
+                                scene_entity.AddComponent<MaterialComponent>(std::move(standard_material));
+                            }
+                            else if (material_shader_type == static_cast<int>(Rendering::Shaders::ShaderBuiltInType::BASIC))
+                            {
+                                scene_entity.AddComponent<MaterialComponent>(CreateRef<BasicMaterial>());
+                            }
+                        }
+
+                        // LightComponent
+                        auto light_component = entity["LightComponent"];
+                        if (light_component)
+                        {
+                            auto light_type = light_component["LightType"].as<int>();
+                            if (light_type == static_cast<int>(ZEngine::Rendering::Lights::LightType::DIRECTIONAL_LIGHT))
+                            {
+                                auto direction      = light_component["Direction"].as<Maths::Vector3>();
+                                auto ambient_color  = light_component["AmbientColor"].as<Maths::Vector3>();
+                                auto diffuse_color  = light_component["DiffuseColor"].as<Maths::Vector3>();
+                                auto specular_color = light_component["SpecularColor"].as<Maths::Vector3>();
+
+                                auto directional_light = CreateRef<ZEngine::Rendering::Lights::DirectionalLight>();
+                                directional_light->SetAmbientColor(ambient_color);
+                                directional_light->SetDiffuseColor(diffuse_color);
+                                directional_light->SetSpecularColor(specular_color);
+                                directional_light->SetDirection(direction);
+                                scene_entity.AddComponent<LightComponent>(std::move(directional_light));
+                            }
+                        }
+
+                        // CameraComponent
+                        auto camera_component = entity["CameraComponent"];
+                        if (camera_component)
+                        {
+                            auto is_primary  = camera_component["IsPrimary"].as<bool>();
+                            auto camera_type = camera_component["CameraType"].as<int>();
+
+                            if (camera_type == static_cast<int>(Rendering::Cameras::CameraType::PERSPECTIVE))
+                            {
+                                auto aspect_ratio         = camera_component["AspectRatio"].as<float>();
+                                auto field_of_view_degree = camera_component["FielOfViewDegree"].as<float>();
+                                auto camera_clipping_near = camera_component["Near"].as<float>();
+                                auto camera_clipping_far  = camera_component["Far"].as<float>();
+
+                                auto camera_controller_type = camera_component["CameraControllerType"];
+                                if (!camera_controller_type)
+                                {
+                                    // missing CameraControllerType .. report error
+                                }
+
+                                auto controller_type = camera_controller_type["ControllerType"].as<int>();
+                                if (controller_type == static_cast<int>(ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER))
+                                {
+                                    auto radius             = camera_controller_type["Radius"].as<float>();
+                                    auto yaw_angle_degree   = camera_controller_type["YawAngleDegree"].as<float>();
+                                    auto pitch_angle_degree = camera_controller_type["PitchAngleDegree"].as<float>();
+                                    auto position           = camera_controller_type["Position"].as<Maths::Vector3>();
+
+                                    auto window_parent    = scene->m_parent_window.lock();
+                                    auto orbit_controller = CreateRef<ZEngine::Controllers::OrbitCameraController>(window_parent, position, yaw_angle_degree, pitch_angle_degree);
+                                    orbit_controller->SetAspectRatio(scene->m_last_scene_requested_size.first / scene->m_last_scene_requested_size.second);
+                                    orbit_controller->SetNear(camera_clipping_near);
+                                    orbit_controller->SetFar(camera_clipping_far);
+                                    orbit_controller->SetFieldOfView(Maths::radians(field_of_view_degree));
+
+                                    auto       camera       = orbit_controller->GetCamera();
+                                    auto const orbit_camera = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
+                                    orbit_camera->SetRadius(radius);
+
+                                    auto& component           = scene_entity.AddComponent<CameraComponent>(std::move(orbit_controller));
+                                    component.IsPrimaryCamera = is_primary;
+                                }
                             }
                         }
                     }
                 }
             }
-        } catch (const std::exception& e) {
-            deserialization_info.IsSuccess    = false;
-            deserialization_info.ErrorMessage = e.what();
-        }
+            catch (const std::exception& e)
+            {
+                deserialization_info.IsSuccess    = false;
+                deserialization_info.ErrorMessage = e.what();
+            }
 
-        return deserialization_info;
+            return deserialization_info;
+        }
+        else
+        {
+            return SerializeInformation{false, "Unable to continue the deserialization process because the scene ref is no longer valid"};
+        }
     }
 
     void GraphicScene3DSerializer::SerializeSceneEntity(YAML::Emitter& emitter, const GraphicSceneEntity& entity) {
@@ -309,13 +340,18 @@ namespace ZEngine::Serializers {
             emitter << YAML::EndMap;
         });
 
-        SerializeSceneEntityComponent<GeometryComponent>(emitter, entity, [](YAML::Emitter& emitter, GeometryComponent& component) {
-            auto geometry = component.GetGeometry();
-            emitter << YAML::Key << "GeometryComponent";
-            emitter << YAML::BeginMap;
-            emitter << YAML::Key << "GeometryType" << YAML::Value << static_cast<int>(geometry->GetGeometryType());
-            emitter << YAML::EndMap;
-        });
+        SerializeSceneEntityComponent<MeshComponent>(emitter, entity,
+            [this](YAML::Emitter& emitter, MeshComponent& component)
+            {
+                if (auto scene = m_scene.lock())
+                {
+                    const auto& mesh = scene->GetMesh(component.GetMeshID());
+                    emitter << YAML::Key << "GeometryComponent";
+                    emitter << YAML::BeginMap;
+                    emitter << YAML::Key << "GeometryType" << YAML::Value << static_cast<int>(mesh.Type);
+                    emitter << YAML::EndMap;
+                }
+            });
 
         SerializeSceneEntityComponent<MaterialComponent>(emitter, entity, [](YAML::Emitter& emitter, MaterialComponent& component) {
             auto material             = component.GetMaterials()[0]; // Todo : need to change to consider the list
