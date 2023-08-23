@@ -60,16 +60,18 @@ namespace Tetragrama::Components {
                 ImGui::DockBuilderSetNodeSize(window_id, ImGui::GetMainViewport()->Size);
 
                 ImGuiID dock_main_id       = window_id;
+                ImGuiID dock_left_id      = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Left, 0.2f, nullptr, &dock_main_id);
                 ImGuiID dock_right_id      = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.2f, nullptr, &dock_main_id);
-                ImGuiID dock_right_down_id = ImGui::DockBuilderSplitNode(dock_right_id, ImGuiDir_Down, 0.6f, nullptr, &dock_right_id);
+
+                ImGuiID dock_right_down_id = ImGui::DockBuilderSplitNode(dock_right_id, ImGuiDir_Down, 0.3f, nullptr, &dock_right_id);
                 ImGuiID dock_down_id       = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.25f, nullptr, &dock_main_id);
                 ImGuiID dock_down_right_id = ImGui::DockBuilderSplitNode(dock_down_id, ImGuiDir_Right, 0.6f, nullptr, &dock_down_id);
 
                 // Dock windows
-                ImGui::DockBuilderDockWindow("Hierarchy", dock_right_id);
-                ImGui::DockBuilderDockWindow("Inspector", dock_right_down_id);
-                ImGui::DockBuilderDockWindow("Console", dock_down_id);
-                ImGui::DockBuilderDockWindow("Assets", dock_down_right_id);
+                ImGui::DockBuilderDockWindow("Hierarchy", dock_left_id);
+                ImGui::DockBuilderDockWindow("Inspector", dock_right_id);
+                ImGui::DockBuilderDockWindow("Console", dock_right_down_id);
+                ImGui::DockBuilderDockWindow("Project", dock_down_right_id);
                 ImGui::DockBuilderDockWindow("Scene", dock_main_id);
 
                 ImGui::DockBuilderFinish(dock_main_id);
