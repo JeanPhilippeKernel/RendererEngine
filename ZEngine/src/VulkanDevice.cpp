@@ -313,8 +313,8 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(m_logical_device, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool -- ImGuiLayer")
 
         /*In Device Command Pool*/
-        m_in_device_command_pool_map[Rendering::QueueType::GRAPHIC_QUEUE]  = CreateRef<Rendering::Pools::CommandPool>(Rendering::QueueType::GRAPHIC_QUEUE, false);
-        m_in_device_command_pool_map[Rendering::QueueType::TRANSFER_QUEUE] = CreateRef<Rendering::Pools::CommandPool>(Rendering::QueueType::TRANSFER_QUEUE, false);
+        m_in_device_command_pool_map[Rendering::QueueType::GRAPHIC_QUEUE]  = CreateRef<Rendering::Pools::CommandPool>(Rendering::QueueType::GRAPHIC_QUEUE, 0, false);
+        m_in_device_command_pool_map[Rendering::QueueType::TRANSFER_QUEUE] = CreateRef<Rendering::Pools::CommandPool>(Rendering::QueueType::TRANSFER_QUEUE, 0, false);
     }
 
     void VulkanDevice::Deinitialize()
@@ -514,14 +514,22 @@ namespace ZEngine::Hardwares
         }
     }
 
-    Rendering::Pools::CommandPool* VulkanDevice::CreateCommandPool(Rendering::QueueType queue_type, bool present_on_swapchain)
+    Rendering::Pools::CommandPool* VulkanDevice::CreateCommandPool(Rendering::QueueType queue_type, uint64_t swapchain_id, bool present_on_swapchain)
     {
-        return m_command_pool_collection.emplace_back(CreateRef<Rendering::Pools::CommandPool>(queue_type, present_on_swapchain)).get();
+        return m_command_pool_collection.emplace_back(CreateRef<Rendering::Pools::CommandPool>(queue_type, swapchain_id, present_on_swapchain)).get();
     }
 
-    const std::vector<Ref<Rendering::Pools::CommandPool>>& VulkanDevice::GetAllCommandPools()
+    std::vector<Ref<Rendering::Pools::CommandPool>> VulkanDevice::GetAllCommandPools(uint64_t swapchain_id)
     {
-        return m_command_pool_collection;
+        std::vector<Ref<Rendering::Pools::CommandPool>> command_pool_collection;
+        for (auto& command_pool : m_command_pool_collection)
+        {
+            if (command_pool->GetSwapchainParent() == swapchain_id)
+            {
+                command_pool_collection.push_back(command_pool);
+            }
+        }
+        return command_pool_collection;
     }
 
     void VulkanDevice::DisposeCommandPool(const Rendering::Pools::CommandPool* pool)
@@ -744,7 +752,6 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkBindImageMemory(m_logical_device, buffer_image.Handle, buffer_image.Memory, 0) == VK_SUCCESS, "Failed to bind the memory to image")
 
         buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_aspect_flag);
-
         return buffer_image;
     }
 

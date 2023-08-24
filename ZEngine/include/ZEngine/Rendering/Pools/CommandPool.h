@@ -9,13 +9,15 @@ namespace ZEngine::Rendering::Pools
 {
     struct CommandPool
     {
-        CommandPool(Rendering::QueueType type, bool present_on_swapchain = true);
+        CommandPool(Rendering::QueueType type, uint64_t swapchain_identifier = 0, bool present_on_swapchain = true);
         ~CommandPool();
 
         Buffers::CommandBuffer*             GetCurrentCommmandBuffer();
         std::vector<Primitives::Semaphore*> GetAllWaitSemaphoreCollection();
+        uint64_t                            GetSwapchainParent() const;
 
     private:
+        uint64_t                                    m_swapchain_identifier{0};
         uint32_t                                    m_current_command_buffer_index{0};
         VkCommandPool                               m_handle{VK_NULL_HANDLE};
         Rendering::QueueType                        m_queue_type;

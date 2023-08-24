@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Initialize()
     {
-        m_command_pool = Hardwares::VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, true);
+        m_command_pool = Hardwares::VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, 0, true);
 
         {
             Specifications::FrameBufferSpecificationVNext framebuffer_specification = {};

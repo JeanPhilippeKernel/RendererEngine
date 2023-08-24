@@ -37,6 +37,12 @@ namespace ZEngine::Layers
             StyleDarkTheme();
 
             ImGuiIO& io = ImGui::GetIO();
+            io.ConfigViewportsNoTaskBarIcon = true;
+            io.ConfigViewportsNoDecoration  = true;
+            io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+            io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+            io.BackendFlags |= ImGuiBackendFlags_HasMouseHoveredViewport;
+            io.BackendRendererName = "ZEngine";
 
             std::string_view default_layout_ini = "Settings/DefaultLayout.ini";
             const auto       current_directoy   = std::filesystem::current_path();
@@ -53,11 +59,20 @@ namespace ZEngine::Layers
             auto& style            = ImGui::GetStyle();
             style.WindowBorderSize = 0.f;
             style.ChildBorderSize  = 0.f;
+            style.FrameRounding    = 7.0f;
 
-            io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Bold.ttf", 17.f);
-            io.FontDefault = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f);
+            auto window_property = current_window->GetWindowProperty();
+            io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Bold.ttf", 17.f * window_property.DpiScale);
+            io.FontDefault = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f * window_property.DpiScale);
+            io.FontGlobalScale = window_property.DpiScale;
 
             ImGUIRenderer::Initialize(current_window_ptr->GetNativeWindow(), swapchain);
+            auto& platform_io                  = ImGui::GetPlatformIO();
+            platform_io.Renderer_CreateWindow  = __ImGUIRendererCreateWindowCallback;
+            platform_io.Renderer_DestroyWindow = __ImGUIPlatformDestroyWindowCallback;
+            platform_io.Renderer_RenderWindow  = __ImGUIPlatformRenderWindowCallback;
+            platform_io.Renderer_SetWindowSize = __ImGUIPlatformSetWindowSizeCallback;
+            platform_io.Renderer_SwapBuffers   = __ImGUIPlatformSwapBuffersCallback;
 
             m_initialized = true;
         }
@@ -269,6 +284,51 @@ namespace ZEngine::Layers
         colors[ImGuiCol_CheckMark]        = ImVec4{1.0f, 1.f, 1.0f, 1.f};
     }
 
+    void ImguiLayer::__ImGUIRendererCreateWindowCallback(ImGuiViewport* viewport)
+    {
+        ImguiViewPortWindowChild* viewport_window = new ImguiViewPortWindowChild{viewport->PlatformHandle};
+        viewport->RendererUserData                = viewport_window;
+    }
+
+    void ImguiLayer::__ImGUIPlatformDestroyWindowCallback(ImGuiViewport* viewport)
+    {
+        if (viewport->RendererUserData)
+        {
+            auto window_child = reinterpret_cast<ImguiViewPortWindowChild*>(viewport->RendererUserData);
+            Hardwares::VulkanDevice::DisposeCommandPool(window_child->CommandPool);
+            window_child->Swapchain.reset();
+            delete window_child;
+        }
+        viewport->RendererUserData = nullptr;
+    }
+
+    void ImguiLayer::__ImGUIPlatformRenderWindowCallback(ImGuiViewport* viewport, void* args)
+    {
+        if (viewport->RendererUserData)
+        {
+            auto window_child = reinterpret_cast<ImguiViewPortWindowChild*>(viewport->RendererUserData);
+            ImGUIRenderer::DrawChildWindow(viewport->Size.x, viewport->Size.y, &window_child, viewport->DrawData);
+        }
+    }
+
+    void ImguiLayer::__ImGUIPlatformSwapBuffersCallback(ImGuiViewport* viewport, void* args)
+    {
+        if (viewport->RendererUserData)
+        {
+            auto window_child = reinterpret_cast<ImguiViewPortWindowChild*>(viewport->RendererUserData);
+            window_child->Swapchain->Present();
+        }
+    }
+
+    void ImguiLayer::__ImGUIPlatformSetWindowSizeCallback(ImGuiViewport* viewport, ImVec2 size)
+    {
+        if (viewport->RendererUserData)
+        {
+            auto window_child = reinterpret_cast<ImguiViewPortWindowChild*>(viewport->RendererUserData);
+            window_child->Swapchain->Resize();
+        }
+    }
+
     void ImguiLayer::Render()
     {
         if (auto window_ptr = m_window.lock())
@@ -292,10 +352,7 @@ namespace ZEngine::Layers
             }
             ImGui::Render();
             /*Frame and CommandBuffer preparing*/
-            ImGUIRenderer::Draw(window_ptr->GetWidth(), window_ptr->GetHeight(), swapchain, ImGui::GetDrawData());
-
-            // Submit UI Command buffer
-            ImGUIRenderer::Submit();
+            ImGUIRenderer::Draw(window_ptr->GetWidth(), window_ptr->GetHeight(), swapchain, nullptr, ImGui::GetDrawData());
 
             ImGUIRenderer::EndFrame();
         }

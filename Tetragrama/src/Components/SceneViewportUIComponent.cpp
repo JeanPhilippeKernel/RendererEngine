@@ -11,9 +11,21 @@ using namespace Tetragrama::Components::Event;
 
 namespace Tetragrama::Components
 {
-    SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {}
+    SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
+    {
+        Texture = ZEngine::CreateRef<ZEngine::Rendering::Textures::Texture2D>("Assets/Images/Crate.png");
+        auto buffer = Texture->GetImage2DBuffer();
 
-    SceneViewportUIComponent::~SceneViewportUIComponent() {}
+       TextureHandle = ImGui_ImplVulkan_AddTexture(nullptr, buffer->GetImageViewHandle(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
+
+    SceneViewportUIComponent::~SceneViewportUIComponent()
+    {
+       if (TextureHandle)
+       {
+           ImGui_ImplVulkan_RemoveTexture(TextureHandle);
+       }
+    }
 
     void SceneViewportUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
@@ -52,7 +64,7 @@ namespace Tetragrama::Components
     void SceneViewportUIComponent::Render()
     {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse /*| ImGuiWindowFlags_NoMove*/);
 
         auto viewport_offset = ImGui::GetCursorPos();
 
@@ -67,10 +79,8 @@ namespace Tetragrama::Components
         ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
 
         // Scene texture representation
-        if (m_current_scene_texture_view != VK_NULL_HANDLE)
-        {
-            ImGui::Image(m_current_scene_texture_view, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
-        }
+        /*ToDo : Texture Handle, just for text*/
+        ImGui::Image(TextureHandle, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
 
         // ViewPort bound computation
         ImVec2 viewport_windows_size = ImGui::GetWindowSize();

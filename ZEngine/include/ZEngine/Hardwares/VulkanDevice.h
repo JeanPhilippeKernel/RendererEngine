@@ -68,9 +68,9 @@ namespace ZEngine::Hardwares
         static bool HasPendingCleanupResource();
         static void Present(VkSwapchainKHR swapchain, uint32_t* frame_image_index, const std::vector<Rendering::Primitives::Semaphore*>& wait_semaphore_collection);
 
-        static Rendering::Pools::CommandPool*                         CreateCommandPool(Rendering::QueueType queue_type, bool present_on_swapchain);
-        static const std::vector<Ref<Rendering::Pools::CommandPool>>& GetAllCommandPools();
-        static void                                                   DisposeCommandPool(const Rendering::Pools::CommandPool* pool);
+        static Rendering::Pools::CommandPool*                  CreateCommandPool(Rendering::QueueType queue_type, uint64_t swapchain_id, bool present_on_swapchain);
+        static std::vector<Ref<Rendering::Pools::CommandPool>> GetAllCommandPools(uint64_t swapchain_id = 0);
+        static void                                            DisposeCommandPool(const Rendering::Pools::CommandPool* pool);
 
         static QueueView GetQueue(Rendering::QueueType type);
         static void      QueueWait(Rendering::QueueType type);

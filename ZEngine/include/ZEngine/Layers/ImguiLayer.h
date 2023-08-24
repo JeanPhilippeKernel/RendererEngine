@@ -3,17 +3,18 @@
 #include <vector>
 #include <string_view>
 #include <Layers/Layer.h>
+#include <Core/TimeStep.h>
+#include <Inputs/KeyCode.h>
+
 #include <imgui.h>
 #include <imconfig.h>
 #include <backends/imgui_impl_vulkan.h>
-#include <Core/TimeStep.h>
-#include <Inputs/KeyCode.h>
 #include <Inputs/IKeyboardEventCallback.h>
 #include <Inputs/IMouseEventCallback.h>
 #include <Inputs/ITextInputEventCallback.h>
 #include <Window/ICoreWindowEventCallback.h>
 #include <Components/UIComponent.h>
-#include <Rendering/Pools/CommandPool.h>
+#include <Rendering/Swapchain.h>
 
 namespace ZEngine::Components::UI
 {
@@ -69,5 +70,10 @@ namespace ZEngine::Layers
     private:
         static bool                                   m_initialized;
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
+        static void                                   __ImGUIRendererCreateWindowCallback(ImGuiViewport* viewport);
+        static void                                   __ImGUIPlatformDestroyWindowCallback(ImGuiViewport* viewport);
+        static void                                   __ImGUIPlatformRenderWindowCallback(ImGuiViewport* viewport, void * args);
+        static void                                   __ImGUIPlatformSwapBuffersCallback(ImGuiViewport* viewport, void* args);
+        static void                                   __ImGUIPlatformSetWindowSizeCallback(ImGuiViewport* viewport, ImVec2 size);
     };
 } // namespace ZEngine::Layers

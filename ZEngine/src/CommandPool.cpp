@@ -5,9 +5,10 @@
 
 namespace ZEngine::Rendering::Pools
 {
-    CommandPool::CommandPool(Rendering::QueueType type, bool present_on_swapchain)
+    CommandPool::CommandPool(Rendering::QueueType type, uint64_t swapchain_identifier, bool present_on_swapchain)
     {
         /* Create CommandPool */
+        m_swapchain_identifier                                    = swapchain_identifier;
         m_queue_type                                              = type;
         auto                    device                            = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         Hardwares::QueueView    queue_view                        = Hardwares::VulkanDevice::GetQueue(type);
@@ -83,5 +84,10 @@ namespace ZEngine::Rendering::Pools
             }
         }
         return wait_semaphore_collection;
+    }
+
+    uint64_t CommandPool::GetSwapchainParent() const
+    {
+        return m_swapchain_identifier;
     }
 } // namespace ZEngine::Rendering::Pools

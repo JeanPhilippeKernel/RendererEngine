@@ -10,7 +10,7 @@ namespace ZEngine::Rendering
     class Swapchain
     {
     public:
-        Swapchain(void* native_window);
+        Swapchain(void* native_window, bool is_surface_from_device = true);
         ~Swapchain();
 
         void Resize();
@@ -18,16 +18,21 @@ namespace ZEngine::Rendering
         void AcquireNextImage();
         void Present();
 
-        uint32_t      GetMinImageCount() const;
-        uint32_t      GetImageCount() const;
-        VkRenderPass  GetRenderPass() const;
-        VkFramebuffer GetCurrentFramebuffer();
+        uint32_t       GetMinImageCount() const;
+        uint32_t       GetImageCount() const;
+        VkRenderPass   GetRenderPass() const;
+        VkFramebuffer  GetCurrentFramebuffer();
+        VkSwapchainKHR GetHandle() const;
+        uint64_t       GetIdentifier() const;
 
     private:
         void Create();
         void Dispose();
 
         void*                                    m_native_window{nullptr};
+        VkSurfaceKHR                             m_surface{VK_NULL_HANDLE};
+        VkSurfaceFormatKHR                       m_surface_format;
+        bool                                     m_is_surface_from_device;
         uint32_t                                 m_current_frame_index{0};
         uint32_t                                 m_current_frame_image_index{0};
         uint32_t                                 m_last_frame_image_index{0};
@@ -45,5 +50,6 @@ namespace ZEngine::Rendering
         std::vector<Ref<Primitives::Semaphore>>  m_acquired_semaphore_collection;
         std::vector<Primitives::Semaphore*>      m_wait_semaphore_collection;
         std::mutex                               m_image_mutex;
+        uint64_t                                 m_identifier{0};
     };
 }

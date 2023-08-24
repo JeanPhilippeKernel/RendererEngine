@@ -1,18 +1,45 @@
 #include <pch.h>
 #include <ZEngineDef.h>
-#include <GLFW/glfw3.h>
 #include <Rendering/Swapchain.h>
 #include <Helpers/RendererHelper.h>
 #include <Rendering/Specifications/AttachmentSpecification.h>
 #include <Hardwares/VulkanDevice.h>
+#include <random>
 
 using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering
 {
-    Swapchain::Swapchain(void* native_window)
+    Swapchain::Swapchain(void* native_window, bool is_surface_from_device)
     {
-        m_native_window = native_window;
+        std::random_device                                rd;
+        std::mt19937                                      gen(rd());
+        std::uniform_int_distribution<unsigned long long> dis(std::numeric_limits<std::uint64_t>::min(), std::numeric_limits<std::uint64_t>::max());
+        m_identifier = dis(gen);
+
+        m_is_surface_from_device = is_surface_from_device;
+        m_native_window          = native_window;
+
+        /* Create Attachment */
+        Specifications::AttachmentSpecification attachment_specification = {};
+        attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
+        // Color attachment Description
+        attachment_specification.ColorsMap[0]                 = {};
+        attachment_specification.ColorsMap[0].Format          = ImageFormat::FORMAT_FROM_DEVICE;
+        attachment_specification.ColorsMap[0].Load            = LoadOperation::CLEAR;
+        attachment_specification.ColorsMap[0].Store           = StoreOperation::STORE;
+        attachment_specification.ColorsMap[0].Initial         = ImageLayout::UNDEFINED;
+        attachment_specification.ColorsMap[0].Final           = ImageLayout::PRESENT_SRC;
+        attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+        // Attachment Dependencies
+        attachment_specification.DependenciesMap[0]               = {};
+        attachment_specification.DependenciesMap[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
+        attachment_specification.DependenciesMap[0].dstSubpass    = 0;
+        attachment_specification.DependenciesMap[0].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        attachment_specification.DependenciesMap[0].dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        attachment_specification.DependenciesMap[0].srcAccessMask = 0;
+        attachment_specification.DependenciesMap[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        m_attachment                                              = Renderers::RenderPasses::Attachment::Create(attachment_specification);
 
         Create();
         AcquireNextImage();
@@ -21,6 +48,12 @@ namespace ZEngine::Rendering
     Swapchain::~Swapchain()
     {
         Dispose();
+        m_attachment->Dispose();
+        if (!m_is_surface_from_device)
+        {
+            auto instance = Hardwares::VulkanDevice::GetNativeInstanceHandle();
+            ZENGINE_DESTROY_VULKAN_HANDLE(instance, vkDestroySurfaceKHR, m_surface, nullptr)
+        }
         m_native_window = nullptr; // we are not responsible of the cleanup
     }
 
@@ -53,7 +86,7 @@ namespace ZEngine::Rendering
         m_wait_semaphore_collection.clear();
         m_wait_semaphore_collection.shrink_to_fit();
 
-        auto& command_pool_collection = Hardwares::VulkanDevice::GetAllCommandPools();
+        auto command_pool_collection = Hardwares::VulkanDevice::GetAllCommandPools(m_identifier);
         for (auto& command_pool : command_pool_collection)
         {
             auto semaphore_collection = command_pool->GetAllWaitSemaphoreCollection();
@@ -97,16 +130,60 @@ namespace ZEngine::Rendering
         return m_framebuffer_collection[m_current_frame_index];
     }
 
+    uint64_t Swapchain::GetIdentifier() const
+    {
+        return m_identifier;
+    }
+
+    VkSwapchainKHR Swapchain::GetHandle() const
+    {
+        return m_handle;
+    }
+
     void Swapchain::Create()
     {
         auto native_device   = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         auto physical_device = Hardwares::VulkanDevice::GetNativePhysicalDeviceHandle();
-        auto surface         = Hardwares::VulkanDevice::GetSurface();
-        auto surface_format  = Hardwares::VulkanDevice::GetSurfaceFormat();
+
+        if (m_surface == VK_NULL_HANDLE)
+        {
+            if (m_is_surface_from_device)
+            {
+                m_surface        = Hardwares::VulkanDevice::GetSurface();
+                m_surface_format = Hardwares::VulkanDevice::GetSurfaceFormat();
+            }
+            else
+            {
+                auto instance = Hardwares::VulkanDevice::GetNativeInstanceHandle();
+                ZENGINE_VALIDATE_ASSERT(
+                    glfwCreateWindowSurface(instance, reinterpret_cast<GLFWwindow*>(m_native_window), nullptr, &m_surface) == VK_SUCCESS, "Failed Window Surface from GLFW");
+
+                uint32_t                        format_count              = 0;
+                std::vector<VkSurfaceFormatKHR> surface_format_collection = {};
+                vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, m_surface, &format_count, nullptr);
+                if (format_count != 0)
+                {
+                    surface_format_collection.resize(format_count);
+                    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, m_surface, &format_count, surface_format_collection.data());
+                }
+
+                m_surface_format = (surface_format_collection.size() > 0) ? surface_format_collection[0] : VkSurfaceFormatKHR{};
+                for (const VkSurfaceFormatKHR& format_khr : surface_format_collection)
+                {
+                    // default is: VK_FORMAT_B8G8R8A8_SRGB
+                    // but Imgui wants : VK_FORMAT_B8G8R8A8_UNORM ...
+                    if ((format_khr.format == VK_FORMAT_B8G8R8A8_UNORM) && (format_khr.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR))
+                    {
+                        m_surface_format = format_khr;
+                        break;
+                    }
+                }
+            }
+        }
 
         // Surface capabilities
         VkExtent2D extent = {};
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &m_capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, m_surface, &m_capabilities);
         if (m_capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
         {
             extent = m_capabilities.currentExtent;
@@ -125,10 +202,10 @@ namespace ZEngine::Rendering
 
         VkSwapchainCreateInfoKHR swapchain_create_info = {};
         swapchain_create_info.sType                    = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-        swapchain_create_info.surface                  = surface;
+        swapchain_create_info.surface                  = m_surface;
         swapchain_create_info.minImageCount            = m_min_image_count;
-        swapchain_create_info.imageFormat              = surface_format.format;
-        swapchain_create_info.imageColorSpace          = surface_format.colorSpace;
+        swapchain_create_info.imageFormat              = m_surface_format.format;
+        swapchain_create_info.imageColorSpace          = m_surface_format.colorSpace;
         swapchain_create_info.imageExtent              = extent;
         swapchain_create_info.imageArrayLayers         = m_capabilities.maxImageArrayLayers;
         swapchain_create_info.preTransform             = m_capabilities.currentTransform;
@@ -169,52 +246,42 @@ namespace ZEngine::Rendering
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(native_device, m_handle, &image_count, m_image_collection.data()) == VK_SUCCESS, "Failed to get Images from Swapchain")
 
         /*Transition Image from Undefined to Present_src*/
-        auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
-        for (int i = 0; i < m_image_collection.size(); ++i)
+        auto image_memory_barrier_collection = std::vector<VkImageMemoryBarrier>{m_image_collection.size()};
+
+        for (int i = 0; i < image_memory_barrier_collection.size(); ++i)
         {
-            VkImageMemoryBarrier barrier            = {};
-            barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            barrier.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
-            barrier.newLayout                       = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            barrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image                           = m_image_collection[i]; // The image you want to transition
-            barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier.subresourceRange.baseMipLevel   = 0;
-            barrier.subresourceRange.levelCount     = 1;
-            barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount     = 1;
-            barrier.srcAccessMask                   = 0; // No need for any source access
-            barrier.dstAccessMask                   = VK_ACCESS_MEMORY_READ_BIT;
-            vkCmdPipelineBarrier(command_buffer->GetHandle(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+            image_memory_barrier_collection[i].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            image_memory_barrier_collection[i].oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+            image_memory_barrier_collection[i].newLayout                       = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            image_memory_barrier_collection[i].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            image_memory_barrier_collection[i].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            image_memory_barrier_collection[i].image                           = m_image_collection[i];
+            image_memory_barrier_collection[i].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            image_memory_barrier_collection[i].subresourceRange.baseMipLevel   = 0;
+            image_memory_barrier_collection[i].subresourceRange.levelCount     = 1;
+            image_memory_barrier_collection[i].subresourceRange.baseArrayLayer = 0;
+            image_memory_barrier_collection[i].subresourceRange.layerCount     = 1;
+            image_memory_barrier_collection[i].srcAccessMask                   = 0; // No need for any source access
+            image_memory_barrier_collection[i].dstAccessMask                   = VK_ACCESS_MEMORY_READ_BIT;
         }
+        auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
+        vkCmdPipelineBarrier(
+            command_buffer->GetHandle(),
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            0,
+            0,
+            nullptr,
+            0,
+            nullptr,
+            image_memory_barrier_collection.size(),
+            image_memory_barrier_collection.data());
         Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
 
         for (size_t i = 0; i < m_image_view_collection.size(); ++i)
         {
-            m_image_view_collection[i] = Hardwares::VulkanDevice::CreateImageView(m_image_collection[i], surface_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
+            m_image_view_collection[i] = Hardwares::VulkanDevice::CreateImageView(m_image_collection[i], m_surface_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
         }
-
-        /* Create Attachment */
-        Specifications::AttachmentSpecification attachment_specification = {};
-        attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
-        // Color attachment Description
-        attachment_specification.ColorsMap[0]                 = {};
-        attachment_specification.ColorsMap[0].Format          = ImageFormat::FORMAT_FROM_DEVICE;
-        attachment_specification.ColorsMap[0].Load            = LoadOperation::CLEAR;
-        attachment_specification.ColorsMap[0].Store           = StoreOperation::STORE;
-        attachment_specification.ColorsMap[0].Initial         = ImageLayout::UNDEFINED;
-        attachment_specification.ColorsMap[0].Final           = ImageLayout::PRESENT_SRC;
-        attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-        // Attachment Dependencies
-        attachment_specification.DependenciesMap[0]                 = {};
-        attachment_specification.DependenciesMap[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
-        attachment_specification.DependenciesMap[0].dstSubpass      = 0;
-        attachment_specification.DependenciesMap[0].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        attachment_specification.DependenciesMap[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        attachment_specification.DependenciesMap[0].srcAccessMask   = 0;
-        attachment_specification.DependenciesMap[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        m_attachment = Renderers::RenderPasses::Attachment::Create(attachment_specification);
 
         /*Swapchain framebuffer*/
         for (size_t i = 0; i < m_framebuffer_collection.size(); i++)
@@ -247,7 +314,6 @@ namespace ZEngine::Rendering
                 Hardwares::VulkanDevice::EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, framebuffer);
             }
         }
-        m_attachment.reset();
 
         m_image_view_collection.clear();
         m_image_collection.clear();
@@ -263,7 +329,5 @@ namespace ZEngine::Rendering
 
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         ZENGINE_DESTROY_VULKAN_HANDLE(device, vkDestroySwapchainKHR, m_handle, nullptr)
-
-        m_handle = nullptr;
     }
 }
