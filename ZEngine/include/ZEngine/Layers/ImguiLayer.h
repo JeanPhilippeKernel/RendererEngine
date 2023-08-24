@@ -6,11 +6,6 @@
 #include <Core/TimeStep.h>
 #include <Inputs/KeyCode.h>
 
-
-#ifndef IMGUI_DEFINE_MATH_OPERATORS
-#define IMGUI_DEFINE_MATH_OPERATORS
-#endif
-
 #include <imgui.h>
 #include <imconfig.h>
 #include <backends/imgui_impl_vulkan.h>
