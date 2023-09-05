@@ -862,37 +862,38 @@ namespace ZEngine::Hardwares
         uint32_t                                                      start_copy_after_barrier_index,
         const std::vector<Rendering::Primitives::ImageMemoryBarrier>& memory_barriers)
     {
-        VkBufferImageCopy buffer_image_copy = {};
-        buffer_image_copy.bufferOffset      = 0;
-        buffer_image_copy.bufferRowLength   = 0;
-        buffer_image_copy.bufferImageHeight = 0;
-
+        VkBufferImageCopy buffer_image_copy               = {};
+        buffer_image_copy.bufferOffset                    = 0;
+        buffer_image_copy.bufferRowLength                 = 0;
+        buffer_image_copy.bufferImageHeight               = 0;
         buffer_image_copy.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         buffer_image_copy.imageSubresource.mipLevel       = 0;
         buffer_image_copy.imageSubresource.baseArrayLayer = 0;
         buffer_image_copy.imageSubresource.layerCount     = 1;
+        buffer_image_copy.imageOffset                     = {0, 0, 0};
+        buffer_image_copy.imageExtent                     = {width, height, 1};
 
-        buffer_image_copy.imageOffset = {0, 0, 0};
-        buffer_image_copy.imageExtent = {width, height, 1};
-        auto command_buffer           = BeginInstantCommandBuffer(queue_type);
-
-        if (!memory_barriers.empty())
+        auto command_buffer = BeginInstantCommandBuffer(queue_type);
         {
-            for (uint32_t i = 0; i < memory_barriers.size(); ++i)
+            if (!memory_barriers.empty())
             {
-                const auto& barrier_handle = memory_barriers[i].GetHandle();
-                const auto& barrier_spec   = memory_barriers[i].GetSpecification();
-                vkCmdPipelineBarrier(command_buffer->GetHandle(), barrier_spec.SourceStageMask, barrier_spec.DestinationStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier_handle);
-
-                if (i == start_copy_after_barrier_index)
+                for (uint32_t i = 0; i < memory_barriers.size(); ++i)
                 {
-                    vkCmdCopyBufferToImage(command_buffer->GetHandle(), source.Handle, destination.Handle, barrier_handle.newLayout, 1, &buffer_image_copy);
+                    const auto& barrier_handle = memory_barriers[i].GetHandle();
+                    const auto& barrier_spec   = memory_barriers[i].GetSpecification();
+                    vkCmdPipelineBarrier(
+                        command_buffer->GetHandle(), barrier_spec.SourceStageMask, barrier_spec.DestinationStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier_handle);
+
+                    if (i == start_copy_after_barrier_index)
+                    {
+                        vkCmdCopyBufferToImage(command_buffer->GetHandle(), source.Handle, destination.Handle, barrier_handle.newLayout, 1, &buffer_image_copy);
+                    }
                 }
             }
-        }
-        else
-        {
-            vkCmdCopyBufferToImage(command_buffer->GetHandle(), source.Handle, destination.Handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
+            else
+            {
+                vkCmdCopyBufferToImage(command_buffer->GetHandle(), source.Handle, destination.Handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
+            }
         }
         EndInstantCommandBuffer(command_buffer);
     }

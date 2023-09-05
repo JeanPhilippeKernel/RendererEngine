@@ -14,8 +14,7 @@ namespace ZEngine::Rendering::Primitives
         m_handle.subresourceRange.baseArrayLayer = 0;
         m_handle.subresourceRange.layerCount     = 1;
         m_handle.subresourceRange.levelCount     = 1;
-        m_handle.srcAccessMask                   = 0;
-        m_handle.image                           = specification.Image;
+        m_handle.image                           = specification.ImageHandle;
         m_handle.oldLayout                       = ImageLayoutMap[static_cast<uint32_t>(specification.OldLayout)];
         m_handle.newLayout                       = ImageLayoutMap[static_cast<uint32_t>(specification.NewLayout)];
         m_handle.srcAccessMask                   = specification.SourceAccessMask;

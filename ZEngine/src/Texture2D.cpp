@@ -58,7 +58,7 @@ namespace ZEngine::Rendering::Textures
                 auto                                            image_handle   = m_image_2d_buffer->GetHandle();
                 auto&                                           image_buffer   = m_image_2d_buffer->GetBuffer();
                 Specifications::ImageMemoryBarrierSpecification barrier_spec_0 = {};
-                barrier_spec_0.Image                                           = image_handle;
+                barrier_spec_0.ImageHandle                                     = image_handle;
                 barrier_spec_0.OldLayout                                       = Specifications::ImageLayout::UNDEFINED;
                 barrier_spec_0.NewLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
                 barrier_spec_0.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -69,7 +69,7 @@ namespace ZEngine::Rendering::Textures
                 Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
 
                 Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
-                barrier_spec_1.Image                                           = image_handle;
+                barrier_spec_1.ImageHandle                                     = image_handle;
                 barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
                 barrier_spec_1.NewLayout                                       = Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
                 barrier_spec_1.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -127,7 +127,5 @@ namespace ZEngine::Rendering::Textures
         return m_image_2d_buffer;
     }
 
-    Texture2D::~Texture2D()
-    {
-    }
+    Texture2D::~Texture2D() {}
 } // namespace ZEngine::Rendering::Textures

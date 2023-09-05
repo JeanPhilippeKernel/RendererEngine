@@ -8,7 +8,7 @@ namespace ZEngine::Rendering::Specifications
     {
         ImageLayout             OldLayout;
         ImageLayout             NewLayout;
-        VkImage                 Image;
+        VkImage                 ImageHandle;
         VkAccessFlags           SourceAccessMask;
         VkAccessFlags           DestinationAccessMask;
         VkImageAspectFlagBits   ImageAspectMask;
