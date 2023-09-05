@@ -2,6 +2,7 @@
 #include <Rendering/Textures/Texture2D.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Helpers/RendererHelper.h>
+#include <Rendering/Primitives/ImageMemoryBarrier.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__
@@ -53,51 +54,34 @@ namespace ZEngine::Rendering::Textures
                 CreateRef<Buffers::Image2DBuffer>(width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
             /*Transition Image from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL and Copy buffer to image*/
-            auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
             {
-                std::array<VkImageMemoryBarrier, 2> memory_barrier = {};
-                memory_barrier[0].sType                            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                memory_barrier[0].oldLayout                        = VK_IMAGE_LAYOUT_UNDEFINED;
-                memory_barrier[0].newLayout                        = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                memory_barrier[0].srcQueueFamilyIndex              = VK_QUEUE_FAMILY_IGNORED;
-                memory_barrier[0].dstQueueFamilyIndex              = VK_QUEUE_FAMILY_IGNORED;
-                memory_barrier[0].image                            = m_image_2d_buffer->GetHandle();
-                memory_barrier[0].subresourceRange.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
-                memory_barrier[0].subresourceRange.baseMipLevel    = 0;
-                memory_barrier[0].subresourceRange.baseArrayLayer  = 0;
-                memory_barrier[0].subresourceRange.layerCount      = 1;
-                memory_barrier[0].subresourceRange.levelCount      = 1;
-                memory_barrier[0].srcAccessMask                    = 0;
-                memory_barrier[0].dstAccessMask                    = VK_ACCESS_TRANSFER_WRITE_BIT;
-                VkPipelineStageFlagBits source_stage_mask_0        = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                VkPipelineStageFlagBits destination_stage_mask_0   = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                vkCmdPipelineBarrier(command_buffer->GetHandle(), source_stage_mask_0, destination_stage_mask_0, 0, 0, nullptr, 0, nullptr, 1, &memory_barrier[0]);
+                auto                                            image_handle   = m_image_2d_buffer->GetHandle();
+                auto&                                           image_buffer   = m_image_2d_buffer->GetBuffer();
+                Specifications::ImageMemoryBarrierSpecification barrier_spec_0 = {};
+                barrier_spec_0.ImageHandle                                     = image_handle;
+                barrier_spec_0.OldLayout                                       = Specifications::ImageLayout::UNDEFINED;
+                barrier_spec_0.NewLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+                barrier_spec_0.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
+                barrier_spec_0.SourceAccessMask                                = 0;
+                barrier_spec_0.DestinationAccessMask                           = VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier_spec_0.SourceStageMask                                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                barrier_spec_0.DestinationStageMask                            = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
 
-                memory_barrier[1].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                memory_barrier[1].oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                memory_barrier[1].newLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                memory_barrier[1].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-                memory_barrier[1].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-                memory_barrier[1].image                           = m_image_2d_buffer->GetHandle();
-                memory_barrier[1].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-                memory_barrier[1].subresourceRange.baseMipLevel   = 0;
-                memory_barrier[1].subresourceRange.baseArrayLayer = 0;
-                memory_barrier[1].subresourceRange.layerCount     = 1;
-                memory_barrier[1].subresourceRange.levelCount     = 1;
-                memory_barrier[1].srcAccessMask                   = 0;
-                memory_barrier[1].srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
-                memory_barrier[1].dstAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
-                VkPipelineStageFlagBits source_stage_mask_1       = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                VkPipelineStageFlagBits destination_stage_mask_1  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                vkCmdPipelineBarrier(command_buffer->GetHandle(), source_stage_mask_1, destination_stage_mask_1, 0, 0, nullptr, 0, nullptr, 1, &memory_barrier[1]);
+                Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
+                barrier_spec_1.ImageHandle                                     = image_handle;
+                barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+                barrier_spec_1.NewLayout                                       = Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+                barrier_spec_1.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
+                barrier_spec_1.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier_spec_1.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
+                barrier_spec_1.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
+
+                Hardwares::VulkanDevice::CopyBufferToImage(
+                    Rendering::QueueType::GRAPHIC_QUEUE, staging_buffer, image_buffer, m_width, m_height, 0, std::vector<Primitives::ImageMemoryBarrier>{barrier_0, barrier_1});
             }
-            Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
-
-            Hardwares::VulkanDevice::CopyBufferToImage(staging_buffer, m_image_2d_buffer->GetBuffer(), m_width, m_height);
-
-            /* Create Sampler */
-            m_texture_sampler = Hardwares::VulkanDevice::CreateImageSampler();
-
             /* Cleanup resource */
             Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, staging_buffer.Handle);
             Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, staging_buffer.Memory);
@@ -143,7 +127,5 @@ namespace ZEngine::Rendering::Textures
         return m_image_2d_buffer;
     }
 
-    Texture2D::~Texture2D()
-    {
-    }
+    Texture2D::~Texture2D() {}
 } // namespace ZEngine::Rendering::Textures

@@ -14,6 +14,7 @@ namespace ZEngine::Rendering::Buffers
         const Hardwares::BufferImage& GetBuffer() const;
         VkImageView                   GetImageViewHandle() const;
         VkImage                       GetHandle() const;
+        VkSampler                     GetSampler() const;
 
         void Dispose();
 

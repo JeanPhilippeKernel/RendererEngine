@@ -64,7 +64,6 @@ namespace ZEngine::Rendering::Textures
         unsigned int m_height{0};
         unsigned int m_byte_per_pixel{0};
         VkDeviceSize m_buffer_size{0};
-        VkSampler    m_texture_sampler{VK_NULL_HANDLE};
         bool         m_is_from_file{false};
 
         // Those value are only set if SetDat(...) is using

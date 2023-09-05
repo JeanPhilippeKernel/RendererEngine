@@ -16,7 +16,7 @@ namespace Tetragrama::Components
         Texture = ZEngine::CreateRef<ZEngine::Rendering::Textures::Texture2D>("Assets/Images/Crate.png");
         auto buffer = Texture->GetImage2DBuffer();
 
-       TextureHandle = ImGui_ImplVulkan_AddTexture(nullptr, buffer->GetImageViewHandle(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+       TextureHandle = ImGui_ImplVulkan_AddTexture(buffer->GetSampler(), buffer->GetImageViewHandle(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
 
     SceneViewportUIComponent::~SceneViewportUIComponent()

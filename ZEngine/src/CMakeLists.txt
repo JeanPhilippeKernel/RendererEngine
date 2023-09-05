@@ -39,7 +39,9 @@ target_precompile_headers(zEngineLib PRIVATE ${PROJECT_SOURCE_DIR}/include/ZEngi
 target_compile_definitions (zEngineLib
 	PUBLIC
 		ZENGINE_PLATFORM
-		ENABLE_VULKAN_VALIDATION_LAYER # We should control it by using buildEngine parameter
+		# We should control it by using buildEngine parameter
+		ENABLE_VULKAN_VALIDATION_LAYER
+		ENABLE_VULKAN_SYNCHRONIZATION_LAYER
 		YAML_CPP_STATIC_DEFINE
 )
 
