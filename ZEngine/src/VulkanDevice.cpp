@@ -78,6 +78,24 @@ namespace ZEngine::Hardwares
         }
 #endif
 
+
+#ifdef ENABLE_VULKAN_SYNCHRONIZATION_LAYER
+        std::unordered_set<std::string> synchronization_layer_collection = {"VK_LAYER_KHRONOS_synchronization2"};
+        for (std::string_view layer_name : synchronization_layer_collection)
+        {
+            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) {
+                return std::string_view(layer_property.Properties.layerName) == layer_name;
+            });
+            if (find_it == std::end(layer_properties))
+            {
+                continue;
+            }
+
+            enabled_layer_name_collection.push_back(find_it->Properties.layerName);
+            selected_layer_property_collection.push_back(*find_it);
+        }
+#endif
+
         std::vector<const char*> enabled_extension_layer_name_collection;
 
         for (const LayerProperty& layer : selected_layer_property_collection)
@@ -235,8 +253,6 @@ namespace ZEngine::Hardwares
         device_create_info.enabledExtensionCount = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
         device_create_info.ppEnabledExtensionNames =
             (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
-        device_create_info.enabledLayerCount   = static_cast<uint32_t>(requested_device_enabled_layer_name_collection.size());
-        device_create_info.ppEnabledLayerNames = (requested_device_enabled_layer_name_collection.size() > 0) ? requested_device_enabled_layer_name_collection.data() : nullptr;
         device_create_info.pEnabledFeatures    = nullptr;
         device_create_info.pNext               = nullptr;
 
@@ -752,6 +768,7 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkBindImageMemory(m_logical_device, buffer_image.Handle, buffer_image.Memory, 0) == VK_SUCCESS, "Failed to bind the memory to image")
 
         buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_aspect_flag);
+        buffer_image.Sampler    = CreateImageSampler();
         return buffer_image;
     }
 
@@ -836,23 +853,45 @@ namespace ZEngine::Hardwares
         return image_view;
     }
 
-    void VulkanDevice::CopyBufferToImage(const BufferView& source, BufferImage& destination, uint32_t width, uint32_t height)
+    void VulkanDevice::CopyBufferToImage(
+        const Rendering::QueueType&                                   queue_type,
+        const BufferView&                                             source,
+        BufferImage&                                                  destination,
+        uint32_t                                                      width,
+        uint32_t                                                      height,
+        uint32_t                                                      start_copy_after_barrier_index,
+        const std::vector<Rendering::Primitives::ImageMemoryBarrier>& memory_barriers)
     {
-        auto command_buffer = BeginInstantCommandBuffer(Rendering::QueueType::TRANSFER_QUEUE);
+        VkBufferImageCopy buffer_image_copy = {};
+        buffer_image_copy.bufferOffset      = 0;
+        buffer_image_copy.bufferRowLength   = 0;
+        buffer_image_copy.bufferImageHeight = 0;
+
+        buffer_image_copy.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        buffer_image_copy.imageSubresource.mipLevel       = 0;
+        buffer_image_copy.imageSubresource.baseArrayLayer = 0;
+        buffer_image_copy.imageSubresource.layerCount     = 1;
+
+        buffer_image_copy.imageOffset = {0, 0, 0};
+        buffer_image_copy.imageExtent = {width, height, 1};
+        auto command_buffer           = BeginInstantCommandBuffer(queue_type);
+
+        if (!memory_barriers.empty())
         {
-            VkBufferImageCopy buffer_image_copy = {};
-            buffer_image_copy.bufferOffset      = 0;
-            buffer_image_copy.bufferRowLength   = 0;
-            buffer_image_copy.bufferImageHeight = 0;
+            for (uint32_t i = 0; i < memory_barriers.size(); ++i)
+            {
+                const auto& barrier_handle = memory_barriers[i].GetHandle();
+                const auto& barrier_spec   = memory_barriers[i].GetSpecification();
+                vkCmdPipelineBarrier(command_buffer->GetHandle(), barrier_spec.SourceStageMask, barrier_spec.DestinationStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier_handle);
 
-            buffer_image_copy.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            buffer_image_copy.imageSubresource.mipLevel       = 0;
-            buffer_image_copy.imageSubresource.baseArrayLayer = 0;
-            buffer_image_copy.imageSubresource.layerCount     = 1;
-
-            buffer_image_copy.imageOffset = {0, 0, 0};
-            buffer_image_copy.imageExtent = {width, height, 1};
-
+                if (i == start_copy_after_barrier_index)
+                {
+                    vkCmdCopyBufferToImage(command_buffer->GetHandle(), source.Handle, destination.Handle, barrier_handle.newLayout, 1, &buffer_image_copy);
+                }
+            }
+        }
+        else
+        {
             vkCmdCopyBufferToImage(command_buffer->GetHandle(), source.Handle, destination.Handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
         }
         EndInstantCommandBuffer(command_buffer);

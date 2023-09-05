@@ -43,6 +43,11 @@ namespace ZEngine::Rendering::Buffers
         return m_buffer_image.Handle;
     }
 
+    VkSampler Image2DBuffer::GetSampler() const
+    {
+        return m_buffer_image.Sampler;
+    }
+
     void Image2DBuffer::Dispose()
     {
         if (m_buffer_image)
@@ -50,6 +55,7 @@ namespace ZEngine::Rendering::Buffers
             Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::IMAGEVIEW, m_buffer_image.ViewHandle);
             Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::IMAGE, m_buffer_image.Handle);
             Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_buffer_image.Memory);
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::SAMPLER, m_buffer_image.Sampler);
             m_buffer_image = {};
         }
     }

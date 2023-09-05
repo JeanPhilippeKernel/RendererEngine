@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         VkSubpassDescription                 subpass_description                   = {};
         std::vector<VkAttachmentDescription> attachment_description_collection     = {};
-        VkAttachmentReference                depth_attachment_reference            = {.attachment = UINT32_MAX, .layout = VK_IMAGE_LAYOUT_UNDEFINED};
+        VkAttachmentReference                depth_attachment_reference            = {.attachment = VK_ATTACHMENT_UNUSED, .layout = VK_IMAGE_LAYOUT_UNDEFINED};
         std::vector<VkAttachmentReference>   color_attachment_reference_collection = {};
         std::vector<VkSubpassDependency>     subpass_dependency_collection         = {};
 
@@ -74,7 +74,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         subpass_description.colorAttachmentCount       = color_attachment_reference_collection.size();
         subpass_description.pColorAttachments          = color_attachment_reference_collection.data();
-        subpass_description.pDepthStencilAttachment    = (depth_attachment_reference.attachment != UINT32_MAX) ? &depth_attachment_reference : nullptr;
+        subpass_description.pDepthStencilAttachment    = (depth_attachment_reference.attachment != VK_ATTACHMENT_UNUSED) ? &depth_attachment_reference : nullptr;
         VkRenderPassCreateInfo render_pass_create_info = {};
         render_pass_create_info.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         render_pass_create_info.attachmentCount        = attachment_description_collection.size();

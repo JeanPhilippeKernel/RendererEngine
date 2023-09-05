@@ -4,6 +4,7 @@
 #include <Hardwares/VulkanLayer.h>
 #include <Rendering/Primitives/Semaphore.h>
 #include <Rendering/Primitives/Fence.h>
+#include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/ResourceTypes.h>
 #include <Rendering/Pools/CommandPool.h>
 #include <GLFW/glfw3.h>
@@ -31,6 +32,7 @@ namespace ZEngine::Hardwares
     {
         VkImage        Handle{VK_NULL_HANDLE};
         VkImageView    ViewHandle{VK_NULL_HANDLE};
+        VkSampler      Sampler{VK_NULL_HANDLE};
         VkDeviceMemory Memory{VK_NULL_HANDLE};
 
         operator bool() const
@@ -100,7 +102,14 @@ namespace ZEngine::Hardwares
         static VkFormat      FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
         static VkFormat      FindDepthFormat();
         static VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag);
-        static void          CopyBufferToImage(const BufferView& source, BufferImage& destination, uint32_t width, uint32_t height);
+        static void          CopyBufferToImage(
+                     const Rendering::QueueType&                                   queue_type,
+                     const BufferView&                                             source,
+                     BufferImage&                                                  destination,
+                     uint32_t                                                      width,
+                     uint32_t                                                      height,
+                     uint32_t                                                      start_copy_after_barrier_index = 0,
+                     const std::vector<Rendering::Primitives::ImageMemoryBarrier>& memory_barriers                = {});
         static VkFramebuffer CreateFramebuffer(
             const std::vector<VkImageView>& attachments,
             const VkRenderPass&             render_pass,
