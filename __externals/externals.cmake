@@ -74,7 +74,6 @@ target_link_libraries(imported::yaml-cpp INTERFACE yaml-cpp)
 # Exporting all externals include directories
 list (APPEND EXTERNAL_INCLUDE_DIRS
 	${FMT_INCLUDE_PATH}
-	${GLAD_INCLUDE_PATH}
 	${GLM_INCLUDE_PATH}
 	${IMGUI_INCLUDE_PATH}
 	${SPDLOG_INCLUDE_PATH}
