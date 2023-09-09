@@ -55,22 +55,19 @@ $ContentsToProcess = @(
         Name = "Resources"
         IsDirectory = $true
         Contents = @(
-            if ($IsWindows){
-                @{ From = "$RepoRoot\Resources\Windows";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Windows"}
+            if ($IsWindows) {
+                @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
-                @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings\Fonts"}
                 @{ From = "$RepoRoot\Resources\Editor\Scenes";      To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Scenes"}
             }
             elseif ($IsMacOS) {
-                @{ From = "$RepoRoot\Resources\Unix";               To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Resources\Unix"}
+                @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
-                @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings\Fonts"}
                 @{ From = "$RepoRoot\Resources\Editor\Scenes";      To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Scenes"}
             }
             else {
-                @{ From = "$RepoRoot\Resources\Unix";               To = "$OuputBuildDirectory\Tetragrama\src\Resources\Unix"}
+                @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\Shaders"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\Settings"}
-                @{ From = "$RepoRoot\Resources\Editor\Fonts";       To = "$OuputBuildDirectory\Tetragrama\src\Settings\Fonts"}
                 @{ From = "$RepoRoot\Resources\Editor\Scenes";      To = "$OuputBuildDirectory\Tetragrama\src\Scenes"}
             }
         )

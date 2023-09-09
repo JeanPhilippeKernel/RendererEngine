@@ -55,3 +55,29 @@ function Find-CMake () {
 
     throw "Failed to find cmake. Tried: " + ($CMakeCandidates -join ', ')
 }
+
+function Find-GLSLC () {
+
+    [string]$GLSLCMinimumVersion = "11.1.0"
+
+    $GLSLCCandidates = @(
+        'glslc'
+        if($IsWindows) {
+            Join-Path -Path $env:VULKAN_SDK -ChildPath "\bin\glslc.exe"
+        }
+    )
+
+    foreach ($GLSLCProgram in $GLSLCCandidates) {
+        $Command = Get-Command $GLSLCProgram -ErrorAction SilentlyContinue
+        if ($Command) {
+            if ((& $Command --version | Out-String) -match "glslang ([\d\.]*)") {
+                [Version] $GLSLCVersion = $Matches[1]
+                if (CompareVersion $GLSLCVersion $GLSLCMinimumVersion) {
+                    return $Command.Source
+                }
+            }
+        }
+    }
+
+    throw "Failed to find glslc. Tried: " + ($GLSLCCandidates -join ', ')
+}

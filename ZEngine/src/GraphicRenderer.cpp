@@ -28,8 +28,8 @@ namespace ZEngine::Rendering::Renderers
             Specifications::GraphicRendererPipelineSpecification pipeline_spec = {};
             pipeline_spec.DebugName                                            = "Standard-Pipeline";
             pipeline_spec.TargetFrameBufferSpecification                       = framebuffer_specification;
-            pipeline_spec.VertexShaderFilename                                 = "Resources/Windows/Shaders/standard_shader_light_vertex.spv";
-            pipeline_spec.FragmentShaderFilename                               = "Resources/Windows/Shaders/standard_shader_light_fragment.spv";
+            pipeline_spec.VertexShaderFilename                                 = "Shaders/Cache/standard_shader_light_vertex.spv";
+            pipeline_spec.FragmentShaderFilename                               = "Shaders/Cache/standard_shader_light_fragment.spv";
             pipeline_spec.LayoutBindingCollection                              = {
                 VkDescriptorSetLayoutBinding{
                                                  .binding            = 0,
