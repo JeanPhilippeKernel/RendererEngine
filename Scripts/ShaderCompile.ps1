@@ -29,14 +29,13 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
-[string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 
 . (Join-Path $PSScriptRoot Shared.ps1)
 
 $glslcProgram = Find-GLSLC
 
-$shaderDirectory = Join-Path $RepoRoot -ChildPath "Resources\Shaders"
-$shaderCacheDirectory = Join-Path $RepoRoot -ChildPath "Resources\Shaders\Cache"
+$shaderDirectory = Join-Path $repositoryRootPath -ChildPath "Resources\Shaders"
+$shaderCacheDirectory = Join-Path $repositoryRootPath -ChildPath "Resources\Shaders\Cache"
 
 # Ensure the Shader Cache directory exists, or create it otherwise
 if(-not (Test-Path $shaderCacheDirectory)) {

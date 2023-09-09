@@ -40,7 +40,6 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
-[string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 
 . (Join-Path $PSScriptRoot Shared.ps1)
 
@@ -143,7 +142,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '
     }
 
-    $cMakeArguments = " -S $RepoRoot -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
+    $cMakeArguments = " -S $repositoryRootPath -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
 
     # CMake Generation process
     Write-Host $cMakeArguments
