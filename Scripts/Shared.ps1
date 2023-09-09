@@ -63,7 +63,6 @@ function Find-GLSLC () {
     $GLSLCCandidates = @(
         'glslc'
         if($IsWindows) {
-            "glslc.exe"
             Join-Path -Path $env:VULKAN_SDK -ChildPath "\bin\glslc.exe"
         }
     )

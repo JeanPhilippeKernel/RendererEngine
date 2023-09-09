@@ -56,7 +56,7 @@ if ($shaderSourceFiles.Count -eq 0) {
     return;
 }
 
-Write-Host "Compiling Shader file..."
+Write-Host "Compiling Shader files..."
 
 foreach ($shaderFile in $shaderSourceFiles) {
     $fileName = $shaderFile.BaseName
