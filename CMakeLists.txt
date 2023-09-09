@@ -19,11 +19,8 @@ option (BUILD_SANDBOX_PROJECTS "build example projects that show how to use core
 # Externals dependencies
 #
 add_subdirectory (${EXTERNAL_DIR}/fmt)
-add_subdirectory (${EXTERNAL_DIR}/glad)
 add_subdirectory (${EXTERNAL_DIR}/imgui)
-
 add_subdirectory (${EXTERNAL_DIR}/glfw)
-
 add_subdirectory (${EXTERNAL_DIR}/spdlog)
 add_subdirectory (${EXTERNAL_DIR}/glm)
 add_subdirectory (${EXTERNAL_DIR}/entt)

@@ -13,45 +13,37 @@
 #include <Core/IInitializable.h>
 #include <EngineConfiguration.h>
 
-namespace ZEngine {
+namespace ZEngine
+{
+    struct Engine
+    {
+        Engine()              = delete;
+        Engine(const Engine&) = delete;
+        ~Engine()             = delete;
 
-    class Engine : public Core::IInitializable, public Core::IUpdatable, public Core::IRenderable {
+        static void Initialize(const EngineConfiguration&);
 
-    public:
-        explicit Engine(const EngineConfiguration&);
-        virtual ~Engine();
+        static void ProcessEvent();
+        static void Update(Core::TimeStep delta_time);
+        static void Render();
 
-    public:
-        virtual void Initialize() override;
-        virtual void Update(Core::TimeStep delta_time) override;
-        virtual void Render() override;
+        static void Start();
 
-    public:
-        void Start();
+        static Core::TimeStep                   GetDeltaTime();
+        static Ref<ZEngine::Window::CoreWindow> GetWindow();
 
-        const Ref<ZEngine::Window::CoreWindow>& GetWindow() const {
-            return m_window;
-        }
+        static void Deinitialize();
+        static void Dispose();
 
-        static Core::TimeStep GetDeltaTime() {
-            return m_delta_time;
-        }
-
-    protected:
-        void         Run();
-        virtual void ProcessEvent();
-
-    public:
-        bool OnEngineClosed(Event::EngineClosedEvent&);
+        static bool OnEngineClosed(Event::EngineClosedEvent&);
 
     private:
-        static Core::TimeStep m_delta_time;
-
-        bool                             m_request_terminate;
-        float                            m_last_frame_time;
-        Ref<ZEngine::Window::CoreWindow> m_window;
+        static void                             Run();
+        static bool                             m_request_terminate;
+        static float                            m_last_frame_time;
+        static Core::TimeStep                   m_delta_time;
+        static Ref<ZEngine::Window::CoreWindow> m_window;
     };
 
-    Engine* CreateEngine();
     Engine* CreateEngine(const EngineConfiguration&);
 } // namespace ZEngine

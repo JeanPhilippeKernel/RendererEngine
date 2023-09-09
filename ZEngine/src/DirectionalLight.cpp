@@ -3,7 +3,7 @@
 namespace ZEngine::Rendering::Lights {
     DirectionalLight::DirectionalLight() {
         m_light_type               = LightType::DIRECTIONAL_LIGHT;
-        m_directional_light_buffer = CreateScope<Buffers::UniformBuffer<Maths::Vector4>>(1);
+        // m_directional_light_buffer = CreateScope<Buffers::UniformBuffer<Maths::Vector4>>(1);
     }
 
     void DirectionalLight::SetAmbientColor(const Maths::Vector3& value) {
@@ -43,8 +43,8 @@ namespace ZEngine::Rendering::Lights {
     }
 
     void DirectionalLight::UpdateBuffer() {
-        m_directional_light_buffer->SetData(
-            {Maths::Vector4(-m_direction, 0.0), Maths::Vector4(m_ambient_color, 1.0), Maths::Vector4(m_diffuse_color, 1.0), Maths::Vector4(m_specular_color, 1.0)});
-        m_directional_light_buffer->Bind();
+        // m_directional_light_buffer->SetData(
+        //     {Maths::Vector4(-m_direction, 0.0), Maths::Vector4(m_ambient_color, 1.0), Maths::Vector4(m_diffuse_color, 1.0), Maths::Vector4(m_specular_color, 1.0)});
+        // m_directional_light_buffer->Bind();
     }
 } // namespace ZEngine::Rendering::Lights

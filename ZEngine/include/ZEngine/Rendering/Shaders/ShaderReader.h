@@ -7,7 +7,8 @@
 
 namespace ZEngine::Rendering::Shaders {
 
-    class ShaderReader {
+    class ShaderReader
+    {
     public:
         /**
          * Initializes a new ShaderReader instance.
@@ -22,6 +23,8 @@ namespace ZEngine::Rendering::Shaders {
          * @return enum ShaderReaderState that describes the read operation state
          */
         ShaderOperationResult Read(std::string_view filename);
+
+        static std::vector<char> ReadAsBinary(std::string_view filename);
 
         /**
          * Read asynchronously content of shader file

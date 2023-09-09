@@ -11,9 +11,21 @@ using namespace Tetragrama::Components::Event;
 
 namespace Tetragrama::Components
 {
-    SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {}
+    SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
+    {
+        Texture = ZEngine::CreateRef<ZEngine::Rendering::Textures::Texture2D>("Assets/Images/Crate.png");
+        auto buffer = Texture->GetImage2DBuffer();
 
-    SceneViewportUIComponent::~SceneViewportUIComponent() {}
+       TextureHandle = ImGui_ImplVulkan_AddTexture(buffer->GetSampler(), buffer->GetImageViewHandle(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
+
+    SceneViewportUIComponent::~SceneViewportUIComponent()
+    {
+       if (TextureHandle)
+       {
+           ImGui_ImplVulkan_RemoveTexture(TextureHandle);
+       }
+    }
 
     void SceneViewportUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
@@ -52,7 +64,7 @@ namespace Tetragrama::Components
     void SceneViewportUIComponent::Render()
     {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse /*| ImGuiWindowFlags_NoMove*/);
 
         auto viewport_offset = ImGui::GetCursorPos();
 
@@ -67,7 +79,8 @@ namespace Tetragrama::Components
         ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
 
         // Scene texture representation
-        ImGui::Image(reinterpret_cast<void*>(m_scene_texture_identifier), m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+        /*ToDo : Texture Handle, just for text*/
+        ImGui::Image(TextureHandle, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
 
         // ViewPort bound computation
         ImVec2 viewport_windows_size = ImGui::GetWindowSize();
@@ -85,14 +98,10 @@ namespace Tetragrama::Components
         ImGui::PopStyleVar();
     }
 
-    void SceneViewportUIComponent::SetSceneTexture(uint32_t scene_texture)
+    void SceneViewportUIComponent::SceneTextureAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>& message)
     {
-        m_scene_texture_identifier = scene_texture;
-    }
-
-    void SceneViewportUIComponent::SceneTextureAvailableMessageHandler(Messengers::GenericMessage<uint32_t>& message)
-    {
-        SetSceneTexture(message.GetValue());
+        const auto& view_layout      = message.GetValue();
+        m_current_scene_texture_view = view_layout.Handle;
     }
 
     void SceneViewportUIComponent::SceneViewportResizedMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& e)
@@ -106,8 +115,8 @@ namespace Tetragrama::Components
 
     void SceneViewportUIComponent::SceneViewportClickedMessageHandler(Messengers::GenericMessage<std::pair<int, int>>& e)
     {
-        Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<int, int>>>(
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, Messengers::GenericMessage<std::pair<int, int>>{e});
+        //Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<int, int>>>(
+        //    EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, Messengers::GenericMessage<std::pair<int, int>>{e});
     }
 
     void SceneViewportUIComponent::SceneViewportFocusedMessageHandler(Messengers::GenericMessage<bool>& e)

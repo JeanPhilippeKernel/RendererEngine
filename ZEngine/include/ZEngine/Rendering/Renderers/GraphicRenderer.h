@@ -1,41 +1,34 @@
 #pragma once
-#include <Rendering/Buffers/FrameBuffers/Framebuffer.h>
-#include <Core/IInitializable.h>
-#include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Cameras/Camera.h>
-#include <Rendering/Renderers/Pipelines/GraphicRendererPipelineContext.h>
 #include <Rendering/Renderers/GraphicRendererInformation.h>
-#include <Rendering/Buffers/UniformBuffer.h>
+#include <Rendering/Renderers/Contracts/RendererDataContract.h>
+#include <Rendering/Renderers/RenderPasses/RenderPass.h>
 
-namespace ZEngine::Rendering::Renderers::Pipelines {
-    class GraphicRendererPipelineContext;
-}
+namespace ZEngine::Rendering::Renderers
+{
+    struct GraphicRenderer
+    {
+        GraphicRenderer()  = default;
+        ~GraphicRenderer() = default;
+        static void StartScene(Ref<Cameras::Camera> scene_camera);
+        static void Submit(uint32_t mesh_idx);
+        static void EndScene();
 
-namespace ZEngine::Rendering::Renderers {
+        static void Initialize();
+        static void Deinitialize();
 
-    class GraphicRenderer : public Core::IInitializable {
-    public:
-        GraphicRenderer();
-        virtual ~GraphicRenderer() = default;
-
-        virtual void AddMesh(std::vector<Meshes::Mesh>&& meshes);
-
-    public:
-        Ref<Buffers::FrameBuffer>       GetFrameBuffer() const;
-        Ref<Rendering::Cameras::Camera> GetCamera() const;
-        virtual void                    StartScene(const Ref<Rendering::Cameras::Camera>& camera);
-        virtual void                    EndScene() = 0;
+        static void BeginRenderPass(const Buffers::CommandBuffer& command_buffer, const Ref<RenderPasses::RenderPass>&);
+        static void EndRenderPass(const Buffers::CommandBuffer& command_buffer);
 
         virtual const Ref<GraphicRendererInformation>& GetRendererInformation() const;
 
-    protected:
-        std::vector<Rendering::Meshes::Mesh>             m_mesh_collection;
-        Ref<Rendering::Cameras::Camera>                  m_camera;
-        Ref<Buffers::FrameBuffer>                        m_framebuffer;
-        Ref<GraphicRendererInformation>                  m_renderer_information;
-        Scope<Pipelines::GraphicRendererPipelineContext> m_renderer_pipeline_context;
+        virtual Contracts::FramebufferViewLayout GetOutputImage(uint32_t frame_index);
 
     private:
-        Scope<Buffers::UniformBuffer<Maths::Vector4>> m_uniform_camera_properties_buffer;
+        static Pools::CommandPool*                                                                         m_command_pool;
+        static Ref<Buffers::UniformBuffer>                                                                 m_UBOCamera;
+        static Ref<RenderPasses::RenderPass>                                                               m_final_color_output_pass;
+        static Contracts::GraphicSceneLayout                                                               m_scene_information;
+        Ref<GraphicRendererInformation>                                                                    m_renderer_information;
     };
 } // namespace ZEngine::Rendering::Renderers

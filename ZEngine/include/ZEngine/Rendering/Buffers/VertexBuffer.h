@@ -1,88 +1,87 @@
 #pragma once
-
-#include <ZEngineDef.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
-#include <Rendering/Buffers/BufferLayout.h>
-#include <Rendering/Renderers/Storages/IVertex.h>
-#include <Core/IGraphicObject.h>
+#include <Hardwares/VulkanDevice.h>
 
-namespace ZEngine::Rendering::Buffers {
+namespace ZEngine::Rendering::Buffers
+{
 
-    template <typename T>
-    class VertexBuffer : public GraphicBuffer<T>, public Core::IGraphicObject {
+    class VertexBuffer : public IGraphicBuffer
+    {
     public:
-        explicit VertexBuffer(unsigned int vertex_count) : GraphicBuffer<T>(), m_vertex_count(vertex_count) {
-            unsigned int buffer_reserved_byte_size = m_vertex_count * sizeof(Renderers::Storages::IVertex);
-#ifdef _WIN32
-            glCreateBuffers(1, &m_vertex_buffer_id);
-#else
-            glGenBuffers(1, &m_vertex_buffer_id);
-#endif
-            glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
-            glBufferData(GL_ARRAY_BUFFER, buffer_reserved_byte_size, nullptr, GL_DYNAMIC_DRAW);
+        explicit VertexBuffer() : IGraphicBuffer() {}
 
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
+        void SetData(const void* data, size_t byte_size)
+        {
+            if (!data)
+            {
+                ZENGINE_CORE_WARN("data is null")
+                return;
+            }
+
+            if (byte_size == 0)
+            {
+                ZENGINE_CORE_WARN("data byte size is null")
+                return;
+            }
+
+            if (this->m_byte_size < byte_size)
+            {
+                CleanUpMemory();
+                this->m_byte_size = byte_size;
+                m_vertex_buffer   = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            }
+
+            Hardwares::BufferView staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
+                static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+            auto  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+            void* memory_region;
+            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, staging_buffer.Memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
+            std::memcpy(memory_region, data, this->m_byte_size);
+            vkUnmapMemory(device, staging_buffer.Memory);
+
+            Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
+
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, staging_buffer.Handle);
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, staging_buffer.Memory);
+            staging_buffer = {};
         }
 
-        unsigned int GetVertexCount() const {
-            return m_vertex_count;
+        template <typename T>
+        inline void SetData(const std::vector<T>& content)
+        {
+            size_t byte_size = sizeof(T) * content.size();
+            this->SetData(content.data(), byte_size);
         }
 
-        void SetData(const std::vector<T>& data) override {
-            GraphicBuffer<T>::SetData(data);
-            glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, this->m_byte_size, this->m_data.data());
+        ~VertexBuffer()
+        {
+            CleanUpMemory();
         }
 
-        ~VertexBuffer() {
-            glDeleteBuffers(1, &m_vertex_buffer_id);
+        VkBuffer GetNativeBufferHandle() const
+        {
+            return m_vertex_buffer.Handle;
         }
 
-        void Bind() const override {
-            glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
+        void Dispose()
+        {
+            CleanUpMemory();
         }
 
-        void Unbind() const override {
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-        }
-
-        GLuint GetIdentifier() const override {
-            return m_vertex_buffer_id;
-        }
-
-        void SetLayout(const Layout::BufferLayout<T>& layout) {
-            m_layout = layout;
-            UpdateLayout();
-        }
-
-        void SetLayout(Layout::BufferLayout<T>&& layout) {
-            m_layout = std::move(layout);
-            UpdateLayout();
-        }
-
-        const Layout::BufferLayout<T>& GetLayout() const {
-            return m_layout;
-        }
-
-    protected:
-        void UpdateLayout() {
-            auto& elements = m_layout.GetElementLayout();
-
-            auto start = std::next(std::begin(elements)); // We start at the second element since the offset of this first element should be zero
-            auto end   = std::end(elements);
-
-            while (start != end) {
-                auto current = std::prev(start);
-                auto value   = current->GetSize() + current->GetOffset();
-                start->SetOffset(value);
-
-                start = std::next(start);
+    private:
+        void CleanUpMemory()
+        {
+            if (m_vertex_buffer)
+            {
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_vertex_buffer.Handle);
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_vertex_buffer.Memory);
+                m_vertex_buffer = {};
             }
         }
 
     private:
-        GLuint                  m_vertex_buffer_id{0};
-        unsigned int            m_vertex_count{0};
-        Layout::BufferLayout<T> m_layout;
+        Hardwares::BufferView m_vertex_buffer;
     };
 } // namespace ZEngine::Rendering::Buffers

@@ -31,13 +31,15 @@ param (
     [Parameter(HelpMessage = "Whether to run build, default to True")]
     [bool] $RunBuilds = $True,
 
+    [Parameter(HelpMessage = "Whether to rebuild shader files")]
+    [switch] $ForceShaderRebuild,
+
     [Parameter(HelpMessage = "VS version use to build, default to 2019")]
     [ValidateSet(2019, 2022)]
     [int] $VsVersion = 2019
 )
 
 $ErrorActionPreference = "Stop"
-[string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 
 . (Join-Path $PSScriptRoot Shared.ps1)
 
@@ -140,7 +142,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '
     }
 
-    $cMakeArguments = " -S $RepoRoot -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
+    $cMakeArguments = " -S $repositoryRootPath -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
 
     # CMake Generation process
     Write-Host $cMakeArguments
@@ -164,7 +166,12 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
             $buildArguments = $buildArguments, $buildToolOptions -join " --"
         }
 
-        $buildProcess = Start-Process $cMakeProgram -ArgumentList $buildArguments -NoNewWindow -Wait -PassThru
+        $buildProcess = Start-Process $cMakeProgram -ArgumentList $buildArguments -NoNewWindow -PassThru
+
+        # Grab the process handle. When using `-NoNewWindow`, retrieving the ExitCode can return null once the process
+        # has exited. See:
+        # https://stackoverflow.com/questions/44057728/start-process-system-diagnostics-process-exitcode-is-null-with-nonewwindow
+        $processHandle = $buildProcess.Handle
         $buildProcess.WaitForExit();
         if ($buildProcess.ExitCode -ne 0) {
             throw "cmake failed build for '$buildArguments' with exit code '$buildProcess.ExitCode'"
@@ -172,6 +179,16 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     }
 }
 
+# Run Shader Compilation
+[bool]$forceRebuild = If($ForceShaderRebuild) { $True } Else { $False }
+$shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"
+& pwsh -File $shaderCompileScript -ForceRebuild:$forceRebuild
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Stopped build process..." -ErrorAction Stop
+}
+
+# Run Engine Build
 foreach ($config in $Configurations) {
-    Build $config $VsVersion $RunBuilds 
+    Build $config $VsVersion $RunBuilds
 }

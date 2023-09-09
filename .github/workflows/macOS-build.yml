@@ -1,25 +1,27 @@
-name: ZEngine macOS Build
+# @JeanPhilippeKernel : Disabled because we only support Windows as platform for now
+#
+# name: ZEngine macOS Build
 
-on:
-  push:
-    branches: [ master, develop ]
-  pull_request:
-    branches: [ master, develop ]
+# on:
+#   push:
+#     branches: [ master, develop ]
+#   pull_request:
+#     branches: [ master, develop ]
 
-jobs:
-  macOS-Build:
-    runs-on: macos-12
-    strategy:
-      matrix:
-          buildConfiguration: [Debug, Release]
+# jobs:
+#   macOS-Build:
+#     runs-on: macos-12
+#     strategy:
+#       matrix:
+#           buildConfiguration: [Debug, Release]
 
-    steps:      
-    - name: Checkout repository
-      uses: actions/checkout@v2
+#     steps:      
+#     - name: Checkout repository
+#       uses: actions/checkout@v2
       
-    - name: Checkout submodules
-      run: git submodule update --init --recursive
+#     - name: Checkout submodules
+#       run: git submodule update --init --recursive
 
-    - name: CMake Build
-      run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
-      shell: pwsh
+#     - name: CMake Build
+#       run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
+#       shell: pwsh

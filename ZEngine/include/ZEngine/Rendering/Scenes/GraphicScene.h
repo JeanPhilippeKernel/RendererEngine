@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <vector>
 #include <functional>
+#include <future>
 #include <Rendering/Cameras/Camera.h>
 #include <ZEngineDef.h>
 #include <Core/IRenderable.h>
@@ -13,6 +14,7 @@
 #include <Window/CoreWindow.h>
 #include <entt/entt.hpp>
 #include <uuid.h>
+#include <mutex>
 
 namespace ZEngine::Serializers
 {
@@ -27,17 +29,20 @@ namespace ZEngine::Rendering::Scenes
     public:
         GraphicScene()
         {
-            m_entity_registry = std::make_shared<entt::registry>();
+            m_entity_registry = CreateRef<entt::registry>();
         }
 
-        virtual ~GraphicScene() = default;
+        virtual ~GraphicScene();
 
         void         Initialize() override;
+        virtual void Deinitialize() override;
         void         Update(Core::TimeStep dt) override;
         virtual bool OnEvent(Event::CoreEvent&) override;
         virtual void Render() override;
 
-        virtual void RequestNewSize(float, float);
+        virtual void UploadFrameInfo(uint32_t frame_index, VkQueue& present_queue);
+
+        virtual std::future<void> RequestNewSizeAsync(float, float);
         uint32_t     ToTextureRepresentation() const;
 
         void SetShouldReactToEvent(bool value);
@@ -65,13 +70,16 @@ namespace ZEngine::Rendering::Scenes
         bool HasInvalidEntities() const;
         bool IsValidEntity(const Entities::GraphicSceneEntity&) const;
 
-        std::function<void(uint32_t)> OnSceneRenderCompleted;
+        int32_t                  AddMesh(Meshes::MeshVNext&& mesh);
+        const Meshes::MeshVNext& GetMesh(int32_t mesh_id) const;
+        Meshes::MeshVNext&       GetMesh(int32_t mesh_id);
+
+        std::function<void(Renderers::Contracts::FramebufferViewLayout)> OnSceneRenderCompleted;
 
     protected:
         WeakRef<Controllers::ICameraController> m_camera_controller;
         WeakRef<Cameras::Camera>                m_scene_camera;
-        Scope<Renderers::GraphicRenderer>       m_renderer;
-        std::vector<Ref<Meshes::Mesh>>          m_mesh_list;
+        std::vector<Meshes::MeshVNext>          m_mesh_vnext_list;
 
     private:
         bool                                          m_should_react_to_event{true};
@@ -79,6 +87,7 @@ namespace ZEngine::Rendering::Scenes
         std::pair<float, float>                       m_last_scene_requested_size{0.0f, 0.0f};
         Ref<entt::registry>                           m_entity_registry;
         ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_parent_window;
+        mutable std::mutex                            m_mutex;
 
         friend class ZEngine::Serializers::GraphicScene3DSerializer;
     };

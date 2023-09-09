@@ -5,32 +5,40 @@
 #include <Rendering/Renderers/Storages/GraphicVertex.h>
 #include <Rendering/Geometries/GeometryEnum.h>
 
-namespace ZEngine::Rendering::Geometries {
+namespace ZEngine::Rendering::Geometries
+{
 
-    struct IGeometry {
+    /*Need to be deprecated*/
+    struct IGeometry
+    {
         IGeometry() = default;
 
         IGeometry(std::vector<Renderers::Storages::GraphicVertex>&& vertices) : m_vertices(std::move(vertices)) {}
 
         virtual ~IGeometry() = default;
 
-        virtual void SetVertices(std::vector<Renderers::Storages::GraphicVertex>&& vertices) {
+        virtual void SetVertices(std::vector<Renderers::Storages::GraphicVertex>&& vertices)
+        {
             m_vertices = std::move(vertices);
         }
 
-        virtual const Maths::Matrix4& GetTransform() const {
+        virtual const Maths::Matrix4& GetTransform() const
+        {
             return m_transform;
         }
 
-        virtual void SetTransform(const Maths::Matrix4& transform) {
+        virtual void SetTransform(const Maths::Matrix4& transform)
+        {
             m_transform = transform;
         }
 
-        virtual std::vector<Renderers::Storages::GraphicVertex>& GetVertices() {
+        virtual std::vector<Renderers::Storages::GraphicVertex>& GetVertices()
+        {
             return m_vertices;
         }
 
-        virtual GeometryType GetGeometryType() const {
+        virtual GeometryType GetGeometryType() const
+        {
             return m_geometry_type;
         }
 

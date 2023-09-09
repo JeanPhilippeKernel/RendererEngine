@@ -8,11 +8,34 @@ namespace Tetragrama::Components
 
     LogUIComponent::~LogUIComponent() {}
 
-    void LogUIComponent::Update(ZEngine::Core::TimeStep dt) {}
+    void LogUIComponent::Update(ZEngine::Core::TimeStep dt)
+    {
+        if (ZEngine::Logging::Logger::GetLogMessage(m_logger_message))
+        {
+            int old_size = m_content_buffer.size();
+            m_content_buffer.append(m_logger_message.Message.data(), (m_logger_message.Message.data() + m_logger_message.Message.size()));
+            for (int new_size = m_content_buffer.size(); old_size < new_size; old_size++)
+            {
+                if (m_content_buffer[old_size] == '\n')
+                {
+                    m_line_offset.push_back(old_size + 1);
+                }
+            }
+        }
+    }
 
     bool LogUIComponent::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&)
     {
         return false;
+    }
+
+    void LogUIComponent::ClearLog()
+    {
+        m_content_buffer.clear();
+        m_line_offset.clear();
+        m_line_offset.push_back(0);
+
+        m_logger_message.Message.clear();
     }
 
     void LogUIComponent::Render()
@@ -26,87 +49,52 @@ namespace Tetragrama::Components
         m_is_copy_button_pressed = ImGui::Button("Copy");
 
         ImGui::Separator();
-        ImGui::BeginChild("scrolling", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-
-        if (m_content.size() > 0)
+        if (ImGui::BeginChild("scrolling", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar))
         {
-            const char* buf     = m_content.begin();
-            const char* buf_end = m_content.end();
-
-            if (m_content_line_offsets.Size > 1)
+            if (m_is_copy_button_pressed)
             {
-                ImGuiListClipper clipper;
-                clipper.Begin(m_content_line_offsets.Size);
-                while (clipper.Step())
-                {
-                    for (int line_no = clipper.DisplayStart; line_no < clipper.DisplayEnd; line_no++)
-                    {
-                        const char* line_start = buf + m_content_line_offsets[line_no];
-                        const char* line_end   = (line_no + 1 < m_content_line_offsets.Size) ? (buf + m_content_line_offsets[line_no + 1] - 1) : buf_end;
-
-                        if (strstr(line_start, "[error]"))
-                        {
-                            Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
-                        }
-                        if (strstr(line_start, "[warning]"))
-                        {
-                            Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.0f, 0.87f, 0.37f, 1.f));
-                        }
-                        if (strstr(line_start, "[debug]"))
-                        {
-                            Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(0.94f, 0.39f, 0.13f, 1.0f));
-                        }
-                        if (strstr(line_start, "[info]"))
-                        {
-                            Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(0.46f, 0.96f, 0.46f, 1.f));
-                        }
-                        if (strstr(line_start, "[trace]"))
-                        {
-                            Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.0f, 1.0f, 1.0f, 1.f));
-                        }
-                        if (strstr(line_start, "[critical]"))
-                        {
-                            Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(0.47f, 0.47f, 0.69f, 0.40f));
-                        }
-                        if (strstr(line_start, "[log]"))
-                        {
-                            Helpers::DrawColoredTextLine(line_start, line_end, ImVec4(1.f, 1.f, 1.f, 0.5f));
-                        }
-                    }
-                }
-                clipper.End();
+                ImGui::LogToClipboard();
             }
+
+            if (m_is_clear_button_pressed)
+            {
+                ClearLog();
+            }
+
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+
+            const char* buffer_start = m_content_buffer.begin();
+            const char* buffer_end   = m_content_buffer.end();
+
+            ImGuiListClipper clipper;
+            clipper.Begin(m_line_offset.Size);
+            while (clipper.Step())
+            {
+                for (int line_no = clipper.DisplayStart; line_no < clipper.DisplayEnd; line_no++)
+                {
+                    const char* line_start = buffer_start + m_line_offset[line_no];
+                    const char* line_end   = (line_no + 1 < m_line_offset.Size) ? (buffer_start + m_line_offset[line_no + 1] - 1) : buffer_end;
+                    Helpers::DrawColoredTextLine(
+                        line_start, line_end, ImVec4(m_logger_message.Color[0], m_logger_message.Color[1], m_logger_message.Color[2], m_logger_message.Color[3]));
+                }
+            }
+            clipper.End();
+
+
+            if (m_is_copy_button_pressed)
+            {
+                ImGui::LogFinish();
+            }
+
+            if (m_auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+            {
+                ImGui::SetScrollHereY(1.0f);
+            }
+
+            ImGui::PopStyleVar();
         }
-
-        ImGui::PopStyleVar();
-
-        if (m_auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
-        {
-            ImGui::SetScrollHereY(1.0f);
-        }
-
         ImGui::EndChild();
 
         ImGui::End();
-    }
-
-    void LogUIComponent::ReceiveLogMessageMessageHandler(Messengers::GenericMessage<std::vector<std::string>>& message)
-    {
-        const auto& message_content = message.GetValue();
-        if (!message_content.empty())
-        {
-            for (const auto& content : message_content)
-            {
-                int old_content_size = m_content.size();
-                m_content.append(content.c_str(), (content.c_str() + content.size()));
-
-                for (int new_size = m_content.size(); old_content_size < new_size; old_content_size++)
-                {
-                    if (m_content[old_content_size] == '\n')
-                        m_content_line_offsets.push_back(old_content_size + 1);
-                }
-            }
-        }
     }
 } // namespace Tetragrama::Components

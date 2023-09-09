@@ -1,205 +1,156 @@
 #include <pch.h>
-#include <Rendering/Buffers/FrameBuffers/Framebuffer.h>
+#include <Rendering/Buffers/Framebuffer.h>
 #include <Logging/LoggerDefinition.h>
-#include <Helpers/FrameBufferTextureHelpers.h>
+#include <Helpers/RendererHelper.h>
+
+using namespace  ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Buffers
 {
-    FrameBuffer::FrameBuffer(const FrameBufferSpecification& specification) : m_specification(specification)
+    FramebufferVNext::FramebufferVNext(const Specifications::FrameBufferSpecificationVNext& specification) : m_framebuffer_specification(specification)
     {
-        m_pixel_buffer = {};
-        this->Resize(m_specification.Width, m_specification.Height);
-    }
+        this->m_width  = specification.Width;
+        this->m_height = specification.Height;
+        this->m_layers = specification.Layers;
 
-    FrameBuffer::~FrameBuffer()
-    {
-        glDeleteTextures(m_texture_color_attachments.size(), m_texture_color_attachments.data());
-        glDeleteTextures(1, &m_texture_depth_attachment);
+        uint32_t                                image_format_index       = 0;
+        Specifications::AttachmentSpecification attachment_specification = {};
+        attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
 
-        m_texture_color_attachments.clear();
-        m_texture_color_attachments.shrink_to_fit();
-        m_texture_depth_attachment = 0;
-
-        glDeleteFramebuffers(1, &m_framebuffer_identifier);
-    }
-
-    GLuint FrameBuffer::GetIdentifier() const
-    {
-        return m_framebuffer_identifier;
-    }
-
-    void FrameBuffer::Bind()
-    {
-        if (!m_is_binding)
+        for (auto image_format : specification.AttachmentSpecifications.FormatCollection)
         {
-            glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer_identifier);
-            glViewport(0, 0, m_specification.Width, m_specification.Height);
-            m_is_binding = true;
-        }
-    }
-
-    void FrameBuffer::Unbind()
-    {
-        if (m_is_binding)
-        {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            m_is_binding = false;
-        }
-    }
-
-    void FrameBuffer::ClearColorAttachments()
-    {
-        auto& color_attachement_specification_0 = m_specification.ColorAttachmentSpecifications[0];
-        glClearTexImage(m_texture_color_attachments[0], 0, GL_RGBA, color_attachement_specification_0.ClearColorType, color_attachement_specification_0.ClearColor);
-
-        auto& color_attachement_specification_1      = m_specification.ColorAttachmentSpecifications[1];
-        int   default_clear_color                    = -1;
-        color_attachement_specification_1.ClearColor = &default_clear_color;
-        glClearTexImage(m_texture_color_attachments[1], 0, GL_RED_INTEGER, color_attachement_specification_1.ClearColorType, color_attachement_specification_1.ClearColor);
-    }
-
-    const FrameBufferSpecification& FrameBuffer::GetSpecification() const
-    {
-        return m_specification;
-    }
-
-    FrameBufferSpecification& FrameBuffer::GetSpecification()
-    {
-        return m_specification;
-    }
-
-    uint32_t FrameBuffer::GetTexture(uint32_t color_attachment_index) const
-    {
-        assert(color_attachment_index < m_texture_color_attachments.size());
-        return m_texture_color_attachments[color_attachment_index];
-    }
-
-    int FrameBuffer::ReadPixelAt(int32_t pixel_pos_x, int32_t pixel_pos_y, uint32_t color_attachment_index)
-    {
-        assert(color_attachment_index < m_texture_color_attachments.size());
-
-        int pixel_data;
-        if (!m_is_binding)
-        {
-            Bind();
-        }
-        m_pixel_buffer.ReadPixelFrom(
-            GL_COLOR_ATTACHMENT0 + color_attachment_index, pixel_pos_x, pixel_pos_y, 1, 1, GL_RED_INTEGER, GL_INT, [&pixel_data](int* const data_ptr) { pixel_data = *data_ptr; });
-        Unbind();
-        return pixel_data;
-    }
-
-    void FrameBuffer::Resize(uint32_t width, uint32_t height)
-    {
-        m_specification.Width  = (m_specification.Width != width) ? width : m_specification.Width;
-        m_specification.Height = (m_specification.Height != height) ? height : m_specification.Height;
-
-        /*Cleaunp before creating new framebuffer*/
-        if (m_framebuffer_identifier)
-        {
-            glDeleteFramebuffers(1, &m_framebuffer_identifier);
-
-            glDeleteTextures(m_texture_color_attachments.size(), m_texture_color_attachments.data());
-            glDeleteTextures(1, &m_texture_depth_attachment);
-
-            m_texture_color_attachments.clear();
-            m_texture_color_attachments.shrink_to_fit();
-            m_texture_depth_attachment = 0;
-        }
-
-#ifdef _WIN32
-        glCreateFramebuffers(1, &m_framebuffer_identifier);
-        glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer_identifier);
-#else
-        glGenFramebuffers(1, &m_framebuffer_identifier);
-        glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer_identifier);
-#endif
-
-        if (!m_specification.ColorAttachmentSpecifications.empty())
-        {
-            m_texture_color_attachments.resize(m_specification.ColorAttachmentSpecifications.size());
-            if (m_specification.Samples > 1)
+            if (image_format == ImageFormat::R8G8B8A8_UNORM)
             {
-#ifdef _WIN32
-                glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, m_specification.ColorAttachmentSpecifications.size(), m_texture_color_attachments.data());
-#else
-                glGenTextures(m_specification.ColorAttachmentSpecifications.size(), m_texture_color_attachments.data());
-#endif
-                for (auto i = 0; i < m_texture_color_attachments.size(); ++i)
-                {
-                    const auto& color_attachement_specification = m_specification.ColorAttachmentSpecifications[i];
+                auto color_attachment = CreateRef<Image2DBuffer>(
+                    m_width,
+                    m_height,
+                    VK_FORMAT_R8G8B8A8_UNORM,
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                    VK_IMAGE_ASPECT_COLOR_BIT);
 
-                    Helpers::CreateFrameBufferTexture2DMultiSampleColorAttachment(m_texture_color_attachments[i], i,
-                        (color_attachement_specification.TextureSpecification.TextureFormat == Buffers::FrameBuffers::FrameBufferColorAttachmentTextureFormat::RGBA8) ? GL_RGBA8
-                                                                                                                                                                      : GL_R32I,
-                        m_specification.Samples, m_specification.Width, m_specification.Height, i);
-                }
+                m_color_attachment_collection.push_back(color_attachment);
+
+                attachment_specification.ColorsMap[image_format_index]                 = {};
+                attachment_specification.ColorsMap[image_format_index].Format          = ImageFormat::R8G8B8A8_UNORM;
+                attachment_specification.ColorsMap[image_format_index].Load            = LoadOperation::CLEAR;
+                attachment_specification.ColorsMap[image_format_index].Store           = StoreOperation::STORE;
+                attachment_specification.ColorsMap[image_format_index].Initial         = ImageLayout::UNDEFINED;
+                attachment_specification.ColorsMap[image_format_index].Final           = ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+                attachment_specification.ColorsMap[image_format_index].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
             }
-            else
+            else if (image_format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE)
             {
-#ifdef _WIN32
-                glCreateTextures(GL_TEXTURE_2D, m_specification.ColorAttachmentSpecifications.size(), m_texture_color_attachments.data());
-#else
-                glGenTextures(m_specification.ColorAttachmentSpecifications.size(), m_texture_color_attachments.data());
-#endif
-                for (auto i = 0; i < m_texture_color_attachments.size(); ++i)
-                {
-                    const auto& color_attachement_specification = m_specification.ColorAttachmentSpecifications[i];
-                    Helpers::CreateFrameBufferTexture2DColorAttachment(m_texture_color_attachments[i], i,
-                        (color_attachement_specification.TextureSpecification.TextureFormat == Buffers::FrameBuffers::FrameBufferColorAttachmentTextureFormat::RGBA8) ? GL_RGBA8
-                                                                                                                                                                      : GL_R32I,
-                        (color_attachement_specification.TextureSpecification.TextureFormat == Buffers::FrameBuffers::FrameBufferColorAttachmentTextureFormat::RGBA8)
-                            ? GL_RGBA
-                            : GL_RED_INTEGER,
-                        m_specification.Width, m_specification.Height, i);
-                }
+                attachment_specification.ColorsMap[image_format_index]                 = {};
+                attachment_specification.ColorsMap[image_format_index].Format          = ImageFormat::DEPTH_STENCIL_FROM_DEVICE;
+                attachment_specification.ColorsMap[image_format_index].Load            = LoadOperation::CLEAR;
+                attachment_specification.ColorsMap[image_format_index].Store           = StoreOperation::DONT_CARE;
+                attachment_specification.ColorsMap[image_format_index].Initial         = ImageLayout::UNDEFINED;
+                attachment_specification.ColorsMap[image_format_index].Final           = ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                attachment_specification.ColorsMap[image_format_index].ReferenceLayout = ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+                auto depth_format  = Hardwares::VulkanDevice::FindDepthFormat();
+                m_depth_attachment = CreateRef<Image2DBuffer>(m_width, m_height, depth_format, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
             }
+            image_format_index++;
         }
 
-        if (m_specification.DepthAttachmentSpecification.DepthAttachmentTextureSpecifications.TextureFormat != FrameBuffers::FrameBufferDepthAttachmentTextureFormat::None)
+        /*Subpass definition*/
+        attachment_specification.DependenciesMap[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
+        attachment_specification.DependenciesMap[0].dstSubpass      = 0;
+        attachment_specification.DependenciesMap[0].srcStageMask    = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        attachment_specification.DependenciesMap[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        attachment_specification.DependenciesMap[0].srcAccessMask   = VK_ACCESS_SHADER_READ_BIT;
+        attachment_specification.DependenciesMap[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        attachment_specification.DependenciesMap[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        attachment_specification.DependenciesMap[1].srcSubpass      = 0;
+        attachment_specification.DependenciesMap[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
+        attachment_specification.DependenciesMap[1].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        attachment_specification.DependenciesMap[1].dstStageMask    = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        attachment_specification.DependenciesMap[1].srcAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        attachment_specification.DependenciesMap[1].dstAccessMask   = VK_ACCESS_SHADER_READ_BIT;
+        attachment_specification.DependenciesMap[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        m_attachment                                                = Renderers::RenderPasses::Attachment::Create(attachment_specification);
+
+        /* Create the actual Framebuffer */
+        std::vector<VkImageView> attachment_view_collection = {};
+        for (const Ref<Image2DBuffer>& buffer : m_color_attachment_collection)
         {
-            if (m_specification.Samples > 1)
-            {
-#ifdef _WIN32
-                glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, 1, &m_texture_depth_attachment);
-#else
-                glGenTextures(1, &m_texture_depth_attachment);
-#endif
-
-                Helpers::CreateFrameBufferTexture2DMultiSampleDepthAttachment(
-                    m_texture_depth_attachment, 0, GL_DEPTH32F_STENCIL8, m_specification.Samples, m_specification.Width, m_specification.Height, GL_DEPTH_STENCIL_ATTACHMENT);
-            }
-            else
-            {
-#ifdef _WIN32
-                glCreateTextures(GL_TEXTURE_2D, 1, &m_texture_depth_attachment);
-#else
-                glGenTextures(1, &m_texture_depth_attachment);
-#endif
-                Helpers::CreateFrameBufferTexture2DDepthAttachment(
-                    m_texture_depth_attachment, 0, GL_DEPTH32F_STENCIL8, m_specification.Width, m_specification.Height, GL_DEPTH_STENCIL_ATTACHMENT);
-            }
+            attachment_view_collection.push_back(buffer->GetImageViewHandle());
         }
+        attachment_view_collection.push_back(m_depth_attachment->GetImageViewHandle());
 
-        if (m_texture_color_attachments.size() > 1)
+        this->m_handle =
+            Hardwares::VulkanDevice::CreateFramebuffer(attachment_view_collection, m_attachment->GetHandle(), specification.Width, specification.Height, specification.Layers);
+
+        /* Create Sampler */
+        this->m_sampler = Hardwares::VulkanDevice::CreateImageSampler();
+    }
+
+    FramebufferVNext::~FramebufferVNext()
+    {
+        Dispose();
+    }
+
+    VkRenderPass FramebufferVNext::GetRenderPass() const
+    {
+        if (m_attachment)
         {
-            assert(m_texture_color_attachments.size() <= 4);
-
-            GLenum buffers[4] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3};
-            glDrawBuffers(m_texture_color_attachments.size(), buffers);
+            return m_attachment->GetHandle();
         }
-        else if (m_texture_color_attachments.empty())
+        return VK_NULL_HANDLE;
+    }
+
+    VkFramebuffer FramebufferVNext::GetHandle() const
+    {
+        return m_handle;
+    }
+
+    VkSampler FramebufferVNext::GetSample() const
+    {
+        return m_sampler;
+    }
+
+    uint32_t FramebufferVNext::GetWidth() const
+    {
+        return m_width;
+    }
+
+    uint32_t FramebufferVNext::GetHeight() const
+    {
+        return m_height;
+    }
+
+    FrameBufferSpecificationVNext& FramebufferVNext::GetSpecification()
+    {
+        return m_framebuffer_specification;
+    }
+
+    const FrameBufferSpecificationVNext& FramebufferVNext::GetSpecification() const
+    {
+        return m_framebuffer_specification;
+    }
+
+    void FramebufferVNext::Dispose()
+    {
+        for (Ref<Image2DBuffer>& buffer : m_color_attachment_collection)
         {
-            // depth pass
-            glDrawBuffer(GL_NONE);
+            buffer->Dispose();
         }
 
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        m_depth_attachment->Dispose();
+
+        if (m_sampler)
         {
-            ZENGINE_CORE_CRITICAL("Framebuffer is incomplete")
-            ZENGINE_EXIT_FAILURE();
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::SAMPLER, m_sampler);
+            m_sampler = VK_NULL_HANDLE;
         }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        if (m_handle)
+        {
+            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::FRAMEBUFFER, m_handle);
+            m_handle = VK_NULL_HANDLE;
+        }
+
+        m_attachment->Dispose();
     }
 } // namespace ZEngine::Rendering::Buffers

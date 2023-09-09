@@ -1,25 +1,22 @@
 #pragma once
-#include <ZEngineDef.h>
-#include <Rendering/Geometries/IGeometry.h>
+#include <Rendering/Meshes/Mesh.h>
 
-namespace ZEngine::Rendering::Components {
-    struct GeometryComponent {
-        GeometryComponent(const Ref<Geometries::IGeometry>& geometry) {
-            m_geometry = geometry;
+namespace ZEngine::Rendering::Components
+{
+    struct MeshComponent
+    {
+        MeshComponent(uint32_t mesh_id)
+        {
+            m_mesh_id = mesh_id;
         }
 
-        GeometryComponent(Ref<Geometries::IGeometry>&& geometry) {
-            m_geometry = geometry;
-        }
-
-        GeometryComponent(Geometries::IGeometry* const geometry_ptr) : m_geometry(geometry_ptr) {}
-
-        Ref<Geometries::IGeometry> GetGeometry() const {
-            return m_geometry;
+        uint32_t GetMeshID() const
+        {
+            return m_mesh_id;
         }
 
     private:
-        Ref<Geometries::IGeometry> m_geometry;
+        uint32_t m_mesh_id{0xFFFFFFFF};
     };
 
 } // namespace ZEngine::Rendering::Components
