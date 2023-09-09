@@ -31,6 +31,9 @@ param (
     [Parameter(HelpMessage = "Whether to run build, default to True")]
     [bool] $RunBuilds = $True,
 
+    [Parameter(HelpMessage = "Whether to rebuild shader files")]
+    [switch] $ForceShaderRebuild,
+
     [Parameter(HelpMessage = "VS version use to build, default to 2019")]
     [ValidateSet(2019, 2022)]
     [int] $VsVersion = 2019
@@ -177,6 +180,16 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     }
 }
 
+# Run Shader Compilation
+[bool]$forceRebuild = If($ForceShaderRebuild) { $True } Else { $False }
+$shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"
+& pwsh -File $shaderCompileScript -ForceRebuild:$forceRebuild
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Stopped build process..." -ErrorAction Stop
+}
+
+# Run Engine Build
 foreach ($config in $Configurations) {
-    Build $config $VsVersion $RunBuilds 
+    Build $config $VsVersion $RunBuilds
 }
