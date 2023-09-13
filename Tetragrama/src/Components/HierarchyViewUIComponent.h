@@ -22,13 +22,14 @@ namespace Tetragrama::Components {
         void RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>&);
 
     protected:
-        void         RenderEntityNode(ZEngine::Rendering::Entities::GraphicSceneEntity&&);
+        void         RenderSceneNodeTree(int32_t node_identifier);
+        void         RenderSceneNodeTrees(const std::vector<int32_t>& node_identifie_collection);
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
 
     private:
         ImGuiTreeNodeFlags                                         m_node_flag;
         bool                                                       m_is_node_opened{false};
-        ZEngine::Rendering::Entities::GraphicSceneEntity           m_selected_scene_entity{entt::null, nullptr};
+        int32_t                                                    m_selected_node_identifier;
         ZEngine::WeakRef<ZEngine::Rendering::Scenes::GraphicScene> m_active_scene;
         ZEngine::WeakRef<EditorCameraController>                   m_active_editor_camera;
         int                                                        m_gizmo_operation{-1};

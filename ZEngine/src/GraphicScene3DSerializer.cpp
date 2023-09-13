@@ -89,7 +89,7 @@ namespace ZEngine::Serializers {
             output << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
 
             scene->m_entity_registry->each([&scene, this, &output](entt::entity handle) {
-                GraphicSceneEntity entity = {handle, scene->GetRegistry()};
+                GraphicSceneEntity entity = GraphicSceneEntity::CreateWrapper(scene->GetRegistry(), handle);
                 SerializeSceneEntity(output, entity);
             });
             output << YAML::EndSeq;

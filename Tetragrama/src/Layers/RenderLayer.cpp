@@ -33,7 +33,7 @@ namespace Tetragrama::Layers
     {
         m_editor_camera_controller = CreateRef<EditorCameraController>(GetAttachedWindow(), 300.0f, 0.f, 30.f);
 
-        m_scene = CreateRef<GraphicScene3D>();
+        m_scene = CreateRef<GraphicScene>();
         m_scene->Initialize();
         m_scene->SetCameraController(m_editor_camera_controller);
         m_scene->SetWindowParent(GetAttachedWindow());
@@ -161,17 +161,19 @@ namespace Tetragrama::Layers
 
     void RenderLayer::SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>& message)
     {
-        {
-            std::unique_lock lock(m_message_handler_mutex);
+        auto d = GraphicScene::ImportAssetAsync("Assets/Meshes/viking_room.obj").get();
+        auto dd = GraphicScene::ImportAssetAsync("Assets/Meshes/duck.obj").get();
+        //{
+        //    std::unique_lock lock(m_message_handler_mutex);
 
-            if (m_scene->HasEntities())
-            {
-                Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
-                    EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
-            }
+        //    if (m_scene->HasEntities())
+        //    {
+        //        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
+        //            EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
+        //    }
 
-            HandleOpenSceneMessage(message);
-        }
+        //    HandleOpenSceneMessage(message);
+        //}
     }
 
     void RenderLayer::SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>& mouse_position)

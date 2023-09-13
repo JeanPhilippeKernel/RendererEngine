@@ -107,6 +107,12 @@ namespace Tetragrama::Components {
 #endif
                 }
 
+                if (ImGui::MenuItem("Import New Asset..."))
+                {
+                    //Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+                    //    EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>{""});
+                }
+
                 ImGui::Separator();
 
                 if (ImGui::MenuItem("Save"))

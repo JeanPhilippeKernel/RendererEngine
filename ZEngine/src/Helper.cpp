@@ -7,6 +7,8 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
+#include <Helpers/MathHelper.h>
+
 using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine::Helpers
@@ -16,8 +18,7 @@ namespace ZEngine::Helpers
     {
         VkPipelineLayout out_pipeline_layout = VK_NULL_HANDLE;
         auto             device              = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        ZENGINE_VALIDATE_ASSERT(
-            vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &out_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
+        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &out_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
 
         return out_pipeline_layout;
     }
@@ -133,11 +134,11 @@ namespace ZEngine::Helpers
         specification.LayoutCreateInfo.pNext                  = nullptr;
 
         /*Vertex Input*/
-        auto& vertex_attribute_description_collection                             = Storages::IVertex::GetVertexAttributeDescription();
+        auto& vertex_attribute_description_collection                            = Storages::IVertex::GetVertexAttributeDescription();
         specification.VertexInputStateCreateInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
         specification.VertexInputStateCreateInfo.vertexAttributeDescriptionCount = vertex_attribute_description_collection.size();
         specification.VertexInputStateCreateInfo.pVertexAttributeDescriptions    = vertex_attribute_description_collection.data();
-        auto& vertex_input_binding_description_collection                         = Storages::IVertex::GetVertexInputBindingDescription();
+        auto& vertex_input_binding_description_collection                        = Storages::IVertex::GetVertexInputBindingDescription();
         specification.VertexInputStateCreateInfo.vertexBindingDescriptionCount   = vertex_input_binding_description_collection.size();
         specification.VertexInputStateCreateInfo.pVertexBindingDescriptions      = vertex_input_binding_description_collection.data();
         specification.VertexInputStateCreateInfo.pNext                           = nullptr;
@@ -147,8 +148,8 @@ namespace ZEngine::Helpers
     {
         Rendering::Meshes::MeshVNext custom_mesh = {std::vector<float>{}, std::vector<uint32_t>{}, 0};
         // std::string_view             custom_mesh = "Assets/Meshes/duck.obj";
-         //std::string_view             custom_mesh = "Assets/Meshes/cube.obj";
-         std::string_view mesh_file = "Assets/Meshes/viking_room.obj";
+        // std::string_view             custom_mesh = "Assets/Meshes/cube.obj";
+        std::string_view mesh_file = "Assets/Meshes/viking_room.obj";
 
         Assimp::Importer importer = {};
 
@@ -256,5 +257,18 @@ namespace ZEngine::Helpers
         }
 
         return meshes;
+    }
+
+    glm::mat4 ConvertToMat4(const aiMatrix4x4& m)
+    {
+        glm::mat4 mm;
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                mm[i][j] = m[i][j];
+            }
+        }
+        return mm;
     }
 } // namespace ZEngine::Helpers

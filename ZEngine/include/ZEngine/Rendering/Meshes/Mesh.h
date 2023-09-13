@@ -23,6 +23,7 @@ namespace ZEngine::Rendering::Meshes
 
     struct MeshVNext
     {
+        MeshVNext() = default;
         MeshVNext(const std::vector<float>& vertices, const std::vector<uint32_t>& indices, uint32_t vertex_count);
         MeshVNext(std::vector<float>&& vertices, std::vector<uint32_t>&& indices, uint32_t vertex_count);
         ~MeshVNext();
