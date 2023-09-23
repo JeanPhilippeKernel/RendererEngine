@@ -1,7 +1,8 @@
 #include <pch.h>
+#include <Rendering/Renderers/GraphicRenderer.h>
 #include <Rendering/Specifications/FrameBufferSpecification.h>
 #include <Rendering/Specifications/GraphicRendererPipelineSpecification.h>
-#include <Rendering/Scenes/GraphicScene.h>
+
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -125,30 +126,30 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Submit(uint32_t mesh_idx)
     {
-        if (!m_scene_information.GraphicScenePtr)
-        {
-            return;
-        }
-        auto  scene_ptr = reinterpret_cast<Rendering::Scenes::GraphicScene*>(m_scene_information.GraphicScenePtr);
-        auto& mesh      = scene_ptr->GetMesh(mesh_idx);
+        //if (!m_scene_information.GraphicScenePtr)
+        //{
+        //    return;
+        //}
+        //auto  scene_ptr = reinterpret_cast<Rendering::Scenes::GraphicScene*>(m_scene_information.GraphicScenePtr);
+        //auto& mesh      = scene_ptr->GetMesh(mesh_idx);
 
-        auto pass_pipeline = m_final_color_output_pass->GetPipeline();
-        pass_pipeline->SetUniformBuffer(m_UBOCamera, 0, 0);
-        pass_pipeline->SetUniformBuffer(mesh.GetUniformBuffer(), 1, 0);
+        //auto pass_pipeline = m_final_color_output_pass->GetPipeline();
+        //pass_pipeline->SetUniformBuffer(m_UBOCamera, 0, 0);
+        //pass_pipeline->SetUniformBuffer(mesh.GetUniformBuffer(), 1, 0);
 
-        auto command_buffer = m_command_pool->GetCurrentCommmandBuffer();
-        command_buffer->Begin();
-        {
+        //auto command_buffer = m_command_pool->GetCurrentCommmandBuffer();
+        //command_buffer->Begin();
+        //{
 
-            BeginRenderPass(*command_buffer, m_final_color_output_pass);
-            {
-                mesh.UpdateUniformBuffers(); // ToDo : Should be revisted
-                mesh.Draw(command_buffer->GetHandle());
-            }
-            EndRenderPass(*command_buffer);
-        }
-        command_buffer->End();
-        command_buffer->Submit();
+        //    BeginRenderPass(*command_buffer, m_final_color_output_pass);
+        //    {
+        //        mesh.UpdateUniformBuffers(); // ToDo : Should be revisted
+        //        mesh.Draw(command_buffer->GetHandle());
+        //    }
+        //    EndRenderPass(*command_buffer);
+        //}
+        //command_buffer->End();
+        //command_buffer->Submit();
     }
 
     void GraphicRenderer::EndScene() {}

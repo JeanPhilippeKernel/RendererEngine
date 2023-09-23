@@ -27,6 +27,7 @@
 #include "Rendering/Components/ValidComponent.h"
 
 #include "Rendering/Renderers/GraphicRenderer.h"
+#include "Rendering/Renderers/SceneRenderer.h"
 
 #include "Rendering/Cameras/Camera.h"
 #include "Rendering/Cameras/OrthographicCamera.h"

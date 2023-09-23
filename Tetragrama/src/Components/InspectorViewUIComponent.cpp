@@ -117,9 +117,9 @@ namespace Tetragrama::Components
                     std::string type_name;
                     if(auto active_scene = m_active_scene.lock())
                     {
-                        const auto& mesh                  = active_scene->GetMesh(component.GetMeshID());
-                        const char* geometry_type_value[] = {"Custom", "Cube", "Quad", "Square"};
-                        type_name                         = geometry_type_value[(int) mesh.Type];
+                        //const auto& mesh                  = active_scene->GetMesh(component.GetMeshID());
+                        //const char* geometry_type_value[] = {"Custom", "Cube", "Quad", "Square"};
+                        //type_name                         = geometry_type_value[(int) mesh.Type];
                     }
 
                     ImGui::Dummy(ImVec2(0, 3));
@@ -291,7 +291,7 @@ namespace Tetragrama::Components
                     if (auto active_scene = m_active_scene.lock())
                     {
                         auto cube_mesh = ZEngine::Helpers::CreateBuiltInMesh(ZEngine::Rendering::Meshes::MeshType::CUSTOM);
-                        mesh_id = active_scene->AddMesh(std::move(cube_mesh));
+                        //mesh_id = active_scene->AddMesh(std::move(cube_mesh));
                     }
 
                     m_scene_entity->AddComponent<MeshComponent>(mesh_id);

@@ -3,6 +3,7 @@
 #include <Messenger.h>
 #include <MessageToken.h>
 
+using namespace ZEngine;
 using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Rendering::Entities;
 using namespace ZEngine::Inputs;
@@ -19,25 +20,21 @@ namespace Tetragrama::Components
 
     void HierarchyViewUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
-
-        if (auto scene = m_active_scene.lock())
+        if (auto active_window = Engine::GetWindow())
         {
-            if (auto scene_active_window = scene->GetWindowParent())
+            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_W, active_window))
             {
-                if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_W, scene_active_window))
-                {
-                    m_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
-                }
+                m_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
+            }
 
-                if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_E, scene_active_window))
-                {
-                    m_gizmo_operation = ImGuizmo::OPERATION::ROTATE;
-                }
+            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_E, active_window))
+            {
+                m_gizmo_operation = ImGuizmo::OPERATION::ROTATE;
+            }
 
-                if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_R, scene_active_window))
-                {
-                    m_gizmo_operation = ImGuizmo::OPERATION::SCALE;
-                }
+            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_R, active_window))
+            {
+                m_gizmo_operation = ImGuizmo::OPERATION::SCALE;
             }
         }
     }
@@ -80,7 +77,7 @@ namespace Tetragrama::Components
         {
             if (ImGui::MenuItem("Create Empty"))
             {
-               GraphicScene::CreateEntityAsync();
+                GraphicScene::CreateEntityAsync();
             }
             ImGui::EndPopup();
         }
@@ -110,14 +107,13 @@ namespace Tetragrama::Components
                 const auto& camera_projection  = camera->GetProjectionMatrix();
                 const auto& camera_view_matrix = camera->GetViewMatrix();
 
-                auto& entity_transform_component = entity_wrapper.GetComponent<TransformComponent>();
-
-                auto transform = entity_transform_component.GetTransform();
+                auto  global_transform  = GraphicScene::GetSceneNodeGlobalTransform(m_selected_node_identifier);
+                auto  initial_transform = global_transform;
+                auto& local_transform   = GraphicScene::GetSceneNodeLocalTransform(m_selected_node_identifier);
 
                 // snapping
-                float snap_value = 0.5f;
-                bool  is_snap_operation =
-                    ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, m_active_scene.lock()->GetWindowParent());
+                float snap_value        = 0.5f;
+                bool  is_snap_operation = ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, Engine::GetWindow());
                 if (is_snap_operation && static_cast<ImGuizmo::OPERATION>(m_gizmo_operation) == ImGuizmo::ROTATE)
                 {
                     snap_value = 45.0f;
@@ -127,26 +123,31 @@ namespace Tetragrama::Components
                 if (m_gizmo_operation > 0)
                 {
                     ImGuizmo::Manipulate(
-                        ZEngine::Maths::value_ptr(camera_view_matrix),
-                        ZEngine::Maths::value_ptr(camera_projection),
+                        glm::value_ptr(camera_view_matrix),
+                        glm::value_ptr(camera_projection),
                         (ImGuizmo::OPERATION) m_gizmo_operation,
-                        ImGuizmo::MODE::LOCAL,
-                        ZEngine::Maths::value_ptr(transform),
+                        ImGuizmo::MODE::WORLD,
+                        glm::value_ptr(global_transform),
                         nullptr,
                         is_snap_operation ? snap_array : nullptr);
                 }
 
+                auto delta_transform = glm::inverse(initial_transform) * global_transform;
+                local_transform      = local_transform * delta_transform;
+                GraphicScene::MarkSceneNodeAsChanged(m_selected_node_identifier);
+
                 if (ImGuizmo::IsUsing())
                 {
-                    ZEngine::Maths::Vector3 translation, rotation, scale;
-                    ZEngine::Maths::DecomposeTransformComponent(transform, translation, rotation, scale);
+                    // ZEngine::Maths::Vector3 translation, rotation, scale;
+                    // ZEngine::Maths::DecomposeTransformComponent(transform, translation, rotation, scale);
 
-                    entity_transform_component.SetPosition(translation);
-                    entity_transform_component.SetScaleSize(scale);
-                    entity_transform_component.SetRotation(rotation);
+                    // entity_transform_component.SetPosition(translation);
+                    // entity_transform_component.SetScaleSize(scale);
+                    // entity_transform_component.SetRotation(rotation);
                 }
             }
         }
+
         ImGui::End();
     }
 
