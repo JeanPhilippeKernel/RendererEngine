@@ -89,22 +89,13 @@ namespace Tetragrama::Components {
             {
                 if (ImGui::MenuItem("New Scene"))
                 {
-#ifdef _WIN32
                     Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::EmptyMessage>(EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE, Messengers::EmptyMessage{});
-#else
-                    Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::EmptyMessage>(EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE, Messengers::EmptyMessage{});
-#endif
                 }
 
                 if (ImGui::MenuItem("Open Scene"))
                 {
-#ifdef _WIN32
                     Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
                         EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>{""});
-#else
-                    Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-                        EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>{""});
-#endif
                 }
 
                 ImGui::Separator();
