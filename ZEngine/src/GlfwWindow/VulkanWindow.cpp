@@ -58,7 +58,6 @@ namespace ZEngine::Window::GLFWWindow
         glfwGetWindowContentScale(m_native_window, &x_scale, &y_scale);
         m_property.DpiScale = x_scale;
 
-
         ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height)
     }
 
@@ -118,14 +117,6 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::Initialize()
     {
-        const char** glfw_extensions_layer_name_collection;
-        uint32_t     glfw_extensions_layer_name_count = 0;
-        glfw_extensions_layer_name_collection         = glfwGetRequiredInstanceExtensions(&glfw_extensions_layer_name_count);
-        std::vector<const char*> window_additional_extension_layer_name_collection(
-            glfw_extensions_layer_name_collection, glfw_extensions_layer_name_collection + glfw_extensions_layer_name_count);
-
-        Hardwares::VulkanDevice::Initialize(m_native_window, window_additional_extension_layer_name_collection);
-
         m_swapchain = CreateRef<Rendering::Swapchain>(m_native_window);
 
         auto& layer_stack = *m_layer_stack_ptr;
@@ -166,7 +157,6 @@ namespace ZEngine::Window::GLFWWindow
         }
 
         m_swapchain.reset();
-        Hardwares::VulkanDevice::Deinitialize();
     }
 
     void VulkanWindow::PollEvent()

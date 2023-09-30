@@ -78,7 +78,6 @@ namespace ZEngine::Hardwares
         }
 #endif
 
-
 #ifdef ENABLE_VULKAN_SYNCHRONIZATION_LAYER
         std::unordered_set<std::string> synchronization_layer_collection = {"VK_LAYER_KHRONOS_synchronization2"};
         for (std::string_view layer_name : synchronization_layer_collection)
@@ -150,7 +149,7 @@ namespace ZEngine::Hardwares
             __createDebugMessengerPtr(m_vulkan_instance, &messenger_create_info, nullptr, &m_debug_messenger);
         }
 
-        ZENGINE_VALIDATE_ASSERT(glfwCreateWindowSurface(m_vulkan_instance, native_window, nullptr, &m_surface) == VK_SUCCESS, "Failed Window Surface from GLFW");
+        ZENGINE_VALIDATE_ASSERT(glfwCreateWindowSurface(m_vulkan_instance, native_window, nullptr, &m_surface) == VK_SUCCESS, "Failed Window Surface from GLFW")
 
         /*Create Vulkan Device*/
         ZENGINE_VALIDATE_ASSERT(m_vulkan_instance != VK_NULL_HANDLE, "A Vulkan Instance must be created first!")
@@ -245,16 +244,20 @@ namespace ZEngine::Hardwares
             queue_create_info.pNext                   = nullptr;
             queue_create_info_collection.emplace_back(queue_create_info);
         }
-
-        VkDeviceCreateInfo device_create_info    = {};
-        device_create_info.sType                 = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        device_create_info.queueCreateInfoCount  = queue_create_info_collection.size();
-        device_create_info.pQueueCreateInfos     = queue_create_info_collection.data();
-        device_create_info.enabledExtensionCount = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
+        /*
+         * Enabling some feature
+         */
+        m_physical_device_feature.drawIndirectFirstInstance = VK_TRUE;
+        m_physical_device_feature.multiDrawIndirect         = VK_TRUE;
+        VkDeviceCreateInfo device_create_info               = {};
+        device_create_info.sType                            = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        device_create_info.queueCreateInfoCount             = queue_create_info_collection.size();
+        device_create_info.pQueueCreateInfos                = queue_create_info_collection.data();
+        device_create_info.enabledExtensionCount            = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
         device_create_info.ppEnabledExtensionNames =
             (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
-        device_create_info.pEnabledFeatures    = nullptr;
-        device_create_info.pNext               = nullptr;
+        device_create_info.pEnabledFeatures = &m_physical_device_feature;
+        device_create_info.pNext            = nullptr;
 
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(m_physical_device, &device_create_info, nullptr, &m_logical_device) == VK_SUCCESS, "Failed to create GPU logical device")
 
@@ -305,29 +308,6 @@ namespace ZEngine::Hardwares
             }
         }
 
-        /*Create DescriptorPool*/
-        std::vector<VkDescriptorPoolSize> pool_sizes = {
-            {VK_DESCRIPTOR_TYPE_SAMPLER, 10},
-            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10},
-            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 10},
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 10},
-            {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 10},
-            {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 10},
-            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10},
-            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 10},
-            {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 10}};
-
-        VkDescriptorPoolCreateInfo pool_info = {};
-        pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_info.flags                      = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pool_info.maxSets                    = 10 * pool_sizes.size();
-        pool_info.poolSizeCount              = pool_sizes.size();
-        pool_info.pPoolSizes                 = pool_sizes.data();
-
-        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(m_logical_device, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool -- ImGuiLayer")
-
         /*In Device Command Pool*/
         m_in_device_command_pool_map[Rendering::QueueType::GRAPHIC_QUEUE]  = CreateRef<Rendering::Pools::CommandPool>(Rendering::QueueType::GRAPHIC_QUEUE, 0, false);
         m_in_device_command_pool_map[Rendering::QueueType::TRANSFER_QUEUE] = CreateRef<Rendering::Pools::CommandPool>(Rendering::QueueType::TRANSFER_QUEUE, 0, false);
@@ -343,17 +323,16 @@ namespace ZEngine::Hardwares
 
         CleanupResource();
 
-        ZENGINE_DESTROY_VULKAN_HANDLE(m_logical_device, vkDestroyDescriptorPool, m_descriptor_pool, nullptr)
         ZENGINE_DESTROY_VULKAN_HANDLE(m_vulkan_instance, vkDestroySurfaceKHR, m_surface, nullptr)
     }
 
     void VulkanDevice::Dispose()
     {
-        vkDestroyDevice(m_logical_device, nullptr);
         if (__destroyDebugMessengerPtr)
         {
             ZENGINE_DESTROY_VULKAN_HANDLE(m_vulkan_instance, __destroyDebugMessengerPtr, m_debug_messenger, nullptr)
         }
+        vkDestroyDevice(m_logical_device, nullptr);
         vkDestroyInstance(m_vulkan_instance, nullptr);
 
         m_logical_device           = VK_NULL_HANDLE;
@@ -486,6 +465,9 @@ namespace ZEngine::Hardwares
                     case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
                         vkDestroyDescriptorSetLayout(m_logical_device, reinterpret_cast<VkDescriptorSetLayout>(handle), nullptr);
                         break;
+                    case Rendering::DeviceResourceType::DESCRIPTORPOOL:
+                        vkDestroyDescriptorPool(m_logical_device, reinterpret_cast<VkDescriptorPool>(handle), nullptr);
+                        break;
                     case Rendering::DeviceResourceType::SEMAPHORE:
                         vkDestroySemaphore(m_logical_device, reinterpret_cast<VkSemaphore>(handle), nullptr);
                         break;
@@ -605,11 +587,6 @@ namespace ZEngine::Hardwares
     VkPresentModeKHR VulkanDevice::GetPresentMode()
     {
         return m_present_mode;
-    }
-
-    VkDescriptorPool VulkanDevice::GetDescriptorPool()
-    {
-        return m_descriptor_pool;
     }
 
     VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDevice::__debugCallback(

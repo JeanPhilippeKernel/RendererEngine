@@ -14,8 +14,6 @@ namespace ZEngine::Layers
 
     ImguiLayer::~ImguiLayer()
     {
-        m_ui_components.clear();
-        m_ui_components.shrink_to_fit();
     }
 
     void ImguiLayer::Initialize()
@@ -28,10 +26,6 @@ namespace ZEngine::Layers
 
         if (auto current_window = m_window.lock())
         {
-            auto current_window_ptr        = current_window.get();
-            auto current_vulkan_window_ptr = reinterpret_cast<Window::GLFWWindow::VulkanWindow*>(current_window_ptr);
-            auto swapchain                 = current_vulkan_window_ptr->GetSwapchain();
-
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
             StyleDarkTheme();
@@ -66,7 +60,7 @@ namespace ZEngine::Layers
             io.FontDefault = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f * window_property.DpiScale);
             io.FontGlobalScale = window_property.DpiScale;
 
-            ImGUIRenderer::Initialize(current_window_ptr->GetNativeWindow(), swapchain);
+            ImGUIRenderer::Initialize(current_window->GetNativeWindow(), current_window->GetSwapchain());
             auto& platform_io                  = ImGui::GetPlatformIO();
             platform_io.Renderer_CreateWindow  = __ImGUIRendererCreateWindowCallback;
             platform_io.Renderer_DestroyWindow = __ImGUIPlatformDestroyWindowCallback;
@@ -80,6 +74,9 @@ namespace ZEngine::Layers
 
     void ImguiLayer::Deinitialize()
     {
+        m_ui_components.clear();
+        m_ui_components.shrink_to_fit();
+
         if (m_initialized)
         {
             ImGUIRenderer::Deinitialize();
@@ -115,6 +112,11 @@ namespace ZEngine::Layers
         for (const auto& component : m_ui_components)
         {
             component->Update(dt);
+        }
+
+        if (ImGUIRenderer::HasPendingCleanupResource())
+        {
+            ImGUIRenderer::CleanupResource();
         }
     }
 

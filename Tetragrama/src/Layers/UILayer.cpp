@@ -96,4 +96,17 @@ namespace Tetragrama::Layers
             std::bind(&Components::InspectorViewUIComponent::SceneAvailableMessageHandler,
                 reinterpret_cast<Components::InspectorViewUIComponent*>(m_inspector_view_component.get()), std::placeholders::_1));
     }
+
+    // void UILayer::Deinitialize()
+    // {
+    //     m_dockspace_component.reset();
+    //     m_scene_component.reset();
+    //     m_editor_log_component.reset();
+    //     m_demo_component.reset();
+    //     m_project_view_component.reset();
+    //     m_inspector_view_component.reset();
+    //     m_hierarchy_view_component.reset();
+
+    //     ImguiLayer::Deinitialize();
+    // }
 } // namespace Tetragrama::Layers

@@ -23,29 +23,18 @@ namespace ZEngine::Rendering::Meshes
 
     struct MeshVNext
     {
-        MeshVNext() = default;
-        MeshVNext(const std::vector<float>& vertices, const std::vector<uint32_t>& indices, uint32_t vertex_count);
-        MeshVNext(std::vector<float>&& vertices, std::vector<uint32_t>&& indices, uint32_t vertex_count);
-        ~MeshVNext();
-        uint32_t              MaterialID{0xFFFFFFFF};
-        MeshType              Type{MeshType::CUSTOM};
-        uint32_t              VertexCount{0};
-        Maths::Matrix4        LocalTransform{Maths::Matrix4(1.0f)};
-        uint32_t              VertexOffset{sizeof(Rendering::Renderers::Storages::IVertex)};
-        std::vector<float>    Vertices;
-        std::vector<uint32_t> Indices;
+        MeshVNext()  = default;
+        ~MeshVNext() = default;
 
-        void                          UpdateUniformBuffers();
-        const Buffers::UniformBuffer& GetUniformBufferModel() const;
-        Ref<Buffers::UniformBuffer>   GetUniformBuffer() const;
-        void                          Draw(VkCommandBuffer command_buffer);
-
-        void Flush();
-
-    private:
-        Ref<Buffers::VertexBuffer>  m_vertex_buffer;
-        Ref<Buffers::IndexBuffer>   m_index_buffer;
-        Ref<Buffers::UniformBuffer> m_uniform_buffer;
+        uint32_t VertexCount{0};
+        uint32_t IndexCount{0};
+        uint32_t VertexOffset{0};
+        uint32_t IndexOffset{0};
+        uint32_t StreamOffset{0};
+        uint32_t IndexStreamOffset{0};
+        uint32_t VertexUnitStreamSize{0};
+        uint32_t IndexUnitStreamSize{0};
+        uint32_t TotalByteSize{0};
     };
 
     /*Need to be deprecated*/

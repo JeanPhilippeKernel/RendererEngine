@@ -130,6 +130,13 @@ namespace ZEngine::Rendering
         return m_framebuffer_collection[m_current_frame_index];
     }
 
+    uint32_t Swapchain::GetCurrentFrameIndex()
+    {
+        std::lock_guard lock(m_image_mutex);
+        ZENGINE_VALIDATE_ASSERT(m_current_frame_index >= 0  && m_current_frame_index < m_framebuffer_collection.size(), "Index out of range")
+        return m_current_frame_index;
+    }
+
     uint64_t Swapchain::GetIdentifier() const
     {
         return m_identifier;

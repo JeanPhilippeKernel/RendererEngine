@@ -8,14 +8,17 @@
 #include <Components/InspectorViewUIComponent.h>
 #include <Components/HierarchyViewUIComponent.h>
 
-namespace Tetragrama::Layers {
-    class UILayer : public ZEngine::Layers::ImguiLayer {
+namespace Tetragrama::Layers
+{
+    class UILayer : public ZEngine::Layers::ImguiLayer
+    {
     public:
         UILayer(std::string_view name = "user interface layer") : ImguiLayer(name.data()) {}
 
         virtual ~UILayer();
 
         void Initialize() override;
+        // void Deinitialize() override;
 
     private:
         ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_dockspace_component;

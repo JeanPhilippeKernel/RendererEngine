@@ -22,6 +22,8 @@ namespace ZEngine::Rendering
         SEMAPHORE,
         FENCE,
         DESCRIPTORSETLAYOUT,
+        DESCRIPTORPOOL,
+        DESCRIPTORSET,
         RESOURCE_COUNT
     };
 }

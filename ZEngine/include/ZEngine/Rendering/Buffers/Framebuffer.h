@@ -1,6 +1,5 @@
 #pragma once
 #include <vector>
-#include <array>
 #include <vulkan/vulkan.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 #include <Rendering/Specifications/FrameBufferSpecification.h>
@@ -15,15 +14,20 @@ namespace ZEngine::Rendering::Buffers
         FramebufferVNext(const Specifications::FrameBufferSpecificationVNext&);
         ~FramebufferVNext();
 
+        void Create();
+        void Invalidate();
+        void Dispose();
+
         VkRenderPass  GetRenderPass() const;
         VkFramebuffer GetHandle() const;
-        VkSampler     GetSample() const;
+        VkSampler     GetSampler() const;
         uint32_t      GetWidth() const;
         uint32_t      GetHeight() const;
 
         Specifications::FrameBufferSpecificationVNext&       GetSpecification();
         const Specifications::FrameBufferSpecificationVNext& GetSpecification() const;
-        void                                                 Dispose();
+        const std::vector<Ref<Image2DBuffer>>&               GetColorAttachmentCollection() const;
+        Ref<Image2DBuffer>                                   GetDepthAttachment() const;
 
     private:
         uint32_t                                      m_width{1};

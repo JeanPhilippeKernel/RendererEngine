@@ -29,7 +29,7 @@ namespace Tetragrama::Components {
     private:
         ImGuiTreeNodeFlags                                         m_node_flag;
         bool                                                       m_is_node_opened{false};
-        int32_t                                                    m_selected_node_identifier;
+        int32_t                                                    m_selected_node_identifier{-1};
         ZEngine::WeakRef<ZEngine::Rendering::Scenes::GraphicScene> m_active_scene;
         ZEngine::WeakRef<EditorCameraController>                   m_active_editor_camera;
         int                                                        m_gizmo_operation{-1};

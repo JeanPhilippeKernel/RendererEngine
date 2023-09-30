@@ -16,14 +16,15 @@ namespace Tetragrama::Layers
 
     RenderLayer::RenderLayer(std::string_view name) : Layer(name) {}
 
-    RenderLayer::~RenderLayer()
-    {
-        //m_scene.reset();
-    }
+    RenderLayer::~RenderLayer() {}
 
     void RenderLayer::Initialize()
     {
-        m_editor_camera_controller = CreateRef<EditorCameraController>(GetAttachedWindow(), 300.0f, 0.f, 30.f);
+        auto current_window        = GetAttachedWindow();
+        m_editor_camera_controller = CreateRef<EditorCameraController>(current_window, 100.0f, 0.f, 30.f);
+        m_scene_renderer           = CreateRef<SceneRenderer>(current_window->GetSwapchain());
+
+        m_scene_renderer->Initialize();
         GraphicScene::Initialize();
         Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<Ref<EditorCameraController>>>(
             EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE, Messengers::GenericMessage<Ref<EditorCameraController>>{m_editor_camera_controller});
@@ -32,12 +33,14 @@ namespace Tetragrama::Layers
     void RenderLayer::Deinitialize()
     {
         GraphicScene::Deinitialize();
+        m_scene_renderer->Deinitialize();
     }
 
     void RenderLayer::Update(TimeStep dt)
     {
         m_editor_camera_controller->Update(dt);
         GraphicScene::ComputeAllTransforms();
+        m_scene_renderer->Tick();
     }
 
     bool RenderLayer::OnEvent(CoreEvent& e)
@@ -48,8 +51,11 @@ namespace Tetragrama::Layers
 
     void RenderLayer::Render()
     {
-        SceneRenderer::SetCamera(m_editor_camera_controller->GetCamera());
-        SceneRenderer::Draw(GraphicScene::GetRawData());
+        auto camera = m_editor_camera_controller->GetCamera();
+
+        m_scene_renderer->StartScene(camera->GetPosition(), camera->GetViewMatrix(), camera->GetProjectionMatrix());
+        m_scene_renderer->RenderScene(GraphicScene::GetRawData());
+        m_scene_renderer->EndScene();
     }
 
     void RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message)
@@ -62,40 +68,40 @@ namespace Tetragrama::Layers
 
     void RenderLayer::SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>& message)
     {
-        //std::unique_lock lock(m_message_handler_mutex);
-        //GraphicScene::SetShouldReactToEvent(message.GetValue());
+        // std::unique_lock lock(m_message_handler_mutex);
+        // GraphicScene::SetShouldReactToEvent(message.GetValue());
     }
 
     void RenderLayer::SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>& message)
     {
-        //std::unique_lock lock(m_message_handler_mutex);
-        //GraphicScene::SetShouldReactToEvent(message.GetValue());
+        // std::unique_lock lock(m_message_handler_mutex);
+        // GraphicScene::SetShouldReactToEvent(message.GetValue());
     }
 
     void RenderLayer::SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>& message)
     {
-        //std::unique_lock lock(m_message_handler_mutex);
+        // std::unique_lock lock(m_message_handler_mutex);
         //// Todo: We need to replace this whole part by using system FileDialog API
-        //if (!m_scene->HasEntities())
+        // if (!m_scene->HasEntities())
         //{
-        //    ZENGINE_EDITOR_WARN("There are no entities in the current scene to serialize")
-        //    return;
-        //}
+        //     ZENGINE_EDITOR_WARN("There are no entities in the current scene to serialize")
+        //     return;
+        // }
 
-        //auto scene_filename = message.GetValue();
-        //if (scene_filename.empty())
+        // auto scene_filename = message.GetValue();
+        // if (scene_filename.empty())
         //{
-        //    scene_filename = "SampleScene.zengine";
-        //}
+        //     scene_filename = "SampleScene.zengine";
+        // }
 
-        //auto process_info = m_scene_serializer->Serialize(scene_filename);
-        //if (!process_info.IsSuccess)
+        // auto process_info = m_scene_serializer->Serialize(scene_filename);
+        // if (!process_info.IsSuccess)
         //{
-        //    ZENGINE_EDITOR_ERROR("Scene Serialization process failed with following errors : \n {0}", process_info.ErrorMessage)
-        //    return;
-        //}
+        //     ZENGINE_EDITOR_ERROR("Scene Serialization process failed with following errors : \n {0}", process_info.ErrorMessage)
+        //     return;
+        // }
 
-        //ZENGINE_EDITOR_INFO("Scene Serialization succeeded")
+        // ZENGINE_EDITOR_INFO("Scene Serialization succeeded")
     }
 
     void RenderLayer::SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>& message)
@@ -139,8 +145,10 @@ namespace Tetragrama::Layers
 
     void RenderLayer::SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>& message)
     {
-        auto d = GraphicScene::ImportAssetAsync("Assets/Meshes/viking_room.obj").get();
-        auto dd = GraphicScene::ImportAssetAsync("Assets/Meshes/duck.obj").get();
+        auto d  = GraphicScene::ImportAssetAsync("Assets/Meshes/viking_room.obj").get();
+        //auto dk  = GraphicScene::ImportAssetAsync("Assets/Meshes/viking_room.obj").get();
+        //auto dd = GraphicScene::ImportAssetAsync("Assets/Meshes/duck.obj").get();
+        //auto dd = GraphicScene::ImportAssetAsync("Assets/Meshes/cube.obj").get();
         //{
         //    std::unique_lock lock(m_message_handler_mutex);
 
@@ -163,8 +171,8 @@ namespace Tetragrama::Layers
 
     void RenderLayer::OnSceneRenderCompletedCallback(ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout framebuffer_view)
     {
-        //Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>>(
-        //    EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE, Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>{framebuffer_view});
+        // Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>>(
+        //     EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE, Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>{framebuffer_view});
     }
 
     void RenderLayer::HandleNewSceneMessage(const Messengers::EmptyMessage&)

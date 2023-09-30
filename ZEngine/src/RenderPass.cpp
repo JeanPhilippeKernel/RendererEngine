@@ -1,3 +1,4 @@
+#include <pch.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
@@ -20,6 +21,16 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     void RenderPass::Bake()
     {
         m_pipeline->Bake();
+    }
+
+    void RenderPass::SetInput(std::string_view key_name, const Ref<Rendering::Buffers::UniformBuffer>& buffer)
+    {
+        m_pipeline->SetUniformBuffer(key_name, buffer);
+    }
+
+    void RenderPass::SetInput(std::string_view key_name, const Ref<Rendering::Buffers::StorageBuffer>& buffer)
+    {
+        m_pipeline->SetStorageBuffer(key_name, buffer);
     }
 
     Ref<RenderPass> RenderPass::Create(const RenderPassSpecification& specification)

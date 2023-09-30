@@ -1,70 +1,71 @@
 #include <pch.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 #include <Rendering/Specifications/FrameBufferSpecification.h>
-#include <Rendering/Specifications/GraphicRendererPipelineSpecification.h>
 
+using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
-    Pools::CommandPool*           GraphicRenderer::m_command_pool            = nullptr;
-    Ref<Buffers::UniformBuffer>   GraphicRenderer::m_UBOCamera               = CreateRef<Buffers::UniformBuffer>();
-    Ref<RenderPasses::RenderPass> GraphicRenderer::m_final_color_output_pass = {};
-    Contracts::GraphicSceneLayout GraphicRenderer::m_scene_information       = {};
+    uint32_t                                                        GraphicRenderer::s_viewport_width           = 1;
+    uint32_t                                                        GraphicRenderer::s_viewport_height          = 1;
+    Ref<Buffers::IndirectBuffer>                                    GraphicRenderer::s_indirect_buffer          = CreateRef<Buffers::IndirectBuffer>();
+    std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::Count> GraphicRenderer::s_render_target_collection = {};
 
     const Ref<GraphicRendererInformation>& GraphicRenderer::GetRendererInformation() const
     {
         return m_renderer_information;
     }
 
+    void GraphicRenderer::RebuildRenderTargets()
+    {
+        auto& render_target_frame_output       = s_render_target_collection[RenderTarget::FRAME_OUTPUT];
+        auto& render_target_frame_output_spec  = render_target_frame_output->GetSpecification();
+        render_target_frame_output_spec.Width  = s_viewport_width;
+        render_target_frame_output_spec.Height = s_viewport_height;
+
+        render_target_frame_output->Invalidate();
+        render_target_frame_output->Create();
+    }
+
+    Ref<Buffers::FramebufferVNext> GraphicRenderer::GetRenderTarget(RenderTarget target)
+    {
+        return s_render_target_collection[target];
+    }
+
+    Ref<Buffers::FramebufferVNext> GraphicRenderer::GetFrameOutput()
+    {
+        return GetRenderTarget(RenderTarget::FRAME_OUTPUT);
+    }
+
+    void GraphicRenderer::SetViewportSize(uint32_t width, uint32_t height)
+    {
+        if ((s_viewport_width != width) || (s_viewport_height != height))
+        {
+            s_viewport_width  = width;
+            s_viewport_height = height;
+            /*
+             * Rebuild RenderTargets
+             */
+            RebuildRenderTargets();
+        }
+    }
+
     void GraphicRenderer::Initialize()
     {
-        m_command_pool = Hardwares::VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, 0, true);
-
-        {
-            Specifications::FrameBufferSpecificationVNext framebuffer_specification = {};
-            framebuffer_specification.Width                                         = 1;
-            framebuffer_specification.Height                                        = 1;
-            framebuffer_specification.AttachmentSpecifications                      = {Specifications::ImageFormat::R8G8B8A8_UNORM, Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
-
-            Specifications::GraphicRendererPipelineSpecification pipeline_spec = {};
-            pipeline_spec.DebugName                                            = "Standard-Pipeline";
-            pipeline_spec.TargetFrameBufferSpecification                       = framebuffer_specification;
-            pipeline_spec.VertexShaderFilename                                 = "Shaders/Cache/standard_shader_light_vertex.spv";
-            pipeline_spec.FragmentShaderFilename                               = "Shaders/Cache/standard_shader_light_fragment.spv";
-            pipeline_spec.LayoutBindingCollection                              = {
-                VkDescriptorSetLayoutBinding{
-                                                 .binding            = 0,
-                                                 .descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                                 .descriptorCount    = 1,
-                                                 .stageFlags         = VK_SHADER_STAGE_VERTEX_BIT,
-                                                 .pImmutableSamplers = nullptr},
-                VkDescriptorSetLayoutBinding{
-                                                 .binding            = 1,
-                                                 .descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                                 .descriptorCount    = 1,
-                                                 .stageFlags         = VK_SHADER_STAGE_VERTEX_BIT,
-                                                 .pImmutableSamplers = nullptr}};
-
-            RenderPasses::RenderPassSpecification color_pass = {};
-            color_pass.DebugName                             = "Final-Color-Attachment";
-            color_pass.Pipeline                              = Pipelines::GraphicPipeline::Create(pipeline_spec);
-            m_final_color_output_pass                        = RenderPasses::RenderPass::Create(color_pass);
-
-            // m_final_color_output_pass->SetInput("scene_camera", m_UBOCamera);
-
-            m_final_color_output_pass->Bake();
-        }
+        s_render_target_collection[RenderTarget::FRAME_OUTPUT] = CreateRef<Buffers::FramebufferVNext>(FrameBufferSpecificationVNext{
+            .Width = 1000, .Height = 1000, .AttachmentSpecifications = {Specifications::ImageFormat::R8G8B8A8_UNORM, Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE}});
     }
 
     void GraphicRenderer::Deinitialize()
     {
-        m_final_color_output_pass.reset();
-        m_UBOCamera.reset();
-        Hardwares::VulkanDevice::DisposeCommandPool(m_command_pool);
+        s_render_target_collection.fill(nullptr);
+        s_indirect_buffer->Dispose();
     }
 
-    void GraphicRenderer::BeginRenderPass(const Buffers::CommandBuffer& command_buffer, const Ref<RenderPasses::RenderPass>& render_pass)
+    void GraphicRenderer::BeginRenderPass(Buffers::CommandBuffer* const command_buffer, const Ref<RenderPasses::RenderPass>& render_pass)
     {
+        ZENGINE_VALIDATE_ASSERT(command_buffer != nullptr, "Command buffer can't be null")
+
         auto                  render_pass_pipeline   = render_pass->GetPipeline();
         auto                  framebuffer            = render_pass_pipeline->GetTargetFrameBuffer();
         VkRenderPassBeginInfo render_pass_begin_info = {};
@@ -80,7 +81,7 @@ namespace ZEngine::Rendering::Renderers
         render_pass_begin_info.clearValueCount   = clear_values.size();
         render_pass_begin_info.pClearValues      = clear_values.data();
 
-        vkCmdBeginRenderPass(command_buffer.GetHandle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBeginRenderPass(command_buffer->GetHandle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         VkViewport viewport = {};
         viewport.x          = 0.0f;
@@ -95,71 +96,49 @@ namespace ZEngine::Rendering::Renderers
         scissor.offset   = {0, 0};
         scissor.extent   = {framebuffer->GetWidth(), framebuffer->GetHeight()};
 
-        vkCmdSetViewport(command_buffer.GetHandle(), 0, 1, &viewport);
-        vkCmdSetScissor(command_buffer.GetHandle(), 0, 1, &scissor);
+        vkCmdSetViewport(command_buffer->GetHandle(), 0, 1, &viewport);
+        vkCmdSetScissor(command_buffer->GetHandle(), 0, 1, &scissor);
+        vkCmdBindPipeline(command_buffer->GetHandle(), VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass_pipeline->GetHandle());
 
-        vkCmdBindPipeline(command_buffer.GetHandle(), VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass_pipeline->GetHandle());
+        render_pass_pipeline->UpdateDescriptorSets();
 
-        vkCmdBindDescriptorSets(
-            command_buffer.GetHandle(),
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            render_pass_pipeline->GetPipelineLayout(),
-            0,
-            render_pass_pipeline->GetDescriptorSetCollectionCount(),
-            render_pass_pipeline->GetDescriptorSetCollectionData(),
-            0,
-            nullptr);
+        std::vector<VkDescriptorSet> descriptorset_collection = {};
+        auto                         descriptor_set           = render_pass_pipeline->GetDescriptorSet();
+        if (descriptor_set)
+        {
+            descriptorset_collection.push_back(descriptor_set);
+        }
+
+        if (!descriptorset_collection.empty())
+        {
+            vkCmdBindDescriptorSets(
+                command_buffer->GetHandle(),
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                render_pass_pipeline->GetPipelineLayout(),
+                0,
+                descriptorset_collection.size(),
+                descriptorset_collection.data(),
+                0,
+                nullptr);
+        }
     }
 
-    void GraphicRenderer::EndRenderPass(const Buffers::CommandBuffer& command_buffer)
+    void GraphicRenderer::EndRenderPass(Buffers::CommandBuffer* const command_buffer)
     {
-        vkCmdEndRenderPass(command_buffer.GetHandle());
+        ZENGINE_VALIDATE_ASSERT(command_buffer != nullptr, "Command buffer can't be null")
+
+        vkCmdEndRenderPass(command_buffer->GetHandle());
     }
 
-    void GraphicRenderer::StartScene(Ref<Cameras::Camera> scene_camera)
+    void GraphicRenderer::RenderGeometry(Buffers::CommandBuffer* const command_buffer, const std::vector<VkDrawIndirectCommand>& command_collection)
     {
-        auto ubo_camera_data = Contracts::UBOCameraLayout{
-            .position = Maths::Vector4(scene_camera->GetPosition(), 1.f), .View = scene_camera->GetViewMatrix(), .Projection = scene_camera->GetProjectionMatrix()};
+        ZENGINE_VALIDATE_ASSERT(command_buffer != nullptr, "Command buffer can't be null")
 
-        m_UBOCamera->SetData(&ubo_camera_data, sizeof(Contracts::UBOCameraLayout));
-    }
-
-    void GraphicRenderer::Submit(uint32_t mesh_idx)
-    {
-        //if (!m_scene_information.GraphicScenePtr)
-        //{
-        //    return;
-        //}
-        //auto  scene_ptr = reinterpret_cast<Rendering::Scenes::GraphicScene*>(m_scene_information.GraphicScenePtr);
-        //auto& mesh      = scene_ptr->GetMesh(mesh_idx);
-
-        //auto pass_pipeline = m_final_color_output_pass->GetPipeline();
-        //pass_pipeline->SetUniformBuffer(m_UBOCamera, 0, 0);
-        //pass_pipeline->SetUniformBuffer(mesh.GetUniformBuffer(), 1, 0);
-
-        //auto command_buffer = m_command_pool->GetCurrentCommmandBuffer();
-        //command_buffer->Begin();
-        //{
-
-        //    BeginRenderPass(*command_buffer, m_final_color_output_pass);
-        //    {
-        //        mesh.UpdateUniformBuffers(); // ToDo : Should be revisted
-        //        mesh.Draw(command_buffer->GetHandle());
-        //    }
-        //    EndRenderPass(*command_buffer);
-        //}
-        //command_buffer->End();
-        //command_buffer->Submit();
-    }
-
-    void GraphicRenderer::EndScene() {}
-
-    Contracts::FramebufferViewLayout GraphicRenderer::GetOutputImage(uint32_t frame_index)
-    {
-        // if (m_standard_pipeline.Pipeline)
-        //{
-        //     return Contracts::FramebufferViewLayout{.Handle = m_standard_pipeline.FragmentDescriptorSetCollection};
-        // }
-        return {};
+        if (!command_collection.empty())
+        {
+            s_indirect_buffer->SetData(command_collection);
+            vkCmdDrawIndirect(
+                command_buffer->GetHandle(), reinterpret_cast<VkBuffer>(s_indirect_buffer->GetNativeBufferHandle()), 0, command_collection.size(), sizeof(VkDrawIndirectCommand));
+        }
     }
 } // namespace ZEngine::Rendering::Renderers

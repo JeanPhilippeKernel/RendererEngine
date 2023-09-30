@@ -98,7 +98,7 @@ namespace Tetragrama::Components
         /*
          *  Guizmo operations
          */
-        if (m_selected_node_identifier > -1)
+        if (m_selected_node_identifier != -1)
         {
             auto entity_wrapper = GraphicScene::GetSceneNodeEntityWrapper(m_selected_node_identifier);
             if (auto active_editor_camera = m_active_editor_camera.lock())
@@ -107,7 +107,7 @@ namespace Tetragrama::Components
                 const auto& camera_projection  = camera->GetProjectionMatrix();
                 const auto& camera_view_matrix = camera->GetViewMatrix();
 
-                auto  global_transform  = GraphicScene::GetSceneNodeGlobalTransform(m_selected_node_identifier);
+                auto&  global_transform  = GraphicScene::GetSceneNodeGlobalTransform(m_selected_node_identifier);
                 auto  initial_transform = global_transform;
                 auto& local_transform   = GraphicScene::GetSceneNodeLocalTransform(m_selected_node_identifier);
 

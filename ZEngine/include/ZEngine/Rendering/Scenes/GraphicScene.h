@@ -36,16 +36,20 @@ namespace ZEngine::Rendering::Scenes
      */
     struct SceneRawData
     {
-        std::vector<SceneNodeHierarchy>                     NodeHierarchyCollection;
-        std::vector<glm::mat4>                              LocalTransformCollection;
-        std::vector<glm::mat4>                              GlobalTransformCollection;
-        std::unordered_map<uint32_t, uint32_t>              SceneNodeMaterialMap;
-        std::unordered_map<uint32_t, entt::entity>          SceneNodeEntityMap;
-        std::unordered_map<uint32_t, std::string>           SceneNodeNameMap;
-        std::unordered_map<uint32_t, std::string>           SceneNodeMaterialNameMap;
-        std::unordered_map<uint32_t, Meshes::MeshVNext>     SceneNodeMeshMap;
-        std::unordered_map<uint32_t, std::vector<uint32_t>> LevelSceneNodeChangedMap;
-        Ref<entt::registry>                                 EntityRegistry;
+        uint32_t                                                   SVertexOffset;
+        uint32_t                                                   SIndexOffset;
+        std::vector<float>                                         Vertices;
+        std::vector<uint32_t>                                      Indices;
+        std::vector<SceneNodeHierarchy>                            NodeHierarchyCollection;
+        std::vector<glm::mat4>                                     LocalTransformCollection;
+        std::vector<glm::mat4>                                     GlobalTransformCollection;
+        std::unordered_map<uint32_t, uint32_t>                     SceneNodeMaterialMap;
+        std::unordered_map<uint32_t, entt::entity>                 SceneNodeEntityMap;
+        std::unordered_map<uint32_t, std::string>                  SceneNodeNameMap;
+        std::unordered_map<uint32_t, std::string>                  SceneNodeMaterialNameMap;
+        std::unordered_map<uint32_t, Meshes::MeshVNext>            SceneNodeMeshMap;
+        std::unordered_map<uint32_t, std::unordered_set<uint32_t>> LevelSceneNodeChangedMap;
+        Ref<entt::registry>                                        EntityRegistry;
     };
 
     struct GraphicScene

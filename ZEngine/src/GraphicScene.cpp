@@ -139,8 +139,12 @@ namespace ZEngine::Rendering::Scenes
                          right_sibling = s_raw_data->NodeHierarchyCollection[right_sibling].RightSibling)
                     {
                     }
+                    s_raw_data->NodeHierarchyCollection[right_sibling].RightSibling = scene_node_identifier;
                 }
-                s_raw_data->NodeHierarchyCollection[right_sibling].RightSibling = scene_node_identifier;
+                else
+                {
+                    s_raw_data->NodeHierarchyCollection[first_child].RightSibling = scene_node_identifier;
+                }
             }
         }
         s_raw_data->NodeHierarchyCollection[scene_node_identifier].DepthLevel   = depth_level;
@@ -250,8 +254,12 @@ namespace ZEngine::Rendering::Scenes
         std::unique_lock lock(s_scene_node_mutex);
         bool             result = true;
 
-        Assimp::Importer importer  = {};
-        const aiScene*   scene_ptr = importer.ReadFile(asset_filename.data(), aiProcess_Triangulate | aiProcess_FlipUVs);
+        Assimp::Importer importer = {};
+        uint32_t read_flags       = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_LimitBoneWeights | aiProcess_SplitLargeMeshes |
+                              aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_FindDegenerates | aiProcess_FindInvalidData | aiProcess_GenUVCoords |
+                              aiProcess_FlipUVs;
+
+        const aiScene* scene_ptr = importer.ReadFile(asset_filename.data(), read_flags);
         if ((!scene_ptr) || scene_ptr->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene_ptr->mRootNode)
         {
             result = false;
@@ -298,22 +306,26 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::ComputeAllTransforms()
     {
-        MarkSceneNodeAsChanged(0);
-        if (!s_raw_data->LevelSceneNodeChangedMap[0].empty())
+        uint32_t total_level = s_raw_data->LevelSceneNodeChangedMap.size();
+        for (int level = 0; level < total_level; ++level)
         {
-            int node_identifier                                    = s_raw_data->LevelSceneNodeChangedMap[0][0];
-            s_raw_data->GlobalTransformCollection[node_identifier] = s_raw_data->LocalTransformCollection[node_identifier];
-            s_raw_data->LevelSceneNodeChangedMap[0].clear();
-        }
-
-        for (int i = 1; !s_raw_data->LevelSceneNodeChangedMap[i].empty(); i++)
-        {
-            for (const int& node_identifier : s_raw_data->LevelSceneNodeChangedMap[i])
+            if (!s_raw_data->LevelSceneNodeChangedMap[level].empty())
             {
-                int parent                                             = s_raw_data->NodeHierarchyCollection[node_identifier].Parent;
-                s_raw_data->GlobalTransformCollection[node_identifier] = s_raw_data->GlobalTransformCollection[parent] * s_raw_data->LocalTransformCollection[node_identifier];
+                auto& changed_scene_node_collection = s_raw_data->LevelSceneNodeChangedMap[level];
+                for (const int& node_identifier : changed_scene_node_collection)
+                {
+                    if (node_identifier != SCENE_ROOT_PARENT_ID)
+                    {
+                        int parent = s_raw_data->NodeHierarchyCollection[node_identifier].Parent;
+                        if (parent != SCENE_ROOT_PARENT_ID)
+                        {
+                            s_raw_data->GlobalTransformCollection[node_identifier] =
+                                s_raw_data->GlobalTransformCollection[parent] * s_raw_data->LocalTransformCollection[node_identifier];
+                        }
+                    }
+                }
+                s_raw_data->LevelSceneNodeChangedMap[level].clear();
             }
-            s_raw_data->LevelSceneNodeChangedMap[i].clear();
         }
     }
 
@@ -324,15 +336,18 @@ namespace ZEngine::Rendering::Scenes
             return;
         }
 
-        auto node_level         = s_raw_data->NodeHierarchyCollection[node_identifier].DepthLevel;
-        auto first_child        = s_raw_data->NodeHierarchyCollection[node_identifier].FirstChild;
-        auto sibling_collection = GetSceneNodeSiblingCollection(first_child);
+        auto node_level = s_raw_data->NodeHierarchyCollection[node_identifier].DepthLevel;
+        s_raw_data->LevelSceneNodeChangedMap[node_level].emplace(node_identifier);
 
-        s_raw_data->LevelSceneNodeChangedMap[node_level].push_back(node_identifier);
-        s_raw_data->LevelSceneNodeChangedMap[node_level].push_back(first_child);
-        for (auto sibling : sibling_collection)
+        auto first_child = s_raw_data->NodeHierarchyCollection[node_identifier].FirstChild;
+        if (first_child != INVALID_SCENE_NODE_ID)
         {
-            s_raw_data->LevelSceneNodeChangedMap[node_level].push_back(sibling);
+            auto sibling_collection = GetSceneNodeSiblingCollection(first_child);
+            s_raw_data->LevelSceneNodeChangedMap[node_level].emplace(first_child);
+            for (auto sibling : sibling_collection)
+            {
+                s_raw_data->LevelSceneNodeChangedMap[node_level].emplace(sibling);
+            }
         }
     }
 
@@ -389,9 +404,9 @@ namespace ZEngine::Rendering::Scenes
 
         aiMesh* assimp_mesh = assimp_scene->mMeshes[mesh_identifier];
 
-        uint32_t              vertex_count{0};
-        std::vector<float>    vertices = {};
-        std::vector<uint32_t> indices  = {};
+        uint32_t               vertex_count{0};
+        std::vector<float>&    vertices = s_raw_data->Vertices;
+        std::vector<uint32_t>& indices  = s_raw_data->Indices;
 
         /* Vertice processing */
         for (int x = 0; x < assimp_mesh->mNumVertices; ++x)
@@ -419,17 +434,33 @@ namespace ZEngine::Rendering::Scenes
         }
 
         /* Face and Indices processing */
-        for (int ix = 0; ix < assimp_mesh->mNumFaces; ++ix)
+        uint32_t index_count{0};
+        for (int x = 0; x < assimp_mesh->mNumFaces; ++x)
         {
-            aiFace assimp_mesh_face = assimp_mesh->mFaces[ix];
+            aiFace assimp_mesh_face = assimp_mesh->mFaces[x];
 
-            for (int j = 0; j < assimp_mesh_face.mNumIndices; ++j)
+            for (int y = 0; y < assimp_mesh_face.mNumIndices; ++y)
             {
-                indices.push_back(assimp_mesh_face.mIndices[j]);
+                indices.push_back(assimp_mesh_face.mIndices[y]);
+
+                index_count++;
             }
         }
 
-        auto mesh = Rendering::Meshes::MeshVNext{std::move(vertices), std::move(indices), vertex_count};
+        Meshes::MeshVNext mesh    = {};
+        mesh.VertexCount          = vertex_count;
+        mesh.VertexOffset         = s_raw_data->SVertexOffset;
+        mesh.VertexUnitStreamSize = sizeof(Renderers::Storages::IVertex);
+        mesh.StreamOffset         = (mesh.VertexUnitStreamSize * mesh.VertexOffset);
+        mesh.IndexOffset          = s_raw_data->SIndexOffset;
+        mesh.IndexCount           = index_count;
+        mesh.IndexUnitStreamSize  = sizeof(uint32_t);
+        mesh.IndexStreamOffset    = (mesh.IndexUnitStreamSize * mesh.IndexOffset);
+        mesh.TotalByteSize        = (mesh.VertexCount * mesh.VertexUnitStreamSize) + (mesh.IndexCount * mesh.IndexUnitStreamSize);
+
+        s_raw_data->SVertexOffset += assimp_mesh->mNumVertices;
+        s_raw_data->SIndexOffset += index_count;
+
         co_return mesh;
     }
 

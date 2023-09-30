@@ -31,7 +31,7 @@ namespace ZEngine::Window::GLFWWindow
         virtual void  Update(Core::TimeStep delta_time) override;
         virtual void  Render() override;
 
-        Ref<Rendering::Swapchain> GetSwapchain() const;
+        Ref<Rendering::Swapchain> GetSwapchain() const override;
 
     public:
         bool OnEvent(Event::CoreEvent& event) override;
