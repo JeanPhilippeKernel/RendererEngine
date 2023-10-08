@@ -11,6 +11,7 @@ namespace ZEngine::Rendering::Textures
     public:
         Texture(const char* path) : m_path(path) {}
         Texture(unsigned int width, unsigned int height) : m_width(width), m_height(height) {}
+        Texture(unsigned int width, unsigned int height, float r, float g, float b, float a) : m_width(width), m_height(height), m_r(r), m_g(g), m_b(b), m_a(a) {}
 
         virtual ~Texture() = default;
 
@@ -72,4 +73,5 @@ namespace ZEngine::Rendering::Textures
 
     Texture* CreateTexture(const char* path);
     Texture* CreateTexture(unsigned int width, unsigned int height);
+    Texture* CreateTexture(unsigned int width, unsigned int height, float r, float g, float b, float a);
 } // namespace ZEngine::Rendering::Textures
