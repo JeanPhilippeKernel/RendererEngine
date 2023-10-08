@@ -22,6 +22,10 @@ namespace ZEngine::Rendering::Textures
     {
         return new Texture2D(width, height);
     }
+
+    Texture* CreateTexture(unsigned int width, unsigned int height, float r, float g, float b, float a) {
+        return new Texture2D(width, height, r, g, b, a);
+    }
 } // namespace ZEngine::Rendering::Textures
 
 namespace ZEngine::Rendering::Textures
@@ -98,6 +102,14 @@ namespace ZEngine::Rendering::Textures
 
         unsigned char data[] = {255, 255, 255, 255, '\0'}; // R:255 G: 255 B: 255 A: 255
         SetData(data);
+    }
+
+    Texture2D::Texture2D(unsigned int width, unsigned int height, float r, float g, float b, float a) : Texture(width, height, r, g, b, a)
+    {
+        m_byte_per_pixel = 4;
+        m_buffer_size    = width * height * m_byte_per_pixel;
+
+        SetData(r, g, b, a);
     }
 
     void Texture2D::SetData(void* const data)

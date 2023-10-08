@@ -9,6 +9,7 @@ namespace ZEngine::Rendering::Textures {
     public:
         Texture2D(const char* path);
         Texture2D(unsigned int width, unsigned int height);
+        Texture2D(unsigned int width, unsigned int height, float r, float g, float b, float a);
         ~Texture2D();
 
         void SetData(void* const data) override;
