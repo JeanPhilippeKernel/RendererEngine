@@ -8,7 +8,6 @@ namespace ZEngine::Rendering::Renderers
 {
     uint32_t                                                        GraphicRenderer::s_viewport_width           = 1;
     uint32_t                                                        GraphicRenderer::s_viewport_height          = 1;
-    Ref<Buffers::IndirectBuffer>                                    GraphicRenderer::s_indirect_buffer          = CreateRef<Buffers::IndirectBuffer>();
     std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::Count> GraphicRenderer::s_render_target_collection = {};
 
     const Ref<GraphicRendererInformation>& GraphicRenderer::GetRendererInformation() const
@@ -59,7 +58,6 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::Deinitialize()
     {
         s_render_target_collection.fill(nullptr);
-        s_indirect_buffer->Dispose();
     }
 
     void GraphicRenderer::BeginRenderPass(Buffers::CommandBuffer* const command_buffer, const Ref<RenderPasses::RenderPass>& render_pass)
@@ -130,15 +128,12 @@ namespace ZEngine::Rendering::Renderers
         vkCmdEndRenderPass(command_buffer->GetHandle());
     }
 
-    void GraphicRenderer::RenderGeometry(Buffers::CommandBuffer* const command_buffer, const std::vector<VkDrawIndirectCommand>& command_collection)
+    void GraphicRenderer::RenderGeometry(Buffers::CommandBuffer* const command_buffer, const Ref<Buffers::IndirectBuffer>& buffer, uint32_t count)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer != nullptr, "Command buffer can't be null")
-
-        if (!command_collection.empty())
+        if (buffer->GetNativeBufferHandle())
         {
-            s_indirect_buffer->SetData(command_collection);
-            vkCmdDrawIndirect(
-                command_buffer->GetHandle(), reinterpret_cast<VkBuffer>(s_indirect_buffer->GetNativeBufferHandle()), 0, command_collection.size(), sizeof(VkDrawIndirectCommand));
+            vkCmdDrawIndirect(command_buffer->GetHandle(), reinterpret_cast<VkBuffer>(buffer->GetNativeBufferHandle()), 0, count, sizeof(VkDrawIndirectCommand));
         }
     }
 } // namespace ZEngine::Rendering::Renderers

@@ -3,10 +3,12 @@
 #include <ZEngineDef.h>
 #include <Layers/Layer.h>
 
-namespace ZEngine::Layers {
+namespace ZEngine::Layers
+{
     class Layer;
 
-    class LayerStack {
+    class LayerStack
+    {
     public:
         LayerStack() = default;
         ~LayerStack();
@@ -28,17 +30,21 @@ namespace ZEngine::Layers {
         void PopOverlayLayer(Ref<Layer>&& layer);
 
     public:
-        std::vector<Ref<Layer>>::iterator begin() {
+        std::vector<Ref<Layer>>::iterator begin()
+        {
             return std::begin(m_layers);
         }
-        std::vector<Ref<Layer>>::iterator end() {
+        std::vector<Ref<Layer>>::iterator end()
+        {
             return std::end(m_layers);
         }
 
-        std::vector<Ref<Layer>>::reverse_iterator rbegin() {
+        std::vector<Ref<Layer>>::reverse_iterator rbegin()
+        {
             return std::rbegin(m_layers);
         }
-        std::vector<Ref<Layer>>::reverse_iterator rend() {
+        std::vector<Ref<Layer>>::reverse_iterator rend()
+        {
             return std::rend(m_layers);
         }
 

@@ -62,7 +62,7 @@ foreach ($shaderFile in $shaderSourceFiles) {
     $suffixName = If($shaderFile.Extension -eq ".vert") { "_vertex" } Else { "_fragment" }
     $outputFileFullName = Join-Path $shaderCacheDirectory -ChildPath "$fileName$suffixName.spv"
 
-    $null = & $glslcProgram -O $shaderFile.FullName -o $outputFileFullName
+    $null = & $glslcProgram -g -O $shaderFile.FullName -o $outputFileFullName
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error "failed to compile $shaderFile ..." -ErrorAction Stop

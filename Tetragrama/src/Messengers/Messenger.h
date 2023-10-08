@@ -4,23 +4,19 @@
 #include <functional>
 #include <string_view>
 #include <vector>
-#include <tuple>
-#include <type_traits>
 #include <mutex>
-#include <any>
 #include <Components/UIComponent.h>
 #include <Message.h>
+#include <ZEngine/Core/Coroutine.h>
 
 namespace Tetragrama::Messengers
 {
-
-    template <typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
-    using action_callback = std::function<void(TMessage&)>;
+    using action_callback = std::function<std::future<void>(void* const message)>;
 
     class Messenger
     {
-        using Component                 = std::any;
-        using ComponentActionPair           = std::pair<Component, std::any>;
+        using Component                 = void*;
+        using ComponentActionPair       = std::pair<Component, action_callback>;
         using ComponentActionCollection = std::vector<ComponentActionPair>;
 
     public:
@@ -28,152 +24,136 @@ namespace Tetragrama::Messengers
         void Send(std::string_view token, TMessage&& message)
         {
 
-            try
-            {
-                {
-                    auto find_it = m_routing_map.find(std::string(token));
-                    if (find_it == std::end(m_routing_map))
-                    {
-                        return;
-                    }
+            // try
+            //{
+            //     {
+            //         auto find_it = m_routing_map.find(std::string(token));
+            //         if (find_it == std::end(m_routing_map))
+            //         {
+            //             return;
+            //         }
 
-                    for (const ComponentActionPair& recipient : find_it->second)
-                    {
-                        const auto& component = std::any_cast<ZEngine::WeakRef<TRecipient>>(recipient.first);
-                        if (!component.expired())
-                        {
-                            const auto& callback = std::any_cast<action_callback<TMessage>>(recipient.second);
-                            callback(message);
-                        }
-                    }
-                }
-            }
-            catch (...)
-            {
-            }
+            //        for (const ComponentActionPair& recipient : find_it->second)
+            //        {
+            //            const auto& component = std::any_cast<ZEngine::WeakRef<TRecipient>>(recipient.first);
+            //            if (!component.expired())
+            //            {
+            //                const auto& callback = std::any_cast<action_callback<TMessage>>(recipient.second);
+            //                callback(message);
+            //            }
+            //        }
+            //    }
+            //}
+            // catch (...)
+            //{
+            //}
         }
 
         template <typename TRecipient, typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
         void Send(std::string_view token, TMessage&& message, std::function<void(void)>&& send_completion_callback)
         {
-            try
-            {
-                {
-                    auto find_it = m_routing_map.find(std::string(token));
-                    if (find_it == std::end(m_routing_map))
-                    {
-                        return;
-                    }
+            // try
+            //{
+            //     {
+            //         auto find_it = m_routing_map.find(std::string(token));
+            //         if (find_it == std::end(m_routing_map))
+            //         {
+            //             return;
+            //         }
 
-                    for (const ComponentActionPair& recipient : find_it->second)
+            //        for (const ComponentActionPair& recipient : find_it->second)
+            //        {
+            //            const auto& component = std::any_cast<ZEngine::WeakRef<TRecipient>>(recipient.first);
+            //            if (!component.expired())
+            //            {
+            //                const auto& callback = std::any_cast<action_callback<TMessage>>(recipient.second);
+            //                callback(message);
+            //            }
+            //        }
+            //        if (send_completion_callback)
+            //        {
+            //            send_completion_callback();
+            //        }
+            //    }
+            //}
+            // catch (...)
+            //{
+            //}
+        }
+
+        template <typename TRecipient, typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
+        std::future<void> SendAsync(std::string_view token, TMessage&& message)
+        {
+            std::unique_lock lock(m_mutex);
+            {
+                std::string routing_token = token.data();
+                if (!m_routing_map.contains(routing_token))
+                {
+                    co_return;
+                }
+
+                ComponentActionCollection& actions = m_routing_map[routing_token];
+
+                for (const ComponentActionPair& recipient : actions)
+                {
+                    TRecipient* component = reinterpret_cast<TRecipient*>(recipient.first);
+
+                    if (component)
                     {
-                        const auto& component = std::any_cast<ZEngine::WeakRef<TRecipient>>(recipient.first);
-                        if (!component.expired())
-                        {
-                            const auto& callback = std::any_cast<action_callback<TMessage>>(recipient.second);
-                            callback(message);
-                        }
-                    }
-                    if (send_completion_callback)
-                    {
-                        send_completion_callback();
+                        const action_callback& callback = recipient.second;
+                        co_await callback(&message);
                     }
                 }
             }
-            catch (...)
+        }
+
+        template <typename TRecipient, typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
+        std::future<void> SendAsync(std::string_view token, TMessage&& message, std::function<void(void)>&& send_completion_callback)
+        {
+            // try
+            //{
+            //     std::unique_lock lock(m_mutex);
+            //     {
+            //         std::string routing_token = token.data();
+            //         if (!m_routing_map.contains(routing_token))
+            //         {
+            //             return;
+            //         }
+
+            //        ComponentActionCollection& actions = m_routing_map[routing_token];
+
+            //        for (const ComponentActionPair& recipient : actions)
+            //        {
+            //            TRecipient* component = reinterpret_cast<TRecipient*>(recipient.first);
+
+            //            if (component)
+            //            {
+            //                action_callback* callback = reinterpret_cast<action_callback*>(recipient.second);
+            //                co_await callback(message);
+            //            }
+            //        }
+            //        if (send_completion_callback)
+            //        {
+            //            send_completion_callback();
+            //        }
+            //    }
+            //}
+            // catch (...)
+            //{
+            //}
+        }
+
+        template <typename TRecipient, typename TMessage>
+        void Register(TRecipient* const recipient, std::string_view token, action_callback&& callback)
+        {
+            std::lock_guard lock(m_mutex);
+
+            std::string         routing_token    = token.data();
+            ComponentActionPair component_action = std::make_pair(recipient, std::move(callback));
+            if (!m_routing_map.contains(routing_token))
             {
+                m_routing_map[routing_token] = ComponentActionCollection{};
             }
-        }
-
-        template <typename TRecipient, typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
-        void SendAsync(std::string_view token, TMessage&& message)
-        {
-
-            std::thread(
-                [this, token, message = std::move(message)]() mutable
-                {
-                    try
-                    {
-                        std::unique_lock lock(m_mutex);
-                        {
-                            auto find_it = m_routing_map.find(std::string(token));
-                            if (find_it == std::end(m_routing_map))
-                            {
-                                return;
-                            }
-
-                            for (const ComponentActionPair& recipient : find_it->second)
-                            {
-                                const auto& component = std::any_cast<ZEngine::WeakRef<TRecipient>>(recipient.first);
-                                if (!component.expired())
-                                {
-                                    const auto& callback = std::any_cast<action_callback<TMessage>>(recipient.second);
-                                    callback(message);
-                                }
-                            }
-                        }
-                    }
-                    catch (...)
-                    {
-                    }
-                })
-                .detach();
-        }
-
-        template <typename TRecipient, typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
-        void SendAsync(std::string_view token, TMessage&& message, std::function<void(void)>&& send_completion_callback)
-        {
-
-            std::thread(
-                [this, token, message = std::move(message), send_completion_callback = std::move(send_completion_callback)]() mutable
-                {
-                    try
-                    {
-                        std::unique_lock lock(m_mutex);
-                        {
-                            auto find_it = m_routing_map.find(std::string(token));
-                            if (find_it == std::end(m_routing_map))
-                            {
-                                return;
-                            }
-
-                            for (const ComponentActionPair& recipient : find_it->second)
-                            {
-                                const auto& component = std::any_cast<ZEngine::WeakRef<TRecipient>>(recipient.first);
-                                if (!component.expired())
-                                {
-                                    const auto& callback = std::any_cast<action_callback<TMessage>>(recipient.second);
-                                    callback(message);
-                                }
-                            }
-                            if (send_completion_callback)
-                            {
-                                send_completion_callback();
-                            }
-                        }
-                    }
-                    catch (...)
-                    {
-                    }
-                })
-                .detach();
-        }
-
-        template <typename TRecipient, typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
-        void Register(ZEngine::Ref<TRecipient> recipient, std::string_view token, action_callback<TMessage>&& callback)
-        {
-            std::string routing_token = token.data();
-
-            auto find_it = m_routing_map.find(routing_token);
-
-            ZEngine::WeakRef<TRecipient> weak_recipient(recipient);
-            ComponentActionPair              component_action = std::make_pair(std::move(weak_recipient), std::move(callback));
-            if (find_it == std::end(m_routing_map))
-            {
-                m_routing_map[routing_token] = ComponentActionCollection{component_action};
-                return;
-            }
-
             m_routing_map[routing_token].push_back(std::move(component_action));
         }
 
@@ -197,19 +177,19 @@ namespace Tetragrama::Messengers
         }
 
         template <typename TRecipient, typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
-        inline static void SendAsync(std::string_view token, TMessage&& message, std::function<void(void)>&& completion_callback)
+        inline static std::future<void> SendAsync(std::string_view token, TMessage&& message, std::function<void(void)>&& completion_callback)
         {
-            m_messenger->SendAsync<TRecipient, TMessage>(token, std::forward<TMessage>(message), std::move(completion_callback));
+            co_await m_messenger->SendAsync<TRecipient, TMessage>(token, std::forward<TMessage>(message), std::move(completion_callback));
         }
 
         template <typename TRecipient, typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
-        inline static void SendAsync(std::string_view token, TMessage&& message)
+        inline static std::future<void> SendAsync(std::string_view token, TMessage&& message)
         {
-            m_messenger->SendAsync<TRecipient, TMessage>(token, std::forward<TMessage>(message));
+            co_await m_messenger->SendAsync<TRecipient, TMessage>(token, std::forward<TMessage>(message));
         }
 
-        template <typename TRecipient, typename TMessage, typename = std::enable_if_t<std::is_base_of_v<EmptyMessage, TMessage>>>
-        inline static void Register(ZEngine::Ref<TRecipient> recipient, std::string_view token, action_callback<TMessage>&& callback)
+        template <typename TRecipient, typename TMessage>
+        inline static void Register(TRecipient* const recipient, std::string_view token, action_callback&& callback)
         {
             m_messenger->Register<TRecipient, TMessage>(recipient, token, std::move(callback));
         }
@@ -218,4 +198,9 @@ namespace Tetragrama::Messengers
         inline static ZEngine::Ref<Messenger> m_messenger = std::make_shared<Messenger>();
     };
 
+#define MESSENGER_REGISTER(TRecipient, TMessage, token, recipient_ptr, function_body)                                   \
+    IMessenger::Register<TRecipient, TMessage>(recipient_ptr, token, [this](void* const message) -> std::future<void> { \
+        auto message_ptr = reinterpret_cast<TMessage*>(message);                                                        \
+        function_body;                                                                                                  \
+    });
 } // namespace Tetragrama::Messengers

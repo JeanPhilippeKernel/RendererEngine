@@ -13,7 +13,7 @@ namespace Tetragrama::Components
 {
     HierarchyViewUIComponent::HierarchyViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
     {
-        m_node_flag = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen;
+        m_node_flag = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
     }
 
     HierarchyViewUIComponent::~HierarchyViewUIComponent() {}
@@ -39,28 +39,13 @@ namespace Tetragrama::Components
         }
     }
 
-    void HierarchyViewUIComponent::SceneAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
-    {
-        {
-            std::unique_lock lock(m_mutex);
-            m_active_scene = message.GetValue();
-        }
-    }
-
-    void HierarchyViewUIComponent::EditorCameraAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<EditorCameraController>>& message)
+    std::future<void> HierarchyViewUIComponent::EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<EditorCameraController>>& message)
     {
         {
             std::unique_lock lock(m_mutex);
             m_active_editor_camera = message.GetValue();
         }
-    }
-
-    void HierarchyViewUIComponent::RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>& message)
-    {
-        {
-            std::unique_lock lock(m_mutex);
-            m_is_allowed_to_render = message.GetValue();
-        }
+        co_return;
     }
 
     bool HierarchyViewUIComponent::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&)
@@ -70,8 +55,6 @@ namespace Tetragrama::Components
 
     void HierarchyViewUIComponent::Render()
     {
-        CHECK_IF_ALLOWED_TO_RENDER()
-
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
         if (ImGui::BeginPopupContextWindow(m_name.c_str()))
         {
@@ -169,8 +152,8 @@ namespace Tetragrama::Components
         if (ImGui::IsItemClicked())
         {
             m_selected_node_identifier = node_identifier;
-            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<int32_t>>(
-                EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::GenericMessage<int32_t>{m_selected_node_identifier});
+            //Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<int32_t>>(
+            //    EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::GenericMessage<int32_t>{m_selected_node_identifier});
         }
 
         if (is_node_opened)

@@ -17,11 +17,11 @@ namespace Tetragrama::Components
         virtual void Render() override;
 
     public:
-        void SceneAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>&);
-        void SceneEntitySelectedMessageHandler(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>&);
-        void SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage&);
-        void SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&);
-        void RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>&);
+        std::future<void> SceneAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>&);
+        std::future<void> SceneEntitySelectedMessageHandler(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>&);
+        std::future<void> SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage&);
+        std::future<void> SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&);
+        std::future<void> RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>&);
 
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;

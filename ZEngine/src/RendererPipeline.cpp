@@ -215,7 +215,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Ensure that Buffer Handle is valid
          */
-        bool found_invalid_handle = false;
+        std::vector<uint64_t> buffer_address       = {};
+        bool                  found_invalid_handle = false;
         for (const auto& pass_input_pair : m_type_buffer_pass_input_map)
         {
             auto& input_collection = pass_input_pair.second;
@@ -227,12 +228,37 @@ namespace ZEngine::Rendering::Renderers::Pipelines
                     found_invalid_handle = true;
                     break;
                 }
+                buffer_address.push_back((uint64_t) input_collection[i].Buffer->GetNativeBufferHandle());
             }
         }
         if (found_invalid_handle)
         {
             return;
         }
+
+        /*
+        * Ensure or detect any changes to the existing buffers bound to the DescriptorSet.
+        * Usually when the buffer is resized, we re-create it which lead to new Handle that invalidates previous DescriptorSet - Buffer binding
+        */
+        bool found_buffer_address_changed = false;
+        if (m_descriptor_set_binding_buffer_map.contains(m_descriptor_set))
+        {
+            auto& bound_buffer_collection = m_descriptor_set_binding_buffer_map[m_descriptor_set];
+            for (int i = 0; i < buffer_address.size(); ++i)
+            {
+                if (bound_buffer_collection[i] != buffer_address[i])
+                {
+                    found_buffer_address_changed = true;
+                    break;
+                }
+            }
+        }
+        if (found_buffer_address_changed)
+        {
+            m_descriptor_set_binding_buffer_map.erase(m_descriptor_set);
+            m_descriptor_set = VK_NULL_HANDLE;
+        }
+
         /*
          * Create DescriptorSet
          */
@@ -284,6 +310,19 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             if (!write_descriptor_set_collection.empty())
             {
                 vkUpdateDescriptorSets(device, write_descriptor_set_collection.size(), write_descriptor_set_collection.data(), 0, nullptr);
+            }
+        }
+
+        /*
+        * Create binding map between Buffer and DescriptorSet
+        */
+        for (const auto& pass_input_pair : m_type_buffer_pass_input_map)
+        {
+            auto& input_collection = pass_input_pair.second;
+
+            for (uint32_t i = 0; i < input_collection.size(); ++i)
+            {
+                m_descriptor_set_binding_buffer_map[m_descriptor_set].push_back((uint64_t) input_collection[i].Buffer->GetNativeBufferHandle());
             }
         }
     }

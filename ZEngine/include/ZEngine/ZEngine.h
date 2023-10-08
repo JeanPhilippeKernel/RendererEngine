@@ -1,8 +1,6 @@
 #pragma once
 #include "ZEngineDef.h"
-
 #include "Engine.h"
-
 #include "Core/Coroutine.h"
 
 #include "Rendering/Shaders/Shader.h"

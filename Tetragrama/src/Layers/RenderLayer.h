@@ -28,19 +28,17 @@ namespace Tetragrama::Layers
         virtual bool OnEvent(ZEngine::Event::CoreEvent& e) override;
 
     public:
-        void SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>&);
-        void SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>&);
-        void SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>&);
-        void SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>&);
-        void SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>&);
+        std::future<void> SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>&);
+        std::future<void> SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>&);
+        std::future<void> SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>&);
+        std::future<void> SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>&);
+        std::future<void> SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>&);
 
-        void SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage&);
-        void SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>&);
+        std::future<void> SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage&);
+        std::future<void> SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>&);
+        std::future<void> SceneRequestImportAssetModelAsync(Messengers::GenericMessage<std::string>&);
 
-        void SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>&);
-
-    protected:
-        void OnSceneRenderCompletedCallback(ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout);
+        std::future<void> SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>&);
 
     private:
         ZEngine::Ref<ZEngine::Rendering::Renderers::SceneRenderer> m_scene_renderer;

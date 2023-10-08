@@ -56,6 +56,12 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         Specifications::GraphicRendererPipelineSpecification               m_pipeline_specification;
 
     private:
+        /*
+        * 
+        */
+        std::unordered_map<VkDescriptorSet, std::vector<uint64_t>> m_descriptor_set_binding_buffer_map;
+
+    private:
         struct BindingDescriptorEntry
         {
             bool             IsAvailable{true};

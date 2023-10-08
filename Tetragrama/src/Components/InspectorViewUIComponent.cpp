@@ -1,7 +1,6 @@
 #include <pch.h>
 #include <InspectorViewUIComponent.h>
 #include <UIComponentDrawerHelper.h>
-//#include <Helpers/RendererHelper.h>
 #include <ZEngine/Helpers/MeshHelper.h>
 
 using namespace ZEngine::Rendering::Materials;
@@ -26,44 +25,49 @@ namespace Tetragrama::Components
         return false;
     }
 
-    void InspectorViewUIComponent::SceneAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
+    std::future<void> InspectorViewUIComponent::SceneAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
     {
         {
             std::unique_lock lock(m_mutex);
             m_active_scene = message.GetValue();
         }
+        co_return;
     }
 
-    void InspectorViewUIComponent::SceneEntitySelectedMessageHandler(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>& message)
+    std::future<void> InspectorViewUIComponent::SceneEntitySelectedMessageHandler(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>& message)
     {
         {
             std::unique_lock lock(m_mutex);
             m_scene_entity = message.GetValue();
         }
+        co_return;
     }
 
-    void InspectorViewUIComponent::SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage& message)
+    std::future<void> InspectorViewUIComponent::SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage& message)
     {
         {
             std::unique_lock lock(m_mutex);
             m_recieved_unselected_request = true;
         }
+        co_return;
     }
 
-    void InspectorViewUIComponent::SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&)
+    std::future<void> InspectorViewUIComponent::SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&)
     {
         {
             std::unique_lock lock(m_mutex);
             m_recieved_deleted_request = true;
         }
+        co_return;
     }
 
-    void InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>& message)
+    std::future<void> InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>& message)
     {
         {
             std::unique_lock lock(m_mutex);
             m_is_allowed_to_render = message.GetValue();
         }
+        co_return;
     }
 
     void InspectorViewUIComponent::Render()

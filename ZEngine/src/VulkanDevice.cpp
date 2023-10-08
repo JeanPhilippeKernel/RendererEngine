@@ -60,22 +60,22 @@ namespace ZEngine::Hardwares
         std::vector<LayerProperty> selected_layer_property_collection;
 
 #ifdef ENABLE_VULKAN_VALIDATION_LAYER
-        std::unordered_set<std::string> validation_layer_name_collection = {
-            "VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_screenshot"};
+       std::unordered_set<std::string> validation_layer_name_collection = {
+           "VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_screenshot"};
 
-        for (std::string_view layer_name : validation_layer_name_collection)
-        {
-            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) {
-                return std::string_view(layer_property.Properties.layerName) == layer_name;
-            });
-            if (find_it == std::end(layer_properties))
-            {
-                continue;
-            }
+       for (std::string_view layer_name : validation_layer_name_collection)
+       {
+           auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) {
+               return std::string_view(layer_property.Properties.layerName) == layer_name;
+           });
+           if (find_it == std::end(layer_properties))
+           {
+               continue;
+           }
 
-            enabled_layer_name_collection.push_back(find_it->Properties.layerName);
-            selected_layer_property_collection.push_back(*find_it);
-        }
+           enabled_layer_name_collection.push_back(find_it->Properties.layerName);
+           selected_layer_property_collection.push_back(*find_it);
+       }
 #endif
 
 #ifdef ENABLE_VULKAN_SYNCHRONIZATION_LAYER

@@ -14,6 +14,8 @@ namespace ZEngine::Serializers
     class GraphicScene3DSerializer;
 }
 
+typedef std::future<void> (*ReadCallback)(bool success, const void* scene);
+
 namespace ZEngine::Rendering::Scenes
 {
     struct SceneNodeHierarchy
@@ -92,7 +94,7 @@ namespace ZEngine::Rendering::Scenes
         static bool                 HasSceneNodes();
         static uint32_t             GetSceneNodeCount() = delete;
         static std::vector<int32_t> GetRootSceneNodes();
-        static std::future<bool>    ImportAssetAsync(std::string_view asset_filename);
+        static std::future<void>    ImportAssetAsync(std::string_view asset_filename);
         static std::future<bool>    LoadSceneFilenameAsync(std::string_view scene_file) = delete;
         static Ref<SceneRawData>    GetRawData();
         static void                 ComputeAllTransforms();
@@ -102,6 +104,7 @@ namespace ZEngine::Rendering::Scenes
         static std::recursive_mutex           s_scene_node_mutex;
         static std::future<bool>              __TraverseAssetNodeAsync(const aiScene* assimp_scene, aiNode* node, int parent_node, int depth_level);
         static std::future<Meshes::MeshVNext> __ReadSceneNodeMeshDataAsync(const aiScene* assimp_scene, uint32_t mesh_identifier);
+        static void                           __ReadAssetFileAsync(std::string_view filename, ReadCallback callback);
         friend class ZEngine::Serializers::GraphicScene3DSerializer;
     };
 } // namespace ZEngine::Rendering::Scenes

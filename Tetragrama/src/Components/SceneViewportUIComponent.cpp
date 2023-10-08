@@ -17,9 +17,7 @@ namespace Tetragrama::Components
 {
     SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {}
 
-    SceneViewportUIComponent::~SceneViewportUIComponent()
-    {
-    }
+    SceneViewportUIComponent::~SceneViewportUIComponent() {}
 
     void SceneViewportUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
@@ -30,8 +28,8 @@ namespace Tetragrama::Components
             GraphicRenderer::SetViewportSize(m_viewport_size.x, m_viewport_size.y);
             m_refresh_texture_handle = true;
 
-            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<std::pair<float, float>>>(
-                EDITOR_COMPONENT_SCENEVIEWPORT_RESIZED, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
+            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
+                EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
         }
 
         if (m_is_window_hovered && m_is_window_focused)
@@ -53,8 +51,9 @@ namespace Tetragrama::Components
 
             auto mouse_bounded_x = static_cast<int>(mouse_position.x);
             auto mouse_bounded_y = static_cast<int>(mouse_position.y);
-            Messengers::IMessenger::Send<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<std::pair<int, int>>>(
-                EDITOR_COMPONENT_SCENEVIEWPORT_CLICKED, Messengers::GenericMessage<std::pair<int, int>>{{mouse_bounded_x, mouse_bounded_y}});
+            auto message_data = std::array{mouse_bounded_x, mouse_bounded_y};
+            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::ArrayValueMessage<int, 2>>(
+                EDITOR_COMPONENT_SCENEVIEWPORT_CLICKED, Messengers::ArrayValueMessage<int, 2>{message_data});
         }
     }
 
@@ -84,8 +83,8 @@ namespace Tetragrama::Components
             if (m_refresh_texture_handle)
             {
                 VkDescriptorSet old_scene_texture = m_scene_texture;
-                m_scene_texture = VK_NULL_HANDLE;
-                m_refresh_texture_handle = false;
+                m_scene_texture                   = VK_NULL_HANDLE;
+                m_refresh_texture_handle          = false;
             }
             m_scene_texture = ImGui_ImplVulkan_AddTexture(buffer->GetSampler(), buffer->GetImageViewHandle(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
@@ -107,40 +106,22 @@ namespace Tetragrama::Components
         ImGui::PopStyleVar();
     }
 
-    void SceneViewportUIComponent::SceneTextureAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>& message)
-    {
-        const auto& view_layout = message.GetValue();
-        // m_current_scene_texture_view = view_layout.Handle;
-    }
-
-    void SceneViewportUIComponent::SceneViewportResizedMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& e)
-    {
-        const auto& value = e.GetValue();
-        ZENGINE_EDITOR_INFO("Viewport resized : {} - {}", value.first, value.second);
-
-        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{e});
-    }
-
-    void SceneViewportUIComponent::SceneViewportClickedMessageHandler(Messengers::GenericMessage<std::pair<int, int>>& e)
+    std::future<void> SceneViewportUIComponent::SceneViewportClickedMessageHandler(Messengers::ArrayValueMessage<int, 2>& e)
     {
         // Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<int, int>>>(
         //     EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, Messengers::GenericMessage<std::pair<int, int>>{e});
+        co_return;
     }
 
-    void SceneViewportUIComponent::SceneViewportFocusedMessageHandler(Messengers::GenericMessage<bool>& e)
+    std::future<void> SceneViewportUIComponent::SceneViewportFocusedMessageHandler(Messengers::GenericMessage<bool>& e)
     {
-        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, Messengers::GenericMessage<bool>{e});
+        co_await Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, Messengers::GenericMessage<bool>{e});
     }
 
-    void SceneViewportUIComponent::SceneViewportUnfocusedMessageHandler(Messengers::GenericMessage<bool>& e)
+    std::future<void> SceneViewportUIComponent::SceneViewportUnfocusedMessageHandler(Messengers::GenericMessage<bool>& e)
     {
-        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{e});
-    }
-
-    void SceneViewportUIComponent::SceneViewportRequestRecomputationMessageHandler(Messengers::EmptyMessage&)
-    {
-        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<std::pair<float, float>>>(
-            EDITOR_COMPONENT_SCENEVIEWPORT_RESIZED, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
+        co_await Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{e});
     }
 } // namespace Tetragrama::Components

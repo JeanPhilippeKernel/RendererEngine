@@ -13,7 +13,7 @@ namespace Tetragrama::Components {
         virtual void Render() override;
 
     public:
-        void RequestExitMessageHandler(Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>&);
+        std::future<void> RequestExitMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>&);
 
     protected:
         virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;

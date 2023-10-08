@@ -2,8 +2,8 @@
 #include <vulkan/vulkan.h>
 #include <Rendering/Renderers/GraphicRendererInformation.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
-#include <Rendering/Buffers/IndirectBuffer.h>
 #include <Rendering/Buffers/Framebuffer.h>
+#include <Rendering/Buffers/IndirectBuffer.h>
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -15,9 +15,9 @@ namespace ZEngine::Rendering::Renderers
 
     struct DrawData
     {
-        int      Index{-1};
-        int      TransformIndex{-1};
-        int      MaterialIndex{-1};
+        uint32_t Index{0xFFFFFFFF};
+        uint32_t TransformIndex{0xFFFFFFFF};
+        uint32_t MaterialIndex{0xFFFFFFFF};
         uint32_t VertexOffset;
         uint32_t IndexOffset;
         uint32_t VertexCount;
@@ -35,7 +35,7 @@ namespace ZEngine::Rendering::Renderers
 
         static void                           BeginRenderPass(Buffers::CommandBuffer* const command_buffer, const Ref<RenderPasses::RenderPass>&);
         static void                           EndRenderPass(Buffers::CommandBuffer* const command_buffer);
-        static void                           RenderGeometry(Buffers::CommandBuffer* const command_buffer, const std::vector<VkDrawIndirectCommand>& command_collection);
+        static void                           RenderGeometry(Buffers::CommandBuffer* const command_buffer, const Ref<Buffers::IndirectBuffer>& buffer, uint32_t count);
         static Ref<Buffers::FramebufferVNext> GetRenderTarget(RenderTarget target);
         static Ref<Buffers::FramebufferVNext> GetFrameOutput();
 
@@ -50,7 +50,6 @@ namespace ZEngine::Rendering::Renderers
         static uint32_t                                                        s_viewport_width;
         static uint32_t                                                        s_viewport_height;
         static std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::Count> s_render_target_collection;
-        static Ref<Buffers::IndirectBuffer>                                    s_indirect_buffer;
         Ref<GraphicRendererInformation>                                        m_renderer_information;
     };
 } // namespace ZEngine::Rendering::Renderers

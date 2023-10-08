@@ -6,6 +6,7 @@
 #include <Rendering/Cameras/Camera.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/Swapchain.h>
+#include <Rendering/Buffers/IndirectBuffer.h>
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -38,7 +39,12 @@ namespace ZEngine::Rendering::Renderers
         std::vector<Ref<Buffers::StorageBuffer>>        m_SBIndex_colletion;
         std::vector<Ref<Buffers::StorageBuffer>>        m_SBDrawData_colletion;
         std::vector<Ref<Buffers::StorageBuffer>>        m_SBTransform_colletion;
+        std::vector<Ref<Buffers::IndirectBuffer>>       m_indirect_buffer;
         std::vector<std::vector<VkDrawIndirectCommand>> m_draw_indirect_command_collection;
         Ref<RenderPasses::RenderPass>                   m_final_color_output_pass;
+
+    private:
+        std::vector<uint32_t> m_last_drawn_vertices_count;
+        std::vector<uint32_t> m_last_drawn_index_count;
     };
 } // namespace ZEngine::Rendering::Renderers

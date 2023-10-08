@@ -249,32 +249,27 @@ namespace ZEngine::Rendering::Scenes
         co_return s_raw_data->SceneNodeMeshMap[node_identifier];
     }
 
-    std::future<bool> GraphicScene::ImportAssetAsync(std::string_view asset_filename)
+    std::future<void> GraphicScene::ImportAssetAsync(std::string_view asset_filename)
     {
         std::unique_lock lock(s_scene_node_mutex);
-        bool             result = true;
 
-        Assimp::Importer importer = {};
-        uint32_t read_flags       = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_LimitBoneWeights | aiProcess_SplitLargeMeshes |
-                              aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_FindDegenerates | aiProcess_FindInvalidData | aiProcess_GenUVCoords |
-                              aiProcess_FlipUVs;
-
-        const aiScene* scene_ptr = importer.ReadFile(asset_filename.data(), read_flags);
-        if ((!scene_ptr) || scene_ptr->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene_ptr->mRootNode)
+        if (!asset_filename.empty())
         {
-            result = false;
-            co_return result;
+            __ReadAssetFileAsync(asset_filename, [](bool success, const void* scene) -> std::future<void> {
+                if (success && scene)
+                {
+                    auto    scene_ptr = reinterpret_cast<const aiScene*>(scene);
+                    aiNode* root_node = scene_ptr->mRootNode;
+                    co_await __TraverseAssetNodeAsync(scene_ptr, root_node, SCENE_ROOT_PARENT_ID, SCENE_ROOT_DEPTH_LEVEL);
+                }
+            });
         }
-
-        aiNode* root_node = scene_ptr->mRootNode;
-        result            = co_await __TraverseAssetNodeAsync(scene_ptr, root_node, SCENE_ROOT_PARENT_ID, SCENE_ROOT_DEPTH_LEVEL);
-        importer.FreeScene();
-
-        co_return result;
+        co_return;
     }
 
     Ref<SceneRawData> GraphicScene::GetRawData()
     {
+        std::lock_guard lock(s_scene_node_mutex);
         return s_raw_data;
     }
 
@@ -306,6 +301,7 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::ComputeAllTransforms()
     {
+        std::unique_lock lock(s_scene_node_mutex);
         uint32_t total_level = s_raw_data->LevelSceneNodeChangedMap.size();
         for (int level = 0; level < total_level; ++level)
         {
@@ -331,6 +327,8 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::MarkSceneNodeAsChanged(int32_t node_identifier)
     {
+        std::unique_lock lock(s_scene_node_mutex);
+
         if (s_raw_data->NodeHierarchyCollection.empty())
         {
             return;
@@ -462,6 +460,29 @@ namespace ZEngine::Rendering::Scenes
         s_raw_data->SIndexOffset += index_count;
 
         co_return mesh;
+    }
+
+    void GraphicScene::__ReadAssetFileAsync(std::string_view filename, ReadCallback callback)
+    {
+        std::thread([fn = std::string(filename.data()), callback] {
+            Assimp::Importer importer = {};
+            uint32_t read_flags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_LimitBoneWeights | aiProcess_SplitLargeMeshes |
+                                  aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_FindDegenerates | aiProcess_FindInvalidData |
+                                  aiProcess_GenUVCoords | aiProcess_FlipUVs;
+
+            bool           result    = true;
+            const aiScene* scene_ptr = importer.ReadFile(fn, read_flags);
+            if ((!scene_ptr) || scene_ptr->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene_ptr->mRootNode)
+            {
+                result = false;
+            }
+
+            if (callback)
+            {
+                callback(result, scene_ptr);
+            }
+            importer.FreeScene();
+        }).detach();
     }
 
     GraphicSceneEntity GraphicScene::GetPrimariyCameraEntity()
