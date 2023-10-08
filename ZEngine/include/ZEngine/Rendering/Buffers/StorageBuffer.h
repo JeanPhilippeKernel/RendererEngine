@@ -1,16 +1,17 @@
 #pragma once
 #include <Rendering/Buffers/GraphicBuffer.h>
 #include <Hardwares/VulkanDevice.h>
+#include <span>
 
 namespace ZEngine::Rendering::Buffers
 {
 
-    class VertexBuffer : public IGraphicBuffer
+    class StorageBuffer : public IGraphicBuffer
     {
     public:
-        explicit VertexBuffer() : IGraphicBuffer() {}
+        explicit StorageBuffer() : IGraphicBuffer() {}
 
-        void SetData(const void* data, size_t byte_size)
+        void SetData(const void* data, uint32_t offset, size_t byte_size)
         {
             if (byte_size == 0)
             {
@@ -26,41 +27,42 @@ namespace ZEngine::Rendering::Buffers
 
                 CleanUpMemory();
                 this->m_byte_size = byte_size;
-                m_staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
-                static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-                m_vertex_buffer   = Hardwares::VulkanDevice::CreateBuffer(
-                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                m_staging_buffer  = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+                m_storage_buffer = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             }
 
             if (!data)
             {
                 return;
             }
-
             auto  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
             void* memory_region;
-            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, m_staging_buffer.Memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
+            ZENGINE_VALIDATE_ASSERT(
+                vkMapMemory(device, m_staging_buffer.Memory, static_cast<VkDeviceSize>(offset), static_cast<VkDeviceSize>(this->m_byte_size), 0, &memory_region) == VK_SUCCESS,
+                "Failed to map the memory")
             std::memcpy(memory_region, data, this->m_byte_size);
             vkUnmapMemory(device, m_staging_buffer.Memory);
 
-            Hardwares::VulkanDevice::CopyBuffer(m_staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
+            Hardwares::VulkanDevice::CopyBuffer(m_staging_buffer, m_storage_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
         }
 
         template <typename T>
         inline void SetData(const std::vector<T>& content)
         {
             size_t byte_size = sizeof(T) * content.size();
-            this->SetData(content.data(), byte_size);
+            this->SetData(content.data(), 0, byte_size);
         }
 
-        ~VertexBuffer()
+        ~StorageBuffer()
         {
             CleanUpMemory();
         }
 
-        void* GetNativeBufferHandle() const override
+        void * GetNativeBufferHandle() const
         {
-            return reinterpret_cast<void*>(m_vertex_buffer.Handle);
+            return reinterpret_cast<void*>(m_storage_buffer.Handle);
         }
 
         void Dispose()
@@ -78,16 +80,16 @@ namespace ZEngine::Rendering::Buffers
                 m_staging_buffer = {};
             }
 
-            if (m_vertex_buffer)
+            if (m_storage_buffer)
             {
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_vertex_buffer.Handle);
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_vertex_buffer.Memory);
-                m_vertex_buffer = {};
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_storage_buffer.Handle);
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_storage_buffer.Memory);
+                m_storage_buffer = {};
             }
         }
 
     private:
+        Hardwares::BufferView m_storage_buffer;
         Hardwares::BufferView m_staging_buffer;
-        Hardwares::BufferView m_vertex_buffer;
     };
 } // namespace ZEngine::Rendering::Buffers

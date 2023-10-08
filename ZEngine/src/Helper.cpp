@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <ZEngineDef.h>
+#include <Core/Coroutine.h>
 #include <Helpers/RendererHelper.h>
 #include <Helpers/MeshHelper.h>
 #include <Rendering/Renderers/Storages/IVertex.h>
@@ -7,17 +8,17 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
+#include <Helpers/MathHelper.h>
+
 using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine::Helpers
 {
-
     VkPipelineLayout CreatePipelineLayout(const VkPipelineLayoutCreateInfo& pipeline_layout_create_info)
     {
         VkPipelineLayout out_pipeline_layout = VK_NULL_HANDLE;
         auto             device              = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        ZENGINE_VALIDATE_ASSERT(
-            vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &out_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
+        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &out_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
 
         return out_pipeline_layout;
     }
@@ -133,50 +134,13 @@ namespace ZEngine::Helpers
         specification.LayoutCreateInfo.pNext                  = nullptr;
 
         /*Vertex Input*/
-        auto& vertex_attribute_description_collection                             = Storages::IVertex::GetVertexAttributeDescription();
-        specification.VertexInputStateCreateInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        specification.VertexInputStateCreateInfo.vertexAttributeDescriptionCount = vertex_attribute_description_collection.size();
-        specification.VertexInputStateCreateInfo.pVertexAttributeDescriptions    = vertex_attribute_description_collection.data();
-        auto& vertex_input_binding_description_collection                         = Storages::IVertex::GetVertexInputBindingDescription();
-        specification.VertexInputStateCreateInfo.vertexBindingDescriptionCount   = vertex_input_binding_description_collection.size();
-        specification.VertexInputStateCreateInfo.pVertexBindingDescriptions      = vertex_input_binding_description_collection.data();
-        specification.VertexInputStateCreateInfo.pNext                           = nullptr;
+        specification.VertexInputStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        specification.VertexInputStateCreateInfo.pNext = nullptr;
     }
 
     Rendering::Meshes::MeshVNext CreateBuiltInMesh(Rendering::Meshes::MeshType mesh_type)
     {
-        Rendering::Meshes::MeshVNext custom_mesh = {std::vector<float>{}, std::vector<uint32_t>{}, 0};
-        // std::string_view             custom_mesh = "Assets/Meshes/duck.obj";
-         //std::string_view             custom_mesh = "Assets/Meshes/cube.obj";
-         std::string_view mesh_file = "Assets/Meshes/viking_room.obj";
-
-        Assimp::Importer importer = {};
-
-        const aiScene* scene_ptr = importer.ReadFile(mesh_file.data(), aiProcess_Triangulate | aiProcess_FlipUVs);
-
-        if ((!scene_ptr) || scene_ptr->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene_ptr->mRootNode)
-        {
-            custom_mesh.VertexCount = 0xFFFFFFFF;
-        }
-        else
-        {
-            std::vector<uint32_t> mesh_id_collection;
-            bool                  successful = ExtractMeshFromAssimpSceneNode(scene_ptr->mRootNode, &mesh_id_collection);
-            if (successful)
-            {
-                auto meshes = ConvertAssimpMeshToZEngineMeshModel(scene_ptr, mesh_id_collection);
-
-                /*The cube obj model is actually one Mesh, so we are safe */
-                if (!meshes.empty())
-                {
-                    custom_mesh = std::move(meshes.front());
-                }
-            }
-        }
-
-        importer.FreeScene();
-
-        custom_mesh.Type = mesh_type;
+        Rendering::Meshes::MeshVNext custom_mesh = {};
         return custom_mesh;
     }
 
@@ -251,10 +215,23 @@ namespace ZEngine::Helpers
                 }
             }
 
-            Rendering::Meshes::MeshVNext zengine_mesh = {std::move(vertices), std::move(indices), vertex_count};
+            Rendering::Meshes::MeshVNext zengine_mesh = {};
             meshes.push_back(std::move(zengine_mesh));
         }
 
         return meshes;
+    }
+
+    glm::mat4 ConvertToMat4(const aiMatrix4x4& m)
+    {
+        glm::mat4 mm;
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                mm[i][j] = m[i][j];
+            }
+        }
+        return mm;
     }
 } // namespace ZEngine::Helpers

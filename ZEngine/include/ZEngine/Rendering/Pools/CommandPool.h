@@ -12,6 +12,7 @@ namespace ZEngine::Rendering::Pools
         CommandPool(Rendering::QueueType type, uint64_t swapchain_identifier = 0, bool present_on_swapchain = true);
         ~CommandPool();
 
+        void                                Tick();
         Buffers::CommandBuffer*             GetCurrentCommmandBuffer();
         std::vector<Primitives::Semaphore*> GetAllWaitSemaphoreCollection();
         uint64_t                            GetSwapchainParent() const;

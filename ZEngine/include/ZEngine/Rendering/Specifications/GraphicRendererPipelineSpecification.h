@@ -1,7 +1,9 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <Rendering/Specifications/RenderPassSpecification.h>
-#include <Rendering/Specifications/FrameBufferSpecification.h>
+#include <Rendering/Specifications/ShaderSpecification.h>
+#include <Rendering/Buffers/Framebuffer.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Specifications
 {
@@ -26,12 +28,12 @@ namespace ZEngine::Rendering::Specifications
     {
         GraphicRendererPipelineSpecification() = default;
 
-        std::string                                       DebugName;
-        std::string                                       VertexShaderFilename;
-        std::string                                       FragmentShaderFilename;
-        std::vector<VkDescriptorSetLayoutBinding>         LayoutBindingCollection;
-        std::vector<VkDescriptorSetLayout>                DescriptorSetLayoutCollection;
-        FrameBufferSpecificationVNext TargetFrameBufferSpecification;
-        GraphicRendererPipelineStateSpecification         StateSpecification;
+        std::string                                              DebugName;
+        std::string                                              VertexShaderFilename;
+        std::string                                              FragmentShaderFilename;
+        std::unordered_map<uint32_t, LayoutBindingSpecification> LayoutBindingMap;
+        std::vector<VkDescriptorSetLayout>                       DescriptorSetLayoutCollection;
+        Ref<Rendering::Buffers::FramebufferVNext>                TargetFrameBufferSpecification;
+        GraphicRendererPipelineStateSpecification                StateSpecification;
     };
 }

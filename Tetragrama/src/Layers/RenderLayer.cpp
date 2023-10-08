@@ -4,44 +4,28 @@
 #include <MessageToken.h>
 
 using namespace ZEngine;
-using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Window;
 using namespace ZEngine::Core;
 using namespace ZEngine::Inputs;
 using namespace ZEngine::Event;
-using namespace ZEngine::Managers;
-using namespace ZEngine::Rendering::Textures;
-using namespace ZEngine::Controllers;
-using namespace ZEngine::Rendering::Meshes;
-using namespace ZEngine::Maths;
-using namespace ZEngine::Rendering::Components;
-using namespace ZEngine::Rendering::Geometries;
 
 namespace Tetragrama::Layers
 {
 
     RenderLayer::RenderLayer(std::string_view name) : Layer(name) {}
 
-    RenderLayer::~RenderLayer()
-    {
-        m_scene.reset();
-    }
+    RenderLayer::~RenderLayer() {}
 
     void RenderLayer::Initialize()
     {
-        m_editor_camera_controller = CreateRef<EditorCameraController>(GetAttachedWindow(), 300.0f, 0.f, 30.f);
+        auto current_window        = GetAttachedWindow();
+        m_editor_camera_controller = CreateRef<EditorCameraController>(current_window, 300.0f, 0.f, 30.f);
+        m_scene_renderer           = CreateRef<SceneRenderer>(current_window->GetSwapchain());
 
-        m_scene = CreateRef<GraphicScene3D>();
-        m_scene->Initialize();
-        m_scene->SetCameraController(m_editor_camera_controller);
-        m_scene->SetWindowParent(GetAttachedWindow());
-        m_scene->OnSceneRenderCompleted = std::bind(&RenderLayer::OnSceneRenderCompletedCallback, this, std::placeholders::_1);
-        m_scene_serializer              = CreateRef<Serializers::GraphicScene3DSerializer>(m_scene);
-
-        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<Ref<GraphicScene>>>(
-            EDITOR_RENDER_LAYER_SCENE_AVAILABLE, Messengers::GenericMessage<Ref<GraphicScene>>{m_scene});
+        m_scene_renderer->Initialize();
+        GraphicScene::Initialize();
 
         Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<Ref<EditorCameraController>>>(
             EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE, Messengers::GenericMessage<Ref<EditorCameraController>>{m_editor_camera_controller});
@@ -49,159 +33,164 @@ namespace Tetragrama::Layers
 
     void RenderLayer::Deinitialize()
     {
-        m_scene->Deinitialize();
+        GraphicScene::Deinitialize();
+        m_scene_renderer->Deinitialize();
     }
 
     void RenderLayer::Update(TimeStep dt)
     {
         m_editor_camera_controller->Update(dt);
-        m_scene->Update(dt);
+        GraphicScene::ComputeAllTransforms();
+        m_scene_renderer->Tick();
     }
 
     bool RenderLayer::OnEvent(CoreEvent& e)
     {
         m_editor_camera_controller->OnEvent(e);
-        if (m_scene->ShouldReactToEvent())
-        {
-            m_scene->OnEvent(e);
-        }
         return false;
     }
 
     void RenderLayer::Render()
     {
-        m_scene->Render();
+        auto camera = m_editor_camera_controller->GetCamera();
+
+        m_scene_renderer->StartScene(camera->GetPosition(), camera->GetViewMatrix(), camera->GetProjectionMatrix());
+        m_scene_renderer->RenderScene(GraphicScene::GetRawData());
+        m_scene_renderer->EndScene();
     }
 
-    void RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message)
+    std::future<void> RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message)
     {
         std::unique_lock lock(m_message_handler_mutex);
 
         const auto& value = message.GetValue();
         m_editor_camera_controller->SetViewportSize(value.first, value.second);
-        m_scene->RequestNewSizeAsync(value.first, value.second);
+        co_return;
     }
 
-    void RenderLayer::SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>& message)
+    std::future<void> RenderLayer::SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>& message)
     {
-        std::unique_lock lock(m_message_handler_mutex);
-        m_scene->SetShouldReactToEvent(message.GetValue());
+        // std::unique_lock lock(m_message_handler_mutex);
+        // GraphicScene::SetShouldReactToEvent(message.GetValue());
+        co_return;
     }
 
-    void RenderLayer::SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>& message)
+    std::future<void> RenderLayer::SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>& message)
     {
-        std::unique_lock lock(m_message_handler_mutex);
-        m_scene->SetShouldReactToEvent(message.GetValue());
+        // std::unique_lock lock(m_message_handler_mutex);
+        // GraphicScene::SetShouldReactToEvent(message.GetValue());
+        co_return;
     }
 
-    void RenderLayer::SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>& message)
+    std::future<void> RenderLayer::SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>& message)
     {
-        std::unique_lock lock(m_message_handler_mutex);
-        // Todo: We need to replace this whole part by using system FileDialog API
-        if (!m_scene->HasEntities())
-        {
-            ZENGINE_EDITOR_WARN("There are no entities in the current scene to serialize")
-            return;
-        }
+        // std::unique_lock lock(m_message_handler_mutex);
+        //// Todo: We need to replace this whole part by using system FileDialog API
+        // if (!m_scene->HasEntities())
+        //{
+        //     ZENGINE_EDITOR_WARN("There are no entities in the current scene to serialize")
+        //     return;
+        // }
 
-        auto scene_filename = message.GetValue();
-        if (scene_filename.empty())
-        {
-            scene_filename = "SampleScene.zengine";
-        }
+        // auto scene_filename = message.GetValue();
+        // if (scene_filename.empty())
+        //{
+        //     scene_filename = "SampleScene.zengine";
+        // }
 
-        auto process_info = m_scene_serializer->Serialize(scene_filename);
-        if (!process_info.IsSuccess)
-        {
-            ZENGINE_EDITOR_ERROR("Scene Serialization process failed with following errors : \n {0}", process_info.ErrorMessage)
-            return;
-        }
+        // auto process_info = m_scene_serializer->Serialize(scene_filename);
+        // if (!process_info.IsSuccess)
+        //{
+        //     ZENGINE_EDITOR_ERROR("Scene Serialization process failed with following errors : \n {0}", process_info.ErrorMessage)
+        //     return;
+        // }
 
-        ZENGINE_EDITOR_INFO("Scene Serialization succeeded")
+        // ZENGINE_EDITOR_INFO("Scene Serialization succeeded")
+        co_return;
     }
 
-    void RenderLayer::SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>& message)
+    std::future<void> RenderLayer::SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>& message)
     {
-        {
-            std::unique_lock lock(m_message_handler_mutex);
-            // Todo: We need to replace this whole part by using system FileDialog API
-            auto scene_filename = message.GetValue();
-            if (scene_filename.empty())
-            {
-                scene_filename = "SampleScene.zengine";
-            }
-            auto process_info = m_scene_serializer->Deserialize(scene_filename);
-            if (!process_info.IsSuccess)
-            {
-                ZENGINE_EDITOR_ERROR("Scene Deserialization process failed with following errors : \n {0}", process_info.ErrorMessage)
-                return;
-            }
+        //{
+        //    std::unique_lock lock(m_message_handler_mutex);
+        //    // Todo: We need to replace this whole part by using system FileDialog API
+        //    auto scene_filename = message.GetValue();
+        //    if (scene_filename.empty())
+        //    {
+        //        scene_filename = "SampleScene.zengine";
+        //    }
+        //    auto process_info = m_scene_serializer->Deserialize(scene_filename);
+        //    if (!process_info.IsSuccess)
+        //    {
+        //        ZENGINE_EDITOR_ERROR("Scene Deserialization process failed with following errors : \n {0}", process_info.ErrorMessage)
+        //        return;
+        //    }
 
-            ZENGINE_EDITOR_INFO("Scene Deserialization succeeded")
-
-            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
-                EDITOR_COMPONENT_SCENEVIEWPORT_REQUEST_RECOMPUTATION, Messengers::EmptyMessage{});
-        }
+        //    ZENGINE_EDITOR_INFO("Scene Deserialization succeeded")
+        co_return;
     }
 
-    void RenderLayer::SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage& message)
+    std::future<void> RenderLayer::SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage& message)
     {
-        {
-            std::unique_lock lock(m_message_handler_mutex);
+        //{
+        //    std::unique_lock lock(m_message_handler_mutex);
 
-            if (m_scene->HasEntities())
-            {
-                Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
-                    EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
-            }
+        //    if (m_scene->HasEntities())
+        //    {
+        //        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
+        //            EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
+        //    }
 
-            HandleNewSceneMessage(message);
-        }
+        //    HandleNewSceneMessage(message);
+        //}
+        co_return;
     }
 
-    void RenderLayer::SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>& message)
+    std::future<void> RenderLayer::SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>& message)
     {
-        {
-            std::unique_lock lock(m_message_handler_mutex);
+        //{
+        //    std::unique_lock lock(m_message_handler_mutex);
 
-            if (m_scene->HasEntities())
-            {
-                Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
-                    EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
-            }
+        //    if (m_scene->HasEntities())
+        //    {
+        //        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
+        //            EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
+        //    }
 
-            HandleOpenSceneMessage(message);
-        }
+        //    HandleOpenSceneMessage(message);
+        //}
+        co_return;
     }
 
-    void RenderLayer::SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>& mouse_position)
+    std::future<void> RenderLayer::SceneRequestImportAssetModelAsync(Messengers::GenericMessage<std::string>& message)
+    {
+        const auto& value = message.GetValue();
+        co_return co_await GraphicScene::ImportAssetAsync(value);
+    }
+
+    std::future<void> RenderLayer::SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>& mouse_position)
     {
         // const auto& value  = mouse_position.GetValue();
         // auto        entity = m_scene->GetEntity(value.first, value.second);
         // ZENGINE_EDITOR_INFO("Mouse Pos: X={} -- Y={}", value.first, value.second)
-    }
-
-    void RenderLayer::OnSceneRenderCompletedCallback(ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout framebuffer_view)
-    {
-        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>>(
-            EDITOR_COMPONENT_SCENEVIEWPORT_TEXTURE_AVAILABLE, Messengers::GenericMessage<ZEngine::Rendering::Renderers::Contracts::FramebufferViewLayout>{framebuffer_view});
+        co_return;
     }
 
     void RenderLayer::HandleNewSceneMessage(const Messengers::EmptyMessage&)
     {
-        {
-            std::unique_lock lock(m_message_handler_mutex);
-            m_scene->InvalidateAllEntities();
-        }
+        //{
+        //    std::unique_lock lock(m_message_handler_mutex);
+        //    m_scene->InvalidateAllEntities();
+        //}
     }
 
     void RenderLayer::HandleOpenSceneMessage(const Messengers::GenericMessage<std::string>& message)
     {
-        {
-            std::unique_lock lock(m_message_handler_mutex);
-            m_scene->InvalidateAllEntities();
-            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-                EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION, Messengers::GenericMessage<std::string>{message});
-        }
+        //{
+        //    std::unique_lock lock(m_message_handler_mutex);
+        //    m_scene->InvalidateAllEntities();
+        //    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+        //        EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION, Messengers::GenericMessage<std::string>{message});
+        //}
     }
 } // namespace Tetragrama::Layers

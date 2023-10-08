@@ -1,3 +1,4 @@
+#include <pch.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <ImGuizmo/ImGuizmo.h>
@@ -11,23 +12,24 @@ using namespace ZEngine::Rendering;
 
 namespace ZEngine::Rendering::Renderers
 {
-    Pools::CommandPool*                ImGUIRenderer::s_ui_command_pool = nullptr;
-    Rendering::Buffers::CommandBuffer* ImGUIRenderer::s_command_buffer  = nullptr;
-    VkDescriptorPool                   ImGUIRenderer::s_descriptor_pool  = VK_NULL_HANDLE;
+    Pools::CommandPool*                              ImGUIRenderer::s_ui_command_pool         = nullptr;
+    Rendering::Buffers::CommandBuffer*               ImGUIRenderer::s_command_buffer          = nullptr;
+    VkDescriptorPool                                 ImGUIRenderer::s_descriptor_pool         = VK_NULL_HANDLE;
+    std::unordered_map<uint32_t, std::vector<void*>> ImGUIRenderer::s_deletion_resource_queue = {};
 
     void ImGUIRenderer::Initialize(void* window, const Ref<Swapchain>& swapchain)
     {
-        s_ui_command_pool       = VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, swapchain->GetIdentifier(), true);
+        s_ui_command_pool = VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, swapchain->GetIdentifier(), true);
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(window), false);
 
         /*Create DescriptorPool*/
         auto                              device     = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        std::vector<VkDescriptorPoolSize> pool_sizes = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, swapchain->GetImageCount()}};
+        std::vector<VkDescriptorPoolSize> pool_sizes = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}};
         VkDescriptorPoolCreateInfo        pool_info  = {};
         pool_info.sType                              = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags                              = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pool_info.maxSets                            = swapchain->GetImageCount();
-        pool_info.poolSizeCount                      = 1;
+        pool_info.maxSets                            = 100 * swapchain->GetImageCount();
+        pool_info.poolSizeCount                      = pool_sizes.size();
         pool_info.pPoolSizes                         = pool_sizes.data();
         ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(device, &pool_info, nullptr, &s_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool -- ImGuiLayer")
 
@@ -67,6 +69,44 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_DESTROY_VULKAN_HANDLE(device, vkDestroyDescriptorPool, s_descriptor_pool, nullptr)
     }
 
+    void ImGUIRenderer::EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle)
+    {
+        if (resource_handle)
+        {
+            s_deletion_resource_queue[static_cast<uint32_t>(resource_type)].emplace_back(resource_handle);
+        }
+    }
+
+    void ImGUIRenderer::CleanupResource()
+    {
+        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        for (auto resource : s_deletion_resource_queue)
+        {
+            Rendering::DeviceResourceType resource_type = static_cast<Rendering::DeviceResourceType>(resource.first);
+            for (void* handle : resource.second)
+            {
+                switch (resource_type)
+                {
+                    case Rendering::DeviceResourceType::DESCRIPTORSET:
+                        auto set = reinterpret_cast<VkDescriptorSet>(handle);
+                        vkFreeDescriptorSets(device, s_descriptor_pool, 1, &set);
+                        break;
+                }
+            }
+        }
+
+        s_deletion_resource_queue.clear();
+    }
+
+    bool ImGUIRenderer::HasPendingCleanupResource()
+    {
+        if (s_deletion_resource_queue.empty())
+        {
+            return false;
+        }
+        return s_deletion_resource_queue.at(static_cast<uint32_t>(Rendering::DeviceResourceType::DESCRIPTORSET)).size() > 5;
+    }
+
     void ImGUIRenderer::BeginFrame()
     {
         ImGui_ImplVulkan_NewFrame();
@@ -80,6 +120,7 @@ namespace ZEngine::Rendering::Renderers
     {
         ZENGINE_VALIDATE_ASSERT(s_ui_command_pool != nullptr, "UI Command pool can't be null")
 
+        s_ui_command_pool->Tick();
         s_command_buffer = s_ui_command_pool->GetCurrentCommmandBuffer();
         s_command_buffer->Begin();
         {

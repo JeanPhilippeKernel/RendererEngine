@@ -81,7 +81,6 @@ namespace ZEngine::Hardwares
         static VkSurfaceKHR       GetSurface();
         static VkSurfaceFormatKHR GetSurfaceFormat();
         static VkPresentModeKHR   GetPresentMode();
-        static VkDescriptorPool   GetDescriptorPool();
 
         static BufferView  CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VkMemoryPropertyFlags requested_properties);
         static void        CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size);
@@ -98,18 +97,18 @@ namespace ZEngine::Hardwares
             VkMemoryPropertyFlags requested_properties,
             VkImageAspectFlagBits image_aspect_flag);
 
-        static VkSampler     CreateImageSampler();
-        static VkFormat      FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
-        static VkFormat      FindDepthFormat();
-        static VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag);
-        static void          CopyBufferToImage(
-                     const Rendering::QueueType&                                   queue_type,
-                     const BufferView&                                             source,
-                     BufferImage&                                                  destination,
-                     uint32_t                                                      width,
-                     uint32_t                                                      height,
-                     uint32_t                                                      start_copy_after_barrier_index = 0,
-                     const std::vector<Rendering::Primitives::ImageMemoryBarrier>& memory_barriers                = {});
+        static VkSampler   CreateImageSampler();
+        static VkFormat    FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
+        static VkFormat    FindDepthFormat();
+        static VkImageView CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag);
+        static void        CopyBufferToImage(
+                   const Rendering::QueueType&                                   queue_type,
+                   const BufferView&                                             source,
+                   BufferImage&                                                  destination,
+                   uint32_t                                                      width,
+                   uint32_t                                                      height,
+                   uint32_t                                                      start_copy_after_barrier_index = 0,
+                   const std::vector<Rendering::Primitives::ImageMemoryBarrier>& memory_barriers                = {});
         static VkFramebuffer CreateFramebuffer(
             const std::vector<VkImageView>& attachments,
             const VkRenderPass&             render_pass,

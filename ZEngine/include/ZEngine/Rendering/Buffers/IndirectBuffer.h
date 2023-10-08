@@ -5,13 +5,14 @@
 namespace ZEngine::Rendering::Buffers
 {
 
-    class VertexBuffer : public IGraphicBuffer
+    class IndirectBuffer : public IGraphicBuffer
     {
     public:
-        explicit VertexBuffer() : IGraphicBuffer() {}
+        explicit IndirectBuffer() : IGraphicBuffer() {}
 
         void SetData(const void* data, size_t byte_size)
         {
+
             if (byte_size == 0)
             {
                 return;
@@ -26,10 +27,10 @@ namespace ZEngine::Rendering::Buffers
 
                 CleanUpMemory();
                 this->m_byte_size = byte_size;
-                m_staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
-                static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-                m_vertex_buffer   = Hardwares::VulkanDevice::CreateBuffer(
-                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                m_staging_buffer  = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+                m_indirect_buffer = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             }
 
             if (!data)
@@ -43,7 +44,7 @@ namespace ZEngine::Rendering::Buffers
             std::memcpy(memory_region, data, this->m_byte_size);
             vkUnmapMemory(device, m_staging_buffer.Memory);
 
-            Hardwares::VulkanDevice::CopyBuffer(m_staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
+            Hardwares::VulkanDevice::CopyBuffer(m_staging_buffer, m_indirect_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
         }
 
         template <typename T>
@@ -53,14 +54,14 @@ namespace ZEngine::Rendering::Buffers
             this->SetData(content.data(), byte_size);
         }
 
-        ~VertexBuffer()
+        ~IndirectBuffer()
         {
             CleanUpMemory();
         }
 
         void* GetNativeBufferHandle() const override
         {
-            return reinterpret_cast<void*>(m_vertex_buffer.Handle);
+            return reinterpret_cast<void*>(m_indirect_buffer.Handle);
         }
 
         void Dispose()
@@ -78,16 +79,16 @@ namespace ZEngine::Rendering::Buffers
                 m_staging_buffer = {};
             }
 
-            if (m_vertex_buffer)
+            if (m_indirect_buffer)
             {
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_vertex_buffer.Handle);
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_vertex_buffer.Memory);
-                m_vertex_buffer = {};
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_indirect_buffer.Handle);
+                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_indirect_buffer.Memory);
+                m_indirect_buffer = {};
             }
         }
 
     private:
+        Hardwares::BufferView m_indirect_buffer;
         Hardwares::BufferView m_staging_buffer;
-        Hardwares::BufferView m_vertex_buffer;
     };
 } // namespace ZEngine::Rendering::Buffers

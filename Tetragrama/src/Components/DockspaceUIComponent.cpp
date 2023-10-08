@@ -5,10 +5,12 @@
 #include <imgui/src/imgui_internal.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
+#include <Helpers/WindowsHelper.h>
 
 using namespace ZEngine::Components::UI::Event;
 
-namespace Tetragrama::Components {
+namespace Tetragrama::Components
+{
 
     DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
     {
@@ -19,13 +21,17 @@ namespace Tetragrama::Components {
 
     DockspaceUIComponent::~DockspaceUIComponent() {}
 
-    bool DockspaceUIComponent::OnUIComponentRaised(UIComponentEvent& event) {
+    bool DockspaceUIComponent::OnUIComponentRaised(UIComponentEvent& event)
+    {
         return true;
     }
 
-    void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt) {
-        if (HasChildren()) {
-            for (const auto& child : m_children) {
+    void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt)
+    {
+        if (HasChildren())
+        {
+            for (const auto& child : m_children)
+            {
                 child->Update(dt);
             }
         }
@@ -59,9 +65,9 @@ namespace Tetragrama::Components {
                 ImGui::DockBuilderAddNode(window_id, ImGuiDockNodeFlags_None);
                 ImGui::DockBuilderSetNodeSize(window_id, ImGui::GetMainViewport()->Size);
 
-                ImGuiID dock_main_id       = window_id;
-                ImGuiID dock_left_id      = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Left, 0.2f, nullptr, &dock_main_id);
-                ImGuiID dock_right_id      = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.2f, nullptr, &dock_main_id);
+                ImGuiID dock_main_id  = window_id;
+                ImGuiID dock_left_id  = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Left, 0.2f, nullptr, &dock_main_id);
+                ImGuiID dock_right_id = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.2f, nullptr, &dock_main_id);
 
                 ImGuiID dock_right_down_id = ImGui::DockBuilderSplitNode(dock_right_id, ImGuiDir_Down, 0.3f, nullptr, &dock_right_id);
                 ImGuiID dock_down_id       = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.25f, nullptr, &dock_main_id);
@@ -80,7 +86,6 @@ namespace Tetragrama::Components {
             ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
             ImGui::DockSpace(window_id, ImVec2(0.0f, 0.0f), m_dockspace_node_flag);
             ImGui::PopStyleVar();
-
         }
 
         if (ImGui::BeginMenuBar())
@@ -96,6 +101,17 @@ namespace Tetragrama::Components {
                 {
                     Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
                         EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>{""});
+                }
+
+                if (ImGui::MenuItem("Import New Asset..."))
+                {
+                    /* We definitely need a ThreadPool*/
+                    std::thread([] {
+                        Helpers::OpenFileDialogAsync([](std::string_view filename) {
+                            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+                                EDITOR_RENDER_LAYER_SCENE_REQUEST_IMPORTASSETMODEL, Messengers::GenericMessage<std::string>{filename.data()});
+                        });
+                    }).detach();
                 }
 
                 ImGui::Separator();
@@ -136,12 +152,15 @@ namespace Tetragrama::Components {
         ImGui::End();
     }
 
-    void DockspaceUIComponent::RequestExitMessageHandler(Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>& message) {
-        if (!m_parent_layer.expired()) {
+    std::future<void> DockspaceUIComponent::RequestExitMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>& message)
+    {
+        if (!m_parent_layer.expired())
+        {
             auto layer = m_parent_layer.lock();
             layer->OnEvent(message.GetValue());
 
-            ZENGINE_EDITOR_WARN("zEngine editor stopped")
+            ZENGINE_EDITOR_WARN("ZEngine editor stopped")
         }
+        co_return;
     }
 } // namespace Tetragrama::Components

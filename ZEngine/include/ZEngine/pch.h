@@ -16,3 +16,4 @@
 #include <uuid.h>
 #include <unordered_set>
 #include <exception>
+#include <stack>

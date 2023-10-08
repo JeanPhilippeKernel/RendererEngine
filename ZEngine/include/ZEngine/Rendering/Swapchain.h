@@ -22,6 +22,7 @@ namespace ZEngine::Rendering
         uint32_t       GetImageCount() const;
         VkRenderPass   GetRenderPass() const;
         VkFramebuffer  GetCurrentFramebuffer();
+        uint32_t       GetCurrentFrameIndex();
         VkSwapchainKHR GetHandle() const;
         uint64_t       GetIdentifier() const;
 

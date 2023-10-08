@@ -8,15 +8,15 @@ namespace ZEngine::Rendering::Pools
     CommandPool::CommandPool(Rendering::QueueType type, uint64_t swapchain_identifier, bool present_on_swapchain)
     {
         /* Create CommandPool */
-        m_swapchain_identifier                                    = swapchain_identifier;
-        m_queue_type                                              = type;
-        auto                    device                            = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        Hardwares::QueueView    queue_view                        = Hardwares::VulkanDevice::GetQueue(type);
-        VkCommandPoolCreateInfo transfer_command_pool_create_info = {};
-        transfer_command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        transfer_command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        transfer_command_pool_create_info.queueFamilyIndex        = queue_view.FamilyIndex;
-        ZENGINE_VALIDATE_ASSERT(vkCreateCommandPool(device, &transfer_command_pool_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Command Pool")
+        m_swapchain_identifier                           = swapchain_identifier;
+        m_queue_type                                     = type;
+        auto                    device                   = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        Hardwares::QueueView    queue_view               = Hardwares::VulkanDevice::GetQueue(type);
+        VkCommandPoolCreateInfo command_pool_create_info = {};
+        command_pool_create_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        command_pool_create_info.flags                   = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        command_pool_create_info.queueFamilyIndex        = queue_view.FamilyIndex;
+        ZENGINE_VALIDATE_ASSERT(vkCreateCommandPool(device, &command_pool_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Command Pool")
 
         /*Create CommandBuffer */
         m_current_command_buffer_index = 0;
@@ -45,16 +45,22 @@ namespace ZEngine::Rendering::Pools
         m_command_buffer_collection.fill(nullptr);
     }
 
-    Buffers::CommandBuffer* CommandPool::GetCurrentCommmandBuffer()
+    void CommandPool::Tick()
     {
+        static bool first = true;
+        if (first)
+        {
+            first = false;
+            return;
+        }
         m_current_command_buffer_index++;
 
-        if (m_current_command_buffer_index == m_command_buffer_collection.size())
+        if (m_current_command_buffer_index == 10)
         {
             m_current_command_buffer_index = 0;
 
             auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-            for (auto command : m_command_buffer_collection)
+            for (auto& command : m_command_buffer_collection)
             {
                 ZENGINE_VALIDATE_ASSERT(command->GetState() != Buffers::CommanBufferState::Recording, "")
 
@@ -65,7 +71,10 @@ namespace ZEngine::Rendering::Pools
             }
             ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device, m_handle, 0) == VK_SUCCESS, "Failed to reset Command Pool")
         }
+    }
 
+    Buffers::CommandBuffer* CommandPool::GetCurrentCommmandBuffer()
+    {
         return m_command_buffer_collection[m_current_command_buffer_index].get();
     }
 

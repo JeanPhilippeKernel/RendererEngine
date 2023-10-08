@@ -8,9 +8,7 @@ namespace ZEngine::Rendering::Buffers
     class UniformBuffer : public IGraphicBuffer
     {
     public:
-        explicit UniformBuffer() : IGraphicBuffer()
-        {
-        }
+        explicit UniformBuffer() : IGraphicBuffer() {}
 
         explicit UniformBuffer(const UniformBuffer& rhs) = delete;
 
@@ -21,9 +19,9 @@ namespace ZEngine::Rendering::Buffers
             std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
-            rhs.m_byte_size                    = 0;
-            rhs.m_uniform_buffer_mapped        = nullptr;
-            rhs.m_uniform_buffer               = {};
+            rhs.m_byte_size             = 0;
+            rhs.m_uniform_buffer_mapped = nullptr;
+            rhs.m_uniform_buffer        = {};
         }
 
         explicit UniformBuffer(UniformBuffer&& rhs) noexcept
@@ -33,9 +31,9 @@ namespace ZEngine::Rendering::Buffers
             std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
-            rhs.m_byte_size                    = 0;
-            rhs.m_uniform_buffer_mapped        = nullptr;
-            rhs.m_uniform_buffer               = {};
+            rhs.m_byte_size             = 0;
+            rhs.m_uniform_buffer_mapped = nullptr;
+            rhs.m_uniform_buffer        = {};
         }
 
         UniformBuffer& operator=(const UniformBuffer& rhs) = delete;
@@ -52,9 +50,9 @@ namespace ZEngine::Rendering::Buffers
             std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
-            rhs.m_byte_size                    = 0;
-            rhs.m_uniform_buffer_mapped        = nullptr;
-            rhs.m_uniform_buffer               = {};
+            rhs.m_byte_size             = 0;
+            rhs.m_uniform_buffer_mapped = nullptr;
+            rhs.m_uniform_buffer        = {};
 
             return *this;
         }
@@ -71,29 +69,27 @@ namespace ZEngine::Rendering::Buffers
             std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
-            rhs.m_byte_size                    = 0;
-            rhs.m_uniform_buffer_mapped        = nullptr;
-            rhs.m_uniform_buffer               = {};
+            rhs.m_byte_size             = 0;
+            rhs.m_uniform_buffer_mapped = nullptr;
+            rhs.m_uniform_buffer        = {};
 
             return *this;
         }
 
         void SetData(const void* data, size_t byte_size)
         {
-            if (!data)
-            {
-                ZENGINE_CORE_WARN("data is null")
-                return;
-            }
-
             if (byte_size == 0)
             {
-                ZENGINE_CORE_WARN("data byte size is null")
                 return;
             }
 
             if (this->m_byte_size < byte_size || (!m_uniform_buffer_mapped))
             {
+                /*
+                * Tracking the size change..
+                */
+                m_last_byte_size = m_byte_size;
+
                 CleanUpMemory();
                 this->m_byte_size = byte_size;
                 m_uniform_buffer  = Hardwares::VulkanDevice::CreateBuffer(
@@ -103,6 +99,11 @@ namespace ZEngine::Rendering::Buffers
                 ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, m_uniform_buffer.Memory, 0, this->m_byte_size, 0, &m_uniform_buffer_mapped) == VK_SUCCESS, "Failed to map the memory")
             }
             std::memset(m_uniform_buffer_mapped, 0, this->m_byte_size);
+
+            if (!data)
+            {
+                return;
+            }
             std::memcpy(m_uniform_buffer_mapped, data, this->m_byte_size);
         }
 
@@ -113,9 +114,9 @@ namespace ZEngine::Rendering::Buffers
             this->SetData(content.data(), byte_size);
         }
 
-        VkBuffer GetNativeBufferHandle() const
+        void* GetNativeBufferHandle() const override
         {
-            return m_uniform_buffer.Handle;
+            return reinterpret_cast<void*>(m_uniform_buffer.Handle);
         }
 
         void Dispose()
@@ -144,7 +145,7 @@ namespace ZEngine::Rendering::Buffers
         }
 
     private:
-        void*          m_uniform_buffer_mapped{nullptr};
+        void*                 m_uniform_buffer_mapped{nullptr};
         Hardwares::BufferView m_uniform_buffer;
     };
 } // namespace ZEngine::Rendering::Buffers

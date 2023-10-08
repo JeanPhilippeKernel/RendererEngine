@@ -23,6 +23,7 @@
 #include <Layers/Layer.h>
 #include <Layers/LayerStack.h>
 #include <Window/WindowConfiguration.h>
+#include <Rendering/Swapchain.h>
 
 namespace ZEngine
 {
@@ -67,6 +68,8 @@ namespace ZEngine::Window
         virtual void SetCallbackFunction(const EventCallbackFn& callback) = 0;
 
         virtual void* GetNativeWindow() const = 0;
+
+        virtual Ref<Rendering::Swapchain> GetSwapchain() const = 0;
 
         virtual const WindowProperty& GetWindowProperty() const = 0;
 

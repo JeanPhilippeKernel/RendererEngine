@@ -23,7 +23,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
 
         /*Framebuffer Creation*/
-        m_target_framebuffer = CreateRef<Buffers::FramebufferVNext>(m_pipeline_specification.TargetFrameBufferSpecification);
+        m_target_framebuffer = m_pipeline_specification.TargetFrameBufferSpecification;
 
         /*Pipeline fixed states*/
         Helpers::FillDefaultPipelineFixedStates(m_pipeline_specification.StateSpecification);
@@ -55,10 +55,26 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         fragment_shader_stage_create_info.module = fragment_module;
         fragment_shader_stage_create_info.pName  = "main";
 
+        std::vector<BindingDescriptorEntry> binding_entries = {};
+
+        std::vector<VkDescriptorSetLayoutBinding> layout_binding_collection = {};
+        for (const auto& layout_binding_pair : m_pipeline_specification.LayoutBindingMap)
+        {
+            const auto& layout_binding = layout_binding_pair.second;
+            layout_binding_collection.emplace_back(VkDescriptorSetLayoutBinding{
+                .binding            = layout_binding.Binding,
+                .descriptorType     = Specifications::DescriptorTypeMap[static_cast<uint32_t>(layout_binding.DescriptorType)],
+                .descriptorCount    = layout_binding.Count,
+                .stageFlags         = Specifications::ShaderStageFlagsMap[static_cast<uint32_t>(layout_binding.Flags)],
+                .pImmutableSamplers = nullptr});
+
+            binding_entries.emplace_back(
+                BindingDescriptorEntry{.Binding = layout_binding.Binding, .Type = Specifications::DescriptorTypeMap[static_cast<uint32_t>(layout_binding.DescriptorType)]});
+        }
         VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info = {};
         descriptor_set_layout_create_info.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptor_set_layout_create_info.bindingCount                    = m_pipeline_specification.LayoutBindingCollection.size();
-        descriptor_set_layout_create_info.pBindings                       = m_pipeline_specification.LayoutBindingCollection.data();
+        descriptor_set_layout_create_info.bindingCount                    = layout_binding_collection.size();
+        descriptor_set_layout_create_info.pBindings                       = layout_binding_collection.data();
         ZENGINE_VALIDATE_ASSERT(
             vkCreateDescriptorSetLayout(device, &descriptor_set_layout_create_info, nullptr, &m_descriptor_set_layout) == VK_SUCCESS, "Failed to create DescriptorSetLayout")
 
@@ -95,18 +111,47 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         // Cleanup ShaderModules
         vkDestroyShaderModule(device, vertex_module, nullptr);
         vkDestroyShaderModule(device, fragment_module, nullptr);
-
-        /*DescriptorSet Creation*/
+        /*
+         * Create DescriptorPool
+         */
+        std::vector<VkDescriptorPoolSize> pool_sizes = {};
+        for (const auto& pool_type_count_pair : m_pool_type_count_map)
         {
-            VkDescriptorSet             descriptor_set               = VK_NULL_HANDLE;
-            VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
-            descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            descriptor_set_allocate_info.descriptorPool              = Hardwares::VulkanDevice::GetDescriptorPool();
-            descriptor_set_allocate_info.descriptorSetCount          = 1;
-            descriptor_set_allocate_info.pSetLayouts                 = &(m_descriptor_set_layout);
-            ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(device, &descriptor_set_allocate_info, &descriptor_set) == VK_SUCCESS, "Failed to create DescriptorSet")
-            m_descriptor_set_collection.push_back(descriptor_set);
+            pool_sizes.emplace_back(VkDescriptorPoolSize{.type = static_cast<VkDescriptorType>(pool_type_count_pair.first), .descriptorCount = pool_type_count_pair.second});
         }
+        VkDescriptorPoolCreateInfo pool_info = {};
+        pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.flags                      = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool_info.maxSets                    = 10 * pool_sizes.size();
+        pool_info.poolSizeCount              = pool_sizes.size();
+        pool_info.pPoolSizes                 = pool_sizes.data();
+
+        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(device, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool")
+        /*
+         * Updating Binding index
+         */
+        for (auto& pass_input_pair : m_type_buffer_pass_input_map)
+        {
+            auto  descriptor_type  = pass_input_pair.first;
+            auto& input_collection = pass_input_pair.second;
+
+            for (auto& input : input_collection)
+            {
+                auto find_it = std::find_if(binding_entries.begin(), binding_entries.end(), [&](const GraphicPipeline::BindingDescriptorEntry& entry) {
+                    return entry.IsAvailable && (entry.Type == descriptor_type);
+                });
+                if (find_it != binding_entries.end())
+                {
+                    input.Binding      = find_it->Binding;
+                    find_it->IsAvailable = false;
+                }
+            }
+        }
+    }
+
+    VkDescriptorSet GraphicPipeline::GetDescriptorSet() const
+    {
+        return m_descriptor_set;
     }
 
     void GraphicPipeline::Dispose()
@@ -114,30 +159,11 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, m_pipeline_layout);
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, m_pipeline_handle);
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, m_descriptor_set_layout);
+        Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, m_descriptor_pool);
         m_pipeline_layout       = VK_NULL_HANDLE;
         m_pipeline_handle       = VK_NULL_HANDLE;
         m_descriptor_set_layout = VK_NULL_HANDLE;
-    }
-
-    void GraphicPipeline::SetUniformBuffer(Ref<Buffers::UniformBuffer> uniform_buffer, uint32_t binding, uint32_t set)
-    {
-        auto                   device             = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        VkDescriptorBufferInfo buffer_info        = {};
-        buffer_info.buffer                        = uniform_buffer->GetNativeBufferHandle();
-        buffer_info.range                         = VK_WHOLE_SIZE;
-        buffer_info.offset                        = 0;
-        VkWriteDescriptorSet write_descriptor_set = {};
-        write_descriptor_set.sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write_descriptor_set.dstSet               = m_descriptor_set_collection[set];
-        write_descriptor_set.descriptorType       = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        write_descriptor_set.dstBinding           = binding;
-        write_descriptor_set.dstArrayElement      = 0;
-        write_descriptor_set.descriptorCount      = 1;
-        write_descriptor_set.pBufferInfo          = &buffer_info;
-        write_descriptor_set.pImageInfo           = nullptr; // Optional
-        write_descriptor_set.pTexelBufferView     = nullptr; // Optional
-        write_descriptor_set.pNext                = nullptr;
-        vkUpdateDescriptorSets(device, 1, &(write_descriptor_set), 0, nullptr);
+        m_descriptor_pool       = VK_NULL_HANDLE;
     }
 
     VkPipeline GraphicPipeline::GetHandle() const
@@ -164,24 +190,157 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         return m_target_framebuffer;
     }
 
-    std::vector<VkDescriptorSet> GraphicPipeline::GetDescriptorSetCollection() const
+    const VkDescriptorSetLayout GraphicPipeline::GetDescriptorSetLayout() const
     {
-        return m_descriptor_set_collection;
+        return m_descriptor_set_layout;
     }
 
-    const VkDescriptorSet* GraphicPipeline::GetDescriptorSetCollectionData() const
+    void GraphicPipeline::SetUniformBuffer(std::string_view key_name, const Ref<Rendering::Buffers::UniformBuffer>& buffer)
     {
-        return m_descriptor_set_collection.data();
+        auto type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        __CreateOrIncrementPoolTypeCount(type);
+        auto& pass_input = m_type_buffer_pass_input_map[type].emplace_back(BufferPassInput{.DebugName = key_name.data(), .Buffer = buffer});
     }
 
-    uint32_t GraphicPipeline::GetDescriptorSetCollectionCount() const
+    void GraphicPipeline::SetStorageBuffer(std::string_view key_name, const Ref<Rendering::Buffers::StorageBuffer>& buffer)
     {
-        return m_descriptor_set_collection.size();
+        auto type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        __CreateOrIncrementPoolTypeCount(type);
+        auto& pass_input = m_type_buffer_pass_input_map[type].emplace_back(BufferPassInput{.DebugName = key_name.data(), .Buffer = buffer});
+    }
+
+    void GraphicPipeline::UpdateDescriptorSets()
+    {
+        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        /*
+         * Ensure that Buffer Handle is valid
+         */
+        std::vector<uint64_t> buffer_address       = {};
+        bool                  found_invalid_handle = false;
+        for (const auto& pass_input_pair : m_type_buffer_pass_input_map)
+        {
+            auto& input_collection = pass_input_pair.second;
+
+            for (uint32_t i = 0; i < input_collection.size(); ++i)
+            {
+                if (input_collection[i].Buffer->GetNativeBufferHandle() == nullptr)
+                {
+                    found_invalid_handle = true;
+                    break;
+                }
+                buffer_address.push_back((uint64_t) input_collection[i].Buffer->GetNativeBufferHandle());
+            }
+        }
+        if (found_invalid_handle)
+        {
+            return;
+        }
+
+        /*
+        * Ensure or detect any changes to the existing buffers bound to the DescriptorSet.
+        * Usually when the buffer is resized, we re-create it which lead to new Handle that invalidates previous DescriptorSet - Buffer binding
+        */
+        bool found_buffer_address_changed = false;
+        if (m_descriptor_set_binding_buffer_map.contains(m_descriptor_set))
+        {
+            auto& bound_buffer_collection = m_descriptor_set_binding_buffer_map[m_descriptor_set];
+            for (int i = 0; i < buffer_address.size(); ++i)
+            {
+                if (bound_buffer_collection[i] != buffer_address[i])
+                {
+                    found_buffer_address_changed = true;
+                    break;
+                }
+            }
+        }
+        if (found_buffer_address_changed)
+        {
+            m_descriptor_set_binding_buffer_map.erase(m_descriptor_set);
+            m_descriptor_set = VK_NULL_HANDLE;
+        }
+
+        /*
+         * Create DescriptorSet
+         */
+        if (m_descriptor_set != VK_NULL_HANDLE)
+        {
+            return;
+        }
+
+        VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
+        descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        descriptor_set_allocate_info.descriptorPool              = m_descriptor_pool;
+        descriptor_set_allocate_info.descriptorSetCount          = 1;
+        descriptor_set_allocate_info.pSetLayouts                 = &(m_descriptor_set_layout);
+        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(device, &descriptor_set_allocate_info, &m_descriptor_set) == VK_SUCCESS, "Failed to create DescriptorSet")
+        /*
+         * Write Buffers
+         */
+        for (const auto& pass_input_pair : m_type_buffer_pass_input_map)
+        {
+            auto  descriptor_type  = pass_input_pair.first;
+            auto& input_collection = pass_input_pair.second;
+
+            std::vector<uint32_t>               binding_index_collection        = {};
+            std::vector<VkDescriptorBufferInfo> buffer_info_collection          = {};
+            std::vector<VkWriteDescriptorSet>   write_descriptor_set_collection = {};
+
+            for (uint32_t i = 0; i < input_collection.size(); ++i)
+            {
+                auto native_buffer      = reinterpret_cast<VkBuffer>(input_collection[i].Buffer->GetNativeBufferHandle());
+                auto native_buffer_size = static_cast<VkDeviceSize>(input_collection[i].Buffer->GetByteSize());
+                buffer_info_collection.emplace_back(VkDescriptorBufferInfo{.buffer = native_buffer, .offset = 0, .range = native_buffer_size});
+                binding_index_collection.push_back(input_collection[i].Binding);
+            }
+
+            for (uint32_t i = 0; i < buffer_info_collection.size(); ++i)
+            {
+                write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                    .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .pNext            = nullptr,
+                    .dstSet           = m_descriptor_set,
+                    .dstBinding       = binding_index_collection[i],
+                    .dstArrayElement  = 0,
+                    .descriptorCount  = 1,
+                    .descriptorType   = descriptor_type,
+                    .pImageInfo       = nullptr,
+                    .pBufferInfo      = &buffer_info_collection[i],
+                    .pTexelBufferView = nullptr});
+            }
+            if (!write_descriptor_set_collection.empty())
+            {
+                vkUpdateDescriptorSets(device, write_descriptor_set_collection.size(), write_descriptor_set_collection.data(), 0, nullptr);
+            }
+        }
+
+        /*
+        * Create binding map between Buffer and DescriptorSet
+        */
+        for (const auto& pass_input_pair : m_type_buffer_pass_input_map)
+        {
+            auto& input_collection = pass_input_pair.second;
+
+            for (uint32_t i = 0; i < input_collection.size(); ++i)
+            {
+                m_descriptor_set_binding_buffer_map[m_descriptor_set].push_back((uint64_t) input_collection[i].Buffer->GetNativeBufferHandle());
+            }
+        }
     }
 
     Ref<GraphicPipeline> GraphicPipeline::Create(Specifications::GraphicRendererPipelineSpecification& spec)
     {
         auto pipeline = CreateRef<GraphicPipeline>(std::move(spec));
         return pipeline;
+    }
+
+    void GraphicPipeline::__CreateOrIncrementPoolTypeCount(VkDescriptorType type)
+    {
+        if (!m_pool_type_count_map.contains(type))
+        {
+            m_pool_type_count_map[type] = 1;
+            return;
+        }
+        auto count                  = m_pool_type_count_map[type];
+        m_pool_type_count_map[type] = ++count;
     }
 } // namespace ZEngine::Rendering::Renderers::Pipelines

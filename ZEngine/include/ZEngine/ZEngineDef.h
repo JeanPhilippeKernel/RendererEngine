@@ -51,3 +51,5 @@ namespace ZEngine
         function(device, handle, __VA_ARGS__);                       \
         handle = nullptr;                                            \
     }                                                                \
+
+#define SINGLE_ARG(...) __VA_ARGS__

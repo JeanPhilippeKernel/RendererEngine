@@ -9,15 +9,64 @@ namespace ZEngine::Rendering::Buffers
 {
     FramebufferVNext::FramebufferVNext(const Specifications::FrameBufferSpecificationVNext& specification) : m_framebuffer_specification(specification)
     {
-        this->m_width  = specification.Width;
-        this->m_height = specification.Height;
-        this->m_layers = specification.Layers;
+        Create();
+    }
+
+    FramebufferVNext::~FramebufferVNext()
+    {
+        Dispose();
+    }
+
+    VkRenderPass FramebufferVNext::GetRenderPass() const
+    {
+        if (m_attachment)
+        {
+            return m_attachment->GetHandle();
+        }
+        return VK_NULL_HANDLE;
+    }
+
+    VkFramebuffer FramebufferVNext::GetHandle() const
+    {
+        return m_handle;
+    }
+
+    VkSampler FramebufferVNext::GetSampler() const
+    {
+        return m_sampler;
+    }
+
+    uint32_t FramebufferVNext::GetWidth() const
+    {
+        return m_width;
+    }
+
+    uint32_t FramebufferVNext::GetHeight() const
+    {
+        return m_height;
+    }
+
+    FrameBufferSpecificationVNext& FramebufferVNext::GetSpecification()
+    {
+        return m_framebuffer_specification;
+    }
+
+    const FrameBufferSpecificationVNext& FramebufferVNext::GetSpecification() const
+    {
+        return m_framebuffer_specification;
+    }
+
+    void FramebufferVNext::Create()
+    {
+        this->m_width  = m_framebuffer_specification.Width;
+        this->m_height = m_framebuffer_specification.Height;
+        this->m_layers = m_framebuffer_specification.Layers;
 
         uint32_t                                image_format_index       = 0;
         Specifications::AttachmentSpecification attachment_specification = {};
         attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
 
-        for (auto image_format : specification.AttachmentSpecifications.FormatCollection)
+        for (auto image_format : m_framebuffer_specification.AttachmentSpecifications.FormatCollection)
         {
             if (image_format == ImageFormat::R8G8B8A8_UNORM)
             {
@@ -79,55 +128,16 @@ namespace ZEngine::Rendering::Buffers
         }
         attachment_view_collection.push_back(m_depth_attachment->GetImageViewHandle());
 
-        this->m_handle =
-            Hardwares::VulkanDevice::CreateFramebuffer(attachment_view_collection, m_attachment->GetHandle(), specification.Width, specification.Height, specification.Layers);
+        this->m_handle = Hardwares::VulkanDevice::CreateFramebuffer(
+            attachment_view_collection, m_attachment->GetHandle(), m_framebuffer_specification.Width, m_framebuffer_specification.Height, m_framebuffer_specification.Layers);
 
         /* Create Sampler */
         this->m_sampler = Hardwares::VulkanDevice::CreateImageSampler();
     }
 
-    FramebufferVNext::~FramebufferVNext()
+    void FramebufferVNext::Invalidate()
     {
-        Dispose();
-    }
-
-    VkRenderPass FramebufferVNext::GetRenderPass() const
-    {
-        if (m_attachment)
-        {
-            return m_attachment->GetHandle();
-        }
-        return VK_NULL_HANDLE;
-    }
-
-    VkFramebuffer FramebufferVNext::GetHandle() const
-    {
-        return m_handle;
-    }
-
-    VkSampler FramebufferVNext::GetSample() const
-    {
-        return m_sampler;
-    }
-
-    uint32_t FramebufferVNext::GetWidth() const
-    {
-        return m_width;
-    }
-
-    uint32_t FramebufferVNext::GetHeight() const
-    {
-        return m_height;
-    }
-
-    FrameBufferSpecificationVNext& FramebufferVNext::GetSpecification()
-    {
-        return m_framebuffer_specification;
-    }
-
-    const FrameBufferSpecificationVNext& FramebufferVNext::GetSpecification() const
-    {
-        return m_framebuffer_specification;
+        this->Dispose();
     }
 
     void FramebufferVNext::Dispose()
@@ -136,6 +146,8 @@ namespace ZEngine::Rendering::Buffers
         {
             buffer->Dispose();
         }
+        m_color_attachment_collection.clear();
+        m_color_attachment_collection.shrink_to_fit();
 
         m_depth_attachment->Dispose();
 
@@ -152,5 +164,15 @@ namespace ZEngine::Rendering::Buffers
         }
 
         m_attachment->Dispose();
+    }
+
+    const std::vector<Ref<Image2DBuffer>>& FramebufferVNext::GetColorAttachmentCollection() const
+    {
+        return m_color_attachment_collection;
+    }
+
+    Ref<Image2DBuffer> FramebufferVNext::GetDepthAttachment() const
+    {
+        return m_depth_attachment;
     }
 } // namespace ZEngine::Rendering::Buffers

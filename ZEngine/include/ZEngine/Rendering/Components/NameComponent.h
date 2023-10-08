@@ -1,8 +1,10 @@
 #pragma once
 #include <string>
 
-namespace ZEngine::Rendering::Components {
-    struct NameComponent {
+namespace ZEngine::Rendering::Components
+{
+    struct NameComponent
+    {
         NameComponent() = default;
         NameComponent(std::string_view name) : Name(name) {}
         ~NameComponent() = default;

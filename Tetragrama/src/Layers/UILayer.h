@@ -8,8 +8,10 @@
 #include <Components/InspectorViewUIComponent.h>
 #include <Components/HierarchyViewUIComponent.h>
 
-namespace Tetragrama::Layers {
-    class UILayer : public ZEngine::Layers::ImguiLayer {
+namespace Tetragrama::Layers
+{
+    class UILayer : public ZEngine::Layers::ImguiLayer
+    {
     public:
         UILayer(std::string_view name = "user interface layer") : ImguiLayer(name.data()) {}
 
@@ -18,13 +20,13 @@ namespace Tetragrama::Layers {
         void Initialize() override;
 
     private:
-        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_dockspace_component;
-        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_scene_component;
-        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_editor_log_component;
-        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_demo_component;
-        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_project_view_component;
-        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_inspector_view_component;
-        ZEngine::Ref<ZEngine::Components::UI::UIComponent> m_hierarchy_view_component;
+        ZEngine::Ref<Components::DockspaceUIComponent>     m_dockspace_component;
+        ZEngine::Ref<Components::SceneViewportUIComponent> m_scene_component;
+        ZEngine::Ref<Components::LogUIComponent>           m_editor_log_component;
+        ZEngine::Ref<Components::DemoUIComponent>          m_demo_component;
+        ZEngine::Ref<Components::ProjectViewUIComponent>   m_project_view_component;
+        ZEngine::Ref<Components::InspectorViewUIComponent> m_inspector_view_component;
+        ZEngine::Ref<Components::HierarchyViewUIComponent> m_hierarchy_view_component;
     };
 
 } // namespace Tetragrama::Layers
