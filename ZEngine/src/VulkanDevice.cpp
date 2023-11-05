@@ -635,6 +635,14 @@ namespace ZEngine::Hardwares
         return m_physical_device_memory_properties;
     }
 
+    void VulkanDevice::MapAndCopyToMemory(VkDeviceMemory& memory, VkDeviceSize size, const void* data)
+    {
+        void* memory_region;
+        ZENGINE_VALIDATE_ASSERT(vkMapMemory(m_logical_device, memory, 0, size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
+        std::memcpy(memory_region, data, size);
+        vkUnmapMemory(m_logical_device, memory);
+    }
+
     BufferView VulkanDevice::CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VkMemoryPropertyFlags requested_properties)
     {
         BufferView         buffer_view        = {};

@@ -24,6 +24,9 @@ namespace ZEngine::Rendering::Textures
         virtual void Dispose() override;
 
     private:
+        static void __CreateVulkanImage(Ref<Texture2D>& texture, const void* image_data);
+
+    private:
         Ref<Buffers::Image2DBuffer> m_image_2d_buffer;
     };
 } // namespace ZEngine::Rendering::Textures

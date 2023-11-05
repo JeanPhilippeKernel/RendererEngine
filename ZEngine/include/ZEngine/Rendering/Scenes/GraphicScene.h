@@ -106,6 +106,7 @@ namespace ZEngine::Rendering::Scenes
          * Material textures operations
          */
         static int32_t AddTexture(std::string_view filename);
+        static void    DownScaleTexture(std::string_view filename) = delete;
 
     private:
         static Ref<SceneRawData>               s_raw_data;

@@ -594,9 +594,6 @@ namespace ZEngine::Rendering::Scenes
 
     int32_t GraphicScene::AddTexture(std::string_view filename)
     {
-        return -1;
-
-
         std::unique_lock lock(s_scene_node_mutex);
 
         if (filename.empty())
