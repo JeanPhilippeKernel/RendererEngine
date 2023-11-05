@@ -15,8 +15,11 @@
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
+#include <assimp/pbrmaterial.h>
 #include <Helpers/MathHelper.h>
 #include <fmt/format.h>
+
+#include <Rendering/Textures/Texture2D.h>
 
 
 #define SCENE_ROOT_PARENT_ID -1
@@ -29,8 +32,9 @@ using namespace ZEngine::Rendering::Entities;
 
 namespace ZEngine::Rendering::Scenes
 {
-    std::recursive_mutex                          GraphicScene::s_scene_node_mutex;
-    Ref<SceneRawData>                             GraphicScene::s_raw_data = CreateRef<SceneRawData>();
+    std::recursive_mutex     GraphicScene::s_scene_node_mutex;
+    std::vector<std::string> GraphicScene::s_texture_file_collection = {};
+    Ref<SceneRawData>        GraphicScene::s_raw_data                = CreateRef<SceneRawData>();
 
     void GraphicScene::Initialize()
     {
@@ -39,6 +43,7 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::Deinitialize()
     {
+        s_raw_data->TextureCollection->Dispose();
     }
 
     std::future<GraphicSceneEntity> GraphicScene::CreateEntityAsync(std::string_view entity_name)
@@ -255,12 +260,12 @@ namespace ZEngine::Rendering::Scenes
 
         if (!asset_filename.empty())
         {
-            __ReadAssetFileAsync(asset_filename, [](bool success, const void* scene) -> std::future<void> {
+            __ReadAssetFileAsync(asset_filename, [](bool success, const void* scene, std::string_view material_texture_parent_path) -> std::future<void> {
                 if (success && scene)
                 {
                     auto    scene_ptr = reinterpret_cast<const aiScene*>(scene);
                     aiNode* root_node = scene_ptr->mRootNode;
-                    co_await __TraverseAssetNodeAsync(scene_ptr, root_node, SCENE_ROOT_PARENT_ID, SCENE_ROOT_DEPTH_LEVEL);
+                    co_await __TraverseAssetNodeAsync(scene_ptr, root_node, SCENE_ROOT_PARENT_ID, SCENE_ROOT_DEPTH_LEVEL, material_texture_parent_path);
                 }
             });
         }
@@ -302,7 +307,7 @@ namespace ZEngine::Rendering::Scenes
     void GraphicScene::ComputeAllTransforms()
     {
         std::unique_lock lock(s_scene_node_mutex);
-        uint32_t total_level = s_raw_data->LevelSceneNodeChangedMap.size();
+        uint32_t         total_level = s_raw_data->LevelSceneNodeChangedMap.size();
         for (int level = 0; level < total_level; ++level)
         {
             if (!s_raw_data->LevelSceneNodeChangedMap[level].empty())
@@ -349,7 +354,12 @@ namespace ZEngine::Rendering::Scenes
         }
     }
 
-    std::future<bool> GraphicScene::__TraverseAssetNodeAsync(const aiScene* assimp_scene, aiNode* node, int parent_node, int depth_level)
+    std::future<bool> GraphicScene::__TraverseAssetNodeAsync(
+        const aiScene*   assimp_scene,
+        aiNode*          node,
+        int              parent_node,
+        int              depth_level,
+        std::string_view material_texture_parent_path)
     {
         std::unique_lock lock(s_scene_node_mutex);
 
@@ -366,12 +376,12 @@ namespace ZEngine::Rendering::Scenes
         for (uint32_t i = 0; i < node->mNumMeshes; ++i)
         {
             const SceneNodeHierarchy& hierarchy   = s_raw_data->NodeHierarchyCollection[scene_node_identifier];
-            int32_t              sub_node_id = co_await AddNodeAsync(scene_node_identifier, hierarchy.DepthLevel + 1);
+            int32_t                   sub_node_id = co_await AddNodeAsync(scene_node_identifier, hierarchy.DepthLevel + 1);
             /*
              * Processing Mesh data
              */
-            uint32_t mesh_id                          = node->mMeshes[i];
-            aiString mesh_name                        = assimp_scene->mMeshes[mesh_id]->mName;
+            uint32_t mesh_id   = node->mMeshes[i];
+            aiString mesh_name = assimp_scene->mMeshes[mesh_id]->mName;
             s_raw_data->SceneNodeNameMap[sub_node_id] =
                 mesh_name.C_Str() ? std::string(mesh_name.C_Str()) : fmt::format("{0}_Mesh_{1}", s_raw_data->SceneNodeNameMap[scene_node_identifier].c_str(), i);
             s_raw_data->SceneNodeMeshMap[sub_node_id] = co_await __ReadSceneNodeMeshDataAsync(assimp_scene, mesh_id);
@@ -380,20 +390,137 @@ namespace ZEngine::Rendering::Scenes
              */
             uint32_t material_id                              = assimp_scene->mMeshes[mesh_id]->mMaterialIndex;
             aiString material_name                            = assimp_scene->mMaterials[material_id]->GetName();
-            s_raw_data->SceneNodeMaterialMap[sub_node_id]     = material_id;
             s_raw_data->SceneNodeMaterialNameMap[sub_node_id] = material_name.C_Str() ? std::string(material_name.C_Str()) : std::string{};
+            s_raw_data->SceneNodeMaterialMap[sub_node_id]     = co_await __ReadSceneNodeMeshMaterialDataAsync(assimp_scene, material_id, material_texture_parent_path);
         }
         s_raw_data->LocalTransformCollection[scene_node_identifier] = Helpers::ConvertToMat4(node->mTransformation);
 
         for (uint32_t i = 0; i < node->mNumChildren; ++i)
         {
-            result = co_await __TraverseAssetNodeAsync(assimp_scene, node->mChildren[i], scene_node_identifier, depth_level + 1);
+            result = co_await __TraverseAssetNodeAsync(assimp_scene, node->mChildren[i], scene_node_identifier, depth_level + 1, material_texture_parent_path);
             if (!result)
             {
                 break;
             }
         }
         co_return result;
+    }
+
+    std::future<Meshes::MeshMaterial> GraphicScene::__ReadSceneNodeMeshMaterialDataAsync(
+        const aiScene*   assimp_scene,
+        uint32_t         material_identifier,
+        std::string_view material_texture_parent_path)
+    {
+        std::unique_lock lock(s_scene_node_mutex);
+
+        Meshes::MeshMaterial output_material = {};
+
+        aiMaterial* assimp_material = assimp_scene->mMaterials[material_identifier];
+        aiColor4D   ai_color;
+
+        if (aiGetMaterialColor(assimp_material, AI_MATKEY_COLOR_AMBIENT, &ai_color) == AI_SUCCESS)
+        {
+            output_material.AmbientColor   = {ai_color.r, ai_color.g, ai_color.b, ai_color.a};
+            output_material.AmbientColor.w = std::min(output_material.AmbientColor.w, 1.0f);
+            output_material.EmissiveColor  = output_material.AmbientColor;
+        }
+
+        if (aiGetMaterialColor(assimp_material, AI_MATKEY_COLOR_DIFFUSE, &ai_color) == AI_SUCCESS)
+        {
+            output_material.DiffuseColor   = {ai_color.r, ai_color.g, ai_color.b, ai_color.a};
+            output_material.DiffuseColor.w = std::min(output_material.DiffuseColor.w, 1.0f);
+            output_material.AlbedoColor    = output_material.DiffuseColor;
+        }
+
+        if (aiGetMaterialColor(assimp_material, AI_MATKEY_COLOR_EMISSIVE, &ai_color) == AI_SUCCESS)
+        {
+            output_material.EmissiveColor.r += ai_color.r;
+            output_material.EmissiveColor.g += ai_color.g;
+            output_material.EmissiveColor.b += ai_color.b;
+            output_material.EmissiveColor.a += ai_color.a;
+            output_material.EmissiveColor.w = std::min(output_material.EmissiveColor.w, 1.0f);
+        }
+
+        float       opacity              = 1.0f;
+        const float opaqueness_threshold = 0.05f;
+
+        if (aiGetMaterialFloat(assimp_material, AI_MATKEY_OPACITY, &opacity) == AI_SUCCESS)
+        {
+            output_material.TransparencyFactor = glm::clamp(1.f - opacity, 0.0f, 1.0f);
+            if (output_material.TransparencyFactor >= (1.0f - opaqueness_threshold))
+            {
+                output_material.TransparencyFactor = 0.0f;
+            }
+        }
+
+        if (aiGetMaterialColor(assimp_material, AI_MATKEY_COLOR_TRANSPARENT, &ai_color) == AI_SUCCESS)
+        {
+            const float component_as_opacity   = glm::max(glm::max(ai_color.r, ai_color.g), ai_color.b);
+            output_material.TransparencyFactor = glm::clamp(component_as_opacity, 0.0f, 1.0f);
+            if (output_material.TransparencyFactor >= (1.0f - opaqueness_threshold))
+            {
+                output_material.TransparencyFactor = 0.0f;
+            }
+            output_material.AlphaTest = 0.5f;
+        }
+        /*
+         * PBR properties
+         */
+        float material_ai_value;
+        if (aiGetMaterialFloat(assimp_material, AI_MATKEY_GLTF_PBRMETALLICROUGHNESS_METALLIC_FACTOR, &material_ai_value) == AI_SUCCESS)
+        {
+            output_material.MetallicFactor = material_ai_value;
+        }
+
+        if (aiGetMaterialFloat(assimp_material, AI_MATKEY_GLTF_PBRMETALLICROUGHNESS_ROUGHNESS_FACTOR, &material_ai_value) == AI_SUCCESS)
+        {
+            output_material.RoughnessColor = {material_ai_value, material_ai_value, material_ai_value, material_ai_value};
+        }
+        /*
+         * Texture files
+         */
+        aiString         texture_filename;
+        aiTextureMapping texture_mapping;
+        uint32_t         uv_index;
+        float            blend{1.0f};
+        aiTextureOp      texture_operation{aiTextureOp_Add};
+        aiTextureMapMode texture_map_mode[] = {aiTextureMapMode_Wrap, aiTextureMapMode_Wrap};
+        uint32_t         texture_flags      = 0;
+        if (aiGetMaterialTexture(
+                assimp_material, aiTextureType_EMISSIVE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
+            AI_SUCCESS)
+        {
+            auto texure_absolute_path          = std::filesystem::path(material_texture_parent_path).append(texture_filename.C_Str());
+            output_material.EmissiveTextureMap = AddTexture(texure_absolute_path.string());
+        }
+
+        if (aiGetMaterialTexture(
+                assimp_material, aiTextureType_DIFFUSE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
+            AI_SUCCESS)
+        {
+            auto texure_absolute_path          = std::filesystem::path(material_texture_parent_path).append(texture_filename.C_Str());
+            output_material.AlbedoTextureMap = AddTexture(texure_absolute_path.string());
+        }
+
+        if (aiGetMaterialTexture(
+                assimp_material, aiTextureType_NORMALS, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
+            AI_SUCCESS)
+        {
+            auto texure_absolute_path          = std::filesystem::path(material_texture_parent_path).append(texture_filename.C_Str());
+            output_material.NormalTextureMap = AddTexture(texure_absolute_path.string());
+        }
+
+        if (output_material.NormalTextureMap == 0xFFFFFFFF)
+        {
+            if (aiGetMaterialTexture(
+                    assimp_material, aiTextureType_HEIGHT, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
+                AI_SUCCESS)
+            {
+                auto texure_absolute_path          = std::filesystem::path(material_texture_parent_path).append(texture_filename.C_Str());
+                output_material.NormalTextureMap = AddTexture(texure_absolute_path.string());
+            }
+        }
+        co_return output_material;
     }
 
     std::future<Meshes::MeshVNext> GraphicScene::__ReadSceneNodeMeshDataAsync(const aiScene* assimp_scene, uint32_t mesh_identifier)
@@ -407,25 +534,28 @@ namespace ZEngine::Rendering::Scenes
         std::vector<uint32_t>& indices  = s_raw_data->Indices;
 
         /* Vertice processing */
-        for (int x = 0; x < assimp_mesh->mNumVertices; ++x)
+        for (int i = 0; i < assimp_mesh->mNumVertices; ++i)
         {
-            vertices.push_back(assimp_mesh->mVertices[x].x);
-            vertices.push_back(assimp_mesh->mVertices[x].y);
-            vertices.push_back(assimp_mesh->mVertices[x].z);
+            const aiVector3D position = assimp_mesh->mVertices[i];
+            vertices.push_back(position.x);
+            vertices.push_back(position.y);
+            vertices.push_back(position.z);
 
-            vertices.push_back(assimp_mesh->mNormals[x].x);
-            vertices.push_back(assimp_mesh->mNormals[x].y);
-            vertices.push_back(assimp_mesh->mNormals[x].z);
+            const aiVector3D normal = assimp_mesh->mNormals[i];
+            vertices.push_back(normal.x);
+            vertices.push_back(normal.y);
+            vertices.push_back(normal.z);
 
-            if (assimp_mesh->mTextureCoords[0])
+            if (assimp_mesh->HasTextureCoords(0))
             {
-                vertices.push_back(assimp_mesh->mTextureCoords[0][x].x);
-                vertices.push_back(assimp_mesh->mTextureCoords[0][x].y);
+                const aiVector3D tex_coord = assimp_mesh->mTextureCoords[0][i];
+                vertices.push_back(tex_coord.x);
+                vertices.push_back(tex_coord.y);
             }
             else
             {
-                vertices.push_back(0.0f);
-                vertices.push_back(0.0f);
+                vertices.push_back(0.0);
+                vertices.push_back(0.0);
             }
 
             vertex_count++;
@@ -462,16 +592,43 @@ namespace ZEngine::Rendering::Scenes
         co_return mesh;
     }
 
+    int32_t GraphicScene::AddTexture(std::string_view filename)
+    {
+        return -1;
+
+
+        std::unique_lock lock(s_scene_node_mutex);
+
+        if (filename.empty())
+        {
+            return -1;
+        }
+
+        auto found = std::find(s_texture_file_collection.begin(), s_texture_file_collection.end(), std::string(filename));
+        if (found == std::end(s_texture_file_collection))
+        {
+            s_raw_data->TextureCollection->Add(Textures::Texture2D::Read(filename));
+
+            s_texture_file_collection.emplace_back(filename.data());
+            return (s_texture_file_collection.size() - 1);
+        }
+
+        return std::distance(std::begin(s_texture_file_collection), found);
+    }
+
     void GraphicScene::__ReadAssetFileAsync(std::string_view filename, ReadCallback callback)
     {
-        std::thread([fn = std::string(filename.data()), callback] {
+        std::thread([path = std::string(filename.data()), callback] {
+            std::filesystem::path asset_path(path);
+            auto                  parent_directory = asset_path.parent_path();
+
             Assimp::Importer importer = {};
-            uint32_t read_flags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_LimitBoneWeights | aiProcess_SplitLargeMeshes |
-                                  aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_FindDegenerates | aiProcess_FindInvalidData |
-                                  aiProcess_GenUVCoords | aiProcess_FlipUVs;
+            uint32_t         read_flags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_SplitLargeMeshes |
+                                  aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_GenUVCoords | aiProcess_FlipUVs |
+                                  aiProcess_ValidateDataStructure | aiProcess_FindDegenerates | aiProcess_FindInvalidData | aiProcess_LimitBoneWeights;
 
             bool           result    = true;
-            const aiScene* scene_ptr = importer.ReadFile(fn, read_flags);
+            const aiScene* scene_ptr = importer.ReadFile(path, read_flags);
             if ((!scene_ptr) || scene_ptr->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene_ptr->mRootNode)
             {
                 result = false;
@@ -479,7 +636,7 @@ namespace ZEngine::Rendering::Scenes
 
             if (callback)
             {
-                callback(result, scene_ptr);
+                callback(result, scene_ptr, parent_directory.string());
             }
             importer.FreeScene();
         }).detach();

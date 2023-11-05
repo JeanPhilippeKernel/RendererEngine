@@ -66,4 +66,8 @@ target_link_libraries (zEngineLib
 		imported::stduuid
 		imported::yaml-cpp
 		imported::vulkan
+		${Vulkan_INCLUDE_DIRS}/../Lib/spirv-cross-c-sharedd.lib
+		${Vulkan_INCLUDE_DIRS}/../Lib/spirv-cross-reflectd.lib
+		${Vulkan_INCLUDE_DIRS}/../Lib/spirv-cross-cored.lib
+		${Vulkan_INCLUDE_DIRS}/../Lib/spirv-cross-glsld.lib
 )

@@ -8,12 +8,9 @@ namespace ZEngine::Rendering::Renderers
 {
     uint32_t                                                        GraphicRenderer::s_viewport_width           = 1;
     uint32_t                                                        GraphicRenderer::s_viewport_height          = 1;
-    std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::Count> GraphicRenderer::s_render_target_collection = {};
-
-    const Ref<GraphicRendererInformation>& GraphicRenderer::GetRendererInformation() const
-    {
-        return m_renderer_information;
-    }
+    RendererInformation                                             GraphicRenderer::s_renderer_information     = {};
+    WeakRef<Rendering::Swapchain>                                   GraphicRenderer::s_main_window_swapchain    = {};
+    std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::COUNT> GraphicRenderer::s_render_target_collection = {};
 
     void GraphicRenderer::RebuildRenderTargets()
     {
@@ -49,6 +46,26 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
+    void GraphicRenderer::SetMainSwapchain(const Ref<Rendering::Swapchain>& swapchain)
+    {
+        s_main_window_swapchain                    = swapchain;
+        s_renderer_information.FrameCount          = swapchain->GetImageCount();
+        s_renderer_information.CurrentFrameIndex   = swapchain->GetCurrentFrameIndex();
+        s_renderer_information.SwapchainIdentifier = swapchain->GetIdentifier();
+    }
+
+    const RendererInformation& GraphicRenderer::GetRendererInformation()
+    {
+        /*
+         * Ensure Frame information are up to date
+         */
+        if (auto swapchain = s_main_window_swapchain.lock())
+        {
+            s_renderer_information.CurrentFrameIndex = swapchain->GetCurrentFrameIndex();
+        }
+        return s_renderer_information;
+    }
+
     void GraphicRenderer::Initialize()
     {
         s_render_target_collection[RenderTarget::FRAME_OUTPUT] = CreateRef<Buffers::FramebufferVNext>(FrameBufferSpecificationVNext{
@@ -58,82 +75,5 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::Deinitialize()
     {
         s_render_target_collection.fill(nullptr);
-    }
-
-    void GraphicRenderer::BeginRenderPass(Buffers::CommandBuffer* const command_buffer, const Ref<RenderPasses::RenderPass>& render_pass)
-    {
-        ZENGINE_VALIDATE_ASSERT(command_buffer != nullptr, "Command buffer can't be null")
-
-        auto                  render_pass_pipeline   = render_pass->GetPipeline();
-        auto                  framebuffer            = render_pass_pipeline->GetTargetFrameBuffer();
-        VkRenderPassBeginInfo render_pass_begin_info = {};
-        render_pass_begin_info.sType                 = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        render_pass_begin_info.renderPass            = render_pass_pipeline->GetRenderPassHandle();
-        render_pass_begin_info.framebuffer           = framebuffer->GetHandle();
-        render_pass_begin_info.renderArea.extent     = VkExtent2D{framebuffer->GetWidth(), framebuffer->GetHeight()};
-
-        // ToDo : should be move to FrambufferSpecification
-        std::array<VkClearValue, 2> clear_values = {};
-        clear_values[0].color                    = {{0.1f, 0.1f, 0.1f, 1.0f}};
-        clear_values[1].depthStencil             = {1.0f, 0};
-        render_pass_begin_info.clearValueCount   = clear_values.size();
-        render_pass_begin_info.pClearValues      = clear_values.data();
-
-        vkCmdBeginRenderPass(command_buffer->GetHandle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-        VkViewport viewport = {};
-        viewport.x          = 0.0f;
-        viewport.y          = 0.0f;
-        viewport.width      = framebuffer->GetWidth();
-        viewport.height     = framebuffer->GetHeight();
-        viewport.minDepth   = 0.0f;
-        viewport.maxDepth   = 1.0f;
-
-        /*Scissor definition*/
-        VkRect2D scissor = {};
-        scissor.offset   = {0, 0};
-        scissor.extent   = {framebuffer->GetWidth(), framebuffer->GetHeight()};
-
-        vkCmdSetViewport(command_buffer->GetHandle(), 0, 1, &viewport);
-        vkCmdSetScissor(command_buffer->GetHandle(), 0, 1, &scissor);
-        vkCmdBindPipeline(command_buffer->GetHandle(), VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass_pipeline->GetHandle());
-
-        render_pass_pipeline->UpdateDescriptorSets();
-
-        std::vector<VkDescriptorSet> descriptorset_collection = {};
-        auto                         descriptor_set           = render_pass_pipeline->GetDescriptorSet();
-        if (descriptor_set)
-        {
-            descriptorset_collection.push_back(descriptor_set);
-        }
-
-        if (!descriptorset_collection.empty())
-        {
-            vkCmdBindDescriptorSets(
-                command_buffer->GetHandle(),
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                render_pass_pipeline->GetPipelineLayout(),
-                0,
-                descriptorset_collection.size(),
-                descriptorset_collection.data(),
-                0,
-                nullptr);
-        }
-    }
-
-    void GraphicRenderer::EndRenderPass(Buffers::CommandBuffer* const command_buffer)
-    {
-        ZENGINE_VALIDATE_ASSERT(command_buffer != nullptr, "Command buffer can't be null")
-
-        vkCmdEndRenderPass(command_buffer->GetHandle());
-    }
-
-    void GraphicRenderer::RenderGeometry(Buffers::CommandBuffer* const command_buffer, const Ref<Buffers::IndirectBuffer>& buffer, uint32_t count)
-    {
-        ZENGINE_VALIDATE_ASSERT(command_buffer != nullptr, "Command buffer can't be null")
-        if (buffer->GetNativeBufferHandle())
-        {
-            vkCmdDrawIndirect(command_buffer->GetHandle(), reinterpret_cast<VkBuffer>(buffer->GetNativeBufferHandle()), 0, count, sizeof(VkDrawIndirectCommand));
-        }
     }
 } // namespace ZEngine::Rendering::Renderers

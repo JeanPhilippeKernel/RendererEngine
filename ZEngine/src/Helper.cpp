@@ -14,15 +14,6 @@ using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine::Helpers
 {
-    VkPipelineLayout CreatePipelineLayout(const VkPipelineLayoutCreateInfo& pipeline_layout_create_info)
-    {
-        VkPipelineLayout out_pipeline_layout = VK_NULL_HANDLE;
-        auto             device              = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &out_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
-
-        return out_pipeline_layout;
-    }
-
     void FillDefaultPipelineFixedStates(Rendering::Specifications::GraphicRendererPipelineStateSpecification& specification)
     {
         /*Dynamic State*/
@@ -80,11 +71,6 @@ namespace ZEngine::Helpers
         specification.MultisampleStateCreateInfo.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
         specification.MultisampleStateCreateInfo.sampleShadingEnable   = VK_FALSE;
         specification.MultisampleStateCreateInfo.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
-        specification.MultisampleStateCreateInfo.minSampleShading      = 1.0f;     // Optional
-        specification.MultisampleStateCreateInfo.pSampleMask           = nullptr;  // Optional
-        specification.MultisampleStateCreateInfo.alphaToCoverageEnable = VK_FALSE; // Optional
-        specification.MultisampleStateCreateInfo.alphaToOneEnable      = VK_FALSE; // Optional
-        specification.MultisampleStateCreateInfo.flags                 = 0;
         specification.MultisampleStateCreateInfo.pNext                 = nullptr;
 
         /*Depth and Stencil testing*/
@@ -103,12 +89,6 @@ namespace ZEngine::Helpers
         // This configuration is per-framebuffer definition
         specification.ColorBlendAttachmentState.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         specification.ColorBlendAttachmentState.blendEnable         = VK_FALSE;
-        specification.ColorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        specification.ColorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        specification.ColorBlendAttachmentState.colorBlendOp        = VK_BLEND_OP_ADD;
-        specification.ColorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-        specification.ColorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        specification.ColorBlendAttachmentState.alphaBlendOp        = VK_BLEND_OP_ADD;
 
         // this configuration is for global color blending settings
         specification.ColorBlendStateCreateInfo.sType             = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;

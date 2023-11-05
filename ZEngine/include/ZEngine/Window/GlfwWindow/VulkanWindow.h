@@ -25,6 +25,7 @@ namespace ZEngine::Window::GLFWWindow
         virtual const WindowProperty& GetWindowProperty() const override;
 
         virtual void  Initialize() override;
+        virtual void  InitializeLayer() override;
         virtual void  Deinitialize() override;
         virtual void  PollEvent() override;
         virtual float GetTime() override;

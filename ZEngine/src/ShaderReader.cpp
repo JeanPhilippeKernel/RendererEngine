@@ -21,7 +21,7 @@ namespace ZEngine::Rendering::Shaders
         return ShaderOperationResult::FAILURE;
     }
 
-    std::vector<char> ShaderReader::ReadAsBinary(std::string_view filename)
+    std::vector<uint32_t> ShaderReader::ReadAsBinary(std::string_view filename)
     {
         std::ifstream file_stream = {};
         file_stream.open(filename, std::ifstream::binary | std::ifstream::ate);
@@ -32,9 +32,10 @@ namespace ZEngine::Rendering::Shaders
         }
 
         size_t            buffer_size = static_cast<size_t>(file_stream.tellg());
-        std::vector<char> buffer(buffer_size);
+        std::vector<uint32_t> buffer(buffer_size / 4);
         file_stream.seekg(std::ifstream::beg);
-        file_stream.read(buffer.data(), buffer_size);
+        file_stream.read(reinterpret_cast<char*>(buffer.data()), buffer_size);
+        file_stream.close();
 
         return buffer;
     }

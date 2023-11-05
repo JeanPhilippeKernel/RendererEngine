@@ -1,14 +1,10 @@
 #pragma once
 #include <vector>
+#include <glm/glm.hpp>
 #include <ZEngineDef.h>
 #include <Maths/Math.h>
 #include <Rendering/Materials/ShaderMaterial.h>
 #include <Rendering/Geometries/IGeometry.h>
-
-#include <Rendering/Buffers/VertexBuffer.h>
-#include <Rendering/Buffers/IndexBuffer.h>
-#include <Rendering/Buffers/UniformBuffer.h>
-#include <Rendering/Renderers/Contracts/RendererDataContract.h>
 
 namespace ZEngine::Rendering::Meshes
 {
@@ -23,9 +19,6 @@ namespace ZEngine::Rendering::Meshes
 
     struct MeshVNext
     {
-        MeshVNext()  = default;
-        ~MeshVNext() = default;
-
         uint32_t VertexCount{0};
         uint32_t IndexCount{0};
         uint32_t VertexOffset{0};
@@ -35,6 +28,22 @@ namespace ZEngine::Rendering::Meshes
         uint32_t VertexUnitStreamSize{0};
         uint32_t IndexUnitStreamSize{0};
         uint32_t TotalByteSize{0};
+    };
+
+    struct MeshMaterial
+    {
+        glm::vec4 AmbientColor{1.0f};
+        glm::vec4 EmissiveColor{0.0f};
+        glm::vec4 AlbedoColor{1.0f};
+        glm::vec4 DiffuseColor{1.0f};
+        glm::vec4 RoughnessColor{1.0f};
+        float     TransparencyFactor{1.0f};
+        float     MetallicFactor{0.0f};
+        float     AlphaTest{1.0f};
+        uint32_t  EmissiveTextureMap{0xFFFFFFFF};
+        uint32_t  AlbedoTextureMap{0xFFFFFFFF};
+        uint32_t  NormalTextureMap{0xFFFFFFFF};
+        uint32_t  OpacityTextureMap{0xFFFFFFFF};
     };
 
     /*Need to be deprecated*/

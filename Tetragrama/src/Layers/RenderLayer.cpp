@@ -22,7 +22,7 @@ namespace Tetragrama::Layers
     {
         auto current_window        = GetAttachedWindow();
         m_editor_camera_controller = CreateRef<EditorCameraController>(current_window, 300.0f, 0.f, 30.f);
-        m_scene_renderer           = CreateRef<SceneRenderer>(current_window->GetSwapchain());
+        m_scene_renderer           = CreateRef<SceneRenderer>();
 
         m_scene_renderer->Initialize();
         GraphicScene::Initialize();

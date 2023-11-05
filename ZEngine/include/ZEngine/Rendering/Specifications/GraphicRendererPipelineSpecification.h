@@ -28,12 +28,9 @@ namespace ZEngine::Rendering::Specifications
     {
         GraphicRendererPipelineSpecification() = default;
 
-        std::string                                              DebugName;
-        std::string                                              VertexShaderFilename;
-        std::string                                              FragmentShaderFilename;
-        std::unordered_map<uint32_t, LayoutBindingSpecification> LayoutBindingMap;
-        std::vector<VkDescriptorSetLayout>                       DescriptorSetLayoutCollection;
-        Ref<Rendering::Buffers::FramebufferVNext>                TargetFrameBufferSpecification;
-        GraphicRendererPipelineStateSpecification                StateSpecification;
+        std::string                               DebugName;
+        ShaderSpecification                       ShaderSpecification;
+        Ref<Rendering::Buffers::FramebufferVNext> TargetFrameBufferSpecification;
+        GraphicRendererPipelineStateSpecification StateSpecification;
     };
 }

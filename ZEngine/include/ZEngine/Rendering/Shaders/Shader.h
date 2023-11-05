@@ -1,204 +1,43 @@
 #pragma once
 #include <string>
-#include <future>
-#include <unordered_map>
+#include <map>
 #include <ZEngineDef.h>
-#include <Maths/Math.h>
-#include <Core/IGraphicObject.h>
-#include <Rendering/Shaders/Compilers/ShaderCompiler.h>
+#include <Rendering/Specifications/ShaderSpecification.h>
 
 namespace ZEngine::Rendering::Shaders
 {
-    class Shader : public Core::IGraphicObject
+    class Shader
     {
     public:
-        /**
-         * Initialize a new Shader instance.
-         */
-        Shader(const char* filename, bool defer_program_creation = false);
-        virtual ~Shader();
+        Shader(const Specifications::ShaderSpecification& spec);
+        ~Shader();
 
-        /**
-         * Check if the shader program is active
-         * @return True of False
-         */
-        bool IsActive() const;
+        const std::vector<VkPipelineShaderStageCreateInfo>&                                GetStageCreateInfoCollection() const;
+        const std::map<uint32_t, std::vector<Specifications::LayoutBindingSpecification>>& GetLayoutBindingSetMap() const;
+        const std::vector<VkDescriptorSetLayoutBinding>&                                   GetLayoutBindingCollection() = delete;
+        const Specifications::ShaderSpecification&                                         GetSpecification() const     = delete;
+        Specifications::ShaderSpecification                                                GetSpecification()           = delete;
+        Specifications::LayoutBindingSpecification                                         GetLayoutBindingSpecification(std::string_view name) const;
+        std::vector<VkDescriptorSetLayout>                                                 GetDescriptorSetLayout() const;
+        const std::map<uint32_t, std::vector<VkDescriptorSet>>&                            GetDescriptorSetMap() const;
+        void                                                                               Dispose();
 
-        /**
-         * Get shader filename
-         *
-         * @return Shader filename
-         */
-        std::string_view GetFilename() const;
-
-        /**
-         * Compile and create shader program
-         */
-        void CreateProgram();
-
-        /**
-         * Compile and create asynchronously shader program
-         */
-        std::future<void> CreateProgramAsync();
-
-        /**
-         * Make active and uses the shader program
-         */
-        void Bind() const;
-
-        /**
-         * Make unactive and unuses the shader program
-         */
-        void Unbind() const;
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name  Uniform name
-         * @param value Integer value
-         */
-        void SetUniform(const char* name, int value);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name 			Uniform name
-         * @param value_one 	Integer value
-         * @param value_two 	Integer value
-         */
-        void SetUniform(const char* name, int value_one, int value_two);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name 			Uniform name
-         * @param value_one 	Integer value
-         * @param value_two 	Integer value
-         * @param value_three 	Integer value
-         */
-        void SetUniform(const char* name, int value_one, int value_two, int value_three);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name 			Uniform name
-         * @param value_one 	Integer value
-         * @param value_two 	Integer value
-         * @param value_three 	Integer value
-         * @param value_four 	Integer value
-         */
-        void SetUniform(const char* name, int value_one, int value_two, int value_three, int value_four);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name 			Uniform name
-         * @param value_one 	Float value
-         */
-        void SetUniform(const char* name, float value);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name 			Uniform name
-         * @param value_one 	Float value
-         * @param value_two 	Float value
-         */
-        void SetUniform(const char* name, float value_one, float value_two);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name 			Uniform name
-         * @param value_one 	Float value
-         * @param value_two 	Float value
-         * @param value_three 	Float value
-         */
-        void SetUniform(const char* name, float value_one, float value_two, float value_three);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name 			Uniform name
-         * @param value_one 	Float value
-         * @param value_two 	Float value
-         * @param value_three 	Float value
-         * @param value_four 	Float value
-         */
-        void SetUniform(const char* name, float value_one, float value_two, float value_three, float value_four);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name	Uniform name
-         * @param arr	Integer array pointer
-         * @param size	Array size
-         */
-        void SetUniform(const char* name, int* arr, unsigned int size);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name	Uniform name
-         * @param value	Vector2 value
-         */
-        void SetUniform(const char* name, const Maths::Vector2& value);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name	Uniform name
-         * @param value	Vector3 value
-         */
-        void SetUniform(const char* name, const Maths::Vector3& value);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name	Uniform name
-         * @param value	Vector4 value
-         */
-        void SetUniform(const char* name, const Maths::Vector4& value);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name	Uniform name
-         * @param value	Matrix2 value
-         */
-        void SetUniform(const char* name, const Maths::Matrix2& value);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name	Uniform name
-         * @param value	Matrix3 value
-         */
-        void SetUniform(const char* name, const Maths::Matrix3& value);
-
-        /**
-         * Set a shader uniform value
-         *
-         * @param name	Uniform name
-         * @param value	Matrix4 value
-         */
-        void SetUniform(const char* name, const Maths::Matrix4& value);
-
-        /**
-         * Get shader program identifier
-         *
-         * @return Shader program identifier
-         */
-        unsigned GetIdentifier() const override;
+        static Ref<Shader> Create(Specifications::ShaderSpecification&& spec);
+        static Ref<Shader> Create(const Specifications::ShaderSpecification& spec);
 
     private:
-        int _GetLocationUniform(const char* name);
+        void CreateModule();
+        void CreateDescriptorSetLayouts();
 
     private:
-        unsigned                               m_program{0};
-        std::string                            m_filename;
-        Scope<Compilers::ShaderCompiler>       m_compiler;
-        std::unordered_map<const char*, int> m_uniform_location_map;
+        Specifications::ShaderSpecification                                         m_specification;
+        std::vector<VkDescriptorSetLayoutBinding>                                   m_layout_binding_collection;
+        std::vector<VkShaderModule>                                                 m_shader_module_collection;
+        std::vector<VkPipelineShaderStageCreateInfo>                                m_shader_create_info_collection;
+        std::map<uint32_t, std::vector<Specifications::LayoutBindingSpecification>> m_layout_binding_specification_map;
+        std::map<uint32_t, VkDescriptorSetLayout>                                   m_descriptor_set_layout_map; // <set, layout>
+        std::map<uint32_t, std::vector<VkDescriptorSet>>                            m_descriptor_set_map;        //<set, vec<descriptorSet>>
+        VkDescriptorPool                                                            m_descriptor_pool{VK_NULL_HANDLE};
     };
 
     Shader* CreateShader(const char* filename, bool defer_program_creation = false);

@@ -2,9 +2,11 @@
 #include <Logging/LoggerConfiguration.h>
 #include <Window/WindowConfiguration.h>
 
-namespace ZEngine {
+namespace ZEngine
+{
 
-    struct EngineConfiguration {
+    struct EngineConfiguration
+    {
         Logging::LoggerConfiguration LoggerConfiguration;
         Window::WindowConfiguration  WindowConfiguration;
     };

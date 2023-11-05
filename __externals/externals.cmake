@@ -4,6 +4,15 @@
 # vulkan
 find_package(Vulkan REQUIRED)
 
+find_library(SPIRV_TOOLS_LIBRARIES NAMES spirv-cross-c-sharedd PATHS ${Vulkan_INCLUDE_DIRS}/../Lib)
+
+if (SPIRV_TOOLS_LIBRARIES)
+    message(STATUS "Found SPIRV-Tools: ${SPIRV_TOOLS_LIBRARIES}")
+else ()
+    message(FATAL_ERROR "SPIRV-Tools not found. Make sure the Vulkan SDK is installed and the CMake configuration is set up correctly.")
+endif ()
+
+
 add_library(imported::vulkan INTERFACE IMPORTED)
 target_include_directories(imported::vulkan INTERFACE ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(imported::vulkan INTERFACE Vulkan::Vulkan)

@@ -60,9 +60,15 @@ namespace ZEngine::Rendering::Buffers
             CleanUpMemory();
         }
 
-        void * GetNativeBufferHandle() const
+        void* GetNativeBufferHandle() const
         {
             return reinterpret_cast<void*>(m_storage_buffer.Handle);
+        }
+
+        const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
+        {
+            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_storage_buffer.Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+            return m_buffer_info;
         }
 
         void Dispose()
@@ -89,7 +95,40 @@ namespace ZEngine::Rendering::Buffers
         }
 
     private:
-        Hardwares::BufferView m_storage_buffer;
-        Hardwares::BufferView m_staging_buffer;
+        Hardwares::BufferView  m_storage_buffer;
+        Hardwares::BufferView  m_staging_buffer;
+        VkDescriptorBufferInfo m_buffer_info;
+    };
+
+    struct StorageBufferSet
+    {
+        StorageBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
+
+        StorageBuffer& operator[](uint32_t index)
+        {
+            assert(index < m_buffer_set.size());
+            return m_buffer_set[index];
+        }
+
+        const std::vector<StorageBuffer>& Data() const
+        {
+            return m_buffer_set;
+        }
+
+        std::vector<StorageBuffer>& Data()
+        {
+            return m_buffer_set;
+        }
+
+        void Dispose()
+        {
+            for (auto& buffer : m_buffer_set)
+            {
+                buffer.Dispose();
+            }
+        }
+
+    private:
+        std::vector<StorageBuffer> m_buffer_set;
     };
 } // namespace ZEngine::Rendering::Buffers

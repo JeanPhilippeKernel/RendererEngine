@@ -1,6 +1,7 @@
 #pragma once
 #include <Rendering/Materials/ShaderMaterial.h>
 #include <Rendering/Lights/Light.h>
+#include <Maths/Math.h>
 
 namespace ZEngine::Rendering::Materials {
 

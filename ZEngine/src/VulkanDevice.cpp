@@ -60,22 +60,22 @@ namespace ZEngine::Hardwares
         std::vector<LayerProperty> selected_layer_property_collection;
 
 #ifdef ENABLE_VULKAN_VALIDATION_LAYER
-       std::unordered_set<std::string> validation_layer_name_collection = {
-           "VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_screenshot"};
+        std::unordered_set<std::string> validation_layer_name_collection = {
+            "VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_screenshot"};
 
-       for (std::string_view layer_name : validation_layer_name_collection)
-       {
-           auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) {
-               return std::string_view(layer_property.Properties.layerName) == layer_name;
-           });
-           if (find_it == std::end(layer_properties))
-           {
-               continue;
-           }
+        for (std::string_view layer_name : validation_layer_name_collection)
+        {
+            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) {
+                return std::string_view(layer_property.Properties.layerName) == layer_name;
+            });
+            if (find_it == std::end(layer_properties))
+            {
+                continue;
+            }
 
-           enabled_layer_name_collection.push_back(find_it->Properties.layerName);
-           selected_layer_property_collection.push_back(*find_it);
-       }
+            enabled_layer_name_collection.push_back(find_it->Properties.layerName);
+            selected_layer_property_collection.push_back(*find_it);
+        }
 #endif
 
 #ifdef ENABLE_VULKAN_SYNCHRONIZATION_LAYER
@@ -247,17 +247,29 @@ namespace ZEngine::Hardwares
         /*
          * Enabling some feature
          */
-        m_physical_device_feature.drawIndirectFirstInstance = VK_TRUE;
-        m_physical_device_feature.multiDrawIndirect         = VK_TRUE;
-        VkDeviceCreateInfo device_create_info               = {};
-        device_create_info.sType                            = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        device_create_info.queueCreateInfoCount             = queue_create_info_collection.size();
-        device_create_info.pQueueCreateInfos                = queue_create_info_collection.data();
-        device_create_info.enabledExtensionCount            = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
+        m_physical_device_feature.drawIndirectFirstInstance                                    = VK_TRUE;
+        m_physical_device_feature.multiDrawIndirect                                            = VK_TRUE;
+        m_physical_device_feature.shaderSampledImageArrayDynamicIndexing                       = VK_TRUE;
+        VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures
+         = {
+            .sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT,
+            .shaderSampledImageArrayNonUniformIndexing     = VK_TRUE,
+            .descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE,
+            .descriptorBindingUpdateUnusedWhilePending     = VK_TRUE,
+            .descriptorBindingPartiallyBound               = VK_TRUE,
+            .runtimeDescriptorArray                        = VK_TRUE};
+        const VkPhysicalDeviceFeatures2 deviceFeatures2 = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &physicalDeviceDescriptorIndexingFeatures, .features = m_physical_device_feature};
+
+        VkDeviceCreateInfo device_create_info    = {};
+        device_create_info.sType                 = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        device_create_info.queueCreateInfoCount  = queue_create_info_collection.size();
+        device_create_info.pQueueCreateInfos     = queue_create_info_collection.data();
+        device_create_info.enabledExtensionCount = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
         device_create_info.ppEnabledExtensionNames =
             (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
-        device_create_info.pEnabledFeatures = &m_physical_device_feature;
-        device_create_info.pNext            = nullptr;
+        device_create_info.pEnabledFeatures = nullptr;
+        device_create_info.pNext            = &deviceFeatures2;
 
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(m_physical_device, &device_create_info, nullptr, &m_logical_device) == VK_SUCCESS, "Failed to create GPU logical device")
 
