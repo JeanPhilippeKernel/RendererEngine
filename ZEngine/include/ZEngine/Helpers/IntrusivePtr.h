@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 
 namespace ZEngine::Helpers
 {
@@ -36,7 +37,7 @@ namespace ZEngine::Helpers
 
     public:
         //  --- Constructors ---  //
-        
+
         constexpr IntrusivePtr() noexcept = default;
 
         IntrusivePtr(T* ptr = nullptr) : ptr_(ptr)
@@ -242,8 +243,7 @@ namespace ZEngine::Helpers
         T* ptr_ = nullptr;
     };
 
-    //  --- Non-member Functions ---  //
-
+    // Non-member swap function
     template <typename T>
     void swap(IntrusivePtr<T>& lhs, IntrusivePtr<T>& rhs) noexcept
     {
@@ -257,3 +257,18 @@ namespace ZEngine::Helpers
     }
 
 } // namespace ZEngine::Helpers
+
+// Specialization of std::hash for IntrusivePtr
+namespace std
+{
+
+    template <typename T>
+    struct hash<ZEngine::Helpers::IntrusivePtr<T>>
+    {
+        size_t operator()(const ZEngine::Helpers::IntrusivePtr<T>& ptr) const noexcept
+        {
+            return std::hash<T*>{}(ptr.get());
+        }
+    };
+
+} // namespace std
