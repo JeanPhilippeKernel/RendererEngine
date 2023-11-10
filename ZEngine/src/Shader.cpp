@@ -1,6 +1,6 @@
 #include <pch.h>
 #include <vulkan/vulkan.h>
-#include <spirv_cross/spirv_cross.hpp>
+#include <spirv_cross.hpp>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Shaders/ShaderReader.h>
 #include <Rendering/Shaders/Shader.h>

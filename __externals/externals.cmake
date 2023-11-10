@@ -4,15 +4,6 @@
 # vulkan
 find_package(Vulkan REQUIRED)
 
-find_library(SPIRV_TOOLS_LIBRARIES NAMES spirv-cross-c-sharedd PATHS ${Vulkan_INCLUDE_DIRS}/../Lib)
-
-if (SPIRV_TOOLS_LIBRARIES)
-    message(STATUS "Found SPIRV-Tools: ${SPIRV_TOOLS_LIBRARIES}")
-else ()
-    message(FATAL_ERROR "SPIRV-Tools not found. Make sure the Vulkan SDK is installed and the CMake configuration is set up correctly.")
-endif ()
-
-
 add_library(imported::vulkan INTERFACE IMPORTED)
 target_include_directories(imported::vulkan INTERFACE ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(imported::vulkan INTERFACE Vulkan::Vulkan)
@@ -73,12 +64,17 @@ set (STDUUID_INCLUDE_PATH ${EXTERNAL_DIR}/stduuid/include)
 set_target_properties(imported::stduuid PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${STDUUID_INCLUDE_PATH}")
 target_link_libraries(imported::stduuid INTERFACE stduuid)
 
-
 # yaml-cpp
 add_library (imported::yaml-cpp INTERFACE IMPORTED)
 set (YAML_CPP_INCLUDE_PATH ${EXTERNAL_DIR}/yaml-cpp/include)
 set_target_properties(imported::yaml-cpp PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${YAML_CPP_INCLUDE_PATH}")
 target_link_libraries(imported::yaml-cpp INTERFACE yaml-cpp)
+
+# SPIRV-Cross
+add_library (imported::SPIRV-Cross INTERFACE IMPORTED)
+set (SPIRV_CROSS_INCLUDE_PATH ${EXTERNAL_DIR}/SPIRV-Cross)
+set_target_properties(imported::SPIRV-Cross PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${SPIRV_CROSS_INCLUDE_PATH}")
+target_link_libraries(imported::SPIRV-Cross INTERFACE spirv-cross-reflect spirv-cross-glsl)
 
 # Exporting all externals include directories
 list (APPEND EXTERNAL_INCLUDE_DIRS
@@ -91,4 +87,5 @@ list (APPEND EXTERNAL_INCLUDE_DIRS
 	${ASSIMP_INCLUDE_PATH}
 	${STDUUID_INCLUDE_PATH}
 	${YAML_CPP_INCLUDE_PATH}
+	${SPIRV_CROSS_INCLUDE_PATH}
 )

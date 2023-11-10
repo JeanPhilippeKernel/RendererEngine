@@ -22,10 +22,9 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     void GraphicPipeline::Bake()
     {
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-
         /*
-        * Framebuffer Creation
-        */
+         * Framebuffer Creation
+         */
         m_target_framebuffer = m_pipeline_specification.TargetFrameBufferSpecification;
 
         /*Pipeline fixed states*/
