@@ -21,10 +21,17 @@
 
 #include <Rendering/Textures/Texture2D.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include <stb/stb_image_write.h>
+#include <stb/stb_image.h>
+#include <stb/stb_image_resize.h>
+
 
 #define SCENE_ROOT_PARENT_ID -1
 #define SCENE_ROOT_DEPTH_LEVEL 0
 #define INVALID_SCENE_NODE_ID -1
+#define INVALID_TEXTURE_MAP 0xFFFFFFFF
 
 using namespace ZEngine::Controllers;
 using namespace ZEngine::Rendering::Components;
@@ -263,9 +270,17 @@ namespace ZEngine::Rendering::Scenes
             __ReadAssetFileAsync(asset_filename, [](bool success, const void* scene, std::string_view material_texture_parent_path) -> std::future<void> {
                 if (success && scene)
                 {
-                    auto    scene_ptr = reinterpret_cast<const aiScene*>(scene);
-                    aiNode* root_node = scene_ptr->mRootNode;
-                    co_await __TraverseAssetNodeAsync(scene_ptr, root_node, SCENE_ROOT_PARENT_ID, SCENE_ROOT_DEPTH_LEVEL, material_texture_parent_path);
+                    auto    scene_ptr         = reinterpret_cast<const aiScene*>(scene);
+                    aiNode* root_node         = scene_ptr->mRootNode;
+                    bool    traverse_complete = co_await __TraverseAssetNodeAsync(scene_ptr, root_node, SCENE_ROOT_PARENT_ID, SCENE_ROOT_DEPTH_LEVEL, material_texture_parent_path);
+
+                    if (traverse_complete)
+                    {
+                        /*
+                         * Post-processing Material data
+                         */
+                        PostProcessMaterials();
+                    }
                 }
             });
         }
@@ -370,8 +385,9 @@ namespace ZEngine::Rendering::Scenes
             co_return result;
         }
 
-        auto scene_node_identifier                          = co_await AddNodeAsync(parent_node, depth_level);
-        s_raw_data->SceneNodeNameMap[scene_node_identifier] = node->mName.C_Str() ? std::string(node->mName.C_Str()) : std::string{"<unamed node>"};
+        auto scene_node_identifier                                  = co_await AddNodeAsync(parent_node, depth_level);
+        s_raw_data->SceneNodeNameMap[scene_node_identifier]         = node->mName.C_Str() ? std::string(node->mName.C_Str()) : std::string{"<unamed node>"};
+        s_raw_data->LocalTransformCollection[scene_node_identifier] = Helpers::ConvertToMat4(node->mTransformation);
 
         for (uint32_t i = 0; i < node->mNumMeshes; ++i)
         {
@@ -393,7 +409,6 @@ namespace ZEngine::Rendering::Scenes
             s_raw_data->SceneNodeMaterialNameMap[sub_node_id] = material_name.C_Str() ? std::string(material_name.C_Str()) : std::string{};
             s_raw_data->SceneNodeMaterialMap[sub_node_id]     = co_await __ReadSceneNodeMeshMaterialDataAsync(assimp_scene, material_id, material_texture_parent_path);
         }
-        s_raw_data->LocalTransformCollection[scene_node_identifier] = Helpers::ConvertToMat4(node->mTransformation);
 
         for (uint32_t i = 0; i < node->mNumChildren; ++i)
         {
@@ -434,10 +449,10 @@ namespace ZEngine::Rendering::Scenes
 
         if (aiGetMaterialColor(assimp_material, AI_MATKEY_COLOR_EMISSIVE, &ai_color) == AI_SUCCESS)
         {
-            output_material.EmissiveColor.r += ai_color.r;
-            output_material.EmissiveColor.g += ai_color.g;
-            output_material.EmissiveColor.b += ai_color.b;
-            output_material.EmissiveColor.a += ai_color.a;
+            output_material.EmissiveColor.x += ai_color.r;
+            output_material.EmissiveColor.y += ai_color.g;
+            output_material.EmissiveColor.z += ai_color.b;
+            output_material.EmissiveColor.w += ai_color.a;
             output_material.EmissiveColor.w = std::min(output_material.EmissiveColor.w, 1.0f);
         }
 
@@ -479,46 +494,57 @@ namespace ZEngine::Rendering::Scenes
         /*
          * Texture files
          */
-        aiString         texture_filename;
-        aiTextureMapping texture_mapping;
-        uint32_t         uv_index;
-        float            blend{1.0f};
-        aiTextureOp      texture_operation{aiTextureOp_Add};
-        aiTextureMapMode texture_map_mode[] = {aiTextureMapMode_Wrap, aiTextureMapMode_Wrap};
-        uint32_t         texture_flags      = 0;
+        aiString              texture_filename;
+        aiTextureMapping      texture_mapping;
+        uint32_t              uv_index;
+        float                 blend                 = 1.0f;
+        aiTextureOp           texture_operation     = aiTextureOp_Add;
+        aiTextureMapMode      texture_map_mode[]    = {aiTextureMapMode_Wrap, aiTextureMapMode_Wrap};
+        uint32_t              texture_flags         = 0;
+        std::string_view      texture_dir_fomart    = "{0}\\{1}";
+
         if (aiGetMaterialTexture(
                 assimp_material, aiTextureType_EMISSIVE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
             AI_SUCCESS)
         {
-            auto texure_absolute_path          = std::filesystem::path(material_texture_parent_path).append(texture_filename.C_Str());
-            output_material.EmissiveTextureMap = AddTexture(texure_absolute_path.string());
+            auto filename                      = fmt::format(texture_dir_fomart, material_texture_parent_path, texture_filename.C_Str());
+            output_material.EmissiveTextureMap = AddTexture(filename);
         }
 
         if (aiGetMaterialTexture(
                 assimp_material, aiTextureType_DIFFUSE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
             AI_SUCCESS)
         {
-            auto texure_absolute_path          = std::filesystem::path(material_texture_parent_path).append(texture_filename.C_Str());
-            output_material.AlbedoTextureMap = AddTexture(texure_absolute_path.string());
+            auto filename                    = fmt::format(texture_dir_fomart, material_texture_parent_path, texture_filename.C_Str());
+            output_material.AlbedoTextureMap = AddTexture(filename);
         }
 
         if (aiGetMaterialTexture(
                 assimp_material, aiTextureType_NORMALS, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
             AI_SUCCESS)
         {
-            auto texure_absolute_path          = std::filesystem::path(material_texture_parent_path).append(texture_filename.C_Str());
-            output_material.NormalTextureMap = AddTexture(texure_absolute_path.string());
+            auto filename                    = fmt::format(texture_dir_fomart, material_texture_parent_path, texture_filename.C_Str());
+            output_material.NormalTextureMap = AddTexture(filename);
         }
 
-        if (output_material.NormalTextureMap == 0xFFFFFFFF)
+        if (output_material.NormalTextureMap == INVALID_TEXTURE_MAP)
         {
             if (aiGetMaterialTexture(
                     assimp_material, aiTextureType_HEIGHT, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
                 AI_SUCCESS)
             {
-                auto texure_absolute_path          = std::filesystem::path(material_texture_parent_path).append(texture_filename.C_Str());
-                output_material.NormalTextureMap = AddTexture(texure_absolute_path.string());
+                auto filename                    = fmt::format(texture_dir_fomart, material_texture_parent_path, texture_filename.C_Str());
+                output_material.NormalTextureMap = AddTexture(filename);
             }
+        }
+
+        if (aiGetMaterialTexture(
+                assimp_material, aiTextureType_OPACITY, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
+            AI_SUCCESS)
+        {
+            auto filename                     = fmt::format(texture_dir_fomart, material_texture_parent_path, texture_filename.C_Str());
+            output_material.OpacityTextureMap = AddTexture(filename);
+            output_material.AlphaTest         = 0.5f;
         }
         co_return output_material;
     }
@@ -601,16 +627,125 @@ namespace ZEngine::Rendering::Scenes
             return -1;
         }
 
+        if (!std::filesystem::exists(filename))
+        {
+            return -1;
+        }
+
         auto found = std::find(s_texture_file_collection.begin(), s_texture_file_collection.end(), std::string(filename));
         if (found == std::end(s_texture_file_collection))
         {
-            s_raw_data->TextureCollection->Add(Textures::Texture2D::Read(filename));
+            //s_raw_data->TextureCollection->Add(Textures::Texture2D::Read(filename));
 
             s_texture_file_collection.emplace_back(filename.data());
             return (s_texture_file_collection.size() - 1);
         }
 
         return std::distance(std::begin(s_texture_file_collection), found);
+    }
+
+    void GraphicScene::PostProcessMaterials()
+    {
+        std::unique_lock lock(s_scene_node_mutex);
+
+        /*
+        * Ensuring output directory exist
+        */
+        const auto current_directoy = std::filesystem::current_path();
+        auto output_texture_dir = fmt::format("{0}\\{1}", current_directoy.string(), "__imported/out_textures/");
+
+        std::map<std::string_view, uint32_t> opacity_map_indices = {};
+        auto& material_map = s_raw_data->SceneNodeMaterialMap;
+        for (auto& material : material_map)
+        {
+            auto& material_data = material.second;
+            if ((material_data.OpacityTextureMap != INVALID_TEXTURE_MAP) && (material_data.AlbedoTextureMap != INVALID_TEXTURE_MAP))
+            {
+                opacity_map_indices[s_texture_file_collection[material_data.AlbedoTextureMap]] = material_data.OpacityTextureMap;
+            }
+        }
+
+        for (auto& file : s_texture_file_collection)
+        {
+            /*
+             * Downscaling textures
+             */
+            const int            max_width   = 512;
+            const int            max_height  = 512;
+            const uint32_t       max_channel = 4;
+            std::vector<uint8_t> temp_buffer(max_width * max_height * max_channel);
+
+            uint8_t* downscaled_texture_pixel = nullptr;
+
+            auto filename = std::filesystem::path(file).filename();
+            auto downscaled_texture = fmt::format("{0}{1}__rescaled.png", output_texture_dir, filename.string());
+
+            int      width, height, channel;
+            stbi_uc* file_pixel      = stbi_load(file.data(), &width, &height, &channel, STBI_rgb_alpha);
+            downscaled_texture_pixel = file_pixel;
+            channel                  = STBI_rgb_alpha; /*force channel to be RGBA*/
+
+            if (!downscaled_texture_pixel)
+            {
+                width                    = max_width;
+                height                   = max_height;
+                downscaled_texture_pixel = temp_buffer.data();
+            }
+
+            /*handling opacity combinaison with albedo*/
+            if (opacity_map_indices.contains(file))
+            {
+                int      opacity_width, opacity_height;
+                auto     opacity_file  = s_texture_file_collection[opacity_map_indices[file]];
+                stbi_uc* opacity_pixel = stbi_load(opacity_file.data(), &opacity_width, &opacity_height, nullptr, 1);
+
+                if (!opacity_pixel)
+                {
+                    ZENGINE_CORE_ERROR("failed to load opacity file {0}", opacity_file)
+                    return;
+                }
+
+                ZENGINE_VALIDATE_ASSERT(opacity_pixel, "")
+                ZENGINE_VALIDATE_ASSERT(opacity_width == width, "")
+                ZENGINE_VALIDATE_ASSERT(opacity_height == height, "")
+
+                for (int y = 0; y < opacity_height; y++)
+                {
+                    for (int x = 0; x < opacity_width; x++)
+                    {
+                        downscaled_texture_pixel[(y * opacity_width + x) * channel + 3] = opacity_pixel[y * opacity_width + x];
+                    }
+                }
+
+                stbi_image_free(opacity_pixel);
+            }
+
+            /*
+             * Writing out downscaled texture
+             */
+            const uint32_t       output_size = width * height * channel;
+            std::vector<uint8_t> mip_buffer(output_size);
+            uint32_t             output_width  = std::min(width, max_width);
+            uint32_t             output_height = std::min(height, max_height);
+
+            stbir_resize_uint8(downscaled_texture_pixel, width, height, 0, mip_buffer.data(), output_width, output_height, 0, channel);
+            stbi_write_png(downscaled_texture.c_str(), output_width, output_height, channel, mip_buffer.data(), 0);
+
+            /*
+            * Override filename
+            */
+            file = downscaled_texture;
+
+            if (file_pixel)
+            {
+                stbi_image_free(file_pixel);
+            }
+        }
+
+        for (std::string_view file : s_texture_file_collection)
+        {
+            s_raw_data->TextureCollection->Add(Textures::Texture2D::Read(file));
+        }
     }
 
     void GraphicScene::__ReadAssetFileAsync(std::string_view filename, ReadCallback callback)

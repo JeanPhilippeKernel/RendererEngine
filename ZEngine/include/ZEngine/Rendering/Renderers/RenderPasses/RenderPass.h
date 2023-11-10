@@ -2,7 +2,10 @@
 #include <vector>
 #include <ZEngineDef.h>
 #include <vulkan/vulkan.h>
-#include <Rendering/Renderers/Pipelines/RendererPipeline.h>
+#include <Rendering/Specifications/RenderPassSpecification.h>
+#include <Rendering/Buffers/UniformBuffer.h>
+#include <Rendering/Buffers/StorageBuffer.h>
+#include <Rendering/Buffers/GraphicBuffer.h>
 #include <Rendering/Textures/Texture.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses

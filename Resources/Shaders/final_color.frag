@@ -1,5 +1,6 @@
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64: enable
 
 layout(location = 0) in vec3 uvw;
 layout(location = 1) in vec3 worldNormal;
@@ -16,13 +17,15 @@ struct MaterialData
     vec4 AlbedoColor;
     vec4 DiffuseColor;
     vec4 RoughnessColor;
+
     float TransparencyFactor;
     float MetallicFactor;
     float AlphaTest;
-    uint EmissiveTextureMap;
-    uint AlbedoTextureMap;
-    uint NormalTextureMap;
-    uint OpacityTextureMap;
+
+    uint64_t EmissiveTextureMap;
+    uint64_t AlbedoTextureMap;
+    uint64_t NormalTextureMap;
+    uint64_t OpacityTextureMap;
 };
 
 layout(set = 0, binding = 5) readonly buffer MatSB { MaterialData Data[]; } MaterialDataBuffer;

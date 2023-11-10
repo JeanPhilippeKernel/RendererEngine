@@ -1,9 +1,11 @@
 #pragma once
 #include <Rendering/Cameras/PerspectiveCamera.h>
 
-namespace ZEngine::Rendering::Cameras {
+namespace ZEngine::Rendering::Cameras
+{
 
-    class OrbitCamera : public PerspectiveCamera {
+    class OrbitCamera : public PerspectiveCamera
+    {
     public:
         explicit OrbitCamera(float field_of_view, float aspect_ratio, float near, float far, float yaw, float pitch);
         ~OrbitCamera() = default;
@@ -13,22 +15,25 @@ namespace ZEngine::Rendering::Cameras {
 
         void SetRadius(float value);
 
-        float GetYawAngle() const {
-            return Maths::degrees(m_yaw_angle);
+        float GetYawAngle() const
+        {
+            return glm::degrees(m_yaw_angle);
         }
 
-        float GetPitchAngle() const {
-            return Maths::degrees(m_pitch_angle);
+        float GetPitchAngle() const
+        {
+            return glm::degrees(m_pitch_angle);
         }
 
-        float GetRadius() const {
+        float GetRadius() const
+        {
             return m_radius;
         }
 
-        void SetTarget(const Maths::Vector3& target) override;
+        void SetTarget(const glm::vec3& target) override;
 
         void SetPosition(float yaw, float pitch);
-        void SetPosition(const Maths::Vector3& position) override;
+        void SetPosition(const glm::vec3& position) override;
     };
 
 } // namespace ZEngine::Rendering::Cameras

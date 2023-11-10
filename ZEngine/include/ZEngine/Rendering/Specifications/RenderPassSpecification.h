@@ -1,11 +1,6 @@
 #pragma once
-#include <vector>
 #include <ZEngineDef.h>
-
-namespace ZEngine::Rendering::Renderers::Pipelines
-{
-    struct GraphicPipeline;
-}
+#include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {

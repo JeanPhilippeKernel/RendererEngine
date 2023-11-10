@@ -30,20 +30,30 @@ namespace ZEngine::Rendering::Meshes
         uint32_t TotalByteSize{0};
     };
 
+    struct gpuvec4
+    {
+        float x, y, z, w;
+
+        gpuvec4() = default;
+        explicit gpuvec4(float v) : x(v), y(v), z(v), w(v) {}
+        gpuvec4(float a, float b, float c, float d) : x(a), y(b), z(c), w(d) {}
+        explicit gpuvec4(const glm::vec4& v) : x(v.x), y(v.y), z(v.z), w(v.w) {}
+    };
+
     struct MeshMaterial
     {
-        glm::vec4 AmbientColor{1.0f};
-        glm::vec4 EmissiveColor{0.0f};
-        glm::vec4 AlbedoColor{1.0f};
-        glm::vec4 DiffuseColor{1.0f};
-        glm::vec4 RoughnessColor{1.0f};
+        gpuvec4   AmbientColor{1.0f};
+        gpuvec4   EmissiveColor{0.0f};
+        gpuvec4   AlbedoColor{1.0f};
+        gpuvec4   DiffuseColor{1.0f};
+        gpuvec4   RoughnessColor{1.0f};
         float     TransparencyFactor{1.0f};
         float     MetallicFactor{0.0f};
         float     AlphaTest{1.0f};
-        uint32_t  EmissiveTextureMap{0xFFFFFFFF};
-        uint32_t  AlbedoTextureMap{0xFFFFFFFF};
-        uint32_t  NormalTextureMap{0xFFFFFFFF};
-        uint32_t  OpacityTextureMap{0xFFFFFFFF};
+        uint64_t  EmissiveTextureMap{0xFFFFFFFF};
+        uint64_t  AlbedoTextureMap{0xFFFFFFFF};
+        uint64_t  NormalTextureMap{0xFFFFFFFF};
+        uint64_t  OpacityTextureMap{0xFFFFFFFF};
     };
 
     /*Need to be deprecated*/

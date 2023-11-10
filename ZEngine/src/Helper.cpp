@@ -1,7 +1,6 @@
 #include <pch.h>
 #include <ZEngineDef.h>
 #include <Core/Coroutine.h>
-#include <Helpers/RendererHelper.h>
 #include <Helpers/MeshHelper.h>
 #include <Rendering/Renderers/Storages/IVertex.h>
 #include <Hardwares/VulkanDevice.h>
@@ -14,109 +13,6 @@ using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine::Helpers
 {
-    void FillDefaultPipelineFixedStates(Rendering::Specifications::GraphicRendererPipelineStateSpecification& specification)
-    {
-        /*Dynamic State*/
-        specification.DynamicStates                            = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-        specification.DynamicStateCreateInfo.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        specification.DynamicStateCreateInfo.dynamicStateCount = specification.DynamicStates.size();
-        specification.DynamicStateCreateInfo.pDynamicStates    = specification.DynamicStates.data();
-        specification.DynamicStateCreateInfo.flags             = 0;
-        specification.DynamicStateCreateInfo.pNext             = nullptr;
-
-        /*Input Assembly*/
-        specification.InputAssemblyStateCreateInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        specification.InputAssemblyStateCreateInfo.topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        specification.InputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE;
-        specification.InputAssemblyStateCreateInfo.flags                  = 0;
-        specification.InputAssemblyStateCreateInfo.pNext                  = nullptr;
-
-        /*Viewports and scissors*/
-        specification.Viewport.x = 0.0f;
-        specification.Viewport.y = 0.0f;
-
-        specification.Viewport.width    = 1;
-        specification.Viewport.height   = 1;
-        specification.Viewport.minDepth = 0.0f;
-        specification.Viewport.maxDepth = 1.0f;
-
-        specification.Scissor.offset = {0, 0};
-        specification.Scissor.extent = VkExtent2D{1, 1};
-
-        specification.ViewportStateCreateInfo.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-        specification.ViewportStateCreateInfo.viewportCount = 1;
-        specification.ViewportStateCreateInfo.scissorCount  = 1;
-        specification.ViewportStateCreateInfo.pViewports    = nullptr;
-        specification.ViewportStateCreateInfo.pScissors     = nullptr;
-        specification.ViewportStateCreateInfo.pNext         = nullptr;
-        specification.ViewportStateCreateInfo.flags         = 0;
-        // information.ViewportStateCreateInfo.pViewports    = &(information.Viewport);
-        // information.ViewportStateCreateInfo.pScissors     = &(information.Scissor);
-
-        /*Rasterizer*/
-        specification.RasterizationStateCreateInfo.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        specification.RasterizationStateCreateInfo.depthClampEnable        = VK_FALSE;
-        specification.RasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
-        specification.RasterizationStateCreateInfo.polygonMode             = VK_POLYGON_MODE_FILL;
-        specification.RasterizationStateCreateInfo.lineWidth               = 1.0f;
-        specification.RasterizationStateCreateInfo.cullMode                = VK_CULL_MODE_BACK_BIT;
-        specification.RasterizationStateCreateInfo.frontFace               = VK_FRONT_FACE_CLOCKWISE;
-        specification.RasterizationStateCreateInfo.depthBiasEnable         = VK_FALSE;
-        specification.RasterizationStateCreateInfo.depthBiasConstantFactor = 0.0f; // Optional
-        specification.RasterizationStateCreateInfo.depthBiasClamp          = 0.0f; // Optional
-        specification.RasterizationStateCreateInfo.depthBiasSlopeFactor    = 0.0f; // Optional
-        specification.RasterizationStateCreateInfo.pNext                   = nullptr;
-
-        /*Multisampling*/
-        specification.MultisampleStateCreateInfo.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        specification.MultisampleStateCreateInfo.sampleShadingEnable   = VK_FALSE;
-        specification.MultisampleStateCreateInfo.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
-        specification.MultisampleStateCreateInfo.pNext                 = nullptr;
-
-        /*Depth and Stencil testing*/
-        specification.DepthStencilStateCreateInfo.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        specification.DepthStencilStateCreateInfo.depthTestEnable       = VK_TRUE;
-        specification.DepthStencilStateCreateInfo.depthWriteEnable      = VK_TRUE;
-        specification.DepthStencilStateCreateInfo.depthCompareOp        = VK_COMPARE_OP_LESS;
-        specification.DepthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
-        specification.DepthStencilStateCreateInfo.minDepthBounds        = 0.0f; // Optional
-        specification.DepthStencilStateCreateInfo.maxDepthBounds        = 1.0f; // Optional
-        specification.DepthStencilStateCreateInfo.stencilTestEnable     = VK_FALSE;
-        specification.DepthStencilStateCreateInfo.front                 = {}; // Optional
-        specification.DepthStencilStateCreateInfo.back                  = {}; // Optiona
-
-        /*Color blending*/
-        // This configuration is per-framebuffer definition
-        specification.ColorBlendAttachmentState.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        specification.ColorBlendAttachmentState.blendEnable         = VK_FALSE;
-
-        // this configuration is for global color blending settings
-        specification.ColorBlendStateCreateInfo.sType             = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        specification.ColorBlendStateCreateInfo.logicOpEnable     = VK_FALSE;
-        specification.ColorBlendStateCreateInfo.logicOp           = VK_LOGIC_OP_COPY; // Optional
-        specification.ColorBlendStateCreateInfo.attachmentCount   = 1;
-        specification.ColorBlendStateCreateInfo.pAttachments      = &specification.ColorBlendAttachmentState;
-        specification.ColorBlendStateCreateInfo.blendConstants[0] = 0.0f; // Optional
-        specification.ColorBlendStateCreateInfo.blendConstants[1] = 0.0f; // Optional
-        specification.ColorBlendStateCreateInfo.blendConstants[2] = 0.0f; // Optional
-        specification.ColorBlendStateCreateInfo.blendConstants[3] = 0.0f; // Optional
-        specification.ColorBlendStateCreateInfo.flags             = 0;
-        specification.ColorBlendStateCreateInfo.pNext             = nullptr;
-
-        /*Pipeline layout*/
-        // Uniform Shader configuration
-        specification.LayoutCreateInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        specification.LayoutCreateInfo.setLayoutCount         = 0;       // Optional
-        specification.LayoutCreateInfo.pSetLayouts            = nullptr; // Optional
-        specification.LayoutCreateInfo.pushConstantRangeCount = 0;       // Optional
-        specification.LayoutCreateInfo.pPushConstantRanges    = nullptr; // Optional
-        specification.LayoutCreateInfo.flags                  = 0;
-        specification.LayoutCreateInfo.pNext                  = nullptr;
-
-        /*Vertex Input*/
-        specification.VertexInputStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        specification.VertexInputStateCreateInfo.pNext = nullptr;
-    }
 
     Rendering::Meshes::MeshVNext CreateBuiltInMesh(Rendering::Meshes::MeshType mesh_type)
     {
