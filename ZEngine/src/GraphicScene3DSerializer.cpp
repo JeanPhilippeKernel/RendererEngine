@@ -378,26 +378,26 @@ namespace ZEngine::Serializers {
                 {
                     emitter << YAML::Key << "DiffuseMap";
                     emitter << YAML::BeginMap;
-                    emitter << YAML::Key << "FromFile" << YAML::Value << diffuse_map->IsFromFile();
-                    if (diffuse_map->IsFromFile()) {
-                        emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(diffuse_map->GetFilePath());
-                    } else {
-                        const auto color = diffuse_map->GetData();
-                        emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
-                    }
+                    //emitter << YAML::Key << "FromFile" << YAML::Value << diffuse_map->IsFromFile();
+                    //if (diffuse_map->IsFromFile()) {
+                    //    emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(diffuse_map->GetFilePath());
+                    //} else {
+                    //    const auto color = diffuse_map->GetData();
+                    //    emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
+                    //}
                     emitter << YAML::EndMap;
                 }
 
                 {
                     emitter << YAML::Key << "SpecularMap";
                     emitter << YAML::BeginMap;
-                    emitter << YAML::Key << "FromFile" << YAML::Value << specular_map->IsFromFile();
-                    if (specular_map->IsFromFile()) {
-                        emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(specular_map->GetFilePath());
-                    } else {
-                        const auto color = specular_map->GetData();
-                        emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
-                    }
+                    //emitter << YAML::Key << "FromFile" << YAML::Value << specular_map->IsFromFile();
+                    //if (specular_map->IsFromFile()) {
+                    //    emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(specular_map->GetFilePath());
+                    //} else {
+                    //    const auto color = specular_map->GetData();
+                    //    emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
+                    //}
                     emitter << YAML::EndMap;
                 }
             }
@@ -407,13 +407,13 @@ namespace ZEngine::Serializers {
                 auto texture        = basic_material->GetTexture();
                 emitter << YAML::Key << "Texture";
                 emitter << YAML::BeginMap;
-                emitter << YAML::Key << "FromFile" << YAML::Value << texture->IsFromFile();
-                if (texture->IsFromFile()) {
-                    emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(texture->GetFilePath());
-                } else {
-                    const auto color = texture->GetData();
-                    emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
-                }
+                //emitter << YAML::Key << "FromFile" << YAML::Value << texture->IsFromFile();
+                //if (texture->IsFromFile()) {
+                //    emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(texture->GetFilePath());
+                //} else {
+                //    const auto color = texture->GetData();
+                //    emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
+                //}
                 emitter << YAML::EndMap;
             }
 

@@ -32,7 +32,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, 255.0f);
+        //texture->SetData(color.x, color.y, color.z, 255.0f);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -43,7 +43,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, color.w);
+        //texture->SetData(color.x, color.y, color.z, color.w);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -91,7 +91,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, 255.f);
+        //texture->SetData(color.x, color.y, color.z, 255.f);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
 
@@ -103,7 +103,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, color.w);
+        //texture->SetData(color.x, color.y, color.z, color.w);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -179,7 +179,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, 255.0f);
+        //texture->SetData(color.x, color.y, color.z, 255.0f);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -190,7 +190,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, color.w);
+        //texture->SetData(color.x, color.y, color.z, color.w);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -238,7 +238,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, 255.f);
+        //texture->SetData(color.x, color.y, color.z, 255.f);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -249,7 +249,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, color.w);
+        //texture->SetData(color.x, color.y, color.z, color.w);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -325,7 +325,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, 255.0f);
+        //texture->SetData(color.x, color.y, color.z, 255.0f);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -336,7 +336,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, color.w);
+        //texture->SetData(color.x, color.y, color.z, color.w);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -388,7 +388,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, 255.f);
+        //texture->SetData(color.x, color.y, color.z, 255.f);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;
@@ -399,7 +399,7 @@ namespace ZEngine::Rendering::Meshes {
         Texture*          texture  = CreateTexture(1, 1);
         StandardMaterial* material = new StandardMaterial{};
 
-        texture->SetData(color.x, color.y, color.z, color.w);
+        //texture->SetData(color.x, color.y, color.z, color.w);
         //material->SetTexture(texture);
         //mesh->SetMaterial(material);
         return mesh;

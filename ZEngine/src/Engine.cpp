@@ -25,7 +25,17 @@ namespace ZEngine
 
         Hardwares::VulkanDevice::Initialize(reinterpret_cast<GLFWwindow*>(m_window->GetNativeWindow()), window_additional_extension_layer_name_collection);
 
+        m_window->Initialize();
+
         Rendering::Renderers::GraphicRenderer::Initialize();
+        /*
+         * Renderer Post initialization
+         */
+        const auto& swapchain = m_window->GetSwapchain();
+        Rendering::Renderers::GraphicRenderer::SetMainSwapchain(swapchain);
+
+        ZENGINE_CORE_INFO("Engine initialized")
+
 
         for (const auto& layer : engine_configuration.WindowConfiguration.RenderingLayerCollection)
         {
@@ -36,10 +46,7 @@ namespace ZEngine
         {
             m_window->PushOverlayLayer(layer);
         }
-
-        m_window->Initialize();
-
-        ZENGINE_CORE_INFO("Engine initialized")
+        m_window->InitializeLayer();
     }
 
     void Engine::ProcessEvent()

@@ -17,8 +17,8 @@ namespace ZEngine::Rendering::Cameras {
             return m_angle;
         }
 
-        void SetPosition(const Maths::Vector3& position) override;
-        void SetProjectionMatrix(const Maths::Matrix4& projection) override;
+        void SetPosition(const glm::vec3& position) override;
+        void SetProjectionMatrix(const glm::mat4& projection) override;
 
     protected:
         void UpdateViewMatrix() override;

@@ -1,14 +1,10 @@
 #pragma once
 #include <vector>
+#include <glm/glm.hpp>
 #include <ZEngineDef.h>
 #include <Maths/Math.h>
 #include <Rendering/Materials/ShaderMaterial.h>
 #include <Rendering/Geometries/IGeometry.h>
-
-#include <Rendering/Buffers/VertexBuffer.h>
-#include <Rendering/Buffers/IndexBuffer.h>
-#include <Rendering/Buffers/UniformBuffer.h>
-#include <Rendering/Renderers/Contracts/RendererDataContract.h>
 
 namespace ZEngine::Rendering::Meshes
 {
@@ -23,9 +19,6 @@ namespace ZEngine::Rendering::Meshes
 
     struct MeshVNext
     {
-        MeshVNext()  = default;
-        ~MeshVNext() = default;
-
         uint32_t VertexCount{0};
         uint32_t IndexCount{0};
         uint32_t VertexOffset{0};
@@ -35,6 +28,32 @@ namespace ZEngine::Rendering::Meshes
         uint32_t VertexUnitStreamSize{0};
         uint32_t IndexUnitStreamSize{0};
         uint32_t TotalByteSize{0};
+    };
+
+    struct gpuvec4
+    {
+        float x, y, z, w;
+
+        gpuvec4() = default;
+        explicit gpuvec4(float v) : x(v), y(v), z(v), w(v) {}
+        gpuvec4(float a, float b, float c, float d) : x(a), y(b), z(c), w(d) {}
+        explicit gpuvec4(const glm::vec4& v) : x(v.x), y(v.y), z(v.z), w(v.w) {}
+    };
+
+    struct MeshMaterial
+    {
+        gpuvec4   AmbientColor{1.0f};
+        gpuvec4   EmissiveColor{0.0f};
+        gpuvec4   AlbedoColor{1.0f};
+        gpuvec4   DiffuseColor{1.0f};
+        gpuvec4   RoughnessColor{1.0f};
+        float     TransparencyFactor{1.0f};
+        float     MetallicFactor{0.0f};
+        float     AlphaTest{1.0f};
+        uint64_t  EmissiveTextureMap{0xFFFFFFFF};
+        uint64_t  AlbedoTextureMap{0xFFFFFFFF};
+        uint64_t  NormalTextureMap{0xFFFFFFFF};
+        uint64_t  OpacityTextureMap{0xFFFFFFFF};
     };
 
     /*Need to be deprecated*/

@@ -24,7 +24,7 @@ namespace ZEngine::Rendering::Shaders {
          */
         ShaderOperationResult Read(std::string_view filename);
 
-        static std::vector<char> ReadAsBinary(std::string_view filename);
+        static std::vector<uint32_t> ReadAsBinary(std::string_view filename);
 
         /**
          * Read asynchronously content of shader file

@@ -5,25 +5,30 @@
 #include <Inputs/IMouseEventCallback.h>
 #include <Window/ICoreWindowEventCallback.h>
 
-namespace ZEngine::Controllers {
+namespace ZEngine::Controllers
+{
 
-    class OrthographicCameraController : public ICameraController, public Inputs::IMouseEventCallback, public Window::ICoreWindowEventCallback {
+    class OrthographicCameraController : public ICameraController, public Inputs::IMouseEventCallback, public Window::ICoreWindowEventCallback
+    {
 
     public:
-        OrthographicCameraController() {
+        OrthographicCameraController()
+        {
             m_controller_type = CameraControllerType::ORTHOGRAPHIC_CONTROLLER;
         }
 
         OrthographicCameraController(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window, bool can_rotate = false)
             : ICameraController(window, can_rotate),
-              m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor)) {
-                m_controller_type = CameraControllerType::ORTHOGRAPHIC_CONTROLLER;
+              m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor))
+        {
+            m_controller_type = CameraControllerType::ORTHOGRAPHIC_CONTROLLER;
         }
 
         OrthographicCameraController(float aspect_ratio)
             : ICameraController(aspect_ratio),
-              m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor)) {
-                m_controller_type = CameraControllerType::ORTHOGRAPHIC_CONTROLLER;
+              m_orthographic_camera(new Rendering::Cameras::OrthographicCamera(-m_aspect_ratio * m_zoom_factor, m_aspect_ratio * m_zoom_factor, -m_zoom_factor, m_zoom_factor))
+        {
+            m_controller_type = CameraControllerType::ORTHOGRAPHIC_CONTROLLER;
         }
 
         virtual ~OrthographicCameraController() = default;
@@ -32,47 +37,56 @@ namespace ZEngine::Controllers {
         void Update(Core::TimeStep) override;
         bool OnEvent(Event::CoreEvent&) override;
 
-        const ZEngine::Ref<Rendering::Cameras::Camera> GetCamera() const override {
+        const ZEngine::Ref<Rendering::Cameras::Camera> GetCamera() const override
+        {
             return m_orthographic_camera;
         }
 
         void UpdateProjectionMatrix() override;
 
-        virtual const Maths::Vector3& GetPosition() const override;
-        virtual void                  SetPosition(const Maths::Vector3& position) override;
+        virtual const glm::vec3& GetPosition() const override;
+        virtual void                  SetPosition(const glm::vec3& position) override;
 
     public:
-        bool OnMouseButtonPressed(Event::MouseButtonPressedEvent&) override {
+        bool OnMouseButtonPressed(Event::MouseButtonPressedEvent&) override
+        {
             return false;
         }
 
-        bool OnMouseButtonReleased(Event::MouseButtonReleasedEvent&) override {
+        bool OnMouseButtonReleased(Event::MouseButtonReleasedEvent&) override
+        {
             return false;
         }
 
-        bool OnMouseButtonMoved(Event::MouseButtonMovedEvent&) override {
+        bool OnMouseButtonMoved(Event::MouseButtonMovedEvent&) override
+        {
             return false;
         }
 
         bool OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent&) override;
 
-        bool OnWindowResized(Event::WindowResizedEvent&) override {
+        bool OnWindowResized(Event::WindowResizedEvent&) override
+        {
             return false;
         }
 
-        bool OnWindowClosed(Event::WindowClosedEvent&) override {
+        bool OnWindowClosed(Event::WindowClosedEvent&) override
+        {
             return false;
         }
 
-        bool OnWindowMinimized(Event::WindowMinimizedEvent&) override {
+        bool OnWindowMinimized(Event::WindowMinimizedEvent&) override
+        {
             return false;
         }
 
-        bool OnWindowMaximized(Event::WindowMaximizedEvent&) override {
+        bool OnWindowMaximized(Event::WindowMaximizedEvent&) override
+        {
             return false;
         }
 
-        bool OnWindowRestored(Event::WindowRestoredEvent&) override {
+        bool OnWindowRestored(Event::WindowRestoredEvent&) override
+        {
             return false;
         }
 

@@ -66,4 +66,5 @@ target_link_libraries (zEngineLib
 		imported::stduuid
 		imported::yaml-cpp
 		imported::vulkan
+		imported::SPIRV-Cross
 )

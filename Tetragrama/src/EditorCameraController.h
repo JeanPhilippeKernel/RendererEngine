@@ -2,17 +2,21 @@
 #include <ZEngine.h>
 #include <EditorCamera.h>
 
-namespace Tetragrama {
+namespace Tetragrama
+{
 
-    class EditorCameraController : public ZEngine::Controllers::PerspectiveCameraController {
+    class EditorCameraController : public ZEngine::Controllers::PerspectiveCameraController
+    {
 
     public:
-        EditorCameraController() {
+        EditorCameraController()
+        {
             m_controller_type = ZEngine::Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;
         }
 
         EditorCameraController(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window, float distance, float yaw_angle_degree, float pitch_angle_degree)
-            : PerspectiveCameraController(window) {
+            : PerspectiveCameraController(window)
+        {
             m_controller_type    = ZEngine::Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;
             m_perspective_camera = ZEngine::CreateRef<EditorCamera>(
                 m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far, ZEngine::Maths::radians(yaw_angle_degree), ZEngine::Maths::radians(pitch_angle_degree));
@@ -21,7 +25,8 @@ namespace Tetragrama {
             camera->SetDistance(distance);
         }
 
-        EditorCameraController(float aspect_ratio, float distance, float yaw_angle_degree, float pitch_angle_degree) : PerspectiveCameraController(aspect_ratio) {
+        EditorCameraController(float aspect_ratio, float distance, float yaw_angle_degree, float pitch_angle_degree) : PerspectiveCameraController(aspect_ratio)
+        {
             m_controller_type    = ZEngine::Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;
             m_perspective_camera = ZEngine::CreateRef<EditorCamera>(
                 m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far, ZEngine::Maths::radians(yaw_angle_degree), ZEngine::Maths::radians(pitch_angle_degree));
