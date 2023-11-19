@@ -5,7 +5,6 @@
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>
 #include <Event/EventDispatcher.h>
-#include <Engine.h>
 
 using namespace ZEngine::Inputs;
 
@@ -14,13 +13,35 @@ namespace ZEngine::Controllers
 
     void PerspectiveCameraController::Initialize()
     {
-        m_perspective_camera->SetTarget(m_camera_target);
-        m_perspective_camera->SetPosition(m_position);
     }
 
-    void PerspectiveCameraController::Update(Core::TimeStep dt) {}
+    void PerspectiveCameraController::Update(Core::TimeStep dt)
+    {
+        if (auto window = m_window.lock())
+        {
+            const auto mouse_position = IDevice::As<Mouse>()->GetMousePosition(window);
+            const auto mouse          = glm::vec2(mouse_position[0], mouse_position[1]);
+            bool       mouse_pressed  = false;
+            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_ALT, window))
+            {
+                m_perspective_camera->movement_.mousePan    = IDevice::As<Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_MIDDLE, window);
+                m_perspective_camera->movement_.mouseRotate = IDevice::As<Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_LEFT, window);
+                m_perspective_camera->movement_.mouseZoom   = IDevice::As<Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_RIGHT, window);
+                mouse_pressed                               = true;
+            }
+            else
+            {
+                m_perspective_camera->movement_.forward_  = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_W, window);
+                m_perspective_camera->movement_.backward_ = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, window);
+                m_perspective_camera->movement_.left_     = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_A, window);
+                m_perspective_camera->movement_.right_    = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_D, window);
+                mouse_pressed                             = false;
+            }
+            m_perspective_camera->Update(dt, mouse, mouse_pressed);
+        }
+    }
 
-    const glm::vec3& PerspectiveCameraController::GetPosition() const
+    glm::vec3 PerspectiveCameraController::GetPosition() const
     {
         return m_perspective_camera->GetPosition();
     }
@@ -32,39 +53,50 @@ namespace ZEngine::Controllers
 
     float PerspectiveCameraController::GetFieldOfView() const
     {
-        return m_camera_fov;
+        return m_perspective_camera->Fov;
     }
 
     void PerspectiveCameraController::SetFieldOfView(float rad_fov)
     {
-        m_camera_fov = rad_fov;
-        UpdateProjectionMatrix();
+        m_perspective_camera->Fov = rad_fov;
     }
 
     float PerspectiveCameraController::GetNear() const
     {
-        return m_camera_near;
+        return m_perspective_camera->ClipNear;
     }
 
     void PerspectiveCameraController::SetNear(float value)
     {
-        m_camera_near = value;
-        UpdateProjectionMatrix();
+        m_perspective_camera->ClipNear = value;
     }
 
     float PerspectiveCameraController::GetFar() const
     {
-        return m_camera_far;
+        return m_perspective_camera->ClipFar;
     }
     void PerspectiveCameraController::SetFar(float value)
     {
-        m_camera_far = value;
-        UpdateProjectionMatrix();
+        m_perspective_camera->ClipFar = value;
+    }
+
+    void PerspectiveCameraController::SetViewport(float width, float height)
+    {
+        m_perspective_camera->SetViewport(width, height);
+    }
+
+    void PerspectiveCameraController::SetTarget(const glm::vec3& target)
+    {
+        m_perspective_camera->SetTarget(target);
+    }
+
+    const ZEngine::Ref<Rendering::Cameras::Camera> PerspectiveCameraController::GetCamera() const
+    {
+        return m_perspective_camera;
     }
 
     void PerspectiveCameraController::UpdateProjectionMatrix()
     {
-        m_perspective_camera->SetProjectionMatrix(glm::perspective(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far));
     }
 
     bool PerspectiveCameraController::OnEvent(Event::CoreEvent& e)
@@ -76,9 +108,8 @@ namespace ZEngine::Controllers
 
     bool PerspectiveCameraController::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e)
     {
-        m_zoom_factor -= m_move_speed * static_cast<float>(e.GetOffetY()) * Engine::GetDeltaTime();
-        m_camera_fov = m_zoom_factor;
-        UpdateProjectionMatrix();
+        float delta = e.GetOffetY() * 0.1f;
+        m_perspective_camera->Zoom(delta);
         return false;
     }
 

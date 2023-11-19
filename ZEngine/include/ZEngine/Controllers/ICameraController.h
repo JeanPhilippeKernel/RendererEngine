@@ -9,29 +9,15 @@ namespace ZEngine::Controllers
 
     struct ICameraController : public IController
     {
-
-        ICameraController() = default;
-        ICameraController(float aspect_ratio, bool can_rotate = false) : m_aspect_ratio(aspect_ratio), m_can_rotate(false) {}
-
-        ICameraController(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window, bool can_rotate) : m_can_rotate(can_rotate), m_window(window)
-        {
-            const auto window_ptr = m_window.lock();
-            assert(window_ptr != nullptr);
-
-            m_aspect_ratio = window_ptr->GetWindowProperty().AspectRatio;
-        }
-
-        ICameraController(const ZEngine::Ref<ZEngine::Window::CoreWindow>& window) : m_can_rotate(false), m_window(window)
-        {
-            const auto window_ptr = m_window.lock();
-            assert(window_ptr != nullptr);
-
-            m_aspect_ratio = window_ptr->GetWindowProperty().AspectRatio;
-        }
+        ICameraController();
+        ICameraController(float aspect_ratio, bool can_rotate = false);
 
         virtual ~ICameraController() = default;
 
-        virtual const glm::vec3& GetPosition() const = 0;
+        virtual glm::vec3                                      GetPosition() const                    = 0;
+        virtual void                                           SetPosition(const glm::vec3& position) = 0;
+        virtual const ZEngine::Ref<Rendering::Cameras::Camera> GetCamera() const                      = 0;
+        virtual void                                           UpdateProjectionMatrix()               = 0;
 
         float GetRotationAngle() const
         {
@@ -63,8 +49,6 @@ namespace ZEngine::Controllers
             return m_controller_type;
         }
 
-        virtual void SetPosition(const glm::vec3& position) = 0;
-
         void SetRotationAngle(float angle)
         {
             m_rotation_angle = angle;
@@ -91,22 +75,15 @@ namespace ZEngine::Controllers
             UpdateProjectionMatrix();
         }
 
-        virtual const ZEngine::Ref<Rendering::Cameras::Camera> GetCamera() const = 0;
-
-        virtual void UpdateProjectionMatrix() = 0;
-
     protected:
-        glm::vec3 m_position{0.0f, 0.0f, 0.0f};
-        float     m_rotation_angle{0.0f};
-        float     m_zoom_factor{1.0f};
-
-        float m_move_speed{0.05f};
-        float m_rotation_speed{0.05f};
-        float m_aspect_ratio{0.0f};
-
-        bool m_can_rotate{false};
-
-        CameraControllerType                          m_controller_type;
+        glm::vec3                                     m_position{0.0f, 0.0f, 10.0f};
+        float                                         m_rotation_angle{0.0f};
+        float                                         m_zoom_factor{1.0f};
+        float                                         m_move_speed{0.05f};
+        float                                         m_rotation_speed{0.05f};
+        float                                         m_aspect_ratio{0.0f};
+        bool                                          m_can_rotate{false};
+        CameraControllerType                          m_controller_type{CameraControllerType::UNDEFINED};
         ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;
     };
 } // namespace ZEngine::Controllers

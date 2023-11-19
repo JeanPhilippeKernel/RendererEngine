@@ -211,69 +211,69 @@ namespace Tetragrama::Components
             Helpers::DrawEntityComponentControl<CameraComponent>("Camera", *m_scene_entity, m_node_flag, true,
                 [this](CameraComponent& component)
                 {
-                    auto const camera_controller = component.GetCameraController();
-                    auto       camera_type       = camera_controller->GetCamera()->GetCameraType();
+                    //auto const camera_controller = component.GetCameraController();
+                    //auto       camera_type       = camera_controller->GetCamera()->GetCameraType();
 
-                    ImGui::Dummy(ImVec2(0, 3));
+                    //ImGui::Dummy(ImVec2(0, 3));
 
-                    bool is_primary_camera = component.IsPrimaryCamera;
-                    if (ImGui::Checkbox("Main Camera", &is_primary_camera))
-                    {
-                        component.IsPrimaryCamera = is_primary_camera;
-                    }
+                    //bool is_primary_camera = component.IsPrimaryCamera;
+                    //if (ImGui::Checkbox("Main Camera", &is_primary_camera))
+                    //{
+                    //    component.IsPrimaryCamera = is_primary_camera;
+                    //}
 
-                    if (camera_type == ZEngine::Rendering::Cameras::CameraType::PERSPECTIVE)
-                    {
-                        auto  perspective_controller = reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
-                        float camera_fov             = ZEngine::Maths::degrees(perspective_controller->GetFieldOfView());
+                    //if (camera_type == ZEngine::Rendering::Cameras::CameraType::PERSPECTIVE)
+                    //{
+                    //    auto  perspective_controller = reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
+                    //    float camera_fov             = ZEngine::Maths::degrees(perspective_controller->GetFieldOfView());
 
-                        Helpers::DrawDragFloatControl(
-                            "Field Of View", camera_fov, 0.2f, -180.0f, 180.f, "%.2f",
-                            [&perspective_controller](float value) { perspective_controller->SetFieldOfView(ZEngine::Maths::radians(value)); }, 120.f);
+                    //    Helpers::DrawDragFloatControl(
+                    //        "Field Of View", camera_fov, 0.2f, -180.0f, 180.f, "%.2f",
+                    //        [&perspective_controller](float value) { perspective_controller->SetFieldOfView(ZEngine::Maths::radians(value)); }, 120.f);
 
-                        ImGui::Dummy(ImVec2(0, 3));
+                    //    ImGui::Dummy(ImVec2(0, 3));
 
-                        // Clipping space
-                        if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(CameraComponent).hash_code() + 0x000000FF), m_node_flag, "%s", "Clipping Space"))
-                        {
-                            float camera_near = perspective_controller->GetNear();
-                            float camera_far  = perspective_controller->GetFar();
+                    //    // Clipping space
+                    //    if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(CameraComponent).hash_code() + 0x000000FF), m_node_flag, "%s", "Clipping Space"))
+                    //    {
+                    //        float camera_near = perspective_controller->GetNear();
+                    //        float camera_far  = perspective_controller->GetFar();
 
-                            Helpers::DrawDragFloatControl(
-                                "Near", camera_near, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) { perspective_controller->SetNear(value); });
-                            ImGui::Dummy(ImVec2(0, 0.5f));
+                    //        Helpers::DrawDragFloatControl(
+                    //            "Near", camera_near, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) { perspective_controller->SetNear(value); });
+                    //        ImGui::Dummy(ImVec2(0, 0.5f));
 
-                            Helpers::DrawDragFloatControl(
-                                "Far", camera_far, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) { perspective_controller->SetFar(value); });
+                    //        Helpers::DrawDragFloatControl(
+                    //            "Far", camera_far, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) { perspective_controller->SetFar(value); });
 
-                            ImGui::TreePop();
-                        }
+                    //        ImGui::TreePop();
+                    //    }
 
-                        ImGui::Dummy(ImVec2(0, 3));
+                    //    ImGui::Dummy(ImVec2(0, 3));
 
-                        // Camera Controller Type
-                        if (camera_controller->GetControllerType() == ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER)
-                        {
-                            auto orbit_controller = reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(camera_controller);
-                            if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(orbit_controller).hash_code()), m_node_flag, "%s", "Controller (Orbit)"))
-                            {
-                                auto       camera       = orbit_controller->GetCamera();
-                                auto const orbit_camera = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
-                                float      radius       = orbit_camera->GetRadius();
-                                float      yaw_angle    = orbit_camera->GetYawAngle();
-                                float      pitch_angle  = orbit_camera->GetPitchAngle();
+                    //    // Camera Controller Type
+                    //    if (camera_controller->GetControllerType() == ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER)
+                    //    {
+                    //        auto orbit_controller = reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(camera_controller);
+                    //        if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(orbit_controller).hash_code()), m_node_flag, "%s", "Controller (Orbit)"))
+                    //        {
+                    //            auto       camera       = orbit_controller->GetCamera();
+                    //            auto const orbit_camera = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
+                    //            float      radius       = orbit_camera->GetRadius();
+                    //            float      yaw_angle    = orbit_camera->GetYawAngle();
+                    //            float      pitch_angle  = orbit_camera->GetPitchAngle();
 
-                                Helpers::DrawDragFloatControl("Radius", radius);
-                                ImGui::Dummy(ImVec2(0, 0.5f));
+                    //            Helpers::DrawDragFloatControl("Radius", radius);
+                    //            ImGui::Dummy(ImVec2(0, 0.5f));
 
-                                Helpers::DrawDragFloatControl("X-axis angle", pitch_angle);
-                                ImGui::Dummy(ImVec2(0, 0.5f));
+                    //            Helpers::DrawDragFloatControl("X-axis angle", pitch_angle);
+                    //            ImGui::Dummy(ImVec2(0, 0.5f));
 
-                                Helpers::DrawDragFloatControl("Y-axis angle", yaw_angle);
-                                ImGui::TreePop();
-                            }
-                        }
-                    }
+                    //            Helpers::DrawDragFloatControl("Y-axis angle", yaw_angle);
+                    //            ImGui::TreePop();
+                    //        }
+                    //    }
+                    //}
                 });
 
             // Add Components

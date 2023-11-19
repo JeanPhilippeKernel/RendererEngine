@@ -22,17 +22,17 @@ namespace Tetragrama::Components
     {
         if (auto active_window = Engine::GetWindow())
         {
-            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_W, active_window))
+            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_T, active_window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
             }
 
-            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_E, active_window))
+            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_R, active_window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::ROTATE;
             }
 
-            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_R, active_window))
+            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, active_window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::SCALE;
             }
@@ -86,13 +86,18 @@ namespace Tetragrama::Components
             auto entity_wrapper = GraphicScene::GetSceneNodeEntityWrapper(m_selected_node_identifier);
             if (auto active_editor_camera = m_active_editor_camera.lock())
             {
-                auto        camera             = active_editor_camera->GetCamera();
-                const auto& camera_projection  = camera->GetProjectionMatrix();
-                const auto& camera_view_matrix = camera->GetViewMatrix();
+                auto       camera             = active_editor_camera->GetCamera();
+                const auto camera_projection  = camera->GetPerspectiveMatrix();
+                const auto camera_view_matrix = camera->GetViewMatrix();
 
-                auto&  global_transform  = GraphicScene::GetSceneNodeGlobalTransform(m_selected_node_identifier);
+                auto& global_transform  = GraphicScene::GetSceneNodeGlobalTransform(m_selected_node_identifier);
                 auto  initial_transform = global_transform;
                 auto& local_transform   = GraphicScene::GetSceneNodeLocalTransform(m_selected_node_identifier);
+
+                if (camera && ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, Engine::GetWindow()))
+                {
+                    active_editor_camera->SetTarget(glm::vec3(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
+                }
 
                 // snapping
                 float snap_value        = 0.5f;

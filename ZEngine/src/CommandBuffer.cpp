@@ -116,6 +116,7 @@ namespace ZEngine::Rendering::Buffers
         render_pass_begin_info.sType                 = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         render_pass_begin_info.renderPass            = render_pass_pipeline->GetRenderPassHandle();
         render_pass_begin_info.framebuffer           = framebuffer->GetHandle();
+        render_pass_begin_info.renderArea.offset     = {0, 0};
         render_pass_begin_info.renderArea.extent     = VkExtent2D{framebuffer->GetWidth(), framebuffer->GetHeight()};
 
         // ToDo : should be move to FrambufferSpecification
@@ -149,10 +150,12 @@ namespace ZEngine::Rendering::Buffers
 
     void CommandBuffer::EndRenderPass()
     {
-        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
-        vkCmdEndRenderPass(m_command_buffer);
-
-        m_active_render_pass.reset();
+        if (auto render_pass = m_active_render_pass.lock())
+        {
+            ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+            vkCmdEndRenderPass(m_command_buffer);
+            m_active_render_pass.reset();
+        }
     }
 
     void CommandBuffer::BindDescriptorSets(uint32_t frame_index)

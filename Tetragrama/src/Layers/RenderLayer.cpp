@@ -21,7 +21,7 @@ namespace Tetragrama::Layers
     void RenderLayer::Initialize()
     {
         auto current_window        = GetAttachedWindow();
-        m_editor_camera_controller = CreateRef<EditorCameraController>(current_window, 50, 0.f, 45.f);
+        m_editor_camera_controller = CreateRef<EditorCameraController>(50.0, 45.f, 40.f);
         m_scene_renderer           = CreateRef<SceneRenderer>();
 
         m_scene_renderer->Initialize();
@@ -54,7 +54,7 @@ namespace Tetragrama::Layers
     {
         auto camera = m_editor_camera_controller->GetCamera();
 
-        m_scene_renderer->StartScene(camera->GetPosition(), camera->GetViewMatrix(), camera->GetProjectionMatrix());
+        m_scene_renderer->StartScene(camera->GetPosition(), camera->GetViewMatrix(), camera->GetPerspectiveMatrix());
         m_scene_renderer->RenderScene(GraphicScene::GetRawData());
         m_scene_renderer->EndScene();
     }
@@ -64,7 +64,7 @@ namespace Tetragrama::Layers
         std::unique_lock lock(m_message_handler_mutex);
 
         const auto& value = message.GetValue();
-        m_editor_camera_controller->SetViewportSize(value.first, value.second);
+        m_editor_camera_controller->SetViewport(value.first, value.second);
         co_return;
     }
 
