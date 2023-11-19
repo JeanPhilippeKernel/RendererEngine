@@ -1,5 +1,5 @@
 #pragma once
-#include <cstdint>
+#include <atomic>
 #include <functional>
 
 namespace ZEngine::Helpers
@@ -7,30 +7,33 @@ namespace ZEngine::Helpers
     class RefCounted
     {
     public:
-        RefCounted() : count_(0) {}
+        RefCounted() : m_count(0) {}
+
+        RefCounted(const RefCounted&)            = delete;
+        RefCounted& operator=(const RefCounted&) = delete;
 
         void increment()
         {
-            ++count_;
+            ++m_count;
         }
 
         void decrement()
         {
-            if (--count_ == 0)
+            if (--m_count == 0)
             {
                 delete this;
             }
         }
 
-        uint64_t ref_count() const
+        uint64_t RefCount() const
         {
-            return count_;
+            return m_count;
         }
 
     private:
-        uint64_t count_;
+        std::atomic<uint64_t> m_count;
     };
-
+    
     template <typename T>
     class IntrusivePtr
     {
@@ -38,27 +41,26 @@ namespace ZEngine::Helpers
     public:
         //  --- Constructors ---  //
 
-        constexpr IntrusivePtr() noexcept = default;
 
-        IntrusivePtr(T* ptr = nullptr) : ptr_(ptr)
+        IntrusivePtr(T* ptr = nullptr) : m_ptr(ptr)
         {
-            if (ptr_)
+            if (m_ptr)
             {
-                ptr_->increment();
+                m_ptr->increment();
             }
         }
 
-        IntrusivePtr(const IntrusivePtr& other) : ptr_(other.ptr_)
+        IntrusivePtr(const IntrusivePtr& other) : m_ptr(other.m_ptr)
         {
-            if (ptr_)
+            if (m_ptr)
             {
-                ptr_->increment();
+                m_ptr->increment();
             }
         }
 
-        IntrusivePtr(IntrusivePtr&& other) noexcept : ptr_(other.ptr_)
+        IntrusivePtr(IntrusivePtr&& other) noexcept : m_ptr(other.m_ptr)
         {
-            other.ptr_ = nullptr;
+            other.m_ptr = nullptr;
         }
 
         //  --- Assignment Operators ---  //
@@ -67,11 +69,11 @@ namespace ZEngine::Helpers
         {
             if (this != &other)
             {
-                T* old_ptr = ptr_;
-                ptr_ = other.ptr_;
-                if (ptr_)
+                T* old_ptr = m_ptr;
+                m_ptr      = other.m_ptr;
+                if (m_ptr)
                 {
-                    ptr_->increment();
+                    m_ptr->increment();
                 }
                 if (old_ptr)
                 {
@@ -85,9 +87,9 @@ namespace ZEngine::Helpers
         {
             if (this != &other)
             {
-                T* old_ptr = ptr_;
-                ptr_ = other.ptr_;
-                other.ptr_ = nullptr;
+                T* old_ptr  = m_ptr;
+                m_ptr       = other.m_ptr;
+                other.m_ptr = nullptr;
                 if (old_ptr)
                 {
                     old_ptr->decrement();
@@ -98,13 +100,13 @@ namespace ZEngine::Helpers
 
         IntrusivePtr& operator=(T* rawPtr)
         {
-            if (ptr_ != rawPtr)
+            if (m_ptr != rawPtr)
             {
-                T* old_ptr = ptr_;
-                ptr_ = rawPtr;
-                if (ptr_)
+                T* old_ptr = m_ptr;
+                m_ptr      = rawPtr;
+                if (m_ptr)
                 {
-                    ptr_->increment();
+                    m_ptr->increment();
                 }
                 if (old_ptr)
                 {
@@ -118,13 +120,13 @@ namespace ZEngine::Helpers
 
         void reset(T* newPtr = nullptr)
         {
-            if (ptr_ != newPtr)
+            if (m_ptr != newPtr)
             {
-                T* old_ptr = ptr_;
-                ptr_ = newPtr;
-                if (ptr_)
+                T* old_ptr = m_ptr;
+                m_ptr      = newPtr;
+                if (m_ptr)
                 {
-                    ptr_->increment();
+                    m_ptr->increment();
                 }
                 if (old_ptr)
                 {
@@ -135,112 +137,103 @@ namespace ZEngine::Helpers
 
         void swap(IntrusivePtr& other) noexcept
         {
-            T* temp = ptr_;
-            ptr_ = other.ptr_;
-            other.ptr_ = temp;
+            T* temp     = m_ptr;
+            m_ptr       = other.m_ptr;
+            other.m_ptr = temp;
         }
 
         //  --- Getter for the underlying pointer ---  //
 
         T* get() const noexcept
         {
-            return ptr_;
+            return m_ptr;
         }
 
         T* operator->() const noexcept
         {
-            return ptr_;
+            return m_ptr;
         }
 
         T& operator*() const noexcept
         {
-            return *ptr_;
+            return *m_ptr;
         }
 
         //  --- Comparison Operators ---  //
 
         bool operator!() const noexcept
         {
-            return !ptr_;
+            return !m_ptr;
         }
 
         explicit operator bool() const noexcept
         {
-            return ptr_ != nullptr;
+            return m_ptr != nullptr;
         }
 
         bool operator==(std::nullptr_t) const noexcept
         {
-            return ptr_ == nullptr;
+            return m_ptr == nullptr;
         }
 
         bool operator!=(std::nullptr_t) const noexcept
         {
-            return ptr_ != nullptr;
+            return m_ptr != nullptr;
         }
 
         bool operator==(const T* rawPtr) const noexcept
         {
-            return ptr_ == rawPtr;
+            return m_ptr == rawPtr;
         }
 
         bool operator!=(const T* rawPtr) const noexcept
         {
-            return ptr_ != rawPtr
+            return m_ptr != rawPtr;
         }
 
         bool operator==(const IntrusivePtr& other) const
         {
-            return ptr_ == other.ptr_;
+            return m_ptr == other.m_ptr;
         }
 
         bool operator!=(const IntrusivePtr& other) const
         {
-            return ptr_ != other.ptr_;
+            return m_ptr != other.m_ptr;
         }
 
         bool operator<(const IntrusivePtr& other) const
         {
-            return ptr_ < other.ptr_;
+            return m_ptr < other.m_ptr;
         }
 
         bool operator>(const IntrusivePtr& other) const
         {
-            return ptr_ > other.ptr_;
+            return m_ptr > other.m_ptr;
         }
 
         bool operator<=(const IntrusivePtr& other) const
         {
-            return ptr_ <= other.ptr_;
+            return m_ptr <= other.m_ptr;
         }
 
         bool operator>=(const IntrusivePtr& other) const
         {
-            return ptr_ >= other.ptr_;
-        }
-
-        bool operator==(std::nullptr_t) const
-        {
-            return ptr_ == nullptr;
-        }
-
-        bool operator!=(std::nullptr_t) const
-        {
-            return ptr_ != nullptr;
+            return m_ptr >= other.m_ptr;
         }
 
         //  --- Destructor ---  //
 
         ~IntrusivePtr()
         {
-            if (ptr_)
+            if (m_ptr)
             {
-                ptr_->decrement()
+                m_ptr->decrement();
+                m_ptr = nullptr;
             }
         }
 
     private:
-        T* ptr_ = nullptr;
+        T* m_ptr = nullptr;
     };
 
     // Non-member swap function

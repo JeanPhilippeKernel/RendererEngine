@@ -31,3 +31,6 @@
 [submodule "__externals/ImGuizmo"]
 	path = __externals/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo
+[submodule "__externals/gtest"]
+	path = __externals/gtest
+	url = https://github.com/google/googletest

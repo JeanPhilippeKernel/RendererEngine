@@ -27,6 +27,7 @@ add_subdirectory (${EXTERNAL_DIR}/entt)
 add_subdirectory (${EXTERNAL_DIR}/assimp)
 add_subdirectory (${EXTERNAL_DIR}/stduuid)
 add_subdirectory (${EXTERNAL_DIR}/yaml-cpp)
+add_subdirectory (${EXTERNAL_DIR}/gtest)
 
 # Core engine lib is here
 #
