@@ -82,6 +82,7 @@ namespace ZEngine::Hardwares
         static VkSurfaceFormatKHR GetSurfaceFormat();
         static VkPresentModeKHR   GetPresentMode();
 
+        static void        MapAndCopyToMemory(VkDeviceMemory& memory, VkDeviceSize size, const void* data);
         static BufferView  CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VkMemoryPropertyFlags requested_properties);
         static void        CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size);
         static BufferImage CreateImage(

@@ -1,6 +1,8 @@
 ﻿#pragma once
 #include <vector>
 #include <future>
+#include <unordered_set>
+#include <set>
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Entities/GraphicSceneEntity.h>
 #include <entt/entt.hpp>
@@ -8,13 +10,14 @@
 #include <mutex>
 #include <assimp/scene.h>
 #include <ZEngineDef.h>
+#include <Rendering/Textures/Texture.h>
 
 namespace ZEngine::Serializers
 {
     class GraphicScene3DSerializer;
 }
 
-typedef std::future<void> (*ReadCallback)(bool success, const void* scene);
+typedef std::future<void> (*ReadCallback)(bool success, const void* scene, std::string_view parent_path);
 
 namespace ZEngine::Rendering::Scenes
 {
@@ -38,27 +41,28 @@ namespace ZEngine::Rendering::Scenes
      */
     struct SceneRawData
     {
-        uint32_t                                                   SVertexOffset;
-        uint32_t                                                   SIndexOffset;
-        std::vector<float>                                         Vertices;
-        std::vector<uint32_t>                                      Indices;
-        std::vector<SceneNodeHierarchy>                            NodeHierarchyCollection;
-        std::vector<glm::mat4>                                     LocalTransformCollection;
-        std::vector<glm::mat4>                                     GlobalTransformCollection;
-        std::unordered_map<uint32_t, uint32_t>                     SceneNodeMaterialMap;
-        std::unordered_map<uint32_t, entt::entity>                 SceneNodeEntityMap;
-        std::unordered_map<uint32_t, std::string>                  SceneNodeNameMap;
-        std::unordered_map<uint32_t, std::string>                  SceneNodeMaterialNameMap;
-        std::unordered_map<uint32_t, Meshes::MeshVNext>            SceneNodeMeshMap;
-        std::unordered_map<uint32_t, std::unordered_set<uint32_t>> LevelSceneNodeChangedMap;
-        Ref<entt::registry>                                        EntityRegistry;
+        uint32_t                                 SVertexOffset{0};
+        uint32_t                                 SIndexOffset{0};
+        std::vector<float>                       Vertices;
+        std::vector<uint32_t>                    Indices;
+        std::vector<SceneNodeHierarchy>          NodeHierarchyCollection;
+        std::vector<glm::mat4>                   LocalTransformCollection;
+        std::vector<glm::mat4>                   GlobalTransformCollection;
+        std::map<uint32_t, entt::entity>         SceneNodeEntityMap;
+        std::map<uint32_t, Meshes::MeshVNext>    SceneNodeMeshMap;
+        std::map<uint32_t, std::string>          SceneNodeNameMap;
+        std::map<uint32_t, Meshes::MeshMaterial> SceneNodeMaterialMap;
+        std::map<uint32_t, std::string>          SceneNodeMaterialNameMap;
+        std::map<uint32_t, std::set<uint32_t>>   LevelSceneNodeChangedMap;
+        Ref<Textures::TextureArray>              TextureCollection = CreateRef<Textures::TextureArray>();
+        Ref<entt::registry>                      EntityRegistry;
     };
 
     struct GraphicScene
     {
-        GraphicScene()  = delete;
-        GraphicScene(const GraphicScene&)  = delete;
-        ~GraphicScene() = delete;
+        GraphicScene()                    = delete;
+        GraphicScene(const GraphicScene&) = delete;
+        ~GraphicScene()                   = delete;
 
         static void                         Initialize();
         static void                         Deinitialize();
@@ -98,13 +102,28 @@ namespace ZEngine::Rendering::Scenes
         static std::future<bool>    LoadSceneFilenameAsync(std::string_view scene_file) = delete;
         static Ref<SceneRawData>    GetRawData();
         static void                 ComputeAllTransforms();
+        /*
+         * Material textures operations
+         */
+        static int32_t AddTexture(std::string_view filename);
+        static void    PostProcessMaterials();
 
     private:
-        static Ref<SceneRawData>              s_raw_data;
-        static std::recursive_mutex           s_scene_node_mutex;
-        static std::future<bool>              __TraverseAssetNodeAsync(const aiScene* assimp_scene, aiNode* node, int parent_node, int depth_level);
-        static std::future<Meshes::MeshVNext> __ReadSceneNodeMeshDataAsync(const aiScene* assimp_scene, uint32_t mesh_identifier);
-        static void                           __ReadAssetFileAsync(std::string_view filename, ReadCallback callback);
+        static Ref<SceneRawData>               s_raw_data;
+        static std::vector<std::string> s_texture_file_collection;
+        static std::recursive_mutex            s_scene_node_mutex;
+        static std::future<bool>               __TraverseAssetNodeAsync(
+                          const aiScene*   assimp_scene,
+                          aiNode*          node,
+                          int              parent_node,
+                          int              depth_level,
+                          std::string_view material_texture_parent_path);
+        static std::future<Meshes::MeshVNext>    __ReadSceneNodeMeshDataAsync(const aiScene* assimp_scene, uint32_t mesh_identifier);
+        static std::future<Meshes::MeshMaterial> __ReadSceneNodeMeshMaterialDataAsync(
+            const aiScene*   assimp_scene,
+            uint32_t         material_identifier,
+            std::string_view material_texture_parent_path);
+        static void __ReadAssetFileAsync(std::string_view filename, ReadCallback callback);
         friend class ZEngine::Serializers::GraphicScene3DSerializer;
     };
 } // namespace ZEngine::Rendering::Scenes

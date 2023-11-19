@@ -57,6 +57,7 @@ namespace ZEngine::Window
         CoreWindow();
         virtual ~CoreWindow();
 
+        virtual void             InitializeLayer()                = 0;
         virtual uint32_t         GetHeight() const                = 0;
         virtual uint32_t         GetWidth() const                 = 0;
         virtual std::string_view GetTitle() const                 = 0;

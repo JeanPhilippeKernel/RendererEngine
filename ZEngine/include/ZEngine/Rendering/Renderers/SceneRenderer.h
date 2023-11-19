@@ -5,14 +5,13 @@
 #include <Rendering/Scenes/GraphicScene.h>
 #include <Rendering/Cameras/Camera.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
-#include <Rendering/Swapchain.h>
 #include <Rendering/Buffers/IndirectBuffer.h>
 
 namespace ZEngine::Rendering::Renderers
 {
     struct SceneRenderer
     {
-        SceneRenderer(Ref<Swapchain> swapchain);
+        SceneRenderer() = default;
         ~SceneRenderer() = default;
 
         void Initialize();
@@ -26,24 +25,28 @@ namespace ZEngine::Rendering::Renderers
         void Tick();
 
     private:
-        WeakRef<Swapchain>  m_swapchain_ptr;
         Pools::CommandPool* m_command_pool{nullptr};
         glm::vec4           m_camera_position{1.0f};
         glm::mat4           m_camera_view{1.0f};
         glm::mat4           m_camera_projection{1.0f};
         /*
-         * Data Per Frame
+         * Scene Data Per Frame
          */
-        std::vector<Ref<Buffers::UniformBuffer>>        m_UBOCamera_colletion;
-        std::vector<Ref<Buffers::StorageBuffer>>        m_SBVertex_colletion;
-        std::vector<Ref<Buffers::StorageBuffer>>        m_SBIndex_colletion;
-        std::vector<Ref<Buffers::StorageBuffer>>        m_SBDrawData_colletion;
-        std::vector<Ref<Buffers::StorageBuffer>>        m_SBTransform_colletion;
+        Ref<Buffers::UniformBufferSet>                  m_UB_Camera;
+        Ref<Buffers::StorageBufferSet>                  m_SBVertex;
+        Ref<Buffers::StorageBufferSet>                  m_SBIndex;
+        Ref<Buffers::StorageBufferSet>                  m_SBDrawData;
+        Ref<Buffers::StorageBufferSet>                  m_SBTransform;
+        Ref<Buffers::StorageBufferSet>                  m_SBMaterialData;
         std::vector<Ref<Buffers::IndirectBuffer>>       m_indirect_buffer;
-        std::vector<std::vector<VkDrawIndirectCommand>> m_draw_indirect_command_collection;
-        Ref<RenderPasses::RenderPass>                   m_final_color_output_pass;
+        std::vector<Ref<Rendering::Textures::Texture>>  m_global_texture_buffer_collection;
+        /*
+         * Passes
+         */
+        Ref<RenderPasses::RenderPass> m_final_color_output_pass;
 
     private:
+        uint32_t              m_last_uploaded_buffer_image_count{0};
         std::vector<uint32_t> m_last_drawn_vertices_count;
         std::vector<uint32_t> m_last_drawn_index_count;
     };

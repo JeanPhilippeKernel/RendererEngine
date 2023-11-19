@@ -1,42 +1,35 @@
 #pragma once
-#include <string>
-#include <array>
 #include <vulkan/vulkan.h>
-#include <Core/IGraphicObject.h>
+#include <Hardwares/VulkanDevice.h>
 
 namespace ZEngine::Rendering::Textures
 {
-    class Texture : public Core::IGraphicObject
+    struct Texture
     {
     public:
-        Texture(const char* path) : m_path(path) {}
-        Texture(unsigned int width, unsigned int height) : m_width(width), m_height(height) {}
-        Texture(unsigned int width, unsigned int height, float r, float g, float b, float a) : m_width(width), m_height(height), m_r(r), m_g(g), m_b(b), m_a(a) {}
-
+        Texture()          = default;
         virtual ~Texture() = default;
 
-        virtual void                 SetData(void* const data)                   = 0;
-        virtual void                 SetData(float r, float g, float b, float a) = 0;
-        virtual std::array<float, 4> GetData() const
+        virtual Hardwares::BufferImage&       GetBuffer()       = 0;
+        virtual const Hardwares::BufferImage& GetBuffer() const = 0;
+        virtual void                          Dispose()         = 0;
+        virtual const VkDescriptorImageInfo&  GetDescriptorImageInfo()
         {
-            return {m_r, m_g, m_b, m_a};
+            const auto& buffer_image = GetBuffer();
+            m_descriptor_image_info  = {.sampler = buffer_image.Sampler, .imageView = buffer_image.ViewHandle, .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            return m_descriptor_image_info;
         }
 
         virtual bool operator==(const Texture& right)
         {
             return false;
-            //return m_texture_image == right.m_texture_image;
+            // return m_texture_image == right.m_texture_image;
         }
 
         virtual bool operator!=(const Texture& right)
         {
             return false;
-            //return m_texture_image != right.m_texture_image;
-        }
-
-        uint32_t GetIdentifier() const override
-        {
-            return 0;
+            // return m_texture_image != right.m_texture_image;
         }
 
         unsigned int GetWidth() const
@@ -49,28 +42,65 @@ namespace ZEngine::Rendering::Textures
             return m_height;
         }
 
-        std::string_view GetFilePath()
-        {
-            return m_path;
-        }
-
-        bool IsFromFile() const
-        {
-            return m_is_from_file;
-        }
-
     protected:
-        std::string  m_path;
-        unsigned int m_width{0};
-        unsigned int m_height{0};
-        unsigned int m_byte_per_pixel{0};
-        VkDeviceSize m_buffer_size{0};
-        bool         m_is_from_file{false};
-
-        // Those value are only set if SetDat(...) is using
-        float m_r{0}, m_g{0}, m_b{0}, m_a{0};
+        unsigned int          m_width{0};
+        unsigned int          m_height{0};
+        unsigned int          m_byte_per_pixel{0};
+        VkDeviceSize          m_buffer_size{0};
+        VkDescriptorImageInfo m_descriptor_image_info;
     };
 
+    struct TextureArray
+    {
+        TextureArray(uint32_t count = 0) : m_texture_array(count), m_count(count) {}
+
+        Ref<Texture>& operator[](uint32_t index)
+        {
+            assert(index < m_texture_array.size());
+            return m_texture_array[index];
+        }
+
+        const std::vector<Ref<Texture>>& Data() const
+        {
+            return m_texture_array;
+        }
+
+        std::vector<Ref<Texture>>& Data()
+        {
+            return m_texture_array;
+        }
+
+        void Add(const Ref<Texture>& texture)
+        {
+            m_texture_array.push_back(texture);
+        }
+
+        void Add(Ref<Texture>&& texture)
+        {
+            m_texture_array.emplace_back(texture);
+        }
+
+        size_t Size() const
+        {
+            return m_texture_array.size();
+        }
+
+        void Dispose()
+        {
+            for (auto& texture : m_texture_array)
+            {
+                texture->Dispose();
+            }
+        }
+
+    private:
+        uint32_t                  m_count{0};
+        std::vector<Ref<Texture>> m_texture_array;
+    };
+
+    /*
+     * To do : Should be deprecated
+     */
     Texture* CreateTexture(const char* path);
     Texture* CreateTexture(unsigned int width, unsigned int height);
     Texture* CreateTexture(unsigned int width, unsigned int height, float r, float g, float b, float a);

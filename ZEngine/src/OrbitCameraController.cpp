@@ -9,9 +9,11 @@
 
 using namespace ZEngine::Inputs;
 
-namespace ZEngine::Controllers {
+namespace ZEngine::Controllers
+{
 
-    void OrbitCameraController::Initialize() {
+    void OrbitCameraController::Initialize()
+    {
         PerspectiveCameraController::Initialize();
 #ifdef __linux__
         m_move_speed     = 0.85f;
@@ -22,10 +24,12 @@ namespace ZEngine::Controllers {
 #endif
     }
 
-    void OrbitCameraController::Update(Core::TimeStep dt) {
-        static Maths::Vector2 last_mouse_cursor_pos;
+    void OrbitCameraController::Update(Core::TimeStep dt)
+    {
+        static glm::vec2 last_mouse_cursor_pos;
 
-        if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_RIGHT, m_window.lock())) {
+        if (IDevice::As<Inputs::Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_RIGHT, m_window.lock()))
+        {
             auto  camera             = reinterpret_cast<Rendering::Cameras::OrbitCamera*>(m_perspective_camera.get());
             float yaw_angle_degree   = (m_mouse_cursor_pos.x - last_mouse_cursor_pos.x) * m_rotation_speed * dt;
             float pitch_angle_degree = (m_mouse_cursor_pos.y - last_mouse_cursor_pos.y) * m_rotation_speed * dt;
@@ -34,19 +38,22 @@ namespace ZEngine::Controllers {
         last_mouse_cursor_pos = m_mouse_cursor_pos;
     }
 
-    bool OrbitCameraController::OnEvent(Event::CoreEvent& e) {
+    bool OrbitCameraController::OnEvent(Event::CoreEvent& e)
+    {
         Event::EventDispatcher dispatcher(e);
         dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&OrbitCameraController::OnMouseButtonMoved, this, std::placeholders::_1));
         return PerspectiveCameraController::OnEvent(e);
     }
 
-    bool OrbitCameraController::OnMouseButtonMoved(Event::MouseButtonMovedEvent& e) {
+    bool OrbitCameraController::OnMouseButtonMoved(Event::MouseButtonMovedEvent& e)
+    {
         m_mouse_cursor_pos.x = static_cast<float>(e.GetPosX());
         m_mouse_cursor_pos.y = static_cast<float>(e.GetPosY());
         return false;
     }
 
-    bool OrbitCameraController::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e) {
+    bool OrbitCameraController::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e)
+    {
         auto camera = reinterpret_cast<Rendering::Cameras::OrbitCamera*>(m_perspective_camera.get());
         auto radius = camera->GetRadius();
         radius += e.GetOffetY() * m_move_speed * Engine::GetDeltaTime();

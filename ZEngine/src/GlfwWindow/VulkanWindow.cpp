@@ -119,16 +119,6 @@ namespace ZEngine::Window::GLFWWindow
     {
         m_swapchain = CreateRef<Rendering::Swapchain>(m_native_window);
 
-        auto& layer_stack = *m_layer_stack_ptr;
-
-        // Initialize in reverse order, so overlay layers can be initialize first
-        // this give us opportunity to initialize UI-like layers before graphic render-like layers
-        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
-        {
-            (*rlayer_it)->SetAttachedWindow(shared_from_this());
-            (*rlayer_it)->Initialize();
-        }
-
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
         glfwSetFramebufferSizeCallback(m_native_window, VulkanWindow::__OnGlfwFrameBufferSizeChanged);
@@ -146,6 +136,21 @@ namespace ZEngine::Window::GLFWWindow
         glfwSetCharCallback(m_native_window, VulkanWindow::__OnGlfwTextInputRaised);
 
         glfwMaximizeWindow(m_native_window);
+    }
+
+    void VulkanWindow::InitializeLayer()
+    {
+        auto& layer_stack = *m_layer_stack_ptr;
+
+        // Initialize in reverse order, so overlay layers can be initialize first
+        // this give us opportunity to initialize UI-like layers before graphic render-like layers
+        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
+        {
+            (*rlayer_it)->SetAttachedWindow(shared_from_this());
+            (*rlayer_it)->Initialize();
+        }
+
+        ZENGINE_CORE_INFO("Windows layers initialized")
     }
 
     void VulkanWindow::Deinitialize()

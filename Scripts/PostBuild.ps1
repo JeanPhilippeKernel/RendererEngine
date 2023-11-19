@@ -58,32 +58,14 @@ $ContentsToProcess = @(
             if ($IsWindows) {
                 @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
-                @{ From = "$RepoRoot\Resources\Editor\Scenes";      To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Scenes"}
             }
             elseif ($IsMacOS) {
                 @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
-                @{ From = "$RepoRoot\Resources\Editor\Scenes";      To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Scenes"}
             }
             else {
                 @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\Shaders"}
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\Settings"}
-                @{ From = "$RepoRoot\Resources\Editor\Scenes";      To = "$OuputBuildDirectory\Tetragrama\src\Scenes"}
-            }
-        )
-    }
-    @{
-        Name = "Assets"
-        IsDirectory = $true
-        Contents = @(
-            if ($IsWindows) {
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Assets"}
-            }
-            elseif ($IsMacOS) {
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Assets"}
-            }
-            else {
-                @{ From = "$RepoRoot\Assets";   To = "$OuputBuildDirectory\Tetragrama\src\Assets"}
             }
         )
     }

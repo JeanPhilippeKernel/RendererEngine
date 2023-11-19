@@ -1,16 +1,14 @@
 #pragma once
 #include <vulkan/vulkan.h>
-#include <Rendering/Renderers/GraphicRendererInformation.h>
-#include <Rendering/Renderers/RenderPasses/RenderPass.h>
+#include <Rendering/Swapchain.h>
 #include <Rendering/Buffers/Framebuffer.h>
-#include <Rendering/Buffers/IndirectBuffer.h>
 
 namespace ZEngine::Rendering::Renderers
 {
     enum RenderTarget : uint32_t
     {
         FRAME_OUTPUT = 0,
-        Count
+        COUNT
     };
 
     struct DrawData
@@ -24,6 +22,13 @@ namespace ZEngine::Rendering::Renderers
         uint32_t IndexCount;
     };
 
+    struct RendererInformation
+    {
+        uint32_t FrameCount{0xFFFFFFFF};
+        uint32_t CurrentFrameIndex{0xFFFFFFFF};
+        uint64_t SwapchainIdentifier{0xFFFFFFFF};
+    };
+
     struct GraphicRenderer
     {
         GraphicRenderer()                       = delete;
@@ -33,15 +38,13 @@ namespace ZEngine::Rendering::Renderers
         static void Initialize();
         static void Deinitialize();
 
-        static void                           BeginRenderPass(Buffers::CommandBuffer* const command_buffer, const Ref<RenderPasses::RenderPass>&);
-        static void                           EndRenderPass(Buffers::CommandBuffer* const command_buffer);
-        static void                           RenderGeometry(Buffers::CommandBuffer* const command_buffer, const Ref<Buffers::IndirectBuffer>& buffer, uint32_t count);
         static Ref<Buffers::FramebufferVNext> GetRenderTarget(RenderTarget target);
         static Ref<Buffers::FramebufferVNext> GetFrameOutput();
 
         static void SetViewportSize(uint32_t width, uint32_t height);
+        static void SetMainSwapchain(const Ref<Rendering::Swapchain>& swapchain);
 
-        virtual const Ref<GraphicRendererInformation>& GetRendererInformation() const;
+        static const RendererInformation& GetRendererInformation();
 
     private:
         static void RebuildRenderTargets();
@@ -49,7 +52,8 @@ namespace ZEngine::Rendering::Renderers
     private:
         static uint32_t                                                        s_viewport_width;
         static uint32_t                                                        s_viewport_height;
-        static std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::Count> s_render_target_collection;
-        Ref<GraphicRendererInformation>                                        m_renderer_information;
+        static RendererInformation                                             s_renderer_information;
+        static WeakRef<Rendering::Swapchain>                                   s_main_window_swapchain;
+        static std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::COUNT> s_render_target_collection;
     };
 } // namespace ZEngine::Rendering::Renderers

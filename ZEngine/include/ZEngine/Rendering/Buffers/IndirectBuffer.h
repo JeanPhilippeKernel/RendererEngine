@@ -40,7 +40,8 @@ namespace ZEngine::Rendering::Buffers
 
             auto  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
             void* memory_region;
-            ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, m_staging_buffer.Memory, 0, this->m_byte_size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
+            ZENGINE_VALIDATE_ASSERT(
+                vkMapMemory(device, m_staging_buffer.Memory, 0, static_cast<VkDeviceSize>(this->m_byte_size), 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
             std::memcpy(memory_region, data, this->m_byte_size);
             vkUnmapMemory(device, m_staging_buffer.Memory);
 
@@ -50,8 +51,15 @@ namespace ZEngine::Rendering::Buffers
         template <typename T>
         inline void SetData(const std::vector<T>& content)
         {
-            size_t byte_size = sizeof(T) * content.size();
+            m_command_count  = content.size();
+            size_t byte_size = sizeof(T) * m_command_count;
             this->SetData(content.data(), byte_size);
+        }
+
+
+        uint32_t GetCommandCount() const
+        {
+            return m_command_count;
         }
 
         ~IndirectBuffer()
@@ -72,6 +80,7 @@ namespace ZEngine::Rendering::Buffers
     private:
         void CleanUpMemory()
         {
+            m_command_count = 0;
             if (m_staging_buffer)
             {
                 Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_staging_buffer.Handle);
@@ -88,6 +97,7 @@ namespace ZEngine::Rendering::Buffers
         }
 
     private:
+        uint32_t              m_command_count{0};
         Hardwares::BufferView m_indirect_buffer;
         Hardwares::BufferView m_staging_buffer;
     };

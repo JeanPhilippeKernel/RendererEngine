@@ -129,6 +129,12 @@ namespace ZEngine::Rendering::Buffers
             CleanUpMemory();
         }
 
+        const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
+        {
+            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_uniform_buffer.Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+            return m_buffer_info;
+        }
+
     private:
         void CleanUpMemory()
         {
@@ -147,5 +153,39 @@ namespace ZEngine::Rendering::Buffers
     private:
         void*                 m_uniform_buffer_mapped{nullptr};
         Hardwares::BufferView m_uniform_buffer;
+        VkDescriptorBufferInfo m_buffer_info;
     };
+
+    struct UniformBufferSet
+    {
+        UniformBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
+
+         UniformBuffer& operator[](uint32_t index)
+         {
+            assert(index < m_buffer_set.size());
+            return m_buffer_set[index];
+         }
+
+         const std::vector<UniformBuffer>& Data() const
+         {
+            return m_buffer_set;
+         }
+
+         std::vector<UniformBuffer>& Data()
+         {
+            return m_buffer_set;
+         }
+
+         void Dispose()
+         {
+            for (auto& buffer : m_buffer_set)
+            {
+                buffer.Dispose();
+            }
+         }
+
+    private:
+        std::vector<UniformBuffer> m_buffer_set;
+    };
+
 } // namespace ZEngine::Rendering::Buffers
