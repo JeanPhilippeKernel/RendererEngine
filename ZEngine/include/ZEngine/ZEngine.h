@@ -30,10 +30,7 @@
 #include "Rendering/ResourceTypes.h"
 
 #include "Rendering/Cameras/Camera.h"
-#include "Rendering/Cameras/OrthographicCamera.h"
 #include "Rendering/Cameras/PerspectiveCamera.h"
-#include "Rendering/Cameras/OrbitCamera.h"
-#include "Rendering/Cameras/FirstPersonShooterCamera.h"
 
 #include "Rendering/Geometries/IGeometry.h"
 #include "Rendering/Geometries/CubeGeometry.h"
@@ -62,10 +59,7 @@
 
 #include "Controllers/IController.h"
 #include "Controllers/ICameraController.h"
-#include "Controllers/OrthographicCameraController.h"
 #include "Controllers/PerspectiveCameraController.h"
-#include "Controllers/OrbitCameraController.h"
-#include "Controllers/FirstPersonShooterCameraController.h"
 
 #include "Maths/Math.h"
 

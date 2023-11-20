@@ -83,7 +83,7 @@ namespace ZEngine::Rendering::Renderers
          * Todo: Can be multithreaded
          */
         auto& scene_camera    = *m_UB_Camera;
-        auto  ubo_camera_data = Contracts::UBOCameraLayout{.position = m_camera_position, .View = m_camera_view, .Projection = m_camera_projection};
+        auto  ubo_camera_data = Contracts::UBOCameraLayout{.View = m_camera_view, .Projection = m_camera_projection, .Position = m_camera_position};
         scene_camera[current_frame_index].SetData(&ubo_camera_data, sizeof(Contracts::UBOCameraLayout));
 
         const auto& sceneNodeMeshMap = scene_data->SceneNodeMeshMap;

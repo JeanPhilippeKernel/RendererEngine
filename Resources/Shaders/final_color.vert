@@ -24,7 +24,7 @@ struct DrawData
     uint IndexCount;
 };
 
-layout(set = 0, binding = 0) uniform UBCamera { vec4 Position; mat4 View; mat4 Projection; } Camera;
+layout(set = 0, binding = 0) uniform UBCamera { mat4 View; mat4 Projection; vec4 Position; } Camera;
 layout(set = 0, binding = 1) readonly buffer VertexSB { DrawVertex Data[]; } VertexBuffer;
 layout(set = 0, binding = 2) readonly buffer IndexSB { uint Data[]; } IndexBuffer;
 layout(set = 0, binding = 3) readonly buffer DrawDataSB { DrawData Data[]; } DrawDataBuffer;
