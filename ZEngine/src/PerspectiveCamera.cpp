@@ -38,28 +38,28 @@ namespace ZEngine::Rendering::Cameras
 
     void PerspectiveCamera::Update(float time_step, const glm::vec2& mouse_position, bool mouse_pressed)
     {
-        const glm::vec2 delta = (mouse_position - mousePos_) * 0.003f;
+        const glm::vec2 delta = (mouse_position - m_mouse_pos) * 0.003f;
         if (mouse_pressed)
         {
-            if (movement_.mousePan)
+            if (Movement.MousePan)
             {
                 auto [xSpeed, ySpeed] = PanSpeed();
                 Target += -GetRight() * delta.x * xSpeed * static_cast<float>(m_distance);
                 Target += GetUp() * delta.y * ySpeed * static_cast<float>(m_distance);
             }
-            if (movement_.mouseRotate)
+            if (Movement.MouseRotate)
             {
                 float yawSign = GetUp().y < 0 ? -1.0f : 1.0f;
-                m_yaw_angle += yawSign * mouseSpeed_ * delta.x;
-                m_pitch_angle += mouseSpeed_ * delta.y;
+                m_yaw_angle += yawSign * m_mouse_speed * delta.x;
+                m_pitch_angle += m_mouse_speed * delta.y;
             }
 
-            if (movement_.mouseZoom)
+            if (Movement.MouseZoom)
             {
                 Zoom(delta.y *0.1f);
             }
         }
-        mousePos_ = mouse_position;
+        m_mouse_pos = mouse_position;
     }
 
     void PerspectiveCamera::Zoom(float delta)

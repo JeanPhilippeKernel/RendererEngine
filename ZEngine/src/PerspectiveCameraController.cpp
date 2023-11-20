@@ -24,18 +24,10 @@ namespace ZEngine::Controllers
             bool       mouse_pressed  = false;
             if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_ALT, window))
             {
-                m_perspective_camera->movement_.mousePan    = IDevice::As<Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_MIDDLE, window);
-                m_perspective_camera->movement_.mouseRotate = IDevice::As<Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_LEFT, window);
-                m_perspective_camera->movement_.mouseZoom   = IDevice::As<Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_RIGHT, window);
-                mouse_pressed                               = true;
-            }
-            else
-            {
-                m_perspective_camera->movement_.forward_  = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_W, window);
-                m_perspective_camera->movement_.backward_ = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, window);
-                m_perspective_camera->movement_.left_     = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_A, window);
-                m_perspective_camera->movement_.right_    = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_D, window);
-                mouse_pressed                             = false;
+                m_perspective_camera->Movement.MousePan    = IDevice::As<Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_MIDDLE, window);
+                m_perspective_camera->Movement.MouseRotate = IDevice::As<Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_LEFT, window);
+                m_perspective_camera->Movement.MouseZoom   = IDevice::As<Mouse>()->IsKeyPressed(ZENGINE_KEY_MOUSE_RIGHT, window);
+                mouse_pressed                              = true;
             }
             m_perspective_camera->Update(dt, mouse, mouse_pressed);
         }

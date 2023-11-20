@@ -43,7 +43,6 @@ void main()
 	worldNormal = transpose(inverse(mat3(model))) * vec3(v.nx, v.ny, v.nz);
 
 	gl_Position = Camera.Projection * Camera.View * worldPos;
-    //gl_Position.z = 0
     uvw = vec3(v.u, v.v, 1.0);
     materialIdx = dd.MaterialIndex;
     CameraPosition = Camera.Position;

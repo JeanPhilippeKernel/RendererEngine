@@ -26,35 +26,26 @@ namespace ZEngine::Rendering::Cameras
         virtual glm::mat4 GetPerspectiveMatrix() const override;
         virtual glm::vec3 GetPosition() const override;
 
-    public:
-        struct Movement
-        {
-            bool forward_    = false;
-            bool backward_   = false;
-            bool left_       = false;
-            bool right_      = false;
-            bool up_         = false;
-            bool down_       = false;
-            bool mousePan    = false;
-            bool mouseZoom   = false;
-            bool mouseRotate = false;
-        } movement_;
-
-    public:
-        float mouseSpeed_   = 0.8f;
-        float acceleration_ = 2.0f;
-        float damping_      = 0.2f;
-        float maxSpeed_     = 0.02f;
-        float fastCoef_     = 10.0f;
-
-    protected:
         glm::quat GetOrientation();
         glm::vec3 GetForward();
         glm::vec3 GetUp();
         glm::vec3 GetRight();
 
+    public:
+        struct Movement
+        {
+            bool MousePan    = false;
+            bool MouseZoom   = false;
+            bool MouseRotate = false;
+        } Movement;
+
     protected:
-        glm::vec2 mousePos_         = glm::vec2(0);
+        glm::vec2 m_mouse_pos       = glm::vec2(0);
+        float     m_mouse_speed     = 0.8f;
+        float     m_acceleration    = 2.0f;
+        float     m_damping         = 0.2f;
+        float     m_max_speed       = 0.02f;
+        float     m_fast_coef       = 10.0f;
         double    m_distance        = 10;
         float     m_yaw_angle       = 0.0f;
         float     m_pitch_angle     = 0.0f;
