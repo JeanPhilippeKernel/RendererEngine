@@ -25,7 +25,7 @@ TEST(IntrusivePtrTest, ConstructorWithObject) {
     MockObject* rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
     EXPECT_EQ(ptr.get(), rawPtr);
-    EXPECT_EQ(rawPtr->RefCount(), 1);
+    EXPECT_EQ(rawPtr->RefCount(), 2);
 }
 
 // Test copy constructor
@@ -36,7 +36,7 @@ TEST(IntrusivePtrTest, CopyConstructor) {
     
     EXPECT_EQ(copyPtr.get(), rawPtr);
     EXPECT_EQ(originalPtr.get(), rawPtr);
-    EXPECT_EQ(rawPtr->RefCount(), 2);
+    EXPECT_EQ(rawPtr->RefCount(), 3);
 }
 
 // Test move constructor
@@ -47,7 +47,7 @@ TEST(IntrusivePtrTest, MoveConstructor) {
 
     EXPECT_EQ(movedPtr.get(), rawPtr);
     EXPECT_EQ(originalPtr.get(), nullptr);
-    EXPECT_EQ(rawPtr->RefCount(), 1);
+    EXPECT_EQ(rawPtr->RefCount(), 2);
 }
 
 // Test Copy Assignment Operator
@@ -61,7 +61,7 @@ TEST(IntrusivePtrTest, CopyAssignmentOperator) {
 
     EXPECT_EQ(ptr1.get(), rawPtr2);
     EXPECT_EQ(ptr2.get(), rawPtr2);
-    EXPECT_EQ(rawPtr2->RefCount(), 2);
+    EXPECT_EQ(rawPtr2->RefCount(), 3);
 }
 
 // Test Move Assignment Operator
@@ -84,7 +84,7 @@ TEST(IntrusivePtrTest, AssignmentFromRawPointer) {
     ptr = rawPtr;
 
     EXPECT_EQ(ptr.get(), rawPtr);
-    EXPECT_EQ(rawPtr->RefCount(), 1);
+    EXPECT_EQ(rawPtr->RefCount(), 2);
 }
 
 // Test Reset Method
@@ -132,7 +132,7 @@ TEST(IntrusivePtrTest, MemberAccessOperator) {
     MockObject* rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
 
-    EXPECT_EQ(ptr->RefCount(), 1);
+    EXPECT_EQ(ptr->RefCount(), 2);
 }
 
 // Test Not Operator

@@ -31,9 +31,9 @@
 [submodule "__externals/ImGuizmo"]
 	path = __externals/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo
-  [submodule "__externals/SPIRV-Cross"]
+[submodule "__externals/SPIRV-Cross"]
 	path = __externals/SPIRV-Cross
 	url = https://github.com/KhronosGroup/SPIRV-Cross
-  [submodule "__externals/gtest"]
+[submodule "__externals/gtest"]
 	path = __externals/gtest
 	url = https://github.com/google/googletest

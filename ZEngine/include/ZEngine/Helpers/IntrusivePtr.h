@@ -7,7 +7,7 @@ namespace ZEngine::Helpers
     class RefCounted
     {
     public:
-        RefCounted() : m_count(0) {}
+        RefCounted() : m_count(1) {}
 
         RefCounted(const RefCounted&)            = delete;
         RefCounted& operator=(const RefCounted&) = delete;
@@ -27,8 +27,10 @@ namespace ZEngine::Helpers
 
         uint64_t RefCount() const
         {
-            return m_count;
+            return m_count.load();
         }
+
+        virtual ~RefCounted() = default;
 
     private:
         std::atomic<uint64_t> m_count;
@@ -39,8 +41,6 @@ namespace ZEngine::Helpers
     {
 
     public:
-        //  --- Constructors ---  //
-
 
         IntrusivePtr(T* ptr = nullptr) : m_ptr(ptr)
         {
@@ -62,8 +62,6 @@ namespace ZEngine::Helpers
         {
             other.m_ptr = nullptr;
         }
-
-        //  --- Assignment Operators ---  //
 
         IntrusivePtr& operator=(const IntrusivePtr& other)
         {
@@ -116,8 +114,6 @@ namespace ZEngine::Helpers
             return *this;
         }
 
-        //  --- Modifiers ---  //
-
         void reset(T* newPtr = nullptr)
         {
             if (m_ptr != newPtr)
@@ -142,8 +138,6 @@ namespace ZEngine::Helpers
             other.m_ptr = temp;
         }
 
-        //  --- Getter for the underlying pointer ---  //
-
         T* get() const noexcept
         {
             return m_ptr;
@@ -158,8 +152,6 @@ namespace ZEngine::Helpers
         {
             return *m_ptr;
         }
-
-        //  --- Comparison Operators ---  //
 
         bool operator!() const noexcept
         {
@@ -221,8 +213,6 @@ namespace ZEngine::Helpers
             return m_ptr >= other.m_ptr;
         }
 
-        //  --- Destructor ---  //
-
         ~IntrusivePtr()
         {
             if (m_ptr)
@@ -236,7 +226,6 @@ namespace ZEngine::Helpers
         T* m_ptr = nullptr;
     };
 
-    // Non-member swap function
     template <typename T>
     void swap(IntrusivePtr<T>& lhs, IntrusivePtr<T>& rhs) noexcept
     {
@@ -251,7 +240,6 @@ namespace ZEngine::Helpers
 
 } // namespace ZEngine::Helpers
 
-// Specialization of std::hash for IntrusivePtr
 namespace std
 {
 
