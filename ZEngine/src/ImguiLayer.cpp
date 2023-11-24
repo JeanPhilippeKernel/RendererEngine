@@ -104,6 +104,8 @@ namespace ZEngine::Layers
 
     void ImguiLayer::Update(Core::TimeStep dt)
     {
+        ImGUIRenderer::Tick();
+
         ImGuiIO& io = ImGui::GetIO();
         if (dt > 0.0f)
         {

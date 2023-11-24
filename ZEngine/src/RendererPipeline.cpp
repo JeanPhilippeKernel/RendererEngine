@@ -25,7 +25,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Framebuffer Creation
          */
-        m_target_framebuffer = m_pipeline_specification.TargetFrameBufferSpecification;
+        m_target_framebuffer = m_pipeline_specification.TargetFrameBuffer;
 
         /*Pipeline fixed states*/
         /*

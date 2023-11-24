@@ -119,10 +119,10 @@ namespace ZEngine::Rendering::Buffers
         render_pass_begin_info.renderArea.offset     = {0, 0};
         render_pass_begin_info.renderArea.extent     = VkExtent2D{framebuffer->GetWidth(), framebuffer->GetHeight()};
 
-        // ToDo : should be move to FrambufferSpecification
+        auto&                       fb_spec      = framebuffer->GetSpecification();
         std::array<VkClearValue, 2> clear_values = {};
-        clear_values[0].color                    = {{0.1f, 0.1f, 0.1f, 1.0f}};
-        clear_values[1].depthStencil             = {1.0f, 0};
+        clear_values[0].color                    = {fb_spec.ClearColorValue[0], fb_spec.ClearColorValue[1], fb_spec.ClearColorValue[2], fb_spec.ClearColorValue[3]};
+        clear_values[1].depthStencil             = {fb_spec.ClearDepthValue[0], (uint32_t) fb_spec.ClearDepthValue[1]};
         render_pass_begin_info.clearValueCount   = clear_values.size();
         render_pass_begin_info.pClearValues      = clear_values.data();
 
@@ -179,7 +179,6 @@ namespace ZEngine::Rendering::Buffers
     void CommandBuffer::DrawIndirect(const Ref<Buffers::IndirectBuffer>& buffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
-
         if (buffer->GetNativeBufferHandle())
         {
             vkCmdDrawIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer->GetNativeBufferHandle()), 0, buffer->GetCommandCount(), sizeof(VkDrawIndirectCommand));

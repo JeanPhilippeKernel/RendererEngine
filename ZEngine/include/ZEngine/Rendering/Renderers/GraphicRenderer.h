@@ -11,17 +11,6 @@ namespace ZEngine::Rendering::Renderers
         COUNT
     };
 
-    struct DrawData
-    {
-        uint32_t Index{0xFFFFFFFF};
-        uint32_t TransformIndex{0xFFFFFFFF};
-        uint32_t MaterialIndex{0xFFFFFFFF};
-        uint32_t VertexOffset;
-        uint32_t IndexOffset;
-        uint32_t VertexCount;
-        uint32_t IndexCount;
-    };
-
     struct RendererInformation
     {
         uint32_t FrameCount{0xFFFFFFFF};

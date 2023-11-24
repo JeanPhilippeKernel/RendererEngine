@@ -835,11 +835,11 @@ namespace ZEngine::Hardwares
         image_view_create_info.format                          = image_format;
         image_view_create_info.image                           = image;
         image_view_create_info.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
-        image_view_create_info.subresourceRange.aspectMask     = image_aspect_flag;
         image_view_create_info.components.r                    = VK_COMPONENT_SWIZZLE_R;
         image_view_create_info.components.g                    = VK_COMPONENT_SWIZZLE_G;
         image_view_create_info.components.b                    = VK_COMPONENT_SWIZZLE_B;
         image_view_create_info.components.a                    = VK_COMPONENT_SWIZZLE_A;
+        image_view_create_info.subresourceRange.aspectMask     = image_aspect_flag;
         image_view_create_info.subresourceRange.baseMipLevel   = 0;
         image_view_create_info.subresourceRange.levelCount     = 1;
         image_view_create_info.subresourceRange.baseArrayLayer = 0;

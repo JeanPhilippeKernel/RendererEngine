@@ -26,9 +26,42 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Render Passes definition
          */
+
+        /*
+         * Infinite Grid
+         */
+        m_GridSBVertex   = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_GridSBIndex    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_GridSBDrawData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_infinite_grid_indirect_buffer.resize(renderer_info.FrameCount, CreateRef<Buffers::IndirectBuffer>());
+        Specifications::GraphicRendererPipelineSpecification infinite_grid_spec = {};
+        infinite_grid_spec.DebugName                                            = "Infinite-Grid-Pipeline";
+        infinite_grid_spec.TargetFrameBuffer                       = GraphicRenderer::GetRenderTarget(RenderTarget::FRAME_OUTPUT);
+        infinite_grid_spec.ShaderSpecification = {.VertexFilename = "Shaders/Cache/infinite_grid_vertex.spv", .FragmentFilename = "Shaders/Cache/infinite_grid_fragment.spv"};
+        RenderPasses::RenderPassSpecification grid_color_pass = {};
+        grid_color_pass.Pipeline                              = Pipelines::GraphicPipeline::Create(infinite_grid_spec);
+        m_infinite_grid_pass                                  = RenderPasses::RenderPass::Create(grid_color_pass);
+
+        m_infinite_grid_pass->SetInput("UBCamera", m_UB_Camera);
+        m_infinite_grid_pass->SetInput("VertexSB", m_GridSBVertex);
+        m_infinite_grid_pass->SetInput("IndexSB", m_GridSBIndex);
+        m_infinite_grid_pass->SetInput("DrawDataSB", m_GridSBDrawData);
+        m_infinite_grid_pass->Verify();
+        m_infinite_grid_pass->Bake();
+        /*
+         * Final Color
+         */
+        Specifications::FrameBufferSpecificationVNext        framebuffer_spec    = {};
+        framebuffer_spec.ClearColor                                              = false;
+        framebuffer_spec.ClearDepth                                              = false;
+        framebuffer_spec.Width                                                   = 1000;
+        framebuffer_spec.Height                                                  = 1000;
+        framebuffer_spec.AttachmentSpecifications                                = {ImageFormat::R8G8B8A8_UNORM, ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
+        framebuffer_spec.InputColorAttachment[0]                                 = m_infinite_grid_pass->GetOutputColor(0);
+        framebuffer_spec.InputColorAttachment[1]                                 = m_infinite_grid_pass->GetOutputDepth();
         Specifications::GraphicRendererPipelineSpecification final_pipeline_spec = {};
         final_pipeline_spec.DebugName                                            = "Standard-Pipeline";
-        final_pipeline_spec.TargetFrameBufferSpecification                       = GraphicRenderer::GetRenderTarget(RenderTarget::FRAME_OUTPUT);
+        final_pipeline_spec.TargetFrameBuffer                                    = Buffers::FramebufferVNext::Create(framebuffer_spec);
         final_pipeline_spec.ShaderSpecification          = {.VertexFilename = "Shaders/Cache/final_color_vertex.spv", .FragmentFilename = "Shaders/Cache/final_color_fragment.spv"};
         RenderPasses::RenderPassSpecification color_pass = {};
         color_pass.DebugName                             = "Final-Color-Attachment";
@@ -48,8 +81,13 @@ namespace ZEngine::Rendering::Renderers
 
     void SceneRenderer::Deinitialize()
     {
-        m_final_color_output_pass->Dispose();
+        m_infinite_grid_pass->Dispose();
+        m_GridSBVertex->Dispose();
+        m_GridSBIndex->Dispose();
+        m_GridSBDrawData->Dispose();
 
+
+        m_final_color_output_pass->Dispose();
         m_UB_Camera->Dispose();
         m_SBVertex->Dispose();
         m_SBIndex->Dispose();
@@ -85,6 +123,24 @@ namespace ZEngine::Rendering::Renderers
         auto& scene_camera    = *m_UB_Camera;
         auto  ubo_camera_data = Contracts::UBOCameraLayout{.View = m_camera_view, .Projection = m_camera_projection, .Position = m_camera_position};
         scene_camera[current_frame_index].SetData(&ubo_camera_data, sizeof(Contracts::UBOCameraLayout));
+
+        /*
+        * Uploading Infinite Grid
+        */
+        {
+            auto& vertex_storage = *m_GridSBVertex;
+            vertex_storage[current_frame_index].SetData(m_grid_vertices);
+
+            auto& index_storage = *m_GridSBIndex;
+            index_storage[current_frame_index].SetData(m_grid_indices);
+
+            auto& draw_data_storage = *m_GridSBDrawData;
+            draw_data_storage[current_frame_index].SetData(m_grid_drawData);
+
+            m_infinite_grid_indirect_buffer[current_frame_index]->SetData(m_grid_indirect_commmand);
+
+            m_infinite_grid_pass->MarkDirty();
+        }
 
         const auto& sceneNodeMeshMap = scene_data->SceneNodeMeshMap;
         /*
@@ -196,6 +252,11 @@ namespace ZEngine::Rendering::Renderers
          */
         command_buffer->Begin();
         {
+            command_buffer->BeginRenderPass(m_infinite_grid_pass);
+            command_buffer->BindDescriptorSets(current_frame_index);
+            command_buffer->DrawIndirect(m_infinite_grid_indirect_buffer[current_frame_index]);
+            command_buffer->EndRenderPass();
+
             command_buffer->BeginRenderPass(m_final_color_output_pass);
             command_buffer->BindDescriptorSets(current_frame_index);
             command_buffer->DrawIndirect(m_indirect_buffer[current_frame_index]);

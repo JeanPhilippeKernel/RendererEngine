@@ -315,6 +315,38 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
     }
 
+    Ref<Image2DBuffer> RenderPass::GetOutputColor(uint32_t color_index)
+    {
+        if (!m_pipeline)
+        {
+            return nullptr;
+        }
+
+        auto        framebuffer      = m_pipeline->GetTargetFrameBuffer();
+        const auto& color_attachment = framebuffer->GetColorAttachmentCollection();
+        return color_attachment.at(color_index);
+    }
+
+    Ref<Image2DBuffer> RenderPass::GetOutputDepth()
+    {
+        if (!m_pipeline)
+        {
+            return nullptr;
+        }
+
+        auto framebuffer = m_pipeline->GetTargetFrameBuffer();
+        return framebuffer->GetDepthAttachment();
+    }
+
+    void RenderPass::ResizeRenderTarget(uint32_t width, uint32_t height)
+    {
+        if (m_pipeline)
+        {
+            auto framebuffer = m_pipeline->GetTargetFrameBuffer();
+            return framebuffer->Resize(width, height);
+        }
+    }
+
     Ref<RenderPass> RenderPass::Create(const RenderPassSpecification& specification)
     {
         Ref<RenderPass> render_pass = CreateRef<RenderPass>();
