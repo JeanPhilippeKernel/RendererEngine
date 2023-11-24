@@ -14,13 +14,8 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::RebuildRenderTargets()
     {
-        auto& render_target_frame_output       = s_render_target_collection[RenderTarget::FRAME_OUTPUT];
-        auto& render_target_frame_output_spec  = render_target_frame_output->GetSpecification();
-        render_target_frame_output_spec.Width  = s_viewport_width;
-        render_target_frame_output_spec.Height = s_viewport_height;
-
-        render_target_frame_output->Invalidate();
-        render_target_frame_output->Create();
+        auto& render_target_frame_output = s_render_target_collection[RenderTarget::FRAME_OUTPUT];
+        render_target_frame_output->Resize(s_viewport_width, s_viewport_height);
     }
 
     Ref<Buffers::FramebufferVNext> GraphicRenderer::GetRenderTarget(RenderTarget target)
@@ -42,7 +37,7 @@ namespace ZEngine::Rendering::Renderers
             /*
              * Rebuild RenderTargets
              */
-            RebuildRenderTargets();
+            //RebuildRenderTargets();
         }
     }
 
@@ -68,8 +63,8 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Initialize()
     {
-        s_render_target_collection[RenderTarget::FRAME_OUTPUT] = CreateRef<Buffers::FramebufferVNext>(FrameBufferSpecificationVNext{
-            .Width = 1000, .Height = 1000, .AttachmentSpecifications = {Specifications::ImageFormat::R8G8B8A8_UNORM, Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE}});
+        s_render_target_collection[RenderTarget::FRAME_OUTPUT] = Buffers::FramebufferVNext::Create(FrameBufferSpecificationVNext{
+            .ClearColor = true, .ClearDepth = true, .Width = 1000, .Height = 1000, .AttachmentSpecifications = {ImageFormat::R8G8B8A8_UNORM, ImageFormat::DEPTH_STENCIL_FROM_DEVICE}});
     }
 
     void GraphicRenderer::Deinitialize()

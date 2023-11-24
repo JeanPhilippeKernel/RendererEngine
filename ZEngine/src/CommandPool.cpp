@@ -47,7 +47,6 @@ namespace ZEngine::Rendering::Pools
 
     void CommandPool::Tick()
     {
-        static bool first = true;
         if (first)
         {
             first = false;

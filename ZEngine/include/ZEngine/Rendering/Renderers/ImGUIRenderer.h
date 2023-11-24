@@ -26,6 +26,7 @@ namespace ZEngine::Rendering::Renderers
         static void CleanupResource();
         static bool HasPendingCleanupResource();
 
+        static void Tick();
         static void BeginFrame();
         static void Draw(uint32_t window_width, uint32_t window_height, const Ref<Swapchain>& swapchain, void** user_data, void* draw_data);
         static void DrawChildWindow(uint32_t width, uint32_t height, ImguiViewPortWindowChild** window_child, void* draw_data);

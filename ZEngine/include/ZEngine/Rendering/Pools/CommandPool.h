@@ -18,6 +18,7 @@ namespace ZEngine::Rendering::Pools
         uint64_t                            GetSwapchainParent() const;
 
     private:
+        bool                                        first = true;
         uint64_t                                    m_swapchain_identifier{0};
         uint32_t                                    m_current_command_buffer_index{0};
         VkCommandPool                               m_handle{VK_NULL_HANDLE};

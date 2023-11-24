@@ -12,11 +12,16 @@ namespace ZEngine::Rendering::Buffers
     {
         FramebufferVNext() = default;
         FramebufferVNext(const Specifications::FrameBufferSpecificationVNext&);
+        FramebufferVNext(Specifications::FrameBufferSpecificationVNext&&);
         ~FramebufferVNext();
 
         void Create();
-        void Invalidate();
+        void Resize(uint32_t width = 1, uint32_t height = 1);
         void Dispose();
+
+
+        static Ref<FramebufferVNext> Create(const Specifications::FrameBufferSpecificationVNext&);
+        static Ref<FramebufferVNext> Create(Specifications::FrameBufferSpecificationVNext&&);
 
         VkRenderPass  GetRenderPass() const;
         VkFramebuffer GetHandle() const;
@@ -30,13 +35,10 @@ namespace ZEngine::Rendering::Buffers
         Ref<Image2DBuffer>                                   GetDepthAttachment() const;
 
     private:
-        uint32_t                                      m_width{1};
-        uint32_t                                      m_height{1};
-        uint32_t                                      m_layers{1};
         std::vector<Ref<Image2DBuffer>>               m_color_attachment_collection;
         Ref<Image2DBuffer>                            m_depth_attachment;
         Specifications::AttachmentSpecification       m_attachment_specification{};
-        Specifications::FrameBufferSpecificationVNext m_framebuffer_specification{};
+        Specifications::FrameBufferSpecificationVNext m_specification{};
         VkSampler                                     m_sampler{VK_NULL_HANDLE};
         VkFramebuffer                                 m_handle{VK_NULL_HANDLE};
         Ref<Renderers::RenderPasses::Attachment>      m_attachment;
