@@ -162,6 +162,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     void GraphicPipeline::Dispose()
     {
         m_shader->Dispose();
+        m_target_framebuffer->Dispose();
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, m_pipeline_layout);
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, m_pipeline_handle);
         m_pipeline_layout = VK_NULL_HANDLE;

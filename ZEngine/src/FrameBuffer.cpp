@@ -104,24 +104,43 @@ namespace ZEngine::Rendering::Buffers
 
         if (m_specification.InputColorAttachment.empty())
         {
-            for (auto image_format : m_specification.AttachmentSpecifications.FormatCollection)
+            for (size_t i = 0; i < m_specification.AttachmentSpecifications.FormatCollection.size(); ++i)
             {
-                if (image_format == ImageFormat::R8G8B8A8_UNORM)
+                // Since Color/Depth attachments can be used as Input Attachment for other RenderPasses,
+                // We reuse already allocated memory instead of emplacing back new ones
+                // The swap operation here will replaced by the use of IntrusivePtr once they will be in place
+                auto image_format = m_specification.AttachmentSpecifications.FormatCollection[i];
+                if (image_format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE)
+                {
+                    auto depth_format     = Hardwares::VulkanDevice::FindDepthFormat();
+                    auto depth_attachment = CreateRef<Image2DBuffer>(
+                        m_specification.Width, m_specification.Height, depth_format, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+                    if (!m_depth_attachment)
+                    {
+                        m_depth_attachment = std::move(depth_attachment);
+                    }
+                    else
+                    {
+                        std::swap(*m_depth_attachment, *depth_attachment);
+                    }
+                }
+                else
                 {
                     auto color_attachment = CreateRef<Image2DBuffer>(
                         m_specification.Width,
                         m_specification.Height,
-                        VK_FORMAT_R8G8B8A8_UNORM,
+                        ImageFormatMap[static_cast<uint32_t>(image_format)],
                         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                         VK_IMAGE_ASPECT_COLOR_BIT);
 
-                    m_color_attachment_collection.push_back(color_attachment);
-                }
-                else if (image_format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE)
-                {
-                    auto depth_format  = Hardwares::VulkanDevice::FindDepthFormat();
-                    m_depth_attachment = CreateRef<Image2DBuffer>(
-                        m_specification.Width, m_specification.Height, depth_format, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+                    if (i < m_color_attachment_collection.size())
+                    {
+                        std::swap(*m_color_attachment_collection[i], *color_attachment);
+                    }
+                    else
+                    {
+                        m_color_attachment_collection.push_back(std::move(color_attachment));
+                    }
                 }
             }
         }
@@ -201,8 +220,6 @@ namespace ZEngine::Rendering::Buffers
         {
             buffer->Dispose();
         }
-        m_color_attachment_collection.clear();
-        m_color_attachment_collection.shrink_to_fit();
 
         m_depth_attachment->Dispose();
 
