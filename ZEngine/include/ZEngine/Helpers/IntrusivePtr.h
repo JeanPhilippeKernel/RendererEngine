@@ -1,13 +1,12 @@
 #pragma once
 #include <atomic>
-#include <functional>
 
 namespace ZEngine::Helpers
 {
     class RefCounted
     {
     public:
-        RefCounted() : m_count(1) {}
+        RefCounted() : m_count(0) {}
 
         RefCounted(const RefCounted&)            = delete;
         RefCounted& operator=(const RefCounted&) = delete;
@@ -96,12 +95,12 @@ namespace ZEngine::Helpers
             return *this;
         }
 
-        IntrusivePtr& operator=(T* rawPtr)
+        IntrusivePtr& operator=(T* raw_ptr)
         {
-            if (m_ptr != rawPtr)
+            if (m_ptr != raw_ptr)
             {
                 T* old_ptr = m_ptr;
-                m_ptr      = rawPtr;
+                m_ptr      = raw_ptr;
                 if (m_ptr)
                 {
                     m_ptr->increment();
@@ -173,14 +172,14 @@ namespace ZEngine::Helpers
             return m_ptr != nullptr;
         }
 
-        bool operator==(const T* rawPtr) const noexcept
+        bool operator==(const T* raw_ptr) const noexcept
         {
-            return m_ptr == rawPtr;
+            return m_ptr == raw_ptr;
         }
 
-        bool operator!=(const T* rawPtr) const noexcept
+        bool operator!=(const T* raw_ptr) const noexcept
         {
-            return m_ptr != rawPtr;
+            return m_ptr != raw_ptr;
         }
 
         bool operator==(const IntrusivePtr& other) const

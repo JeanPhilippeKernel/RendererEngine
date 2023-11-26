@@ -10,12 +10,12 @@ namespace ZEngine::Helpers
     public:
         ControlBlock(WeakRefCounted* weakref) noexcept : m_strong_count(0), m_weakref(weakref) {}
 
-        void strong_add_ref() noexcept
+        void StrongAddRef() noexcept
         {
             ++(m_strong_count);
         }
 
-        int strong_release() noexcept
+        int StrongRelease() noexcept
         {
             int result = --(m_strong_count);
             if (result == 0)
@@ -25,7 +25,7 @@ namespace ZEngine::Helpers
             return result;
         }
 
-        WeakRefCounted* resolve() noexcept
+        WeakRefCounted* Resolve() noexcept
         {
             int val = m_strong_count.load();
             if (val <= 0)
@@ -58,28 +58,18 @@ namespace ZEngine::Helpers
 
         virtual ~WeakRefCounted() {}
 
-        IntrusivePtr<WeakRefCounted> intrusive_lifetime() noexcept
-        {
-            return IntrusivePtr<WeakRefCounted>(this);
-        }
-
         void increment() noexcept
         {
-            m_weakref->strong_add_ref();
+            m_weakref->StrongAddRef();
         }
 
         void decrement() noexcept
         {
-            auto result = m_weakref->strong_release();
+            auto result = m_weakref->StrongRelease();
             if (result == 0)
             {
                 delete this;
             }
-        }
-
-        int test_ref_count() noexcept
-        {
-            return m_weakref->RefCount();
         }
 
     private:
@@ -158,7 +148,7 @@ namespace ZEngine::Helpers
             std::swap(m_weakref, other.m_weakref);
         }
 
-        bool is_expired() const noexcept
+        bool expired() const noexcept
         {
             return lock() == nullptr;
         }
@@ -169,12 +159,8 @@ namespace ZEngine::Helpers
             {
                 return nullptr;
             }
-            T* ptr = static_cast<T*>(m_weakref->resolve());
+            T* ptr = static_cast<T*>(m_weakref->Resolve());
             return IntrusivePtr<T>(ptr);
-        }
-
-        long use_count() const noexcept {
-            return m_weakref->RefCount();
         }
 
     private:

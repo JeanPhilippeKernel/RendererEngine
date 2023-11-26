@@ -15,14 +15,14 @@ private:
 // Test default constructor
 TEST(IntrusiveWeakPtrTest, DefaultConstructor) {
     IntrusiveWeakPtr<MockWeakObject> weakPtr;
-    EXPECT_TRUE(weakPtr.is_expired());
+    EXPECT_TRUE(weakPtr.expired());
 }
 
 // Test constructing from an IntrusivePtr
 TEST(IntrusiveWeakPtrTest, ConstructFromIntrusivePtr) {
     IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(5));
     IntrusiveWeakPtr<MockWeakObject> weakPtr(strongPtr);
-    EXPECT_FALSE(weakPtr.is_expired());
+    EXPECT_FALSE(weakPtr.expired());
 }
 
 // Test reset functionality
@@ -30,7 +30,7 @@ TEST(IntrusiveWeakPtrTest, ResetFunctionality) {
     IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(35));
     IntrusiveWeakPtr<MockWeakObject> weakPtr(strongPtr);
     weakPtr.reset();
-    EXPECT_TRUE(weakPtr.is_expired());
+    EXPECT_TRUE(weakPtr.expired());
 }
 
 // Test swap functionality
@@ -59,10 +59,10 @@ TEST(IntrusiveWeakPtrTest, ExpirationAfterStrongPtrReset) {
     {
         IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(50));
         weakPtr = IntrusiveWeakPtr<MockWeakObject>(strongPtr);
-        EXPECT_FALSE(weakPtr.is_expired());
+        EXPECT_FALSE(weakPtr.expired());
     }
     // strongPtr goes out of scope here
-    EXPECT_TRUE(weakPtr.is_expired());
+    EXPECT_TRUE(weakPtr.expired());
 }
 
 
@@ -71,7 +71,7 @@ TEST(IntrusiveWeakPtrTest, CopyConstructor) {
     IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(15));
     IntrusiveWeakPtr<MockWeakObject> weakPtr1(strongPtr);
     IntrusiveWeakPtr<MockWeakObject> weakPtr2(weakPtr1);
-    EXPECT_FALSE(weakPtr2.is_expired());
+    EXPECT_FALSE(weakPtr2.expired());
 }
 
 // Test move constructor
@@ -79,8 +79,8 @@ TEST(IntrusiveWeakPtrTest, MoveConstructor) {
     IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(20));
     IntrusiveWeakPtr<MockWeakObject> weakPtr1(strongPtr);
     IntrusiveWeakPtr<MockWeakObject> weakPtr2(std::move(weakPtr1));
-    EXPECT_TRUE(weakPtr1.is_expired());
-    EXPECT_FALSE(weakPtr2.is_expired());
+    EXPECT_TRUE(weakPtr1.expired());
+    EXPECT_FALSE(weakPtr2.expired());
 }
 
 // Test copy assignment
@@ -89,7 +89,7 @@ TEST(IntrusiveWeakPtrTest, CopyAssignment) {
     IntrusiveWeakPtr<MockWeakObject> weakPtr1(strongPtr);
     IntrusiveWeakPtr<MockWeakObject> weakPtr2;
     weakPtr2 = weakPtr1;
-    EXPECT_FALSE(weakPtr2.is_expired());
+    EXPECT_FALSE(weakPtr2.expired());
 }
 
 // Test move assignment
@@ -98,19 +98,6 @@ TEST(IntrusiveWeakPtrTest, MoveAssignment) {
     IntrusiveWeakPtr<MockWeakObject> weakPtr1(strongPtr);
     IntrusiveWeakPtr<MockWeakObject> weakPtr2;
     weakPtr2 = std::move(weakPtr1);
-    EXPECT_TRUE(weakPtr1.is_expired());
-    EXPECT_FALSE(weakPtr2.is_expired());
-}
-
-// Test reset UseCount
-TEST(IntrusiveWeakPtrTest, UseCount) {
-    IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(35));
-    IntrusivePtr<MockWeakObject> strongPtr2(strongPtr);
-    IntrusiveWeakPtr<MockWeakObject> weakPtr(strongPtr);
-    EXPECT_EQ(weakPtr.use_count(), 2);
-
-    strongPtr.reset();
-    EXPECT_EQ(weakPtr.use_count(),1);
-    strongPtr2.reset();
-    EXPECT_EQ(weakPtr.use_count(),0);
+    EXPECT_TRUE(weakPtr1.expired());
+    EXPECT_FALSE(weakPtr2.expired());
 }
