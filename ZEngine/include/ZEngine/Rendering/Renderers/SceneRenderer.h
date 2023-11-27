@@ -33,7 +33,7 @@ namespace ZEngine::Rendering::Renderers
         void StartScene(const glm::vec4& camera_position, const glm::mat4& camera_view, const glm::mat4& camera_projection);
         void RenderScene(const Ref<Rendering::Scenes::SceneRawData>& scene_data);
         void EndScene();
-
+        void SetViewportSize(uint32_t width, uint32_t height);
         void Tick();
 
     private:

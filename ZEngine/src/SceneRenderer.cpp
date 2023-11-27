@@ -54,8 +54,6 @@ namespace ZEngine::Rendering::Renderers
         Specifications::FrameBufferSpecificationVNext        framebuffer_spec    = {};
         framebuffer_spec.ClearColor                                              = false;
         framebuffer_spec.ClearDepth                                              = false;
-        framebuffer_spec.Width                                                   = 1000;
-        framebuffer_spec.Height                                                  = 1000;
         framebuffer_spec.AttachmentSpecifications                                = {ImageFormat::R8G8B8A8_UNORM, ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
         framebuffer_spec.InputColorAttachment[0]                                 = m_infinite_grid_pass->GetOutputColor(0);
         framebuffer_spec.InputColorAttachment[1]                                 = m_infinite_grid_pass->GetOutputDepth();
@@ -85,7 +83,10 @@ namespace ZEngine::Rendering::Renderers
         m_GridSBVertex->Dispose();
         m_GridSBIndex->Dispose();
         m_GridSBDrawData->Dispose();
-
+        for (auto& buffer : m_infinite_grid_indirect_buffer)
+        {
+            buffer->Dispose();
+        }
 
         m_final_color_output_pass->Dispose();
         m_UB_Camera->Dispose();
@@ -94,6 +95,10 @@ namespace ZEngine::Rendering::Renderers
         m_SBDrawData->Dispose();
         m_SBTransform->Dispose();
         m_SBMaterialData->Dispose();
+        for (auto& buffer : m_indirect_buffer)
+        {
+            buffer->Dispose();
+        }
 
         m_global_texture_buffer_collection.clear();
         m_global_texture_buffer_collection.shrink_to_fit();
@@ -264,6 +269,12 @@ namespace ZEngine::Rendering::Renderers
         }
         command_buffer->End();
         command_buffer->Submit();
+    }
+
+    void SceneRenderer::SetViewportSize(uint32_t width, uint32_t height)
+    {
+        m_infinite_grid_pass->ResizeRenderTarget(width, height);
+        m_final_color_output_pass->ResizeRenderTarget(width, height);
     }
 
     void SceneRenderer::Tick()
