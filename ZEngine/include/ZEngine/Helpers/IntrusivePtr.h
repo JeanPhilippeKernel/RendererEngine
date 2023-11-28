@@ -1,6 +1,6 @@
 #pragma once
 #include <atomic>
-#include <type_traits>
+#include <concepts>
 
 namespace ZEngine::Helpers
 {
@@ -67,13 +67,13 @@ namespace ZEngine::Helpers
 
         IntrusivePtr(IntrusivePtr&& other) noexcept : m_ptr(other.detach()) {}
 
-        template <class U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+        template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
         IntrusivePtr(const IntrusivePtr<U>& other) noexcept(noexcept(T::IncrementRefCount(m_ptr))) : m_ptr(other.get())
         {
             T::IncrementRefCount(m_ptr);
         }
 
-        template <class U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+        template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
         IntrusivePtr(IntrusivePtr<U>&& other) noexcept : m_ptr(other.detach())
         {
         }
@@ -102,7 +102,7 @@ namespace ZEngine::Helpers
             return *this;
         }
 
-        template <class U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+        template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
         IntrusivePtr& operator=(const IntrusivePtr<U>& other) noexcept
         {
             IntrusivePtr<T> p(other);
@@ -110,7 +110,7 @@ namespace ZEngine::Helpers
             return *this;
         }
 
-        template <class U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+        template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
         IntrusivePtr& operator=(IntrusivePtr<U>&& other) noexcept
         {
             if (this != &other)
