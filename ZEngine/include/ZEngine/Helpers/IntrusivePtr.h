@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <type_traits>
 
 namespace ZEngine::Helpers
 {
@@ -66,7 +67,18 @@ namespace ZEngine::Helpers
 
         IntrusivePtr(IntrusivePtr&& other) noexcept : m_ptr(other.detach()) {}
 
-        IntrusivePtr& operator=(const IntrusivePtr& other)
+        template <class U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+        IntrusivePtr(const IntrusivePtr<U>& other) noexcept(noexcept(T::IncrementRefCount(m_ptr))) : m_ptr(other.get())
+        {
+            T::IncrementRefCount(m_ptr);
+        }
+
+        template <class U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+        IntrusivePtr(IntrusivePtr<U>&& other) noexcept : m_ptr(other.detach())
+        {
+        }
+
+        IntrusivePtr& operator=(const IntrusivePtr& other) noexcept
         {
             if (this != &other)
             {
@@ -90,7 +102,27 @@ namespace ZEngine::Helpers
             return *this;
         }
 
-        IntrusivePtr& operator=(T* raw_ptr)
+        template <class U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+        IntrusivePtr& operator=(const IntrusivePtr<U>& other) noexcept
+        {
+            IntrusivePtr<T> p(other);
+            p.swap(*this);
+            return *this;
+        }
+
+        template <class U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+        IntrusivePtr& operator=(IntrusivePtr<U>&& other) noexcept
+        {
+            if (this != &other)
+            {
+                T* old_ptr = m_ptr;
+                m_ptr      = other.detach();
+                T::DecrementRefCount(old_ptr);
+            }
+            return *this;
+        }
+
+        IntrusivePtr& operator=(T* raw_ptr) noexcept
         {
             if (m_ptr != raw_ptr)
             {
@@ -102,7 +134,7 @@ namespace ZEngine::Helpers
             return *this;
         }
 
-        void reset(T* newPtr = nullptr)
+        void reset(T* newPtr = nullptr) noexcept
         {
             if (m_ptr != newPtr)
             {
