@@ -241,3 +241,33 @@ TEST(IntrusivePtrTest, HashSpecialization) {
 
     EXPECT_EQ(intrusivePtrHash(ptr), rawPtrHash(rawPtr));
 }
+
+TEST(IntrusivePtrTest, DetachFunction)
+{
+    auto intrusivePtr  = make_intrusive<MockObject>(23);
+    auto intrusivePtr2 = intrusivePtr;
+    EXPECT_NE(intrusivePtr.get(), nullptr);
+    EXPECT_EQ(intrusivePtr->GetValue(), 23);
+
+    auto raw_ptr = intrusivePtr.detach();
+    EXPECT_NE(raw_ptr, nullptr);
+    EXPECT_EQ(raw_ptr->GetValue(), 23);
+    EXPECT_EQ(raw_ptr->RefCount(), 2);
+
+    EXPECT_EQ(intrusivePtr.get(), nullptr);
+
+    IntrusivePtr<MockObject> p;
+    p.attach(raw_ptr);
+    EXPECT_EQ(p->RefCount(), 2);
+}
+
+TEST(IntrusivePtrTest, SwapDeferencedValue)
+{
+    auto intrusivePtr    = make_intrusive<MockObject>(23);
+    auto intrusivePtrTwo = make_intrusive<MockObject>(45);
+
+    intrusivePtrTwo.swapValue(intrusivePtr);
+
+    EXPECT_EQ(intrusivePtrTwo->GetValue(), 23);
+    EXPECT_EQ(intrusivePtr->GetValue(), 45);
+}

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "Helpers/IntrusiveWeakPtr.h"
+#include "Helpers/IntrusivePtr.h"
 
 using namespace ZEngine::Helpers;
 
