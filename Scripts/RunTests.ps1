@@ -23,7 +23,7 @@
 #Requires -PSEdition Core
 
 param (
-    [Parameter(HelpMessage="Configuration type to build, default to Debug")]
+    [Parameter(HelpMessage = "Configuration type to build, default to Debug")]
     [ValidateSet('Debug', 'Release')]
     [string[]] $Configurations = 'Debug'
 )
@@ -39,14 +39,16 @@ elseif ($IsMacOS) {
 }
 elseif ($IsWindows) {
     $SystemName = "Windows"
-} else {
+}
+else {
     throw 'The OS is not supported' 
 }
 
 [string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 [string]$OutputBuildDirectory = If ($IsWindows) { 
     [IO.Path]::Combine($RepoRoot, "Result.Windows.x64.MultiConfig") 
-} Else { 
+}
+Else { 
     [IO.Path]::Combine($RepoRoot, "Result.$SystemName.x64.$Configurations")
 }
 
@@ -57,13 +59,24 @@ function RunTests {
         [string]$Configuration
     )
 
-    $testExecutablePath = [IO.Path]::Combine($OutputBuildDirectory, "ZEngine", "tests", $Configuration, "ZEngineTests.exe")
+    [string]$testExecutablePath = ""
+    switch ($SystemName) {
+        "Windows" {
+            $testExecutablePath = [IO.Path]::Combine($OutputBuildDirectory, "ZEngine", "tests", $Configuration, "ZEngineTests.exe")
+        }
+        "Linux" {}
+        "Darwin" {}
+        Default {
+            throw 'This system is not supported'
+        }
+    }
     
     # Check if the executable exists
     if (Test-Path $testExecutablePath) {
         Write-Host "Running tests in $Configuration configuration..."
         & $testExecutablePath
-    } else {
+    }
+    else {
         Write-Warning "Test executable does not exist: $testExecutablePath"
     }
 }
