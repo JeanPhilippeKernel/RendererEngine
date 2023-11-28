@@ -1,7 +1,8 @@
 #version 460
+#extension GL_GOOGLE_include_directive : require
+#include "utility.glsl"
 
 layout (location = 0) in vec2 uv;
-
 layout (location = 0) out vec4 outColor;
 
 
@@ -11,27 +12,6 @@ float gridCellSize = 0.025;
 vec4 gridColorThin = vec4(1.0, 1.0, 1.0, 1.0);
 vec4 gridColorThick = vec4(0.5, 0.5, 0.5, 1.0);
 const float gridMinPixelsBetweenCells = 2.0;
-
-
-float log10(float x)
-{
-    return log(x) / log(10.0);
-}
-
-float satf(float x)
-{
-    return clamp(x, 0.0, 1.0);
-}
-
-vec2 satv(vec2 x)
-{
-    return clamp(x, vec2(0.0), vec2(1.0));
-}
-
-float max2(vec2 v)
-{
-    return max(v.x, v.y);
-}
 
 void main()
 {

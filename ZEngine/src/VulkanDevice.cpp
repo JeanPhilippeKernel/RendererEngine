@@ -179,7 +179,7 @@ namespace ZEngine::Hardwares
         }
 
         std::vector<const char*> requested_device_enabled_layer_name_collection   = {};
-        std::vector<const char*> requested_device_extension_layer_name_collection = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        std::vector<const char*> requested_device_extension_layer_name_collection = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME};
 
         for (LayerProperty& layer : selected_layer_property_collection)
         {

@@ -24,7 +24,7 @@
 #Requires -PSEdition Core
 
 param (
-    [Parameter(HelpMessage = "configuration type to build")]
+    [Parameter(HelpMessage = "Configuration type to build")]
     [ValidateSet('Debug', 'Release')]
     [string[]] $Configurations = @('Debug', 'Release'),
 
@@ -181,8 +181,10 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 
 # Run Shader Compilation
 [bool]$forceRebuild = If($ForceShaderRebuild) { $True } Else { $False }
-$shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"
-& pwsh -File $shaderCompileScript -ForceRebuild:$forceRebuild
+foreach ($config in $Configurations) {
+    $shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"
+    & pwsh -File $shaderCompileScript -Configuration:$config -ForceRebuild:$forceRebuild
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Stopped build process..." -ErrorAction Stop
