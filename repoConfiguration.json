@@ -6,6 +6,9 @@
         "ShaderC": {
             "MinimumVersion": "11.1.0",
             "Url": "https://storage.googleapis.com/shaderc/artifacts/prod/graphics_shader_compiler/shaderc/windows/continuous_release_2019/26/20230810-123915/install.zip"
+        },
+        "GlslangValidator": {
+            "Version": "12.3.1"
         }
     }
 }

@@ -64,7 +64,8 @@ namespace ZEngine::Rendering::Renderers
         Ref<Buffers::StorageBufferSet>            m_GridSBDrawData;
         std::vector<Ref<Buffers::IndirectBuffer>> m_infinite_grid_indirect_buffer;
         Ref<RenderPasses::RenderPass>             m_infinite_grid_pass;
-        const std::vector<float>                  m_grid_vertices          = {-1.0, 0.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 0.0, 1.0};
+        const std::vector<float>                  m_grid_vertices          = {-1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,  0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                                              1.0,  0.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0};
         const std::vector<uint32_t>               m_grid_indices           = {0, 1, 2, 2, 3, 0};
         const std::vector<DrawData>               m_grid_drawData          = {DrawData{.Index = 0, .VertexOffset = 0, .IndexOffset = 0, .VertexCount = 4, .IndexCount = 6}};
         const std::vector<VkDrawIndirectCommand>  m_grid_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 6, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
