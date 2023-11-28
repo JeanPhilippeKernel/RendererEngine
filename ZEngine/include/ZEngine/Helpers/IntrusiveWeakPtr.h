@@ -41,8 +41,8 @@ namespace ZEngine::Helpers
         }
 
     private:
-        std::atomic<int> m_strong_count; 
-        WeakRefCounted*  m_weakref;       
+        std::atomic<int> m_strong_count;
+        WeakRefCounted*  m_weakref;
     };
 
     class WeakRefCounted
@@ -58,22 +58,28 @@ namespace ZEngine::Helpers
 
         virtual ~WeakRefCounted() {}
 
-        void increment() noexcept
+        static void IncrementRefCount(WeakRefCounted* ptr) noexcept
         {
-            m_weakref->StrongAddRef();
+            if (ptr)
+            {
+                ptr->m_weakref->StrongAddRef();
+            }
         }
 
-        void decrement() noexcept
+        static void DecrementRefCount(WeakRefCounted* ptr) noexcept
         {
-            auto result = m_weakref->StrongRelease();
-            if (result == 0)
+            if (ptr)
             {
-                delete this;
+                auto result = ptr->m_weakref->StrongRelease();
+                if (result == 0)
+                {
+                    delete ptr;
+                }
             }
         }
 
     private:
-        IntrusivePtr<ControlBlock> m_weakref; 
+        IntrusivePtr<ControlBlock> m_weakref;
     };
 
     template <class T>
@@ -159,7 +165,7 @@ namespace ZEngine::Helpers
             {
                 return nullptr;
             }
-            T* ptr = static_cast<T*>(m_weakref->Resolve());
+            T* ptr = reinterpret_cast<T*>(m_weakref->Resolve());
             return IntrusivePtr<T>(ptr);
         }
 

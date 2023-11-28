@@ -7,20 +7,35 @@ namespace ZEngine::Helpers
     {
     public:
         RefCounted() : m_count(0) {}
-
-        RefCounted(const RefCounted&)            = delete;
-        RefCounted& operator=(const RefCounted&) = delete;
-
-        void increment()
+        RefCounted(const RefCounted&)
         {
-            ++m_count;
+            /* like  = deleted, but aims to support deferenced value swapping*/
+        }
+        RefCounted& operator=(const RefCounted&)
+        {
+            /* like = deleted, but aims to support deferenced value swapping*/
+            return *this;
+        }
+        virtual ~RefCounted() = default;
+
+        static void IncrementRefCount(RefCounted* ptr) noexcept
+        {
+            if (ptr)
+            {
+                ++(ptr->m_count);
+            }
         }
 
-        void decrement()
+        static void DecrementRefCount(RefCounted* ptr) noexcept
         {
-            if (--m_count == 0)
+            if (ptr)
             {
-                delete this;
+                auto result = --(ptr->m_count);
+                if (result == 0)
+                {
+                    delete ptr;
+                    ptr = nullptr;
+                }
             }
         }
 
@@ -29,38 +44,27 @@ namespace ZEngine::Helpers
             return m_count.load();
         }
 
-        virtual ~RefCounted() = default;
-
     private:
         std::atomic<uint64_t> m_count;
     };
-    
+
     template <typename T>
     class IntrusivePtr
     {
-
     public:
-
-        IntrusivePtr(T* ptr = nullptr) : m_ptr(ptr)
+        IntrusivePtr() noexcept = default;
+        IntrusivePtr(std::nullptr_t) noexcept {}
+        IntrusivePtr(T* ptr) noexcept(noexcept(T::IncrementRefCount(m_ptr))) : m_ptr(ptr)
         {
-            if (m_ptr)
-            {
-                m_ptr->increment();
-            }
+            T::IncrementRefCount(m_ptr);
         }
 
-        IntrusivePtr(const IntrusivePtr& other) : m_ptr(other.m_ptr)
+        IntrusivePtr(const IntrusivePtr& other) noexcept(noexcept(T::IncrementRefCount(m_ptr))) : m_ptr(other.m_ptr)
         {
-            if (m_ptr)
-            {
-                m_ptr->increment();
-            }
+            T::IncrementRefCount(m_ptr);
         }
 
-        IntrusivePtr(IntrusivePtr&& other) noexcept : m_ptr(other.m_ptr)
-        {
-            other.m_ptr = nullptr;
-        }
+        IntrusivePtr(IntrusivePtr&& other) noexcept : m_ptr(other.detach()) {}
 
         IntrusivePtr& operator=(const IntrusivePtr& other)
         {
@@ -68,14 +72,9 @@ namespace ZEngine::Helpers
             {
                 T* old_ptr = m_ptr;
                 m_ptr      = other.m_ptr;
-                if (m_ptr)
-                {
-                    m_ptr->increment();
-                }
-                if (old_ptr)
-                {
-                    old_ptr->decrement();
-                }
+
+                T::IncrementRefCount(m_ptr);
+                T::DecrementRefCount(old_ptr);
             }
             return *this;
         }
@@ -84,13 +83,9 @@ namespace ZEngine::Helpers
         {
             if (this != &other)
             {
-                T* old_ptr  = m_ptr;
-                m_ptr       = other.m_ptr;
-                other.m_ptr = nullptr;
-                if (old_ptr)
-                {
-                    old_ptr->decrement();
-                }
+                T* old_ptr = m_ptr;
+                m_ptr      = other.detach();
+                T::DecrementRefCount(old_ptr);
             }
             return *this;
         }
@@ -101,14 +96,8 @@ namespace ZEngine::Helpers
             {
                 T* old_ptr = m_ptr;
                 m_ptr      = raw_ptr;
-                if (m_ptr)
-                {
-                    m_ptr->increment();
-                }
-                if (old_ptr)
-                {
-                    old_ptr->decrement();
-                }
+                T::IncrementRefCount(m_ptr);
+                T::DecrementRefCount(old_ptr);
             }
             return *this;
         }
@@ -119,14 +108,8 @@ namespace ZEngine::Helpers
             {
                 T* old_ptr = m_ptr;
                 m_ptr      = newPtr;
-                if (m_ptr)
-                {
-                    m_ptr->increment();
-                }
-                if (old_ptr)
-                {
-                    old_ptr->decrement();
-                }
+                T::IncrementRefCount(m_ptr);
+                T::DecrementRefCount(old_ptr);
             }
         }
 
@@ -135,6 +118,20 @@ namespace ZEngine::Helpers
             T* temp     = m_ptr;
             m_ptr       = other.m_ptr;
             other.m_ptr = temp;
+        }
+
+        void swapValue(IntrusivePtr& other) noexcept
+        {
+            T temp         = *m_ptr;
+            *m_ptr         = *(other.m_ptr);
+            *(other.m_ptr) = temp;
+        }
+
+        T* detach() noexcept
+        {
+            T* current = m_ptr;
+            m_ptr      = nullptr;
+            return current;
         }
 
         T* get() const noexcept
@@ -182,43 +179,40 @@ namespace ZEngine::Helpers
             return m_ptr != raw_ptr;
         }
 
-        bool operator==(const IntrusivePtr& other) const
+        bool operator==(const IntrusivePtr& other) const noexcept
         {
             return m_ptr == other.m_ptr;
         }
 
-        bool operator!=(const IntrusivePtr& other) const
+        bool operator!=(const IntrusivePtr& other) const noexcept
         {
             return m_ptr != other.m_ptr;
         }
 
-        bool operator<(const IntrusivePtr& other) const
+        bool operator<(const IntrusivePtr& other) const noexcept
         {
             return m_ptr < other.m_ptr;
         }
 
-        bool operator>(const IntrusivePtr& other) const
+        bool operator>(const IntrusivePtr& other) const noexcept
         {
             return m_ptr > other.m_ptr;
         }
 
-        bool operator<=(const IntrusivePtr& other) const
+        bool operator<=(const IntrusivePtr& other) const noexcept
         {
             return m_ptr <= other.m_ptr;
         }
 
-        bool operator>=(const IntrusivePtr& other) const
+        bool operator>=(const IntrusivePtr& other) const noexcept
         {
             return m_ptr >= other.m_ptr;
         }
 
         ~IntrusivePtr()
         {
-            if (m_ptr)
-            {
-                m_ptr->decrement();
-                m_ptr = nullptr;
-            }
+            T::DecrementRefCount(m_ptr);
+            m_ptr = nullptr;
         }
 
     private:
@@ -229,6 +223,12 @@ namespace ZEngine::Helpers
     void swap(IntrusivePtr<T>& lhs, IntrusivePtr<T>& rhs) noexcept
     {
         lhs.swap(rhs);
+    }
+
+    template <typename T>
+    void swapValue(IntrusivePtr<T>& lhs, IntrusivePtr<T>& rhs) noexcept
+    {
+        lhs.swapValue(rhs);
     }
 
     template <typename T, typename... Args>
