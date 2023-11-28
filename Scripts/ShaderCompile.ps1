@@ -24,6 +24,10 @@
 #Requires -PSEdition Core
 
 param (
+    [Parameter(HelpMessage = "Configuration type to build")]
+    [ValidateSet('Debug', 'Release')]
+    [string] $Configuration = 'Debug',
+
     [Parameter(HelpMessage = "Whether to force shader build, default to False")]
     [bool] $ForceRebuild = $false
 )
@@ -32,7 +36,7 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot Shared.ps1)
 
-$glslcProgram = Find-GLSLC
+$glslValidatorProgram = Find-GlslangValidator
 
 $shaderDirectory = Join-Path $repositoryRootPath -ChildPath "Resources\Shaders"
 $shaderCacheDirectory = Join-Path $repositoryRootPath -ChildPath "Resources\Shaders\Cache"
@@ -55,16 +59,40 @@ if ($shaderSourceFiles.Count -eq 0) {
     return;
 }
 
-Write-Host "Compiling Shader files..."
+# Create include directories
+$shaderIncludeDirectories = @();
+foreach ($shaderFile in $shaderSourceFiles) {
+    if(!$shaderIncludeDirectories.Contains($shaderFile.DirectoryName)) {
+        $shaderIncludeDirectories += $shaderFile.DirectoryName;
+    }
+}
+
+[string] $includeDirArgs = "";
+foreach ($includeDir in $shaderIncludeDirectories) {
+    $includeDirArgs += " -I$includeDir"
+}
+
+[string] $compilerArgs = "";
+if ($Configuration -eq "Debug") {
+    $compilerArgs = " -g"
+}
+else {
+    $compilerArgs = " -Os"
+}
 
 foreach ($shaderFile in $shaderSourceFiles) {
     $fileName = $shaderFile.BaseName
     $suffixName = If($shaderFile.Extension -eq ".vert") { "_vertex" } Else { "_fragment" }
     $outputFileFullName = Join-Path $shaderCacheDirectory -ChildPath "$fileName$suffixName.spv"
 
-    $null = & $glslcProgram -g -O $shaderFile.FullName -o $outputFileFullName
+    $fileFullName = $shaderFile.FullName;
+    Write-Host "Compiling Shader file : $fileFullName"
+    $glslValidatorProcess = Start-Process $glslValidatorProgram -ArgumentList "$compilerArgs -V $fileFullName -o $outputFileFullName $includeDirArgs" -NoNewWindow -PassThru
+    $handle = $glslValidatorProcess.Handle;
+    $glslValidatorProcess.WaitForExit();
+    $exitCode = $glslValidatorProcess.ExitCode
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($exitCode -ne 0) {
         Write-Error "failed to compile $shaderFile ..." -ErrorAction Stop
     }
 }

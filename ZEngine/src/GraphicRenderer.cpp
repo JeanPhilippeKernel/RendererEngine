@@ -11,16 +11,23 @@ namespace ZEngine::Rendering::Renderers
     RendererInformation                                             GraphicRenderer::s_renderer_information     = {};
     WeakRef<Rendering::Swapchain>                                   GraphicRenderer::s_main_window_swapchain    = {};
     std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::COUNT> GraphicRenderer::s_render_target_collection = {};
+    Ref<SceneRenderer>                                              GraphicRenderer::s_scene_renderer           = CreateRef<SceneRenderer>();
 
-    void GraphicRenderer::RebuildRenderTargets()
+    void GraphicRenderer::Initialize()
     {
-        auto& render_target_frame_output       = s_render_target_collection[RenderTarget::FRAME_OUTPUT];
-        auto& render_target_frame_output_spec  = render_target_frame_output->GetSpecification();
-        render_target_frame_output_spec.Width  = s_viewport_width;
-        render_target_frame_output_spec.Height = s_viewport_height;
+        FrameBufferSpecificationVNext frame_ouput_spec         = {};
+        frame_ouput_spec.ClearColor                            = true;
+        frame_ouput_spec.ClearDepth                            = true;
+        frame_ouput_spec.AttachmentSpecifications              = {ImageFormat::R8G8B8A8_UNORM, ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
+        s_render_target_collection[RenderTarget::FRAME_OUTPUT] = Buffers::FramebufferVNext::Create(frame_ouput_spec);
 
-        render_target_frame_output->Invalidate();
-        render_target_frame_output->Create();
+        s_scene_renderer->Initialize();
+    }
+
+    void GraphicRenderer::Deinitialize()
+    {
+        s_scene_renderer->Deinitialize();
+        s_render_target_collection.fill(nullptr);
     }
 
     Ref<Buffers::FramebufferVNext> GraphicRenderer::GetRenderTarget(RenderTarget target)
@@ -39,10 +46,7 @@ namespace ZEngine::Rendering::Renderers
         {
             s_viewport_width  = width;
             s_viewport_height = height;
-            /*
-             * Rebuild RenderTargets
-             */
-            RebuildRenderTargets();
+            s_scene_renderer->SetViewportSize(s_viewport_width, s_viewport_height);
         }
     }
 
@@ -52,6 +56,18 @@ namespace ZEngine::Rendering::Renderers
         s_renderer_information.FrameCount          = swapchain->GetImageCount();
         s_renderer_information.CurrentFrameIndex   = swapchain->GetCurrentFrameIndex();
         s_renderer_information.SwapchainIdentifier = swapchain->GetIdentifier();
+    }
+
+    void GraphicRenderer::Update()
+    {
+        s_scene_renderer->Tick();
+    }
+
+    void GraphicRenderer::DrawScene(const Ref<Rendering::Cameras::Camera>& camera, const Ref<Rendering::Scenes::SceneRawData>& data)
+    {
+        s_scene_renderer->StartScene(camera->GetPosition(), camera->GetViewMatrix(), camera->GetPerspectiveMatrix());
+        s_scene_renderer->RenderScene(data);
+        s_scene_renderer->EndScene();
     }
 
     const RendererInformation& GraphicRenderer::GetRendererInformation()
@@ -64,16 +80,5 @@ namespace ZEngine::Rendering::Renderers
             s_renderer_information.CurrentFrameIndex = swapchain->GetCurrentFrameIndex();
         }
         return s_renderer_information;
-    }
-
-    void GraphicRenderer::Initialize()
-    {
-        s_render_target_collection[RenderTarget::FRAME_OUTPUT] = CreateRef<Buffers::FramebufferVNext>(FrameBufferSpecificationVNext{
-            .Width = 1000, .Height = 1000, .AttachmentSpecifications = {Specifications::ImageFormat::R8G8B8A8_UNORM, Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE}});
-    }
-
-    void GraphicRenderer::Deinitialize()
-    {
-        s_render_target_collection.fill(nullptr);
     }
 } // namespace ZEngine::Rendering::Renderers

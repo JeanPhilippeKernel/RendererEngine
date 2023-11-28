@@ -2,6 +2,7 @@
 #include <vulkan/vulkan.h>
 #include <Rendering/Swapchain.h>
 #include <Rendering/Buffers/Framebuffer.h>
+#include <Rendering/Renderers/SceneRenderer.h>
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -9,17 +10,6 @@ namespace ZEngine::Rendering::Renderers
     {
         FRAME_OUTPUT = 0,
         COUNT
-    };
-
-    struct DrawData
-    {
-        uint32_t Index{0xFFFFFFFF};
-        uint32_t TransformIndex{0xFFFFFFFF};
-        uint32_t MaterialIndex{0xFFFFFFFF};
-        uint32_t VertexOffset;
-        uint32_t IndexOffset;
-        uint32_t VertexCount;
-        uint32_t IndexCount;
     };
 
     struct RendererInformation
@@ -46,8 +36,8 @@ namespace ZEngine::Rendering::Renderers
 
         static const RendererInformation& GetRendererInformation();
 
-    private:
-        static void RebuildRenderTargets();
+        static void Update();
+        static void DrawScene(const Ref<Rendering::Cameras::Camera>& camera, const Ref<Rendering::Scenes::SceneRawData>& data);
 
     private:
         static uint32_t                                                        s_viewport_width;
@@ -55,5 +45,6 @@ namespace ZEngine::Rendering::Renderers
         static RendererInformation                                             s_renderer_information;
         static WeakRef<Rendering::Swapchain>                                   s_main_window_swapchain;
         static std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::COUNT> s_render_target_collection;
+        static Ref<SceneRenderer>                                              s_scene_renderer;
     };
 } // namespace ZEngine::Rendering::Renderers

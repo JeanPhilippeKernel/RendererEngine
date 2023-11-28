@@ -22,9 +22,6 @@ namespace Tetragrama::Layers
     {
         auto current_window        = GetAttachedWindow();
         m_editor_camera_controller = CreateRef<EditorCameraController>(50.0, 45.f, 40.f);
-        m_scene_renderer           = CreateRef<SceneRenderer>();
-
-        m_scene_renderer->Initialize();
         GraphicScene::Initialize();
 
         Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<Ref<EditorCameraController>>>(
@@ -34,14 +31,12 @@ namespace Tetragrama::Layers
     void RenderLayer::Deinitialize()
     {
         GraphicScene::Deinitialize();
-        m_scene_renderer->Deinitialize();
     }
 
     void RenderLayer::Update(TimeStep dt)
     {
         m_editor_camera_controller->Update(dt);
         GraphicScene::ComputeAllTransforms();
-        m_scene_renderer->Tick();
     }
 
     bool RenderLayer::OnEvent(CoreEvent& e)
@@ -53,10 +48,9 @@ namespace Tetragrama::Layers
     void RenderLayer::Render()
     {
         auto camera = m_editor_camera_controller->GetCamera();
+        GraphicRenderer::DrawScene(camera, GraphicScene::GetRawData());
 
-        m_scene_renderer->StartScene(camera->GetPosition(), camera->GetViewMatrix(), camera->GetPerspectiveMatrix());
-        m_scene_renderer->RenderScene(GraphicScene::GetRawData());
-        m_scene_renderer->EndScene();
+
     }
 
     std::future<void> RenderLayer::SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>& message)

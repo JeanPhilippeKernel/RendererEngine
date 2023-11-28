@@ -41,7 +41,6 @@ namespace Tetragrama::Layers
         std::future<void> SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>&);
 
     private:
-        ZEngine::Ref<ZEngine::Rendering::Renderers::SceneRenderer> m_scene_renderer;
         ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;
         ZEngine::Ref<EditorCameraController>                       m_editor_camera_controller;
         std::queue<std::function<void(void)>>                      m_deferral_operation;

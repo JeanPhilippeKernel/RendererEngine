@@ -4,6 +4,8 @@
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 
+using namespace  ZEngine::Rendering::Renderers;
+
 namespace ZEngine
 {
     bool                             Engine::m_request_terminate{false};
@@ -26,16 +28,12 @@ namespace ZEngine
         Hardwares::VulkanDevice::Initialize(reinterpret_cast<GLFWwindow*>(m_window->GetNativeWindow()), window_additional_extension_layer_name_collection);
 
         m_window->Initialize();
-
+        GraphicRenderer::SetMainSwapchain(m_window->GetSwapchain());
         Rendering::Renderers::GraphicRenderer::Initialize();
         /*
          * Renderer Post initialization
          */
-        const auto& swapchain = m_window->GetSwapchain();
-        Rendering::Renderers::GraphicRenderer::SetMainSwapchain(swapchain);
-
         ZENGINE_CORE_INFO("Engine initialized")
-
 
         for (const auto& layer : engine_configuration.WindowConfiguration.RenderingLayerCollection)
         {
@@ -74,6 +72,7 @@ namespace ZEngine
 
     void Engine::Update(Core::TimeStep delta_time)
     {
+        GraphicRenderer::Update();
         m_window->Update(delta_time);
     }
 

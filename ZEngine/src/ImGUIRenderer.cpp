@@ -107,6 +107,11 @@ namespace ZEngine::Rendering::Renderers
         return s_deletion_resource_queue.at(static_cast<uint32_t>(Rendering::DeviceResourceType::DESCRIPTORSET)).size() > 5;
     }
 
+    void ImGUIRenderer::Tick()
+    {
+        s_ui_command_pool->Tick();
+    }
+
     void ImGUIRenderer::BeginFrame()
     {
         ImGui_ImplVulkan_NewFrame();
@@ -120,7 +125,6 @@ namespace ZEngine::Rendering::Renderers
     {
         ZENGINE_VALIDATE_ASSERT(s_ui_command_pool != nullptr, "UI Command pool can't be null")
 
-        s_ui_command_pool->Tick();
         s_command_buffer = s_ui_command_pool->GetCurrentCommmandBuffer();
         s_command_buffer->Begin();
         {

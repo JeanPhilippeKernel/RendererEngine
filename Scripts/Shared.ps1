@@ -111,6 +111,37 @@ function Find-GLSLC () {
     throw "Failed to find glslc. Tried: " + ($GLSLCCandidates -join ', ')
 }
 
+function Find-GlslangValidator () {
+
+    $repoConfiguration = Get-RepositoryConfiguration
+    $GlslangValidatorVersion = $repoConfiguration.Requirements.GlslangValidator.Version;
+
+    $shaderCCompilerPath = Setup-ShaderCCompilerTool
+
+    $GlslangValidatorCandidates = @(
+        'glslangValidator'
+        if($IsWindows) {
+            Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslangValidator.exe" # On Windows, the pipeline build might pick up this option...
+            Join-Path -Path $env:VULKAN_SDK -ChildPath "\bin\glslangValidator.exe"
+        }
+    )
+
+    foreach ($GlslangValidatorProgram in $GlslangValidatorCandidates) {
+        $Command = Get-Command $GlslangValidatorProgram -ErrorAction SilentlyContinue
+        if ($Command) {
+            if ((& $Command --version | Out-String) -match "glslang Khronos. ([\d\.]*)") {
+                [Version] $FoundVersion = $Matches[1]
+                if (CompareVersion $FoundVersion $GlslangValidatorVersion) {
+                    return $Command.Source
+                }
+            }
+        }
+    }
+
+    throw "Failed to find glslangValidator. Tried: " + ($GlslangValidatorCandidates -join ', ')
+}
+
+
 
 function Setup-ShaderCCompilerTool () {
     $repoConfiguration = Get-RepositoryConfiguration

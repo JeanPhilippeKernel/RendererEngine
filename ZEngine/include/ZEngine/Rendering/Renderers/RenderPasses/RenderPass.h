@@ -6,6 +6,7 @@
 #include <Rendering/Buffers/UniformBuffer.h>
 #include <Rendering/Buffers/StorageBuffer.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
+#include <Rendering/Buffers/Image2DBuffer.h>
 #include <Rendering/Textures/Texture.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
@@ -27,11 +28,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     struct PassInput
     {
-        uint32_t                     Set{0};
-        uint32_t                     Binding{0};
-        std::string                  DebugName;
-        PassInputType                Type;
-        InputData                    Input;
+        uint32_t      Set{0};
+        uint32_t      Binding{0};
+        std::string   DebugName;
+        PassInputType Type;
+        InputData     Input;
     };
 
     struct RenderPass
@@ -52,6 +53,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::UniformBuffer>& buffer);
         void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::StorageBuffer>& buffer);
         void                            SetInput(std::string_view key_name, const Ref<Textures::Texture>& buffer);
+
+        Ref<Rendering::Buffers::Image2DBuffer> GetOutputColor(uint32_t color_index);
+        Ref<Rendering::Buffers::Image2DBuffer> GetOutputDepth();
+        void                                   ResizeRenderTarget(uint32_t width, uint32_t height);
 
         static Ref<RenderPass> Create(const RenderPassSpecification& specification);
 
