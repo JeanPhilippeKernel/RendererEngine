@@ -6,8 +6,11 @@ namespace ZEngine::Helpers
 {
     class RefCounted
     {
+    protected:
+        virtual ~RefCounted() = default;
+
     public:
-        RefCounted() : m_count(0) {}
+        RefCounted() : m_count(0), m_weak_count(0) {}
         RefCounted(const RefCounted&)
         {
             /* like  = deleted, but aims to support deferenced value swapping*/
@@ -17,7 +20,6 @@ namespace ZEngine::Helpers
             /* like = deleted, but aims to support deferenced value swapping*/
             return *this;
         }
-        virtual ~RefCounted() = default;
 
         static void IncrementRefCount(RefCounted* ptr) noexcept
         {
@@ -34,20 +36,60 @@ namespace ZEngine::Helpers
                 auto result = --(ptr->m_count);
                 if (result == 0)
                 {
-                    delete ptr;
-                    ptr = nullptr;
+                    if (ptr->m_weak_count == 0)
+                    {
+                        delete ptr;
+                        ptr = nullptr;
+                    }
                 }
             }
         }
 
-        uint64_t RefCount() const
+        static void IncrementWeakRefCount(RefCounted* ptr) noexcept
+        {
+            if (ptr)
+            {
+                ++(ptr->m_weak_count);
+            }
+        }
+
+        static void DecrementWeakRefCount(RefCounted* ptr) noexcept
+        {
+            if (ptr)
+            {
+                auto result = --(ptr->m_weak_count);
+                if (result == 0 && ptr->m_count == 0)
+                {
+                    delete ptr;
+                }
+            }
+        }
+
+        static int StrongRefCount(RefCounted* ptr)
+        {
+            return (ptr) ? ptr->m_count.load() : -1234;
+        }
+
+        static int WeakRefCount(RefCounted* ptr)
+        {
+            return (ptr) ? ptr->m_weak_count.load() : -1234;
+        }
+
+        int RefCount() const
         {
             return m_count.load();
         }
 
     private:
-        std::atomic<uint64_t> m_count;
+        std::atomic<int> m_count;
+        std::atomic<int> m_weak_count;
     };
+
+    template <typename T>
+    class IntrusivePtr;
+
+    template <class T>
+    class IntrusiveWeakPtr;
 
     template <typename T>
     class IntrusivePtr
@@ -169,7 +211,7 @@ namespace ZEngine::Helpers
         void attach(T* ptr) noexcept(noexcept(IntrusivePtr<T>(ptr)))
         {
             IntrusivePtr<T> p(ptr);
-            T::DecrementRefCount(p.m_ptr);  // reset the count back to original since IntrusivePtr will increment it
+            T::DecrementRefCount(p.m_ptr); // reset the count back to original since IntrusivePtr will increment it
             p.swap(*this);
         }
 
@@ -248,10 +290,22 @@ namespace ZEngine::Helpers
             return m_ptr >= other.m_ptr;
         }
 
+        IntrusiveWeakPtr<T> Weak() const noexcept
+        {
+            IntrusiveWeakPtr<T> weak_ptr;
+            weak_ptr.m_ptr = m_ptr;
+            T::IncrementWeakRefCount(m_ptr);
+            return weak_ptr;
+        }
+
+        long count() const noexcept
+        {
+            return T::StrongRefCount(m_ptr);
+        }
+
         ~IntrusivePtr()
         {
             T::DecrementRefCount(m_ptr);
-            m_ptr = nullptr;
         }
 
     private:
@@ -276,155 +330,98 @@ namespace ZEngine::Helpers
         return IntrusivePtr<T>(new T(std::forward<Args>(args)...));
     }
 
-    class WeakRefCounted;
-
-    class ControlBlock : public RefCounted
-    {
-    public:
-        ControlBlock(WeakRefCounted* weakref) noexcept : m_strong_count(0), m_weakref(weakref) {}
-
-        void StrongAddRef() noexcept
-        {
-            ++(m_strong_count);
-        }
-
-        int StrongRelease() noexcept
-        {
-            int result = --(m_strong_count);
-            if (result == 0)
-            {
-                m_weakref  = nullptr;
-            }
-            return result;
-        }
-
-        WeakRefCounted* Resolve() noexcept
-        {
-            int val = m_strong_count.load();
-            if (val <= 0)
-            {
-                return nullptr;
-            }
-            return m_weakref;
-        }
-
-        int RefCount() noexcept
-        {
-            return m_strong_count.load();
-        }
-
-    private:
-        std::atomic<int> m_strong_count;
-        WeakRefCounted*  m_weakref;
-    };
-
-    class WeakRefCounted
-    {
-        template <typename T>
-        friend class IntrusiveWeakPtr;
-
-        WeakRefCounted& operator=(RefCounted const&) = delete;
-        WeakRefCounted(RefCounted const&)            = delete;
-
-    public:
-        WeakRefCounted() noexcept : m_weakref(IntrusivePtr<ControlBlock>(new ControlBlock(this))) {}
-
-        virtual ~WeakRefCounted() {}
-
-        static void IncrementRefCount(WeakRefCounted* ptr) noexcept
-        {
-            if (ptr)
-            {
-                ptr->m_weakref->StrongAddRef();
-            }
-        }
-
-        static void DecrementRefCount(WeakRefCounted* ptr) noexcept
-        {
-            if (ptr)
-            {
-                auto result = ptr->m_weakref->StrongRelease();
-                if (result == 0)
-                {
-                    delete ptr;
-                }
-            }
-        }
-
-    private:
-        IntrusivePtr<ControlBlock> m_weakref;
-    };
-
     template <class T>
     class IntrusiveWeakPtr
     {
-    public:
-        constexpr IntrusiveWeakPtr() noexcept {}
-        ~IntrusiveWeakPtr() = default;
-        IntrusiveWeakPtr(const IntrusiveWeakPtr& other) noexcept : m_weakref(other.m_weakref) {}
+        friend class IntrusivePtr<T>;
 
-        template <class Y>
-        IntrusiveWeakPtr(const IntrusivePtr<Y>& other) noexcept
+    public:
+        IntrusiveWeakPtr() noexcept = default;
+        IntrusiveWeakPtr(std::nullptr_t) noexcept {}
+        IntrusiveWeakPtr(const IntrusiveWeakPtr& other) noexcept(noexcept(T::IncrementWeakRefCount(m_ptr))) : m_ptr(other.m_ptr)
         {
-            auto ptr = other.get();
-            if (ptr != nullptr)
-            {
-                m_weakref = ptr->m_weakref;
-            }
+            T::IncrementWeakRefCount(m_ptr);
+        }
+        IntrusiveWeakPtr(const IntrusivePtr<T>& other) noexcept
+        {
+            IntrusiveWeakPtr<T> weak_ptr = other.Weak();
+            weak_ptr.swap(*this);
+        }
+        ~IntrusiveWeakPtr()
+        {
+            T::DecrementWeakRefCount(m_ptr);
+        }
+
+        template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
+        IntrusiveWeakPtr(const IntrusivePtr<U>& other) noexcept
+        {
+            IntrusiveWeakPtr<T> weak_ptr = other.Weak();
+            weak_ptr.swap(*this);
         }
 
         IntrusiveWeakPtr(IntrusiveWeakPtr&& other) noexcept
         {
-            std::swap(m_weakref, other.m_weakref);
+            std::swap(m_ptr, other.m_ptr);
         }
 
-        template <class Y>
-        IntrusiveWeakPtr(IntrusiveWeakPtr<Y>&& other) noexcept
+        template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
+        IntrusiveWeakPtr(IntrusiveWeakPtr<U>&& other) noexcept
         {
-            std::swap(m_weakref, other.m_weakref);
+            std::swap(m_ptr, other.m_ptr);
         }
 
         IntrusiveWeakPtr& operator=(const IntrusiveWeakPtr& other) noexcept
         {
-            m_weakref =other.m_weakref;
+            if (this != &other)
+            {
+                T::DecrementWeakRefCount(m_ptr);
+                m_ptr = other.m_ptr;
+                T::IncrementWeakRefCount(m_ptr);
+            }
             return *this;
         }
 
-        template <class Y>
-        IntrusiveWeakPtr& operator=(const IntrusiveWeakPtr<Y>& other) noexcept
+        template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
+        IntrusiveWeakPtr& operator=(const IntrusiveWeakPtr<U>& other) noexcept
         {
-            m_weakref = other.m_weakref;
+            if (this != &other)
+            {
+                T::DecrementWeakRefCount(m_ptr);
+                m_ptr = other.m_ptr;
+                T::IncrementWeakRefCount(m_ptr);
+            }
             return *this;
         }
 
-        template <class Y>
-        IntrusiveWeakPtr& operator=(const IntrusivePtr<Y>& other) noexcept
+        template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
+        IntrusiveWeakPtr& operator=(const IntrusivePtr<U>& other) noexcept
         {
-            m_weakref = other->m_weakref;
+            IntrusiveWeakPtr weak_ptr = other.Weak();
+            weak_ptr.swap(*this);
             return *this;
         }
 
         IntrusiveWeakPtr& operator=(IntrusiveWeakPtr&& other) noexcept
         {
-            m_weakref = std::move(other.m_weakref);
+            other.swap(*this);
             return *this;
         }
 
-        template <class Y>
-        IntrusiveWeakPtr& operator=(IntrusiveWeakPtr<Y>&& other) noexcept
+        template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
+        IntrusiveWeakPtr& operator=(IntrusiveWeakPtr<U>&& other) noexcept
         {
-            m_weakref = std::move(other.m_weakref);
+            other.swap(*this);
             return *this;
         }
 
         void reset() noexcept
         {
-            m_weakref.reset();
+            IntrusiveWeakPtr().swap(*this);
         }
 
         void swap(IntrusiveWeakPtr& other) noexcept
         {
-            std::swap(m_weakref, other.m_weakref);
+            std::swap(m_ptr, other.m_ptr);
         }
 
         bool expired() const noexcept
@@ -434,16 +431,11 @@ namespace ZEngine::Helpers
 
         IntrusivePtr<T> lock() const noexcept
         {
-            if (m_weakref.get() == nullptr)
-            {
-                return nullptr;
-            }
-            T* ptr = reinterpret_cast<T*>(m_weakref->Resolve());
-            return IntrusivePtr<T>(ptr);
+            return (T::StrongRefCount(m_ptr) > 0) ? IntrusivePtr<T>(m_ptr) : IntrusivePtr<T>();
         }
 
     private:
-        IntrusivePtr<ControlBlock> m_weakref;
+        T* m_ptr = nullptr;
     };
 
 } // namespace ZEngine::Helpers

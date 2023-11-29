@@ -3,13 +3,23 @@
 
 using namespace ZEngine::Helpers;
 
-class MockWeakObject : public WeakRefCounted  {
+class MockWeakObject : public RefCounted
+{
 public:
     MockWeakObject(int value = 0) : value_(value) {}
-    int GetValue() const { return value_; }
+    int GetValue() const
+    {
+        return value_;
+    }
 
 private:
     int value_;
+};
+
+class MockObjectChild : public MockWeakObject
+{
+public:
+    MockObjectChild(int value = 0) : MockWeakObject(value) {}
 };
 
 // Test default constructor
@@ -100,4 +110,21 @@ TEST(IntrusiveWeakPtrTest, MoveAssignment) {
     weakPtr2 = std::move(weakPtr1);
     EXPECT_TRUE(weakPtr1.expired());
     EXPECT_FALSE(weakPtr2.expired());
+}
+
+TEST(IntrusiveWeakPtrTest, BaseDerivedType)
+{
+    std::shared_ptr<MockWeakObject> sharedPtr = std::make_shared<MockObjectChild>(5);
+    std::weak_ptr<MockWeakObject>   weakSharedPtr2(sharedPtr);
+
+    std::shared_ptr<MockWeakObject> sharedPtr3 = std::make_shared<MockObjectChild>(5);
+    std::weak_ptr<MockWeakObject>   weakSharedPtr3;
+    weakSharedPtr3 = sharedPtr3;
+
+    IntrusivePtr<MockWeakObject>     intrusivePtr = make_intrusive<MockObjectChild>(45);
+    IntrusiveWeakPtr<MockWeakObject> intrusiveWeakPtr2(intrusivePtr);
+
+    IntrusivePtr<MockWeakObject>     intrusivePtr3 = make_intrusive<MockObjectChild>(5);
+    IntrusiveWeakPtr<MockWeakObject> intrusiveWeakPtr4;
+    intrusiveWeakPtr4 = intrusivePtr3;
 }
