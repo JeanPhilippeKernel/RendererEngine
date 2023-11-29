@@ -35,3 +35,7 @@ jobs:
     - name: CMake Build
       run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh
+
+    - name: Run Tests
+      run: .\Scripts\RunTests.ps1 -Configurations ${{matrix.buildConfiguration}}
+      shell: pwsh
