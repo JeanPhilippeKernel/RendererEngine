@@ -5,14 +5,27 @@
 
 using namespace ZEngine::Helpers;
 
-class MockObject : public RefCounted {
+class MockObject : public RefCounted
+{
 public:
     MockObject(int value = 0) : value_(value) {}
-    int GetValue() const { return value_; }
+    virtual ~MockObject() = default;
+
+    int GetValue() const
+    {
+        return value_;
+    }
 
 private:
     int value_;
 };
+
+class MockObjectChild : public MockObject
+{
+public:
+    MockObjectChild(int value = 0) : MockObject(value) {}
+};
+
 
 // Test default constructor
 TEST(IntrusivePtrTest, DefaultConstructor) {
@@ -240,4 +253,52 @@ TEST(IntrusivePtrTest, HashSpecialization) {
     std::hash<MockObject*> rawPtrHash;
 
     EXPECT_EQ(intrusivePtrHash(ptr), rawPtrHash(rawPtr));
+}
+
+TEST(IntrusivePtrTest, DetachFunction)
+{
+    auto intrusivePtr  = make_intrusive<MockObject>(23);
+    auto intrusivePtr2 = intrusivePtr;
+    EXPECT_NE(intrusivePtr.get(), nullptr);
+    EXPECT_EQ(intrusivePtr->GetValue(), 23);
+
+    auto raw_ptr = intrusivePtr.detach();
+    EXPECT_NE(raw_ptr, nullptr);
+    EXPECT_EQ(raw_ptr->GetValue(), 23);
+    EXPECT_EQ(raw_ptr->RefCount(), 2);
+
+    EXPECT_EQ(intrusivePtr.get(), nullptr);
+
+    IntrusivePtr<MockObject> p;
+    p.attach(raw_ptr);
+    EXPECT_EQ(p->RefCount(), 2);
+}
+
+TEST(IntrusivePtrTest, SwapDeferencedValue)
+{
+    auto intrusivePtr    = make_intrusive<MockObject>(23);
+    auto intrusivePtrTwo = make_intrusive<MockObject>(45);
+
+    intrusivePtrTwo.swapValue(intrusivePtr);
+
+    EXPECT_EQ(intrusivePtrTwo->GetValue(), 23);
+    EXPECT_EQ(intrusivePtr->GetValue(), 45);
+}
+
+
+TEST(IntrusivePtrTest, BaseDerivedType)
+{
+    std::shared_ptr<MockObject> sharedPtr = std::make_shared<MockObjectChild>(5);
+    std::shared_ptr<MockObject> sharedPtr2(new MockObjectChild{4});
+
+    std::shared_ptr<MockObject>      sharedPtr3 = std::make_shared<MockObject>(5);
+    std::shared_ptr<MockObjectChild> sharedPtr4 = std::make_shared<MockObjectChild>(5);
+    sharedPtr3                                  = sharedPtr4;
+
+    IntrusivePtr<MockObject> intrusivePtr = make_intrusive<MockObjectChild>(45);
+    IntrusivePtr<MockObject> intrusivePtr2(new MockObjectChild{45});
+
+    IntrusivePtr<MockObject>      intrusivePtr3 = make_intrusive<MockObject>(5);
+    IntrusivePtr<MockObjectChild> intrusivePtr4 = make_intrusive<MockObjectChild>(5);
+    intrusivePtr3                               = intrusivePtr4;
 }
