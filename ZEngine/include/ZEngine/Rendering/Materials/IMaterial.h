@@ -8,7 +8,7 @@
 
 namespace ZEngine::Rendering::Materials {
 
-    struct IMaterial {
+    struct IMaterial : public Helpers::RefCounted {
     public:
         explicit IMaterial() {
             m_material_name = typeid(*this).name();

@@ -156,7 +156,7 @@ namespace ZEngine::Rendering::Buffers
         VkDescriptorBufferInfo m_buffer_info;
     };
 
-    struct UniformBufferSet
+    struct UniformBufferSet :  public Helpers::RefCounted
     {
         UniformBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <stdlib.h>
+#include <Helpers/IntrusivePtr.h>
 
 #define BIT(x) (1 << (x))
 #define ZENGINE_EXIT_FAILURE() exit(EXIT_FAILURE);
@@ -11,10 +12,10 @@
 namespace ZEngine
 {
     template <typename T>
-    using Ref = std::shared_ptr<T>;
+    using Ref = Helpers::IntrusivePtr<T>;
 
     template <typename T>
-    using WeakRef = std::weak_ptr<T>;
+    using WeakRef = Helpers::IntrusiveWeakPtr<T>;
 
     template <typename T>
     using Scope = std::unique_ptr<T>;
@@ -22,7 +23,7 @@ namespace ZEngine
     template <typename T, typename... Args>
     Ref<T> CreateRef(Args&&... args)
     {
-        return std::make_shared<T>(std::forward<Args>(args)...);
+        return Helpers::make_intrusive<T>(std::forward<Args>(args)...);
     }
 
     template <typename T, typename... Args>

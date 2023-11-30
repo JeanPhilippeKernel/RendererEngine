@@ -146,7 +146,7 @@ namespace ZEngine::Window::GLFWWindow
         // this give us opportunity to initialize UI-like layers before graphic render-like layers
         for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
         {
-            (*rlayer_it)->SetAttachedWindow(shared_from_this());
+            (*rlayer_it)->SetAttachedWindow(this);
             (*rlayer_it)->Initialize();
         }
 

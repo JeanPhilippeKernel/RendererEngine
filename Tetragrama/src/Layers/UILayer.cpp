@@ -13,13 +13,13 @@ namespace Tetragrama::Layers
     {
         ImguiLayer::Initialize();
 
-        m_dockspace_component      = std::make_shared<Components::DockspaceUIComponent>();
-        m_scene_component          = std::make_shared<Components::SceneViewportUIComponent>();
-        m_editor_log_component     = std::make_shared<Components::LogUIComponent>();
-        m_demo_component           = std::make_shared<Components::DemoUIComponent>();
-        m_project_view_component   = std::make_shared<Components::ProjectViewUIComponent>();
-        m_inspector_view_component = std::make_shared<Components::InspectorViewUIComponent>();
-        m_hierarchy_view_component = std::make_shared<Components::HierarchyViewUIComponent>();
+        m_dockspace_component      = ZEngine::CreateRef<Components::DockspaceUIComponent>();
+        m_scene_component          = ZEngine::CreateRef<Components::SceneViewportUIComponent>();
+        m_editor_log_component     = ZEngine::CreateRef<Components::LogUIComponent>();
+        m_demo_component           = ZEngine::CreateRef<Components::DemoUIComponent>();
+        m_project_view_component   = ZEngine::CreateRef<Components::ProjectViewUIComponent>();
+        m_inspector_view_component = ZEngine::CreateRef<Components::InspectorViewUIComponent>();
+        m_hierarchy_view_component = ZEngine::CreateRef<Components::HierarchyViewUIComponent>();
 
         AddUIComponent(m_dockspace_component);
         AddUIComponent(m_demo_component);

@@ -11,19 +11,23 @@
 
 #include <string.h>
 
-namespace ZEngine::Inputs {
+namespace ZEngine::Inputs
+{
 
-    struct IDevice {
+    struct IDevice : public Helpers::RefCounted
+    {
     public:
         virtual ~IDevice() = default;
 
         template <typename T, typename = std::enable_if_t<std::is_base_of_v<IDevice, T>>>
-        static const T* As() noexcept {
+        static const T* As() noexcept
+        {
 
             const std::type_info& type = typeid(T);
             auto                  it   = m_devices.find(std::string(type.name()));
 
-            if (it != std::end(m_devices)) {
+            if (it != std::end(m_devices))
+            {
                 return reinterpret_cast<T*>(it->second.get());
             }
 
@@ -36,7 +40,8 @@ namespace ZEngine::Inputs {
         virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const  = 0;
         virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const = 0;
 
-        virtual std::string_view GetName() const {
+        virtual std::string_view GetName() const
+        {
             return m_name;
         }
 

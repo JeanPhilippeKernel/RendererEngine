@@ -1,14 +1,15 @@
 #pragma once
+#include <Helpers/IntrusivePtr.h>
+#include <Rendering/Cameras/CameraEnum.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <Rendering/Cameras/CameraEnum.h>
 
 namespace ZEngine::Rendering::Cameras
 {
-    struct Camera
+    struct Camera : public Helpers::RefCounted
     {
         float Fov         = 0.0f;
         float AspectRatio = 0.0f;

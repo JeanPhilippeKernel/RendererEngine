@@ -129,7 +129,7 @@ namespace ZEngine::Layers
         if (!component->HasParentLayer())
         {
             auto last = std::prev(std::end(m_ui_components));
-            (*last)->SetParentLayer(shared_from_this());
+            (*last)->SetParentLayer(this);
         }
     }
 
@@ -137,7 +137,7 @@ namespace ZEngine::Layers
     {
         if (!component->HasParentLayer())
         {
-            component->SetParentLayer(shared_from_this());
+            component->SetParentLayer(this);
         }
         m_ui_components.push_back(component);
     }
@@ -149,7 +149,7 @@ namespace ZEngine::Layers
             {
                 if (!component->HasParentLayer())
                 {
-                    component->SetParentLayer(shared_from_this());
+                    component->SetParentLayer(this);
                 }
             });
 

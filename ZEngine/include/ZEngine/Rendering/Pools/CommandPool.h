@@ -7,7 +7,7 @@
 
 namespace ZEngine::Rendering::Pools
 {
-    struct CommandPool
+    struct CommandPool : public Helpers::RefCounted
     {
         CommandPool(Rendering::QueueType type, uint64_t swapchain_identifier = 0, bool present_on_swapchain = true);
         ~CommandPool();

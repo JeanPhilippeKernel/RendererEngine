@@ -1,9 +1,10 @@
 #pragma once
+#include <Helpers/IntrusivePtr.h>
 #include <Rendering/Lights/LightEnums.h>
 
 namespace ZEngine::Rendering::Lights {
 
-    struct Light {
+    struct Light : public Helpers::RefCounted {
         Light()          = default;
         virtual ~Light() = default;
 

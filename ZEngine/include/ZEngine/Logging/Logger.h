@@ -23,18 +23,18 @@ namespace ZEngine::Logging
         Logger()              = delete;
         Logger(const Logger&) = delete;
 
-        static void                Initialize(const LoggerConfiguration&);
-        static void                Flush();
-        static Ref<spdlog::logger> GetEngineLogger();
-        static Ref<spdlog::logger> GetEditorLogger();
-        static Ref<spdlog::logger> GetLogger();
+        static void                            Initialize(const LoggerConfiguration&);
+        static void                            Flush();
+        static std::shared_ptr<spdlog::logger> GetEngineLogger();
+        static std::shared_ptr<spdlog::logger> GetEditorLogger();
+        static std::shared_ptr<spdlog::logger> GetLogger();
 
         static bool GetLogMessage(LoggerMessage& message);
 
     private:
-        static Ref<spdlog::logger>              m_engine_logger;
-        static Ref<spdlog::logger>              m_editor_logger;
-        static Ref<spdlog::logger>              m_aggregate_logger;
+        static std::shared_ptr<spdlog::logger>  m_engine_logger;
+        static std::shared_ptr<spdlog::logger>  m_editor_logger;
+        static std::shared_ptr<spdlog::logger>  m_aggregate_logger;
         static std::vector<spdlog::sink_ptr>    m_sink_collection;
         static std::ostringstream               m_log_message;
         static std::atomic_bool                 m_is_invoker_running;

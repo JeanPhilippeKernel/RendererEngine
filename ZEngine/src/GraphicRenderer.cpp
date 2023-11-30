@@ -28,6 +28,8 @@ namespace ZEngine::Rendering::Renderers
     {
         s_scene_renderer->Deinitialize();
         s_render_target_collection.fill(nullptr);
+
+        s_main_window_swapchain.reset();
     }
 
     Ref<Buffers::FramebufferVNext> GraphicRenderer::GetRenderTarget(RenderTarget target)

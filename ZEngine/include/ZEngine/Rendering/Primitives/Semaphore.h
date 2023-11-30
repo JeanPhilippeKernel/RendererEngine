@@ -1,5 +1,6 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include <Helpers/IntrusivePtr.h>
 
 namespace ZEngine::Rendering::Primitives
 {
@@ -10,7 +11,7 @@ namespace ZEngine::Rendering::Primitives
         Undefined,
     };
 
-    struct Semaphore
+    struct Semaphore : public Helpers::RefCounted
     {
         Semaphore();
         ~Semaphore();

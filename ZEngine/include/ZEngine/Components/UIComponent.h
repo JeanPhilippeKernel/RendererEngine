@@ -18,8 +18,10 @@ namespace ZEngine::Layers {
         }                              \
     }
 
-namespace ZEngine::Components::UI {
-    class UIComponent : public Core::IRenderable, public Core::IUpdatable, public std::enable_shared_from_this<UIComponent> {
+namespace ZEngine::Components::UI
+{
+    class UIComponent : public Core::IRenderable, public Core::IUpdatable, public Helpers::RefCounted
+    {
 
     public:
         UIComponent() = default;

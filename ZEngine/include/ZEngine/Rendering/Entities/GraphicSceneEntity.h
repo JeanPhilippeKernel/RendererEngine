@@ -9,7 +9,7 @@ namespace ZEngine::Rendering::Entities
     class GraphicSceneEntity
     {
     public:
-        static GraphicSceneEntity CreateWrapper(const Ref<entt::registry>& registry_ptr, entt::entity handle);
+        static GraphicSceneEntity CreateWrapper(const std::shared_ptr<entt::registry>& registry_ptr, entt::entity handle);
 
     public:
         GraphicSceneEntity() = default;
@@ -87,7 +87,7 @@ namespace ZEngine::Rendering::Entities
 
     private:
         entt::entity                   m_entity_handle{entt::null};
-        static WeakRef<entt::registry> s_weak_registry_ptr;
+        static std::weak_ptr<entt::registry> s_weak_registry_ptr;
     };
 
 } // namespace ZEngine::Rendering::Entities

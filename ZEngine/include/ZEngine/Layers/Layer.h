@@ -20,7 +20,7 @@ namespace ZEngine::Window
 namespace ZEngine::Layers
 {
 
-    class Layer : public Core::IInitializable, public Core::IUpdatable, public Core::IEventable, public Core::IRenderable
+    class Layer : public Core::IInitializable, public Core::IUpdatable, public Core::IEventable, public Core::IRenderable, public Helpers::RefCounted
     {
 
     public:

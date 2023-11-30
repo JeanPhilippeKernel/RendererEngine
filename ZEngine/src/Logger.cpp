@@ -11,9 +11,9 @@
 
 namespace ZEngine::Logging
 {
-    Ref<spdlog::logger>              Logger::m_engine_logger;
-    Ref<spdlog::logger>              Logger::m_editor_logger;
-    Ref<spdlog::logger>              Logger::m_aggregate_logger;
+    std::shared_ptr<spdlog::logger>  Logger::m_engine_logger;
+    std::shared_ptr<spdlog::logger>  Logger::m_editor_logger;
+    std::shared_ptr<spdlog::logger>  Logger::m_aggregate_logger;
     std::vector<spdlog::sink_ptr>    Logger::m_sink_collection;
     std::ostringstream               Logger::m_log_message;
     std::atomic_bool                 Logger::m_is_invoker_running;
@@ -77,17 +77,17 @@ namespace ZEngine::Logging
         m_aggregate_logger->flush();
     }
 
-    Ref<spdlog::logger> Logger::GetEngineLogger()
+    std::shared_ptr<spdlog::logger> Logger::GetEngineLogger()
     {
         return m_engine_logger;
     }
 
-    Ref<spdlog::logger> Logger::GetEditorLogger()
+    std::shared_ptr<spdlog::logger> Logger::GetEditorLogger()
     {
         return m_editor_logger;
     }
 
-    Ref<spdlog::logger> Logger::GetLogger()
+    std::shared_ptr<spdlog::logger> Logger::GetLogger()
     {
         return m_aggregate_logger;
     }

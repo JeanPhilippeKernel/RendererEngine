@@ -13,7 +13,7 @@ namespace Tetragrama::Messengers
 {
     using action_callback = std::function<std::future<void>(void* const message)>;
 
-    class Messenger
+    class Messenger : public ZEngine::Helpers::RefCounted
     {
         using Component                 = void*;
         using ComponentActionPair       = std::pair<Component, action_callback>;
@@ -195,7 +195,7 @@ namespace Tetragrama::Messengers
         }
 
     private:
-        inline static ZEngine::Ref<Messenger> m_messenger = std::make_shared<Messenger>();
+        inline static ZEngine::Ref<Messenger> m_messenger = ZEngine::CreateRef<Messenger>();
     };
 
 #define MESSENGER_REGISTER(TRecipient, TMessage, token, recipient_ptr, function_body)                                   \

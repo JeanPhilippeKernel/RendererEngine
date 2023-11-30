@@ -39,7 +39,7 @@ namespace ZEngine::Layers
 namespace ZEngine::Window
 {
 
-    class CoreWindow : public std::enable_shared_from_this<CoreWindow>,
+    class CoreWindow : public Helpers ::RefCounted,
                        public Inputs::IKeyboardEventCallback,
                        public Inputs::IMouseEventCallback,
                        public Inputs::ITextInputEventCallback,

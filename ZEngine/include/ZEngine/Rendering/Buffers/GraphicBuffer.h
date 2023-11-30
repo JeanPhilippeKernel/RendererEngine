@@ -1,8 +1,9 @@
 #pragma once
+#include <Helpers/IntrusivePtr.h>
 
 namespace ZEngine::Rendering::Buffers
 {
-    struct IGraphicBuffer
+    struct IGraphicBuffer : public Helpers::RefCounted
     {
         IGraphicBuffer()
         {

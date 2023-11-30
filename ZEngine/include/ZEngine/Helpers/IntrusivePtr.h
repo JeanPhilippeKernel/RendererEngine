@@ -120,6 +120,12 @@ namespace ZEngine::Helpers
         {
         }
 
+        IntrusivePtr(const IntrusiveWeakPtr<T>& other) noexcept
+        {
+            IntrusivePtr ptr = other.lock();
+            ptr.swap(*this);
+        }
+
         IntrusivePtr& operator=(const IntrusivePtr& other) noexcept
         {
             if (this != &other)
@@ -155,12 +161,9 @@ namespace ZEngine::Helpers
         template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
         IntrusivePtr& operator=(IntrusivePtr<U>&& other) noexcept
         {
-            if (this != &other)
-            {
-                T* old_ptr = m_ptr;
-                m_ptr      = other.detach();
-                T::DecrementRefCount(old_ptr);
-            }
+            T* old_ptr = m_ptr;
+            m_ptr      = other.detach();
+            T::DecrementRefCount(old_ptr);
             return *this;
         }
 

@@ -9,7 +9,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
     CompilationStage::CompilationStage()
     {
-        m_next_stage = std::make_shared<LinkageStage>();
+        m_next_stage = CreateRef<LinkageStage>();
     }
 
     CompilationStage::~CompilationStage() {}

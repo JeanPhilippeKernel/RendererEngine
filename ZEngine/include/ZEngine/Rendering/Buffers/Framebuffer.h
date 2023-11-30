@@ -8,7 +8,7 @@
 
 namespace ZEngine::Rendering::Buffers
 {
-    struct FramebufferVNext
+    struct FramebufferVNext : public Helpers::RefCounted
     {
         FramebufferVNext() = default;
         FramebufferVNext(const Specifications::FrameBufferSpecificationVNext&);
@@ -36,7 +36,7 @@ namespace ZEngine::Rendering::Buffers
 
     private:
         std::vector<Ref<Image2DBuffer>>               m_color_attachment_collection;
-        Ref<Image2DBuffer>                            m_depth_attachment;
+        Ref<Image2DBuffer>                            m_depth_attachment{};
         Specifications::AttachmentSpecification       m_attachment_specification{};
         Specifications::FrameBufferSpecificationVNext m_specification{};
         VkSampler                                     m_sampler{VK_NULL_HANDLE};

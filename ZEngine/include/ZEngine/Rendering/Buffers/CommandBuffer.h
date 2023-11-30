@@ -23,7 +23,7 @@ namespace ZEngine::Rendering::Buffers
         Submitted
     };
 
-    struct CommandBuffer
+    struct CommandBuffer : public Helpers::RefCounted
     {
         CommandBuffer(VkCommandPool command_pool, Rendering::QueueType type, bool present_on_swapchain);
         ~CommandBuffer();

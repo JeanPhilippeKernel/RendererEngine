@@ -45,7 +45,7 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::Initialize()
     {
-        s_raw_data->EntityRegistry = CreateRef<entt::registry>();
+        s_raw_data->EntityRegistry = std::make_shared<entt::registry>();
     }
 
     void GraphicScene::Deinitialize()
@@ -118,7 +118,7 @@ namespace ZEngine::Rendering::Scenes
         co_return true;
     }
 
-    Ref<entt::registry> GraphicScene::GetRegistry()
+    std::shared_ptr<entt::registry> GraphicScene::GetRegistry()
     {
         return s_raw_data->EntityRegistry;
     }

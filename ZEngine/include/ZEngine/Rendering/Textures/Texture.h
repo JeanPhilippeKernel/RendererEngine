@@ -4,7 +4,7 @@
 
 namespace ZEngine::Rendering::Textures
 {
-    struct Texture
+    struct Texture : public Helpers::RefCounted
     {
     public:
         Texture()          = default;
@@ -50,7 +50,7 @@ namespace ZEngine::Rendering::Textures
         VkDescriptorImageInfo m_descriptor_image_info;
     };
 
-    struct TextureArray
+    struct TextureArray : public Helpers::RefCounted
     {
         TextureArray(uint32_t count = 0) : m_texture_array(count), m_count(count) {}
 

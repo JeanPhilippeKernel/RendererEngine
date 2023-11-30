@@ -21,7 +21,7 @@ namespace ZEngine::Rendering::Renderers
         uint32_t IndexCount;
     };
 
-    struct SceneRenderer
+    struct SceneRenderer : public Helpers::RefCounted
     {
         SceneRenderer()  = default;
         ~SceneRenderer() = default;

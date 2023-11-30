@@ -1,8 +1,11 @@
 #pragma once
 #include <future>
+#include <Helpers/IntrusivePtr.h>
 
-namespace ZEngine::Core {
-    struct SerializeInformation {
+namespace ZEngine::Core
+{
+    struct SerializeInformation
+    {
         /**
          * A boolean that describes whether the serialization was a success or not.
          */
@@ -14,12 +17,12 @@ namespace ZEngine::Core {
         std::string ErrorMessage;
     };
 
-    struct ISerializer {
-        ISerializer() = default;
+    struct ISerializer : public Helpers::RefCounted
+    {
+        ISerializer()          = default;
         virtual ~ISerializer() = default;
 
-        virtual SerializeInformation Serialize(std::string_view filename) = 0;
+        virtual SerializeInformation Serialize(std::string_view filename)   = 0;
         virtual SerializeInformation Deserialize(std::string_view filename) = 0;
     };
-    
 } // namespace ZEngine::Core
