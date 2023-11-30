@@ -7,7 +7,7 @@
 
 namespace ZEngine::Rendering
 {
-    class Swapchain
+    class Swapchain : public Helpers::RefCounted
     {
     public:
         Swapchain(void* native_window, bool is_surface_from_device = true);

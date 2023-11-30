@@ -108,7 +108,6 @@ namespace ZEngine::Rendering::Buffers
             {
                 // Since Color/Depth attachments can be used as Input Attachment for other RenderPasses,
                 // We reuse already allocated memory instead of emplacing back new ones
-                // The swap operation here will replaced by the use of IntrusivePtr once they will be in place
                 auto image_format = m_specification.AttachmentSpecifications.FormatCollection[i];
                 if (image_format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE)
                 {
@@ -121,7 +120,7 @@ namespace ZEngine::Rendering::Buffers
                     }
                     else
                     {
-                        std::swap(*m_depth_attachment, *depth_attachment);
+                        m_depth_attachment.swapValue(depth_attachment);
                     }
                 }
                 else
@@ -135,7 +134,7 @@ namespace ZEngine::Rendering::Buffers
 
                     if (i < m_color_attachment_collection.size())
                     {
-                        std::swap(*m_color_attachment_collection[i], *color_attachment);
+                        m_color_attachment_collection[i].swapValue(color_attachment);
                     }
                     else
                     {

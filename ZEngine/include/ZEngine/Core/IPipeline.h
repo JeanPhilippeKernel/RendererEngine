@@ -21,7 +21,7 @@ namespace ZEngine::Core
         std::string ErrorMessage;
     };
 
-    struct IPipelineStage
+    struct IPipelineStage : public Helpers::RefCounted
     {
         /**
          * Initialize a new IPipelineStage instance.

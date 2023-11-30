@@ -27,8 +27,7 @@ namespace ZEngine::Layers
                        public Inputs::IKeyboardEventCallback,
                        public Inputs::IMouseEventCallback,
                        public Inputs::ITextInputEventCallback,
-                       public Window::ICoreWindowEventCallback,
-                       public std::enable_shared_from_this<ImguiLayer>
+                       public Window::ICoreWindowEventCallback
     {
 
     public:
@@ -72,7 +71,7 @@ namespace ZEngine::Layers
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
         static void                                   __ImGUIRendererCreateWindowCallback(ImGuiViewport* viewport);
         static void                                   __ImGUIPlatformDestroyWindowCallback(ImGuiViewport* viewport);
-        static void                                   __ImGUIPlatformRenderWindowCallback(ImGuiViewport* viewport, void * args);
+        static void                                   __ImGUIPlatformRenderWindowCallback(ImGuiViewport* viewport, void* args);
         static void                                   __ImGUIPlatformSwapBuffersCallback(ImGuiViewport* viewport, void* args);
         static void                                   __ImGUIPlatformSetWindowSizeCallback(ImGuiViewport* viewport, ImVec2 size);
     };

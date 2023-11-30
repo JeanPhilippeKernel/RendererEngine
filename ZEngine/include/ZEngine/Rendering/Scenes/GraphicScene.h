@@ -39,7 +39,7 @@ namespace ZEngine::Rendering::Scenes
      *         /
      *        (6) --> ##-1
      */
-    struct SceneRawData
+    struct SceneRawData : public Helpers::RefCounted
     {
         uint32_t                                 SVertexOffset{0};
         uint32_t                                 SIndexOffset{0};
@@ -55,14 +55,14 @@ namespace ZEngine::Rendering::Scenes
         std::map<uint32_t, std::string>          SceneNodeMaterialNameMap;
         std::map<uint32_t, std::set<uint32_t>>   LevelSceneNodeChangedMap;
         Ref<Textures::TextureArray>              TextureCollection = CreateRef<Textures::TextureArray>();
-        Ref<entt::registry>                      EntityRegistry;
+        std::shared_ptr<entt::registry>          EntityRegistry;
     };
 
-    struct GraphicScene
+    struct GraphicScene : public Helpers::RefCounted
     {
         GraphicScene()                    = delete;
         GraphicScene(const GraphicScene&) = delete;
-        ~GraphicScene()                   = delete;
+        ~GraphicScene()                   = default;
 
         static void                         Initialize();
         static void                         Deinitialize();
@@ -75,7 +75,7 @@ namespace ZEngine::Rendering::Scenes
         static std::future<Entities::GraphicSceneEntity> CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name);
         static std::future<Entities::GraphicSceneEntity> GetEntityAsync(std::string_view entity_name);
         static std::future<bool>                         RemoveEntityAsync(const Entities::GraphicSceneEntity& entity);
-        static Ref<entt::registry>                       GetRegistry();
+        static std::shared_ptr<entt::registry>           GetRegistry();
         /*
          * SceneNode operations
          */
@@ -109,15 +109,15 @@ namespace ZEngine::Rendering::Scenes
         static void    PostProcessMaterials();
 
     private:
-        static Ref<SceneRawData>               s_raw_data;
+        static Ref<SceneRawData>        s_raw_data;
         static std::vector<std::string> s_texture_file_collection;
-        static std::recursive_mutex            s_scene_node_mutex;
-        static std::future<bool>               __TraverseAssetNodeAsync(
-                          const aiScene*   assimp_scene,
-                          aiNode*          node,
-                          int              parent_node,
-                          int              depth_level,
-                          std::string_view material_texture_parent_path);
+        static std::recursive_mutex     s_scene_node_mutex;
+        static std::future<bool>        __TraverseAssetNodeAsync(
+                   const aiScene*   assimp_scene,
+                   aiNode*          node,
+                   int              parent_node,
+                   int              depth_level,
+                   std::string_view material_texture_parent_path);
         static std::future<Meshes::MeshVNext>    __ReadSceneNodeMeshDataAsync(const aiScene* assimp_scene, uint32_t mesh_identifier);
         static std::future<Meshes::MeshMaterial> __ReadSceneNodeMeshMaterialDataAsync(
             const aiScene*   assimp_scene,

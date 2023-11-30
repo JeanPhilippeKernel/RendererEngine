@@ -7,7 +7,7 @@
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
-    struct GraphicPipeline
+    struct GraphicPipeline : public Helpers::RefCounted
     {
     public:
         GraphicPipeline() = default;

@@ -5,7 +5,7 @@
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
-    struct Attachment
+    struct Attachment : public Helpers::RefCounted
     {
         Attachment(const Specifications::AttachmentSpecification& spec);
         ~Attachment();

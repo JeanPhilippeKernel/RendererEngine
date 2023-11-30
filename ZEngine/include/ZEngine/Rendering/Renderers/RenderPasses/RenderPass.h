@@ -35,7 +35,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         InputData     Input;
     };
 
-    struct RenderPass
+    struct RenderPass : public Helpers::RefCounted
     {
         RenderPass() = default;
         ~RenderPass();

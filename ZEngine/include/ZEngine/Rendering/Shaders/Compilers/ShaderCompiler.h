@@ -9,7 +9,7 @@
 namespace ZEngine::Rendering::Shaders::Compilers
 {
 
-    class ShaderCompiler : public Core::IPipelineContext, public std::enable_shared_from_this<ShaderCompiler>
+    class ShaderCompiler : public Core::IPipelineContext
     {
     public:
         /**

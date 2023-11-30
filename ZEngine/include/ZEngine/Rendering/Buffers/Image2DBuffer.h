@@ -4,7 +4,7 @@
 
 namespace ZEngine::Rendering::Buffers
 {
-    struct Image2DBuffer
+    struct Image2DBuffer : public Helpers::RefCounted
     {
         Image2DBuffer() = default;
         Image2DBuffer(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage_flag_bit, VkImageAspectFlagBits image_aspect_flag_bit);

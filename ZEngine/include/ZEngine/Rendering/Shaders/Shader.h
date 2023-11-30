@@ -6,7 +6,7 @@
 
 namespace ZEngine::Rendering::Shaders
 {
-    class Shader
+    class Shader : public Helpers::RefCounted
     {
     public:
         Shader(const Specifications::ShaderSpecification& spec);

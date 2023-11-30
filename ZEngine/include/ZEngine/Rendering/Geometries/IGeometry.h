@@ -4,12 +4,13 @@
 #include <Maths/Math.h>
 #include <Rendering/Renderers/Storages/GraphicVertex.h>
 #include <Rendering/Geometries/GeometryEnum.h>
+#include <Helpers/IntrusivePtr.h>
 
 namespace ZEngine::Rendering::Geometries
 {
 
     /*Need to be deprecated*/
-    struct IGeometry
+    struct IGeometry : public Helpers::RefCounted
     {
         IGeometry() = default;
 

@@ -7,7 +7,7 @@
 namespace Tetragrama
 {
 
-    class Editor : ZEngine::Core::IInitializable, public std::enable_shared_from_this<Editor>
+    class Editor : ZEngine::Core::IInitializable, public ZEngine::Helpers::RefCounted
     {
     public:
         Editor();
@@ -19,9 +19,9 @@ namespace Tetragrama
         const ZEngine::EngineConfiguration& GetCurrentEngineConfiguration() const;
 
     private:
-        ZEngine::EngineConfiguration               m_engine_configuration;
-        ZEngine::Ref<ZEngine::Layers::ImguiLayer>  m_ui_layer;
-        ZEngine::Ref<Layers::RenderLayer>          m_render_layer;
+        ZEngine::EngineConfiguration              m_engine_configuration;
+        ZEngine::Ref<ZEngine::Layers::ImguiLayer> m_ui_layer;
+        ZEngine::Ref<Layers::RenderLayer>         m_render_layer;
     };
 
 } // namespace Tetragrama

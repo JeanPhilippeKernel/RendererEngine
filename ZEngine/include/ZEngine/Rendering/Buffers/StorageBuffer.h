@@ -100,7 +100,7 @@ namespace ZEngine::Rendering::Buffers
         VkDescriptorBufferInfo m_buffer_info;
     };
 
-    struct StorageBufferSet
+    struct StorageBufferSet : public Helpers::RefCounted
     {
         StorageBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
 
