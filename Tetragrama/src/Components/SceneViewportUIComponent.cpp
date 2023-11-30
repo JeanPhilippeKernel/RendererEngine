@@ -78,7 +78,7 @@ namespace Tetragrama::Components
         if (!m_scene_texture || m_refresh_texture_handle)
         {
             auto frame_output = GraphicRenderer::GetFrameOutput();
-            auto buffer       = frame_output->GetColorAttachmentCollection().at(0);
+            auto texture       = frame_output->GetColorAttachmentCollection().at(0);
 
             if (m_refresh_texture_handle)
             {
@@ -86,7 +86,8 @@ namespace Tetragrama::Components
                 m_scene_texture                   = VK_NULL_HANDLE;
                 m_refresh_texture_handle          = false;
             }
-            m_scene_texture = ImGui_ImplVulkan_AddTexture(buffer->GetSampler(), buffer->GetImageViewHandle(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            auto texture_buffer = texture->GetImage2DBuffer();
+            m_scene_texture     = ImGui_ImplVulkan_AddTexture(texture_buffer->GetSampler(), texture_buffer->GetImageViewHandle(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
 
         ImGui::Image(m_scene_texture, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
