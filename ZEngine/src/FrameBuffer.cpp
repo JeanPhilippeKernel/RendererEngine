@@ -111,9 +111,13 @@ namespace ZEngine::Rendering::Buffers
                 auto image_format = m_specification.AttachmentSpecifications.FormatCollection[i];
                 if (image_format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE)
                 {
-                    auto depth_format     = Hardwares::VulkanDevice::FindDepthFormat();
-                    auto depth_attachment = CreateRef<Image2DBuffer>(
-                        m_specification.Width, m_specification.Height, depth_format, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+                    Specifications::TextureSpecification spec = {};
+                    spec.Width                                = m_specification.Width;
+                    spec.Height                               = m_specification.Height;
+                    spec.Format                               = image_format;
+                    spec.PerformTransition                    = false;
+                    auto depth_attachment                     = Textures::Texture2D::Create(spec);
+
                     if (!m_depth_attachment)
                     {
                         m_depth_attachment = std::move(depth_attachment);
@@ -125,12 +129,12 @@ namespace ZEngine::Rendering::Buffers
                 }
                 else
                 {
-                    auto color_attachment = CreateRef<Image2DBuffer>(
-                        m_specification.Width,
-                        m_specification.Height,
-                        ImageFormatMap[static_cast<uint32_t>(image_format)],
-                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                        VK_IMAGE_ASPECT_COLOR_BIT);
+                    Specifications::TextureSpecification spec = {};
+                    spec.Width                                = m_specification.Width;
+                    spec.Height                               = m_specification.Height;
+                    spec.Format                               = image_format;
+                    spec.PerformTransition                    = false;
+                    auto color_attachment                     = Textures::Texture2D::Create(spec);
 
                     if (i < m_color_attachment_collection.size())
                     {
@@ -185,17 +189,20 @@ namespace ZEngine::Rendering::Buffers
         std::vector<VkImageView> attachment_view_collection = {};
         if (m_specification.InputColorAttachment.empty())
         {
-            for (const Ref<Image2DBuffer>& buffer : m_color_attachment_collection)
+            for (const Ref<Textures::Texture2D>& texture : m_color_attachment_collection)
             {
+                const auto buffer = texture->GetImage2DBuffer();
                 attachment_view_collection.push_back(buffer->GetImageViewHandle());
             }
-            attachment_view_collection.push_back(m_depth_attachment->GetImageViewHandle());
+            auto depth_texture_buffer = m_depth_attachment->GetImage2DBuffer();
+            attachment_view_collection.push_back(depth_texture_buffer->GetImageViewHandle());
         }
         else
         {
             for (auto& color_buffer : m_specification.InputColorAttachment)
             {
-                attachment_view_collection.push_back(color_buffer.second->GetImageViewHandle());
+                const auto& buffer = color_buffer.second->GetBuffer();
+                attachment_view_collection.push_back(buffer.ViewHandle);
             }
         }
         m_handle = Hardwares::VulkanDevice::CreateFramebuffer(
@@ -215,12 +222,15 @@ namespace ZEngine::Rendering::Buffers
 
     void FramebufferVNext::Dispose()
     {
-        for (Ref<Image2DBuffer>& buffer : m_color_attachment_collection)
+        for (Ref<Textures::Texture2D>& buffer : m_color_attachment_collection)
         {
             buffer->Dispose();
         }
 
-        m_depth_attachment->Dispose();
+        if (m_depth_attachment)
+        {
+            m_depth_attachment->Dispose();
+        }
 
         if (m_sampler)
         {
@@ -234,15 +244,18 @@ namespace ZEngine::Rendering::Buffers
             m_handle = VK_NULL_HANDLE;
         }
 
-        m_attachment->Dispose();
+        if (m_attachment)
+        {
+            m_attachment->Dispose();
+        }
     }
 
-    const std::vector<Ref<Image2DBuffer>>& FramebufferVNext::GetColorAttachmentCollection() const
+    const std::vector<Ref<Textures::Texture2D>>& FramebufferVNext::GetColorAttachmentCollection() const
     {
         return m_color_attachment_collection;
     }
 
-    Ref<Image2DBuffer> FramebufferVNext::GetDepthAttachment() const
+    Ref<Textures::Texture2D> FramebufferVNext::GetDepthAttachment() const
     {
         return m_depth_attachment;
     }

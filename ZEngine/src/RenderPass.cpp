@@ -315,7 +315,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
     }
 
-    Ref<Image2DBuffer> RenderPass::GetOutputColor(uint32_t color_index)
+    Ref<Textures::Texture> RenderPass::GetOutputColor(uint32_t color_index)
     {
         if (!m_pipeline)
         {
@@ -327,7 +327,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return color_attachment.at(color_index);
     }
 
-    Ref<Image2DBuffer> RenderPass::GetOutputDepth()
+    Ref<Textures::Texture> RenderPass::GetOutputDepth()
     {
         if (!m_pipeline)
         {
