@@ -27,25 +27,45 @@ namespace ZEngine::Rendering::Buffers
 
                 CleanUpMemory();
                 this->m_byte_size = byte_size;
-                m_staging_buffer  = Hardwares::VulkanDevice::CreateBuffer(
-                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-                m_storage_buffer = Hardwares::VulkanDevice::CreateBuffer(
-                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                m_storage_buffer  = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size),
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
             }
 
-            if (!data)
+            auto                  allocator = Hardwares::VulkanDevice::GetVmaAllocator();
+            VkMemoryPropertyFlags mem_prop_flags;
+            vmaGetAllocationMemoryProperties(allocator, m_storage_buffer.Allocation, &mem_prop_flags);
+
+            if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
             {
-                return;
+                VmaAllocationInfo allocation_info = {};
+                vmaGetAllocationInfo(allocator, m_storage_buffer.Allocation, &allocation_info);
+                if (data && allocation_info.pMappedData)
+                {
+                    std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
+                }
             }
-            auto  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-            void* memory_region;
-            ZENGINE_VALIDATE_ASSERT(
-                vkMapMemory(device, m_staging_buffer.Memory, static_cast<VkDeviceSize>(offset), static_cast<VkDeviceSize>(this->m_byte_size), 0, &memory_region) == VK_SUCCESS,
-                "Failed to map the memory")
-            std::memcpy(memory_region, data, this->m_byte_size);
-            vkUnmapMemory(device, m_staging_buffer.Memory);
+            else
+            {
+                Hardwares::BufferView staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
+                    static_cast<VkDeviceSize>(this->m_byte_size),
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
-            Hardwares::VulkanDevice::CopyBuffer(m_staging_buffer, m_storage_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
+                VmaAllocationInfo allocation_info = {};
+                vmaGetAllocationInfo(allocator, staging_buffer.Allocation, &allocation_info);
+
+                if (data && allocation_info.pMappedData)
+                {
+                    std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
+                    ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, VK_WHOLE_SIZE) == VK_SUCCESS, "Failed to flush allocation")
+                    Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_storage_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
+                }
+
+                /* Cleanup resource */
+                Hardwares::VulkanDevice::EnqueueBufferForDeletion(staging_buffer);
+            }
         }
 
         template <typename T>
@@ -67,7 +87,7 @@ namespace ZEngine::Rendering::Buffers
 
         const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
         {
-            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_storage_buffer.Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_storage_buffer.Handle, .offset = 0, .range = this->m_byte_size};
             return m_buffer_info;
         }
 
@@ -79,25 +99,16 @@ namespace ZEngine::Rendering::Buffers
     private:
         void CleanUpMemory()
         {
-            if (m_staging_buffer)
-            {
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_staging_buffer.Handle);
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_staging_buffer.Memory);
-                m_staging_buffer = {};
-            }
-
             if (m_storage_buffer)
             {
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_storage_buffer.Handle);
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_storage_buffer.Memory);
+                Hardwares::VulkanDevice::EnqueueBufferForDeletion(m_storage_buffer);
                 m_storage_buffer = {};
             }
         }
 
     private:
         Hardwares::BufferView  m_storage_buffer;
-        Hardwares::BufferView  m_staging_buffer;
-        VkDescriptorBufferInfo m_buffer_info;
+        VkDescriptorBufferInfo m_buffer_info{};
     };
 
     struct StorageBufferSet : public Helpers::RefCounted

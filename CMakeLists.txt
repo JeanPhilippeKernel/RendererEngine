@@ -29,6 +29,7 @@ add_subdirectory (${EXTERNAL_DIR}/stduuid)
 add_subdirectory (${EXTERNAL_DIR}/yaml-cpp)
 add_subdirectory (${EXTERNAL_DIR}/SPIRV-Cross)
 add_subdirectory (${EXTERNAL_DIR}/gtest)
+add_subdirectory (${EXTERNAL_DIR}/VulkanMemoryAllocator)
 
 # Core engine lib is here
 #

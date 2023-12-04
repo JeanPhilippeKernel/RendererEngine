@@ -1,5 +1,5 @@
 #pragma once
-#include <unordered_map>
+#include <map>
 #include <vulkan/vulkan.h>
 #include <Hardwares/VulkanLayer.h>
 #include <Rendering/Primitives/Semaphore.h>
@@ -8,6 +8,7 @@
 #include <Rendering/ResourceTypes.h>
 #include <Rendering/Pools/CommandPool.h>
 #include <GLFW/glfw3.h>
+#include <vk_mem_alloc.h>
 
 namespace ZEngine::Hardwares
 {
@@ -19,25 +20,25 @@ namespace ZEngine::Hardwares
 
     struct BufferView
     {
-        VkBuffer       Handle{VK_NULL_HANDLE};
-        VkDeviceMemory Memory{VK_NULL_HANDLE};
+        VkBuffer      Handle{VK_NULL_HANDLE};
+        VmaAllocation Allocation{nullptr};
 
         operator bool() const
         {
-            return (Handle != VK_NULL_HANDLE) && (Memory != VK_NULL_HANDLE);
+            return (Handle != VK_NULL_HANDLE);
         }
     };
 
     struct BufferImage
     {
-        VkImage        Handle{VK_NULL_HANDLE};
-        VkImageView    ViewHandle{VK_NULL_HANDLE};
-        VkSampler      Sampler{VK_NULL_HANDLE};
-        VkDeviceMemory Memory{VK_NULL_HANDLE};
+        VkImage       Handle{VK_NULL_HANDLE};
+        VkImageView   ViewHandle{VK_NULL_HANDLE};
+        VkSampler     Sampler{VK_NULL_HANDLE};
+        VmaAllocation Allocation{nullptr};
 
         operator bool() const
         {
-            return (Handle != VK_NULL_HANDLE) && (Memory != VK_NULL_HANDLE);
+            return (Handle != VK_NULL_HANDLE);
         }
     };
 
@@ -66,6 +67,10 @@ namespace ZEngine::Hardwares
             Rendering::Primitives::Fence* const     fence);
 
         static void EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
+
+        static void EnqueueBufferForDeletion(BufferView& buffer);
+        static void EnqueueBufferImageForDeletion(BufferImage& buffer);
+
         static void CleanupResource();
         static bool HasPendingCleanupResource();
         static void Present(VkSwapchainKHR swapchain, uint32_t* frame_image_index, const std::vector<Rendering::Primitives::Semaphore*>& wait_semaphore_collection);
@@ -82,8 +87,11 @@ namespace ZEngine::Hardwares
         static VkSurfaceFormatKHR GetSurfaceFormat();
         static VkPresentModeKHR   GetPresentMode();
 
-        static void        MapAndCopyToMemory(VkDeviceMemory& memory, VkDeviceSize size, const void* data);
-        static BufferView  CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VkMemoryPropertyFlags requested_properties);
+        static void       MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data);
+        static BufferView CreateBuffer(
+            VkDeviceSize             byte_size,
+            VkBufferUsageFlags       buffer_usage,
+            VmaAllocationCreateFlags vma_create_flags = 0);
         static void        CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size);
         static BufferImage CreateImage(
             uint32_t              width,
@@ -120,42 +128,47 @@ namespace ZEngine::Hardwares
         static Rendering::Buffers::CommandBuffer* BeginInstantCommandBuffer(Rendering::QueueType type);
         static void                               EndInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const command);
 
-    private:
-        static std::string                                       m_application_name;
-        static VulkanLayer                                       m_layer;
-        static VkInstance                                        m_vulkan_instance;
-        static VkSurfaceKHR                                      m_surface;
-        static uint32_t                                          m_graphic_family_index;
-        static uint32_t                                          m_transfer_family_index;
-        static std::unordered_map<Rendering::QueueType, VkQueue> m_queue_map;
-        static VkDevice                                          m_logical_device;
-        static VkPhysicalDevice                                  m_physical_device;
-        static VkPhysicalDeviceProperties                        m_physical_device_properties;
-        static VkPhysicalDeviceFeatures                          m_physical_device_feature;
-        static VkPhysicalDeviceMemoryProperties                  m_physical_device_memory_properties;
-        static VkDebugUtilsMessengerEXT                          m_debug_messenger;
-        static std::unordered_map<uint32_t, std::vector<void*>>  m_deletion_resource_queue;
-        static std::vector<Ref<Rendering::Pools::CommandPool>>   m_command_pool_collection;
-        static PFN_vkCreateDebugUtilsMessengerEXT                __createDebugMessengerPtr;
-        static PFN_vkDestroyDebugUtilsMessengerEXT               __destroyDebugMessengerPtr;
-        static std::vector<VkSurfaceFormatKHR>                   m_surface_format_collection;
-        static std::vector<VkPresentModeKHR>                     m_present_mode_collection;
-        static VkSurfaceFormatKHR                                m_surface_format;
-        static VkPresentModeKHR                                  m_present_mode;
-        static VkDescriptorPool                                  m_descriptor_pool;
-        static VKAPI_ATTR VkBool32 VKAPI_CALL                    __debugCallback(
-                               VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-                               VkDebugUtilsMessageTypeFlagsEXT             messageType,
-                               const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                               void*                                       pUserData);
+        static VmaAllocator GetVmaAllocator();
 
     private:
-        static std::mutex                                                                   m_queue_mutex;
-        static std::mutex                                                                   m_command_pool_mutex;
-        static std::mutex                                                                   m_deletion_queue_mutex;
-        static std::unordered_map<Rendering::QueueType, Ref<Rendering::Pools::CommandPool>> m_in_device_command_pool_map;
-        static std::condition_variable                                                      m_cond;
-        static std::atomic_bool                                                             m_is_executing_instant_command;
-        static std::mutex                                                                   m_instant_command_mutex;
+        static std::string                                     m_application_name;
+        static VulkanLayer                                     m_layer;
+        static VkInstance                                      m_vulkan_instance;
+        static VkSurfaceKHR                                    m_surface;
+        static uint32_t                                        m_graphic_family_index;
+        static uint32_t                                        m_transfer_family_index;
+        static std::map<Rendering::QueueType, VkQueue>         m_queue_map;
+        static VkDevice                                        m_logical_device;
+        static VkPhysicalDevice                                m_physical_device;
+        static VkPhysicalDeviceProperties                      m_physical_device_properties;
+        static VkPhysicalDeviceFeatures                        m_physical_device_feature;
+        static VkPhysicalDeviceMemoryProperties                m_physical_device_memory_properties;
+        static VkDebugUtilsMessengerEXT                        m_debug_messenger;
+        static std::map<uint32_t, std::vector<void*>>          m_deletion_resource_queue;
+        static std::vector<BufferView>                         s_dirty_buffer_queue;
+        static std::vector<BufferImage>                        s_dirty_buffer_image_queue;
+        static std::vector<Ref<Rendering::Pools::CommandPool>> m_command_pool_collection;
+        static PFN_vkCreateDebugUtilsMessengerEXT              __createDebugMessengerPtr;
+        static PFN_vkDestroyDebugUtilsMessengerEXT             __destroyDebugMessengerPtr;
+        static std::vector<VkSurfaceFormatKHR>                 m_surface_format_collection;
+        static std::vector<VkPresentModeKHR>                   m_present_mode_collection;
+        static VkSurfaceFormatKHR                              m_surface_format;
+        static VkPresentModeKHR                                m_present_mode;
+        static VkDescriptorPool                                m_descriptor_pool;
+        static VmaAllocator                                    s_vma_allocator;
+        static VKAPI_ATTR VkBool32 VKAPI_CALL                  __debugCallback(
+                             VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
+                             VkDebugUtilsMessageTypeFlagsEXT             messageType,
+                             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                             void*                                       pUserData);
+
+    private:
+        static std::mutex                                                         m_queue_mutex;
+        static std::mutex                                                         m_command_pool_mutex;
+        static std::mutex                                                         m_deletion_queue_mutex;
+        static std::map<Rendering::QueueType, Ref<Rendering::Pools::CommandPool>> m_in_device_command_pool_map;
+        static std::condition_variable                                            m_cond;
+        static std::atomic_bool                                                   m_is_executing_instant_command;
+        static std::mutex                                                         m_instant_command_mutex;
     };
 } // namespace ZEngine::Hardwares

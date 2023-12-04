@@ -1,41 +1,52 @@
 #include <pch.h>
 #include <ZEngineDef.h>
+
+/*
+* We define those Macros before inclusion of VulkanDevice.h so we can enable impl from VMA header
+*/
+#define VMA_IMPLEMENTATION
+#define VMA_VULKAN_VERSION 1003000 // Vulkan 1.3
+
 #include <Hardwares/VulkanDevice.h>
 #include <Logging/LoggerDefinition.h>
+
 
 using namespace ZEngine::Rendering::Primitives;
 
 namespace ZEngine::Hardwares
 {
-    std::string                                                                  VulkanDevice::m_application_name                  = "ZEngine";
-    VulkanLayer                                                                  VulkanDevice::m_layer                             = {};
-    VkInstance                                                                   VulkanDevice::m_vulkan_instance                   = VK_NULL_HANDLE;
-    VkSurfaceKHR                                                                 VulkanDevice::m_surface                           = VK_NULL_HANDLE;
-    uint32_t                                                                     VulkanDevice::m_graphic_family_index              = 0;
-    uint32_t                                                                     VulkanDevice::m_transfer_family_index             = 0;
-    std::unordered_map<Rendering::QueueType, VkQueue>                            VulkanDevice::m_queue_map                         = {};
-    VkDevice                                                                     VulkanDevice::m_logical_device                    = VK_NULL_HANDLE;
-    VkPhysicalDevice                                                             VulkanDevice::m_physical_device                   = VK_NULL_HANDLE;
-    VkPhysicalDeviceProperties                                                   VulkanDevice::m_physical_device_properties        = {};
-    VkPhysicalDeviceFeatures                                                     VulkanDevice::m_physical_device_feature           = {};
-    VkPhysicalDeviceMemoryProperties                                             VulkanDevice::m_physical_device_memory_properties = {};
-    VkDebugUtilsMessengerEXT                                                     VulkanDevice::m_debug_messenger                   = VK_NULL_HANDLE;
-    std::unordered_map<uint32_t, std::vector<void*>>                             VulkanDevice::m_deletion_resource_queue           = {};
-    std::vector<Ref<Rendering::Pools::CommandPool>>                              VulkanDevice::m_command_pool_collection           = {};
-    PFN_vkCreateDebugUtilsMessengerEXT                                           VulkanDevice::__createDebugMessengerPtr           = nullptr;
-    PFN_vkDestroyDebugUtilsMessengerEXT                                          VulkanDevice::__destroyDebugMessengerPtr          = nullptr;
-    std::vector<VkSurfaceFormatKHR>                                              VulkanDevice::m_surface_format_collection         = {};
-    std::vector<VkPresentModeKHR>                                                VulkanDevice::m_present_mode_collection           = {};
-    VkSurfaceFormatKHR                                                           VulkanDevice::m_surface_format                    = {};
-    VkPresentModeKHR                                                             VulkanDevice::m_present_mode                      = {};
-    VkDescriptorPool                                                             VulkanDevice::m_descriptor_pool                   = VK_NULL_HANDLE;
-    std::unordered_map<Rendering::QueueType, Ref<Rendering::Pools::CommandPool>> VulkanDevice::m_in_device_command_pool_map;
-    std::mutex                                                                   VulkanDevice::m_queue_mutex;
-    std::mutex                                                                   VulkanDevice::m_command_pool_mutex;
-    std::mutex                                                                   VulkanDevice::m_deletion_queue_mutex;
-    std::condition_variable                                                      VulkanDevice::m_cond;
-    std::atomic_bool                                                             VulkanDevice::m_is_executing_instant_command = false;
-    std::mutex                                                                   VulkanDevice::m_instant_command_mutex;
+    std::string                                                        VulkanDevice::m_application_name                  = "ZEngine";
+    VulkanLayer                                                        VulkanDevice::m_layer                             = {};
+    VkInstance                                                         VulkanDevice::m_vulkan_instance                   = VK_NULL_HANDLE;
+    VkSurfaceKHR                                                       VulkanDevice::m_surface                           = VK_NULL_HANDLE;
+    uint32_t                                                           VulkanDevice::m_graphic_family_index              = 0;
+    uint32_t                                                           VulkanDevice::m_transfer_family_index             = 0;
+    std::map<Rendering::QueueType, VkQueue>                            VulkanDevice::m_queue_map                         = {};
+    VkDevice                                                           VulkanDevice::m_logical_device                    = VK_NULL_HANDLE;
+    VkPhysicalDevice                                                   VulkanDevice::m_physical_device                   = VK_NULL_HANDLE;
+    VkPhysicalDeviceProperties                                         VulkanDevice::m_physical_device_properties        = {};
+    VkPhysicalDeviceFeatures                                           VulkanDevice::m_physical_device_feature           = {};
+    VkPhysicalDeviceMemoryProperties                                   VulkanDevice::m_physical_device_memory_properties = {};
+    VkDebugUtilsMessengerEXT                                           VulkanDevice::m_debug_messenger                   = VK_NULL_HANDLE;
+    std::map<uint32_t, std::vector<void*>>                             VulkanDevice::m_deletion_resource_queue           = {};
+    std::vector<BufferView>                                            VulkanDevice::s_dirty_buffer_queue                = {};
+    std::vector<BufferImage>                                           VulkanDevice::s_dirty_buffer_image_queue          = {};
+    std::vector<Ref<Rendering::Pools::CommandPool>>                    VulkanDevice::m_command_pool_collection           = {};
+    PFN_vkCreateDebugUtilsMessengerEXT                                 VulkanDevice::__createDebugMessengerPtr           = nullptr;
+    PFN_vkDestroyDebugUtilsMessengerEXT                                VulkanDevice::__destroyDebugMessengerPtr          = nullptr;
+    std::vector<VkSurfaceFormatKHR>                                    VulkanDevice::m_surface_format_collection         = {};
+    std::vector<VkPresentModeKHR>                                      VulkanDevice::m_present_mode_collection           = {};
+    VkSurfaceFormatKHR                                                 VulkanDevice::m_surface_format                    = {};
+    VkPresentModeKHR                                                   VulkanDevice::m_present_mode                      = {};
+    VkDescriptorPool                                                   VulkanDevice::m_descriptor_pool                   = VK_NULL_HANDLE;
+    VmaAllocator                                                       VulkanDevice::s_vma_allocator                     = nullptr;
+    std::map<Rendering::QueueType, Ref<Rendering::Pools::CommandPool>> VulkanDevice::m_in_device_command_pool_map;
+    std::mutex                                                         VulkanDevice::m_queue_mutex;
+    std::mutex                                                         VulkanDevice::m_command_pool_mutex;
+    std::mutex                                                         VulkanDevice::m_deletion_queue_mutex;
+    std::condition_variable                                            VulkanDevice::m_cond;
+    std::atomic_bool                                                   VulkanDevice::m_is_executing_instant_command = false;
+    std::mutex                                                         VulkanDevice::m_instant_command_mutex;
 
     void VulkanDevice::Initialize(GLFWwindow* const native_window, const std::vector<const char*>& additional_extension_layer_name_collection)
     {
@@ -250,14 +261,13 @@ namespace ZEngine::Hardwares
         m_physical_device_feature.drawIndirectFirstInstance                                    = VK_TRUE;
         m_physical_device_feature.multiDrawIndirect                                            = VK_TRUE;
         m_physical_device_feature.shaderSampledImageArrayDynamicIndexing                       = VK_TRUE;
-        VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures
-         = {
-            .sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT,
-            .shaderSampledImageArrayNonUniformIndexing     = VK_TRUE,
-            .descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE,
-            .descriptorBindingUpdateUnusedWhilePending     = VK_TRUE,
-            .descriptorBindingPartiallyBound               = VK_TRUE,
-            .runtimeDescriptorArray                        = VK_TRUE};
+        VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures = {
+            .sType                                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT,
+            .shaderSampledImageArrayNonUniformIndexing    = VK_TRUE,
+            .descriptorBindingSampledImageUpdateAfterBind = VK_TRUE,
+            .descriptorBindingUpdateUnusedWhilePending    = VK_TRUE,
+            .descriptorBindingPartiallyBound              = VK_TRUE,
+            .runtimeDescriptorArray                       = VK_TRUE};
         const VkPhysicalDeviceFeatures2 deviceFeatures2 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &physicalDeviceDescriptorIndexingFeatures, .features = m_physical_device_feature};
 
@@ -323,6 +333,16 @@ namespace ZEngine::Hardwares
         /*In Device Command Pool*/
         m_in_device_command_pool_map[Rendering::QueueType::GRAPHIC_QUEUE]  = CreateRef<Rendering::Pools::CommandPool>(Rendering::QueueType::GRAPHIC_QUEUE, 0, false);
         m_in_device_command_pool_map[Rendering::QueueType::TRANSFER_QUEUE] = CreateRef<Rendering::Pools::CommandPool>(Rendering::QueueType::TRANSFER_QUEUE, 0, false);
+
+        /*
+         * Creating VMA Allocators
+         */
+        VmaAllocatorCreateInfo vma_allocator_create_info = {};
+        vma_allocator_create_info.device                 = m_logical_device;
+        vma_allocator_create_info.physicalDevice         = m_physical_device;
+        vma_allocator_create_info.instance               = m_vulkan_instance;
+        vma_allocator_create_info.vulkanApiVersion       = VK_API_VERSION_1_3;
+        ZENGINE_VALIDATE_ASSERT(vmaCreateAllocator(&vma_allocator_create_info, &s_vma_allocator) == VK_SUCCESS, "Failed to create VMA Allocator")
     }
 
     void VulkanDevice::Deinitialize()
@@ -340,6 +360,8 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::Dispose()
     {
+        vmaDestroyAllocator(s_vma_allocator);
+
         if (__destroyDebugMessengerPtr)
         {
             ZENGINE_DESTROY_VULKAN_HANDLE(m_vulkan_instance, __destroyDebugMessengerPtr, m_debug_messenger, nullptr)
@@ -351,6 +373,7 @@ namespace ZEngine::Hardwares
         m_vulkan_instance          = VK_NULL_HANDLE;
         __destroyDebugMessengerPtr = nullptr;
         __createDebugMessengerPtr  = nullptr;
+
     }
 
     VkDevice VulkanDevice::GetNativeDeviceHandle()
@@ -436,61 +459,94 @@ namespace ZEngine::Hardwares
         }
     }
 
+    void VulkanDevice::EnqueueBufferForDeletion(BufferView& buffer)
+    {
+        {
+            std::lock_guard lock(m_deletion_queue_mutex);
+            s_dirty_buffer_queue.emplace_back(buffer);
+        }
+    }
+
+    void VulkanDevice::EnqueueBufferImageForDeletion(BufferImage& buffer)
+    {
+        {
+            std::lock_guard lock(m_deletion_queue_mutex);
+            s_dirty_buffer_image_queue.emplace_back(buffer);
+        }
+    }
+
     void VulkanDevice::CleanupResource()
     {
-        std::lock_guard lock(m_deletion_queue_mutex);
-
-        for (auto resource : m_deletion_resource_queue)
         {
-            Rendering::DeviceResourceType resource_type = static_cast<Rendering::DeviceResourceType>(resource.first);
-            for (void* handle : resource.second)
+            std::lock_guard lock(m_deletion_queue_mutex);
+
+            for (auto resource : m_deletion_resource_queue)
             {
-                switch (resource_type)
+                Rendering::DeviceResourceType resource_type = static_cast<Rendering::DeviceResourceType>(resource.first);
+                for (void* handle : resource.second)
                 {
-                    case Rendering::DeviceResourceType::SAMPLER:
-                        vkDestroySampler(m_logical_device, reinterpret_cast<VkSampler>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::FRAMEBUFFER:
-                        vkDestroyFramebuffer(m_logical_device, reinterpret_cast<VkFramebuffer>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::IMAGEVIEW:
-                        vkDestroyImageView(m_logical_device, reinterpret_cast<VkImageView>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::IMAGE:
-                        vkDestroyImage(m_logical_device, reinterpret_cast<VkImage>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::RENDERPASS:
-                        vkDestroyRenderPass(m_logical_device, reinterpret_cast<VkRenderPass>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::BUFFERMEMORY:
-                        vkFreeMemory(m_logical_device, reinterpret_cast<VkDeviceMemory>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::BUFFER:
-                        vkDestroyBuffer(m_logical_device, reinterpret_cast<VkBuffer>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::PIPELINE_LAYOUT:
-                        vkDestroyPipelineLayout(m_logical_device, reinterpret_cast<VkPipelineLayout>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::PIPELINE:
-                        vkDestroyPipeline(m_logical_device, reinterpret_cast<VkPipeline>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
-                        vkDestroyDescriptorSetLayout(m_logical_device, reinterpret_cast<VkDescriptorSetLayout>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::DESCRIPTORPOOL:
-                        vkDestroyDescriptorPool(m_logical_device, reinterpret_cast<VkDescriptorPool>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::SEMAPHORE:
-                        vkDestroySemaphore(m_logical_device, reinterpret_cast<VkSemaphore>(handle), nullptr);
-                        break;
-                    case Rendering::DeviceResourceType::FENCE:
-                        vkDestroyFence(m_logical_device, reinterpret_cast<VkFence>(handle), nullptr);
-                        break;
+                    switch (resource_type)
+                    {
+                        case Rendering::DeviceResourceType::SAMPLER:
+                            vkDestroySampler(m_logical_device, reinterpret_cast<VkSampler>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::FRAMEBUFFER:
+                            vkDestroyFramebuffer(m_logical_device, reinterpret_cast<VkFramebuffer>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::IMAGEVIEW:
+                            vkDestroyImageView(m_logical_device, reinterpret_cast<VkImageView>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::IMAGE:
+                            vkDestroyImage(m_logical_device, reinterpret_cast<VkImage>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::RENDERPASS:
+                            vkDestroyRenderPass(m_logical_device, reinterpret_cast<VkRenderPass>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::BUFFERMEMORY:
+                            vkFreeMemory(m_logical_device, reinterpret_cast<VkDeviceMemory>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::BUFFER:
+                            vkDestroyBuffer(m_logical_device, reinterpret_cast<VkBuffer>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::PIPELINE_LAYOUT:
+                            vkDestroyPipelineLayout(m_logical_device, reinterpret_cast<VkPipelineLayout>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::PIPELINE:
+                            vkDestroyPipeline(m_logical_device, reinterpret_cast<VkPipeline>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
+                            vkDestroyDescriptorSetLayout(m_logical_device, reinterpret_cast<VkDescriptorSetLayout>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::DESCRIPTORPOOL:
+                            vkDestroyDescriptorPool(m_logical_device, reinterpret_cast<VkDescriptorPool>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::SEMAPHORE:
+                            vkDestroySemaphore(m_logical_device, reinterpret_cast<VkSemaphore>(handle), nullptr);
+                            break;
+                        case Rendering::DeviceResourceType::FENCE:
+                            vkDestroyFence(m_logical_device, reinterpret_cast<VkFence>(handle), nullptr);
+                            break;
+                    }
                 }
             }
-        }
 
-        m_deletion_resource_queue.clear();
+            m_deletion_resource_queue.clear();
+
+            for (BufferImage& buffer : s_dirty_buffer_image_queue)
+            {
+                vkDestroyImageView(m_logical_device, buffer.ViewHandle, nullptr);
+                vkDestroySampler(m_logical_device, buffer.Sampler, nullptr);
+                vmaDestroyImage(s_vma_allocator, buffer.Handle, buffer.Allocation);
+            }
+
+            for (BufferView& buffer : s_dirty_buffer_queue)
+            {
+                vmaDestroyBuffer(s_vma_allocator, buffer.Handle, buffer.Allocation);
+            }
+
+            s_dirty_buffer_image_queue.clear();
+            s_dirty_buffer_queue.clear();
+        }
     }
 
     bool VulkanDevice::HasPendingCleanupResource()
@@ -635,15 +691,21 @@ namespace ZEngine::Hardwares
         return m_physical_device_memory_properties;
     }
 
-    void VulkanDevice::MapAndCopyToMemory(VkDeviceMemory& memory, VkDeviceSize size, const void* data)
+    void VulkanDevice::MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data)
     {
-        void* memory_region;
-        ZENGINE_VALIDATE_ASSERT(vkMapMemory(m_logical_device, memory, 0, size, 0, &memory_region) == VK_SUCCESS, "Failed to map the memory")
-        std::memcpy(memory_region, data, size);
-        vkUnmapMemory(m_logical_device, memory);
+        void* mapped_memory;
+        if (data)
+        {
+            ZENGINE_VALIDATE_ASSERT(vmaMapMemory(s_vma_allocator, buffer.Allocation, &mapped_memory) == VK_SUCCESS, "Failed to map memory")
+            std::memcpy(mapped_memory, data, data_size);
+            vmaUnmapMemory(s_vma_allocator, buffer.Allocation);
+        }
     }
 
-    BufferView VulkanDevice::CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VkMemoryPropertyFlags requested_properties)
+    BufferView VulkanDevice::CreateBuffer(
+        VkDeviceSize             byte_size,
+        VkBufferUsageFlags       buffer_usage,
+        VmaAllocationCreateFlags vma_create_flags)
     {
         BufferView         buffer_view        = {};
         VkBufferCreateInfo buffer_create_info = {};
@@ -652,39 +714,14 @@ namespace ZEngine::Hardwares
         buffer_create_info.usage              = buffer_usage;
         buffer_create_info.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateBuffer(m_logical_device, &buffer_create_info, nullptr, &(buffer_view.Handle)) == VK_SUCCESS, "Failed to create vertex buffer")
+        VmaAllocationCreateInfo allocation_create_info = {};
+        allocation_create_info.usage                   = VMA_MEMORY_USAGE_AUTO;
+        allocation_create_info.flags                   = vma_create_flags;
 
-        VkMemoryRequirements memory_requirement;
-        vkGetBufferMemoryRequirements(m_logical_device, buffer_view.Handle, &memory_requirement);
-
-        bool     memory_type_index_found{false};
-        uint32_t memory_type_index{0};
-        for (; memory_type_index < m_physical_device_memory_properties.memoryTypeCount; ++memory_type_index)
-        {
-            if ((memory_requirement.memoryTypeBits & (1 << memory_type_index)) &&
-                (m_physical_device_memory_properties.memoryTypes[memory_type_index].propertyFlags & requested_properties) == requested_properties)
-            {
-                memory_type_index_found = true;
-                break;
-            }
-        }
-
-        if (!memory_type_index_found)
-        {
-            ZENGINE_CORE_ERROR("Failed to find a valid memory type")
-        }
-
-        VkMemoryAllocateInfo memory_allocate_info = {};
-        memory_allocate_info.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        memory_allocate_info.allocationSize       = memory_requirement.size;
-        memory_allocate_info.memoryTypeIndex      = memory_type_index;
-
-        // ToDo : Call of vkAllocateMemory(...) isn't optimal because it is limited by maxMemoryAllocationCount
-        // It should be replaced by VulkanMemoryAllocator SDK (see :  https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
         ZENGINE_VALIDATE_ASSERT(
-            vkAllocateMemory(m_logical_device, &memory_allocate_info, nullptr, &(buffer_view.Memory)) == VK_SUCCESS, "Failed to allocate memory for vertex buffer")
-        ZENGINE_VALIDATE_ASSERT(vkBindBufferMemory(m_logical_device, buffer_view.Handle, buffer_view.Memory, 0) == VK_SUCCESS, "Failed to bind the memory to the vertex buffer")
-
+            vmaCreateBuffer(s_vma_allocator, &buffer_create_info, &allocation_create_info, &(buffer_view.Handle), &(buffer_view.Allocation), nullptr) == VK_SUCCESS,
+            "Failed to create buffer");
+        
         return buffer_view;
     }
 
@@ -732,37 +769,13 @@ namespace ZEngine::Hardwares
         image_create_info.sharingMode       = image_sharing_mode;
         image_create_info.samples           = image_sample_count;
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateImage(m_logical_device, &image_create_info, nullptr, &(buffer_image.Handle)) == VK_SUCCESS, "Failed to create image")
+        VmaAllocationCreateInfo allocation_create_info = {};
+        // allocation_create_info.requiredFlags           = requested_properties;
+        allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
 
-        VkMemoryRequirements memory_requirement;
-        vkGetImageMemoryRequirements(m_logical_device, buffer_image.Handle, &memory_requirement);
-
-        bool     memory_type_index_found{false};
-        uint32_t memory_type_index{0};
-        for (; memory_type_index < m_physical_device_memory_properties.memoryTypeCount; ++memory_type_index)
-        {
-            if ((memory_requirement.memoryTypeBits & (1 << memory_type_index)) &&
-                (m_physical_device_memory_properties.memoryTypes[memory_type_index].propertyFlags & requested_properties) == requested_properties)
-            {
-                memory_type_index_found = true;
-                break;
-            }
-        }
-
-        if (!memory_type_index_found)
-        {
-            ZENGINE_CORE_ERROR("Failed to find a valid memory type")
-        }
-
-        VkMemoryAllocateInfo memory_allocate_info = {};
-        memory_allocate_info.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        memory_allocate_info.allocationSize       = memory_requirement.size;
-        memory_allocate_info.memoryTypeIndex      = memory_type_index;
-
-        // ToDo : Call of vkAllocateMemory(...) isn't optimal because it is limited by maxMemoryAllocationCount
-        // It should be replaced by VulkanMemoryAllocator SDK (see :  https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
-        ZENGINE_VALIDATE_ASSERT(vkAllocateMemory(m_logical_device, &memory_allocate_info, nullptr, &(buffer_image.Memory)) == VK_SUCCESS, "Failed to allocate memory for image")
-        ZENGINE_VALIDATE_ASSERT(vkBindImageMemory(m_logical_device, buffer_image.Handle, buffer_image.Memory, 0) == VK_SUCCESS, "Failed to bind the memory to image")
+        ZENGINE_VALIDATE_ASSERT(
+            vmaCreateImage(s_vma_allocator, &image_create_info, &allocation_create_info, &(buffer_image.Handle), &(buffer_image.Allocation), nullptr) == VK_SUCCESS,
+            "Failed to create buffer");
 
         buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_aspect_flag);
         buffer_image.Sampler    = CreateImageSampler();
@@ -942,5 +955,10 @@ namespace ZEngine::Hardwares
             m_is_executing_instant_command = false;
         }
         m_cond.notify_one();
+    }
+
+    VmaAllocator VulkanDevice::GetVmaAllocator()
+    {
+        return s_vma_allocator;
     }
 } // namespace ZEngine::Hardwares

@@ -20,7 +20,7 @@ namespace ZEngine::Rendering::Buffers
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
             rhs.m_byte_size             = 0;
-            rhs.m_uniform_buffer_mapped = nullptr;
+            rhs.m_uniform_buffer_mapped = false;
             rhs.m_uniform_buffer        = {};
         }
 
@@ -32,7 +32,7 @@ namespace ZEngine::Rendering::Buffers
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
             rhs.m_byte_size             = 0;
-            rhs.m_uniform_buffer_mapped = nullptr;
+            rhs.m_uniform_buffer_mapped = false;
             rhs.m_uniform_buffer        = {};
         }
 
@@ -51,7 +51,7 @@ namespace ZEngine::Rendering::Buffers
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
             rhs.m_byte_size             = 0;
-            rhs.m_uniform_buffer_mapped = nullptr;
+            rhs.m_uniform_buffer_mapped = false;
             rhs.m_uniform_buffer        = {};
 
             return *this;
@@ -70,7 +70,7 @@ namespace ZEngine::Rendering::Buffers
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
             rhs.m_byte_size             = 0;
-            rhs.m_uniform_buffer_mapped = nullptr;
+            rhs.m_uniform_buffer_mapped = false;
             rhs.m_uniform_buffer        = {};
 
             return *this;
@@ -93,18 +93,24 @@ namespace ZEngine::Rendering::Buffers
                 CleanUpMemory();
                 this->m_byte_size = byte_size;
                 m_uniform_buffer  = Hardwares::VulkanDevice::CreateBuffer(
-                    static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-                auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-                ZENGINE_VALIDATE_ASSERT(vkMapMemory(device, m_uniform_buffer.Memory, 0, this->m_byte_size, 0, &m_uniform_buffer_mapped) == VK_SUCCESS, "Failed to map the memory")
+                    static_cast<VkDeviceSize>(this->m_byte_size),
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+                m_uniform_buffer_mapped = true;
             }
-            std::memset(m_uniform_buffer_mapped, 0, this->m_byte_size);
 
-            if (!data)
+            VmaAllocationInfo allocation_info = {};
+            vmaGetAllocationInfo(Hardwares::VulkanDevice::GetVmaAllocator(), m_uniform_buffer.Allocation, &allocation_info);
+
+            if (allocation_info.pMappedData)
             {
-                return;
+                std::memset(allocation_info.pMappedData, 0, this->m_byte_size);
             }
-            std::memcpy(m_uniform_buffer_mapped, data, this->m_byte_size);
+
+            if (data && allocation_info.pMappedData)
+            {
+                std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
+            }
         }
 
         template <typename T>
@@ -131,7 +137,7 @@ namespace ZEngine::Rendering::Buffers
 
         const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
         {
-            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_uniform_buffer.Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_uniform_buffer.Handle, .offset = 0, .range = m_byte_size};
             return m_buffer_info;
         }
 
@@ -140,20 +146,17 @@ namespace ZEngine::Rendering::Buffers
         {
             if (m_uniform_buffer)
             {
-                auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-                vkUnmapMemory(device, m_uniform_buffer.Memory);
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, m_uniform_buffer.Handle);
-                Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_uniform_buffer.Memory);
+                Hardwares::VulkanDevice::EnqueueBufferForDeletion(m_uniform_buffer);
 
-                m_uniform_buffer_mapped = nullptr;
+                m_uniform_buffer_mapped = false;
                 m_uniform_buffer        = {};
             }
         }
 
     private:
-        void*                 m_uniform_buffer_mapped{nullptr};
-        Hardwares::BufferView m_uniform_buffer;
-        VkDescriptorBufferInfo m_buffer_info;
+        bool                   m_uniform_buffer_mapped{false};
+        Hardwares::BufferView  m_uniform_buffer{};
+        VkDescriptorBufferInfo m_buffer_info{};
     };
 
     struct UniformBufferSet :  public Helpers::RefCounted
