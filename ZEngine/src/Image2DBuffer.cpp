@@ -52,10 +52,7 @@ namespace ZEngine::Rendering::Buffers
     {
         if (this && m_buffer_image)
         {
-            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::IMAGEVIEW, m_buffer_image.ViewHandle);
-            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::IMAGE, m_buffer_image.Handle);
-            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, m_buffer_image.Memory);
-            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::SAMPLER, m_buffer_image.Sampler);
+            Hardwares::VulkanDevice::EnqueueBufferImageForDeletion(m_buffer_image);
             m_buffer_image = {};
         }
     }

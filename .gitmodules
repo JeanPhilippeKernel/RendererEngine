@@ -37,3 +37,6 @@
 [submodule "__externals/gtest"]
 	path = __externals/gtest
 	url = https://github.com/google/googletest
+[submodule "__externals/VulkanMemoryAllocator"]
+	path = __externals/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator

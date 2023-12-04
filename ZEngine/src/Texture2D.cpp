@@ -152,12 +152,11 @@ namespace ZEngine::Rendering::Textures
 
         auto                  device         = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         Hardwares::BufferView staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
-            texture->m_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            texture->m_buffer_size,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
-        if (spec.Data)
-        {
-            Hardwares::VulkanDevice::MapAndCopyToMemory(staging_buffer.Memory, texture->m_buffer_size, spec.Data);
-        }
+        Hardwares::VulkanDevice::MapAndCopyToMemory(staging_buffer, texture->m_buffer_size, spec.Data);
 
         /* Create VkImage */
         uint32_t transfert_bit = spec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
@@ -215,8 +214,7 @@ namespace ZEngine::Rendering::Textures
         }
 
         /* Cleanup resource */
-        Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFER, staging_buffer.Handle);
-        Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::BUFFERMEMORY, staging_buffer.Memory);
+        Hardwares::VulkanDevice::EnqueueBufferForDeletion(staging_buffer);
     }
 
     Texture2D::~Texture2D()
