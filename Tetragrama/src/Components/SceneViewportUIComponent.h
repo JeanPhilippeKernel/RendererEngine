@@ -33,6 +33,7 @@ namespace Tetragrama::Components
         bool                  m_is_window_hovered{false};
         bool                  m_is_window_clicked{false};
         bool                  m_refresh_texture_handle{false};
+        bool                  m_request_renderer_resize{false};
         ImVec2                m_viewport_size{0.f, 0.f};
         ImVec2                m_content_region_available_size{0.f, 0.f};
         std::array<ImVec2, 2> m_viewport_bounds;

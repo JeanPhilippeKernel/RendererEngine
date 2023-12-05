@@ -10,15 +10,28 @@
 #include <GLFW/glfw3.h>
 #include <vk_mem_alloc.h>
 
+#include <chrono>
+#include <thread>
+#include <condition_variable>
+
 namespace ZEngine::Hardwares
 {
+
+    struct DirtyResource
+    {
+        void*                                 Handle = nullptr;
+        void*                                 Data1  = nullptr;
+        std::chrono::steady_clock::time_point MarkedAsDirtyTime;
+        Rendering::DeviceResourceType         Type;
+    };
+
     struct QueueView
     {
         uint32_t FamilyIndex{0xFFFFFFFF};
         VkQueue  Handle{VK_NULL_HANDLE};
     };
 
-    struct BufferView
+    struct BufferView : public DirtyResource
     {
         VkBuffer      Handle{VK_NULL_HANDLE};
         VmaAllocation Allocation{nullptr};
@@ -29,7 +42,7 @@ namespace ZEngine::Hardwares
         }
     };
 
-    struct BufferImage
+    struct BufferImage : public DirtyResource
     {
         VkImage       Handle{VK_NULL_HANDLE};
         VkImageView   ViewHandle{VK_NULL_HANDLE};
@@ -67,12 +80,11 @@ namespace ZEngine::Hardwares
             Rendering::Primitives::Fence* const     fence);
 
         static void EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
+        static void EnqueueForDeletion(Rendering::DeviceResourceType resource_type, DirtyResource resource);
 
         static void EnqueueBufferForDeletion(BufferView& buffer);
         static void EnqueueBufferImageForDeletion(BufferImage& buffer);
 
-        static void CleanupResource();
-        static bool HasPendingCleanupResource();
         static void Present(VkSwapchainKHR swapchain, uint32_t* frame_image_index, const std::vector<Rendering::Primitives::Semaphore*>& wait_semaphore_collection);
 
         static Rendering::Pools::CommandPool*                  CreateCommandPool(Rendering::QueueType queue_type, uint64_t swapchain_id, bool present_on_swapchain);
@@ -87,11 +99,8 @@ namespace ZEngine::Hardwares
         static VkSurfaceFormatKHR GetSurfaceFormat();
         static VkPresentModeKHR   GetPresentMode();
 
-        static void       MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data);
-        static BufferView CreateBuffer(
-            VkDeviceSize             byte_size,
-            VkBufferUsageFlags       buffer_usage,
-            VmaAllocationCreateFlags vma_create_flags = 0);
+        static void        MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data);
+        static BufferView  CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags = 0);
         static void        CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size);
         static BufferImage CreateImage(
             uint32_t              width,
@@ -144,9 +153,10 @@ namespace ZEngine::Hardwares
         static VkPhysicalDeviceFeatures                        m_physical_device_feature;
         static VkPhysicalDeviceMemoryProperties                m_physical_device_memory_properties;
         static VkDebugUtilsMessengerEXT                        m_debug_messenger;
-        static std::map<uint32_t, std::vector<void*>>          m_deletion_resource_queue;
-        static std::vector<BufferView>                         s_dirty_buffer_queue;
-        static std::vector<BufferImage>                        s_dirty_buffer_image_queue;
+        static std::map<uint32_t, std::vector<DirtyResource>>  m_deletion_resource_queue;
+        static std::queue<DirtyResource>                       s_dirty_resource_collection;
+        static std::queue<BufferView>                          s_dirty_buffer_queue;
+        static std::queue<BufferImage>                         s_dirty_buffer_image_queue;
         static std::vector<Ref<Rendering::Pools::CommandPool>> m_command_pool_collection;
         static PFN_vkCreateDebugUtilsMessengerEXT              __createDebugMessengerPtr;
         static PFN_vkDestroyDebugUtilsMessengerEXT             __destroyDebugMessengerPtr;
@@ -156,6 +166,9 @@ namespace ZEngine::Hardwares
         static VkPresentModeKHR                                m_present_mode;
         static VkDescriptorPool                                m_descriptor_pool;
         static VmaAllocator                                    s_vma_allocator;
+        static void                                            __cleanupDirtyResource(std::chrono::steady_clock::time_point);
+        static void                                            __cleanupBufferDirtyResource(std::chrono::steady_clock::time_point);
+        static void                                            __cleanupBufferImageDirtyResource(std::chrono::steady_clock::time_point);
         static VKAPI_ATTR VkBool32 VKAPI_CALL                  __debugCallback(
                              VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
                              VkDebugUtilsMessageTypeFlagsEXT             messageType,
@@ -170,5 +183,11 @@ namespace ZEngine::Hardwares
         static std::condition_variable                                            m_cond;
         static std::atomic_bool                                                   m_is_executing_instant_command;
         static std::mutex                                                         m_instant_command_mutex;
+
+    private:
+        static std::jthread            s_cleanup_thread;
+        static std::condition_variable s_cleanup_cond;
+        static std::atomic_bool        s_cleanup_thread_shutdown;
+        static std::chrono::seconds    s_cleanup_timeout;
     };
 } // namespace ZEngine::Hardwares

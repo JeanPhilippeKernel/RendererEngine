@@ -341,11 +341,6 @@ namespace ZEngine::Window::GLFWWindow
         }
 
         m_swapchain->Present();
-
-        if (Hardwares::VulkanDevice::HasPendingCleanupResource())
-        {
-            Hardwares::VulkanDevice::CleanupResource();
-        }
     }
 
     Ref<Rendering::Swapchain> VulkanWindow::GetSwapchain() const
