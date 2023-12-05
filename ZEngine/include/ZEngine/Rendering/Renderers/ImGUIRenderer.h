@@ -22,9 +22,6 @@ namespace ZEngine::Rendering::Renderers
 
         static void Initialize(void* window, const Ref<Swapchain>& swapchain);
         static void Deinitialize();
-        static void EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
-        static void CleanupResource();
-        static bool HasPendingCleanupResource();
 
         static void Tick();
         static void BeginFrame();
@@ -38,11 +35,10 @@ namespace ZEngine::Rendering::Renderers
         static void __ImGUICreateOrResizeBuffer(VkBuffer& buffer, VkDeviceMemory& buffer_memory, VkDeviceSize& p_buffer_size, size_t new_size, VkBufferUsageFlagBits usage);
         static void __ImGUIRenderDataChildViewport(void* data, void** user_data, VkCommandBuffer command_buffer, VkPipeline pipeline);
 
-    private:
-        static Rendering::Buffers::CommandBuffer*               s_command_buffer;
-        static Rendering::Pools::CommandPool*                   s_ui_command_pool;
-        static VkDescriptorPool                                 s_descriptor_pool;
-        static std::unordered_map<uint32_t, std::vector<void*>> s_deletion_resource_queue;
+    public:
+        static Rendering::Buffers::CommandBuffer* s_command_buffer;
+        static Rendering::Pools::CommandPool*     s_ui_command_pool;
+        static VkDescriptorPool                   s_descriptor_pool;
     };
 
 } // namespace ZEngine::Rendering::Renderers

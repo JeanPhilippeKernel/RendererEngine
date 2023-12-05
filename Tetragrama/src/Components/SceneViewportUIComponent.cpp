@@ -24,12 +24,20 @@ namespace Tetragrama::Components
         if ((m_viewport_size.x != m_content_region_available_size.x) || (m_viewport_size.y != m_content_region_available_size.y))
         {
             m_viewport_size = m_content_region_available_size;
+            m_request_renderer_resize = true;
+        }
+        else
+        {
+            if (m_request_renderer_resize)
+            {
+                GraphicRenderer::SetViewportSize(m_viewport_size.x, m_viewport_size.y);
+                m_refresh_texture_handle = true;
 
-            GraphicRenderer::SetViewportSize(m_viewport_size.x, m_viewport_size.y);
-            m_refresh_texture_handle = true;
+                Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
+                    EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
 
-            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
-                EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
+                m_request_renderer_resize = false;
+            }
         }
 
         if (m_is_window_hovered && m_is_window_focused)
@@ -82,9 +90,11 @@ namespace Tetragrama::Components
 
             if (m_refresh_texture_handle)
             {
-                VkDescriptorSet old_scene_texture = m_scene_texture;
-                m_scene_texture                   = VK_NULL_HANDLE;
+                VkDescriptorSet old_scene_texture = VK_NULL_HANDLE;
+                std::swap(m_scene_texture, old_scene_texture);
                 m_refresh_texture_handle          = false;
+
+                VulkanDevice::EnqueueForDeletion(DeviceResourceType::DESCRIPTORSET, DirtyResource{.Handle = old_scene_texture, .Data1 = ImGUIRenderer::s_descriptor_pool});
             }
             auto texture_buffer = texture->GetImage2DBuffer();
             m_scene_texture     = ImGui_ImplVulkan_AddTexture(texture_buffer->GetSampler(), texture_buffer->GetImageViewHandle(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);

@@ -111,14 +111,10 @@ namespace ZEngine::Layers
         {
             io.DeltaTime = dt;
         }
+
         for (const auto& component : m_ui_components)
         {
             component->Update(dt);
-        }
-
-        if (ImGUIRenderer::HasPendingCleanupResource())
-        {
-            ImGUIRenderer::CleanupResource();
         }
     }
 
@@ -311,6 +307,7 @@ namespace ZEngine::Layers
         if (viewport->RendererUserData)
         {
             auto window_child = reinterpret_cast<ImguiViewPortWindowChild*>(viewport->RendererUserData);
+            window_child->CommandPool->Tick();
             ImGUIRenderer::DrawChildWindow(viewport->Size.x, viewport->Size.y, &window_child, viewport->DrawData);
         }
     }
