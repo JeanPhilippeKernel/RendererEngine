@@ -25,7 +25,7 @@ namespace Tetragrama::Components
         return false;
     }
 
-    std::future<void> InspectorViewUIComponent::SceneAvailableMessageHandler(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
+    std::future<void> InspectorViewUIComponent::SceneAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
     {
         {
             std::unique_lock lock(m_mutex);
@@ -34,7 +34,7 @@ namespace Tetragrama::Components
         co_return;
     }
 
-    std::future<void> InspectorViewUIComponent::SceneEntitySelectedMessageHandler(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>& message)
+    std::future<void> InspectorViewUIComponent::SceneEntitySelectedMessageHandlerAsync(Messengers::PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>& message)
     {
         {
             std::unique_lock lock(m_mutex);
@@ -43,7 +43,7 @@ namespace Tetragrama::Components
         co_return;
     }
 
-    std::future<void> InspectorViewUIComponent::SceneEntityUnSelectedMessageHandler(Messengers::EmptyMessage& message)
+    std::future<void> InspectorViewUIComponent::SceneEntityUnSelectedMessageHandlerAsync(Messengers::EmptyMessage& message)
     {
         {
             std::unique_lock lock(m_mutex);
@@ -52,7 +52,7 @@ namespace Tetragrama::Components
         co_return;
     }
 
-    std::future<void> InspectorViewUIComponent::SceneEntityDeletedMessageHandler(Messengers::EmptyMessage&)
+    std::future<void> InspectorViewUIComponent::SceneEntityDeletedMessageHandlerAsync(Messengers::EmptyMessage&)
     {
         {
             std::unique_lock lock(m_mutex);
@@ -61,7 +61,7 @@ namespace Tetragrama::Components
         co_return;
     }
 
-    std::future<void> InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandler(Messengers::GenericMessage<bool>& message)
+    std::future<void> InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandlerAsync(Messengers::GenericMessage<bool>& message)
     {
         {
             std::unique_lock lock(m_mutex);

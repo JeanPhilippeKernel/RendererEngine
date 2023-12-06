@@ -24,9 +24,9 @@ namespace Tetragrama::Components
         }
 
     public:
-        std::future<void> SceneViewportClickedMessageHandler(Messengers::ArrayValueMessage<int, 2>&);
-        std::future<void> SceneViewportFocusedMessageHandler(Messengers::GenericMessage<bool>&);
-        std::future<void> SceneViewportUnfocusedMessageHandler(Messengers::GenericMessage<bool>&);
+        std::future<void> SceneViewportClickedMessageHandlerAsync(Messengers::ArrayValueMessage<int, 2>&);
+        std::future<void> SceneViewportFocusedMessageHandlerAsync(Messengers::GenericMessage<bool>&);
+        std::future<void> SceneViewportUnfocusedMessageHandlerAsync(Messengers::GenericMessage<bool>&);
 
     private:
         bool                  m_is_window_focused{false};

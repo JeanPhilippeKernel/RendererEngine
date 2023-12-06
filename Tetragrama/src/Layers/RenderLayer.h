@@ -28,17 +28,17 @@ namespace Tetragrama::Layers
         virtual bool OnEvent(ZEngine::Event::CoreEvent& e) override;
 
     public:
-        std::future<void> SceneRequestResizeMessageHandler(Messengers::GenericMessage<std::pair<float, float>>&);
-        std::future<void> SceneRequestFocusMessageHandler(Messengers::GenericMessage<bool>&);
-        std::future<void> SceneRequestUnfocusMessageHandler(Messengers::GenericMessage<bool>&);
-        std::future<void> SceneRequestSerializationMessageHandler(Messengers::GenericMessage<std::string>&);
-        std::future<void> SceneRequestDeserializationMessageHandler(Messengers::GenericMessage<std::string>&);
+        std::future<void> SceneRequestResizeMessageHandlerAsync(Messengers::GenericMessage<std::pair<float, float>>&);
+        std::future<void> SceneRequestFocusMessageHandlerAsync(Messengers::GenericMessage<bool>&);
+        std::future<void> SceneRequestUnfocusMessageHandlerAsync(Messengers::GenericMessage<bool>&);
+        std::future<void> SceneRequestSerializationMessageHandlerAsync(Messengers::GenericMessage<std::string>&);
+        std::future<void> SceneRequestDeserializationMessageHandlerAsync(Messengers::GenericMessage<std::string>&);
 
-        std::future<void> SceneRequestNewSceneMessageHandler(Messengers::EmptyMessage&);
-        std::future<void> SceneRequestOpenSceneMessageHandler(Messengers::GenericMessage<std::string>&);
+        std::future<void> SceneRequestNewSceneMessageHandlerAsync(Messengers::EmptyMessage&);
+        std::future<void> SceneRequestOpenSceneMessageHandlerAsync(Messengers::GenericMessage<std::string>&);
         std::future<void> SceneRequestImportAssetModelAsync(Messengers::GenericMessage<std::string>&);
 
-        std::future<void> SceneRequestSelectEntityFromPixelMessageHandler(Messengers::GenericMessage<std::pair<int, int>>&);
+        std::future<void> SceneRequestSelectEntityFromPixelMessageHandlerAsync(Messengers::GenericMessage<std::pair<int, int>>&);
 
     private:
         ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;

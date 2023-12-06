@@ -45,21 +45,21 @@ namespace Tetragrama::Layers
             GenericMessage<bool>,
             EDITOR_COMPONENT_SCENEVIEWPORT_FOCUSED,
             m_scene_component.get(),
-            return m_scene_component->SceneViewportFocusedMessageHandler(*message_ptr))
+            return m_scene_component->SceneViewportFocusedMessageHandlerAsync(*message_ptr))
 
         MESSENGER_REGISTER(
             ZEngine::Components::UI::UIComponent,
             GenericMessage<bool>,
             EDITOR_COMPONENT_SCENEVIEWPORT_UNFOCUSED,
             m_scene_component.get(),
-            return m_scene_component->SceneViewportUnfocusedMessageHandler(*message_ptr))
+            return m_scene_component->SceneViewportUnfocusedMessageHandlerAsync(*message_ptr))
 
         MESSENGER_REGISTER(
             ZEngine::Components::UI::UIComponent,
             SINGLE_ARG(ArrayValueMessage<int, 2>),
             EDITOR_COMPONENT_SCENEVIEWPORT_CLICKED,
             m_scene_component.get(),
-            return m_scene_component->SceneViewportClickedMessageHandler(*message_ptr))
+            return m_scene_component->SceneViewportClickedMessageHandlerAsync(*message_ptr))
         /*
          *  Register Hierarchy Component
          */
@@ -77,34 +77,34 @@ namespace Tetragrama::Layers
             GenericMessage<bool>,
             EDITOR_COMPONENT_INSPECTORVIEW_REQUEST_RESUME_OR_PAUSE_RENDER,
             m_inspector_view_component.get(),
-            return m_inspector_view_component->RequestStartOrPauseRenderMessageHandler(*message_ptr))
+            return m_inspector_view_component->RequestStartOrPauseRenderMessageHandlerAsync(*message_ptr))
 
         MESSENGER_REGISTER(
             ZEngine::Components::UI::UIComponent,
             PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>,
             EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED,
             m_inspector_view_component.get(),
-            return m_inspector_view_component->SceneEntitySelectedMessageHandler(*message_ptr));
+            return m_inspector_view_component->SceneEntitySelectedMessageHandlerAsync(*message_ptr));
 
         MESSENGER_REGISTER(
             ZEngine::Components::UI::UIComponent,
             EmptyMessage,
             EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED,
             m_inspector_view_component.get(),
-            return m_inspector_view_component->SceneEntityUnSelectedMessageHandler(*message_ptr));
+            return m_inspector_view_component->SceneEntityUnSelectedMessageHandlerAsync(*message_ptr));
 
         MESSENGER_REGISTER(
             ZEngine::Components::UI::UIComponent,
             EmptyMessage,
             EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED,
             m_inspector_view_component.get(),
-            return m_inspector_view_component->SceneEntityDeletedMessageHandler(*message_ptr));
+            return m_inspector_view_component->SceneEntityDeletedMessageHandlerAsync(*message_ptr));
 
         MESSENGER_REGISTER(
             ZEngine::Components::UI::UIComponent,
             GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>,
             EDITOR_RENDER_LAYER_SCENE_AVAILABLE,
             m_inspector_view_component.get(),
-            return m_inspector_view_component->SceneAvailableMessageHandler(*message_ptr));
+            return m_inspector_view_component->SceneAvailableMessageHandlerAsync(*message_ptr));
     }
 } // namespace Tetragrama::Layers
