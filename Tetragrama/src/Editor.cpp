@@ -35,55 +35,64 @@ namespace Tetragrama
     {
         ZEngine::Engine::Initialize(m_engine_configuration);
 
-        // Register components
-        IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<std::pair<float, float>>>(
-            m_render_layer.get(), EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, [this](void* const message) -> std::future<void> {
-                auto message_ptr = reinterpret_cast<GenericMessage<std::pair<float, float>>*>(message);
-                return m_render_layer->SceneRequestResizeMessageHandler(*message_ptr);
-            });
+        using PairFloat = std::pair<float, float>;
+        MESSENGER_REGISTER(
+            ZEngine::Layers::Layer,
+            GenericMessage<PairFloat>,
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE,
+            m_render_layer.get(),
+            return m_render_layer->SceneRequestResizeMessageHandlerAsync(*message_ptr))
 
-        IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<bool>>(
-            m_render_layer.get(), EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, [this](void* const message) -> std::future<void> {
-                auto message_ptr = reinterpret_cast<GenericMessage<bool>*>(message);
-                return m_render_layer->SceneRequestFocusMessageHandler(*message_ptr);
-            });
+        MESSENGER_REGISTER(
+            ZEngine::Layers::Layer,
+            GenericMessage<bool>,
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS,
+            m_render_layer.get(),
+            return m_render_layer->SceneRequestFocusMessageHandlerAsync(*message_ptr))
 
-        IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<bool>>(
-            m_render_layer.get(), EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, [this](void* const message) -> std::future<void> {
-                auto message_ptr = reinterpret_cast<GenericMessage<bool>*>(message);
-                return m_render_layer->SceneRequestUnfocusMessageHandler(*message_ptr);
-            });
+        MESSENGER_REGISTER(
+            ZEngine::Layers::Layer,
+            GenericMessage<bool>,
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS,
+            m_render_layer.get(),
+            return m_render_layer->SceneRequestUnfocusMessageHandlerAsync(*message_ptr))
 
-        IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<std::string>>(
-            m_render_layer.get(), EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION, [this](void* const message) -> std::future<void> {
-                auto message_ptr = reinterpret_cast<GenericMessage<std::string>*>(message);
-                return m_render_layer->SceneRequestSerializationMessageHandler(*message_ptr);
-            });
+        MESSENGER_REGISTER(
+            ZEngine::Layers::Layer,
+            GenericMessage<std::string>,
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION,
+            m_render_layer.get(),
+            return m_render_layer->SceneRequestSerializationMessageHandlerAsync(*message_ptr))
+     
+        MESSENGER_REGISTER(
+            ZEngine::Layers::Layer,
+            GenericMessage<std::string>,
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION,
+            m_render_layer.get(),
+            return m_render_layer->SceneRequestDeserializationMessageHandlerAsync(*message_ptr))
 
-        IMessenger::Register<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-            m_render_layer.get(), EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION, [this](void* const message) -> std::future<void> {
-                auto message_ptr = reinterpret_cast<GenericMessage<std::string>*>(message);
-                return m_render_layer->SceneRequestDeserializationMessageHandler(*message_ptr);
-            });
+        MESSENGER_REGISTER(
+            ZEngine::Layers::Layer,
+            EmptyMessage,
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE,
+            m_render_layer.get(),
+            return m_render_layer->SceneRequestNewSceneMessageHandlerAsync(*message_ptr))
 
-        IMessenger::Register<ZEngine::Layers::Layer, EmptyMessage>(
-            m_render_layer.get(), EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE, [this](void* const message) -> std::future<void> {
-                auto message_ptr = reinterpret_cast<EmptyMessage*>(message);
-                return m_render_layer->SceneRequestNewSceneMessageHandler(*message_ptr);
-            });
-
-        IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<std::string>>(
-            m_render_layer.get(), EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE, [this](void* const message) -> std::future<void> {
-                auto message_ptr = reinterpret_cast<GenericMessage<std::string>*>(message);
-                return m_render_layer->SceneRequestOpenSceneMessageHandler(*message_ptr);
-            });
-
-        IMessenger::Register<ZEngine::Layers::Layer, GenericMessage<std::pair<int, int>>>(
-            m_render_layer.get(), EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, [this](void* const message) -> std::future<void> {
-                auto message_ptr = reinterpret_cast<GenericMessage<std::pair<int, int>>*>(message);
-                return m_render_layer->SceneRequestSelectEntityFromPixelMessageHandler(*message_ptr);
-            });
-
+        MESSENGER_REGISTER(
+            ZEngine::Layers::Layer,
+            GenericMessage<std::string>,
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE,
+            m_render_layer.get(),
+            return m_render_layer->SceneRequestOpenSceneMessageHandlerAsync(*message_ptr))
+        
+        using PairInt = std::pair<int, int>;
+        MESSENGER_REGISTER(
+            ZEngine::Layers::Layer,
+            GenericMessage<PairInt>,
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL,
+            m_render_layer.get(),
+            return m_render_layer->SceneRequestSelectEntityFromPixelMessageHandlerAsync(*message_ptr))
+        
         MESSENGER_REGISTER(
             ZEngine::Layers::Layer,
             GenericMessage<std::string>,
