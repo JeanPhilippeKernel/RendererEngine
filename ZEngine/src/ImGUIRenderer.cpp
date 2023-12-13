@@ -87,6 +87,14 @@ namespace ZEngine::Rendering::Renderers
     {
         ZENGINE_VALIDATE_ASSERT(s_ui_command_pool != nullptr, "UI Command pool can't be null")
 
+        if (s_command_buffer)
+        {
+            auto current_comment_buffer = s_ui_command_pool->GetCurrentCommmandBuffer();
+            if (current_comment_buffer == s_command_buffer)
+            {
+                s_ui_command_pool->Tick();
+            }
+        }
         s_command_buffer = s_ui_command_pool->GetCurrentCommmandBuffer();
         s_command_buffer->Begin();
         {

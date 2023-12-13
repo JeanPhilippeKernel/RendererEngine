@@ -834,18 +834,20 @@ namespace ZEngine::Hardwares
         VkSharingMode         image_sharing_mode,
         VkSampleCountFlagBits image_sample_count,
         VkMemoryPropertyFlags requested_properties,
-        VkImageAspectFlagBits image_aspect_flag)
+        VkImageAspectFlagBits image_aspect_flag,
+        uint32_t              layer_count,
+        VkImageCreateFlags    image_create_flag_bit)
     {
         BufferImage       buffer_image      = {};
         VkImageCreateInfo image_create_info = {};
         image_create_info.sType             = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image_create_info.flags             = 0;
+        image_create_info.flags             = image_create_flag_bit;
         image_create_info.imageType         = image_type;
         image_create_info.extent.width      = width;
         image_create_info.extent.height     = height;
         image_create_info.extent.depth      = 1;
         image_create_info.mipLevels         = 1;
-        image_create_info.arrayLayers       = 1;
+        image_create_info.arrayLayers       = layer_count;
         image_create_info.format            = image_format;
         image_create_info.tiling            = image_tiling;
         image_create_info.initialLayout     = image_initial_layout;
@@ -861,7 +863,7 @@ namespace ZEngine::Hardwares
             vmaCreateImage(s_vma_allocator, &image_create_info, &allocation_create_info, &(buffer_image.Handle), &(buffer_image.Allocation), nullptr) == VK_SUCCESS,
             "Failed to create buffer");
 
-        buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_aspect_flag);
+        buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_aspect_flag, layer_count);
         buffer_image.Sampler    = CreateImageSampler();
         return buffer_image;
     }
@@ -924,14 +926,16 @@ namespace ZEngine::Hardwares
             {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
     }
 
-    VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag)
+    VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count)
     {
         VkImageView           image_view{VK_NULL_HANDLE};
         VkImageViewCreateInfo image_view_create_info           = {};
         image_view_create_info.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         image_view_create_info.format                          = image_format;
         image_view_create_info.image                           = image;
-        image_view_create_info.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        image_view_create_info.viewType                        = (image_format == VK_FORMAT_R32G32B32A32_SFLOAT)
+                                                                     ? VK_IMAGE_VIEW_TYPE_CUBE
+                                                                     : VK_IMAGE_VIEW_TYPE_2D; // ToDo : We should better abstract the creation of ImageView.. introduce Image2DBufferSpecification ?
         image_view_create_info.components.r                    = VK_COMPONENT_SWIZZLE_R;
         image_view_create_info.components.g                    = VK_COMPONENT_SWIZZLE_G;
         image_view_create_info.components.b                    = VK_COMPONENT_SWIZZLE_B;
@@ -940,56 +944,11 @@ namespace ZEngine::Hardwares
         image_view_create_info.subresourceRange.baseMipLevel   = 0;
         image_view_create_info.subresourceRange.levelCount     = 1;
         image_view_create_info.subresourceRange.baseArrayLayer = 0;
-        image_view_create_info.subresourceRange.layerCount     = 1;
+        image_view_create_info.subresourceRange.layerCount     = layer_count;
 
         ZENGINE_VALIDATE_ASSERT(vkCreateImageView(m_logical_device, &image_view_create_info, nullptr, &image_view) == VK_SUCCESS, "Failed to create image view")
 
         return image_view;
-    }
-
-    void VulkanDevice::CopyBufferToImage(
-        const Rendering::QueueType&                                   queue_type,
-        const BufferView&                                             source,
-        BufferImage&                                                  destination,
-        uint32_t                                                      width,
-        uint32_t                                                      height,
-        uint32_t                                                      start_copy_after_barrier_index,
-        const std::vector<Rendering::Primitives::ImageMemoryBarrier>& memory_barriers)
-    {
-        VkBufferImageCopy buffer_image_copy               = {};
-        buffer_image_copy.bufferOffset                    = 0;
-        buffer_image_copy.bufferRowLength                 = 0;
-        buffer_image_copy.bufferImageHeight               = 0;
-        buffer_image_copy.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        buffer_image_copy.imageSubresource.mipLevel       = 0;
-        buffer_image_copy.imageSubresource.baseArrayLayer = 0;
-        buffer_image_copy.imageSubresource.layerCount     = 1;
-        buffer_image_copy.imageOffset                     = {0, 0, 0};
-        buffer_image_copy.imageExtent                     = {width, height, 1};
-
-        auto command_buffer = BeginInstantCommandBuffer(queue_type);
-        {
-            if (!memory_barriers.empty())
-            {
-                for (uint32_t i = 0; i < memory_barriers.size(); ++i)
-                {
-                    const auto& barrier_handle = memory_barriers[i].GetHandle();
-                    const auto& barrier_spec   = memory_barriers[i].GetSpecification();
-                    vkCmdPipelineBarrier(
-                        command_buffer->GetHandle(), barrier_spec.SourceStageMask, barrier_spec.DestinationStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier_handle);
-
-                    if (i == start_copy_after_barrier_index)
-                    {
-                        vkCmdCopyBufferToImage(command_buffer->GetHandle(), source.Handle, destination.Handle, barrier_handle.newLayout, 1, &buffer_image_copy);
-                    }
-                }
-            }
-            else
-            {
-                vkCmdCopyBufferToImage(command_buffer->GetHandle(), source.Handle, destination.Handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
-            }
-        }
-        EndInstantCommandBuffer(command_buffer);
     }
 
     VkFramebuffer VulkanDevice::CreateFramebuffer(
@@ -1022,6 +981,7 @@ namespace ZEngine::Hardwares
         });
         m_is_executing_instant_command = true;
 
+        m_in_device_command_pool_map[type]->Tick();
         auto command_buffer = m_in_device_command_pool_map[type]->GetCurrentCommmandBuffer();
         command_buffer->Begin();
 

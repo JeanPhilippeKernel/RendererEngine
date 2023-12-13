@@ -26,25 +26,24 @@ namespace ZEngine::Rendering::Renderers
         SceneRenderer()  = default;
         ~SceneRenderer() = default;
 
-        void Initialize();
+        void Initialize(const Ref<Buffers::UniformBufferSet>& camera);
         void Deinitialize();
 
         void StartScene(const glm::vec3& camera_position, const glm::mat4& camera_view, const glm::mat4& camera_projection);
         void StartScene(const glm::vec4& camera_position, const glm::mat4& camera_view, const glm::mat4& camera_projection);
-        void RenderScene(const Ref<Rendering::Scenes::SceneRawData>& scene_data);
-        void EndScene();
+        void StartScene(Buffers::CommandBuffer* const command_buffer);
+        void RenderScene(const Ref<Rendering::Scenes::SceneRawData>& scene_data, uint32_t current_frame_index = 0);
+        void EndScene(Buffers::CommandBuffer* const command_buffer, uint32_t current_frame_index = 0);
         void SetViewportSize(uint32_t width, uint32_t height);
-        void Tick();
 
     private:
-        Pools::CommandPool* m_command_pool{nullptr};
+        
         glm::vec4           m_camera_position{1.0f};
         glm::mat4           m_camera_view{1.0f};
         glm::mat4           m_camera_projection{1.0f};
         /*
          * Scene Data Per Frame
          */
-        Ref<Buffers::UniformBufferSet>                 m_UB_Camera;
         Ref<Buffers::StorageBufferSet>                 m_SBVertex;
         Ref<Buffers::StorageBufferSet>                 m_SBIndex;
         Ref<Buffers::StorageBufferSet>                 m_SBDrawData;
@@ -69,6 +68,16 @@ namespace ZEngine::Rendering::Renderers
         const std::vector<uint32_t>               m_grid_indices           = {0, 1, 2, 2, 3, 0};
         const std::vector<DrawData>               m_grid_drawData          = {DrawData{.Index = 0, .VertexOffset = 0, .IndexOffset = 0, .VertexCount = 4, .IndexCount = 6}};
         const std::vector<VkDrawIndirectCommand>  m_grid_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 6, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
+
+        /*
+         * Cubemap
+         */
+        Ref<Buffers::StorageBufferSet>            cubemapSBVertex;
+        Ref<Buffers::StorageBufferSet>            cubemapSBIndex;
+        Ref<Buffers::StorageBufferSet>            cubemapSBDrawData;
+        Ref<Textures::Texture>                    s_environment_map;
+        Ref<RenderPasses::RenderPass>             s_cubemap_pass;
+        std::vector<Ref<Buffers::IndirectBuffer>> s_cubemap_indirect_buffer;
 
     private:
         uint32_t              m_last_uploaded_buffer_image_count{0};

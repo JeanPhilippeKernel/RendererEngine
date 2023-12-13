@@ -9,6 +9,7 @@ namespace ZEngine::Rendering::Renderers
     enum RenderTarget : uint32_t
     {
         FRAME_OUTPUT = 0,
+        ENVIROMENT_CUBEMAP,
         COUNT
     };
 
@@ -45,6 +46,8 @@ namespace ZEngine::Rendering::Renderers
         static RendererInformation                                             s_renderer_information;
         static WeakRef<Rendering::Swapchain>                                   s_main_window_swapchain;
         static std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::COUNT> s_render_target_collection;
+        static Ref<Buffers::UniformBufferSet>                                  s_UBCamera;
+        static Pools::CommandPool*                                             s_command_pool;
         static Ref<SceneRenderer>                                              s_scene_renderer;
     };
 } // namespace ZEngine::Rendering::Renderers

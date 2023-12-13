@@ -113,20 +113,14 @@ namespace ZEngine::Hardwares
             VkSharingMode         image_sharing_mode,
             VkSampleCountFlagBits image_sample_count,
             VkMemoryPropertyFlags requested_properties,
-            VkImageAspectFlagBits image_aspect_flag);
+            VkImageAspectFlagBits image_aspect_flag,
+            uint32_t              layer_count           = 1U,
+            VkImageCreateFlags    image_create_flag_bit = 0);
 
-        static VkSampler   CreateImageSampler();
-        static VkFormat    FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
-        static VkFormat    FindDepthFormat();
-        static VkImageView CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag);
-        static void        CopyBufferToImage(
-                   const Rendering::QueueType&                                   queue_type,
-                   const BufferView&                                             source,
-                   BufferImage&                                                  destination,
-                   uint32_t                                                      width,
-                   uint32_t                                                      height,
-                   uint32_t                                                      start_copy_after_barrier_index = 0,
-                   const std::vector<Rendering::Primitives::ImageMemoryBarrier>& memory_barriers                = {});
+        static VkSampler     CreateImageSampler();
+        static VkFormat      FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
+        static VkFormat      FindDepthFormat();
+        static VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
         static VkFramebuffer CreateFramebuffer(
             const std::vector<VkImageView>& attachments,
             const VkRenderPass&             render_pass,

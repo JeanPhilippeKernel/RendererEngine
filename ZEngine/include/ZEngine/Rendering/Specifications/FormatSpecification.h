@@ -1,5 +1,7 @@
 #pragma once
+#include <map>
 #include <vulkan/vulkan.h>
+
 
 namespace ZEngine::Rendering::Specifications
 {
@@ -8,6 +10,7 @@ namespace ZEngine::Rendering::Specifications
         UNDEFINED = 0,
         R8G8B8A8_UNORM, // color
         R8G8B8A8_SRGB,
+        R32G32B32A32_SFLOAT,
         DEPTH16_UNORM,
         DEPTH16_UNORM_S8_UINT,
         DEPTH24_UNORM_S8_UINT,
@@ -17,10 +20,14 @@ namespace ZEngine::Rendering::Specifications
         DEPTH_STENCIL_FROM_DEVICE
     };
 
+    static std::map<ImageFormat, uint32_t> BytePerChannelMap =
+        {{ImageFormat::UNDEFINED, 0U}, {ImageFormat::R8G8B8A8_UNORM, 4U}, {ImageFormat::R8G8B8A8_SRGB, 4U}, {ImageFormat::R32G32B32A32_SFLOAT, (4U * sizeof(float)) }};
+
     static VkFormat ImageFormatMap[] = {
         VK_FORMAT_UNDEFINED,
         VK_FORMAT_R8G8B8A8_UNORM,
         VK_FORMAT_R8G8B8A8_SRGB,
+        VK_FORMAT_R32G32B32A32_SFLOAT,
         VK_FORMAT_D16_UNORM,
         VK_FORMAT_D16_UNORM_S8_UINT,
         VK_FORMAT_D24_UNORM_S8_UINT,

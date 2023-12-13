@@ -1,14 +1,17 @@
 #include <pch.h>
+#include <Core/Coroutine.h>
 #include <Rendering/Textures/Texture2D.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Primitives/ImageMemoryBarrier.h>
-#include <Core/Coroutine.h>
+#include <Rendering/Buffers/Bitmap.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__
 #define STBI_NO_SIMD
 #endif
 #include <stb/stb_image.h>
+#include <stb/stb_image_write.h>
+#include <stb/stb_image_resize.h>
 
 namespace ZEngine::Rendering::Textures
 {
@@ -39,49 +42,54 @@ namespace ZEngine::Rendering::Textures
 
         if (!image_data)
         {
-            ZENGINE_CORE_ERROR("Failed to load texture file : %s", filename.data())
+            ZENGINE_CORE_ERROR("Failed to load texture file : {0}", filename.data())
             return Create(1, 1, 0, 0, 0, 0);
         }
-
         /*
          * post processing to convert the image from RGB to RBGA
          */
-        stbi_uc* image_data_rgba = nullptr;
-        if (channel == STBI_rgb)
-        {
-            image_data_rgba = (stbi_uc*) malloc(width * height * 4);
-            if (image_data_rgba)
-            {
-                // Copy RGB data and set alpha channel to 255 (fully opaque)
-                for (int i = 0; i < width * height; i++)
-                {
-                    memcpy(image_data_rgba + i * 4, image_data + i * 3, 3); // Copy RGB channels
-                    image_data_rgba[i * 4 + 3] = 255;                       // Alpha channel (fully opaque)
-                }
-                channel = STBI_rgb_alpha;
-                stbi_image_free(image_data);
-            }
-            else
-            {
-                ZENGINE_CORE_ERROR("Failed to load texture file : %s", filename.data())
-                return CreateRef<Texture2D>();
-            }
-        }
-        else
-        {
-            image_data_rgba = image_data;
-        }
+        channel = (channel == STBI_rgb) ? STBI_rgb_alpha : channel;
+        std::vector<uint8_t> output_buffer(width * height * channel);
+        stbir_resize_uint8(image_data, width, height, 0, output_buffer.data(), width, height, 0, channel);
+        stbi_image_free(image_data);
 
         Specifications::TextureSpecification spec = {};
         spec.Width                                = width;
         spec.Height                               = height;
-        spec.BytePerPixel                         = channel;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
-        spec.Data                                 = image_data_rgba;
+        spec.BytePerPixel                         = Specifications::BytePerChannelMap[spec.Format];
+        spec.Data                                 = output_buffer.data();
         auto texture                              = Create(spec);
 
-        stbi_image_free(image_data_rgba);
         return texture;
+    }
+
+    Ref<Texture2D> Texture2D::ReadCubemap(std::string_view filename)
+    {
+        int          width = 0, height = 0, channel = 0;
+        const float* image_data = stbi_loadf(filename.data(), &width, &height, &channel, 4);
+        /*
+         * post processing to convert the image from RGB to RBGA
+         */
+        channel = (channel == STBI_rgb) ? STBI_rgb_alpha : channel;
+        std::vector<float> output_buffer(width * height * channel);
+        stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, channel);
+        stbi_image_free((void*) image_data);
+
+        Buffers::Bitmap in             = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};
+        Buffers::Bitmap vertical_cross = Buffers::Bitmap::EquirectangularMapToVerticalCross(in);
+        Buffers::Bitmap cubemap        = Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
+
+        Specifications::TextureSpecification cubemap_texture_spec = {};
+        cubemap_texture_spec.IsCubemap                            = true;
+        cubemap_texture_spec.Width                                = cubemap.Width;
+        cubemap_texture_spec.Height                               = cubemap.Height;
+        cubemap_texture_spec.Format                               = Specifications::ImageFormat::R32G32B32A32_SFLOAT;
+        cubemap_texture_spec.BytePerPixel                         = Specifications::BytePerChannelMap[cubemap_texture_spec.Format];
+        cubemap_texture_spec.Data                                 = cubemap.Buffer.data();
+        cubemap_texture_spec.LayerCount                           = 6;
+
+        return Create(cubemap_texture_spec);
     }
 
     std::future<Ref<Texture2D>> Texture2D::ReadAsync(std::string_view filename)
@@ -114,6 +122,7 @@ namespace ZEngine::Rendering::Textures
         spec.Width                                = width;
         spec.Height                               = height;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
+        spec.BytePerPixel                         = Specifications::BytePerChannelMap[spec.Format];
         spec.Data                                 = image_data;
         return Create(spec);
     }
@@ -129,6 +138,7 @@ namespace ZEngine::Rendering::Textures
         spec.Width                                = width;
         spec.Height                               = height;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
+        spec.BytePerPixel                         = Specifications::BytePerChannelMap[spec.Format];
         spec.Data                                 = image_data;
         return Create(spec);
     }
@@ -146,15 +156,13 @@ namespace ZEngine::Rendering::Textures
     void Texture2D::FillAsVulkanImage(Ref<Texture2D>& texture, const Specifications::TextureSpecification& spec)
     {
         texture->m_byte_per_pixel = spec.BytePerPixel;
-        texture->m_buffer_size    = spec.Width * spec.Height * spec.BytePerPixel;
+        texture->m_buffer_size    = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
         texture->m_width          = spec.Width;
         texture->m_height         = spec.Height;
 
-        auto                  device         = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        Hardwares::BufferView staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
-            texture->m_buffer_size,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        auto                  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        Hardwares::BufferView staging_buffer =
+            Hardwares::VulkanDevice::CreateBuffer(texture->m_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
         Hardwares::VulkanDevice::MapAndCopyToMemory(staging_buffer, texture->m_buffer_size, spec.Data);
 
@@ -165,17 +173,35 @@ namespace ZEngine::Rendering::Textures
         uint32_t image_usage_attachment =
             (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        auto image_format          = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Hardwares::VulkanDevice::FindDepthFormat()
-                                                                                                             : Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
-        texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(
-            texture->m_width,
-            texture->m_height, image_format,
-            VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit),
-            VkImageAspectFlagBits(image_aspect));
+        VkFormat image_format = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Hardwares::VulkanDevice::FindDepthFormat()
+                                                                                                        : Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
+
+        if (spec.IsCubemap)
+        {
+            texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(
+                texture->m_width,
+                texture->m_height,
+                image_format,
+                VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit),
+                VkImageAspectFlagBits(image_aspect),
+                spec.LayerCount,
+                VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
+        }
+        else
+        {
+            texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(
+                texture->m_width,
+                texture->m_height,
+                image_format,
+                VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit),
+                VkImageAspectFlagBits(image_aspect),
+                spec.LayerCount);
+        }
 
         if (spec.PerformTransition)
         {
-            /*Transition Image from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL OR VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL and Copy buffer to image*/
+            /*Transition Image from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL OR VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL and Copy buffer to
+             * image*/
             {
                 auto                                            image_handle   = texture->m_image_2d_buffer->GetHandle();
                 auto&                                           image_buffer   = texture->m_image_2d_buffer->GetBuffer();
@@ -188,6 +214,7 @@ namespace ZEngine::Rendering::Textures
                 barrier_spec_0.DestinationAccessMask                           = VK_ACCESS_TRANSFER_WRITE_BIT;
                 barrier_spec_0.SourceStageMask                                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
                 barrier_spec_0.DestinationStageMask                            = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                barrier_spec_0.LayerCount                                      = spec.LayerCount;
                 Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
 
                 Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
@@ -200,16 +227,14 @@ namespace ZEngine::Rendering::Textures
                 barrier_spec_1.DestinationAccessMask = VK_ACCESS_SHADER_READ_BIT;
                 barrier_spec_1.SourceStageMask       = VK_PIPELINE_STAGE_TRANSFER_BIT;
                 barrier_spec_1.DestinationStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                barrier_spec_1.LayerCount            = spec.LayerCount;
                 Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
 
-                Hardwares::VulkanDevice::CopyBufferToImage(
-                    Rendering::QueueType::GRAPHIC_QUEUE,
-                    staging_buffer,
-                    image_buffer,
-                    texture->m_width,
-                    texture->m_height,
-                    0,
-                    std::vector<Primitives::ImageMemoryBarrier>{barrier_0, barrier_1});
+                auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
+                command_buffer->TransitionImageLayout(barrier_0);
+                command_buffer->CopyBufferToImage(staging_buffer, image_buffer, texture->m_width, texture->m_height, spec.LayerCount, barrier_0.GetHandle().newLayout);
+                command_buffer->TransitionImageLayout(barrier_1);
+                Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
             }
         }
 

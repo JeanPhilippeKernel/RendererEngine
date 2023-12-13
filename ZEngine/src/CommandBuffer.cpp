@@ -63,7 +63,7 @@ namespace ZEngine::Rendering::Buffers
     {
         if (m_command_buffer_state != CommanBufferState::Submitted)
         {
-            ZENGINE_CORE_WARN("Command Buffer can't be waited because it's yet to be submitted")
+            //ZENGINE_CORE_WARN("Command Buffer can't be waited because it's yet to be submitted")
         }
 
         if (IsExecuting())
@@ -193,5 +193,38 @@ namespace ZEngine::Rendering::Buffers
         {
             vkCmdDrawIndexedIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer->GetNativeBufferHandle()), 0, count, sizeof(VkDrawIndexedIndirectCommand));
         }
+    }
+
+    void CommandBuffer::TransitionImageLayout(const Primitives::ImageMemoryBarrier& image_barrier)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+
+        const auto& barrier_handle = image_barrier.GetHandle();
+        const auto& barrier_spec   = image_barrier.GetSpecification();
+        vkCmdPipelineBarrier(m_command_buffer, barrier_spec.SourceStageMask, barrier_spec.DestinationStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier_handle);
+    }
+
+    void CommandBuffer::CopyBufferToImage(
+        const Hardwares::BufferView& source,
+        Hardwares::BufferImage&      destination,
+        uint32_t                     width,
+        uint32_t                     height,
+        uint32_t                     layer_count,
+        VkImageLayout                new_layout)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+
+        VkBufferImageCopy buffer_image_copy               = {};
+        buffer_image_copy.bufferOffset                    = 0;
+        buffer_image_copy.bufferRowLength                 = 0;
+        buffer_image_copy.bufferImageHeight               = 0;
+        buffer_image_copy.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        buffer_image_copy.imageSubresource.mipLevel       = 0;
+        buffer_image_copy.imageSubresource.baseArrayLayer = 0;
+        buffer_image_copy.imageSubresource.layerCount     = layer_count;
+        buffer_image_copy.imageOffset                     = {0, 0, 0};
+        buffer_image_copy.imageExtent                     = {width, height, 1};
+
+        vkCmdCopyBufferToImage(m_command_buffer, source.Handle, destination.Handle, new_layout, 1, &buffer_image_copy);
     }
 } // namespace ZEngine::Rendering::Buffers

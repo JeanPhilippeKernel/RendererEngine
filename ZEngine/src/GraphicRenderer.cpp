@@ -1,8 +1,10 @@
 #include <pch.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
+#include <Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <Rendering/Specifications/FrameBufferSpecification.h>
 
 using namespace ZEngine::Rendering::Specifications;
+using namespace ZEngine::Rendering::Renderers::Contracts;
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -11,23 +13,39 @@ namespace ZEngine::Rendering::Renderers
     RendererInformation                                             GraphicRenderer::s_renderer_information     = {};
     WeakRef<Rendering::Swapchain>                                   GraphicRenderer::s_main_window_swapchain    = {};
     std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::COUNT> GraphicRenderer::s_render_target_collection = {};
+    Ref<Buffers::UniformBufferSet>                                  GraphicRenderer::s_UBCamera                 = {};
+    Pools::CommandPool*                                             GraphicRenderer::s_command_pool             = nullptr;
     Ref<SceneRenderer>                                              GraphicRenderer::s_scene_renderer           = CreateRef<SceneRenderer>();
 
     void GraphicRenderer::Initialize()
     {
-        FrameBufferSpecificationVNext frame_ouput_spec         = {};
-        frame_ouput_spec.ClearColor                            = true;
-        frame_ouput_spec.ClearDepth                            = true;
-        frame_ouput_spec.AttachmentSpecifications              = {ImageFormat::R8G8B8A8_UNORM, ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
-        s_render_target_collection[RenderTarget::FRAME_OUTPUT] = Buffers::FramebufferVNext::Create(frame_ouput_spec);
+        s_command_pool = Hardwares::VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, s_renderer_information.SwapchainIdentifier, true);
 
-        s_scene_renderer->Initialize();
+        FrameBufferSpecificationVNext render_target_ouput_spec       = {};
+        render_target_ouput_spec.ClearColor                          = true;
+        render_target_ouput_spec.ClearDepth                          = true;
+        render_target_ouput_spec.AttachmentSpecifications            = {ImageFormat::R8G8B8A8_UNORM, ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
+        s_render_target_collection[RenderTarget::FRAME_OUTPUT]       = Buffers::FramebufferVNext::Create(render_target_ouput_spec);
+        s_render_target_collection[RenderTarget::ENVIROMENT_CUBEMAP] = Buffers::FramebufferVNext::Create(render_target_ouput_spec);
+
+        /*
+        * Shared Uniform Buffers
+        */
+        s_UBCamera = CreateRef<Buffers::UniformBufferSet>(s_renderer_information.FrameCount);
+
+        /*
+         * Scene Renderer Initialization
+         */
+        s_scene_renderer->Initialize(s_UBCamera);
     }
 
     void GraphicRenderer::Deinitialize()
     {
         s_scene_renderer->Deinitialize();
         s_render_target_collection.fill(nullptr);
+
+        s_UBCamera->Dispose();
+        Hardwares::VulkanDevice::DisposeCommandPool(s_command_pool);
 
         s_main_window_swapchain.reset();
     }
@@ -62,14 +80,24 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Update()
     {
-        s_scene_renderer->Tick();
+        s_command_pool->Tick();
     }
 
     void GraphicRenderer::DrawScene(const Ref<Rendering::Cameras::Camera>& camera, const Ref<Rendering::Scenes::SceneRawData>& data)
     {
-        s_scene_renderer->StartScene(camera->GetPosition(), camera->GetViewMatrix(), camera->GetPerspectiveMatrix());
-        s_scene_renderer->RenderScene(data);
-        s_scene_renderer->EndScene();
+        GetRendererInformation();
+
+        auto& scene_camera    = *s_UBCamera;
+        auto  ubo_camera_data = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = glm::vec4(camera->GetPosition(), 1.0f)};
+        scene_camera[s_renderer_information.CurrentFrameIndex].SetData(&ubo_camera_data, sizeof(UBOCameraLayout));
+
+        auto command_buffer = s_command_pool->GetCurrentCommmandBuffer();
+        {
+            s_scene_renderer->StartScene(command_buffer);
+            s_scene_renderer->RenderScene(data, s_renderer_information.CurrentFrameIndex);
+            s_scene_renderer->EndScene(command_buffer, s_renderer_information.CurrentFrameIndex);
+        }
+        command_buffer->Submit();
     }
 
     const RendererInformation& GraphicRenderer::GetRendererInformation()

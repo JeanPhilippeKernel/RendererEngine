@@ -133,6 +133,27 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                     }
                 }
                 break;
+                case TEXTURE:
+                {
+                    auto     buffer = reinterpret_cast<Textures::Texture*>(input.Input.Data);
+                    uint32_t frame_count{3}; /*this should from the renderer*/
+                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    {
+                        const auto& image_info = buffer->GetDescriptorImageInfo();
+                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .pNext            = nullptr,
+                            .dstSet           = descriptor_set_map.at(input.Set)[frame_index],
+                            .dstBinding       = input.Binding,
+                            .dstArrayElement  = 0,
+                            .descriptorCount  = 1,
+                            .descriptorType   = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo       = &(image_info),
+                            .pBufferInfo      = nullptr,
+                            .pTexelBufferView = nullptr});
+                    }
+                }
+                break;
                 case UNIFORM_BUFFER:
                 {
                     auto        buffer      = reinterpret_cast<UniformBuffer*>(input.Input.Data);

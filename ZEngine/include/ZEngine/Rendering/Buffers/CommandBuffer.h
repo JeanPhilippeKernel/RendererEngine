@@ -4,11 +4,18 @@
 #include <ZEngineDef.h>
 #include <Rendering/Primitives/Fence.h>
 #include <Rendering/Primitives/Semaphore.h>
+#include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/ResourceTypes.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
     struct RenderPass;
+}
+
+namespace ZEngine::Hardwares
+{
+    struct BufferView;
+    struct BufferImage;
 }
 
 namespace ZEngine::Rendering::Buffers
@@ -42,6 +49,16 @@ namespace ZEngine::Rendering::Buffers
         void BindDescriptorSets(uint32_t frame_index = 0);
         void DrawIndirect(const Ref<Buffers::IndirectBuffer>& buffer);
         void DrawIndexedIndirect(const Ref<Buffers::IndirectBuffer>& buffer, uint32_t count);
+
+        void TransitionImageLayout(const Primitives::ImageMemoryBarrier& image_barrier);
+
+        void CopyBufferToImage(
+            const Hardwares::BufferView& source,
+            Hardwares::BufferImage&      destination,
+            uint32_t                     width,
+            uint32_t                     height,
+            uint32_t                     layer_count,
+            VkImageLayout                new_layout);
 
     private:
         std::atomic_uint8_t                          m_command_buffer_state{CommanBufferState::Idle};
