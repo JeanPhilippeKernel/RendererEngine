@@ -47,7 +47,7 @@ namespace ZEngine::Rendering::Renderers
             s_cubemap_indirect_buffer[frame_index]->SetData(cubemap_indirect_commmand);
         }
 
-        s_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
+        s_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/rural_asphalt_road_4k.hdr");
         Specifications::GraphicRendererPipelineSpecification cubemap_pipeline_spec = {};
         cubemap_pipeline_spec.DebugName                                            = "Cubemap-Pipeline";
         // cubemap_pipeline_spec.TargetFrameBuffer                                    = GraphicRenderer::GetRenderTarget(RenderTarget::ENVIROMENT_CUBEMAP);

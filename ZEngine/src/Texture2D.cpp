@@ -66,6 +66,8 @@ namespace ZEngine::Rendering::Textures
 
     Ref<Texture2D> Texture2D::ReadCubemap(std::string_view filename)
     {
+        stbi_set_flip_vertically_on_load(1);
+
         int          width = 0, height = 0, channel = 0;
         const float* image_data = stbi_loadf(filename.data(), &width, &height, &channel, 4);
         /*
