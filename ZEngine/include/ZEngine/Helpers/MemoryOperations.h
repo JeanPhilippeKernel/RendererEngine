@@ -46,8 +46,7 @@ namespace ZEngine::Helpers
         errno_t err = memcpy_s(dest, destSize, src, count);
         return (err == 0) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #else
-        std::memcpy(dest, src, count);
-        return MEMORY_OP_SUCCESS;
+        return if (std::memcpy(dest, src, count) == dest) ?  MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #endif
     }
 
@@ -67,8 +66,7 @@ namespace ZEngine::Helpers
         errno_t err = memmove_s(dest, destSize, src, count);
         return (err == 0) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #else
-        std::memmove(dest, src, count);
-        return MEMORY_OP_SUCCESS;
+        return if (std::memmove(dest, src, count) == dest) ?  MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #endif
     }
 
@@ -88,9 +86,7 @@ namespace ZEngine::Helpers
         errno_t err = strncpy_s(dest, destSize, src, count);
         return (err == 0) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #else
-        std::strncpy(dest, src, count);
-        dest[destSize - 1] = '\0';
-        return MEMORY_OP_SUCCESS;
+        return if (std::strncpy(dest, src, count) == dest) ?  MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #endif
     }
 
@@ -111,8 +107,7 @@ namespace ZEngine::Helpers
         errno_t err = strcpy_s(dest, destSize, src);
         return (err == 0) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #else
-        std::strcpy(dest, src);
-        return MEMORY_OP_SUCCESS;
+        return if (std::strcpy(dest, src) == dest) ?  MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #endif
     }
 
