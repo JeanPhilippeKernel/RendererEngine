@@ -79,7 +79,7 @@ namespace ZEngine::Helpers
             return MEMORY_OP_FAILURE;
         }
 
-        if (destSize == 0 || count > destSize)
+        if (destSize == 0 || count >= destSize)
         {
             return MEMORY_OP_FAILURE;
         }
