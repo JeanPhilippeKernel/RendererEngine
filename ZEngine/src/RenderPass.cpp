@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Engine.h>
 
 using namespace ZEngine::Rendering::Buffers;
 
@@ -38,6 +39,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
+        const uint32_t                    frame_count                     = Engine::GetWindow()->GetSwapchain()->GetImageCount();
         const auto&                       shader                          = m_pipeline->GetShader();
         const auto&                       descriptor_set_map              = shader->GetDescriptorSetMap();
         std::vector<VkWriteDescriptorSet> write_descriptor_set_collection = {};
@@ -111,8 +113,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                     auto  texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
                     auto& texture_collection = texture_array->Data();
 
-                    uint32_t frame_count{2}; /*this should from the renderer*/
-
                     for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
                     {
                         for (uint32_t index = 0; index < texture_collection.size(); ++index)
@@ -135,8 +135,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 break;
                 case TEXTURE:
                 {
-                    auto     buffer = reinterpret_cast<Textures::Texture*>(input.Input.Data);
-                    uint32_t frame_count{2}; /*this should from the renderer*/
+                    auto buffer = reinterpret_cast<Textures::Texture*>(input.Input.Data);
                     for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
                     {
                         const auto& image_info = buffer->GetDescriptorImageInfo();

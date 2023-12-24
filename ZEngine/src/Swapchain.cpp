@@ -204,7 +204,7 @@ namespace ZEngine::Rendering
             extent.height = std::clamp(extent.height, m_capabilities.minImageExtent.height, m_capabilities.maxImageExtent.height);
         }
 
-        m_min_image_count = std::clamp(m_min_image_count, m_capabilities.minImageCount, m_capabilities.maxImageCount);
+        m_min_image_count = std::clamp(m_min_image_count, m_capabilities.minImageCount + 1, m_capabilities.maxImageCount);
 
         VkSwapchainCreateInfoKHR swapchain_create_info = {};
         swapchain_create_info.sType                    = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;

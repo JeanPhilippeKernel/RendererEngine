@@ -86,6 +86,7 @@ namespace ZEngine::Rendering::Renderers
         const std::vector<VkDrawIndirectCommand> m_cubemap_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 36, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
 
     private:
+        int                   m_upload_once_per_frame_count{-1};
         uint32_t              m_last_uploaded_buffer_image_count{0};
         std::vector<uint32_t> m_last_drawn_vertices_count;
         std::vector<uint32_t> m_last_drawn_index_count;

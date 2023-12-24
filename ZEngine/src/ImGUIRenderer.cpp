@@ -92,7 +92,6 @@ namespace ZEngine::Rendering::Renderers
 
         auto  pipeline             = m_ui_pass->GetPipeline();
         auto  shader               = pipeline->GetShader();
-        auto& descriptor_sets      = shader->GetDescriptorSetMap()[0];
         auto  descriptor_setlayout = shader->GetDescriptorSetLayout()[0];
 
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
@@ -120,17 +119,6 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(device, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
 
         auto& font_image_info = font_texture->GetDescriptorImageInfo();
-        // for (auto& desc_set : descriptor_sets)
-        //{
-        //     VkWriteDescriptorSet write_desc[1]   = {};
-        //     write_desc[0].sType                  = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        //     write_desc[0].dstSet                 = desc_set;
-        //     write_desc[0].descriptorCount        = 1;
-        //     write_desc[0].descriptorType         = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        //     write_desc[0].pImageInfo             = &font_image_info;
-        //     vkUpdateDescriptorSets(device, 1, write_desc, 0, nullptr);
-        // }
-
         VkWriteDescriptorSet write_desc[1] = {};
         write_desc[0].sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write_desc[0].dstSet               = m_font_descriptor_set;

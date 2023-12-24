@@ -12,6 +12,7 @@ namespace ZEngine::Rendering::Renderers
     {
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
 
+        m_upload_once_per_frame_count = renderer_info.FrameCount;
         m_last_drawn_vertices_count.resize(renderer_info.FrameCount, 0);
         m_last_drawn_index_count.resize(renderer_info.FrameCount, 0);
 
@@ -165,39 +166,40 @@ namespace ZEngine::Rendering::Renderers
 
     void SceneRenderer::RenderScene(const Ref<Rendering::Scenes::SceneRawData>& scene_data, uint32_t current_frame_index)
     {
-        /*
-        * Uploading Cubemap
-        */
+        if (m_upload_once_per_frame_count > 0)
         {
-            auto& vertex_buffer    = *cubemapSBVertex;
-            auto& index_buffer     = *cubemapSBIndex;
-            auto& draw_data_buffer = *cubemapSBDrawData;
+            /*
+             * Uploading Cubemap
+             */
+            {
+                auto& vertex_buffer    = *cubemapSBVertex;
+                auto& index_buffer     = *cubemapSBIndex;
+                auto& draw_data_buffer = *cubemapSBDrawData;
 
-            vertex_buffer[current_frame_index].SetData(m_cubemap_vertex_data);
-            index_buffer[current_frame_index].SetData(m_cubemap_index_data);
-            draw_data_buffer[current_frame_index].SetData(m_cubmap_draw_data);
+                vertex_buffer[current_frame_index].SetData(m_cubemap_vertex_data);
+                index_buffer[current_frame_index].SetData(m_cubemap_index_data);
+                draw_data_buffer[current_frame_index].SetData(m_cubmap_draw_data);
+                s_cubemap_indirect_buffer[current_frame_index]->SetData(m_cubemap_indirect_commmand);
+            }
 
-            s_cubemap_indirect_buffer[current_frame_index]->SetData(m_cubemap_indirect_commmand);
+            /*
+             * Uploading Infinite Grid
+             */
+            {
+                auto& vertex_storage    = *m_GridSBVertex;
+                auto& index_storage     = *m_GridSBIndex;
+                auto& draw_data_storage = *m_GridSBDrawData;
+
+                vertex_storage[current_frame_index].SetData(m_grid_vertices);
+                index_storage[current_frame_index].SetData(m_grid_indices);
+                draw_data_storage[current_frame_index].SetData(m_grid_drawData);
+                m_infinite_grid_indirect_buffer[current_frame_index]->SetData(m_grid_indirect_commmand);
+            }
 
             s_cubemap_pass->MarkDirty();
-        }
-
-        /*
-         * Uploading Infinite Grid
-         */
-        {
-            auto& vertex_storage = *m_GridSBVertex;
-            vertex_storage[current_frame_index].SetData(m_grid_vertices);
-
-            auto& index_storage = *m_GridSBIndex;
-            index_storage[current_frame_index].SetData(m_grid_indices);
-
-            auto& draw_data_storage = *m_GridSBDrawData;
-            draw_data_storage[current_frame_index].SetData(m_grid_drawData);
-
-            m_infinite_grid_indirect_buffer[current_frame_index]->SetData(m_grid_indirect_commmand);
-
             m_infinite_grid_pass->MarkDirty();
+
+            --m_upload_once_per_frame_count;
         }
 
         const auto& sceneNodeMeshMap = scene_data->SceneNodeMeshMap;
