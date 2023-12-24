@@ -59,7 +59,8 @@ namespace ZEngine::Rendering::Buffers
                 if (data && allocation_info.pMappedData)
                 {
                     std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
-                    ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, VK_WHOLE_SIZE) == VK_SUCCESS, "Failed to flush allocation")
+                    ZENGINE_VALIDATE_ASSERT(
+                        vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, static_cast<VkDeviceSize>(this->m_byte_size)) == VK_SUCCESS, "Failed to flush allocation")
                     Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_storage_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
                 }
 

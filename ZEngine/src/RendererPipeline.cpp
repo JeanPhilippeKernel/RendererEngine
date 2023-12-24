@@ -25,7 +25,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Framebuffer Creation
          */
-        m_target_framebuffer = m_pipeline_specification.TargetFrameBuffer;
 
         /*Pipeline fixed states*/
         /*
@@ -55,8 +54,31 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Vertex Input
          */
+        std::vector<VkVertexInputBindingDescription> vertex_input_bindings = {};
+        std::transform(
+            m_pipeline_specification.VertexInputBindingSpecifications.begin(),
+            m_pipeline_specification.VertexInputBindingSpecifications.end(),
+            std::back_inserter(vertex_input_bindings),
+            [](const Specifications::VertexInputBindingSpecification& input) {
+                return VkVertexInputBindingDescription{.binding = input.Binding, .stride = input.Stride, .inputRate = (VkVertexInputRate) input.Rate};
+            });
+
+        std::vector<VkVertexInputAttributeDescription> vertex_input_attributes = {};
+        std::transform(
+            m_pipeline_specification.VertexInputAttributeSpecifications.begin(),
+            m_pipeline_specification.VertexInputAttributeSpecifications.end(),
+            std::back_inserter(vertex_input_attributes),
+            [](const Specifications::VertexInputAttributeSpecification& input) {
+                return VkVertexInputAttributeDescription{
+                    .location = input.Location, .binding = input.Binding, .format = Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(input.Format)], .offset = input.Offset};
+            });
+
         VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info = {};
         vertex_input_state_create_info.sType                                = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertex_input_state_create_info.vertexBindingDescriptionCount        = vertex_input_bindings.size();
+        vertex_input_state_create_info.pVertexBindingDescriptions           = vertex_input_bindings.data();
+        vertex_input_state_create_info.vertexAttributeDescriptionCount      = vertex_input_attributes.size();
+        vertex_input_state_create_info.pVertexAttributeDescriptions         = vertex_input_attributes.data();
         /*
          * Rasterizer
          */
@@ -123,12 +145,13 @@ namespace ZEngine::Rendering::Renderers::Pipelines
          * Pipeline layout
          */
         const auto                 descriptor_set_layout_collection = m_shader->GetDescriptorSetLayout();
+        const auto&                push_constant_collection         = m_shader->GetPushConstants();
         VkPipelineLayoutCreateInfo pipeline_layout_create_info      = {};
         pipeline_layout_create_info.sType                           = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipeline_layout_create_info.setLayoutCount                  = descriptor_set_layout_collection.size(); // Optional
         pipeline_layout_create_info.pSetLayouts                     = descriptor_set_layout_collection.data(); // Optional
-        pipeline_layout_create_info.pushConstantRangeCount          = 0;                                       // Optional
-        pipeline_layout_create_info.pPushConstantRanges             = nullptr;                                 // Optional
+        pipeline_layout_create_info.pushConstantRangeCount          = push_constant_collection.size();
+        pipeline_layout_create_info.pPushConstantRanges             = push_constant_collection.data();
         pipeline_layout_create_info.flags                           = 0;
         pipeline_layout_create_info.pNext                           = nullptr;
         ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(device, &(pipeline_layout_create_info), nullptr, &m_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
@@ -149,12 +172,26 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.pColorBlendState              = &(color_blend_state_create_info);
         graphic_pipeline_create_info.pDynamicState                 = &(dynamic_state_create_info);
         graphic_pipeline_create_info.layout                        = m_pipeline_layout;
-        graphic_pipeline_create_info.renderPass                    = m_target_framebuffer->GetRenderPass();
-        graphic_pipeline_create_info.subpass                       = 0;
-        graphic_pipeline_create_info.basePipelineHandle            = VK_NULL_HANDLE; // Optional
-        graphic_pipeline_create_info.basePipelineIndex             = -1;             // Optional
-        graphic_pipeline_create_info.flags                         = 0;              // Optional
-        graphic_pipeline_create_info.pNext                         = nullptr;        // Optional
+
+        if (!m_pipeline_specification.SwapchainAsRenderTarget)
+        {
+            ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.TargetFrameBuffer, "Target framebuffer can't be null")
+            m_target_framebuffer                    = m_pipeline_specification.TargetFrameBuffer;
+            graphic_pipeline_create_info.renderPass = m_target_framebuffer->GetRenderPass();
+        }
+
+        if (m_pipeline_specification.SwapchainAsRenderTarget)
+        {
+            ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.SwapchainRenderTarget, "Swapchain can't be null")
+            m_target_swapchain                      = m_pipeline_specification.SwapchainRenderTarget;
+            graphic_pipeline_create_info.renderPass = m_target_swapchain->GetRenderPass();
+        }
+
+        graphic_pipeline_create_info.subpass            = 0;
+        graphic_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE; // Optional
+        graphic_pipeline_create_info.basePipelineIndex  = -1;             // Optional
+        graphic_pipeline_create_info.flags              = 0;              // Optional
+        graphic_pipeline_create_info.pNext              = nullptr;        // Optional
         ZENGINE_VALIDATE_ASSERT(
             vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
     }
@@ -162,7 +199,16 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     void GraphicPipeline::Dispose()
     {
         m_shader->Dispose();
-        m_target_framebuffer->Dispose();
+
+        if (m_target_framebuffer)
+        {
+            m_target_framebuffer->Dispose();
+        }
+        if (m_target_swapchain)
+        {
+            m_target_swapchain.~IntrusivePtr();
+            m_target_swapchain = nullptr;
+        }
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, m_pipeline_layout);
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, m_pipeline_handle);
         m_pipeline_layout = VK_NULL_HANDLE;
@@ -181,16 +227,22 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     VkRenderPass GraphicPipeline::GetRenderPassHandle() const
     {
-        if (!m_target_framebuffer)
+        if (!m_target_framebuffer && !m_target_swapchain)
         {
             return VK_NULL_HANDLE;
         }
-        return m_target_framebuffer->GetRenderPass();
+
+        return m_pipeline_specification.SwapchainAsRenderTarget ? m_target_swapchain->GetRenderPass() : m_target_framebuffer->GetRenderPass();
     }
 
     Ref<Buffers::FramebufferVNext> GraphicPipeline::GetTargetFrameBuffer() const
     {
         return m_target_framebuffer;
+    }
+
+    Ref<Rendering::Swapchain> GraphicPipeline::GetTargetSwapchain() const
+    {
+        return m_target_swapchain;
     }
 
     Ref<Shaders::Shader> GraphicPipeline::GetShader() const

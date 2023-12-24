@@ -339,8 +339,6 @@ namespace ZEngine::Window::GLFWWindow
         {
             layer->Render();
         }
-
-        m_swapchain->Present();
     }
 
     Ref<Rendering::Swapchain> VulkanWindow::GetSwapchain() const

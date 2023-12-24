@@ -111,7 +111,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                     auto  texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
                     auto& texture_collection = texture_array->Data();
 
-                    uint32_t frame_count{3}; /*this should from the renderer*/
+                    uint32_t frame_count{2}; /*this should from the renderer*/
 
                     for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
                     {
@@ -136,7 +136,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 case TEXTURE:
                 {
                     auto     buffer = reinterpret_cast<Textures::Texture*>(input.Input.Data);
-                    uint32_t frame_count{3}; /*this should from the renderer*/
+                    uint32_t frame_count{2}; /*this should from the renderer*/
                     for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
                     {
                         const auto& image_info = buffer->GetDescriptorImageInfo();

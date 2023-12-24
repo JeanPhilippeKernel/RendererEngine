@@ -8,18 +8,21 @@ using namespace ZEngine::Rendering::Renderers::Contracts;
 
 namespace ZEngine::Rendering::Renderers
 {
-    uint32_t                                                        GraphicRenderer::s_viewport_width           = 1;
-    uint32_t                                                        GraphicRenderer::s_viewport_height          = 1;
-    RendererInformation                                             GraphicRenderer::s_renderer_information     = {};
-    WeakRef<Rendering::Swapchain>                                   GraphicRenderer::s_main_window_swapchain    = {};
-    std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::COUNT> GraphicRenderer::s_render_target_collection = {};
-    Ref<Buffers::UniformBufferSet>                                  GraphicRenderer::s_UBCamera                 = {};
-    Pools::CommandPool*                                             GraphicRenderer::s_command_pool             = nullptr;
-    Ref<SceneRenderer>                                              GraphicRenderer::s_scene_renderer           = CreateRef<SceneRenderer>();
+    uint32_t                                                        GraphicRenderer::s_viewport_width            = 1;
+    uint32_t                                                        GraphicRenderer::s_viewport_height           = 1;
+    RendererInformation                                             GraphicRenderer::s_renderer_information      = {};
+    WeakRef<Rendering::Swapchain>                                   GraphicRenderer::s_main_window_swapchain     = {};
+    std::array<Ref<Buffers::FramebufferVNext>, RenderTarget::COUNT> GraphicRenderer::s_render_target_collection  = {};
+    Ref<Buffers::UniformBufferSet>                                  GraphicRenderer::s_UBCamera                  = {};
+    Pools::CommandPool*                                             GraphicRenderer::s_command_pool              = nullptr;
+    Buffers::CommandBuffer*                                         GraphicRenderer::s_current_command_buffer    = nullptr;
+    Buffers::CommandBuffer*                                         GraphicRenderer::s_current_command_buffer_ui = nullptr;
+    Ref<SceneRenderer>                                              GraphicRenderer::s_scene_renderer            = CreateRef<SceneRenderer>();
+    Ref<ImGUIRenderer>                                              GraphicRenderer::s_imgui_renderer            = CreateRef<ImGUIRenderer>();
 
     void GraphicRenderer::Initialize()
     {
-        s_command_pool = Hardwares::VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, s_renderer_information.SwapchainIdentifier, true);
+        s_command_pool    = Hardwares::VulkanDevice::GetCommandPool(QueueType::GRAPHIC_QUEUE);
 
         FrameBufferSpecificationVNext render_target_ouput_spec       = {};
         render_target_ouput_spec.ClearColor                          = true;
@@ -29,23 +32,25 @@ namespace ZEngine::Rendering::Renderers
         s_render_target_collection[RenderTarget::ENVIROMENT_CUBEMAP] = Buffers::FramebufferVNext::Create(render_target_ouput_spec);
 
         /*
-        * Shared Uniform Buffers
-        */
+         * Shared Uniform Buffers
+         */
         s_UBCamera = CreateRef<Buffers::UniformBufferSet>(s_renderer_information.FrameCount);
 
         /*
-         * Scene Renderer Initialization
+         * Sub Renderer Initialization
          */
         s_scene_renderer->Initialize(s_UBCamera);
+        s_imgui_renderer->Initialize(s_main_window_swapchain);
     }
 
     void GraphicRenderer::Deinitialize()
     {
         s_scene_renderer->Deinitialize();
+        s_imgui_renderer->Deinitialize();
+
         s_render_target_collection.fill(nullptr);
 
         s_UBCamera->Dispose();
-        Hardwares::VulkanDevice::DisposeCommandPool(s_command_pool);
 
         s_main_window_swapchain.reset();
     }
@@ -80,24 +85,50 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Update()
     {
-        s_command_pool->Tick();
+        GetRendererInformation();
     }
 
     void GraphicRenderer::DrawScene(const Ref<Rendering::Cameras::Camera>& camera, const Ref<Rendering::Scenes::SceneRawData>& data)
     {
-        GetRendererInformation();
+        s_current_command_buffer = s_command_pool->GetCommmandBuffer();
 
         auto& scene_camera    = *s_UBCamera;
         auto  ubo_camera_data = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = glm::vec4(camera->GetPosition(), 1.0f)};
         scene_camera[s_renderer_information.CurrentFrameIndex].SetData(&ubo_camera_data, sizeof(UBOCameraLayout));
-
-        auto command_buffer = s_command_pool->GetCurrentCommmandBuffer();
         {
-            s_scene_renderer->StartScene(command_buffer);
+            s_scene_renderer->StartScene(s_current_command_buffer);
             s_scene_renderer->RenderScene(data, s_renderer_information.CurrentFrameIndex);
-            s_scene_renderer->EndScene(command_buffer, s_renderer_information.CurrentFrameIndex);
+            s_scene_renderer->EndScene(s_current_command_buffer, s_renderer_information.CurrentFrameIndex);
         }
-        command_buffer->Submit();
+    }
+
+    void GraphicRenderer::BeginImguiFrame()
+    {
+        s_current_command_buffer_ui = s_command_pool->GetCommmandBuffer();
+        s_imgui_renderer->BeginFrame(s_current_command_buffer_ui);
+    }
+
+    void GraphicRenderer::DrawUIFrame()
+    {
+        s_imgui_renderer->Draw(s_current_command_buffer_ui, s_renderer_information.CurrentFrameIndex);
+    }
+
+    void GraphicRenderer::EndImguiFrame()
+    {
+        s_imgui_renderer->EndFrame(s_current_command_buffer_ui, s_renderer_information.CurrentFrameIndex);
+    }
+
+    VkDescriptorSet GraphicRenderer::GetImguiFrameOutput()
+    {
+        auto frame_output = GetFrameOutput();
+        auto texture      = frame_output->GetColorAttachmentCollection().at(0);
+        return s_imgui_renderer->UpdateFrameOutput(texture->GetImage2DBuffer());
+    }
+
+    void GraphicRenderer::Upload()
+    {
+        s_current_command_buffer->Submit();
+        s_current_command_buffer_ui->Submit();
     }
 
     const RendererInformation& GraphicRenderer::GetRendererInformation()

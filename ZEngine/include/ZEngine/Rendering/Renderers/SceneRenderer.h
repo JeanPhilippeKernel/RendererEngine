@@ -37,10 +37,9 @@ namespace ZEngine::Rendering::Renderers
         void SetViewportSize(uint32_t width, uint32_t height);
 
     private:
-        
-        glm::vec4           m_camera_position{1.0f};
-        glm::mat4           m_camera_view{1.0f};
-        glm::mat4           m_camera_projection{1.0f};
+        glm::vec4 m_camera_position{1.0f};
+        glm::mat4 m_camera_view{1.0f};
+        glm::mat4 m_camera_projection{1.0f};
         /*
          * Scene Data Per Frame
          */
@@ -78,6 +77,13 @@ namespace ZEngine::Rendering::Renderers
         Ref<Textures::Texture>                    s_environment_map;
         Ref<RenderPasses::RenderPass>             s_cubemap_pass;
         std::vector<Ref<Buffers::IndirectBuffer>> s_cubemap_indirect_buffer;
+        const std::vector<float>                  m_cubemap_vertex_data = {
+            -1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0,
+            -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        };
+        const std::vector<uint32_t> m_cubemap_index_data = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 7, 6, 5, 5, 4, 7, 4, 0, 3, 3, 7, 4, 4, 5, 1, 1, 0, 4, 3, 2, 6, 6, 7, 3};
+        const std::vector<DrawData> m_cubmap_draw_data   = {DrawData{.Index = 0, .VertexOffset = 0, .IndexOffset = 0, .VertexCount = 8, .IndexCount = 36}};
+        const std::vector<VkDrawIndirectCommand> m_cubemap_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 36, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
 
     private:
         uint32_t              m_last_uploaded_buffer_image_count{0};

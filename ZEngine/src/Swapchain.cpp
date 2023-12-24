@@ -41,13 +41,22 @@ namespace ZEngine::Rendering
         m_attachment                                              = Renderers::RenderPasses::Attachment::Create(attachment_specification);
 
         Create();
-        AcquireNextImage();
     }
 
     Swapchain::~Swapchain()
     {
         Dispose();
         m_attachment->Dispose();
+
+        m_acquired_semaphore_collection.clear();
+        m_acquired_semaphore_collection.shrink_to_fit();
+
+        m_render_complete_semaphore_collection.clear();
+        m_render_complete_semaphore_collection.shrink_to_fit();
+
+        m_frame_signal_fence_collection.clear();
+        m_frame_signal_fence_collection.shrink_to_fit();
+
         if (!m_is_surface_from_device)
         {
             auto instance = Hardwares::VulkanDevice::GetNativeInstanceHandle();
@@ -60,47 +69,38 @@ namespace ZEngine::Rendering
     {
         Dispose();
         Create();
-        AcquireNextImage();
-    }
-
-    void Swapchain::AcquireNextImage()
-    {
-        auto frame_count      = (int32_t) m_image_collection.size();
-        m_current_frame_index = (m_current_frame_index + 1) % frame_count;
-
-        Primitives::Semaphore* signal_semaphore = m_acquired_semaphore_collection[m_current_frame_index].get();
-
-        ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Primitives::SemaphoreState::Submitted, "")
-
-        m_last_frame_image_index = m_current_frame_image_index;
-
-        VkResult acquire_image_result = vkAcquireNextImageKHR(
-            Hardwares::VulkanDevice::GetNativeDeviceHandle(), m_handle, UINT64_MAX, signal_semaphore->GetHandle(), VK_NULL_HANDLE, &m_current_frame_image_index);
-
-        signal_semaphore->SetState(Primitives::SemaphoreState::Submitted);
     }
 
     void Swapchain::Present()
     {
-        m_wait_semaphore_collection.clear();
-        m_wait_semaphore_collection.shrink_to_fit();
-
-        auto command_pool_collection = Hardwares::VulkanDevice::GetAllCommandPools(m_identifier);
-        for (auto& command_pool : command_pool_collection)
-        {
-            auto semaphore_collection = command_pool->GetAllWaitSemaphoreCollection();
-            std::copy(std::begin(semaphore_collection), std::end(semaphore_collection), std::back_inserter(m_wait_semaphore_collection));
-        }
+        Primitives::Fence* signal_fence = m_frame_signal_fence_collection[m_current_frame_index].get();
+        signal_fence->Wait(UINT64_MAX);
+        signal_fence->Reset();
 
         Primitives::Semaphore* signal_semaphore = m_acquired_semaphore_collection[m_current_frame_index].get();
-        if (signal_semaphore->GetState() == Primitives::SemaphoreState::Submitted)
+        ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Primitives::SemaphoreState::Submitted, "")
+
+        uint32_t frame_index{UINT32_MAX};
+        VkResult acquire_image_result =
+            vkAcquireNextImageKHR(Hardwares::VulkanDevice::GetNativeDeviceHandle(), m_handle, UINT64_MAX, signal_semaphore->GetHandle(), VK_NULL_HANDLE, &frame_index);
+        signal_semaphore->SetState(Primitives::SemaphoreState::Submitted);
+
+        if (acquire_image_result == VK_SUBOPTIMAL_KHR || acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
         {
-            m_wait_semaphore_collection.emplace_back(signal_semaphore);
+            Resize();
+            return;
         }
 
-        Hardwares::VulkanDevice::Present(m_handle, &m_current_frame_image_index, m_wait_semaphore_collection);
+        Primitives::Semaphore* render_complete_semaphore = m_render_complete_semaphore_collection[m_current_frame_index].get();
+        if (!Hardwares::VulkanDevice::Present(m_handle, &frame_index, signal_semaphore, render_complete_semaphore,  signal_fence))
+        {
+            Resize();
+            return;
+        }
 
-        AcquireNextImage();
+        auto frame_count      = (int32_t) m_image_collection.size();
+        m_current_frame_index = (m_current_frame_index + 1) % frame_count;
+        Hardwares::VulkanDevice::SetCurrentFrameIndex(m_current_frame_index);
     }
 
     uint32_t Swapchain::GetMinImageCount() const
@@ -204,7 +204,7 @@ namespace ZEngine::Rendering
             extent.height = std::clamp(extent.height, m_capabilities.minImageExtent.height, m_capabilities.maxImageExtent.height);
         }
 
-        m_min_image_count = std::clamp(m_min_image_count, m_capabilities.minImageCount + 1, m_capabilities.maxImageCount);
+        m_min_image_count = std::clamp(m_min_image_count, m_capabilities.minImageCount, m_capabilities.maxImageCount);
 
         VkSwapchainCreateInfoKHR swapchain_create_info = {};
         swapchain_create_info.sType                    = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -247,41 +247,32 @@ namespace ZEngine::Rendering
         m_image_collection.resize(image_count);
         m_image_view_collection.resize(image_count);
         m_framebuffer_collection.resize(image_count);
-        m_acquired_semaphore_collection.resize(image_count);
+        m_acquired_semaphore_collection.resize(image_count, nullptr);
+        m_render_complete_semaphore_collection.resize(image_count, nullptr);
+        m_frame_signal_fence_collection.resize(image_count, nullptr);
 
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(native_device, m_handle, &image_count, m_image_collection.data()) == VK_SUCCESS, "Failed to get Images from Swapchain")
 
         /*Transition Image from Undefined to Present_src*/
-        auto image_memory_barrier_collection = std::vector<VkImageMemoryBarrier>{m_image_collection.size()};
-
-        for (int i = 0; i < image_memory_barrier_collection.size(); ++i)
-        {
-            image_memory_barrier_collection[i].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            image_memory_barrier_collection[i].oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
-            image_memory_barrier_collection[i].newLayout                       = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            image_memory_barrier_collection[i].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-            image_memory_barrier_collection[i].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-            image_memory_barrier_collection[i].image                           = m_image_collection[i];
-            image_memory_barrier_collection[i].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            image_memory_barrier_collection[i].subresourceRange.baseMipLevel   = 0;
-            image_memory_barrier_collection[i].subresourceRange.levelCount     = 1;
-            image_memory_barrier_collection[i].subresourceRange.baseArrayLayer = 0;
-            image_memory_barrier_collection[i].subresourceRange.layerCount     = 1;
-            image_memory_barrier_collection[i].srcAccessMask                   = 0; // No need for any source access
-            image_memory_barrier_collection[i].dstAccessMask                   = VK_ACCESS_MEMORY_READ_BIT;
-        }
         auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
-        vkCmdPipelineBarrier(
-            command_buffer->GetHandle(),
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            image_memory_barrier_collection.size(),
-            image_memory_barrier_collection.data());
+        {
+            for (int i = 0; i < m_image_collection.size(); ++i)
+            {
+                Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
+                barrier_spec.ImageHandle                                     = m_image_collection[i];
+                barrier_spec.OldLayout                                       = Specifications::ImageLayout::UNDEFINED;
+                barrier_spec.NewLayout                                       = Specifications::ImageLayout::PRESENT_SRC;
+                barrier_spec.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
+                barrier_spec.SourceAccessMask                                = 0;
+                barrier_spec.DestinationAccessMask                           = VK_ACCESS_MEMORY_READ_BIT;
+                barrier_spec.SourceStageMask                                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                barrier_spec.DestinationStageMask                            = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                barrier_spec.LayerCount                                      = 1;
+
+                Primitives::ImageMemoryBarrier barrier{barrier_spec};
+                command_buffer->TransitionImageLayout(barrier);
+            }
+        }
         Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
 
         for (size_t i = 0; i < m_image_view_collection.size(); ++i)
@@ -300,6 +291,16 @@ namespace ZEngine::Rendering
         for (size_t i = 0; i < m_acquired_semaphore_collection.size(); i++)
         {
             m_acquired_semaphore_collection[i] = CreateRef<Primitives::Semaphore>();
+        }
+
+        for (size_t i = 0; i < m_render_complete_semaphore_collection.size(); i++)
+        {
+            m_render_complete_semaphore_collection[i] = CreateRef<Primitives::Semaphore>();
+        }
+
+        for (size_t i = 0; i < m_frame_signal_fence_collection.size(); i++)
+        {
+            m_frame_signal_fence_collection[i] = CreateRef<Primitives::Fence>(true);
         }
     }
 
@@ -324,14 +325,18 @@ namespace ZEngine::Rendering
         m_image_view_collection.clear();
         m_image_collection.clear();
         m_framebuffer_collection.clear();
-        m_acquired_semaphore_collection.clear();
 
         m_image_view_collection.shrink_to_fit();
         m_image_collection.shrink_to_fit();
         m_framebuffer_collection.shrink_to_fit();
-        m_acquired_semaphore_collection.shrink_to_fit();
 
-        Hardwares::VulkanDevice::QueueWaitAll();
+        m_acquired_semaphore_collection.clear();
+        m_render_complete_semaphore_collection.clear();
+        m_frame_signal_fence_collection.clear();
+
+        m_acquired_semaphore_collection.shrink_to_fit();
+        m_render_complete_semaphore_collection.shrink_to_fit();
+        m_frame_signal_fence_collection.shrink_to_fit();
 
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         ZENGINE_DESTROY_VULKAN_HANDLE(device, vkDestroySwapchainKHR, m_handle, nullptr)

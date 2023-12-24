@@ -25,29 +25,12 @@ namespace ZEngine::Rendering::Renderers
         cubemapSBVertex   = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
         cubemapSBIndex    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
         cubemapSBDrawData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        s_cubemap_indirect_buffer.resize(renderer_info.FrameCount, CreateRef<Buffers::IndirectBuffer>());
-
-        const std::vector<float> cubemap_vertex_data = {
-            -1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0,
-            -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        };
-        const std::vector<uint32_t>              cubemap_index_data = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 7, 6, 5, 5, 4, 7, 4, 0, 3, 3, 7, 4, 4, 5, 1, 1, 0, 4, 3, 2, 6, 6, 7, 3};
-        const std::vector<DrawData>              cubmap_draw_data   = {DrawData{.Index = 0, .VertexOffset = 0, .IndexOffset = 0, .VertexCount = 8, .IndexCount = 36}};
-        const std::vector<VkDrawIndirectCommand> cubemap_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 36, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
-
         for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
         {
-            auto& vertex_buffer    = *cubemapSBVertex;
-            auto& index_buffer     = *cubemapSBIndex;
-            auto& draw_data_buffer = *cubemapSBDrawData;
-
-            vertex_buffer[frame_index].SetData(cubemap_vertex_data);
-            index_buffer[frame_index].SetData(cubemap_index_data);
-            draw_data_buffer[frame_index].SetData(cubmap_draw_data);
-            s_cubemap_indirect_buffer[frame_index]->SetData(cubemap_indirect_commmand);
+            s_cubemap_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
         }
 
-        s_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/rural_asphalt_road_4k.hdr");
+        s_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_1k.hdr");
         Specifications::GraphicRendererPipelineSpecification cubemap_pipeline_spec = {};
         cubemap_pipeline_spec.DebugName                                            = "Cubemap-Pipeline";
         // cubemap_pipeline_spec.TargetFrameBuffer                                    = GraphicRenderer::GetRenderTarget(RenderTarget::ENVIROMENT_CUBEMAP);
@@ -65,15 +48,16 @@ namespace ZEngine::Rendering::Renderers
         s_cubemap_pass->Verify();
         s_cubemap_pass->Bake();
 
-        s_cubemap_pass->MarkDirty();
-
         /*
          * Infinite Grid
          */
         m_GridSBVertex   = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
         m_GridSBIndex    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
         m_GridSBDrawData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_infinite_grid_indirect_buffer.resize(renderer_info.FrameCount, CreateRef<Buffers::IndirectBuffer>());
+        for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
+        {
+            m_infinite_grid_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
+        }
         Specifications::GraphicRendererPipelineSpecification infinite_grid_spec = {};
         infinite_grid_spec.DebugName                                            = "Infinite-Grid-Pipeline";
         infinite_grid_spec.TargetFrameBuffer                                    = GraphicRenderer::GetRenderTarget(RenderTarget::FRAME_OUTPUT);
@@ -96,7 +80,10 @@ namespace ZEngine::Rendering::Renderers
         m_SBDrawData     = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
         m_SBTransform    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
         m_SBMaterialData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_indirect_buffer.resize(renderer_info.FrameCount, CreateRef<Buffers::IndirectBuffer>());
+        for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
+        {
+            m_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
+        }
         Specifications::FrameBufferSpecificationVNext framebuffer_spec           = {};
         framebuffer_spec.ClearColor                                              = false;
         framebuffer_spec.ClearDepth                                              = false;
@@ -178,6 +165,23 @@ namespace ZEngine::Rendering::Renderers
 
     void SceneRenderer::RenderScene(const Ref<Rendering::Scenes::SceneRawData>& scene_data, uint32_t current_frame_index)
     {
+        /*
+        * Uploading Cubemap
+        */
+        {
+            auto& vertex_buffer    = *cubemapSBVertex;
+            auto& index_buffer     = *cubemapSBIndex;
+            auto& draw_data_buffer = *cubemapSBDrawData;
+
+            vertex_buffer[current_frame_index].SetData(m_cubemap_vertex_data);
+            index_buffer[current_frame_index].SetData(m_cubemap_index_data);
+            draw_data_buffer[current_frame_index].SetData(m_cubmap_draw_data);
+
+            s_cubemap_indirect_buffer[current_frame_index]->SetData(m_cubemap_indirect_commmand);
+
+            s_cubemap_pass->MarkDirty();
+        }
+
         /*
          * Uploading Infinite Grid
          */
@@ -299,8 +303,8 @@ namespace ZEngine::Rendering::Renderers
     void SceneRenderer::EndScene(Buffers::CommandBuffer* const command_buffer, uint32_t current_frame_index)
     {
         command_buffer->BeginRenderPass(s_cubemap_pass);
-        command_buffer->BindDescriptorSets(0);
-        command_buffer->DrawIndirect(s_cubemap_indirect_buffer[0]);
+        command_buffer->BindDescriptorSets(current_frame_index);
+        command_buffer->DrawIndirect(s_cubemap_indirect_buffer[current_frame_index]);
         command_buffer->EndRenderPass();
 
         // command_buffer->BeginRenderPass(m_infinite_grid_pass);

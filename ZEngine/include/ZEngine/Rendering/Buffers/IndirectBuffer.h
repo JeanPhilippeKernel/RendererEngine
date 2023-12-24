@@ -10,7 +10,7 @@ namespace ZEngine::Rendering::Buffers
     public:
         explicit IndirectBuffer() : IGraphicBuffer() {}
 
-        void SetData(const void* data, size_t byte_size)
+        void SetData(const VkDrawIndirectCommand* data, size_t byte_size)
         {
 
             if (byte_size == 0)
@@ -27,6 +27,7 @@ namespace ZEngine::Rendering::Buffers
 
                 CleanUpMemory();
                 this->m_byte_size = byte_size;
+                m_command_count   = byte_size / sizeof(VkDrawIndirectCommand);
                 m_indirect_buffer = Hardwares::VulkanDevice::CreateBuffer(
                     static_cast<VkDeviceSize>(this->m_byte_size),
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,

@@ -7,7 +7,7 @@ layout (location = 0) out vec3 dir;
 
 void main()
 {
-    float cubeScale = 2000.0;
+    float cubeScale = 100.0;
 
     DrawData dd = DrawDataBuffer.Data[gl_BaseInstance];
 

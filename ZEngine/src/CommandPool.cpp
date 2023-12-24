@@ -8,7 +8,6 @@ namespace ZEngine::Rendering::Pools
     CommandPool::CommandPool(Rendering::QueueType type, uint64_t swapchain_identifier, bool present_on_swapchain)
     {
         /* Create CommandPool */
-        m_swapchain_identifier                           = swapchain_identifier;
         m_queue_type                                     = type;
         auto                    device                   = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         Hardwares::QueueView    queue_view               = Hardwares::VulkanDevice::GetQueue(type);
@@ -18,84 +17,61 @@ namespace ZEngine::Rendering::Pools
         command_pool_create_info.queueFamilyIndex        = queue_view.FamilyIndex;
         ZENGINE_VALIDATE_ASSERT(vkCreateCommandPool(device, &command_pool_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Command Pool")
 
-        /*Create CommandBuffer */
-        m_current_command_buffer_index = 0;
-        for (int i = 0; i < m_command_buffer_collection.size(); ++i)
-        {
-            m_command_buffer_collection[i] = CreateRef<Buffers::CommandBuffer>(m_handle, m_queue_type, present_on_swapchain);
-        }
+        auto& properties           = Hardwares::VulkanDevice::GetPhysicalDeviceProperties();
+        m_max_command_buffer_count = properties.limits.maxDrawIndirectCount;
     }
 
     CommandPool::~CommandPool()
     {
         Hardwares::VulkanDevice::QueueWait(m_queue_type);
 
+        for (auto it = m_allocated_command_buffers.begin(); it != m_allocated_command_buffers.end();)
+        {
+            auto signal_fence = (*it)->GetSignalFence();
+
+            if (signal_fence && signal_fence->Wait())
+            {
+                it = m_allocated_command_buffers.erase(it);
+            }
+            else
+            {
+                it = std::next(it);
+            }
+        }
+
+        decltype(m_allocated_command_buffers) allocated_buffer;
+        std::swap(allocated_buffer, m_allocated_command_buffers);
+
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-
-        for (Ref<Buffers::CommandBuffer> command : m_command_buffer_collection)
-        {
-            command->WaitForExecution();
-
-            auto command_buffer_handle = command->GetHandle();
-            vkFreeCommandBuffers(device, m_handle, 1, &command_buffer_handle);
-        }
-
         ZENGINE_DESTROY_VULKAN_HANDLE(device, vkDestroyCommandPool, m_handle, nullptr)
-
-        m_command_buffer_collection.fill(nullptr);
     }
 
-    void CommandPool::Tick()
+    Buffers::CommandBuffer* CommandPool::GetCommmandBuffer()
     {
-        if (first)
-        {
-            first = false;
-            return;
-        }
-        m_current_command_buffer_index++;
+        Buffers::CommandBuffer* m_available_command_buffer{nullptr};
 
-        if (m_current_command_buffer_index == 10)
+        bool found = false;
+        for (int i = 0; i < m_allocated_command_buffers.size(); ++i)
         {
-            m_current_command_buffer_index = 0;
-
-            auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-            for (auto& command : m_command_buffer_collection)
+            if (m_allocated_command_buffers[i]->Completed())
             {
-                ZENGINE_VALIDATE_ASSERT(command->GetState() != Buffers::CommanBufferState::Recording, "")
-
-                if (command->GetState() == Buffers::CommanBufferState::Submitted)
-                {
-                    command->WaitForExecution();
-                }
-            }
-            ZENGINE_VALIDATE_ASSERT(vkResetCommandPool(device, m_handle, 0) == VK_SUCCESS, "Failed to reset Command Pool")
-        }
-    }
-
-    Buffers::CommandBuffer* CommandPool::GetCurrentCommmandBuffer()
-    {
-        return m_command_buffer_collection[m_current_command_buffer_index].get();
-    }
-
-    std::vector<Primitives::Semaphore*> CommandPool::GetAllWaitSemaphoreCollection()
-    {
-        std::vector<Primitives::Semaphore*> wait_semaphore_collection;
-
-        for (auto command : m_command_buffer_collection)
-        {
-            ZENGINE_VALIDATE_ASSERT(command->GetState() != Buffers::CommanBufferState::Recording, "")
-
-            auto semaphore = command->GetSignalSemaphore();
-            if (semaphore->GetState() == Primitives::SemaphoreState::Submitted)
-            {
-                wait_semaphore_collection.emplace_back(semaphore);
+                m_allocated_command_buffers[i]->ResetState();
+                m_available_command_buffer = m_allocated_command_buffers[i].get();
+                found                      = true;
+                break;
             }
         }
-        return wait_semaphore_collection;
+
+        if (!found)
+        {
+            m_allocated_command_buffers.push_back(CreateRef<Buffers::CommandBuffer>(m_handle, m_queue_type, false));
+            m_available_command_buffer = m_allocated_command_buffers.back().get();
+        }
+        return m_available_command_buffer;
     }
 
-    uint64_t CommandPool::GetSwapchainParent() const
+    Ref<Buffers::CommandBuffer> CommandPool::GetOneTimeCommmandBuffer()
     {
-        return m_swapchain_identifier;
+        return CreateRef<Buffers::CommandBuffer>(m_handle, m_queue_type, true);
     }
 } // namespace ZEngine::Rendering::Pools

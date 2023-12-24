@@ -29,6 +29,7 @@ namespace ZEngine::Rendering::Shaders
 
         CreateModule();
         CreateDescriptorSetLayouts();
+        CreatePushConstantRange();
     }
 
     Shader::~Shader()
@@ -85,6 +86,28 @@ namespace ZEngine::Rendering::Shaders
                 m_layout_binding_specification_map[set].emplace_back(LayoutBindingSpecification{
                     .Set = set, .Binding = binding, .Name = SB_resource.name, .DescriptorType = DescriptorType::STORAGE_BUFFER, .Flags = ShaderStageFlags::VERTEX});
             }
+
+            for (const auto& pushConstant_resource : vertex_resources.push_constant_buffers)
+            {
+                const spirv_cross::SPIRType& type   = spirv_compiler->get_type(pushConstant_resource.base_type_id);
+                uint32_t                     struct_offset = !m_push_constant_specification_collection.empty() ? m_push_constant_specification_collection.back().Offset : 0;
+
+                if (type.basetype == spirv_cross::SPIRType::Struct)
+                {
+                    uint32_t struct_total_size = 0;
+                    for (uint32_t i = 0; i < type.member_types.size(); ++i)
+                    {
+                        uint32_t memberSize = spirv_compiler->get_declared_struct_member_size(type, i);
+                        struct_total_size += memberSize;
+                    }
+                    m_push_constant_specification_collection.emplace_back(
+                        PushConstantSpecification{.Name = pushConstant_resource.name, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::VERTEX});
+                    /*
+                     * We update the offset for next iteration
+                     */
+                    struct_offset = struct_total_size;
+                }
+            }
         }
         /*
          * Fragment Shader processing
@@ -124,6 +147,28 @@ namespace ZEngine::Rendering::Shaders
 
                 m_layout_binding_specification_map[set].emplace_back(LayoutBindingSpecification{
                     .Set = set, .Binding = binding, .Name = SB_resource.name, .DescriptorType = DescriptorType::STORAGE_BUFFER, .Flags = ShaderStageFlags::FRAGMENT});
+            }
+
+            for (const auto& pushConstant_resource : fragment_resources.push_constant_buffers)
+            {
+                const spirv_cross::SPIRType& type          = spirv_compiler->get_type(pushConstant_resource.base_type_id);
+                uint32_t                     struct_offset = !m_push_constant_specification_collection.empty() ? m_push_constant_specification_collection.back().Offset : 0;
+
+                if (type.basetype == spirv_cross::SPIRType::Struct)
+                {
+                    uint32_t struct_total_size = 0;
+                    for (uint32_t i = 0; i < type.member_types.size(); ++i)
+                    {
+                        uint32_t memberSize = spirv_compiler->get_declared_struct_member_size(type, i);
+                        struct_total_size += memberSize;
+                    }
+                    m_push_constant_specification_collection.emplace_back(
+                        PushConstantSpecification{.Name = pushConstant_resource.name, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::FRAGMENT});
+                    /*
+                     * We update the offset for next iteration
+                     */
+                    struct_offset = struct_total_size;
+                }
             }
 
             for (const auto& SI_resource : fragment_resources.sampled_images)
@@ -196,6 +241,21 @@ namespace ZEngine::Rendering::Shaders
     const std::map<uint32_t, std::vector<VkDescriptorSet>>& Shader::GetDescriptorSetMap() const
     {
         return m_descriptor_set_map;
+    }
+
+    std::map<uint32_t, std::vector<VkDescriptorSet>>& Shader::GetDescriptorSetMap()
+    {
+        return m_descriptor_set_map;
+    }
+
+    VkDescriptorPool Shader::GetDescriptorPool() const
+    {
+        return m_descriptor_pool;
+    }
+
+    const std::vector<VkPushConstantRange>& Shader::GetPushConstants() const
+    {
+        return m_push_constant_collection;
     }
 
     void Shader::Dispose()
@@ -302,7 +362,7 @@ namespace ZEngine::Rendering::Shaders
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags                      = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
-        pool_info.maxSets                    = renderer_info.FrameCount * pool_size_collection.size();
+        pool_info.maxSets                    = renderer_info.FrameCount * pool_size_collection.size() * m_specification.OverloadMaxSet;
         pool_info.poolSizeCount              = pool_size_collection.size();
         pool_info.pPoolSizes                 = pool_size_collection.data();
 
@@ -329,6 +389,17 @@ namespace ZEngine::Rendering::Shaders
             ZENGINE_VALIDATE_ASSERT(
                 vkAllocateDescriptorSets(device, &descriptor_set_allocate_info, m_descriptor_set_map[layout.first].data()) == VK_SUCCESS, "Failed to create DescriptorSet")
         }
+    }
+
+    void Shader::CreatePushConstantRange()
+    {
+        for (const auto& push_constant_spec : m_push_constant_specification_collection)
+        {
+            m_push_constant_collection.emplace_back(VkPushConstantRange{
+                .stageFlags = ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(push_constant_spec.Flags)], .offset = push_constant_spec.Offset, .size = push_constant_spec.Size});
+        }
+        m_push_constant_specification_collection.clear();
+        m_push_constant_specification_collection.shrink_to_fit();
     }
 
     Ref<Shader> Shader::Create(Specifications::ShaderSpecification&& spec)

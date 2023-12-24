@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Buffers
                 return;
             }
 
-            if (this->m_byte_size < byte_size)
+            if (this->m_byte_size != byte_size)
             {
                 /*
                  * Tracking the size change..
@@ -60,7 +60,8 @@ namespace ZEngine::Rendering::Buffers
                 if (data && allocation_info.pMappedData)
                 {
                     std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
-                    ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, VK_WHOLE_SIZE) == VK_SUCCESS, "Failed to flush allocation")
+                    ZENGINE_VALIDATE_ASSERT(
+                        vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, static_cast<VkDeviceSize>(this->m_byte_size)) == VK_SUCCESS, "Failed to flush allocation")
                     Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_index_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
                 }
 
@@ -86,6 +87,12 @@ namespace ZEngine::Rendering::Buffers
             return reinterpret_cast<void*>(m_index_buffer.Handle);
         }
 
+        const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
+        {
+            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_index_buffer.Handle, .offset = 0, .range = this->m_byte_size};
+            return m_buffer_info;
+        }
+
         void Dispose()
         {
             CleanUpMemory();
@@ -103,5 +110,38 @@ namespace ZEngine::Rendering::Buffers
 
     private:
         Hardwares::BufferView m_index_buffer;
+        VkDescriptorBufferInfo m_buffer_info{};
+    };
+
+    struct IndexBufferSet : public Helpers::RefCounted
+    {
+        IndexBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
+
+        IndexBuffer& operator[](uint32_t index)
+        {
+            assert(index < m_buffer_set.size());
+            return m_buffer_set[index];
+        }
+
+        const std::vector<IndexBuffer>& Data() const
+        {
+            return m_buffer_set;
+        }
+
+        std::vector<IndexBuffer>& Data()
+        {
+            return m_buffer_set;
+        }
+
+        void Dispose()
+        {
+            for (auto& buffer : m_buffer_set)
+            {
+                buffer.Dispose();
+            }
+        }
+
+    private:
+        std::vector<IndexBuffer> m_buffer_set;
     };
 } // namespace ZEngine::Rendering::Buffers

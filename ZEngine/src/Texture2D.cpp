@@ -57,7 +57,7 @@ namespace ZEngine::Rendering::Textures
         spec.Width                                = width;
         spec.Height                               = height;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
-        spec.BytePerPixel                         = Specifications::BytePerChannelMap[spec.Format];
+        spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
         spec.Data                                 = output_buffer.data();
         auto texture                              = Create(spec);
 
@@ -87,7 +87,7 @@ namespace ZEngine::Rendering::Textures
         cubemap_texture_spec.Width                                = cubemap.Width;
         cubemap_texture_spec.Height                               = cubemap.Height;
         cubemap_texture_spec.Format                               = Specifications::ImageFormat::R32G32B32A32_SFLOAT;
-        cubemap_texture_spec.BytePerPixel                         = Specifications::BytePerChannelMap[cubemap_texture_spec.Format];
+        cubemap_texture_spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(cubemap_texture_spec.Format)];
         cubemap_texture_spec.Data                                 = cubemap.Buffer.data();
         cubemap_texture_spec.LayerCount                           = 6;
 
@@ -124,7 +124,7 @@ namespace ZEngine::Rendering::Textures
         spec.Width                                = width;
         spec.Height                               = height;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
-        spec.BytePerPixel                         = Specifications::BytePerChannelMap[spec.Format];
+        spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
         spec.Data                                 = image_data;
         return Create(spec);
     }
@@ -140,7 +140,7 @@ namespace ZEngine::Rendering::Textures
         spec.Width                                = width;
         spec.Height                               = height;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
-        spec.BytePerPixel                         = Specifications::BytePerChannelMap[spec.Format];
+        spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
         spec.Data                                 = image_data;
         return Create(spec);
     }

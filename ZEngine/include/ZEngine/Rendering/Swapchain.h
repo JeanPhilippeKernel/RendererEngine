@@ -14,8 +14,6 @@ namespace ZEngine::Rendering
         ~Swapchain();
 
         void Resize();
-
-        void AcquireNextImage();
         void Present();
 
         uint32_t       GetMinImageCount() const;
@@ -35,7 +33,6 @@ namespace ZEngine::Rendering
         VkSurfaceFormatKHR                       m_surface_format;
         bool                                     m_is_surface_from_device;
         uint32_t                                 m_current_frame_index{0};
-        uint32_t                                 m_current_frame_image_index{0};
         uint32_t                                 m_last_frame_image_index{0};
         VkSwapchainKHR                           m_handle{VK_NULL_HANDLE};
         uint32_t                                 m_image_width{0};
@@ -49,6 +46,8 @@ namespace ZEngine::Rendering
         std::vector<VkImageView>                 m_image_view_collection;
         std::vector<VkFramebuffer>               m_framebuffer_collection;
         std::vector<Ref<Primitives::Semaphore>>  m_acquired_semaphore_collection;
+        std::vector<Ref<Primitives::Semaphore>>  m_render_complete_semaphore_collection;
+        std::vector<Ref<Primitives::Fence>>      m_frame_signal_fence_collection;
         std::vector<Primitives::Semaphore*>      m_wait_semaphore_collection;
         std::mutex                               m_image_mutex;
         uint64_t                                 m_identifier{0};
