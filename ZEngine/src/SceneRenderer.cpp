@@ -30,7 +30,7 @@ namespace ZEngine::Rendering::Renderers
             s_cubemap_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
         }
 
-        s_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_1k.hdr");
+        s_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
         Specifications::GraphicRendererPipelineSpecification cubemap_pipeline_spec = {};
         cubemap_pipeline_spec.DebugName                                            = "Cubemap-Pipeline";
         // cubemap_pipeline_spec.TargetFrameBuffer                                    = GraphicRenderer::GetRenderTarget(RenderTarget::ENVIROMENT_CUBEMAP);

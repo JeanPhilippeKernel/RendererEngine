@@ -23,7 +23,7 @@ namespace Tetragrama::Components
     {
         if ((m_viewport_size.x != m_content_region_available_size.x) || (m_viewport_size.y != m_content_region_available_size.y))
         {
-            m_viewport_size = m_content_region_available_size;
+            m_viewport_size           = m_content_region_available_size;
             m_request_renderer_resize = true;
         }
         else
@@ -42,13 +42,13 @@ namespace Tetragrama::Components
 
         if (m_is_window_hovered && m_is_window_focused)
         {
-            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
-                EDITOR_COMPONENT_SCENEVIEWPORT_FOCUSED, Messengers::GenericMessage<bool>{true});
+            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(
+                EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, Messengers::GenericMessage<bool>{true});
         }
         else
         {
-            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<bool>>(
-                EDITOR_COMPONENT_SCENEVIEWPORT_UNFOCUSED, Messengers::GenericMessage<bool>{false});
+            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(
+                EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{false});
         }
 
         if (m_is_window_clicked && m_is_window_hovered && m_is_window_focused)
@@ -59,7 +59,7 @@ namespace Tetragrama::Components
 
             auto mouse_bounded_x = static_cast<int>(mouse_position.x);
             auto mouse_bounded_y = static_cast<int>(mouse_position.y);
-            auto message_data = std::array{mouse_bounded_x, mouse_bounded_y};
+            auto message_data    = std::array{mouse_bounded_x, mouse_bounded_y};
             Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::ArrayValueMessage<int, 2>>(
                 EDITOR_COMPONENT_SCENEVIEWPORT_CLICKED, Messengers::ArrayValueMessage<int, 2>{message_data});
         }
@@ -85,7 +85,7 @@ namespace Tetragrama::Components
         // Scene texture representation
         if (!m_scene_texture || m_refresh_texture_handle)
         {
-            m_scene_texture = GraphicRenderer::GetImguiFrameOutput();
+            m_scene_texture          = GraphicRenderer::GetImguiFrameOutput();
             m_refresh_texture_handle = false;
         }
 
