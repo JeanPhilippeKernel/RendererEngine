@@ -9,6 +9,7 @@
 
 #include <Hardwares/VulkanDevice.h>
 #include <Logging/LoggerDefinition.h>
+#include <Helpers/MemoryOperations.h>
 
 
 using namespace std::chrono_literals;
@@ -406,8 +407,8 @@ namespace ZEngine::Hardwares
         Rendering::Buffers::CommandBuffer&      command_buffer,
         bool                                    as_instant_submission,
         Rendering::Primitives::Semaphore* const wait_semaphore,
-        Rendering::Primitives::Semaphore* const signal_semaphore,
-        Rendering::Primitives::Fence* const     signal_fence)
+        Rendering::Primitives::Semaphore* const,
+        Rendering::Primitives::Fence* const)
     {
         std::lock_guard lock(m_queue_mutex);
 
@@ -428,13 +429,13 @@ namespace ZEngine::Hardwares
             return true;
         }
 
-        Semaphore  current_signal_semaphore = {};
-        Ref<Fence> current_signal_fence     = CreateRef<Fence>();
+        Ref<Semaphore> signal_semaphore = CreateRef<Semaphore>();
+        Ref<Fence>     signal_fence     = CreateRef<Fence>();
 
-        ZENGINE_VALIDATE_ASSERT(current_signal_semaphore.GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
-        ZENGINE_VALIDATE_ASSERT(current_signal_fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
+        ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
+        ZENGINE_VALIDATE_ASSERT(signal_fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
 
-        std::array<VkSemaphore, 1> signal_semaphore_collection = {current_signal_semaphore.GetHandle()};
+        std::array<VkSemaphore, 1> signal_semaphore_collection = {signal_semaphore->GetHandle()};
         VkCommandBuffer            buffer_handle               = q.Buffer.GetHandle();
         VkSubmitInfo               submit_info                 = {};
         submit_info.sType                                      = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -447,22 +448,25 @@ namespace ZEngine::Hardwares
         submit_info.commandBufferCount                         = 1;
         submit_info.pCommandBuffers                            = &buffer_handle;
 
-        ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(queue_type).Handle, 1, &submit_info, current_signal_fence->GetHandle()) == VK_SUCCESS, "Failed to submit queue")
-        q.Buffer.SetSignalFence(current_signal_fence);
+        ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(queue_type).Handle, 1, &submit_info, signal_fence->GetHandle()) == VK_SUCCESS, "Failed to submit queue")
+        q.Buffer.SetSignalFence(signal_fence);
+        q.Buffer.SetSignalSemaphore(signal_semaphore);
         q.Buffer.SetState(Rendering::Buffers::Pending);
 
-        current_signal_fence->SetState(FenceState::Submitted);
-        current_signal_semaphore.SetState(SemaphoreState::Submitted);
+        signal_fence->SetState(FenceState::Submitted);
+        signal_semaphore->SetState(SemaphoreState::Submitted);
 
-        if (!current_signal_fence->Wait())
+        if (!signal_fence->Wait())
         {
-            ZENGINE_CORE_WARN("Failed to wait for Command buffer's Fence, due to time out")
+            ZENGINE_CORE_WARN("Failed to wait for Command buffer's Fence, due to timeout")
         }
 
         if (q.Buffer.Completed())
         {
-            current_signal_fence->Reset();
+            signal_fence->Reset();
         }
+
+        q.Buffer.SetState(Rendering::Buffers::Invalid);
 
         return true;
     }
@@ -563,7 +567,6 @@ namespace ZEngine::Hardwares
         std::transform(pending_cmb_collection.begin(), pending_cmb_collection.end(), std::back_inserter(buffers), [&](const QueueSubmitInfo& info) {
             info.Buffer.SetSignalSemaphore(render_complete_semaphore);
             info.Buffer.SetSignalFence(frame_fence);
-
             return info.Buffer.GetHandle();
         });
 
@@ -892,7 +895,7 @@ namespace ZEngine::Hardwares
         if (data)
         {
             ZENGINE_VALIDATE_ASSERT(vmaMapMemory(s_vma_allocator, buffer.Allocation, &mapped_memory) == VK_SUCCESS, "Failed to map memory")
-            std::memcpy(mapped_memory, data, data_size);
+            ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(mapped_memory, data_size, data, data_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
             vmaUnmapMemory(s_vma_allocator, buffer.Allocation);
         }
     }

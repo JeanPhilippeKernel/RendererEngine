@@ -3,6 +3,7 @@
 #include <cmath>
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
+#include <Helpers/MemoryOperations.h>
 
 namespace ZEngine::Rendering::Buffers
 {
@@ -95,7 +96,8 @@ namespace ZEngine::Rendering::Buffers
         {
             if (data)
             {
-                std::memcpy(Buffer.data(), data, Buffer.size());
+                ZENGINE_VALIDATE_ASSERT(
+                    Helpers::secure_memcpy(Buffer.data(), Buffer.size(), data, Buffer.size()) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
             }
         }
         ~Bitmap() = default;
@@ -295,8 +297,10 @@ namespace ZEngine::Rendering::Buffers
                                 break;
                             }
                         }
-
-                        std::memcpy(destination, source + (pixel_pos_y * input_map.Width + pixel_pos_x) * pixel_size, pixel_size);
+                        ZENGINE_VALIDATE_ASSERT(
+                            Helpers::secure_memcpy(destination, pixel_size, source + (pixel_pos_y * input_map.Width + pixel_pos_x) * pixel_size, pixel_size) ==
+                                Helpers::MEMORY_OP_SUCCESS,
+                            "Failed to perform memory copy operation")
                         destination += pixel_size;
                     }
                 }

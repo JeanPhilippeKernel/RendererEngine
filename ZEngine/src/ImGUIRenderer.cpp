@@ -141,12 +141,12 @@ namespace ZEngine::Rendering::Renderers
 
     void ImGUIRenderer::Deinitialize()
     {
-        ImGui_ImplGlfw_Shutdown();
-        ImGui::DestroyContext();
-
         m_ui_pass->Dispose();
         m_vertex_buffer->Dispose();
         m_index_buffer->Dispose();
+
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
     }
 
     void ImGUIRenderer::StyleDarkTheme()

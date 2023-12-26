@@ -44,7 +44,9 @@ namespace ZEngine::Rendering::Buffers
                 vmaGetAllocationInfo(allocator, m_indirect_buffer.Allocation, &allocation_info);
                 if (data && allocation_info.pMappedData)
                 {
-                    std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
+                    ZENGINE_VALIDATE_ASSERT(
+                        Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS,
+                        "Failed to perform memory copy operation")
                 }
             }
             else
@@ -59,7 +61,9 @@ namespace ZEngine::Rendering::Buffers
 
                 if (data && allocation_info.pMappedData)
                 {
-                    std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
+                    ZENGINE_VALIDATE_ASSERT(
+                        Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS,
+                        "Failed to perform memory copy operation")
                     ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, VK_WHOLE_SIZE) == VK_SUCCESS, "Failed to flush allocation")
                     Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_indirect_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
                 }
