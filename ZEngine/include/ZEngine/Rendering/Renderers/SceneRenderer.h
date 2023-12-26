@@ -71,12 +71,12 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Cubemap
          */
-        Ref<Buffers::StorageBufferSet>            cubemapSBVertex;
-        Ref<Buffers::StorageBufferSet>            cubemapSBIndex;
-        Ref<Buffers::StorageBufferSet>            cubemapSBDrawData;
-        Ref<Textures::Texture>                    s_environment_map;
-        Ref<RenderPasses::RenderPass>             s_cubemap_pass;
-        std::vector<Ref<Buffers::IndirectBuffer>> s_cubemap_indirect_buffer;
+        Ref<Buffers::StorageBufferSet>            m_CubemapSBVertex;
+        Ref<Buffers::StorageBufferSet>            m_CubemapSBIndex;
+        Ref<Buffers::StorageBufferSet>            m_CubemapSBDrawData;
+        Ref<Textures::Texture>                    m_environment_map;
+        Ref<RenderPasses::RenderPass>             m_cubemap_pass;
+        std::vector<Ref<Buffers::IndirectBuffer>> m_cubemap_indirect_buffer;
         const std::vector<float>                  m_cubemap_vertex_data = {
             -1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0,
             -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0,

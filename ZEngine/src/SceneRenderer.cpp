@@ -23,15 +23,15 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Cubmap Pass
          */
-        cubemapSBVertex   = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        cubemapSBIndex    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        cubemapSBDrawData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_CubemapSBVertex   = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_CubemapSBIndex    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_CubemapSBDrawData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
         for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
         {
-            s_cubemap_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
+            m_cubemap_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
         }
 
-        s_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
+        m_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
         Specifications::GraphicRendererPipelineSpecification cubemap_pipeline_spec = {};
         cubemap_pipeline_spec.DebugName                                            = "Cubemap-Pipeline";
         // cubemap_pipeline_spec.TargetFrameBuffer                                    = GraphicRenderer::GetRenderTarget(RenderTarget::ENVIROMENT_CUBEMAP);
@@ -39,15 +39,15 @@ namespace ZEngine::Rendering::Renderers
         cubemap_pipeline_spec.ShaderSpecification               = {.VertexFilename = "Shaders/Cache/cubemap_vertex.spv", .FragmentFilename = "Shaders/Cache/cubemap_fragment.spv"};
         RenderPasses::RenderPassSpecification cubemap_pass_spec = {};
         cubemap_pass_spec.Pipeline                              = Pipelines::GraphicPipeline::Create(cubemap_pipeline_spec);
-        s_cubemap_pass                                          = RenderPasses::RenderPass::Create(cubemap_pass_spec);
+        m_cubemap_pass                                          = RenderPasses::RenderPass::Create(cubemap_pass_spec);
 
-        s_cubemap_pass->SetInput("UBCamera", camera);
-        s_cubemap_pass->SetInput("VertexSB", cubemapSBVertex);
-        s_cubemap_pass->SetInput("IndexSB", cubemapSBIndex);
-        s_cubemap_pass->SetInput("DrawDataSB", cubemapSBDrawData);
-        s_cubemap_pass->SetInput("CubemapTexture", s_environment_map);
-        s_cubemap_pass->Verify();
-        s_cubemap_pass->Bake();
+        m_cubemap_pass->SetInput("UBCamera", camera);
+        m_cubemap_pass->SetInput("VertexSB", m_CubemapSBVertex);
+        m_cubemap_pass->SetInput("IndexSB", m_CubemapSBIndex);
+        m_cubemap_pass->SetInput("DrawDataSB", m_CubemapSBDrawData);
+        m_cubemap_pass->SetInput("CubemapTexture", m_environment_map);
+        m_cubemap_pass->Verify();
+        m_cubemap_pass->Bake();
 
         /*
          * Infinite Grid
@@ -112,12 +112,12 @@ namespace ZEngine::Rendering::Renderers
 
     void SceneRenderer::Deinitialize()
     {
-        s_cubemap_pass->Dispose();
-        s_environment_map->Dispose();
-        cubemapSBVertex->Dispose();
-        cubemapSBIndex->Dispose();
-        cubemapSBDrawData->Dispose();
-        for (auto& buffer : s_cubemap_indirect_buffer)
+        m_cubemap_pass->Dispose();
+        m_environment_map->Dispose();
+        m_CubemapSBVertex->Dispose();
+        m_CubemapSBIndex->Dispose();
+        m_CubemapSBDrawData->Dispose();
+        for (auto& buffer : m_cubemap_indirect_buffer)
         {
             buffer->Dispose();
         }
@@ -172,14 +172,14 @@ namespace ZEngine::Rendering::Renderers
              * Uploading Cubemap
              */
             {
-                auto& vertex_buffer    = *cubemapSBVertex;
-                auto& index_buffer     = *cubemapSBIndex;
-                auto& draw_data_buffer = *cubemapSBDrawData;
+                auto& vertex_buffer    = *m_CubemapSBVertex;
+                auto& index_buffer     = *m_CubemapSBIndex;
+                auto& draw_data_buffer = *m_CubemapSBDrawData;
 
                 vertex_buffer[current_frame_index].SetData(m_cubemap_vertex_data);
                 index_buffer[current_frame_index].SetData(m_cubemap_index_data);
                 draw_data_buffer[current_frame_index].SetData(m_cubmap_draw_data);
-                s_cubemap_indirect_buffer[current_frame_index]->SetData(m_cubemap_indirect_commmand);
+                m_cubemap_indirect_buffer[current_frame_index]->SetData(m_cubemap_indirect_commmand);
             }
 
             /*
@@ -196,7 +196,7 @@ namespace ZEngine::Rendering::Renderers
                 m_infinite_grid_indirect_buffer[current_frame_index]->SetData(m_grid_indirect_commmand);
             }
 
-            s_cubemap_pass->MarkDirty();
+            m_cubemap_pass->MarkDirty();
             m_infinite_grid_pass->MarkDirty();
 
             --m_upload_once_per_frame_count;
@@ -304,9 +304,9 @@ namespace ZEngine::Rendering::Renderers
 
     void SceneRenderer::EndScene(Buffers::CommandBuffer* const command_buffer, uint32_t current_frame_index)
     {
-        command_buffer->BeginRenderPass(s_cubemap_pass);
+        command_buffer->BeginRenderPass(m_cubemap_pass);
         command_buffer->BindDescriptorSets(current_frame_index);
-        command_buffer->DrawIndirect(s_cubemap_indirect_buffer[current_frame_index]);
+        command_buffer->DrawIndirect(m_cubemap_indirect_buffer[current_frame_index]);
         command_buffer->EndRenderPass();
 
         // command_buffer->BeginRenderPass(m_infinite_grid_pass);
@@ -324,7 +324,7 @@ namespace ZEngine::Rendering::Renderers
 
     void SceneRenderer::SetViewportSize(uint32_t width, uint32_t height)
     {
-        s_cubemap_pass->ResizeRenderTarget(width, height);
+        m_cubemap_pass->ResizeRenderTarget(width, height);
         m_infinite_grid_pass->ResizeRenderTarget(width, height);
         m_final_color_output_pass->ResizeRenderTarget(width, height);
     }
