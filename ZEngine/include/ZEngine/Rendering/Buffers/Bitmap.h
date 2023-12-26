@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <Helpers/MemoryOperations.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Buffers
 {
