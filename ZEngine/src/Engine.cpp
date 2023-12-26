@@ -79,6 +79,9 @@ namespace ZEngine
     void Engine::Render()
     {
         m_window->Render();
+
+        GraphicRenderer::Upload();
+        m_window->GetSwapchain()->Present();
     }
 
     bool Engine::OnEngineClosed(Event::EngineClosedEvent& event)

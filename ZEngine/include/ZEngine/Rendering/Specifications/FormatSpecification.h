@@ -1,13 +1,19 @@
 #pragma once
+#include <map>
 #include <vulkan/vulkan.h>
+
 
 namespace ZEngine::Rendering::Specifications
 {
+    #define VALUE_FROM_SPEC_MAP(x) static_cast<uint32_t>(x)
+
     enum class ImageFormat : uint32_t
     {
         UNDEFINED = 0,
         R8G8B8A8_UNORM, // color
         R8G8B8A8_SRGB,
+        R32G32B32A32_SFLOAT,
+        R32G32_SFLOAT,
         DEPTH16_UNORM,
         DEPTH16_UNORM_S8_UINT,
         DEPTH24_UNORM_S8_UINT,
@@ -17,10 +23,17 @@ namespace ZEngine::Rendering::Specifications
         DEPTH_STENCIL_FROM_DEVICE
     };
 
+    /*
+    * BytePerChannelMap follows ImageFormat enum alignment value
+    */
+    static uint32_t BytePerChannelMap[] = {0u, 4u, 4u, (4u * sizeof(float))};
+
     static VkFormat ImageFormatMap[] = {
         VK_FORMAT_UNDEFINED,
         VK_FORMAT_R8G8B8A8_UNORM,
         VK_FORMAT_R8G8B8A8_SRGB,
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_FORMAT_R32G32_SFLOAT,
         VK_FORMAT_D16_UNORM,
         VK_FORMAT_D16_UNORM_S8_UINT,
         VK_FORMAT_D24_UNORM_S8_UINT,

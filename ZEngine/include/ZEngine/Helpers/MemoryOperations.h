@@ -1,7 +1,10 @@
+#pragma once
+#include <cstring>
+
+#ifdef __STDC_LIB_EXT1__
 #define __STDC_WANT_LIB_EXT1__ 1
 #include <string.h>
-#include <cstring>
-#include <stdexcept>
+#endif
 
 namespace ZEngine::Helpers
 {
@@ -14,7 +17,7 @@ namespace ZEngine::Helpers
 #define SECURE_C11_FUNCTIONS_AVAILABLE 0
 #endif
 
-    int secure_memset(void* destination, int value, size_t count, size_t destinationSize)
+    inline int secure_memset(void* destination, int value, size_t count, size_t destinationSize)
     {
         if (!destination)
         {
@@ -29,7 +32,7 @@ namespace ZEngine::Helpers
         return (std::memset(destination, value, count) == destination) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
     }
 
-    int secure_memcpy(void* dest, size_t destSize, const void* src, size_t count)
+    inline int secure_memcpy(void* dest, size_t destSize, const void* src, size_t count)
     {
         if (!dest || !src)
         {
@@ -50,7 +53,7 @@ namespace ZEngine::Helpers
 #endif
     }
 
-    int secure_memmove(void* dest, size_t destSize, const void* src, size_t count)
+    inline int secure_memmove(void* dest, size_t destSize, const void* src, size_t count)
     {
         if (!dest || !src)
         {
@@ -70,7 +73,7 @@ namespace ZEngine::Helpers
 #endif
     }
 
-    int secure_strncpy(char* dest, size_t destSize, const char* src, size_t count)
+    inline int secure_strncpy(char* dest, size_t destSize, const char* src, size_t count)
     {
         if (!dest || !src)
         {
@@ -89,7 +92,7 @@ namespace ZEngine::Helpers
         return (std::strncpy(dest, src, count) == dest) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #endif
     }
-    size_t secure_strlen(const char* str)
+    inline size_t secure_strlen(const char* str)
     {
         if (!str)
         {
@@ -98,7 +101,7 @@ namespace ZEngine::Helpers
         return std::strlen(str);
     }
 
-    int secure_strcpy(char* dest, size_t destSize, const char* src)
+    inline int secure_strcpy(char* dest, size_t destSize, const char* src)
     {
         if (!dest || !src)
         {
@@ -119,7 +122,7 @@ namespace ZEngine::Helpers
 #endif
     }
 
-    int secure_memcmp(const void* ptr1, size_t ptr1Size, const void* ptr2, size_t ptr2Size, size_t num)
+    inline int secure_memcmp(const void* ptr1, size_t ptr1Size, const void* ptr2, size_t ptr2Size, size_t num)
     {
         if (!ptr1 || !ptr2)
         {

@@ -64,15 +64,8 @@ namespace ZEngine::Layers
         bool OnWindowMaximized(Event::WindowMaximizedEvent&) override;
         bool OnWindowRestored(Event::WindowRestoredEvent&) override;
 
-        virtual void StyleDarkTheme();
-
     private:
         static bool                                   m_initialized;
         std::vector<Ref<Components::UI::UIComponent>> m_ui_components;
-        static void                                   __ImGUIRendererCreateWindowCallback(ImGuiViewport* viewport);
-        static void                                   __ImGUIPlatformDestroyWindowCallback(ImGuiViewport* viewport);
-        static void                                   __ImGUIPlatformRenderWindowCallback(ImGuiViewport* viewport, void* args);
-        static void                                   __ImGUIPlatformSwapBuffersCallback(ImGuiViewport* viewport, void* args);
-        static void                                   __ImGUIPlatformSetWindowSizeCallback(ImGuiViewport* viewport, ImVec2 size);
     };
 } // namespace ZEngine::Layers

@@ -14,5 +14,6 @@ namespace ZEngine::Rendering::Specifications
         VkImageAspectFlagBits   ImageAspectMask;
         VkPipelineStageFlagBits SourceStageMask;
         VkPipelineStageFlagBits DestinationStageMask;
+        uint32_t                LayerCount = 1;
     };
 }

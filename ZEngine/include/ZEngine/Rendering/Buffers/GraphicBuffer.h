@@ -1,5 +1,6 @@
 #pragma once
 #include <Helpers/IntrusivePtr.h>
+#include <Helpers/MemoryOperations.h>
 
 namespace ZEngine::Rendering::Buffers
 {

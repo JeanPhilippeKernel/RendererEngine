@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Engine.h>
 
 using namespace ZEngine::Rendering::Buffers;
 
@@ -38,6 +39,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
+        const uint32_t                    frame_count                     = Engine::GetWindow()->GetSwapchain()->GetImageCount();
         const auto&                       shader                          = m_pipeline->GetShader();
         const auto&                       descriptor_set_map              = shader->GetDescriptorSetMap();
         std::vector<VkWriteDescriptorSet> write_descriptor_set_collection = {};
@@ -111,8 +113,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                     auto  texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
                     auto& texture_collection = texture_array->Data();
 
-                    uint32_t frame_count{3}; /*this should from the renderer*/
-
                     for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
                     {
                         for (uint32_t index = 0; index < texture_collection.size(); ++index)
@@ -130,6 +130,26 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                                 .pBufferInfo      = nullptr,
                                 .pTexelBufferView = nullptr});
                         }
+                    }
+                }
+                break;
+                case TEXTURE:
+                {
+                    auto buffer = reinterpret_cast<Textures::Texture*>(input.Input.Data);
+                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    {
+                        const auto& image_info = buffer->GetDescriptorImageInfo();
+                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .pNext            = nullptr,
+                            .dstSet           = descriptor_set_map.at(input.Set)[frame_index],
+                            .dstBinding       = input.Binding,
+                            .dstArrayElement  = 0,
+                            .descriptorCount  = 1,
+                            .descriptorType   = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo       = &(image_info),
+                            .pBufferInfo      = nullptr,
+                            .pTexelBufferView = nullptr});
                     }
                 }
                 break;

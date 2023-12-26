@@ -3,7 +3,14 @@
 
 namespace ZEngine::Rendering::Buffers
 {
-    Image2DBuffer::Image2DBuffer(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage_flag_bit, VkImageAspectFlagBits image_aspect_flag_bit)
+    Image2DBuffer::Image2DBuffer(
+        uint32_t              width,
+        uint32_t              height,
+        VkFormat              format,
+        VkImageUsageFlags     usage_flag_bit,
+        VkImageAspectFlagBits image_aspect_flag_bit,
+        uint32_t              layer_count,
+        VkImageCreateFlags    image_create_flag_bit)
         : m_width(width), m_height(height)
     {
         ZENGINE_VALIDATE_ASSERT(m_width > 0, "Image width must be greater then zero")
@@ -20,7 +27,7 @@ namespace ZEngine::Rendering::Buffers
             VK_SHARING_MODE_EXCLUSIVE,
             VK_SAMPLE_COUNT_1_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            image_aspect_flag_bit);
+            image_aspect_flag_bit, layer_count, image_create_flag_bit);
     }
 
     Image2DBuffer::~Image2DBuffer()

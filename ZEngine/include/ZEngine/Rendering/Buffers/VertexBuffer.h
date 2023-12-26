@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Buffers
                 return;
             }
 
-            if (this->m_byte_size < byte_size)
+            if (this->m_byte_size != byte_size)
             {
                 /*
                  * Tracking the size change..
@@ -42,7 +42,9 @@ namespace ZEngine::Rendering::Buffers
                 vmaGetAllocationInfo(allocator, m_vertex_buffer.Allocation, &allocation_info);
                 if (data && allocation_info.pMappedData)
                 {
-                    std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
+                    ZENGINE_VALIDATE_ASSERT(
+                        Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS,
+                        "Failed to perform memory copy operation")
                 }
             }
             else
@@ -57,8 +59,11 @@ namespace ZEngine::Rendering::Buffers
 
                 if (data && allocation_info.pMappedData)
                 {
-                    std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
-                    ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, VK_WHOLE_SIZE) == VK_SUCCESS, "Failed to flush allocation")
+                    ZENGINE_VALIDATE_ASSERT(
+                        Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS,
+                        "Failed to perform memory copy operation")
+                    ZENGINE_VALIDATE_ASSERT(
+                        vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, static_cast<VkDeviceSize>(this->m_byte_size)) == VK_SUCCESS, "Failed to flush allocation")
                     Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
                 }
 
@@ -84,6 +89,12 @@ namespace ZEngine::Rendering::Buffers
             return reinterpret_cast<void*>(m_vertex_buffer.Handle);
         }
 
+        const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
+        {
+            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_vertex_buffer.Handle, .offset = 0, .range = this->m_byte_size};
+            return m_buffer_info;
+        }
+
         void Dispose()
         {
             CleanUpMemory();
@@ -101,5 +112,38 @@ namespace ZEngine::Rendering::Buffers
 
     private:
         Hardwares::BufferView m_vertex_buffer;
+        VkDescriptorBufferInfo m_buffer_info{};
+    };
+
+    struct VertexBufferSet : public Helpers::RefCounted
+    {
+        VertexBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
+
+        VertexBuffer& operator[](uint32_t index)
+        {
+            assert(index < m_buffer_set.size());
+            return m_buffer_set[index];
+        }
+
+        const std::vector<VertexBuffer>& Data() const
+        {
+            return m_buffer_set;
+        }
+
+        std::vector<VertexBuffer>& Data()
+        {
+            return m_buffer_set;
+        }
+
+        void Dispose()
+        {
+            for (auto& buffer : m_buffer_set)
+            {
+                buffer.Dispose();
+            }
+        }
+
+    private:
+        std::vector<VertexBuffer> m_buffer_set;
     };
 } // namespace ZEngine::Rendering::Buffers

@@ -1,157 +1,336 @@
 #include <pch.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
+#include <Rendering/Renderers/GraphicRenderer.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <ImGuizmo/ImGuizmo.h>
 #include <Hardwares/VulkanDevice.h>
 #include <backends/imgui_impl_glfw.h>
 
-#include <imgui_impl_vulkan.cpp>
+#include <Engine.h>
 
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering;
 
 namespace ZEngine::Rendering::Renderers
 {
-    Pools::CommandPool*                              ImGUIRenderer::s_ui_command_pool         = nullptr;
-    Rendering::Buffers::CommandBuffer*               ImGUIRenderer::s_command_buffer          = nullptr;
-    VkDescriptorPool                                 ImGUIRenderer::s_descriptor_pool         = VK_NULL_HANDLE;
-
-    void ImGUIRenderer::Initialize(void* window, const Ref<Swapchain>& swapchain)
+    void ImGUIRenderer::Initialize(const Ref<Swapchain>& swapchain)
     {
-        s_ui_command_pool = VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, swapchain->GetIdentifier(), true);
-        ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(window), false);
+        auto current_window = Engine::GetWindow();
 
-        /*Create DescriptorPool*/
-        auto                              device     = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        const auto&                       device_property = Hardwares::VulkanDevice::GetPhysicalDeviceProperties();
-        std::vector<VkDescriptorPoolSize> pool_sizes = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}};
-        VkDescriptorPoolCreateInfo        pool_info  = {};
-        pool_info.sType                              = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_info.flags                              = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pool_info.maxSets                            = 2000 * swapchain->GetImageCount();
-        pool_info.poolSizeCount                      = pool_sizes.size();
-        pool_info.pPoolSizes                         = pool_sizes.data();
-        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(device, &pool_info, nullptr, &s_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool -- ImGuiLayer")
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        StyleDarkTheme();
 
-        ImGui_ImplVulkan_InitInfo imgui_vulkan_init_info = {};
-        imgui_vulkan_init_info.Instance                  = Hardwares::VulkanDevice::GetNativeInstanceHandle();
-        imgui_vulkan_init_info.PhysicalDevice            = Hardwares::VulkanDevice::GetNativePhysicalDeviceHandle();
-        imgui_vulkan_init_info.Device                    = device;
-        auto queue_view                                  = Hardwares::VulkanDevice::GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
-        imgui_vulkan_init_info.QueueFamily               = queue_view.FamilyIndex;
-        imgui_vulkan_init_info.Queue                     = queue_view.Handle;
-        imgui_vulkan_init_info.PipelineCache             = nullptr;
-        imgui_vulkan_init_info.DescriptorPool            = s_descriptor_pool;
-        imgui_vulkan_init_info.Allocator                 = nullptr;
-        imgui_vulkan_init_info.MinImageCount             = swapchain->GetMinImageCount();
-        imgui_vulkan_init_info.ImageCount                = swapchain->GetImageCount();
-        imgui_vulkan_init_info.CheckVkResultFn           = nullptr;
+        ImGuiIO& io                     = ImGui::GetIO();
+        io.ConfigViewportsNoTaskBarIcon = true;
+        io.ConfigViewportsNoDecoration  = true;
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+        io.BackendFlags |= ImGuiBackendFlags_HasMouseHoveredViewport;
+        io.BackendRendererName = "ZEngine";
 
-        ImGui_ImplVulkan_Init(&imgui_vulkan_init_info, swapchain->GetRenderPass());
-
-        // Upload Fonts
-        auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
+        std::string_view default_layout_ini = "Settings/DefaultLayout.ini";
+        const auto       current_directoy   = std::filesystem::current_path();
+        auto             layout_file_path   = fmt::format("{0}/{1}", current_directoy.string(), default_layout_ini);
+        if (std::filesystem::exists(std::filesystem::path(layout_file_path)))
         {
-            ImGui_ImplVulkan_CreateFontsTexture(command_buffer->GetHandle());
+            io.IniFilename = default_layout_ini.data();
         }
-        Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
-        __ImGUIDestroyFontUploadObjects();
+
+        // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+        auto& style            = ImGui::GetStyle();
+        style.WindowBorderSize = 0.f;
+        style.ChildBorderSize  = 0.f;
+        style.FrameRounding    = 7.0f;
+
+        auto window_property = current_window->GetWindowProperty();
+        io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Bold.ttf", 17.f * window_property.DpiScale);
+        io.FontDefault     = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f * window_property.DpiScale);
+        io.FontGlobalScale = window_property.DpiScale;
+
+        ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window->GetNativeWindow()), false);
+
+        const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
+
+        m_vertex_buffer                                                       = CreateRef<Buffers::VertexBufferSet>(renderer_info.FrameCount);
+        m_index_buffer                                                        = CreateRef<Buffers::IndexBufferSet>(renderer_info.FrameCount);
+        Specifications::GraphicRendererPipelineSpecification ui_pipeline_spec = {};
+        ui_pipeline_spec.DebugName                                            = "Imgui-pipeline";
+        ui_pipeline_spec.SwapchainAsRenderTarget                              = true;
+        ui_pipeline_spec.SwapchainRenderTarget                                = swapchain;
+        ui_pipeline_spec.ShaderSpecification                                  = {};
+        ui_pipeline_spec.ShaderSpecification.VertexFilename                   = "Shaders/Cache/imgui_vertex.spv";
+        ui_pipeline_spec.ShaderSpecification.FragmentFilename                 = "Shaders/Cache/imgui_fragment.spv";
+        ui_pipeline_spec.ShaderSpecification.OverloadMaxSet                   = 2000;
+
+        ui_pipeline_spec.VertexInputBindingSpecifications.resize(1);
+        ui_pipeline_spec.VertexInputBindingSpecifications[0].Stride = sizeof(ImDrawVert);
+        ui_pipeline_spec.VertexInputBindingSpecifications[0].Rate   = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        ui_pipeline_spec.VertexInputAttributeSpecifications.resize(3);
+        ui_pipeline_spec.VertexInputAttributeSpecifications[0].Location = 0;
+        ui_pipeline_spec.VertexInputAttributeSpecifications[0].Binding  = ui_pipeline_spec.VertexInputBindingSpecifications[0].Binding;
+        ui_pipeline_spec.VertexInputAttributeSpecifications[0].Format   = Specifications::ImageFormat::R32G32_SFLOAT;
+        ui_pipeline_spec.VertexInputAttributeSpecifications[0].Offset   = IM_OFFSETOF(ImDrawVert, pos);
+        ui_pipeline_spec.VertexInputAttributeSpecifications[1].Location = 1;
+        ui_pipeline_spec.VertexInputAttributeSpecifications[1].Binding  = ui_pipeline_spec.VertexInputBindingSpecifications[0].Binding;
+        ui_pipeline_spec.VertexInputAttributeSpecifications[1].Format   = Specifications::ImageFormat::R32G32_SFLOAT;
+        ui_pipeline_spec.VertexInputAttributeSpecifications[1].Offset   = IM_OFFSETOF(ImDrawVert, uv);
+        ui_pipeline_spec.VertexInputAttributeSpecifications[2].Location = 2;
+        ui_pipeline_spec.VertexInputAttributeSpecifications[2].Binding  = ui_pipeline_spec.VertexInputBindingSpecifications[0].Binding;
+        ui_pipeline_spec.VertexInputAttributeSpecifications[2].Format   = Specifications::ImageFormat::R8G8B8A8_UNORM;
+        ui_pipeline_spec.VertexInputAttributeSpecifications[2].Offset   = IM_OFFSETOF(ImDrawVert, col);
+
+        RenderPasses::RenderPassSpecification ui_pass_spec = {};
+        ui_pass_spec.Pipeline                              = Pipelines::GraphicPipeline::Create(ui_pipeline_spec);
+        m_ui_pass                                          = RenderPasses::RenderPass::Create(ui_pass_spec);
+        m_ui_pass->Verify();
+        m_ui_pass->Bake();
+
+        auto  pipeline             = m_ui_pass->GetPipeline();
+        auto  shader               = pipeline->GetShader();
+        auto  descriptor_setlayout = shader->GetDescriptorSetLayout()[0];
+
+        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        /*
+         * Font uploading
+         */
+        unsigned char* pixels;
+        int            width, height;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        size_t upload_size = width * height * 4 * sizeof(char);
+
+        Specifications::TextureSpecification font_tex_spec = {};
+        font_tex_spec.Width                                = width;
+        font_tex_spec.Height                               = height;
+        font_tex_spec.Data                                 = pixels;
+        font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
+
+        Ref<Textures::Texture> font_texture = Textures::Texture2D::Create(font_tex_spec);
+
+        VkDescriptorSetAllocateInfo font_alloc_info = {};
+        font_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        font_alloc_info.descriptorPool              = shader->GetDescriptorPool();
+        font_alloc_info.descriptorSetCount          = 1;
+        font_alloc_info.pSetLayouts                 = &descriptor_setlayout;
+        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(device, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
+
+        auto& font_image_info = font_texture->GetDescriptorImageInfo();
+        VkWriteDescriptorSet write_desc[1] = {};
+        write_desc[0].sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_desc[0].dstSet               = m_font_descriptor_set;
+        write_desc[0].descriptorCount      = 1;
+        write_desc[0].descriptorType       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write_desc[0].pImageInfo           = &font_image_info;
+        vkUpdateDescriptorSets(device, 1, write_desc, 0, nullptr);
+
+        io.Fonts->SetTexID((ImTextureID) m_font_descriptor_set);
+        /*
+         * Creating another DescriptorSet from the SetLayout that will serve has Image/Frame output
+         */
+        VkDescriptorSetAllocateInfo frame_alloc_info = {};
+        frame_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        frame_alloc_info.descriptorPool              = shader->GetDescriptorPool();
+        frame_alloc_info.descriptorSetCount          = 1;
+        frame_alloc_info.pSetLayouts                 = &descriptor_setlayout;
+        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(device, &frame_alloc_info, &m_frame_output) == VK_SUCCESS, "Failed to create descriptor set")
     }
 
     void ImGUIRenderer::Deinitialize()
     {
-        VulkanDevice::DisposeCommandPool(s_ui_command_pool);
-        ImGui_ImplVulkan_Shutdown();
+        m_ui_pass->Dispose();
+        m_vertex_buffer->Dispose();
+        m_index_buffer->Dispose();
+
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
-
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        ZENGINE_DESTROY_VULKAN_HANDLE(device, vkDestroyDescriptorPool, s_descriptor_pool, nullptr)
     }
 
-    void ImGUIRenderer::Tick()
+    void ImGUIRenderer::StyleDarkTheme()
     {
-        s_ui_command_pool->Tick();
+        auto& colors              = ImGui::GetStyle().Colors;
+        colors[ImGuiCol_WindowBg] = ImVec4{0.1f, 0.105f, 0.11f, 1.0f};
+
+        // Headers
+        colors[ImGuiCol_Header]        = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
+        colors[ImGuiCol_HeaderHovered] = ImVec4{0.3f, 0.305f, 0.31f, 1.0f};
+        colors[ImGuiCol_HeaderActive]  = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+
+        // Buttons
+        colors[ImGuiCol_Button]        = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
+        colors[ImGuiCol_ButtonHovered] = ImVec4{0.3f, 0.305f, 0.31f, 1.0f};
+        colors[ImGuiCol_ButtonActive]  = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+
+        // Frame BG
+        colors[ImGuiCol_FrameBg]        = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
+        colors[ImGuiCol_FrameBgHovered] = ImVec4{0.3f, 0.305f, 0.31f, 1.0f};
+        colors[ImGuiCol_FrameBgActive]  = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+
+        // Tabs
+        colors[ImGuiCol_Tab]                = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_TabHovered]         = ImVec4{0.38f, 0.3805f, 0.381f, 1.0f};
+        colors[ImGuiCol_TabActive]          = ImVec4{0.28f, 0.2805f, 0.281f, 1.0f};
+        colors[ImGuiCol_TabUnfocused]       = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_TabUnfocusedActive] = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
+
+        // Title
+        colors[ImGuiCol_TitleBg]          = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_TitleBgActive]    = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_TitleBgCollapsed] = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+
+        colors[ImGuiCol_DockingPreview]   = ImVec4{0.2f, 0.205f, 0.21f, .5f};
+        colors[ImGuiCol_SeparatorHovered] = ImVec4{1.f, 1.f, 1.0f, .5f};
+        colors[ImGuiCol_SeparatorActive]  = ImVec4{1.f, 1.f, 1.0f, .5f};
+        colors[ImGuiCol_CheckMark]        = ImVec4{1.0f, 1.f, 1.0f, 1.f};
     }
 
-    void ImGUIRenderer::BeginFrame()
+    void ImGUIRenderer::BeginFrame(Rendering::Buffers::CommandBuffer* const command_buffer)
     {
-        ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
 
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
-    }
 
-    void ImGUIRenderer::Draw(uint32_t window_width, uint32_t window_height, const Ref<Swapchain>& swapchain, void** user_data, void* draw_data)
-    {
-        ZENGINE_VALIDATE_ASSERT(s_ui_command_pool != nullptr, "UI Command pool can't be null")
-
-        s_command_buffer = s_ui_command_pool->GetCurrentCommmandBuffer();
-        s_command_buffer->Begin();
-        {
-            // Begin RenderPass
-            VkRenderPassBeginInfo render_pass_begin_info    = {};
-            render_pass_begin_info.sType                    = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            render_pass_begin_info.renderPass               = swapchain->GetRenderPass();
-            render_pass_begin_info.framebuffer              = swapchain->GetCurrentFramebuffer();
-            render_pass_begin_info.renderArea.extent.width  = window_width;
-            render_pass_begin_info.renderArea.extent.height = window_height;
-
-            std::array<VkClearValue, 1> clear_values = {};
-            clear_values[0].color                    = {{0.0f, 0.0f, 0.0f, 1.0f}};
-            render_pass_begin_info.clearValueCount   = clear_values.size();
-            render_pass_begin_info.pClearValues      = clear_values.data();
-            vkCmdBeginRenderPass(s_command_buffer->GetHandle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-            // Record dear imgui primitives into command buffer
-            if (user_data)
-            {
-                __ImGUIRenderDataChildViewport(draw_data, user_data, s_command_buffer->GetHandle(), nullptr);
-            }
-            else
-            {
-                __ImGUIRenderData(draw_data, s_command_buffer->GetHandle(), nullptr);
-            }
-
-            vkCmdEndRenderPass(s_command_buffer->GetHandle());
-        }
-        s_command_buffer->End();
-        s_command_buffer->Submit();
-    }
-
-    void ImGUIRenderer::DrawChildWindow(uint32_t width, uint32_t height, ImguiViewPortWindowChild** window_child, void* draw_data)
-    {
-        ZENGINE_VALIDATE_ASSERT((*window_child)->CommandPool != nullptr, "UI Command pool can't be null")
-
-        auto command_buffer = (*window_child)->CommandPool->GetCurrentCommmandBuffer();
         command_buffer->Begin();
-        {
-            // Begin RenderPass
-            VkRenderPassBeginInfo render_pass_begin_info    = {};
-            render_pass_begin_info.sType                    = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            render_pass_begin_info.renderPass               = (*window_child)->Swapchain->GetRenderPass();
-            render_pass_begin_info.framebuffer              = (*window_child)->Swapchain->GetCurrentFramebuffer();
-            render_pass_begin_info.renderArea.extent.width  = width;
-            render_pass_begin_info.renderArea.extent.height = height;
-
-            std::array<VkClearValue, 1> clear_values = {};
-            clear_values[0].color                    = {{0.0f, 0.0f, 0.0f, 1.0f}};
-            render_pass_begin_info.clearValueCount   = clear_values.size();
-            render_pass_begin_info.pClearValues      = clear_values.data();
-            vkCmdBeginRenderPass(command_buffer->GetHandle(), &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-            // Record dear imgui primitives into command buffer
-            __ImGUIRenderDataChildViewport(draw_data, &(*window_child)->RendererUserData, command_buffer->GetHandle(), nullptr);
-
-            vkCmdEndRenderPass(command_buffer->GetHandle());
-        }
-        command_buffer->End();
-        command_buffer->Submit();
     }
 
-    void ImGUIRenderer::EndFrame()
+    void ImGUIRenderer::Draw(Rendering::Buffers::CommandBuffer* const command_buffer, uint32_t frame_index)
     {
+        ImGui::Render();
+        auto draw_data = ImGui::GetDrawData();
+        if (draw_data && draw_data->TotalVtxCount > 0)
+        {
+            // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
+            int fb_width  = (int) (draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
+            int fb_height = (int) (draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
+            if (fb_width <= 0 || fb_height <= 0)
+                return;
+
+            std::vector<ImDrawVert> vertex_data_collection = {};
+            std::vector<ImDrawIdx>  index_data_collection  = {};
+            for (int n = 0; n < draw_data->CmdListsCount; n++)
+            {
+                const ImDrawList* cmd_list = draw_data->CmdLists[n];
+                std::copy(std::begin(cmd_list->VtxBuffer), std::end(cmd_list->VtxBuffer), std::back_inserter(vertex_data_collection));
+                std::copy(std::begin(cmd_list->IdxBuffer), std::end(cmd_list->IdxBuffer), std::back_inserter(index_data_collection));
+            }
+            auto& vertex_buffer = *m_vertex_buffer;
+            auto& index_buffer  = *m_index_buffer;
+
+            vertex_buffer[frame_index].SetData(vertex_data_collection);
+            index_buffer[frame_index].SetData(index_data_collection);
+        }
+    }
+
+    void ImGUIRenderer::EndFrame(Rendering::Buffers::CommandBuffer* const command_buffer, uint32_t frame_index)
+    {
+        command_buffer->BeginRenderPass(m_ui_pass);
+        {
+            auto& vertex_buffer = *m_vertex_buffer;
+            auto& index_buffer  = *m_index_buffer;
+            command_buffer->BindVertexBuffer(vertex_buffer[frame_index]);
+            command_buffer->BindIndexBuffer(index_buffer[frame_index], sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+
+            // Setup scale and translation:
+            // Our visible imgui space lies from draw_data->DisplayPps (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single
+            // viewport apps.
+            auto draw_data = ImGui::GetDrawData();
+
+            if (draw_data)
+            {
+                float scale[2];
+                scale[0] = 2.0f / draw_data->DisplaySize.x;
+                scale[1] = 2.0f / draw_data->DisplaySize.y;
+                float translate[2];
+                translate[0] = -1.0f - draw_data->DisplayPos.x * scale[0];
+                translate[1] = -1.0f - draw_data->DisplayPos.y * scale[1];
+                command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 0, sizeof(float) * 2, scale);
+                command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
+
+                // Will project scissor/clipping rectangles into framebuffer space
+                ImVec2 clip_off   = draw_data->DisplayPos;       // (0,0) unless using multi-viewports
+                ImVec2 clip_scale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
+
+                // Render command lists
+                // (Because we merged all buffers into a single one, we maintain our own offset into them)
+                int global_vtx_offset = 0;
+                int global_idx_offset = 0;
+                for (int n = 0; n < draw_data->CmdListsCount; n++)
+                {
+                    const ImDrawList* cmd_list = draw_data->CmdLists[n];
+                    for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
+                    {
+                        const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
+                        if (pcmd->UserCallback != nullptr)
+                        {
+                            // User callback, registered via ImDrawList::AddCallback()
+                            // (ImDrawCallback_ResetRenderState is a special callback value used by the user to request the renderer to reset render state.)
+                            if (pcmd->UserCallback == ImDrawCallback_ResetRenderState)
+                            {
+                                // ImGui_ImplVulkan_SetupRenderState(draw_data, pipeline, command_buffer, rb, fb_width, fb_height);
+                            }
+                            else
+                                pcmd->UserCallback(cmd_list, pcmd);
+                        }
+                        else
+                        {
+                            auto current_window = Engine::GetWindow();
+                            // Project scissor/clipping rectangles into framebuffer space
+                            ImVec2 clip_min((pcmd->ClipRect.x - clip_off.x) * clip_scale.x, (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
+                            ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x, (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
+
+                            // Clamp to viewport as vkCmdSetScissor() won't accept values that are off bounds
+                            if (clip_min.x < 0.0f)
+                            {
+                                clip_min.x = 0.0f;
+                            }
+                            if (clip_min.y < 0.0f)
+                            {
+                                clip_min.y = 0.0f;
+                            }
+                            if (clip_max.x > current_window->GetWidth())
+                            {
+                                clip_max.x = (float) current_window->GetWidth();
+                            }
+                            if (clip_max.y > current_window->GetHeight())
+                            {
+                                clip_max.y = (float) current_window->GetHeight();
+                            }
+                            if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
+                                continue;
+
+                            // Apply scissor/clipping rectangle
+                            VkRect2D scissor;
+                            scissor.offset.x      = (int32_t) (clip_min.x);
+                            scissor.offset.y      = (int32_t) (clip_min.y);
+                            scissor.extent.width  = (uint32_t) (clip_max.x - clip_min.x);
+                            scissor.extent.height = (uint32_t) (clip_max.y - clip_min.y);
+                            command_buffer->SetScissor(scissor);
+
+                            // Bind DescriptorSet with font or user texture
+                            VkDescriptorSet desc_set[1] = {(VkDescriptorSet) pcmd->TextureId};
+                            if (sizeof(ImTextureID) < sizeof(ImU64))
+                            {
+                                // We don't support texture switches if ImTextureID hasn't been redefined to be 64-bit. Do a flaky check that other textures haven't been used.
+                                IM_ASSERT(pcmd->TextureId == (ImTextureID) m_font_descriptor_set);
+                                desc_set[0] = m_font_descriptor_set;
+                            }
+
+                            command_buffer->BindDescriptorSet(desc_set[0]);
+                            command_buffer->DrawIndexed(pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
+                        }
+                    }
+                    global_idx_offset += cmd_list->IdxBuffer.Size;
+                    global_vtx_offset += cmd_list->VtxBuffer.Size;
+                }
+            }
+        }
+        command_buffer->EndRenderPass();
+        command_buffer->End();
+
         ImGuiIO& io = ImGui::GetIO();
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
@@ -160,402 +339,21 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    /*
-     *  Note for Developers :
-     *  Implementing this function has extracted and adapted from **imgui impl vulkan.cpp** to make it compliant with our strategy of enqueuing resources that need disposal.
-     *  see : ImGui_ImplVulkan_DestroyFontUploadObjects(...)
-     */
-    void ImGUIRenderer::__ImGUIDestroyFontUploadObjects()
+    VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Ref<Buffers::Image2DBuffer>& buffer)
     {
-        ImGui_ImplVulkan_Data*     bd = ImGui_ImplVulkan_GetBackendData();
-        ImGui_ImplVulkan_InitInfo* v  = &bd->VulkanInitInfo;
-        if (bd->UploadBuffer)
-        {
-            VulkanDevice::EnqueueForDeletion(DeviceResourceType::BUFFER, bd->UploadBuffer);
-            bd->UploadBuffer = VK_NULL_HANDLE;
-        }
-        if (bd->UploadBufferMemory)
-        {
-            VulkanDevice::EnqueueForDeletion(DeviceResourceType::BUFFERMEMORY, bd->UploadBufferMemory);
-            bd->UploadBufferMemory = VK_NULL_HANDLE;
-        }
-    }
+        auto                  device        = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        VkDescriptorImageInfo desc_image[1] = {};
+        desc_image[0].sampler               = buffer->GetSampler();
+        desc_image[0].imageView             = buffer->GetImageViewHandle();
+        desc_image[0].imageLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkWriteDescriptorSet write_desc[1]  = {};
+        write_desc[0].sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_desc[0].dstSet                = m_frame_output;
+        write_desc[0].descriptorCount       = 1;
+        write_desc[0].descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write_desc[0].pImageInfo            = desc_image;
+        vkUpdateDescriptorSets(device, 1, write_desc, 0, nullptr);
 
-    /*
-     *  Note for Developers :
-     *  Implementing this function has extracted and adapted from **imgui impl vulkan.cpp** to make it compliant with our strategy of enqueuing resources that need disposal.
-     *  see : ImGui_ImplVulkan_RenderDrawData(...)
-     */
-    void ImGUIRenderer::__ImGUIRenderData(void* data, VkCommandBuffer command_buffer, VkPipeline pipeline)
-    {
-        auto draw_data = reinterpret_cast<ImDrawData*>(data);
-
-        // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
-        int fb_width  = (int) (draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
-        int fb_height = (int) (draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
-        if (fb_width <= 0 || fb_height <= 0)
-            return;
-
-        ImGui_ImplVulkan_Data*     bd = ImGui_ImplVulkan_GetBackendData();
-        ImGui_ImplVulkan_InitInfo* v  = &bd->VulkanInitInfo;
-        if (pipeline == VK_NULL_HANDLE)
-            pipeline = bd->Pipeline;
-
-        // Allocate array to store enough vertex/index buffers. Each unique viewport gets its own storage.
-        ImGui_ImplVulkan_ViewportData* viewport_renderer_data = (ImGui_ImplVulkan_ViewportData*) draw_data->OwnerViewport->RendererUserData;
-        IM_ASSERT(viewport_renderer_data != nullptr);
-        ImGui_ImplVulkanH_WindowRenderBuffers* wrb = &viewport_renderer_data->RenderBuffers;
-        if (wrb->FrameRenderBuffers == nullptr)
-        {
-            wrb->Index              = 0;
-            wrb->Count              = v->ImageCount;
-            wrb->FrameRenderBuffers = (ImGui_ImplVulkanH_FrameRenderBuffers*) IM_ALLOC(sizeof(ImGui_ImplVulkanH_FrameRenderBuffers) * wrb->Count);
-            memset(wrb->FrameRenderBuffers, 0, sizeof(ImGui_ImplVulkanH_FrameRenderBuffers) * wrb->Count);
-        }
-        IM_ASSERT(wrb->Count == v->ImageCount);
-        wrb->Index                               = (wrb->Index + 1) % wrb->Count;
-        ImGui_ImplVulkanH_FrameRenderBuffers* rb = &wrb->FrameRenderBuffers[wrb->Index];
-
-        if (draw_data->TotalVtxCount > 0)
-        {
-            // Create or resize the vertex/index buffers
-            size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
-            size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
-            if (rb->VertexBuffer == VK_NULL_HANDLE || rb->VertexBufferSize < vertex_size)
-                __ImGUICreateOrResizeBuffer(rb->VertexBuffer, rb->VertexBufferMemory, rb->VertexBufferSize, vertex_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-            if (rb->IndexBuffer == VK_NULL_HANDLE || rb->IndexBufferSize < index_size)
-                __ImGUICreateOrResizeBuffer(rb->IndexBuffer, rb->IndexBufferMemory, rb->IndexBufferSize, index_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
-            // Upload vertex/index data into a single contiguous GPU buffer
-            ImDrawVert* vtx_dst = nullptr;
-            ImDrawIdx*  idx_dst = nullptr;
-            VkResult    err     = vkMapMemory(v->Device, rb->VertexBufferMemory, 0, rb->VertexBufferSize, 0, (void**) (&vtx_dst));
-            check_vk_result(err);
-            err = vkMapMemory(v->Device, rb->IndexBufferMemory, 0, rb->IndexBufferSize, 0, (void**) (&idx_dst));
-            check_vk_result(err);
-            for (int n = 0; n < draw_data->CmdListsCount; n++)
-            {
-                const ImDrawList* cmd_list = draw_data->CmdLists[n];
-                memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
-                memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
-                vtx_dst += cmd_list->VtxBuffer.Size;
-                idx_dst += cmd_list->IdxBuffer.Size;
-            }
-            VkMappedMemoryRange range[2] = {};
-            range[0].sType               = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-            range[0].memory              = rb->VertexBufferMemory;
-            range[0].size                = VK_WHOLE_SIZE;
-            range[1].sType               = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-            range[1].memory              = rb->IndexBufferMemory;
-            range[1].size                = VK_WHOLE_SIZE;
-            err                          = vkFlushMappedMemoryRanges(v->Device, 2, range);
-            check_vk_result(err);
-            vkUnmapMemory(v->Device, rb->VertexBufferMemory);
-            vkUnmapMemory(v->Device, rb->IndexBufferMemory);
-        }
-
-        // Setup desired Vulkan state
-        ImGui_ImplVulkan_SetupRenderState(draw_data, pipeline, command_buffer, rb, fb_width, fb_height);
-
-        // Will project scissor/clipping rectangles into framebuffer space
-        ImVec2 clip_off   = draw_data->DisplayPos;       // (0,0) unless using multi-viewports
-        ImVec2 clip_scale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
-
-        // Render command lists
-        // (Because we merged all buffers into a single one, we maintain our own offset into them)
-        int global_vtx_offset = 0;
-        int global_idx_offset = 0;
-        for (int n = 0; n < draw_data->CmdListsCount; n++)
-        {
-            const ImDrawList* cmd_list = draw_data->CmdLists[n];
-            for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
-            {
-                const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
-                if (pcmd->UserCallback != nullptr)
-                {
-                    // User callback, registered via ImDrawList::AddCallback()
-                    // (ImDrawCallback_ResetRenderState is a special callback value used by the user to request the renderer to reset render state.)
-                    if (pcmd->UserCallback == ImDrawCallback_ResetRenderState)
-                        ImGui_ImplVulkan_SetupRenderState(draw_data, pipeline, command_buffer, rb, fb_width, fb_height);
-                    else
-                        pcmd->UserCallback(cmd_list, pcmd);
-                }
-                else
-                {
-                    // Project scissor/clipping rectangles into framebuffer space
-                    ImVec2 clip_min((pcmd->ClipRect.x - clip_off.x) * clip_scale.x, (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
-                    ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x, (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
-
-                    // Clamp to viewport as vkCmdSetScissor() won't accept values that are off bounds
-                    if (clip_min.x < 0.0f)
-                    {
-                        clip_min.x = 0.0f;
-                    }
-                    if (clip_min.y < 0.0f)
-                    {
-                        clip_min.y = 0.0f;
-                    }
-                    if (clip_max.x > fb_width)
-                    {
-                        clip_max.x = (float) fb_width;
-                    }
-                    if (clip_max.y > fb_height)
-                    {
-                        clip_max.y = (float) fb_height;
-                    }
-                    if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
-                        continue;
-
-                    // Apply scissor/clipping rectangle
-                    VkRect2D scissor;
-                    scissor.offset.x      = (int32_t) (clip_min.x);
-                    scissor.offset.y      = (int32_t) (clip_min.y);
-                    scissor.extent.width  = (uint32_t) (clip_max.x - clip_min.x);
-                    scissor.extent.height = (uint32_t) (clip_max.y - clip_min.y);
-                    vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-                    // Bind DescriptorSet with font or user texture
-                    VkDescriptorSet desc_set[1] = {(VkDescriptorSet) pcmd->TextureId};
-                    if (sizeof(ImTextureID) < sizeof(ImU64))
-                    {
-                        // We don't support texture switches if ImTextureID hasn't been redefined to be 64-bit. Do a flaky check that other textures haven't been used.
-                        IM_ASSERT(pcmd->TextureId == (ImTextureID) bd->FontDescriptorSet);
-                        desc_set[0] = bd->FontDescriptorSet;
-                    }
-                    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, bd->PipelineLayout, 0, 1, desc_set, 0, nullptr);
-
-                    // Draw
-                    vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
-                }
-            }
-            global_idx_offset += cmd_list->IdxBuffer.Size;
-            global_vtx_offset += cmd_list->VtxBuffer.Size;
-        }
-
-        // Note: at this point both vkCmdSetViewport() and vkCmdSetScissor() have been called.
-        // Our last values will leak into user/application rendering IF:
-        // - Your app uses a pipeline with VK_DYNAMIC_STATE_VIEWPORT or VK_DYNAMIC_STATE_SCISSOR dynamic state
-        // - And you forgot to call vkCmdSetViewport() and vkCmdSetScissor() yourself to explicitly set that state.
-        // If you use VK_DYNAMIC_STATE_VIEWPORT or VK_DYNAMIC_STATE_SCISSOR you are responsible for setting the values before rendering.
-        // In theory we should aim to backup/restore those values but I am not sure this is possible.
-        // We perform a call to vkCmdSetScissor() to set back a full viewport which is likely to fix things for 99% users but technically this is not perfect. (See github #4644)
-        VkRect2D scissor = {{0, 0}, {(uint32_t) fb_width, (uint32_t) fb_height}};
-        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-    }
-
-    void ImGUIRenderer::__ImGUIRenderDataChildViewport(void* data, void** user_data, VkCommandBuffer command_buffer, VkPipeline pipeline)
-    {
-        auto draw_data = reinterpret_cast<ImDrawData*>(data);
-
-        // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
-        int fb_width  = (int) (draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
-        int fb_height = (int) (draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
-        if (fb_width <= 0 || fb_height <= 0)
-            return;
-
-        ImGui_ImplVulkan_Data*     bd = ImGui_ImplVulkan_GetBackendData();
-        ImGui_ImplVulkan_InitInfo* v  = &bd->VulkanInitInfo;
-        if (pipeline == VK_NULL_HANDLE)
-            pipeline = bd->Pipeline;
-
-        // Allocate array to store enough vertex/index buffers. Each unique viewport gets its own storage.
-        if ((*user_data) == nullptr)
-        {
-            *user_data = IM_ALLOC(sizeof(ImGui_ImplVulkan_ViewportData));
-            memset(*user_data, 0, sizeof(ImGui_ImplVulkan_ViewportData));
-        }
-
-        ImGui_ImplVulkan_ViewportData* viewport_renderer_data = (ImGui_ImplVulkan_ViewportData*) *user_data;
-        IM_ASSERT(viewport_renderer_data != nullptr);
-        ImGui_ImplVulkanH_WindowRenderBuffers* wrb = &viewport_renderer_data->RenderBuffers;
-        if (wrb->FrameRenderBuffers == nullptr)
-        {
-            wrb->Index              = 0;
-            wrb->Count              = v->ImageCount;
-            wrb->FrameRenderBuffers = (ImGui_ImplVulkanH_FrameRenderBuffers*) IM_ALLOC(sizeof(ImGui_ImplVulkanH_FrameRenderBuffers) * wrb->Count);
-            memset(wrb->FrameRenderBuffers, 0, sizeof(ImGui_ImplVulkanH_FrameRenderBuffers) * wrb->Count);
-        }
-        IM_ASSERT(wrb->Count == v->ImageCount);
-        wrb->Index                               = (wrb->Index + 1) % wrb->Count;
-        ImGui_ImplVulkanH_FrameRenderBuffers* rb = &wrb->FrameRenderBuffers[wrb->Index];
-
-        if (draw_data->TotalVtxCount > 0)
-        {
-            // Create or resize the vertex/index buffers
-            size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
-            size_t index_size  = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
-            if (rb->VertexBuffer == VK_NULL_HANDLE || rb->VertexBufferSize < vertex_size)
-                __ImGUICreateOrResizeBuffer(rb->VertexBuffer, rb->VertexBufferMemory, rb->VertexBufferSize, vertex_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-            if (rb->IndexBuffer == VK_NULL_HANDLE || rb->IndexBufferSize < index_size)
-                __ImGUICreateOrResizeBuffer(rb->IndexBuffer, rb->IndexBufferMemory, rb->IndexBufferSize, index_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
-            // Upload vertex/index data into a single contiguous GPU buffer
-            ImDrawVert* vtx_dst = nullptr;
-            ImDrawIdx*  idx_dst = nullptr;
-            VkResult    err     = vkMapMemory(v->Device, rb->VertexBufferMemory, 0, rb->VertexBufferSize, 0, (void**) (&vtx_dst));
-            check_vk_result(err);
-            err = vkMapMemory(v->Device, rb->IndexBufferMemory, 0, rb->IndexBufferSize, 0, (void**) (&idx_dst));
-            check_vk_result(err);
-            for (int n = 0; n < draw_data->CmdListsCount; n++)
-            {
-                const ImDrawList* cmd_list = draw_data->CmdLists[n];
-                memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
-                memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
-                vtx_dst += cmd_list->VtxBuffer.Size;
-                idx_dst += cmd_list->IdxBuffer.Size;
-            }
-            VkMappedMemoryRange range[2] = {};
-            range[0].sType               = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-            range[0].memory              = rb->VertexBufferMemory;
-            range[0].size                = VK_WHOLE_SIZE;
-            range[1].sType               = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-            range[1].memory              = rb->IndexBufferMemory;
-            range[1].size                = VK_WHOLE_SIZE;
-            err                          = vkFlushMappedMemoryRanges(v->Device, 2, range);
-            check_vk_result(err);
-            vkUnmapMemory(v->Device, rb->VertexBufferMemory);
-            vkUnmapMemory(v->Device, rb->IndexBufferMemory);
-        }
-
-        // Setup desired Vulkan state
-        ImGui_ImplVulkan_SetupRenderState(draw_data, pipeline, command_buffer, rb, fb_width, fb_height);
-
-        // Will project scissor/clipping rectangles into framebuffer space
-        ImVec2 clip_off   = draw_data->DisplayPos;       // (0,0) unless using multi-viewports
-        ImVec2 clip_scale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
-
-        // Render command lists
-        // (Because we merged all buffers into a single one, we maintain our own offset into them)
-        int global_vtx_offset = 0;
-        int global_idx_offset = 0;
-        for (int n = 0; n < draw_data->CmdListsCount; n++)
-        {
-            const ImDrawList* cmd_list = draw_data->CmdLists[n];
-            for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
-            {
-                const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
-                if (pcmd->UserCallback != nullptr)
-                {
-                    // User callback, registered via ImDrawList::AddCallback()
-                    // (ImDrawCallback_ResetRenderState is a special callback value used by the user to request the renderer to reset render state.)
-                    if (pcmd->UserCallback == ImDrawCallback_ResetRenderState)
-                        ImGui_ImplVulkan_SetupRenderState(draw_data, pipeline, command_buffer, rb, fb_width, fb_height);
-                    else
-                        pcmd->UserCallback(cmd_list, pcmd);
-                }
-                else
-                {
-                    // Project scissor/clipping rectangles into framebuffer space
-                    ImVec2 clip_min((pcmd->ClipRect.x - clip_off.x) * clip_scale.x, (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
-                    ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x, (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
-
-                    // Clamp to viewport as vkCmdSetScissor() won't accept values that are off bounds
-                    if (clip_min.x < 0.0f)
-                    {
-                        clip_min.x = 0.0f;
-                    }
-                    if (clip_min.y < 0.0f)
-                    {
-                        clip_min.y = 0.0f;
-                    }
-                    if (clip_max.x > fb_width)
-                    {
-                        clip_max.x = (float) fb_width;
-                    }
-                    if (clip_max.y > fb_height)
-                    {
-                        clip_max.y = (float) fb_height;
-                    }
-                    if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
-                        continue;
-
-                    // Apply scissor/clipping rectangle
-                    VkRect2D scissor;
-                    scissor.offset.x      = (int32_t) (clip_min.x);
-                    scissor.offset.y      = (int32_t) (clip_min.y);
-                    scissor.extent.width  = (uint32_t) (clip_max.x - clip_min.x);
-                    scissor.extent.height = (uint32_t) (clip_max.y - clip_min.y);
-                    vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-                    // Bind DescriptorSet with font or user texture
-                    VkDescriptorSet desc_set[1] = {(VkDescriptorSet) pcmd->TextureId};
-                    if (sizeof(ImTextureID) < sizeof(ImU64))
-                    {
-                        // We don't support texture switches if ImTextureID hasn't been redefined to be 64-bit. Do a flaky check that other textures haven't been used.
-                        IM_ASSERT(pcmd->TextureId == (ImTextureID) bd->FontDescriptorSet);
-                        desc_set[0] = bd->FontDescriptorSet;
-                    }
-                    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, bd->PipelineLayout, 0, 1, desc_set, 0, nullptr);
-
-                    // Draw
-                    vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
-                }
-            }
-            global_idx_offset += cmd_list->IdxBuffer.Size;
-            global_vtx_offset += cmd_list->VtxBuffer.Size;
-        }
-
-        // Note: at this point both vkCmdSetViewport() and vkCmdSetScissor() have been called.
-        // Our last values will leak into user/application rendering IF:
-        // - Your app uses a pipeline with VK_DYNAMIC_STATE_VIEWPORT or VK_DYNAMIC_STATE_SCISSOR dynamic state
-        // - And you forgot to call vkCmdSetViewport() and vkCmdSetScissor() yourself to explicitly set that state.
-        // If you use VK_DYNAMIC_STATE_VIEWPORT or VK_DYNAMIC_STATE_SCISSOR you are responsible for setting the values before rendering.
-        // In theory we should aim to backup/restore those values but I am not sure this is possible.
-        // We perform a call to vkCmdSetScissor() to set back a full viewport which is likely to fix things for 99% users but technically this is not perfect. (See github #4644)
-        VkRect2D scissor = {{0, 0}, {(uint32_t) fb_width, (uint32_t) fb_height}};
-        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-    }
-
-    /*
-     *  Note for Developers :
-     *  Implementing this function has extracted and adapted from **imgui impl vulkan.cpp** to make it compliant with our strategy of enqueuing resources that need disposal.
-     *  see : CreateOrResizeBuffer(...)
-     */
-    void ImGUIRenderer::__ImGUICreateOrResizeBuffer(VkBuffer& buffer, VkDeviceMemory& buffer_memory, VkDeviceSize& p_buffer_size, size_t new_size, VkBufferUsageFlagBits usage)
-    {
-        ImGui_ImplVulkan_Data*     bd = ImGui_ImplVulkan_GetBackendData();
-        ImGui_ImplVulkan_InitInfo* v  = &bd->VulkanInitInfo;
-        VkResult                   err;
-        if (buffer != VK_NULL_HANDLE)
-        {
-            // vkDestroyBuffer(v->Device, buffer, v->Allocator);
-            VulkanDevice::EnqueueForDeletion(DeviceResourceType::BUFFER, buffer);
-            buffer = VK_NULL_HANDLE;
-        }
-        if (buffer_memory != VK_NULL_HANDLE)
-        {
-            // vkFreeMemory(v->Device, buffer_memory, v->Allocator);
-            VulkanDevice::EnqueueForDeletion(DeviceResourceType::BUFFERMEMORY, buffer_memory);
-            buffer_memory = VK_NULL_HANDLE;
-        }
-
-        VkDeviceSize       vertex_buffer_size_aligned = ((new_size - 1) / bd->BufferMemoryAlignment + 1) * bd->BufferMemoryAlignment;
-        VkBufferCreateInfo buffer_info                = {};
-        buffer_info.sType                             = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_info.size                              = vertex_buffer_size_aligned;
-        buffer_info.usage                             = usage;
-        buffer_info.sharingMode                       = VK_SHARING_MODE_EXCLUSIVE;
-        err                                           = vkCreateBuffer(v->Device, &buffer_info, v->Allocator, &buffer);
-        check_vk_result(err);
-
-        VkMemoryRequirements req;
-        vkGetBufferMemoryRequirements(v->Device, buffer, &req);
-        bd->BufferMemoryAlignment       = (bd->BufferMemoryAlignment > req.alignment) ? bd->BufferMemoryAlignment : req.alignment;
-        VkMemoryAllocateInfo alloc_info = {};
-        alloc_info.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize       = req.size;
-        alloc_info.memoryTypeIndex      = ImGui_ImplVulkan_MemoryType(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, req.memoryTypeBits);
-        err                             = vkAllocateMemory(v->Device, &alloc_info, v->Allocator, &buffer_memory);
-        check_vk_result(err);
-
-        err = vkBindBufferMemory(v->Device, buffer, buffer_memory, 0);
-        check_vk_result(err);
-        p_buffer_size = req.size;
-    }
-
-    ImguiViewPortWindowChild::ImguiViewPortWindowChild(void* viewport_handle)
-    {
-        Swapchain   = CreateRef<Rendering::Swapchain>(viewport_handle, false);
-        CommandPool = VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, this->Swapchain->GetIdentifier(), true);
+        return m_frame_output;
     }
 } // namespace ZEngine::Rendering::Renderers

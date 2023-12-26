@@ -20,7 +20,6 @@ namespace Tetragrama::Layers
 
     void RenderLayer::Initialize()
     {
-        auto current_window        = GetAttachedWindow();
         m_editor_camera_controller = CreateRef<EditorCameraController>(50.0, 45.f, 40.f);
         GraphicScene::Initialize();
 
@@ -49,8 +48,6 @@ namespace Tetragrama::Layers
     {
         auto camera = m_editor_camera_controller->GetCamera();
         GraphicRenderer::DrawScene(camera, GraphicScene::GetRawData());
-
-
     }
 
     std::future<void> RenderLayer::SceneRequestResizeMessageHandlerAsync(Messengers::GenericMessage<std::pair<float, float>>& message)
@@ -64,15 +61,13 @@ namespace Tetragrama::Layers
 
     std::future<void> RenderLayer::SceneRequestFocusMessageHandlerAsync(Messengers::GenericMessage<bool>& message)
     {
-        // std::unique_lock lock(m_message_handler_mutex);
-        // GraphicScene::SetShouldReactToEvent(message.GetValue());
+        m_editor_camera_controller->ResumeEventProcessing();
         co_return;
     }
 
     std::future<void> RenderLayer::SceneRequestUnfocusMessageHandlerAsync(Messengers::GenericMessage<bool>& message)
     {
-        // std::unique_lock lock(m_message_handler_mutex);
-        // GraphicScene::SetShouldReactToEvent(message.GetValue());
+        m_editor_camera_controller->PauseEventProcessing();
         co_return;
     }
 

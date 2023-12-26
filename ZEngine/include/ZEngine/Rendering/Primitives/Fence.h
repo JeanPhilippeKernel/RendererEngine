@@ -13,12 +13,11 @@ namespace ZEngine::Rendering::Primitives
 
     struct Fence : public Helpers::RefCounted
     {
-        Fence();
+        Fence(bool as_signaled = false);
         ~Fence();
         bool IsSignaled();
 
         bool Wait(uint64_t timeout = 1000000000);
-
         void Reset();
 
         void       SetState(FenceState state);

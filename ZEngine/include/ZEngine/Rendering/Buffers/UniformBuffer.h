@@ -104,12 +104,17 @@ namespace ZEngine::Rendering::Buffers
 
             if (allocation_info.pMappedData)
             {
-                std::memset(allocation_info.pMappedData, 0, this->m_byte_size);
+                ZENGINE_VALIDATE_ASSERT(
+                    Helpers::secure_memset(allocation_info.pMappedData, 0, this->m_byte_size, allocation_info.size) ==
+                        Helpers::MEMORY_OP_SUCCESS,
+                    "Failed to perform memory set operation")
             }
 
             if (data && allocation_info.pMappedData)
             {
-                std::memcpy(allocation_info.pMappedData, data, this->m_byte_size);
+                ZENGINE_VALIDATE_ASSERT(
+                    Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS,
+                    "Failed to perform memory copy operation")
             }
         }
 

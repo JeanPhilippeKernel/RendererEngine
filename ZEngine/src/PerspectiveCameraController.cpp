@@ -13,12 +13,18 @@ namespace ZEngine::Controllers
 
     void PerspectiveCameraController::Initialize()
     {
+        m_process_event = true;
     }
 
     void PerspectiveCameraController::Update(Core::TimeStep dt)
     {
         if (auto window = m_window.lock())
         {
+            if (!m_process_event)
+            {
+                return;
+            }
+
             const auto mouse_position = IDevice::As<Mouse>()->GetMousePosition(window);
             const auto mouse          = glm::vec2(mouse_position[0], mouse_position[1]);
             bool       mouse_pressed  = false;
@@ -82,6 +88,22 @@ namespace ZEngine::Controllers
         m_perspective_camera->SetTarget(target);
     }
 
+    void PerspectiveCameraController::ResumeEventProcessing()
+    {
+        {
+            std::lock_guard l(m_event_mutex);
+            m_process_event = true;
+        }
+    }
+
+    void PerspectiveCameraController::PauseEventProcessing()
+    {
+        {
+            std::lock_guard l(m_event_mutex);
+            m_process_event = false;
+        }
+    }
+
     const ZEngine::Ref<Rendering::Cameras::Camera> PerspectiveCameraController::GetCamera() const
     {
         return m_perspective_camera;
@@ -93,6 +115,11 @@ namespace ZEngine::Controllers
 
     bool PerspectiveCameraController::OnEvent(Event::CoreEvent& e)
     {
+        if (!m_process_event)
+        {
+            return false;
+        }
+
         Event::EventDispatcher dispatcher(e);
         dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&PerspectiveCameraController::OnMouseButtonWheelMoved, this, std::placeholders::_1));
         return false;

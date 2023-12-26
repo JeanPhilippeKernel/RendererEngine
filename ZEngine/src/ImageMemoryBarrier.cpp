@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Primitives
         m_handle.subresourceRange.aspectMask     = specification.ImageAspectMask;
         m_handle.subresourceRange.baseMipLevel   = 0;
         m_handle.subresourceRange.baseArrayLayer = 0;
-        m_handle.subresourceRange.layerCount     = 1;
+        m_handle.subresourceRange.layerCount     = m_specification.LayerCount;
         m_handle.subresourceRange.levelCount     = 1;
         m_handle.image                           = specification.ImageHandle;
         m_handle.oldLayout                       = ImageLayoutMap[static_cast<uint32_t>(specification.OldLayout)];

@@ -23,6 +23,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         VkPipelineLayout               GetPipelineLayout() const;
         VkRenderPass                   GetRenderPassHandle() const;
         Ref<Buffers::FramebufferVNext> GetTargetFrameBuffer() const;
+        Ref<Rendering::Swapchain>      GetTargetSwapchain() const;
         Ref<Shaders::Shader>           GetShader() const;
 
     public:
@@ -34,5 +35,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         Specifications::GraphicRendererPipelineSpecification m_pipeline_specification;
         Ref<Shaders::Shader>                                 m_shader;
         Ref<Buffers::FramebufferVNext>                       m_target_framebuffer;
+        Ref<Rendering::Swapchain>                            m_target_swapchain;
     };
 } // namespace ZEngine::Rendering::Renderers::Pipelines

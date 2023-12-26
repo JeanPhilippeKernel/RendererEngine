@@ -20,6 +20,9 @@ namespace ZEngine::Rendering::Shaders
         Specifications::LayoutBindingSpecification                                         GetLayoutBindingSpecification(std::string_view name) const;
         std::vector<VkDescriptorSetLayout>                                                 GetDescriptorSetLayout() const;
         const std::map<uint32_t, std::vector<VkDescriptorSet>>&                            GetDescriptorSetMap() const;
+        std::map<uint32_t, std::vector<VkDescriptorSet>>&                            GetDescriptorSetMap();
+        VkDescriptorPool                                                                   GetDescriptorPool() const;
+        const std::vector<VkPushConstantRange>&                                            GetPushConstants() const;
         void                                                                               Dispose();
 
         static Ref<Shader> Create(Specifications::ShaderSpecification&& spec);
@@ -28,6 +31,7 @@ namespace ZEngine::Rendering::Shaders
     private:
         void CreateModule();
         void CreateDescriptorSetLayouts();
+        void CreatePushConstantRange();
 
     private:
         Specifications::ShaderSpecification                                         m_specification;
@@ -37,6 +41,8 @@ namespace ZEngine::Rendering::Shaders
         std::map<uint32_t, std::vector<Specifications::LayoutBindingSpecification>> m_layout_binding_specification_map;
         std::map<uint32_t, VkDescriptorSetLayout>                                   m_descriptor_set_layout_map; // <set, layout>
         std::map<uint32_t, std::vector<VkDescriptorSet>>                            m_descriptor_set_map;        //<set, vec<descriptorSet>>
+        std::vector<Specifications::PushConstantSpecification>                      m_push_constant_specification_collection;
+        std::vector<VkPushConstantRange>                                            m_push_constant_collection;
         VkDescriptorPool                                                            m_descriptor_pool{VK_NULL_HANDLE};
     };
 

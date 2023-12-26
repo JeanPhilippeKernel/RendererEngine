@@ -61,10 +61,19 @@ namespace ZEngine::Rendering::Specifications
         ShaderStageFlags Flags;
     };
 
+    struct PushConstantSpecification
+    {
+        std::string      Name;
+        uint32_t         Size;
+        uint32_t         Offset;
+        ShaderStageFlags Flags;
+    };
+
     struct ShaderSpecification
     {
-        std::string VertexFilename;
-        std::string FragmentFilename;
+        uint32_t    OverloadMaxSet   = 1;
+        std::string VertexFilename   = {};
+        std::string FragmentFilename = {};
     };
 } // ZEngine::Rendering::Specifications
 

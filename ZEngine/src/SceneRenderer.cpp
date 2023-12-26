@@ -8,24 +8,46 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
-    void SceneRenderer::Initialize()
+    void SceneRenderer::Initialize(const Ref<Buffers::UniformBufferSet>& camera)
     {
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
-        m_command_pool            = Hardwares::VulkanDevice::CreateCommandPool(QueueType::GRAPHIC_QUEUE, renderer_info.SwapchainIdentifier, true);
 
+        m_upload_once_per_frame_count = renderer_info.FrameCount;
         m_last_drawn_vertices_count.resize(renderer_info.FrameCount, 0);
         m_last_drawn_index_count.resize(renderer_info.FrameCount, 0);
 
-        m_UB_Camera      = CreateRef<Buffers::UniformBufferSet>(renderer_info.FrameCount);
-        m_SBVertex       = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_SBIndex        = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_SBDrawData     = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_SBTransform    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_SBMaterialData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_indirect_buffer.resize(renderer_info.FrameCount, CreateRef<Buffers::IndirectBuffer>());
         /*
          * Render Passes definition
          */
+
+        /*
+         * Cubmap Pass
+         */
+        cubemapSBVertex   = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        cubemapSBIndex    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        cubemapSBDrawData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
+        {
+            s_cubemap_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
+        }
+
+        s_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
+        Specifications::GraphicRendererPipelineSpecification cubemap_pipeline_spec = {};
+        cubemap_pipeline_spec.DebugName                                            = "Cubemap-Pipeline";
+        // cubemap_pipeline_spec.TargetFrameBuffer                                    = GraphicRenderer::GetRenderTarget(RenderTarget::ENVIROMENT_CUBEMAP);
+        cubemap_pipeline_spec.TargetFrameBuffer                 = GraphicRenderer::GetRenderTarget(RenderTarget::FRAME_OUTPUT);
+        cubemap_pipeline_spec.ShaderSpecification               = {.VertexFilename = "Shaders/Cache/cubemap_vertex.spv", .FragmentFilename = "Shaders/Cache/cubemap_fragment.spv"};
+        RenderPasses::RenderPassSpecification cubemap_pass_spec = {};
+        cubemap_pass_spec.Pipeline                              = Pipelines::GraphicPipeline::Create(cubemap_pipeline_spec);
+        s_cubemap_pass                                          = RenderPasses::RenderPass::Create(cubemap_pass_spec);
+
+        s_cubemap_pass->SetInput("UBCamera", camera);
+        s_cubemap_pass->SetInput("VertexSB", cubemapSBVertex);
+        s_cubemap_pass->SetInput("IndexSB", cubemapSBIndex);
+        s_cubemap_pass->SetInput("DrawDataSB", cubemapSBDrawData);
+        s_cubemap_pass->SetInput("CubemapTexture", s_environment_map);
+        s_cubemap_pass->Verify();
+        s_cubemap_pass->Bake();
 
         /*
          * Infinite Grid
@@ -33,16 +55,19 @@ namespace ZEngine::Rendering::Renderers
         m_GridSBVertex   = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
         m_GridSBIndex    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
         m_GridSBDrawData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_infinite_grid_indirect_buffer.resize(renderer_info.FrameCount, CreateRef<Buffers::IndirectBuffer>());
+        for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
+        {
+            m_infinite_grid_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
+        }
         Specifications::GraphicRendererPipelineSpecification infinite_grid_spec = {};
         infinite_grid_spec.DebugName                                            = "Infinite-Grid-Pipeline";
-        infinite_grid_spec.TargetFrameBuffer                       = GraphicRenderer::GetRenderTarget(RenderTarget::FRAME_OUTPUT);
+        infinite_grid_spec.TargetFrameBuffer                                    = GraphicRenderer::GetRenderTarget(RenderTarget::FRAME_OUTPUT);
         infinite_grid_spec.ShaderSpecification = {.VertexFilename = "Shaders/Cache/infinite_grid_vertex.spv", .FragmentFilename = "Shaders/Cache/infinite_grid_fragment.spv"};
         RenderPasses::RenderPassSpecification grid_color_pass = {};
         grid_color_pass.Pipeline                              = Pipelines::GraphicPipeline::Create(infinite_grid_spec);
         m_infinite_grid_pass                                  = RenderPasses::RenderPass::Create(grid_color_pass);
 
-        m_infinite_grid_pass->SetInput("UBCamera", m_UB_Camera);
+        m_infinite_grid_pass->SetInput("UBCamera", camera);
         m_infinite_grid_pass->SetInput("VertexSB", m_GridSBVertex);
         m_infinite_grid_pass->SetInput("IndexSB", m_GridSBIndex);
         m_infinite_grid_pass->SetInput("DrawDataSB", m_GridSBDrawData);
@@ -51,7 +76,16 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Final Color
          */
-        Specifications::FrameBufferSpecificationVNext        framebuffer_spec    = {};
+        m_SBVertex       = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_SBIndex        = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_SBDrawData     = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_SBTransform    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        m_SBMaterialData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
+        for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
+        {
+            m_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
+        }
+        Specifications::FrameBufferSpecificationVNext framebuffer_spec           = {};
         framebuffer_spec.ClearColor                                              = false;
         framebuffer_spec.ClearDepth                                              = false;
         framebuffer_spec.AttachmentSpecifications                                = {ImageFormat::R8G8B8A8_UNORM, ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
@@ -66,19 +100,28 @@ namespace ZEngine::Rendering::Renderers
         color_pass.Pipeline                              = Pipelines::GraphicPipeline::Create(final_pipeline_spec);
         m_final_color_output_pass                        = RenderPasses::RenderPass::Create(color_pass);
 
-        m_final_color_output_pass->SetInput("UBCamera", m_UB_Camera);
+        m_final_color_output_pass->SetInput("UBCamera", camera);
         m_final_color_output_pass->SetInput("VertexSB", m_SBVertex);
         m_final_color_output_pass->SetInput("IndexSB", m_SBIndex);
         m_final_color_output_pass->SetInput("DrawDataSB", m_SBDrawData);
         m_final_color_output_pass->SetInput("TransformSB", m_SBTransform);
         m_final_color_output_pass->SetInput("MatSB", m_SBMaterialData);
-
         m_final_color_output_pass->Verify();
         m_final_color_output_pass->Bake();
     }
 
     void SceneRenderer::Deinitialize()
     {
+        s_cubemap_pass->Dispose();
+        s_environment_map->Dispose();
+        cubemapSBVertex->Dispose();
+        cubemapSBIndex->Dispose();
+        cubemapSBDrawData->Dispose();
+        for (auto& buffer : s_cubemap_indirect_buffer)
+        {
+            buffer->Dispose();
+        }
+
         m_infinite_grid_pass->Dispose();
         m_GridSBVertex->Dispose();
         m_GridSBIndex->Dispose();
@@ -89,7 +132,7 @@ namespace ZEngine::Rendering::Renderers
         }
 
         m_final_color_output_pass->Dispose();
-        m_UB_Camera->Dispose();
+
         m_SBVertex->Dispose();
         m_SBIndex->Dispose();
         m_SBDrawData->Dispose();
@@ -102,8 +145,6 @@ namespace ZEngine::Rendering::Renderers
 
         m_global_texture_buffer_collection.clear();
         m_global_texture_buffer_collection.shrink_to_fit();
-
-        Hardwares::VulkanDevice::DisposeCommandPool(m_command_pool);
     }
 
     void SceneRenderer::StartScene(const glm::vec4& camera_position, const glm::mat4& camera_view, const glm::mat4& camera_projection)
@@ -113,38 +154,52 @@ namespace ZEngine::Rendering::Renderers
         m_camera_projection = camera_projection;
     }
 
+    void SceneRenderer::StartScene(Buffers::CommandBuffer* const command_buffer)
+    {
+        command_buffer->Begin();
+    }
+
     void SceneRenderer::StartScene(const glm::vec3& camera_position, const glm::mat4& camera_view, const glm::mat4& camera_projection)
     {
         this->StartScene(glm::vec4(camera_position, 1.0f), camera_view, camera_projection);
     }
 
-    void SceneRenderer::RenderScene(const Ref<Rendering::Scenes::SceneRawData>& scene_data)
+    void SceneRenderer::RenderScene(const Ref<Rendering::Scenes::SceneRawData>& scene_data, uint32_t current_frame_index)
     {
-        uint32_t current_frame_index = Renderers::GraphicRenderer::GetRendererInformation().CurrentFrameIndex;
-        /*
-         * Uploading Camera info
-         * Todo: Can be multithreaded
-         */
-        auto& scene_camera    = *m_UB_Camera;
-        auto  ubo_camera_data = Contracts::UBOCameraLayout{.View = m_camera_view, .Projection = m_camera_projection, .Position = m_camera_position};
-        scene_camera[current_frame_index].SetData(&ubo_camera_data, sizeof(Contracts::UBOCameraLayout));
-
-        /*
-        * Uploading Infinite Grid
-        */
+        if (m_upload_once_per_frame_count > 0)
         {
-            auto& vertex_storage = *m_GridSBVertex;
-            vertex_storage[current_frame_index].SetData(m_grid_vertices);
+            /*
+             * Uploading Cubemap
+             */
+            {
+                auto& vertex_buffer    = *cubemapSBVertex;
+                auto& index_buffer     = *cubemapSBIndex;
+                auto& draw_data_buffer = *cubemapSBDrawData;
 
-            auto& index_storage = *m_GridSBIndex;
-            index_storage[current_frame_index].SetData(m_grid_indices);
+                vertex_buffer[current_frame_index].SetData(m_cubemap_vertex_data);
+                index_buffer[current_frame_index].SetData(m_cubemap_index_data);
+                draw_data_buffer[current_frame_index].SetData(m_cubmap_draw_data);
+                s_cubemap_indirect_buffer[current_frame_index]->SetData(m_cubemap_indirect_commmand);
+            }
 
-            auto& draw_data_storage = *m_GridSBDrawData;
-            draw_data_storage[current_frame_index].SetData(m_grid_drawData);
+            /*
+             * Uploading Infinite Grid
+             */
+            {
+                auto& vertex_storage    = *m_GridSBVertex;
+                auto& index_storage     = *m_GridSBIndex;
+                auto& draw_data_storage = *m_GridSBDrawData;
 
-            m_infinite_grid_indirect_buffer[current_frame_index]->SetData(m_grid_indirect_commmand);
+                vertex_storage[current_frame_index].SetData(m_grid_vertices);
+                index_storage[current_frame_index].SetData(m_grid_indices);
+                draw_data_storage[current_frame_index].SetData(m_grid_drawData);
+                m_infinite_grid_indirect_buffer[current_frame_index]->SetData(m_grid_indirect_commmand);
+            }
 
+            s_cubemap_pass->MarkDirty();
             m_infinite_grid_pass->MarkDirty();
+
+            --m_upload_once_per_frame_count;
         }
 
         const auto& sceneNodeMeshMap = scene_data->SceneNodeMeshMap;
@@ -247,38 +302,31 @@ namespace ZEngine::Rendering::Renderers
         m_final_color_output_pass->MarkDirty();
     }
 
-    void SceneRenderer::EndScene()
+    void SceneRenderer::EndScene(Buffers::CommandBuffer* const command_buffer, uint32_t current_frame_index)
     {
-        uint32_t current_frame_index = Renderers::GraphicRenderer::GetRendererInformation().CurrentFrameIndex;
+        command_buffer->BeginRenderPass(s_cubemap_pass);
+        command_buffer->BindDescriptorSets(current_frame_index);
+        command_buffer->DrawIndirect(s_cubemap_indirect_buffer[current_frame_index]);
+        command_buffer->EndRenderPass();
 
-        auto command_buffer = m_command_pool->GetCurrentCommmandBuffer();
-        /*
-         * Drawing the scene...
-         */
-        command_buffer->Begin();
-        {
-            command_buffer->BeginRenderPass(m_infinite_grid_pass);
-            command_buffer->BindDescriptorSets(current_frame_index);
-            command_buffer->DrawIndirect(m_infinite_grid_indirect_buffer[current_frame_index]);
-            command_buffer->EndRenderPass();
+        // command_buffer->BeginRenderPass(m_infinite_grid_pass);
+        // command_buffer->BindDescriptorSets(current_frame_index);
+        // command_buffer->DrawIndirect(m_infinite_grid_indirect_buffer[current_frame_index]);
+        // command_buffer->EndRenderPass();
 
-            command_buffer->BeginRenderPass(m_final_color_output_pass);
-            command_buffer->BindDescriptorSets(current_frame_index);
-            command_buffer->DrawIndirect(m_indirect_buffer[current_frame_index]);
-            command_buffer->EndRenderPass();
-        }
+        // command_buffer->BeginRenderPass(m_final_color_output_pass);
+        // command_buffer->BindDescriptorSets(current_frame_index);
+        // command_buffer->DrawIndirect(m_indirect_buffer[current_frame_index]);
+        // command_buffer->EndRenderPass();
+
         command_buffer->End();
-        command_buffer->Submit();
     }
 
     void SceneRenderer::SetViewportSize(uint32_t width, uint32_t height)
     {
+        s_cubemap_pass->ResizeRenderTarget(width, height);
         m_infinite_grid_pass->ResizeRenderTarget(width, height);
         m_final_color_output_pass->ResizeRenderTarget(width, height);
     }
 
-    void SceneRenderer::Tick()
-    {
-        m_command_pool->Tick();
-    }
 } // namespace ZEngine::Rendering::Renderers

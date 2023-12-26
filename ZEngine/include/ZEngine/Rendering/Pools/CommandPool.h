@@ -1,6 +1,6 @@
 #pragma once
 #include <ZEngineDef.h>
-#include <array>
+#include <deque>
 #include <vulkan/vulkan.h>
 #include <Rendering/Buffers/CommandBuffer.h>
 #include <Rendering/ResourceTypes.h>
@@ -12,17 +12,13 @@ namespace ZEngine::Rendering::Pools
         CommandPool(Rendering::QueueType type, uint64_t swapchain_identifier = 0, bool present_on_swapchain = true);
         ~CommandPool();
 
-        void                                Tick();
-        Buffers::CommandBuffer*             GetCurrentCommmandBuffer();
-        std::vector<Primitives::Semaphore*> GetAllWaitSemaphoreCollection();
-        uint64_t                            GetSwapchainParent() const;
+        Buffers::CommandBuffer*     GetCommmandBuffer();
+        Ref<Buffers::CommandBuffer> GetOneTimeCommmandBuffer();
 
     private:
-        bool                                        first = true;
-        uint64_t                                    m_swapchain_identifier{0};
-        uint32_t                                    m_current_command_buffer_index{0};
-        VkCommandPool                               m_handle{VK_NULL_HANDLE};
-        Rendering::QueueType                        m_queue_type;
-        std::array<Ref<Buffers::CommandBuffer>, 10> m_command_buffer_collection;
+        uint32_t                                m_max_command_buffer_count{UINT32_MAX};
+        std::deque<Ref<Buffers::CommandBuffer>> m_allocated_command_buffers;
+        VkCommandPool                           m_handle{VK_NULL_HANDLE};
+        Rendering::QueueType                    m_queue_type;
     };
 }
