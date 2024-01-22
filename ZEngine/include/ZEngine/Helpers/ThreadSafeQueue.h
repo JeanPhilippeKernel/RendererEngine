@@ -5,29 +5,27 @@
 
 namespace ZEngine::Helpers
 {
-    class TaskQueue
+    template <typename T>
+    class ThreadSafeQueue
     {
     public:
-        void enqueue(const std::function<void()>& task)
+        void enqueue(const T& task)
         {
             std::unique_lock<std::mutex> lock(m_mutex);
             m_queue.push(task);
             m_condition.notify_one();
         }
 
-        bool dequeue(std::function<void()>& task, const std::atomic<bool>& stop)
+        bool pop(T& task)
         {
             std::unique_lock<std::mutex> lock(m_mutex);
-            m_condition.wait(lock, [this, &stop] {
-                return !m_queue.empty() || stop;
-            });
 
-            if (stop && m_queue.empty())
+            if (m_queue.empty())
             {
-                return false; // Return false to indicate no task was dequeued
+                return false;
             }
 
-            task = m_queue.front();
+            task = std::move(m_queue.front());
             m_queue.pop();
             return true;
         }
@@ -55,22 +53,18 @@ namespace ZEngine::Helpers
             }
         }
 
-        void notify_all()
-        {
-            m_condition.notify_all();
-        }
-
         void clear()
         {
             std::unique_lock<std::mutex>      lock(m_mutex);
-            std::queue<std::function<void()>> empty;
+            m_condition.notify_all();
+            std::queue<T> empty;
             std::swap(m_queue, empty);
         }
 
     private:
         mutable std::mutex                m_mutex;
         std::condition_variable           m_condition;
-        std::queue<std::function<void()>> m_queue;
+        std::queue<T> m_queue;
     };
 
 } // namespace ZEngine::Helpers

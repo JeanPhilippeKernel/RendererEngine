@@ -3,7 +3,7 @@
 #include <iostream>
 #include <thread>
 #include <vector>
-#include "TaskQueue.h"
+#include "ThreadSafeQueue.h"
 
 namespace ZEngine::Helpers
 {
@@ -11,68 +11,89 @@ namespace ZEngine::Helpers
     class ThreadPool
     {
     public:
-        ThreadPool(size_t threadCount = std::thread::hardware_concurrency()) : m_stop(false)
+        ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency())
+            : m_maxThreadCount(maxThreadCount), m_taskQueue(std::make_shared<ThreadSafeQueue<std::function<void()>>>())
         {
-            for (size_t i = 0; i < threadCount; ++i)
-            {
-                m_workers.emplace_back([this] {
-                    this->workerFunction();
-                });
-            }
         }
+
         ~ThreadPool()
         {
             shutdown();
         }
 
-        void shutdown()
+        void enqueue(std::function<void()>&& f)
         {
-            m_stop = true;
-            m_taskQueue.notify_all();
-            for (std::thread& worker : m_workers)
+            m_taskQueue->enqueue(std::move(f));
+            std::unique_lock<std::mutex> lock(m_mutex);
+            if (m_currentThreadCount < m_maxThreadCount)
             {
-                if (worker.joinable())
-                {
-                    worker.join();
-                }
+                startWorkerThread();
+                m_currentThreadCount++;
             }
-            m_taskQueue.clear();
         }
 
-        template <class F, class... Args>
-        auto enqueue(F&& f, Args&&... args) -> std::future<decltype(f(args...))>
+        void shutdown()
         {
-            using return_type = decltype(f(args...));
-
-            if (m_stop.load())
-            {
-                throw std::runtime_error("ThreadPool is stopped, cannot enqueue new tasks.");
-            }
-
-            auto task = std::make_shared<std::packaged_task<return_type()>>(std::bind(std::forward<F>(f), std::forward<Args>(args)...));
-
-            std::future<return_type> res = task->get_future();
-            m_taskQueue.enqueue([task]() {
-                (*task)();
-            });
-            return res;
+                std::unique_lock<std::mutex> lock(m_mutex);
+                m_taskQueue->clear();   
         }
 
     private:
-        std::vector<std::thread> m_workers;
-        TaskQueue                m_taskQueue;
-        std::atomic<bool>        m_stop;
+        std::vector<std::thread>                          m_workers;
+        std::shared_ptr<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
+        std::mutex                                        m_mutex;
+        size_t                                            m_maxThreadCount;
+        std::atomic<size_t>                               m_currentThreadCount;
 
-        void workerFunction()
+        void startWorkerThread()
         {
-            while (!m_stop)
-            {
-                std::function<void()> task;
-                if (m_taskQueue.dequeue(task, m_stop))
+            std::weak_ptr<ThreadSafeQueue<std::function<void()>>> weakQueue = m_taskQueue;
+            m_workers.emplace_back([weakQueue] {
+                while (auto queue = weakQueue.lock())
                 {
+                    std::function<void()> task;
+                    queue->wait();
+                    if (queue->isEmpty())
+                    {
+                        continue;
+                    }
+                    queue->pop(task);
                     task();
                 }
-            }
+            });
         }
     };
+
+    struct ThreadPoolHelper
+    {
+        template <typename T>
+        static void Submit(T&& f)
+        {
+            if (m_threadPool)
+            {
+                m_threadPool->enqueue(std::move(f));
+            }
+        }
+
+        static void Initialize()
+        {
+            if (!m_threadPool)
+            {
+                m_threadPool = std::make_unique<ThreadPool>();
+            }
+        }
+
+        static void Shutdown()
+        {
+            m_threadPool->shutdown();
+        }
+
+    private:
+        ThreadPoolHelper()  = delete;
+        ~ThreadPoolHelper() = delete;
+
+        static std::unique_ptr<ThreadPool> m_threadPool;
+    };
+
+    std::unique_ptr<ThreadPool> ThreadPoolHelper::m_threadPool = std::make_unique<ThreadPool>();
 } // namespace ZEngine::Helpers
