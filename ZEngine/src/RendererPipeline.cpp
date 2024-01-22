@@ -22,10 +22,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     void GraphicPipeline::Bake()
     {
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        /*
-         * Framebuffer Creation
-         */
-
         /*Pipeline fixed states*/
         /*
          * Dynamic State
@@ -173,19 +169,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.pDynamicState                 = &(dynamic_state_create_info);
         graphic_pipeline_create_info.layout                        = m_pipeline_layout;
 
-        if (!m_pipeline_specification.SwapchainAsRenderTarget)
-        {
-            ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.TargetFrameBuffer, "Target framebuffer can't be null")
-            m_target_framebuffer                    = m_pipeline_specification.TargetFrameBuffer;
-            graphic_pipeline_create_info.renderPass = m_target_framebuffer->GetRenderPass();
-        }
-
-        if (m_pipeline_specification.SwapchainAsRenderTarget)
-        {
-            ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.SwapchainRenderTarget, "Swapchain can't be null")
-            m_target_swapchain                      = m_pipeline_specification.SwapchainRenderTarget;
-            graphic_pipeline_create_info.renderPass = m_target_swapchain->GetRenderPass();
-        }
+        ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.Attachment, "Target framebuffer can't be null")
+        graphic_pipeline_create_info.renderPass = m_pipeline_specification.Attachment->GetHandle();
 
         graphic_pipeline_create_info.subpass            = 0;
         graphic_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE; // Optional
@@ -200,15 +185,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         m_shader->Dispose();
 
-        if (m_target_framebuffer)
-        {
-            m_target_framebuffer->Dispose();
-        }
-        if (m_target_swapchain)
-        {
-            m_target_swapchain.~IntrusivePtr();
-            m_target_swapchain = nullptr;
-        }
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, m_pipeline_layout);
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, m_pipeline_handle);
         m_pipeline_layout = VK_NULL_HANDLE;
@@ -223,26 +199,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     VkPipelineLayout GraphicPipeline::GetPipelineLayout() const
     {
         return m_pipeline_layout;
-    }
-
-    VkRenderPass GraphicPipeline::GetRenderPassHandle() const
-    {
-        if (!m_target_framebuffer && !m_target_swapchain)
-        {
-            return VK_NULL_HANDLE;
-        }
-
-        return m_pipeline_specification.SwapchainAsRenderTarget ? m_target_swapchain->GetRenderPass() : m_target_framebuffer->GetRenderPass();
-    }
-
-    Ref<Buffers::FramebufferVNext> GraphicPipeline::GetTargetFrameBuffer() const
-    {
-        return m_target_framebuffer;
-    }
-
-    Ref<Rendering::Swapchain> GraphicPipeline::GetTargetSwapchain() const
-    {
-        return m_target_swapchain;
     }
 
     Ref<Shaders::Shader> GraphicPipeline::GetShader() const

@@ -4,6 +4,7 @@
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Renderers/SceneRenderer.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
+#include <Rendering/Renderers/RenderGraph.h>
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -60,5 +61,6 @@ namespace ZEngine::Rendering::Renderers
         static Buffers::CommandBuffer*                                         s_current_command_buffer_ui;
         static Ref<SceneRenderer>                                              s_scene_renderer;
         static Ref<ImGUIRenderer>                                              s_imgui_renderer;
+        static Scope<RenderGraph>                                              s_render_graph;
     };
 } // namespace ZEngine::Rendering::Renderers

@@ -24,6 +24,8 @@ namespace ZEngine::Rendering
         VkSwapchainKHR GetHandle() const;
         uint64_t       GetIdentifier() const;
 
+        Ref<Renderers::RenderPasses::Attachment> GetAttachment() const;
+
     private:
         void Create();
         void Dispose();

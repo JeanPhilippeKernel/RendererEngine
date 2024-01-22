@@ -4,6 +4,8 @@
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Swapchain.h>
 
+#include <Rendering/Renderers/RenderPasses/Attachment.h>
+
 namespace ZEngine::Rendering::Specifications
 {
     struct VertexInputBindingSpecification
@@ -26,11 +28,11 @@ namespace ZEngine::Rendering::Specifications
         bool                                           EnableBlending                     = false;
         bool                                           EnableDepthTest                    = true;
         bool                                           EnableStencilTest                  = false;
-        bool                                           SwapchainAsRenderTarget            = false;
-        std::string                                    DebugName                          = {};
+        const char*                                    DebugName                          = {};
         ShaderSpecification                            ShaderSpecification                = {};
         Ref<Rendering::Buffers::FramebufferVNext>      TargetFrameBuffer                  = {};
         Ref<Rendering::Swapchain>                      SwapchainRenderTarget              = {};
+        Ref<Renderers::RenderPasses::Attachment>       Attachment                         = {};
         std::vector<VertexInputBindingSpecification>   VertexInputBindingSpecifications   = {};
         std::vector<VertexInputAttributeSpecification> VertexInputAttributeSpecifications = {};
     };

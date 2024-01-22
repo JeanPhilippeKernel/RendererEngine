@@ -74,13 +74,10 @@ namespace ZEngine::Rendering::Buffers
         }
 
         template <typename T>
-        inline void SetData(const std::vector<T>& content)
+        inline void SetData(std::span<const T> content)
         {
-            m_command_count  = content.size();
-            size_t byte_size = sizeof(T) * m_command_count;
-            this->SetData(content.data(), byte_size);
+            SetData(content.data(), content.size_bytes());
         }
-
 
         uint32_t GetCommandCount() const
         {
@@ -117,5 +114,52 @@ namespace ZEngine::Rendering::Buffers
     private:
         uint32_t              m_command_count{0};
         Hardwares::BufferView m_indirect_buffer;
+    };
+
+
+
+    struct IndirectBufferSet : public Helpers::RefCounted
+    {
+        IndirectBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
+
+        IndirectBuffer& operator[](uint32_t index)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
+            return m_buffer_set[index];
+        }
+
+        IndirectBuffer& At(uint32_t index)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
+            return m_buffer_set[index];
+        }
+
+        void SetData(uint32_t index, std::span<const VkDrawIndirectCommand> data)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
+
+            m_buffer_set[index].SetData(data);
+        }
+
+        const std::vector<IndirectBuffer>& Data() const
+        {
+            return m_buffer_set;
+        }
+
+        std::vector<IndirectBuffer>& Data()
+        {
+            return m_buffer_set;
+        }
+
+        void Dispose()
+        {
+            for (auto& buffer : m_buffer_set)
+            {
+                buffer.Dispose();
+            }
+        }
+
+    private:
+        std::vector<IndirectBuffer> m_buffer_set;
     };
 } // namespace ZEngine::Rendering::Buffers

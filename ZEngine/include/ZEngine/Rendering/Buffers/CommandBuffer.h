@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <atomic>
 #include <vulkan/vulkan.h>
 #include <ZEngineDef.h>
@@ -54,12 +55,15 @@ namespace ZEngine::Rendering::Buffers
         Primitives::Semaphore* GetSignalSemaphore() const;
         Primitives::Fence*     GetSignalFence();
 
+        void ClearColor(float r, float g, float b, float a);
+        void ClearDepth(float depth_color, uint32_t stencil);
+
         void BeginRenderPass(const Ref<Renderers::RenderPasses::RenderPass>&);
         void EndRenderPass();
         void BindDescriptorSets(uint32_t frame_index = 0);
         void BindDescriptorSet(const VkDescriptorSet& descriptor);
-        void DrawIndirect(const Ref<Buffers::IndirectBuffer>& buffer);
-        void DrawIndexedIndirect(const Ref<Buffers::IndirectBuffer>& buffer, uint32_t count);
+        void DrawIndirect(const Buffers::IndirectBuffer& buffer);
+        void DrawIndexedIndirect(const Buffers::IndirectBuffer& buffer, uint32_t count);
         void DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
 
         void TransitionImageLayout(const Primitives::ImageMemoryBarrier& image_barrier);
@@ -83,6 +87,7 @@ namespace ZEngine::Rendering::Buffers
         std::atomic_uint8_t                          m_command_buffer_state{CommanBufferState::Idle};
         VkCommandBuffer                              m_command_buffer{VK_NULL_HANDLE};
         VkCommandPool                                m_command_pool{VK_NULL_HANDLE};
+        std::array<VkClearValue, 2>                  m_clear_value{};
         Rendering::QueueType                         m_queue_type;
         Ref<Primitives::Fence>                       m_signal_fence;
         Ref<Primitives::Semaphore>                   m_signal_semaphore;

@@ -166,10 +166,10 @@ namespace ZEngine::Rendering::Scenes
          * Extra SceneEntity information for a SceneNode
          */
         s_raw_data->SceneNodeEntityMap[scene_node_identifier] = s_raw_data->EntityRegistry->create();
-        auto entity_wrapper = GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, s_raw_data->SceneNodeEntityMap[scene_node_identifier]);
-        entity_wrapper.AddComponent<TransformComponent>(s_raw_data->LocalTransformCollection[scene_node_identifier]);
-        entity_wrapper.AddComponent<UUIComponent>();
-        entity_wrapper.AddComponent<NameComponent>();
+        //auto entity_wrapper = GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, s_raw_data->SceneNodeEntityMap[scene_node_identifier]);
+        //entity_wrapper.AddComponent<TransformComponent>(s_raw_data->LocalTransformCollection[scene_node_identifier]);
+        //entity_wrapper.AddComponent<UUIComponent>();
+        //entity_wrapper.AddComponent<NameComponent>();
 
         co_return scene_node_identifier;
     }
