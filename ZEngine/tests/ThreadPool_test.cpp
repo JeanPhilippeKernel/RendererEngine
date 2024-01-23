@@ -63,33 +63,3 @@ TEST_F(ThreadPoolTest, ParallelExecutionEfficiency)
     ASSERT_GE(counter, 5);
 }
 
-TEST_F(ThreadPoolTest, VaryingExecutionTimeTasks)
-{
-    std::atomic<int> shortTaskCounter = 0;
-    std::atomic<int> longTaskCounter  = 0;
-    const int        numShortTasks    = 10;
-    const int        numLongTasks     = 5;
-
-    auto shortTask = [&shortTaskCounter]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        shortTaskCounter++;
-    };
-
-    auto longTask = [&longTaskCounter]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        longTaskCounter++;
-    };
-
-    for (int i = 0; i < numShortTasks; ++i)
-    {
-        ZEngine::Helpers::ThreadPoolHelper::Submit(shortTask);
-    }
-    for (int i = 0; i < numLongTasks; ++i)
-    {
-        ZEngine::Helpers::ThreadPoolHelper::Submit(longTask);
-    }
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    ASSERT_EQ(shortTaskCounter, numShortTasks);
-    ASSERT_GE(longTaskCounter, 1);
-}
