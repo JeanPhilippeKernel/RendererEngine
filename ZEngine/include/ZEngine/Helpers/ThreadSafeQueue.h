@@ -9,14 +9,14 @@ namespace ZEngine::Helpers
     class ThreadSafeQueue
     {
     public:
-        void enqueue(const T& task)
+        void Enqueue(const T& task)
         {
             std::unique_lock<std::mutex> lock(m_mutex);
             m_queue.push(task);
             m_condition.notify_one();
         }
 
-        bool pop(T& task)
+        bool Pop(T& task)
         {
             std::unique_lock<std::mutex> lock(m_mutex);
 
@@ -30,19 +30,19 @@ namespace ZEngine::Helpers
             return true;
         }
 
-        bool isEmpty() const
+        bool Empty() const
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             return m_queue.empty();
         }
 
-        size_t size() const
+        size_t Size() const
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             return m_queue.size();
         }
 
-        void wait()
+        void Wait()
         {
             std::unique_lock<std::mutex> lock(m_mutex);
             if (m_queue.empty())
@@ -53,12 +53,12 @@ namespace ZEngine::Helpers
             }
         }
 
-        void clear()
+        void Clear()
         {
             std::unique_lock<std::mutex>      lock(m_mutex);
-            m_condition.notify_all();
             std::queue<T> empty;
             std::swap(m_queue, empty);
+            m_condition.notify_all();
         }
 
     private:

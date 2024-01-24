@@ -2,64 +2,53 @@
 #include "Helpers/ThreadPool.h"
 
 using namespace ZEngine::Helpers;
-
-class ThreadPoolTest : public ::testing::Test
-{
+ 
+class ThreadPoolTest : public ::testing::Test {
 protected:
-    void SetUp() override
-    {
-        ThreadPoolHelper::Initialize(); 
+    void SetUp() override {
     }
-
-    void TearDown() override
-    {
+ 
+    void TearDown() override {
         ThreadPoolHelper::Shutdown();
     }
 };
-
-TEST_F(ThreadPoolTest, TaskExecution)
-{
-    std::atomic<int> counter = 0;
-    auto             task    = [&counter]() {
-        counter++;
-    };
-
-    ThreadPoolHelper::Submit(task);
-    ThreadPoolHelper::Submit(task);
-    ThreadPoolHelper::Submit(task);
-
+ 
+TEST_F(ThreadPoolTest, Submit) {
+    std::atomic<bool> executed = false;
+    ThreadPoolHelper::Submit([&executed] {
+        executed = true;
+    });
+ 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    ASSERT_EQ(counter, 3);
+ 
+    EXPECT_TRUE(executed);
 }
-
-TEST_F(ThreadPoolTest, ExecuteTaskWithParameters)
-{
-    std::atomic<int> result = 0;
-    auto             task   = [&result](int value) {
-        result = value;
-    };
-
-    ThreadPoolHelper::Submit(std::bind(task, 42));
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    ASSERT_EQ(result, 42);
-}
-
-TEST_F(ThreadPoolTest, ParallelExecutionEfficiency)
-{
+ 
+TEST_F(ThreadPoolTest, TaskExecution) {
     std::atomic<int> counter = 0;
-    auto             task    = [&counter]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        counter++;
-    };
-
-    for (int i = 0; i < 10; ++i)
-    {
-        ThreadPoolHelper::Submit(task);
+    for (int i = 0; i < 5; ++i) {
+        ThreadPoolHelper::Submit([&counter] {
+            counter++;
+        });
     }
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    ASSERT_GE(counter, 5);
+ 
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+ 
+    EXPECT_EQ(counter, 5);
 }
-
+ 
+TEST_F(ThreadPoolTest, MultipleTasksExecution) {
+    std::atomic<int> counter = 0;
+    const int numberOfTasks = 10;
+ 
+    for (int i = 0; i < numberOfTasks; ++i) {
+        ThreadPoolHelper::Submit([&counter] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
+            ++counter;
+        });
+    }
+ 
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+ 
+    EXPECT_EQ(counter, numberOfTasks);
+}

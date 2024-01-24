@@ -1,8 +1,5 @@
 #include <atomic>
-#include <future>
-#include <iostream>
 #include <thread>
-#include <vector>
 #include "ThreadSafeQueue.h"
 
 namespace ZEngine::Helpers
@@ -18,49 +15,53 @@ namespace ZEngine::Helpers
 
         ~ThreadPool()
         {
-            shutdown();
+            Shutdown();
         }
 
-        void enqueue(std::function<void()>&& f)
+        void Enqueue(std::function<void()>&& f)
         {
-            m_taskQueue->enqueue(std::move(f));
+            m_taskQueue->Enqueue(std::move(f));
             std::unique_lock<std::mutex> lock(m_mutex);
-            if (m_currentThreadCount < m_maxThreadCount)
+            if (!m_taskQueue->Empty())
             {
-                startWorkerThread();
-                m_currentThreadCount++;
+                StartWorkerThread();
             }
         }
 
-        void shutdown()
+        void Shutdown()
         {
-                std::unique_lock<std::mutex> lock(m_mutex);
-                m_taskQueue->clear();   
+            std::unique_lock<std::mutex> lock(m_mutex);
+            m_taskQueue->Clear();   
         }
 
     private:
-        std::vector<std::thread>                          m_workers;
         std::shared_ptr<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
         std::mutex                                        m_mutex;
         size_t                                            m_maxThreadCount;
-        std::atomic<size_t>                               m_currentThreadCount;
+        size_t                                            m_currentThreadCount{0};
 
-        void startWorkerThread()
+        static void WorkerThread(std::weak_ptr<ThreadSafeQueue<std::function<void()>>> weakQueue)
         {
-            std::weak_ptr<ThreadSafeQueue<std::function<void()>>> weakQueue = m_taskQueue;
-            m_workers.emplace_back([weakQueue] {
-                while (auto queue = weakQueue.lock())
+            while (auto queue = weakQueue.lock())
+            {
+                queue->Wait();
+
+                std::function<void()> task;
+                if (!queue->Pop(task))
                 {
-                    std::function<void()> task;
-                    queue->wait();
-                    if (queue->isEmpty())
-                    {
-                        continue;
-                    }
-                    queue->pop(task);
-                    task();
+                    continue;
                 }
-            });
+                task();
+            }
+        }
+
+        void StartWorkerThread()
+        {
+            if (m_currentThreadCount < m_maxThreadCount)
+            {
+                std::thread(ThreadPool::WorkerThread, m_taskQueue).detach();
+                m_currentThreadCount++;
+            }
         }
     };
 
@@ -71,29 +72,19 @@ namespace ZEngine::Helpers
         {
             if (m_threadPool)
             {
-                m_threadPool->enqueue(std::move(f));
-            }
-        }
-
-        static void Initialize()
-        {
-            if (!m_threadPool)
-            {
-                m_threadPool = std::make_unique<ThreadPool>();
+                m_threadPool->Enqueue(std::move(f));
             }
         }
 
         static void Shutdown()
         {
-            m_threadPool->shutdown();
+            m_threadPool->Shutdown();
         }
 
     private:
         ThreadPoolHelper()  = delete;
         ~ThreadPoolHelper() = delete;
 
-        static std::unique_ptr<ThreadPool> m_threadPool;
+        inline static std::unique_ptr<ThreadPool> m_threadPool = std::make_unique<ThreadPool>();;
     };
-
-    std::unique_ptr<ThreadPool> ThreadPoolHelper::m_threadPool = std::make_unique<ThreadPool>();
 } // namespace ZEngine::Helpers
