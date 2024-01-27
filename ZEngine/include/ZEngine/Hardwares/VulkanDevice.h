@@ -10,6 +10,12 @@
 #include <GLFW/glfw3.h>
 #include <vk_mem_alloc.h>
 
+
+namespace ZEngine::Window
+{
+    class CoreWindow;
+}
+
 namespace ZEngine::Hardwares
 {
 
@@ -73,7 +79,7 @@ namespace ZEngine::Hardwares
         VulkanDevice(const VulkanDevice&) = delete;
         ~VulkanDevice()                   = delete;
 
-        static void Initialize(GLFWwindow* const native_window, const std::vector<const char*>& additional_extension_layer_name_collection);
+        static void Initialize(const Ref<Window::CoreWindow>& window, const std::vector<const char*>& additional_extension_layer_name_collection);
         static void Deinitialize();
         static void Dispose();
 

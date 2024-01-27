@@ -65,6 +65,7 @@ namespace ZEngine::Rendering::Renderers
         ui_pipeline_spec.ShaderSpecification.VertexFilename                   = "Shaders/Cache/imgui_vertex.spv";
         ui_pipeline_spec.ShaderSpecification.FragmentFilename                 = "Shaders/Cache/imgui_fragment.spv";
         ui_pipeline_spec.ShaderSpecification.OverloadMaxSet                   = 2000;
+        ui_pipeline_spec.ShaderSpecification.OverloadPoolSize                 = 2;
 
         ui_pipeline_spec.VertexInputBindingSpecifications.resize(1);
         ui_pipeline_spec.VertexInputBindingSpecifications[0].Stride = sizeof(ImDrawVert);
@@ -108,8 +109,7 @@ namespace ZEngine::Rendering::Renderers
         font_tex_spec.Height                               = height;
         font_tex_spec.Data                                 = pixels;
         font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
-
-        Ref<Textures::Texture> font_texture = Textures::Texture2D::Create(font_tex_spec);
+        Ref<Textures::Texture> font_texture                = Textures::Texture2D::Create(font_tex_spec);
 
         VkDescriptorSetAllocateInfo font_alloc_info = {};
         font_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
