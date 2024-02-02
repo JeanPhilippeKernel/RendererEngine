@@ -34,9 +34,9 @@ param (
     [Parameter(HelpMessage = "Whether to rebuild shader files")]
     [switch] $ForceShaderRebuild,
 
-    [Parameter(HelpMessage = "VS version use to build, default to 2019")]
-    [ValidateSet(2019, 2022)]
-    [int] $VsVersion = 2019
+    [Parameter(HelpMessage = "VS version use to build, default to 2022")]
+    [ValidateSet(2022)]
+    [int] $VsVersion = 2022
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,6 +49,22 @@ if ($cMakeProgram) {
 }
 else {
     throw 'CMake program not found'
+}
+
+$repositoryRootPath = [IO.Path]::Combine($PSScriptRoot, "..")
+$submodulePath = Join-Path $repositoryRootPath "__externals"
+
+$submoduleFilesCount = 0
+if (Test-Path $submodulePath) {
+    $submoduleFilesCount = (Get-ChildItem $submodulePath -Recurse | Measure-Object).Count
+}
+
+if ($submoduleFilesCount -eq 0) {
+    Write-Host "No submodule content found. Initializing and updating submodules..."
+    git -C $repositoryRootPath submodule init
+    git -C $repositoryRootPath submodule update --recursive
+} else {
+    Write-Host "Submodules already initialized."
 }
 
 function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
@@ -104,9 +120,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     switch ($systemName) {
         "Windows" { 
             switch ($VsVersion) {
-                2019 { 
-                    $cMakeGenerator = "-G `"Visual Studio 16 2019`" -A $architecture"
-                }
                 2022 { 
                     $cMakeGenerator = "-G `"Visual Studio 17 2022`" -A $architecture"
                 }
