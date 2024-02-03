@@ -51,21 +51,9 @@ else {
     throw 'CMake program not found'
 }
 
-$repositoryRootPath = [IO.Path]::Combine($PSScriptRoot, "..")
-$submodulePath = Join-Path $repositoryRootPath "__externals"
-
-$submoduleFilesCount = 0
-if (Test-Path $submodulePath) {
-    $submoduleFilesCount = (Get-ChildItem $submodulePath -Recurse | Measure-Object).Count
-}
-
-if ($submoduleFilesCount -eq 0) {
-    Write-Host "No submodule content found. Initializing and updating submodules..."
-    git -C $repositoryRootPath submodule init
-    git -C $repositoryRootPath submodule update --recursive
-} else {
-    Write-Host "Submodules already initialized."
-}
+$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
+Write-Host "Ensuring submodules are initialized and updated..."
+$submoduleUpdate = git -C $repositoryRootPath submodule update --init --recursive
 
 function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     

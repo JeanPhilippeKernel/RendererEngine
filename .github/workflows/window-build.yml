@@ -17,9 +17,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v2
 
-    - name: Checkout submodules
-      run: git submodule update --init --recursive
-
     - name: Install Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
       with:
