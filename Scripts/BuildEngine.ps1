@@ -53,7 +53,7 @@ else {
 
 $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 Write-Host "Ensuring submodules are initialized and updated..."
-$submoduleUpdate = git -C $repositoryRootPath submodule update --init --recursive
+git -C $RepoRoot submodule update --init --recursive
 
 function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
