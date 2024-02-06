@@ -25,7 +25,7 @@ namespace ZEngine
         std::vector<const char*> window_additional_extension_layer_name_collection(
             glfw_extensions_layer_name_collection, glfw_extensions_layer_name_collection + glfw_extensions_layer_name_count);
 
-        Hardwares::VulkanDevice::Initialize(reinterpret_cast<GLFWwindow*>(m_window->GetNativeWindow()), window_additional_extension_layer_name_collection);
+        Hardwares::VulkanDevice::Initialize(m_window, window_additional_extension_layer_name_collection);
 
         m_window->Initialize();
         GraphicRenderer::SetMainSwapchain(m_window->GetSwapchain());

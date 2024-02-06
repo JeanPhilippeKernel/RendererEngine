@@ -57,8 +57,17 @@ namespace ZEngine::Rendering::Renderers
 
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
 
-        m_vertex_buffer = CreateRef<Buffers::VertexBufferSet>(renderer_info.FrameCount);
-        m_index_buffer  = CreateRef<Buffers::IndexBufferSet>(renderer_info.FrameCount);
+        m_vertex_buffer                                                       = CreateRef<Buffers::VertexBufferSet>(renderer_info.FrameCount);
+        m_index_buffer                                                        = CreateRef<Buffers::IndexBufferSet>(renderer_info.FrameCount);
+        Specifications::GraphicRendererPipelineSpecification ui_pipeline_spec = {};
+        ui_pipeline_spec.DebugName                                            = "Imgui-pipeline";
+        ui_pipeline_spec.SwapchainAsRenderTarget                              = true;
+        ui_pipeline_spec.SwapchainRenderTarget                                = swapchain;
+        ui_pipeline_spec.ShaderSpecification                                  = {};
+        ui_pipeline_spec.ShaderSpecification.VertexFilename                   = "Shaders/Cache/imgui_vertex.spv";
+        ui_pipeline_spec.ShaderSpecification.FragmentFilename                 = "Shaders/Cache/imgui_fragment.spv";
+        ui_pipeline_spec.ShaderSpecification.OverloadMaxSet                   = 2000;
+        ui_pipeline_spec.ShaderSpecification.OverloadPoolSize                 = 2;
 
         RenderPasses::RenderPassBuilder builder = {};
         m_ui_pass                               = builder.SetName("Imgui Pass")
@@ -109,7 +118,7 @@ namespace ZEngine::Rendering::Renderers
         font_tex_spec.Height                               = height;
         font_tex_spec.Data                                 = pixels;
         font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
-        Ref<Texture> font_texture                          = Texture2D::Create(font_tex_spec);
+        Ref<Textures::Texture> font_texture                = Textures::Texture2D::Create(font_tex_spec);
 
         VkDescriptorSetAllocateInfo font_alloc_info = {};
         font_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;

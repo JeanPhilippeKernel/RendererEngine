@@ -218,29 +218,22 @@ namespace ZEngine::Rendering
         swapchain_create_info.imageFormat              = m_surface_format.format;
         swapchain_create_info.imageColorSpace          = m_surface_format.colorSpace;
         swapchain_create_info.imageExtent              = extent;
-        swapchain_create_info.imageArrayLayers         = m_capabilities.maxImageArrayLayers;
+        swapchain_create_info.imageArrayLayers         = 1;
         swapchain_create_info.preTransform             = m_capabilities.currentTransform;
+        swapchain_create_info.presentMode              = Hardwares::VulkanDevice::GetPresentMode();
 
-        std::unordered_set<uint32_t> device_family_indices = {
+        std::set<uint32_t> device_family_indices = {
             Hardwares::VulkanDevice::GetQueue(QueueType::GRAPHIC_QUEUE).FamilyIndex, Hardwares::VulkanDevice::GetQueue(QueueType::TRANSFER_QUEUE).FamilyIndex};
 
         m_queue_family_index_collection = std::vector<uint32_t>{device_family_indices.begin(), device_family_indices.end()};
 
-        if (m_queue_family_index_collection.size() > 1)
-        {
-            swapchain_create_info.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
-            swapchain_create_info.queueFamilyIndexCount = m_queue_family_index_collection.size();
-            swapchain_create_info.pQueueFamilyIndices   = m_queue_family_index_collection.data();
-        }
-        else
-        {
-            swapchain_create_info.imageSharingMode      = VK_SHARING_MODE_EXCLUSIVE;
-            swapchain_create_info.queueFamilyIndexCount = 0;
-            swapchain_create_info.pQueueFamilyIndices   = nullptr;
-        }
-        swapchain_create_info.imageUsage     = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        swapchain_create_info.clipped        = VK_TRUE;
+        swapchain_create_info.imageSharingMode = (m_queue_family_index_collection.size() > 1) ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+
+        swapchain_create_info.queueFamilyIndexCount = m_queue_family_index_collection.size();
+        swapchain_create_info.pQueueFamilyIndices   = m_queue_family_index_collection.data();
+        swapchain_create_info.imageUsage            = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        swapchain_create_info.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        swapchain_create_info.clipped               = VK_TRUE;
 
         ZENGINE_VALIDATE_ASSERT(vkCreateSwapchainKHR(native_device, &swapchain_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Swapchain")
 

@@ -350,6 +350,14 @@ namespace ZEngine::Rendering::Shaders
                  */
                 find_pool_size_it->descriptorCount++;
             }
+            /*
+             * Ensure correctness with number of frame count
+             */
+            for (auto& pool_size : pool_size_collection)
+            {
+                pool_size.descriptorCount *= renderer_info.FrameCount;
+                pool_size.descriptorCount += m_specification.OverloadPoolSize;
+            }
         }
         /*
          * Create DescriptorPool

@@ -72,6 +72,7 @@ namespace ZEngine::Rendering::Specifications
     struct ShaderSpecification
     {
         uint32_t    OverloadMaxSet   = 1;
+        uint32_t    OverloadPoolSize = 0;
         std::string VertexFilename   = {};
         std::string FragmentFilename = {};
     };
