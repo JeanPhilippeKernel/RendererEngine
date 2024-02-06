@@ -105,32 +105,41 @@ namespace ZEngine::Rendering::Renderers::Pipelines
          */
         VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {};
         depth_stencil_state_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        depth_stencil_state_create_info.depthTestEnable                       = m_pipeline_specification.EnableDepthTest ? VK_TRUE : VK_FALSE;
-        depth_stencil_state_create_info.depthWriteEnable                      = m_pipeline_specification.EnableDepthTest ? VK_TRUE : VK_FALSE;
-        depth_stencil_state_create_info.depthCompareOp                        = VK_COMPARE_OP_LESS;
-        depth_stencil_state_create_info.depthBoundsTestEnable                 = VK_FALSE;
-        depth_stencil_state_create_info.minDepthBounds                        = 0.0f;
-        depth_stencil_state_create_info.maxDepthBounds                        = 1.0f;
         depth_stencil_state_create_info.stencilTestEnable                     = m_pipeline_specification.EnableStencilTest ? VK_TRUE : VK_FALSE;
+        if (m_pipeline_specification.EnableDepthTest)
+        {
+            depth_stencil_state_create_info.depthTestEnable       = VK_TRUE;
+            depth_stencil_state_create_info.depthWriteEnable      = VK_TRUE;
+            depth_stencil_state_create_info.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL;
+            depth_stencil_state_create_info.depthBoundsTestEnable = VK_TRUE;
+            depth_stencil_state_create_info.minDepthBounds        = 0.0f;
+            depth_stencil_state_create_info.maxDepthBounds        = 1.0f;
+        }
         /*
          * Color blend state and attachment
          */
-        VkPipelineColorBlendAttachmentState color_blend_attachment_state = {};
-        color_blend_attachment_state.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        color_blend_attachment_state.blendEnable         = VK_TRUE;
-        color_blend_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        color_blend_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        color_blend_attachment_state.colorBlendOp        = VK_BLEND_OP_ADD;
-        color_blend_attachment_state.srcAlphaBlendFactor = m_pipeline_specification.EnableBlending ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE;
-        color_blend_attachment_state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        color_blend_attachment_state.alphaBlendOp        = VK_BLEND_OP_ADD;
+        ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.Attachment, "Attachment can't be null")
+
+        uint32_t                                         attachment_count = m_pipeline_specification.Attachment->GetColorAttachmentCount();
+        std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachment_states{attachment_count};
+        for (uint32_t i = 0; i < attachment_count; ++i)
+        {
+            color_blend_attachment_states[i].colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            color_blend_attachment_states[i].blendEnable         = m_pipeline_specification.EnableBlending ? VK_TRUE : VK_FALSE;
+            color_blend_attachment_states[i].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            color_blend_attachment_states[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            color_blend_attachment_states[i].colorBlendOp        = VK_BLEND_OP_ADD;
+            color_blend_attachment_states[i].srcAlphaBlendFactor = m_pipeline_specification.EnableBlending ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE;
+            color_blend_attachment_states[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+            color_blend_attachment_states[i].alphaBlendOp        = VK_BLEND_OP_ADD;
+        }
 
         VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {};
         color_blend_state_create_info.sType                               = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         color_blend_state_create_info.logicOpEnable                       = VK_FALSE;
         color_blend_state_create_info.logicOp                             = VK_LOGIC_OP_COPY; // Optional
-        color_blend_state_create_info.attachmentCount                     = 1;
-        color_blend_state_create_info.pAttachments                        = &color_blend_attachment_state;
+        color_blend_state_create_info.attachmentCount                     = color_blend_attachment_states.size();
+        color_blend_state_create_info.pAttachments                        = color_blend_attachment_states.data();
         color_blend_state_create_info.blendConstants[0]                   = 0.0f; // Optional
         color_blend_state_create_info.blendConstants[1]                   = 0.0f; // Optional
         color_blend_state_create_info.blendConstants[2]                   = 0.0f; // Optional
@@ -168,15 +177,12 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.pColorBlendState              = &(color_blend_state_create_info);
         graphic_pipeline_create_info.pDynamicState                 = &(dynamic_state_create_info);
         graphic_pipeline_create_info.layout                        = m_pipeline_layout;
-
-        ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.Attachment, "Target framebuffer can't be null")
-        graphic_pipeline_create_info.renderPass = m_pipeline_specification.Attachment->GetHandle();
-
-        graphic_pipeline_create_info.subpass            = 0;
-        graphic_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE; // Optional
-        graphic_pipeline_create_info.basePipelineIndex  = -1;             // Optional
-        graphic_pipeline_create_info.flags              = 0;              // Optional
-        graphic_pipeline_create_info.pNext              = nullptr;        // Optional
+        graphic_pipeline_create_info.renderPass                    = m_pipeline_specification.Attachment->GetHandle();
+        graphic_pipeline_create_info.subpass                       = 0;
+        graphic_pipeline_create_info.basePipelineHandle            = VK_NULL_HANDLE; // Optional
+        graphic_pipeline_create_info.basePipelineIndex             = -1;             // Optional
+        graphic_pipeline_create_info.flags                         = 0;              // Optional
+        graphic_pipeline_create_info.pNext                         = nullptr;        // Optional
         ZENGINE_VALIDATE_ASSERT(
             vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
     }

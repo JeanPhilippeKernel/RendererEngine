@@ -89,31 +89,53 @@ namespace ZEngine::Rendering::Textures
             return m_texture_array;
         }
 
-        void Add(const Ref<Texture>& texture)
+        int Add(const Ref<Texture>& texture)
         {
-            m_texture_array.push_back(texture);
+            int output_index = -1;
+
+            if (m_free_slot_index < m_count)
+            {
+                output_index                         = m_free_slot_index;
+                m_texture_array[m_free_slot_index++] = texture;
+            }
+
+            return output_index;
         }
 
-        void Add(Ref<Texture>&& texture)
+        int Add(Ref<Texture>&& texture)
         {
-            m_texture_array.emplace_back(texture);
+            int output_index = -1;
+
+            if (m_free_slot_index < m_count)
+            {
+                output_index                         = m_free_slot_index;
+                m_texture_array[m_free_slot_index++] = std::move(texture);
+            }
+
+            return output_index;
         }
 
         size_t Size() const
         {
-            return m_texture_array.size();
+            return m_count;
+        }
+
+        int GetUsedSlotCount() const
+        {
+            return m_free_slot_index;
         }
 
         void Dispose()
         {
-            for (auto& texture : m_texture_array)
+            for (size_t u = 0; u < m_free_slot_index; ++u)
             {
-                texture->Dispose();
+                m_texture_array[u]->Dispose();
             }
         }
 
     private:
         uint32_t                  m_count{0};
+        uint32_t                  m_free_slot_index{0};
         std::vector<Ref<Texture>> m_texture_array;
     };
 

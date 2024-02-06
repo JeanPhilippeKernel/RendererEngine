@@ -11,7 +11,9 @@
 #include <Rendering/Components/UUIComponent.h>
 #include <Rendering/Components/ValidComponent.h>
 #include <Rendering/Lights/DirectionalLight.h>
+
 #include <Core/Coroutine.h>
+#include <Rendering/Renderers/GraphicRenderer.h>
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
@@ -50,7 +52,6 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::Deinitialize()
     {
-        s_raw_data->TextureCollection->Dispose();
     }
 
     std::future<GraphicSceneEntity> GraphicScene::CreateEntityAsync(std::string_view entity_name)
@@ -744,7 +745,8 @@ namespace ZEngine::Rendering::Scenes
 
         for (std::string_view file : s_texture_file_collection)
         {
-            s_raw_data->TextureCollection->Add(Textures::Texture2D::Read(file));
+            auto index = Renderers::GraphicRenderer::GlobalTextures->Add(Textures::Texture2D::Read(file));
+            s_raw_data->TextureCollection.emplace(index);
         }
     }
 

@@ -72,11 +72,33 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
+    RenderGraphResource& RenderGraphBuilder::CreateBufferSet(std::string_view name, uint32_t count, BufferSetCreationType type)
+    {
+        std::string resource_name(name);
+
+        m_graph.m_resource_map[resource_name].Name = name.data();
+        m_graph.m_resource_map[resource_name].Type = RenderGraphResourceType::BUFFER_SET;
+        switch (type)
+        {
+            case ZEngine::Rendering::Renderers::INDIRECT:
+                m_graph.m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle = CreateRef<Buffers::IndirectBufferSet>(count);
+                break;
+            case ZEngine::Rendering::Renderers::UNIFORM:
+                m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = CreateRef<Buffers::UniformBufferSet>(count);
+                break;
+            case ZEngine::Rendering::Renderers::STORAGE:
+                m_graph.m_resource_map[resource_name].ResourceInfo.BufferSetHandle = CreateRef<Buffers::StorageBufferSet>(count);
+                break;
+        }
+        m_graph.m_resource_map[resource_name].ResourceInfo.External = false;
+        return m_graph.m_resource_map[resource_name];
+    }
+
     void RenderGraph::Setup()
     {
         for (auto& pass_callback : m_node)
         {
-            pass_callback.second.Callback.Setup(pass_callback.first, m_builder.get());
+            pass_callback.second.CallbackPass->Setup(pass_callback.first, m_builder.get());
         }
     }
 
@@ -181,14 +203,13 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            node.Callback.Compile(node.Handle, pass_builder);
+            node.CallbackPass->Compile(node.Handle, pass_builder, *this);
         }
     }
 
     void RenderGraph::Execute(uint32_t frame_index, Buffers::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer, "Command Buffer can't be null")
-
         command_buffer->ClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         command_buffer->ClearDepth(1.0f, 0);
 
@@ -241,8 +262,7 @@ namespace ZEngine::Rendering::Renderers
                     command_buffer->TransitionImageLayout(barrier);
                 }
             }
-
-            node.Callback.Execute(frame_index, scene_data, node.Handle.get(), command_buffer);
+            node.CallbackPass->Execute(frame_index, scene_data, node.Handle.get(), command_buffer, this);
         }
         command_buffer->End();
     }
@@ -324,6 +344,11 @@ namespace ZEngine::Rendering::Renderers
                     value.ResourceInfo.UniformBufferSetHandle->Dispose();
                     value.ResourceInfo.UniformBufferSetHandle = nullptr;
                 }
+                else if (value.ResourceInfo.IndirectBufferSetHandle)
+                {
+                    value.ResourceInfo.IndirectBufferSetHandle->Dispose();
+                    value.ResourceInfo.IndirectBufferSetHandle = nullptr;
+                }
             }
         }
     }
@@ -343,6 +368,36 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name];
     }
 
+    Ref<Buffers::StorageBufferSet> RenderGraph::GetBufferSet(std::string_view name)
+    {
+        std::string resource_name(name);
+        if (!m_resource_map.contains(resource_name))
+        {
+            m_resource_map[resource_name].Name = name.data();
+        }
+        return m_resource_map[resource_name].ResourceInfo.BufferSetHandle;
+    }
+
+    Ref<Buffers::UniformBufferSet> RenderGraph::GetBufferUniformSet(std::string_view name)
+    {
+        std::string resource_name(name);
+        if (!m_resource_map.contains(resource_name))
+        {
+            m_resource_map[resource_name].Name = name.data();
+        }
+        return m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle;
+    }
+
+    Ref<Buffers::IndirectBufferSet> RenderGraph::GetIndirectBufferSet(std::string_view name)
+    {
+        std::string resource_name(name);
+        if (!m_resource_map.contains(resource_name))
+        {
+            m_resource_map[resource_name].Name = name.data();
+        }
+        return m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle;
+    }
+
     RenderGraphNode& RenderGraph::GetNode(std::string_view name)
     {
         auto pass_name = name.data();
@@ -351,13 +406,10 @@ namespace ZEngine::Rendering::Renderers
         return m_node[pass_name];
     }
 
-    void RenderGraph::AddCallbackPass(std::string_view pass_name, SetupPassCallback setup_callback, CompilePassCallback compile_callback, ExecutePassCallback execute_callback)
+    void RenderGraph::AddCallbackPass(std::string_view pass_name, const Ref<IRenderGraphCallbackPass>& pass_callback)
     {
         std::string resource_name(pass_name);
 
-        m_node[resource_name].Callback         = {};
-        m_node[resource_name].Callback.Setup   = setup_callback;
-        m_node[resource_name].Callback.Compile = compile_callback;
-        m_node[resource_name].Callback.Execute = execute_callback;
+        m_node[resource_name].CallbackPass = pass_callback;
     }
 } // namespace ZEngine::Rendering::Renderers

@@ -26,7 +26,7 @@ namespace ZEngine::Rendering::Specifications
     struct GraphicRendererPipelineSpecification
     {
         bool                                           EnableBlending                     = false;
-        bool                                           EnableDepthTest                    = true;
+        bool                                           EnableDepthTest                    = false;
         bool                                           EnableStencilTest                  = false;
         const char*                                    DebugName                          = {};
         ShaderSpecification                            ShaderSpecification                = {};

@@ -35,7 +35,7 @@ namespace ZEngine::Rendering::Buffers
         if (m_command_pool && m_command_buffer)
         {
             VkCommandBuffer buffers[] = {m_command_buffer};
-            auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+            auto            device    = Hardwares::VulkanDevice::GetNativeDeviceHandle();
             vkFreeCommandBuffers(device, m_command_pool, 1, buffers);
         }
     }
@@ -47,11 +47,14 @@ namespace ZEngine::Rendering::Buffers
 
     void CommandBuffer::Begin()
     {
-        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Idle, "command buffer must be in Idle state")
+        if (m_one_time_usage)
+        {
+            ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Idle, "command buffer must be in Idle state")
+        }
 
         VkCommandBufferBeginInfo command_buffer_begin_info = {};
         command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        command_buffer_begin_info.flags |= (m_one_time_usage) ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+        command_buffer_begin_info.flags                    = m_one_time_usage ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
         ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(m_command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin the Command Buffer")
 
         m_command_buffer_state = CommanBufferState::Recording;
@@ -134,13 +137,14 @@ namespace ZEngine::Rendering::Buffers
 
     void CommandBuffer::ClearDepth(float depth_color, uint32_t stencil)
     {
-        m_clear_value[1].depthStencil.depth = depth_color;
+        m_clear_value[1].depthStencil.depth   = depth_color;
         m_clear_value[1].depthStencil.stencil = stencil;
     }
 
     void CommandBuffer::BeginRenderPass(const Ref<Renderers::RenderPasses::RenderPass>& render_pass)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+
         const auto&    render_pass_spec     = render_pass->GetSpecification();
         auto           render_pass_pipeline = render_pass->GetPipeline();
         const uint32_t width                = render_pass->GetRenderAreaWidth();
@@ -240,8 +244,8 @@ namespace ZEngine::Rendering::Buffers
         ZENGINE_VALIDATE_ASSERT(descriptor != nullptr, "DescriptorSet can't be null")
         if (auto render_pass = m_active_render_pass.lock())
         {
-            auto render_pass_pipeline = render_pass->GetPipeline();
-            auto pipeline_layout = render_pass_pipeline->GetPipelineLayout();
+            auto            render_pass_pipeline = render_pass->GetPipeline();
+            auto            pipeline_layout      = render_pass_pipeline->GetPipelineLayout();
             VkDescriptorSet desc_set[1]          = {descriptor};
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, desc_set, 0, nullptr);
         }

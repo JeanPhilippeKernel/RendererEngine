@@ -86,6 +86,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         RenderPassBuilder& SetName(std::string_view name);
         RenderPassBuilder& SetPipelineName(std::string_view name);
+        RenderPassBuilder& EnablePipelineBlending(bool value);
+        RenderPassBuilder& EnablePipelineDepthTest(bool value);
         RenderPassBuilder& SetShaderOverloadMaxSet(uint32_t count);
 
         RenderPassBuilder& SetInputBindingCount(uint32_t count);

@@ -60,10 +60,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             if (reference.layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             {
                 depth_attachment_reference = reference;
+                m_depth_attachment_count++;
             }
             else
             {
                 color_attachment_reference_collection.emplace_back(reference);
+                m_color_attachment_count++;
             }
         }
 
@@ -105,6 +107,21 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     VkRenderPass Attachment::GetHandle() const
     {
         return m_handle;
+    }
+
+    const Specifications::AttachmentSpecification& Attachment::GetSpecification() const
+    {
+        return m_specification;
+    }
+
+    uint32_t Attachment::GetColorAttachmentCount() const
+    {
+        return m_color_attachment_count;
+    }
+
+    uint32_t Attachment::GetDepthAttachmentCount() const
+    {
+        return m_depth_attachment_count;
     }
 
     Ref<Attachment> Attachment::Create(const Specifications::AttachmentSpecification& spec)

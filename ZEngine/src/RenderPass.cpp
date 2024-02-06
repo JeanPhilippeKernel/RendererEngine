@@ -192,12 +192,19 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 {
                     auto  texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
                     auto& texture_collection = texture_array->Data();
+                    uint32_t slot_count = texture_array->GetUsedSlotCount();
 
                     for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
                     {
-                        for (uint32_t index = 0; index < texture_collection.size(); ++index)
+                        for (uint32_t index = 0; index < slot_count; ++index)
                         {
-                            const auto& image_info = texture_collection[index]->GetDescriptorImageInfo();
+                            auto texture = texture_collection[index];
+                            if (!texture)
+                            {
+                                continue;
+                            }
+
+                            const auto& image_info = texture->GetDescriptorImageInfo();
                             write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
                                 .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                 .pNext            = nullptr,
@@ -602,6 +609,18 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
      RenderPassBuilder& RenderPassBuilder::SetPipelineName(std::string_view name)
      {
         m_spec.PipelineSpecification.DebugName = name.data();
+        return *this;
+     }
+
+     RenderPassBuilder& RenderPassBuilder::EnablePipelineDepthTest(bool value)
+     {
+        m_spec.PipelineSpecification.EnableDepthTest = value;
+        return *this;
+     }
+
+     RenderPassBuilder& RenderPassBuilder::EnablePipelineBlending(bool value)
+     {
+        m_spec.PipelineSpecification.EnableBlending = value;
         return *this;
      }
 

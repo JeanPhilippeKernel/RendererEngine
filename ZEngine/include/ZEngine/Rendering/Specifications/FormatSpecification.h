@@ -12,6 +12,7 @@ namespace ZEngine::Rendering::Specifications
         UNDEFINED = 0,
         R8G8B8A8_UNORM, // color
         R8G8B8A8_SRGB,
+        R16G16B16A16_SFLOAT,
         R32G32B32A32_SFLOAT,
         R32G32_SFLOAT,
         DEPTH16_UNORM,
@@ -26,12 +27,13 @@ namespace ZEngine::Rendering::Specifications
     /*
     * BytePerChannelMap follows ImageFormat enum alignment value
     */
-    static uint32_t BytePerChannelMap[] = {0u, 4u, 4u, (4u * sizeof(float))};
+    static uint32_t BytePerChannelMap[] = {0u, 4u, 4u, (4u * ( sizeof(float) / 2 )), (4u * sizeof(float))};
 
     static VkFormat ImageFormatMap[] = {
         VK_FORMAT_UNDEFINED,
         VK_FORMAT_R8G8B8A8_UNORM,
         VK_FORMAT_R8G8B8A8_SRGB,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
         VK_FORMAT_R32G32B32A32_SFLOAT,
         VK_FORMAT_R32G32_SFLOAT,
         VK_FORMAT_D16_UNORM,

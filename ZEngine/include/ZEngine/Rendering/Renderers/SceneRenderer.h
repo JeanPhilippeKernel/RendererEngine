@@ -11,7 +11,6 @@
 
 namespace ZEngine::Rendering::Renderers
 {
-
     struct DrawData
     {
         uint32_t Index{0xFFFFFFFF};
@@ -23,6 +22,95 @@ namespace ZEngine::Rendering::Renderers
         uint32_t IndexCount;
     };
 
+    struct IndirectRenderingStorage
+    {
+        virtual void Initialize(uint32_t count);
+        virtual void Dispose();
+
+    protected:
+        bool                            m_write_onbuffer_once{false};
+        Ref<Buffers::StorageBufferSet>  m_vertex_buffer;
+        Ref<Buffers::StorageBufferSet>  m_index_buffer;
+        Ref<Buffers::StorageBufferSet>  m_draw_buffer;
+        Ref<Buffers::StorageBufferSet>  m_transform_buffer;
+        Ref<Buffers::IndirectBufferSet> m_indirect_buffer;
+    };
+
+    /*
+     * Passes definition
+     */
+    struct SceneDepthPrePass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
+    {
+        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
+        virtual void Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
+        virtual void Execute(
+            uint32_t                               frame_index,
+            Rendering::Scenes::SceneRawData* const scene_data,
+            RenderPasses::RenderPass*              pass,
+            Buffers::CommandBuffer*                command_buffer,
+            RenderGraph* const                     graph) override;
+
+    private:
+        std::map<uint32_t, uint32_t> m_cached_vertices_count;
+        std::map<uint32_t, uint32_t> m_cached_indices_count;
+    };
+
+    struct CubemapDepthPrePass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
+    {
+        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
+        virtual void Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
+        virtual void Execute(
+            uint32_t                               frame_index,
+            Rendering::Scenes::SceneRawData* const scene_data,
+            RenderPasses::RenderPass*              pass,
+            Buffers::CommandBuffer*                command_buffer,
+            RenderGraph* const                     graph) override;
+
+    private:
+        const std::vector<float> m_vertex_data = {
+            -1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0,
+            -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        };
+        const std::vector<uint32_t>              m_index_data        = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 7, 6, 5, 5, 4, 7, 4, 0, 3, 3, 7, 4, 4, 5, 1, 1, 0, 4, 3, 2, 6, 6, 7, 3};
+        const std::vector<DrawData>              m_draw_data         = {DrawData{.Index = 0, .VertexOffset = 0, .IndexOffset = 0, .VertexCount = 8, .IndexCount = 36}};
+        const std::vector<VkDrawIndirectCommand> m_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 36, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
+    };
+
+    struct GridDepthPrePass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
+    {
+        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
+        virtual void Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
+        virtual void Execute(
+            uint32_t                               frame_index,
+            Rendering::Scenes::SceneRawData* const scene_data,
+            RenderPasses::RenderPass*              pass,
+            Buffers::CommandBuffer*                command_buffer,
+            RenderGraph* const                     graph) override;
+
+    private:
+        const std::vector<float>                 m_vertex_data       = {-1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,  0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                                                        1.0,  0.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0};
+        const std::vector<uint32_t>              m_index_data        = {0, 1, 2, 2, 3, 0};
+        const std::vector<DrawData>              m_draw_data         = {DrawData{.Index = 0, .VertexOffset = 0, .IndexOffset = 0, .VertexCount = 4, .IndexCount = 6}};
+        const std::vector<VkDrawIndirectCommand> m_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 6, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
+    };
+
+    struct GbufferPass : public IRenderGraphCallbackPass
+    {
+        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
+        virtual void Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
+        virtual void Execute(
+            uint32_t                               frame_index,
+            Rendering::Scenes::SceneRawData* const scene_data,
+            RenderPasses::RenderPass*              pass,
+            Buffers::CommandBuffer*                command_buffer,
+            RenderGraph* const                     graph) override;
+
+    private:
+        std::map<uint32_t, uint32_t> m_cached_vertices_count;
+        std::map<uint32_t, uint32_t> m_cached_indices_count;
+    };
+
     struct SceneRenderer : public Helpers::RefCounted
     {
         SceneRenderer()  = default;
@@ -32,58 +120,13 @@ namespace ZEngine::Rendering::Renderers
         void Deinitialize();
 
     private:
+        Ref<SceneDepthPrePass>   m_scene_depth_prepass;
+        Ref<CubemapDepthPrePass> m_cubemap_depth_prepass;
+        Ref<GridDepthPrePass>    m_grid_depth_prepass;
+        Ref<GbufferPass>         m_gbuffer_pass;
         /*
          * Scene Data Per Frame
          */
-        static Ref<Buffers::StorageBufferSet>                 m_SBVertex;
-        static Ref<Buffers::StorageBufferSet>                 m_SBIndex;
-        static Ref<Buffers::StorageBufferSet>                 m_SBDrawData;
-        static Ref<Buffers::StorageBufferSet>                 m_SBTransform;
-        static Ref<Buffers::StorageBufferSet>                 m_SBMaterialData;
-        static Ref<Buffers::IndirectBufferSet>                m_indirect_buffer;
-        static std::vector<Ref<Rendering::Textures::Texture>> m_global_texture_buffer_collection;
-        static uint32_t                                       m_last_uploaded_buffer_image_count;
-        static std::vector<uint32_t>                          m_last_drawn_vertices_count;
-        static std::vector<uint32_t>                          m_last_drawn_index_count;
-        /*
-         * Infinite Grid pass
-         */
-        static Ref<Buffers::StorageBufferSet>            m_GridSBVertex;
-        static Ref<Buffers::StorageBufferSet>            m_GridSBIndex;
-        static Ref<Buffers::StorageBufferSet>            m_GridSBDrawData;
-        static Ref<Buffers::IndirectBufferSet>           m_infinite_grid_indirect_buffer;
-        static const std::vector<float>                  m_grid_vertices;
-        static const std::vector<uint32_t>               m_grid_indices;
-        static const std::vector<DrawData>               m_grid_drawData;
-        static const std::vector<VkDrawIndirectCommand>  m_grid_indirect_commmand;
-        /*
-         * Cubemap
-         */
-        static Ref<Buffers::StorageBufferSet>            m_CubemapSBVertex;
-        static Ref<Buffers::StorageBufferSet>            m_CubemapSBIndex;
-        static Ref<Buffers::StorageBufferSet>            m_CubemapSBDrawData;
-        static Ref<Textures::Texture>                    m_environment_map;
-        static Ref<Buffers::IndirectBufferSet>           m_cubemap_indirect_buffer;
-        static const std::vector<float>                  m_cubemap_vertex_data;
-        static const std::vector<uint32_t>               m_cubemap_index_data;
-        static const std::vector<DrawData>               m_cubmap_draw_data;
-        static const std::vector<VkDrawIndirectCommand>  m_cubemap_indirect_commmand;
-
-    private:
-        static void __ExecuteCubemapCallback(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer);
-        static void __ExecuteInfiniteGridPassCallback(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer);
-        static void __ExecuteFinalPassCallback(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer);
+        static Ref<Textures::Texture> m_environment_map;
     };
 } // namespace ZEngine::Rendering::Renderers

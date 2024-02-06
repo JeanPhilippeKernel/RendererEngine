@@ -63,6 +63,7 @@ namespace ZEngine::Rendering::Renderers
         RenderPasses::RenderPassBuilder builder = {};
         m_ui_pass                               = builder.SetName("Imgui Pass")
                         .SetPipelineName("Imgui-Pipeline")
+                        .EnablePipelineBlending(true)
                         .SetInputBindingCount(1)
                         .SetStride(0, sizeof(ImDrawVert))
                         .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
