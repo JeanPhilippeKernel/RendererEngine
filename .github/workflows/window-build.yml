@@ -8,7 +8,7 @@ on:
 
 jobs:
   Windows-Build:
-    runs-on: windows-2019
+    runs-on: windows-2022
     strategy:
       matrix:
           buildConfiguration: [Debug, Release]
@@ -16,9 +16,6 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
-
-    - name: Checkout submodules
-      run: git submodule update --init --recursive
 
     - name: Install Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0

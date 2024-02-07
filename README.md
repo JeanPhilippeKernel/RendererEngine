@@ -18,27 +18,24 @@ Before building, make sure your setup is correct :
 
 ### Setup Window machine
 
-- Install Visual Studio 2019 or 2022 Community or Professional, make sure to add "Desktop development with C++".
+- Install Visual Studio 2022 Community or Professional, make sure to add "Desktop development with C++".
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
 - Install [Vulkan SDK](https://sdk.lunarg.com/sdk/download/1.3.250.1/windows/VulkanSDK-1.3.250.1-Installer.exe) (uncheck the GLM headers component when installing)
 
 ## Building 
-
-As this project uses different dependencies, make sure you've cloned the project with the `--recursive` option.
-You can also do  `git submodule update --init --recursive`.
 
 1. Install [CMake](https://cmake.org/download/) 3.20 or later.
 2. Start `Powershell Core` and make sure that you can run CMake, You can type `cmake --version` to simply output the current CMake version installed.
 3. Change directories to the location where you've cloned the repository.
 4. Building on different systems
 	- Building on Windows : 
-		- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True -VsVersion 2019 (or 2022)`
-		- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True -VsVersion 2019 (or 2022)`
+		- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True -VsVersion 2022`
+		- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True -VsVersion 2022`
 
 - Notes :
 	- `RunBuilds` can be omitted as its default value is: `$True`.
 	- You can build `Debug` and `Release` versions at once by omitting the `Configuration` parameter
-	- On Windows, you can specify the Visual Studio version with `VsVersion`, it can be omitted as its default value is: `2019`
+	- On Windows, you can specify the Visual Studio version with `VsVersion`, it can be omitted as its default value is: `2022`
 
 ## Dependencies
 
