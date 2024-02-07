@@ -34,9 +34,9 @@ param (
     [Parameter(HelpMessage = "Whether to rebuild shader files")]
     [switch] $ForceShaderRebuild,
 
-    [Parameter(HelpMessage = "VS version use to build, default to 2019")]
-    [ValidateSet(2019, 2022)]
-    [int] $VsVersion = 2019
+    [Parameter(HelpMessage = "VS version use to build, default to 2022")]
+    [ValidateSet(2022)]
+    [int] $VsVersion = 2022
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,6 +50,10 @@ if ($cMakeProgram) {
 else {
     throw 'CMake program not found'
 }
+
+$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
+Write-Host "Ensuring submodules are initialized and updated..."
+git -C $RepoRoot submodule update --init --recursive
 
 function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
@@ -104,9 +108,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     switch ($systemName) {
         "Windows" { 
             switch ($VsVersion) {
-                2019 { 
-                    $cMakeGenerator = "-G `"Visual Studio 16 2019`" -A $architecture"
-                }
                 2022 { 
                     $cMakeGenerator = "-G `"Visual Studio 17 2022`" -A $architecture"
                 }
