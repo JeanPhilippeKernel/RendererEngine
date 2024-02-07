@@ -26,7 +26,7 @@ namespace ZEngine::Rendering::Renderers
          */
         const auto& device_properties = Hardwares::VulkanDevice::GetPhysicalDeviceProperties();
         s_UBCamera                    = CreateRef<Buffers::UniformBufferSet>(s_renderer_information.FrameCount);
-        GlobalTextures                = CreateRef<Textures::TextureArray>(device_properties.limits.maxDescriptorSetSampledImages - 2000);
+        GlobalTextures                = CreateRef<Textures::TextureArray>(device_properties.limits.maxDescriptorSetSampledImages - 20);
 
         auto builder = s_render_graph->GetBuilder();
         builder->AttachBuffer("scene_camera", s_UBCamera);
@@ -82,6 +82,7 @@ namespace ZEngine::Rendering::Renderers
         s_current_command_buffer = s_command_pool->GetCommmandBuffer();
 
         s_render_graph->Execute(frame_index, s_current_command_buffer, scene_data.get());
+        s_current_command_buffer->Submit();
     }
 
     void GraphicRenderer::BeginImguiFrame()
@@ -98,6 +99,7 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::EndImguiFrame()
     {
         s_imgui_renderer->EndFrame(s_current_command_buffer_ui, s_renderer_information.CurrentFrameIndex);
+        s_current_command_buffer_ui->Submit();
     }
 
     VkDescriptorSet GraphicRenderer::GetImguiFrameOutput()
@@ -116,12 +118,6 @@ namespace ZEngine::Rendering::Renderers
             pass->SetInput("TextureArray", GlobalTextures);
             pass->MarkDirty();
         }
-    }
-
-    void GraphicRenderer::Upload()
-    {
-        s_current_command_buffer->Submit();
-        s_current_command_buffer_ui->Submit();
     }
 
     const RendererInformation& GraphicRenderer::GetRendererInformation()

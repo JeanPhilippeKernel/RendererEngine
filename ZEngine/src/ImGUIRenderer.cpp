@@ -57,18 +57,8 @@ namespace ZEngine::Rendering::Renderers
 
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
 
-        m_vertex_buffer                                                       = CreateRef<Buffers::VertexBufferSet>(renderer_info.FrameCount);
-        m_index_buffer                                                        = CreateRef<Buffers::IndexBufferSet>(renderer_info.FrameCount);
-        Specifications::GraphicRendererPipelineSpecification ui_pipeline_spec = {};
-        ui_pipeline_spec.DebugName                                            = "Imgui-pipeline";
-        ui_pipeline_spec.SwapchainAsRenderTarget                              = true;
-        ui_pipeline_spec.SwapchainRenderTarget                                = swapchain;
-        ui_pipeline_spec.ShaderSpecification                                  = {};
-        ui_pipeline_spec.ShaderSpecification.VertexFilename                   = "Shaders/Cache/imgui_vertex.spv";
-        ui_pipeline_spec.ShaderSpecification.FragmentFilename                 = "Shaders/Cache/imgui_fragment.spv";
-        ui_pipeline_spec.ShaderSpecification.OverloadMaxSet                   = 2000;
-        ui_pipeline_spec.ShaderSpecification.OverloadPoolSize                 = 2;
-
+        m_vertex_buffer                         = CreateRef<Buffers::VertexBufferSet>(renderer_info.FrameCount);
+        m_index_buffer                          = CreateRef<Buffers::IndexBufferSet>(renderer_info.FrameCount);
         RenderPasses::RenderPassBuilder builder = {};
         m_ui_pass                               = builder.SetName("Imgui Pass")
                         .SetPipelineName("Imgui-Pipeline")
@@ -93,6 +83,7 @@ namespace ZEngine::Rendering::Renderers
 
                         .UseShader("imgui")
                         .SetShaderOverloadMaxSet(2000)
+                        .SetOverloadPoolSize(2)
 
                         .UseSwapchainAsRenderTarget()
                         .Create();

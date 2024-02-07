@@ -31,7 +31,6 @@ namespace ZEngine::Rendering::Renderers
         static const RendererInformation& GetRendererInformation();
 
         static void            Update();
-        static void            Upload();
         static void            DrawScene(const Ref<Rendering::Cameras::Camera>& camera, const Ref<Rendering::Scenes::SceneRawData>& data);
         static void            BeginImguiFrame();
         static void            DrawUIFrame();

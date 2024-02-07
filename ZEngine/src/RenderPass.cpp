@@ -630,6 +630,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
      }
 
+     RenderPassBuilder& RenderPassBuilder::SetOverloadPoolSize(uint32_t count)
+     {
+        m_spec.PipelineSpecification.ShaderSpecification.OverloadPoolSize = count;
+        return *this;
+     }
+
      RenderPassBuilder& RenderPassBuilder::SetInputBindingCount(uint32_t count)
      {
         m_spec.PipelineSpecification.VertexInputBindingSpecifications.resize(count);
