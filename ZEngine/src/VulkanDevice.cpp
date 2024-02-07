@@ -10,6 +10,7 @@
 #include <Hardwares/VulkanDevice.h>
 #include <Logging/LoggerDefinition.h>
 #include <Helpers/MemoryOperations.h>
+#include <Window/CoreWindow.h>
 
 
 using namespace std::chrono_literals;
@@ -53,7 +54,7 @@ namespace ZEngine::Hardwares
     std::map<Rendering::QueueType, std::map<uint32_t, std::vector<QueueSubmitInfo>>> VulkanDevice::s_queue_submit_info_pool            = {};
     std::deque<DirtyResource>                                                        VulkanDevice::s_dirty_resource_collection         = {};
 
-    void VulkanDevice::Initialize(GLFWwindow* const native_window, const std::vector<const char*>& additional_extension_layer_name_collection)
+    void VulkanDevice::Initialize(const Ref<Window::CoreWindow>& window, const std::vector<const char*>& additional_extension_layer_name_collection)
     {
         /*Create Vulkan Instance*/
         VkApplicationInfo app_info                = {};
@@ -165,7 +166,9 @@ namespace ZEngine::Hardwares
             __createDebugMessengerPtr(s_vulkan_instance, &messenger_create_info, nullptr, &s_debug_messenger);
         }
 
-        ZENGINE_VALIDATE_ASSERT(glfwCreateWindowSurface(s_vulkan_instance, native_window, nullptr, &s_surface) == VK_SUCCESS, "Failed Window Surface from GLFW")
+        ZENGINE_VALIDATE_ASSERT(
+            glfwCreateWindowSurface(s_vulkan_instance, reinterpret_cast<GLFWwindow*>(window->GetNativeWindow()), nullptr, &s_surface) == VK_SUCCESS,
+            "Failed Window Surface from GLFW")
 
         /*Create Vulkan Device*/
         ZENGINE_VALIDATE_ASSERT(s_vulkan_instance != VK_NULL_HANDLE, "A Vulkan Instance must be created first!")
@@ -184,7 +187,8 @@ namespace ZEngine::Hardwares
             vkGetPhysicalDeviceFeatures(physical_device, &physical_device_feature);
 
             if ((physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) &&
-                (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU))
+                ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) ||
+                 (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
                 s_physical_device            = physical_device;
                 s_physical_device_properties = physical_device_properties;
@@ -248,7 +252,7 @@ namespace ZEngine::Hardwares
         }
 
         float                                queue_prorities              = 1.0f;
-        auto                                 family_index_collection      = std::array{s_graphic_family_index, s_transfer_family_index};
+        auto                                 family_index_collection      = std::set{s_graphic_family_index, s_transfer_family_index};
         std::vector<VkDeviceQueueCreateInfo> queue_create_info_collection = {};
         for (uint32_t queue_family_index : family_index_collection)
         {
@@ -329,14 +333,30 @@ namespace ZEngine::Hardwares
             }
         }
 
-        s_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-        for (const VkPresentModeKHR present_mode_khr : s_present_mode_collection)
+        /* Present Mode selection */
+        if (window->IsVSyncEnable())
         {
-            if (present_mode_khr == VK_PRESENT_MODE_MAILBOX_KHR)
+            for (const VkPresentModeKHR present_mode_khr : s_present_mode_collection)
             {
-                s_present_mode = present_mode_khr;
-                break;
+                if (present_mode_khr == VK_PRESENT_MODE_MAILBOX_KHR)
+                {
+                    s_present_mode = present_mode_khr;
+                    break;
+                }
             }
+            s_present_mode = VK_PRESENT_MODE_FIFO_KHR;
+        }
+        else
+        {
+            for (const VkPresentModeKHR present_mode_khr : s_present_mode_collection)
+            {
+                if (present_mode_khr == VK_PRESENT_MODE_IMMEDIATE_KHR)
+                {
+                    s_present_mode = present_mode_khr;
+                    break;
+                }
+            }
+            s_present_mode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
         }
 
         /*In Device Command Pool*/
