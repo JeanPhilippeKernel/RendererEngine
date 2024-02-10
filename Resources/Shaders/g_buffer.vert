@@ -7,19 +7,20 @@ layout (location = 0) out vec3 FragmentPosition;
 layout (location = 1) out vec3 WorldNormal;
 layout (location = 2) out vec2 TextureCoord;
 layout (location = 3) out flat uint MaterialIdx;
+layout (location = 4) out vec4 ViewPosition;
 
 void main()
 {
-    DrawVertex v;
-    GET_VERTEX_DATA(DrawDataBuffer, gl_BaseInstance, gl_VertexIndex, IndexBuffer, VertexBuffer, v);
+    DrawVertex v = FetchVertexData();
+    mat4 model = FetchTransform();
 
-    mat4 model = TransformBuffer.Data[gl_BaseInstance];
     vec4 worldPosition = model * vec4(v.x, v.y, v.z, 1.0);
     FragmentPosition = worldPosition.xyz;
 
     WorldNormal = transpose(inverse(mat3(model))) * vec3(v.nx, v.ny, v.nz);
     TextureCoord = vec2(v.u, v.v);
     MaterialIdx = DrawDataBuffer.Data[gl_BaseInstance].MaterialIndex;
+    ViewPosition = Camera.Position;
 
     gl_Position = Camera.Projection * Camera.View * worldPosition;
 }

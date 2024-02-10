@@ -78,3 +78,8 @@ void runAlphaTest(float alpha, float alphaThreshold)
 
 layout(set = 0, binding = 5) readonly buffer MatSB { MaterialData Data[]; } MaterialDataBuffer;
 layout(set = 0, binding = 9) uniform sampler2D TextureArray[];
+
+MaterialData FetchMaterial(uint dataIndex)
+{
+	return MaterialDataBuffer.Data[dataIndex];
+}

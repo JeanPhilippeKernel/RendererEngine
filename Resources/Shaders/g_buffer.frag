@@ -14,7 +14,7 @@ layout (location = 3) out vec3 OutPosition;
 
 void main()
 {
-    MaterialData material = MaterialDataBuffer.Data[MaterialIdx];
+    MaterialData material = FetchMaterial(MaterialIdx);
 
     OutNormal = normalize(WorldNormal);
     OutPosition = FragmentPosition;

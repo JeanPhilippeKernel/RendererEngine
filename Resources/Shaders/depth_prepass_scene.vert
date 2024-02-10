@@ -4,8 +4,7 @@
 
 void main()
 {
-    DrawVertex v;
-    GET_VERTEX_DATA(DrawDataBuffer, gl_BaseInstance, gl_VertexIndex, IndexBuffer, VertexBuffer, v);
+    DrawVertex v = FetchVertexData();
 
 	mat4 model = TransformBuffer.Data[gl_BaseInstance];
 	vec4 worldPosition = model * vec4(v.x, v.y, v.z, 1.0);

@@ -2,20 +2,16 @@
 #extension GL_GOOGLE_include_directive : require
 #include "vertex_common.glsl"
 
-
 layout (location = 0) out vec3 dir;
 
 void main()
 {
-    float cubeScale = 100.0;
+    const float cubeScale = 2000.0;
 
-    DrawData dd = DrawDataBuffer.Data[gl_BaseInstance];
+    DrawVertex v = FetchVertexData();
 
-    uint refIdx = dd.IndexOffset + gl_VertexIndex;
-    uint verIdx = IndexBuffer.Data[refIdx] + dd.VertexOffset;
-    DrawVertex v = VertexBuffer.Data[verIdx];
+    dir = vec3(v.x, -v.y, v.z);
 
-    vec3 vertexPosition = vec3(v.x, v.y, v.z);
-    gl_Position = Camera.Projection * Camera.View * vec4(cubeScale * vertexPosition, 1.0f);
-    dir = vec3(vertexPosition.x, vertexPosition.y, vertexPosition.z);
+    vec3 posScale = cubeScale * vec3(v.x, v.y, v.z);
+    gl_Position = Camera.Projection * Camera.View * vec4(posScale, 1.0f);
 }

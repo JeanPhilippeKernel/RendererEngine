@@ -5,10 +5,10 @@
 #include <Rendering/Textures/Texture2D.h>
 
 
-#define WRITE_BUFFERS_ONCE(body)  \
-    if (m_write_onbuffer_once)              \
+#define WRITE_BUFFERS_ONCE(frame_index, body)  \
+    if (!m_write_once_control.contains(frame_index))              \
     {                                       \
-        body m_write_onbuffer_once = false; \
+        body m_write_once_control[frame_index] = true; \
     }
 
 
@@ -16,8 +16,6 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
-    Ref<Textures::Texture> SceneRenderer::m_environment_map;
-
     void IndirectRenderingStorage::Initialize(uint32_t count)
     {
         m_vertex_buffer    = CreateRef<Buffers::StorageBufferSet>(count);
@@ -40,29 +38,26 @@ namespace ZEngine::Rendering::Renderers
     {
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
 
-        m_environment_map = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_1k.hdr");
-
-        m_scene_depth_prepass   = CreateRef<SceneDepthPrePass>();
-        m_cubemap_depth_prepass = CreateRef<CubemapDepthPrePass>();
-        m_grid_depth_prepass    = CreateRef<GridDepthPrePass>();
-        m_gbuffer_pass          = CreateRef<GbufferPass>();
+        m_scene_depth_prepass = CreateRef<SceneDepthPrePass>();
+        m_cubemap_pass        = CreateRef<CubemapPass>();
+        m_grid_pass           = CreateRef<GridPass>();
+        m_gbuffer_pass        = CreateRef<GbufferPass>();
 
         m_scene_depth_prepass->Initialize(renderer_info.FrameCount);
-        m_cubemap_depth_prepass->Initialize(renderer_info.FrameCount);
-        m_grid_depth_prepass->Initialize(renderer_info.FrameCount);
+        m_cubemap_pass->Initialize(renderer_info.FrameCount);
+        m_grid_pass->Initialize(renderer_info.FrameCount);
 
         graph->AddCallbackPass("Scene Depth Pre-Pass", m_scene_depth_prepass);
         graph->AddCallbackPass("G-Buffer Pass", m_gbuffer_pass);
-        // graph->AddCallbackPass("Depth Cubemap Pre-Pass", m_cubemap_depth_prepass);
-        // graph->AddCallbackPass("Depth Grid Pre-Pass", m_grid_depth_prepass);
+        graph->AddCallbackPass("Grid Pass", m_grid_pass);
+        graph->AddCallbackPass("Cubemap Pass", m_cubemap_pass);
     }
 
     void SceneRenderer::Deinitialize()
     {
         m_scene_depth_prepass->Dispose();
-        m_cubemap_depth_prepass->Dispose();
-        m_grid_depth_prepass->Dispose();
-        m_environment_map->Dispose();
+        m_cubemap_pass->Dispose();
+        m_grid_pass->Dispose();
     }
 
     void SceneDepthPrePass::Setup(std::string_view name, RenderGraphBuilder* const builder)
@@ -216,21 +211,23 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->EndRenderPass();
     }
 
-    void CubemapDepthPrePass::Setup(std::string_view name, RenderGraphBuilder* const builder)
+    void CubemapPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        m_write_onbuffer_once = true;
+        m_environment_map = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
+
+        TextureSpecification cubemap_output_spec = {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM, .LoadOp = LoadOperation::CLEAR};
+        auto&                cubemap_output      = builder->CreateRenderTarget("cubemap_output", cubemap_output_spec);
 
         RenderGraphRenderPassCreation pass_node_creation = {};
         pass_node_creation.Name                          = name.data();
         pass_node_creation.Inputs.push_back({.Name = "Depth"});
-        pass_node_creation.Outputs.push_back({.Name = "Depth", .Type = RenderGraphResourceType::REFERENCE});
+        pass_node_creation.Outputs.push_back({.Name = cubemap_output.Name});
         builder->CreateRenderPassNode(pass_node_creation);
     }
 
-    void CubemapDepthPrePass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
+    void CubemapPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
     {
-        handle = builder.SetPipelineName("Cubemap-Pipeline").UseShader("depth_prepass_cubemap").Create();
-        // handle = builder.SetPipelineName("Cubemap-Pipeline").UseShader("cubemap").Create();
+        handle = builder.SetPipelineName("Cubemap-Pipeline").EnablePipelineDepthTest(true).UseShader("cubemap").Create();
 
         auto camera_buffer = graph.GetBufferUniformSet("scene_camera");
 
@@ -239,19 +236,19 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("IndexSB", m_index_buffer);
         handle->SetInput("DrawDataSB", m_draw_buffer);
         handle->SetInput("TransformSB", m_transform_buffer);
-        // handle->SetInput("CubemapTexture", graph->GetResource("cubemap_env_map").ResourceInfo.TextureHandle);
+        handle->SetInput("CubemapTexture", m_environment_map);
         handle->Verify();
         handle->Bake();
     }
 
-    void CubemapDepthPrePass::Execute(
+    void CubemapPass::Execute(
         uint32_t                               frame_index,
         Rendering::Scenes::SceneRawData* const scene_data,
         RenderPasses::RenderPass*              pass,
         Buffers::CommandBuffer*                command_buffer,
         RenderGraph* const                     graph)
     {
-        WRITE_BUFFERS_ONCE({
+        WRITE_BUFFERS_ONCE(frame_index , {
             m_vertex_buffer->SetData<float>(frame_index, m_vertex_data);
             m_index_buffer->SetData<uint32_t>(frame_index, m_index_data);
             m_draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
@@ -260,23 +257,27 @@ namespace ZEngine::Rendering::Renderers
 
             pass->MarkDirty();
         })
+        command_buffer->BeginRenderPass(pass);
+        command_buffer->BindDescriptorSets(frame_index);
         command_buffer->DrawIndirect(m_indirect_buffer->At(frame_index));
+        command_buffer->EndRenderPass();
     }
 
-    void GridDepthPrePass::Setup(std::string_view name, RenderGraphBuilder* const builder)
+    void GridPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        m_write_onbuffer_once                   = true;
+        TextureSpecification grid_output_spec = {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM, .LoadOp = LoadOperation::CLEAR};
+        auto&                grid_output      = builder->CreateRenderTarget("grid_output", grid_output_spec);
+
         RenderGraphRenderPassCreation pass_node = {};
         pass_node.Name                          = name.data();
         pass_node.Inputs.push_back({.Name = "Depth"});
-        pass_node.Outputs.push_back({.Name = "Depth", .Type = RenderGraphResourceType::REFERENCE});
+        pass_node.Outputs.push_back({.Name = grid_output.Name});
         builder->CreateRenderPassNode(pass_node);
     }
 
-    void GridDepthPrePass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
+    void GridPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
     {
-        handle = builder.SetPipelineName("Infinite-Grid-Pipeline").UseShader("depth_prepass_infinite_grid").Create();
-        // handle = builder.SetPipelineName("Infinite-Grid-Pipeline").UseShader("infinite_grid").Create();
+        handle = builder.SetPipelineName("Infinite-Grid-Pipeline").EnablePipelineDepthTest(true).UseShader("infinite_grid").Create();
 
         auto camera_buffer = graph.GetBufferUniformSet("scene_camera");
 
@@ -289,14 +290,14 @@ namespace ZEngine::Rendering::Renderers
         handle->Bake();
     }
 
-    void GridDepthPrePass::Execute(
+    void GridPass::Execute(
         uint32_t                               frame_index,
         Rendering::Scenes::SceneRawData* const scene_data,
         RenderPasses::RenderPass*              pass,
         Buffers::CommandBuffer*                command_buffer,
         RenderGraph* const                     graph)
     {
-        WRITE_BUFFERS_ONCE({
+        WRITE_BUFFERS_ONCE(frame_index, {
             m_vertex_buffer->SetData<float>(frame_index, m_vertex_data);
             m_index_buffer->SetData<uint32_t>(frame_index, m_index_data);
             m_draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
@@ -305,7 +306,10 @@ namespace ZEngine::Rendering::Renderers
 
             pass->MarkDirty();
         })
+        command_buffer->BeginRenderPass(pass);
+        command_buffer->BindDescriptorSets(frame_index);
         command_buffer->DrawIndirect(m_indirect_buffer->At(frame_index));
+        command_buffer->EndRenderPass();
     }
 
     void GbufferPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
