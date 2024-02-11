@@ -1,7 +1,6 @@
 #pragma once
 #include <map>
 #include <Rendering/Textures/Texture.h>
-#include <Rendering/Specifications/FrameBufferAttachmentSpecification.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 
 namespace ZEngine::Rendering::Specifications

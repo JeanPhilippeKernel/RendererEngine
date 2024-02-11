@@ -101,7 +101,7 @@ namespace ZEngine::Rendering::Scenes
 
         if (entity_handle == entt::null)
         {
-            ZENGINE_CORE_ERROR("An entity with name {0} deosn't exist", entity_name)
+            ZENGINE_CORE_ERROR("An entity with name {0} deosn't exist", entity_name.data())
         }
 
         co_return GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, entity_handle);
@@ -702,7 +702,7 @@ namespace ZEngine::Rendering::Scenes
 
                 if (!opacity_pixel)
                 {
-                    ZENGINE_CORE_ERROR("failed to load opacity file {0}", opacity_file)
+                    ZENGINE_CORE_ERROR("failed to load opacity file {0}", opacity_file.data())
                     return;
                 }
 

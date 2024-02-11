@@ -29,6 +29,8 @@ namespace ZEngine::Rendering::Renderers
 
     protected:
         std::map<uint32_t, bool>        m_write_once_control;
+        std::map<uint32_t, uint32_t>    m_cached_vertices_count;
+        std::map<uint32_t, uint32_t>    m_cached_indices_count;
         Ref<Buffers::StorageBufferSet>  m_vertex_buffer;
         Ref<Buffers::StorageBufferSet>  m_index_buffer;
         Ref<Buffers::StorageBufferSet>  m_draw_buffer;
@@ -49,10 +51,6 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
-
-    private:
-        std::map<uint32_t, uint32_t> m_cached_vertices_count;
-        std::map<uint32_t, uint32_t> m_cached_indices_count;
     };
 
     struct CubemapPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
@@ -103,7 +101,7 @@ namespace ZEngine::Rendering::Renderers
         const std::vector<VkDrawIndirectCommand> m_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 6, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
     };
 
-    struct GbufferPass : public IRenderGraphCallbackPass
+    struct GbufferPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
     {
         virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
         virtual void Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
@@ -113,10 +111,6 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
-
-    private:
-        std::map<uint32_t, uint32_t> m_cached_vertices_count;
-        std::map<uint32_t, uint32_t> m_cached_indices_count;
     };
 
     struct SceneRenderer : public Helpers::RefCounted
