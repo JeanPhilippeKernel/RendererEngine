@@ -76,7 +76,12 @@ namespace ZEngine::Rendering::Renderers
         uint32_t frame_index = s_renderer_information.CurrentFrameIndex;
 
         auto& scene_camera    = *s_UBCamera;
-        auto  ubo_camera_data = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = glm::vec4(camera->GetPosition(), 1.0f)};
+        auto  ubo_camera_data = UBOCameraLayout{
+             .View         = camera->GetViewMatrix(),
+             .RotScaleView = glm::mat4(glm::mat3(camera->GetViewMatrix())),
+             .Projection   = camera->GetPerspectiveMatrix(),
+             .Position     = glm::vec4(camera->GetPosition(), 1.0f)};
+
         scene_camera[frame_index].SetData(&ubo_camera_data, sizeof(UBOCameraLayout));
 
         s_current_command_buffer = s_command_pool->GetCommmandBuffer();

@@ -27,6 +27,7 @@ namespace ZEngine::Rendering::Specifications
     {
         bool                                           EnableBlending                     = false;
         bool                                           EnableDepthTest                    = false;
+        bool                                           EnableDepthWrite                   = true;
         bool                                           EnableStencilTest                  = false;
         const char*                                    DebugName                          = {};
         ShaderSpecification                            ShaderSpecification                = {};

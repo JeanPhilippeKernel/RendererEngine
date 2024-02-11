@@ -109,7 +109,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         if (m_pipeline_specification.EnableDepthTest)
         {
             depth_stencil_state_create_info.depthTestEnable       = VK_TRUE;
-            depth_stencil_state_create_info.depthWriteEnable      = VK_TRUE;
+            depth_stencil_state_create_info.depthWriteEnable      = m_pipeline_specification.EnableDepthWrite ? VK_TRUE : VK_FALSE;
             depth_stencil_state_create_info.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL;
             depth_stencil_state_create_info.minDepthBounds        = 0.0f;
             depth_stencil_state_create_info.maxDepthBounds        = 1.0f;

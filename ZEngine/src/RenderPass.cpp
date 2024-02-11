@@ -618,6 +618,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
      }
 
+     RenderPassBuilder& RenderPassBuilder::EnablePipelineDepthWrite(bool value)
+     {
+        m_spec.PipelineSpecification.EnableDepthWrite = value;
+        return *this;
+     }
+
      RenderPassBuilder& RenderPassBuilder::EnablePipelineBlending(bool value)
      {
         m_spec.PipelineSpecification.EnableBlending = value;

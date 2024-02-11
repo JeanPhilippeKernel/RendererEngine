@@ -53,7 +53,7 @@ namespace ZEngine::Rendering::Renderers
             RenderGraph* const                     graph) override;
     };
 
-    struct CubemapPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
+    struct SkyboxPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
     {
 
         virtual void Dispose() override
@@ -123,7 +123,7 @@ namespace ZEngine::Rendering::Renderers
 
     private:
         Ref<SceneDepthPrePass> m_scene_depth_prepass;
-        Ref<CubemapPass>       m_cubemap_pass;
+        Ref<SkyboxPass>        m_skybox_pass;
         Ref<GridPass>          m_grid_pass;
         Ref<GbufferPass>       m_gbuffer_pass;
     };

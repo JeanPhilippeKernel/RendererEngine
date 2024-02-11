@@ -39,24 +39,24 @@ namespace ZEngine::Rendering::Renderers
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
 
         m_scene_depth_prepass = CreateRef<SceneDepthPrePass>();
-        m_cubemap_pass        = CreateRef<CubemapPass>();
+        m_skybox_pass        = CreateRef<SkyboxPass>();
         m_grid_pass           = CreateRef<GridPass>();
         m_gbuffer_pass        = CreateRef<GbufferPass>();
 
         m_scene_depth_prepass->Initialize(renderer_info.FrameCount);
-        m_cubemap_pass->Initialize(renderer_info.FrameCount);
+        m_skybox_pass->Initialize(renderer_info.FrameCount);
         m_grid_pass->Initialize(renderer_info.FrameCount);
 
         graph->AddCallbackPass("Scene Depth Pre-Pass", m_scene_depth_prepass);
         graph->AddCallbackPass("G-Buffer Pass", m_gbuffer_pass);
         graph->AddCallbackPass("Grid Pass", m_grid_pass);
-        graph->AddCallbackPass("Cubemap Pass", m_cubemap_pass);
+        graph->AddCallbackPass("Skybox Pass", m_skybox_pass);
     }
 
     void SceneRenderer::Deinitialize()
     {
         m_scene_depth_prepass->Dispose();
-        m_cubemap_pass->Dispose();
+        m_skybox_pass->Dispose();
         m_grid_pass->Dispose();
     }
 
@@ -211,7 +211,7 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->EndRenderPass();
     }
 
-    void CubemapPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
+    void SkyboxPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
         m_environment_map = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
 
@@ -225,9 +225,9 @@ namespace ZEngine::Rendering::Renderers
         builder->CreateRenderPassNode(pass_node_creation);
     }
 
-    void CubemapPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
+    void SkyboxPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
     {
-        handle = builder.SetPipelineName("Cubemap-Pipeline").EnablePipelineDepthTest(true).UseShader("cubemap").Create();
+        handle = builder.SetPipelineName("Skybox-Pipeline").EnablePipelineDepthTest(true).EnablePipelineDepthWrite(false).UseShader("skybox").Create();
 
         auto camera_buffer = graph.GetBufferUniformSet("scene_camera");
 
@@ -241,7 +241,7 @@ namespace ZEngine::Rendering::Renderers
         handle->Bake();
     }
 
-    void CubemapPass::Execute(
+    void SkyboxPass::Execute(
         uint32_t                               frame_index,
         Rendering::Scenes::SceneRawData* const scene_data,
         RenderPasses::RenderPass*              pass,

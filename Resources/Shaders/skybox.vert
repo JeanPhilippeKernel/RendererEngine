@@ -6,12 +6,9 @@ layout (location = 0) out vec3 dir;
 
 void main()
 {
-    const float cubeScale = 2000.0;
-
     DrawVertex v = FetchVertexData();
 
     dir = vec3(v.x, -v.y, v.z);
-
-    vec3 posScale = cubeScale * vec3(v.x, v.y, v.z);
-    gl_Position = Camera.Projection * Camera.View * vec4(posScale, 1.0f);
+    vec4 position = Camera.Projection * Camera.RotScaleView * vec4(v.x, v.y, v.z, 1.0f);
+    gl_Position = position.xyww;
 }
