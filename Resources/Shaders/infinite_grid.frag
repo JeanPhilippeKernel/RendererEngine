@@ -3,10 +3,11 @@
 #include "utility.glsl"
 
 layout (location = 0) in vec2 uv;
+layout (location = 1) in float scaleFactor;
+
 layout (location = 0) out vec4 outColor;
 
 
-float gridSize = 1000.0;
 float gridCellSize = 0.025;
 
 vec4 gridColorThin = vec4(1.0, 1.0, 1.0, 1.0);
@@ -31,7 +32,7 @@ void main()
     float lod2a = max2(vec2(1.0) - abs(satv(mod(uv, lod2) / dudv) * 2.0 - vec2(1.0)) );
 
     vec4 c = lod2a > 0.0 ? gridColorThick : lod1a > 0.0 ? mix(gridColorThick, gridColorThin, lodFade) : gridColorThin;
-    float opacityFalloff = (1.0 - satf(length(uv) / gridSize));
+    float opacityFalloff = (1.0 - satf(length(uv) / scaleFactor));
     c.a *= lod2a > 0.0 ? lod2a : lod1a > 0.0 ? lod1a : (lod0a * (1.0-lodFade));
     c.a *= opacityFalloff;
     outColor = c;

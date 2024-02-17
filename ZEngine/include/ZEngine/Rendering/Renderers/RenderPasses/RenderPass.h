@@ -7,6 +7,8 @@
 #include <Rendering/Buffers/StorageBuffer.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
 #include <Rendering/Textures/Texture.h>
+#include <Rendering/Buffers/Framebuffer.h>
+#include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
@@ -37,6 +39,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     struct RenderPass : public Helpers::RefCounted
     {
         RenderPass() = default;
+        RenderPass(const Specifications::RenderPassSpecification& specification);
         ~RenderPass();
 
         void Dispose();
@@ -52,19 +55,62 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::UniformBuffer>& buffer);
         void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::StorageBuffer>& buffer);
         void                            SetInput(std::string_view key_name, const Ref<Textures::Texture>& buffer);
+        Ref<Textures::Texture>          GetOutputColor(uint32_t color_index);
+        Ref<Textures::Texture>          GetOutputDepth();
 
-        Ref<Textures::Texture> GetOutputColor(uint32_t color_index);
-        Ref<Textures::Texture> GetOutputDepth();
-        void                   ResizeRenderTarget(uint32_t width, uint32_t height);
+        const Specifications::RenderPassSpecification& GetSpecification() const;
+        Specifications::RenderPassSpecification&       GetSpecification();
 
-        static Ref<RenderPass> Create(const RenderPassSpecification& specification);
+        Ref<Renderers::RenderPasses::Attachment> GetAttachment() const;
+
+        void          ResizeFramebuffer();
+        VkFramebuffer GetFramebuffer() const;
+        uint32_t      GetRenderAreaWidth() const;
+        uint32_t      GetRenderAreaHeight() const;
+
+        static Ref<RenderPass> Create(const Specifications::RenderPassSpecification& specification);
 
     private:
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
 
     private:
-        bool                            m_perform_update{false};
-        std::vector<PassInput>          m_input_collection;
-        Ref<Pipelines::GraphicPipeline> m_pipeline;
+        bool                                     m_perform_update{false};
+        Specifications::RenderPassSpecification  m_specification;
+        std::vector<PassInput>                   m_input_collection;
+        Ref<Pipelines::GraphicPipeline>          m_pipeline;
+        Ref<Renderers::RenderPasses::Attachment> m_attachment;
+        Ref<Buffers::FramebufferVNext>           m_framebuffer;
+    };
+
+    struct RenderPassBuilder : public Helpers::RefCounted
+    {
+        RenderPassBuilder& SetName(std::string_view name);
+        RenderPassBuilder& SetPipelineName(std::string_view name);
+        RenderPassBuilder& EnablePipelineBlending(bool value);
+        RenderPassBuilder& EnablePipelineDepthTest(bool value);
+        RenderPassBuilder& EnablePipelineDepthWrite(bool value);
+        RenderPassBuilder& SetShaderOverloadMaxSet(uint32_t count);
+        RenderPassBuilder& SetOverloadPoolSize(uint32_t count);
+
+        RenderPassBuilder& SetInputBindingCount(uint32_t count);
+        RenderPassBuilder& SetStride(uint32_t input_binding_index, uint32_t value);
+        RenderPassBuilder& SetRate(uint32_t input_binding_index, uint32_t value);
+
+        RenderPassBuilder& SetInputAttributeCount(uint32_t count);
+        RenderPassBuilder& SetLocation(uint32_t input_attribute_index, uint32_t value);
+        RenderPassBuilder& SetBinding(uint32_t input_attribute_index, uint32_t input_binding_index);
+        RenderPassBuilder& SetFormat(uint32_t input_attribute_index, Specifications::ImageFormat value);
+        RenderPassBuilder& SetOffset(uint32_t input_attribute_index, uint32_t offset);
+
+        RenderPassBuilder& UseShader(std::string_view name);
+        RenderPassBuilder& UseRenderTarget(const Ref<Rendering::Textures::Texture>& target);
+        RenderPassBuilder& AddRenderTarget(const Specifications::TextureSpecification& target_spec);
+        RenderPassBuilder& AddInputAttachment(const Ref<Rendering::Textures::Texture>& target);
+        RenderPassBuilder& UseSwapchainAsRenderTarget();
+
+        Ref<RenderPass> Create();
+
+    private:
+        Specifications::RenderPassSpecification m_spec{};
     };
 } // namespace ZEngine::Rendering::Renderers::RenderPasses

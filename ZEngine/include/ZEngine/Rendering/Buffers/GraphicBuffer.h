@@ -1,4 +1,5 @@
 #pragma once
+#include <span>
 #include <Helpers/IntrusivePtr.h>
 #include <Helpers/MemoryOperations.h>
 

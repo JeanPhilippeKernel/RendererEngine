@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
+#include <Rendering/Textures/Texture2D.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <ImGuizmo/ImGuizmo.h>
@@ -10,10 +11,11 @@
 
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering;
+using namespace ZEngine::Rendering::Textures;
 
 namespace ZEngine::Rendering::Renderers
 {
-    void ImGUIRenderer::Initialize(const Ref<Swapchain>& swapchain)
+    void ImGUIRenderer::Initialize(RenderGraph* const graph)
     {
         auto current_window = Engine::GetWindow();
 
@@ -55,45 +57,43 @@ namespace ZEngine::Rendering::Renderers
 
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
 
-        m_vertex_buffer                                                       = CreateRef<Buffers::VertexBufferSet>(renderer_info.FrameCount);
-        m_index_buffer                                                        = CreateRef<Buffers::IndexBufferSet>(renderer_info.FrameCount);
-        Specifications::GraphicRendererPipelineSpecification ui_pipeline_spec = {};
-        ui_pipeline_spec.DebugName                                            = "Imgui-pipeline";
-        ui_pipeline_spec.SwapchainAsRenderTarget                              = true;
-        ui_pipeline_spec.SwapchainRenderTarget                                = swapchain;
-        ui_pipeline_spec.ShaderSpecification                                  = {};
-        ui_pipeline_spec.ShaderSpecification.VertexFilename                   = "Shaders/Cache/imgui_vertex.spv";
-        ui_pipeline_spec.ShaderSpecification.FragmentFilename                 = "Shaders/Cache/imgui_fragment.spv";
-        ui_pipeline_spec.ShaderSpecification.OverloadMaxSet                   = 2000;
-        ui_pipeline_spec.ShaderSpecification.OverloadPoolSize                 = 2;
+        m_vertex_buffer                         = CreateRef<Buffers::VertexBufferSet>(renderer_info.FrameCount);
+        m_index_buffer                          = CreateRef<Buffers::IndexBufferSet>(renderer_info.FrameCount);
+        RenderPasses::RenderPassBuilder builder = {};
+        m_ui_pass                               = builder.SetName("Imgui Pass")
+                        .SetPipelineName("Imgui-Pipeline")
+                        .EnablePipelineBlending(true)
+                        .SetInputBindingCount(1)
+                        .SetStride(0, sizeof(ImDrawVert))
+                        .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
 
-        ui_pipeline_spec.VertexInputBindingSpecifications.resize(1);
-        ui_pipeline_spec.VertexInputBindingSpecifications[0].Stride = sizeof(ImDrawVert);
-        ui_pipeline_spec.VertexInputBindingSpecifications[0].Rate   = VK_VERTEX_INPUT_RATE_VERTEX;
+                        .SetInputAttributeCount(3)
+                        .SetLocation(0, 0)
+                        .SetBinding(0, 0)
+                        .SetFormat(0, Specifications::ImageFormat::R32G32_SFLOAT)
+                        .SetOffset(0, IM_OFFSETOF(ImDrawVert, pos))
+                        .SetLocation(1, 1)
+                        .SetBinding(1, 0)
+                        .SetFormat(1, Specifications::ImageFormat::R32G32_SFLOAT)
+                        .SetOffset(1, IM_OFFSETOF(ImDrawVert, uv))
+                        .SetLocation(2, 2)
+                        .SetBinding(2, 0)
+                        .SetFormat(2, Specifications::ImageFormat::R8G8B8A8_UNORM)
+                        .SetOffset(2, IM_OFFSETOF(ImDrawVert, col))
 
-        ui_pipeline_spec.VertexInputAttributeSpecifications.resize(3);
-        ui_pipeline_spec.VertexInputAttributeSpecifications[0].Location = 0;
-        ui_pipeline_spec.VertexInputAttributeSpecifications[0].Binding  = ui_pipeline_spec.VertexInputBindingSpecifications[0].Binding;
-        ui_pipeline_spec.VertexInputAttributeSpecifications[0].Format   = Specifications::ImageFormat::R32G32_SFLOAT;
-        ui_pipeline_spec.VertexInputAttributeSpecifications[0].Offset   = IM_OFFSETOF(ImDrawVert, pos);
-        ui_pipeline_spec.VertexInputAttributeSpecifications[1].Location = 1;
-        ui_pipeline_spec.VertexInputAttributeSpecifications[1].Binding  = ui_pipeline_spec.VertexInputBindingSpecifications[0].Binding;
-        ui_pipeline_spec.VertexInputAttributeSpecifications[1].Format   = Specifications::ImageFormat::R32G32_SFLOAT;
-        ui_pipeline_spec.VertexInputAttributeSpecifications[1].Offset   = IM_OFFSETOF(ImDrawVert, uv);
-        ui_pipeline_spec.VertexInputAttributeSpecifications[2].Location = 2;
-        ui_pipeline_spec.VertexInputAttributeSpecifications[2].Binding  = ui_pipeline_spec.VertexInputBindingSpecifications[0].Binding;
-        ui_pipeline_spec.VertexInputAttributeSpecifications[2].Format   = Specifications::ImageFormat::R8G8B8A8_UNORM;
-        ui_pipeline_spec.VertexInputAttributeSpecifications[2].Offset   = IM_OFFSETOF(ImDrawVert, col);
+                        .UseShader("imgui")
+                        .SetShaderOverloadMaxSet(2000)
+                        .SetOverloadPoolSize(2)
 
-        RenderPasses::RenderPassSpecification ui_pass_spec = {};
-        ui_pass_spec.Pipeline                              = Pipelines::GraphicPipeline::Create(ui_pipeline_spec);
-        m_ui_pass                                          = RenderPasses::RenderPass::Create(ui_pass_spec);
+                        .UseSwapchainAsRenderTarget()
+                        .Create();
+
         m_ui_pass->Verify();
         m_ui_pass->Bake();
 
-        auto  pipeline             = m_ui_pass->GetPipeline();
-        auto  shader               = pipeline->GetShader();
-        auto  descriptor_setlayout = shader->GetDescriptorSetLayout()[0];
+        auto pipeline             = m_ui_pass->GetPipeline();
+        auto shader               = pipeline->GetShader();
+        auto descriptor_setlayout = shader->GetDescriptorSetLayout()[0];
 
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         /*
@@ -118,13 +118,13 @@ namespace ZEngine::Rendering::Renderers
         font_alloc_info.pSetLayouts                 = &descriptor_setlayout;
         ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(device, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
 
-        auto& font_image_info = font_texture->GetDescriptorImageInfo();
-        VkWriteDescriptorSet write_desc[1] = {};
-        write_desc[0].sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write_desc[0].dstSet               = m_font_descriptor_set;
-        write_desc[0].descriptorCount      = 1;
-        write_desc[0].descriptorType       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write_desc[0].pImageInfo           = &font_image_info;
+        auto&                font_image_info = font_texture->GetDescriptorImageInfo();
+        VkWriteDescriptorSet write_desc[1]   = {};
+        write_desc[0].sType                  = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_desc[0].dstSet                 = m_font_descriptor_set;
+        write_desc[0].descriptorCount        = 1;
+        write_desc[0].descriptorType         = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write_desc[0].pImageInfo             = &font_image_info;
         vkUpdateDescriptorSets(device, 1, write_desc, 0, nullptr);
 
         io.Fonts->SetTexID((ImTextureID) m_font_descriptor_set);
@@ -217,11 +217,8 @@ namespace ZEngine::Rendering::Renderers
                 std::copy(std::begin(cmd_list->VtxBuffer), std::end(cmd_list->VtxBuffer), std::back_inserter(vertex_data_collection));
                 std::copy(std::begin(cmd_list->IdxBuffer), std::end(cmd_list->IdxBuffer), std::back_inserter(index_data_collection));
             }
-            auto& vertex_buffer = *m_vertex_buffer;
-            auto& index_buffer  = *m_index_buffer;
-
-            vertex_buffer[frame_index].SetData(vertex_data_collection);
-            index_buffer[frame_index].SetData(index_data_collection);
+            m_vertex_buffer->SetData<ImDrawVert>(frame_index, vertex_data_collection);
+            m_index_buffer->SetData<ImDrawIdx>(frame_index, index_data_collection);
         }
     }
 
@@ -229,10 +226,8 @@ namespace ZEngine::Rendering::Renderers
     {
         command_buffer->BeginRenderPass(m_ui_pass);
         {
-            auto& vertex_buffer = *m_vertex_buffer;
-            auto& index_buffer  = *m_index_buffer;
-            command_buffer->BindVertexBuffer(vertex_buffer[frame_index]);
-            command_buffer->BindIndexBuffer(index_buffer[frame_index], sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+            command_buffer->BindVertexBuffer(m_vertex_buffer->At(frame_index));
+            command_buffer->BindIndexBuffer(m_index_buffer->At(frame_index), sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 
             // Setup scale and translation:
             // Our visible imgui space lies from draw_data->DisplayPps (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single
@@ -339,12 +334,12 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Ref<Buffers::Image2DBuffer>& buffer)
+    VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Hardwares::BufferImage& buffer)
     {
         auto                  device        = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         VkDescriptorImageInfo desc_image[1] = {};
-        desc_image[0].sampler               = buffer->GetSampler();
-        desc_image[0].imageView             = buffer->GetImageViewHandle();
+        desc_image[0].sampler               = buffer.Sampler;
+        desc_image[0].imageView             = buffer.ViewHandle;
         desc_image[0].imageLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkWriteDescriptorSet write_desc[1]  = {};
         write_desc[0].sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

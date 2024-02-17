@@ -3,18 +3,15 @@
 #include "vertex_common.glsl"
 
 layout (location = 0) out vec2 uv;
+layout (location = 1) out float scaleFactor;
 
-float gridSize = 1000.0;
 
 void main()
 {
-    DrawData dd = DrawDataBuffer.Data[gl_BaseInstance];
+    scaleFactor = 300.0;
 
-    uint refIdx = dd.IndexOffset + gl_VertexIndex;
-    uint verIdx = IndexBuffer.Data[refIdx] + dd.VertexOffset;
-    DrawVertex v = VertexBuffer.Data[verIdx];
-
-    vec3 vpos = vec3(v.x, v.y, v.z) * gridSize;
-    gl_Position = Camera.Projection * Camera.View * vec4(vpos, 1.0);
-    uv = vpos.xz;
+    DrawVertex v =  FetchVertexData();
+    vec3 posScale = vec3(v.x, v.y, v.z) * scaleFactor;
+    uv = posScale.xz;
+    gl_Position = Camera.Projection * Camera.View * vec4(posScale, 1.0);
 }

@@ -73,10 +73,9 @@ namespace ZEngine::Rendering::Buffers
         }
 
         template <typename T>
-        inline void SetData(const std::vector<T>& content)
+        inline void SetData(std::span<const T> content)
         {
-            size_t byte_size = sizeof(T) * content.size();
-            this->SetData(content.data(), byte_size);
+            SetData(content.data(), content.size_bytes());
         }
 
         ~VertexBuffer()
@@ -123,6 +122,20 @@ namespace ZEngine::Rendering::Buffers
         {
             assert(index < m_buffer_set.size());
             return m_buffer_set[index];
+        }
+
+        VertexBuffer& At(uint32_t index)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
+            return m_buffer_set[index];
+        }
+
+        template <typename T>
+        void SetData(uint32_t index, std::span<const T> data)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
+
+            m_buffer_set[index].SetData(data);
         }
 
         const std::vector<VertexBuffer>& Data() const

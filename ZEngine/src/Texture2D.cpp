@@ -109,9 +109,10 @@ namespace ZEngine::Rendering::Textures
         return m_image_2d_buffer->GetBuffer();
     }
 
-    Ref<Texture2D> Texture2D::Create(Specifications::TextureSpecification& spec)
+    Ref<Texture2D> Texture2D::Create(const Specifications::TextureSpecification& spec)
     {
         Ref<Texture2D> texture = CreateRef<Texture2D>();
+        texture->m_specification = spec;
         FillAsVulkanImage(texture, spec);
         return texture;
     }
@@ -161,6 +162,7 @@ namespace ZEngine::Rendering::Textures
         texture->m_buffer_size    = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
         texture->m_width          = spec.Width;
         texture->m_height         = spec.Height;
+        texture->m_is_depth       = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
 
         auto                  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         Hardwares::BufferView staging_buffer =
@@ -204,40 +206,38 @@ namespace ZEngine::Rendering::Textures
         {
             /*Transition Image from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL OR VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL and Copy buffer to
              * image*/
-            {
-                auto                                            image_handle   = texture->m_image_2d_buffer->GetHandle();
-                auto&                                           image_buffer   = texture->m_image_2d_buffer->GetBuffer();
-                Specifications::ImageMemoryBarrierSpecification barrier_spec_0 = {};
-                barrier_spec_0.ImageHandle                                     = image_handle;
-                barrier_spec_0.OldLayout                                       = Specifications::ImageLayout::UNDEFINED;
-                barrier_spec_0.NewLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-                barrier_spec_0.ImageAspectMask                                 = VkImageAspectFlagBits(image_aspect);
-                barrier_spec_0.SourceAccessMask                                = 0;
-                barrier_spec_0.DestinationAccessMask                           = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier_spec_0.SourceStageMask                                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                barrier_spec_0.DestinationStageMask                            = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                barrier_spec_0.LayerCount                                      = spec.LayerCount;
-                Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
+            auto                                            image_handle   = texture->m_image_2d_buffer->GetHandle();
+            auto&                                           image_buffer   = texture->m_image_2d_buffer->GetBuffer();
+            Specifications::ImageMemoryBarrierSpecification barrier_spec_0 = {};
+            barrier_spec_0.ImageHandle                                     = image_handle;
+            barrier_spec_0.OldLayout                                       = Specifications::ImageLayout::UNDEFINED;
+            barrier_spec_0.NewLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+            barrier_spec_0.ImageAspectMask                                 = VkImageAspectFlagBits(image_aspect);
+            barrier_spec_0.SourceAccessMask                                = 0;
+            barrier_spec_0.DestinationAccessMask                           = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier_spec_0.SourceStageMask                                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            barrier_spec_0.DestinationStageMask                            = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            barrier_spec_0.LayerCount                                      = spec.LayerCount;
+            Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
 
-                Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
-                barrier_spec_1.ImageHandle                                     = image_handle;
-                barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-                barrier_spec_1.NewLayout        = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                                                                                                                   : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-                barrier_spec_1.ImageAspectMask  = VkImageAspectFlagBits(image_aspect);
-                barrier_spec_1.SourceAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier_spec_1.DestinationAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                barrier_spec_1.SourceStageMask       = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                barrier_spec_1.DestinationStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                barrier_spec_1.LayerCount            = spec.LayerCount;
-                Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
+            Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
+            barrier_spec_1.ImageHandle                                     = image_handle;
+            barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+            barrier_spec_1.NewLayout             = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                                                                                                                    : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            barrier_spec_1.ImageAspectMask       = VkImageAspectFlagBits(image_aspect);
+            barrier_spec_1.SourceAccessMask      = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier_spec_1.DestinationAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            barrier_spec_1.SourceStageMask       = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            barrier_spec_1.DestinationStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            barrier_spec_1.LayerCount            = spec.LayerCount;
+            Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
 
-                auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
-                command_buffer->TransitionImageLayout(barrier_0);
-                command_buffer->CopyBufferToImage(staging_buffer, image_buffer, texture->m_width, texture->m_height, spec.LayerCount, barrier_0.GetHandle().newLayout);
-                command_buffer->TransitionImageLayout(barrier_1);
-                Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
-            }
+            auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
+            command_buffer->TransitionImageLayout(barrier_0);
+            command_buffer->CopyBufferToImage(staging_buffer, image_buffer, texture->m_width, texture->m_height, spec.LayerCount, barrier_0.GetHandle().newLayout);
+            command_buffer->TransitionImageLayout(barrier_1);
+            Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
         }
 
         /* Cleanup resource */

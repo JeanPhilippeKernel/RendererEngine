@@ -74,10 +74,9 @@ namespace ZEngine::Rendering::Buffers
         }
 
         template <typename T>
-        inline void SetData(const std::vector<T>& content)
+        inline void SetData(std::span<const T> content)
         {
-            size_t byte_size = sizeof(T) * content.size();
-            this->SetData(content.data(), 0, byte_size);
+            SetData(content.data(), 0, content.size_bytes());
         }
 
         ~StorageBuffer()
@@ -122,8 +121,22 @@ namespace ZEngine::Rendering::Buffers
 
         StorageBuffer& operator[](uint32_t index)
         {
-            assert(index < m_buffer_set.size());
+            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
             return m_buffer_set[index];
+        }
+
+        StorageBuffer& At(uint32_t index)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
+            return m_buffer_set[index];
+        }
+
+        template <typename T>
+        void SetData(uint32_t index, std::span<const T> data)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
+
+            m_buffer_set[index].SetData(data);
         }
 
         const std::vector<StorageBuffer>& Data() const

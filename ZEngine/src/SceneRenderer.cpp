@@ -2,205 +2,120 @@
 #include <Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <Rendering/Renderers/SceneRenderer.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
-#include <Rendering/Specifications/GraphicRendererPipelineSpecification.h>
+#include <Rendering/Textures/Texture2D.h>
+
+
+#define WRITE_BUFFERS_ONCE(frame_index, body)  \
+    if (!m_write_once_control.contains(frame_index))              \
+    {                                       \
+        body m_write_once_control[frame_index] = true; \
+    }
+
 
 using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
-    void SceneRenderer::Initialize(const Ref<Buffers::UniformBufferSet>& camera)
+    void IndirectRenderingStorage::Initialize(uint32_t count)
+    {
+        m_vertex_buffer    = CreateRef<Buffers::StorageBufferSet>(count);
+        m_index_buffer     = CreateRef<Buffers::StorageBufferSet>(count);
+        m_draw_buffer      = CreateRef<Buffers::StorageBufferSet>(count);
+        m_transform_buffer = CreateRef<Buffers::StorageBufferSet>(count);
+        m_indirect_buffer  = CreateRef<Buffers::IndirectBufferSet>(count);
+    }
+
+    void IndirectRenderingStorage::Dispose()
+    {
+        m_vertex_buffer->Dispose();
+        m_index_buffer->Dispose();
+        m_draw_buffer->Dispose();
+        m_transform_buffer->Dispose();
+        m_indirect_buffer->Dispose();
+    }
+
+    void SceneRenderer::Initialize(RenderGraph* const graph)
     {
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
 
-        m_upload_once_per_frame_count = renderer_info.FrameCount;
-        m_last_drawn_vertices_count.resize(renderer_info.FrameCount, 0);
-        m_last_drawn_index_count.resize(renderer_info.FrameCount, 0);
+        m_scene_depth_prepass = CreateRef<SceneDepthPrePass>();
+        m_skybox_pass        = CreateRef<SkyboxPass>();
+        m_grid_pass           = CreateRef<GridPass>();
+        m_gbuffer_pass        = CreateRef<GbufferPass>();
 
-        /*
-         * Render Passes definition
-         */
+        m_scene_depth_prepass->Initialize(renderer_info.FrameCount);
+        m_skybox_pass->Initialize(renderer_info.FrameCount);
+        m_grid_pass->Initialize(renderer_info.FrameCount);
 
-        /*
-         * Cubmap Pass
-         */
-        m_CubemapSBVertex   = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_CubemapSBIndex    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_CubemapSBDrawData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
-        {
-            m_cubemap_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
-        }
-
-        m_environment_map                                                          = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
-        Specifications::GraphicRendererPipelineSpecification cubemap_pipeline_spec = {};
-        cubemap_pipeline_spec.DebugName                                            = "Cubemap-Pipeline";
-        // cubemap_pipeline_spec.TargetFrameBuffer                                    = GraphicRenderer::GetRenderTarget(RenderTarget::ENVIROMENT_CUBEMAP);
-        cubemap_pipeline_spec.TargetFrameBuffer                 = GraphicRenderer::GetRenderTarget(RenderTarget::FRAME_OUTPUT);
-        cubemap_pipeline_spec.ShaderSpecification               = {.VertexFilename = "Shaders/Cache/cubemap_vertex.spv", .FragmentFilename = "Shaders/Cache/cubemap_fragment.spv"};
-        RenderPasses::RenderPassSpecification cubemap_pass_spec = {};
-        cubemap_pass_spec.Pipeline                              = Pipelines::GraphicPipeline::Create(cubemap_pipeline_spec);
-        m_cubemap_pass                                          = RenderPasses::RenderPass::Create(cubemap_pass_spec);
-
-        m_cubemap_pass->SetInput("UBCamera", camera);
-        m_cubemap_pass->SetInput("VertexSB", m_CubemapSBVertex);
-        m_cubemap_pass->SetInput("IndexSB", m_CubemapSBIndex);
-        m_cubemap_pass->SetInput("DrawDataSB", m_CubemapSBDrawData);
-        m_cubemap_pass->SetInput("CubemapTexture", m_environment_map);
-        m_cubemap_pass->Verify();
-        m_cubemap_pass->Bake();
-
-        /*
-         * Infinite Grid
-         */
-        m_GridSBVertex   = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_GridSBIndex    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_GridSBDrawData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
-        {
-            m_infinite_grid_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
-        }
-        Specifications::GraphicRendererPipelineSpecification infinite_grid_spec = {};
-        infinite_grid_spec.DebugName                                            = "Infinite-Grid-Pipeline";
-        infinite_grid_spec.TargetFrameBuffer                                    = GraphicRenderer::GetRenderTarget(RenderTarget::FRAME_OUTPUT);
-        infinite_grid_spec.ShaderSpecification = {.VertexFilename = "Shaders/Cache/infinite_grid_vertex.spv", .FragmentFilename = "Shaders/Cache/infinite_grid_fragment.spv"};
-        RenderPasses::RenderPassSpecification grid_color_pass = {};
-        grid_color_pass.Pipeline                              = Pipelines::GraphicPipeline::Create(infinite_grid_spec);
-        m_infinite_grid_pass                                  = RenderPasses::RenderPass::Create(grid_color_pass);
-
-        m_infinite_grid_pass->SetInput("UBCamera", camera);
-        m_infinite_grid_pass->SetInput("VertexSB", m_GridSBVertex);
-        m_infinite_grid_pass->SetInput("IndexSB", m_GridSBIndex);
-        m_infinite_grid_pass->SetInput("DrawDataSB", m_GridSBDrawData);
-        m_infinite_grid_pass->Verify();
-        m_infinite_grid_pass->Bake();
-        /*
-         * Final Color
-         */
-        m_SBVertex       = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_SBIndex        = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_SBDrawData     = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_SBTransform    = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        m_SBMaterialData = CreateRef<Buffers::StorageBufferSet>(renderer_info.FrameCount);
-        for (uint32_t frame_index = 0; frame_index < renderer_info.FrameCount; ++frame_index)
-        {
-            m_indirect_buffer.emplace_back(CreateRef<Buffers::IndirectBuffer>());
-        }
-        Specifications::FrameBufferSpecificationVNext framebuffer_spec           = {};
-        framebuffer_spec.ClearColor                                              = false;
-        framebuffer_spec.ClearDepth                                              = false;
-        framebuffer_spec.AttachmentSpecifications                                = {ImageFormat::R8G8B8A8_UNORM, ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
-        framebuffer_spec.InputColorAttachment[0]                                 = m_infinite_grid_pass->GetOutputColor(0);
-        framebuffer_spec.InputColorAttachment[1]                                 = m_infinite_grid_pass->GetOutputDepth();
-        Specifications::GraphicRendererPipelineSpecification final_pipeline_spec = {};
-        final_pipeline_spec.DebugName                                            = "Standard-Pipeline";
-        final_pipeline_spec.TargetFrameBuffer                                    = Buffers::FramebufferVNext::Create(framebuffer_spec);
-        final_pipeline_spec.ShaderSpecification          = {.VertexFilename = "Shaders/Cache/final_color_vertex.spv", .FragmentFilename = "Shaders/Cache/final_color_fragment.spv"};
-        RenderPasses::RenderPassSpecification color_pass = {};
-        color_pass.DebugName                             = "Final-Color-Attachment";
-        color_pass.Pipeline                              = Pipelines::GraphicPipeline::Create(final_pipeline_spec);
-        m_final_color_output_pass                        = RenderPasses::RenderPass::Create(color_pass);
-
-        m_final_color_output_pass->SetInput("UBCamera", camera);
-        m_final_color_output_pass->SetInput("VertexSB", m_SBVertex);
-        m_final_color_output_pass->SetInput("IndexSB", m_SBIndex);
-        m_final_color_output_pass->SetInput("DrawDataSB", m_SBDrawData);
-        m_final_color_output_pass->SetInput("TransformSB", m_SBTransform);
-        m_final_color_output_pass->SetInput("MatSB", m_SBMaterialData);
-        m_final_color_output_pass->Verify();
-        m_final_color_output_pass->Bake();
+        graph->AddCallbackPass("Scene Depth Pre-Pass", m_scene_depth_prepass);
+        graph->AddCallbackPass("G-Buffer Pass", m_gbuffer_pass);
+        graph->AddCallbackPass("Grid Pass", m_grid_pass);
+        graph->AddCallbackPass("Skybox Pass", m_skybox_pass);
     }
 
     void SceneRenderer::Deinitialize()
     {
-        m_cubemap_pass->Dispose();
-        m_environment_map->Dispose();
-        m_CubemapSBVertex->Dispose();
-        m_CubemapSBIndex->Dispose();
-        m_CubemapSBDrawData->Dispose();
-        for (auto& buffer : m_cubemap_indirect_buffer)
-        {
-            buffer->Dispose();
-        }
-
-        m_infinite_grid_pass->Dispose();
-        m_GridSBVertex->Dispose();
-        m_GridSBIndex->Dispose();
-        m_GridSBDrawData->Dispose();
-        for (auto& buffer : m_infinite_grid_indirect_buffer)
-        {
-            buffer->Dispose();
-        }
-
-        m_final_color_output_pass->Dispose();
-
-        m_SBVertex->Dispose();
-        m_SBIndex->Dispose();
-        m_SBDrawData->Dispose();
-        m_SBTransform->Dispose();
-        m_SBMaterialData->Dispose();
-        for (auto& buffer : m_indirect_buffer)
-        {
-            buffer->Dispose();
-        }
-
-        m_global_texture_buffer_collection.clear();
-        m_global_texture_buffer_collection.shrink_to_fit();
+        m_scene_depth_prepass->Dispose();
+        m_skybox_pass->Dispose();
+        m_grid_pass->Dispose();
     }
 
-    void SceneRenderer::StartScene(const glm::vec4& camera_position, const glm::mat4& camera_view, const glm::mat4& camera_projection)
+    void SceneDepthPrePass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        m_camera_position   = camera_position;
-        m_camera_view       = camera_view;
-        m_camera_projection = camera_projection;
+        const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
+
+        builder->CreateBufferSet("g_scene_vertex_buffer", renderer_info.FrameCount);
+        builder->CreateBufferSet("g_scene_index_buffer", renderer_info.FrameCount);
+        builder->CreateBufferSet("g_scene_draw_buffer", renderer_info.FrameCount);
+        builder->CreateBufferSet("g_scene_transform_buffer", renderer_info.FrameCount);
+        builder->CreateBufferSet("g_scene_material_buffer", renderer_info.FrameCount);
+        builder->CreateBufferSet("g_scene_indirect_buffer", renderer_info.FrameCount, BufferSetCreationType::INDIRECT);
+
+        Specifications::TextureSpecification output_depth_desc = {};
+        output_depth_desc.Format                               = ImageFormat::DEPTH_STENCIL_FROM_DEVICE;
+        output_depth_desc.LoadOp                               = LoadOperation::CLEAR;
+        output_depth_desc.Width                                = 1280;
+        output_depth_desc.Height                               = 780;
+        auto& output_depth                                     = builder->CreateRenderTarget("Depth", output_depth_desc);
+
+        RenderGraphRenderPassCreation pass_node = {};
+        pass_node.Name                          = name.data();
+        pass_node.Outputs.push_back({.Name = output_depth.Name});
+        builder->CreateRenderPassNode(pass_node);
     }
 
-    void SceneRenderer::StartScene(Buffers::CommandBuffer* const command_buffer)
+    void SceneDepthPrePass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
     {
-        command_buffer->Begin();
+        handle = builder.SetPipelineName("Depth-Prepass-Pipeline").EnablePipelineDepthTest(true).UseShader("depth_prepass_scene").Create();
+
+        auto camera_buffer    = graph.GetBufferUniformSet("scene_camera");
+        auto vertex_buffer    = graph.GetBufferSet("g_scene_vertex_buffer");
+        auto index_buffer     = graph.GetBufferSet("g_scene_index_buffer");
+        auto draw_buffer      = graph.GetBufferSet("g_scene_draw_buffer");
+        auto transform_buffer = graph.GetBufferSet("g_scene_transform_buffer");
+
+        handle->SetInput("UBCamera", camera_buffer);
+        handle->SetInput("VertexSB", vertex_buffer);
+        handle->SetInput("IndexSB", index_buffer);
+        handle->SetInput("DrawDataSB", draw_buffer);
+        handle->SetInput("TransformSB", transform_buffer);
+        handle->Verify();
+        handle->Bake();
     }
 
-    void SceneRenderer::StartScene(const glm::vec3& camera_position, const glm::mat4& camera_view, const glm::mat4& camera_projection)
+    void SceneDepthPrePass::Execute(
+        uint32_t                               frame_index,
+        Rendering::Scenes::SceneRawData* const scene_data,
+        RenderPasses::RenderPass*              pass,
+        Buffers::CommandBuffer*                command_buffer,
+        RenderGraph* const                     graph)
     {
-        this->StartScene(glm::vec4(camera_position, 1.0f), camera_view, camera_projection);
-    }
-
-    void SceneRenderer::RenderScene(const Ref<Rendering::Scenes::SceneRawData>& scene_data, uint32_t current_frame_index)
-    {
-        if (m_upload_once_per_frame_count > 0)
-        {
-            /*
-             * Uploading Cubemap
-             */
-            {
-                auto& vertex_buffer    = *m_CubemapSBVertex;
-                auto& index_buffer     = *m_CubemapSBIndex;
-                auto& draw_data_buffer = *m_CubemapSBDrawData;
-
-                vertex_buffer[current_frame_index].SetData(m_cubemap_vertex_data);
-                index_buffer[current_frame_index].SetData(m_cubemap_index_data);
-                draw_data_buffer[current_frame_index].SetData(m_cubmap_draw_data);
-                m_cubemap_indirect_buffer[current_frame_index]->SetData(m_cubemap_indirect_commmand);
-            }
-
-            /*
-             * Uploading Infinite Grid
-             */
-            {
-                auto& vertex_storage    = *m_GridSBVertex;
-                auto& index_storage     = *m_GridSBIndex;
-                auto& draw_data_storage = *m_GridSBDrawData;
-
-                vertex_storage[current_frame_index].SetData(m_grid_vertices);
-                index_storage[current_frame_index].SetData(m_grid_indices);
-                draw_data_storage[current_frame_index].SetData(m_grid_drawData);
-                m_infinite_grid_indirect_buffer[current_frame_index]->SetData(m_grid_indirect_commmand);
-            }
-
-            m_cubemap_pass->MarkDirty();
-            m_infinite_grid_pass->MarkDirty();
-
-            --m_upload_once_per_frame_count;
-        }
+        auto vertex_buffer    = graph->GetBufferSet("g_scene_vertex_buffer");
+        auto index_buffer     = graph->GetBufferSet("g_scene_index_buffer");
+        auto draw_buffer      = graph->GetBufferSet("g_scene_draw_buffer");
+        auto transform_buffer = graph->GetBufferSet("g_scene_transform_buffer");
+        auto material_buffer  = graph->GetBufferSet("g_scene_material_buffer");
+        auto indirect_buffer  = graph->GetIndirectBufferSet("g_scene_indirect_buffer");
 
         const auto& sceneNodeMeshMap = scene_data->SceneNodeMeshMap;
         /*
@@ -211,122 +126,256 @@ namespace ZEngine::Rendering::Renderers
         {
             tranform_collection.push_back(scene_data->GlobalTransformCollection[sceneNodeMeshPair.first]);
         }
-        auto& transform_storage = *m_SBTransform;
-        transform_storage[current_frame_index].SetData(tranform_collection);
 
-        /*
-         * Scenes Textures
-         */
-        if (m_last_uploaded_buffer_image_count != scene_data->TextureCollection->Size())
-        {
-            auto& scene_textures_collection = scene_data->TextureCollection;
-            m_final_color_output_pass->SetInput("TextureArray", scene_textures_collection);
-            m_last_uploaded_buffer_image_count = scene_textures_collection->Size();
+        transform_buffer->SetData<glm::mat4>(frame_index, tranform_collection);
 
-            m_final_color_output_pass->MarkDirty();
-        }
         /*
          * Scene Draw data
          */
-        if ((m_last_drawn_vertices_count[current_frame_index] == scene_data->Vertices.size()) || (m_last_drawn_index_count[current_frame_index] == scene_data->Indices.size()))
+        bool perform_draw_update = true;
+        if ((m_cached_vertices_count[frame_index] == scene_data->Vertices.size()) || (m_cached_indices_count[frame_index] == scene_data->Indices.size()))
         {
-            return;
+            perform_draw_update = false;
         }
 
-        std::vector<DrawData>             draw_data_collection = {};
-        std::vector<Meshes::MeshMaterial> material_collection  = {};
-
-        uint32_t data_index = 0;
-        for (const auto& sceneNodeMeshPair : sceneNodeMeshMap)
+        if (perform_draw_update)
         {
+            std::vector<DrawData>             draw_data_collection = {};
+            std::vector<Meshes::MeshMaterial> material_collection  = {};
+
+            uint32_t data_index = 0;
+            for (const auto& sceneNodeMeshPair : sceneNodeMeshMap)
+            {
+                /*
+                 * Composing DrawData
+                 */
+                DrawData& draw_data      = draw_data_collection.emplace_back(DrawData{.Index = data_index});
+                draw_data.TransformIndex = data_index;
+                draw_data.VertexOffset   = sceneNodeMeshPair.second.VertexOffset;
+                draw_data.IndexOffset    = sceneNodeMeshPair.second.IndexOffset;
+                draw_data.VertexCount    = sceneNodeMeshPair.second.VertexCount;
+                draw_data.IndexCount     = sceneNodeMeshPair.second.IndexCount;
+                /*
+                 * Material data
+                 */
+                material_collection.push_back(scene_data->SceneNodeMaterialMap[sceneNodeMeshPair.first]);
+                draw_data.MaterialIndex = data_index;
+
+                data_index++;
+            }
             /*
-             * Composing DrawData
+             * Uploading Geometry data
              */
-            DrawData& draw_data      = draw_data_collection.emplace_back(DrawData{.Index = data_index});
-            draw_data.TransformIndex = data_index;
-            draw_data.VertexOffset   = sceneNodeMeshPair.second.VertexOffset;
-            draw_data.IndexOffset    = sceneNodeMeshPair.second.IndexOffset;
-            draw_data.VertexCount    = sceneNodeMeshPair.second.VertexCount;
-            draw_data.IndexCount     = sceneNodeMeshPair.second.IndexCount;
+            vertex_buffer->SetData<float>(frame_index, scene_data->Vertices);
+            index_buffer->SetData<uint32_t>(frame_index, scene_data->Indices);
             /*
-             * Material data
+             * Uploading Drawing data
              */
-            material_collection.push_back(scene_data->SceneNodeMaterialMap[sceneNodeMeshPair.first]);
-            draw_data.MaterialIndex = material_collection.size() - 1;
+            draw_buffer->SetData<DrawData>(frame_index, draw_data_collection);
+            /*
+             * Uploading Material data
+             */
+            material_buffer->SetData<Meshes::MeshMaterial>(frame_index, material_collection);
+            /*
+             * Uploading Indirect Commands
+             */
+            std::vector<VkDrawIndirectCommand> draw_indirect_commmand = {};
+            draw_indirect_commmand.resize(draw_data_collection.size());
+            for (uint32_t i = 0; i < draw_indirect_commmand.size(); ++i)
+            {
+                draw_indirect_commmand[i] = {
+                    .vertexCount   = draw_data_collection[i].IndexCount,
+                    .instanceCount = 1,
+                    .firstVertex   = 0,
+                    .firstInstance = i,
+                };
+            }
 
-            data_index++;
-        }
-        /*
-         * Uploading Geometry data
-         */
-        auto& vertex_storage = *m_SBVertex;
-        auto& index_storage  = *m_SBIndex;
-        vertex_storage[current_frame_index].SetData(scene_data->Vertices);
-        index_storage[current_frame_index].SetData(scene_data->Indices);
-        /*
-         * Uploading Drawing data
-         */
-        auto& draw_data_storage = *m_SBDrawData;
-        draw_data_storage[current_frame_index].SetData(draw_data_collection);
-        /*
-         * Uploading Material data
-         */
-        auto& material_data_storage = *m_SBMaterialData;
-        material_data_storage[current_frame_index].SetData(material_collection);
-        /*
-         * Uploading Indirect Commands
-         */
-        std::vector<VkDrawIndirectCommand> draw_indirect_commmand = {};
-        draw_indirect_commmand.resize(draw_data_collection.size());
-        for (uint32_t i = 0; i < draw_indirect_commmand.size(); ++i)
-        {
-            draw_indirect_commmand[i] = {
-                .vertexCount   = draw_data_collection[i].IndexCount,
-                .instanceCount = 1,
-                .firstVertex   = 0,
-                .firstInstance = i,
-            };
+            indirect_buffer->SetData(frame_index, draw_indirect_commmand);
+
+            /*
+             * Caching last vertex/index count per frame
+             */
+            m_cached_vertices_count[frame_index] = scene_data->Vertices.size();
+            m_cached_indices_count[frame_index]  = scene_data->Indices.size();
+
+            /*
+             * Mark RenderPass dirty and should re-upadte inputs
+             */
+            pass->MarkDirty();
         }
 
-        m_indirect_buffer[current_frame_index]->SetData(draw_indirect_commmand);
-
-        /*
-         * Caching last vertex/index count per frame
-         */
-        m_last_drawn_vertices_count[current_frame_index] = scene_data->Vertices.size();
-        m_last_drawn_index_count[current_frame_index]    = scene_data->Indices.size();
-
-        /*
-         * Mark RenderPass dirty and should re-upadte inputs
-         */
-        m_final_color_output_pass->MarkDirty();
-    }
-
-    void SceneRenderer::EndScene(Buffers::CommandBuffer* const command_buffer, uint32_t current_frame_index)
-    {
-        command_buffer->BeginRenderPass(m_cubemap_pass);
-        command_buffer->BindDescriptorSets(current_frame_index);
-        command_buffer->DrawIndirect(m_cubemap_indirect_buffer[current_frame_index]);
+        command_buffer->BeginRenderPass(pass);
+        command_buffer->BindDescriptorSets(frame_index);
+        command_buffer->DrawIndirect(indirect_buffer->At(frame_index));
         command_buffer->EndRenderPass();
-
-        // command_buffer->BeginRenderPass(m_infinite_grid_pass);
-        // command_buffer->BindDescriptorSets(current_frame_index);
-        // command_buffer->DrawIndirect(m_infinite_grid_indirect_buffer[current_frame_index]);
-        // command_buffer->EndRenderPass();
-
-        // command_buffer->BeginRenderPass(m_final_color_output_pass);
-        // command_buffer->BindDescriptorSets(current_frame_index);
-        // command_buffer->DrawIndirect(m_indirect_buffer[current_frame_index]);
-        // command_buffer->EndRenderPass();
-
-        command_buffer->End();
     }
 
-    void SceneRenderer::SetViewportSize(uint32_t width, uint32_t height)
+    void SkyboxPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        m_cubemap_pass->ResizeRenderTarget(width, height);
-        m_infinite_grid_pass->ResizeRenderTarget(width, height);
-        m_final_color_output_pass->ResizeRenderTarget(width, height);
+        m_environment_map = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
+
+        TextureSpecification cubemap_output_spec = {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM, .LoadOp = LoadOperation::CLEAR};
+        auto&                cubemap_output      = builder->CreateRenderTarget("cubemap_output", cubemap_output_spec);
+
+        RenderGraphRenderPassCreation pass_node_creation = {};
+        pass_node_creation.Name                          = name.data();
+        pass_node_creation.Inputs.push_back({.Name = "Depth"});
+        pass_node_creation.Outputs.push_back({.Name = cubemap_output.Name});
+        builder->CreateRenderPassNode(pass_node_creation);
     }
 
+    void SkyboxPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
+    {
+        handle = builder.SetPipelineName("Skybox-Pipeline").EnablePipelineDepthTest(true).EnablePipelineDepthWrite(false).UseShader("skybox").Create();
+
+        auto camera_buffer = graph.GetBufferUniformSet("scene_camera");
+
+        handle->SetInput("UBCamera", camera_buffer);
+        handle->SetInput("VertexSB", m_vertex_buffer);
+        handle->SetInput("IndexSB", m_index_buffer);
+        handle->SetInput("DrawDataSB", m_draw_buffer);
+        handle->SetInput("TransformSB", m_transform_buffer);
+        handle->SetInput("CubemapTexture", m_environment_map);
+        handle->Verify();
+        handle->Bake();
+    }
+
+    void SkyboxPass::Execute(
+        uint32_t                               frame_index,
+        Rendering::Scenes::SceneRawData* const scene_data,
+        RenderPasses::RenderPass*              pass,
+        Buffers::CommandBuffer*                command_buffer,
+        RenderGraph* const                     graph)
+    {
+        WRITE_BUFFERS_ONCE(frame_index , {
+            m_vertex_buffer->SetData<float>(frame_index, m_vertex_data);
+            m_index_buffer->SetData<uint32_t>(frame_index, m_index_data);
+            m_draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
+            m_transform_buffer->SetData<glm::mat4>(frame_index, std::vector<glm::mat4>{glm::identity<glm::mat4>()});
+            m_indirect_buffer->SetData(frame_index, m_indirect_commmand);
+
+            pass->MarkDirty();
+        })
+        command_buffer->BeginRenderPass(pass);
+        command_buffer->BindDescriptorSets(frame_index);
+        command_buffer->DrawIndirect(m_indirect_buffer->At(frame_index));
+        command_buffer->EndRenderPass();
+    }
+
+    void GridPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
+    {
+        TextureSpecification grid_output_spec = {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM, .LoadOp = LoadOperation::CLEAR};
+        auto&                grid_output      = builder->CreateRenderTarget("grid_output", grid_output_spec);
+
+        RenderGraphRenderPassCreation pass_node = {};
+        pass_node.Name                          = name.data();
+        pass_node.Inputs.push_back({.Name = "Depth"});
+        pass_node.Outputs.push_back({.Name = grid_output.Name});
+        builder->CreateRenderPassNode(pass_node);
+    }
+
+    void GridPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
+    {
+        handle = builder.SetPipelineName("Infinite-Grid-Pipeline").EnablePipelineDepthTest(true).UseShader("infinite_grid").Create();
+
+        auto camera_buffer = graph.GetBufferUniformSet("scene_camera");
+
+        handle->SetInput("UBCamera", camera_buffer);
+        handle->SetInput("VertexSB", m_vertex_buffer);
+        handle->SetInput("IndexSB", m_index_buffer);
+        handle->SetInput("DrawDataSB", m_draw_buffer);
+        handle->SetInput("TransformSB", m_transform_buffer);
+        handle->Verify();
+        handle->Bake();
+    }
+
+    void GridPass::Execute(
+        uint32_t                               frame_index,
+        Rendering::Scenes::SceneRawData* const scene_data,
+        RenderPasses::RenderPass*              pass,
+        Buffers::CommandBuffer*                command_buffer,
+        RenderGraph* const                     graph)
+    {
+        WRITE_BUFFERS_ONCE(frame_index, {
+            m_vertex_buffer->SetData<float>(frame_index, m_vertex_data);
+            m_index_buffer->SetData<uint32_t>(frame_index, m_index_data);
+            m_draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
+            m_transform_buffer->SetData<glm::mat4>(frame_index, std::vector<glm::mat4>{glm::identity<glm::mat4>()});
+            m_indirect_buffer->SetData(frame_index, m_indirect_commmand);
+
+            pass->MarkDirty();
+        })
+        command_buffer->BeginRenderPass(pass);
+        command_buffer->BindDescriptorSets(frame_index);
+        command_buffer->DrawIndirect(m_indirect_buffer->At(frame_index));
+        command_buffer->EndRenderPass();
+    }
+
+    void GbufferPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
+    {
+        Specifications::TextureSpecification normal_output_spec   = {.Width = 1280, .Height = 780, .Format = ImageFormat::R16G16B16A16_SFLOAT, .LoadOp = LoadOperation::CLEAR};
+        Specifications::TextureSpecification position_output_spec = {.Width = 1280, .Height = 780, .Format = ImageFormat::R16G16B16A16_SFLOAT, .LoadOp = LoadOperation::CLEAR};
+        Specifications::TextureSpecification specular_output_spec = {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM, .LoadOp = LoadOperation::CLEAR};
+        Specifications::TextureSpecification colour_output_spec   = {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM, .LoadOp = LoadOperation::CLEAR};
+
+        auto& gbuffer_normals  = builder->CreateRenderTarget("gbuffer_normals", normal_output_spec);
+        auto& gbuffer_position = builder->CreateRenderTarget("gbuffer_position", position_output_spec);
+        auto& gbuffer_specular = builder->CreateRenderTarget("gbuffer_specular", specular_output_spec);
+        auto& gbuffer_colour   = builder->CreateRenderTarget("gbuffer_colour", colour_output_spec);
+
+        RenderGraphRenderPassCreation pass_node = {};
+        pass_node.Name                          = name.data();
+        pass_node.Inputs.push_back({.Name = "Depth"});
+        pass_node.Outputs.push_back({.Name = gbuffer_colour.Name});
+        pass_node.Outputs.push_back({.Name = gbuffer_specular.Name});
+        pass_node.Outputs.push_back({.Name = gbuffer_normals.Name});
+        pass_node.Outputs.push_back({.Name = gbuffer_position.Name});
+        builder->CreateRenderPassNode(pass_node);
+    }
+
+    void GbufferPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
+    {
+        handle = builder.SetPipelineName("GBuffer-Pipeline").EnablePipelineDepthTest(true).UseShader("g_buffer").Create();
+
+        auto camera_buffer    = graph.GetBufferUniformSet("scene_camera");
+        auto vertex_buffer    = graph.GetBufferSet("g_scene_vertex_buffer");
+        auto index_buffer     = graph.GetBufferSet("g_scene_index_buffer");
+        auto draw_buffer      = graph.GetBufferSet("g_scene_draw_buffer");
+        auto transform_buffer = graph.GetBufferSet("g_scene_transform_buffer");
+        auto material_buffer  = graph.GetBufferSet("g_scene_material_buffer");
+
+        handle->SetInput("UBCamera", camera_buffer);
+        handle->SetInput("VertexSB", vertex_buffer);
+        handle->SetInput("IndexSB", index_buffer);
+        handle->SetInput("DrawDataSB", draw_buffer);
+        handle->SetInput("TransformSB", transform_buffer);
+        handle->SetInput("MatSB", material_buffer);
+        handle->Verify();
+        handle->Bake();
+    }
+
+    void GbufferPass::Execute(
+        uint32_t                               frame_index,
+        Rendering::Scenes::SceneRawData* const scene_data,
+        RenderPasses::RenderPass*              pass,
+        Buffers::CommandBuffer*                command_buffer,
+        RenderGraph* const                     graph)
+    {
+        auto indirect_buffer = graph->GetIndirectBufferSet("g_scene_indirect_buffer");
+
+        if ((m_cached_vertices_count[frame_index] != scene_data->Vertices.size()) || (m_cached_indices_count[frame_index] != scene_data->Indices.size()))
+        {
+            pass->MarkDirty();
+            m_cached_vertices_count[frame_index] = scene_data->Vertices.size();
+            m_cached_indices_count[frame_index]  = scene_data->Indices.size();
+        }
+
+        GraphicRenderer::BindGlobalTextures(pass);
+
+        command_buffer->BeginRenderPass(pass);
+        command_buffer->BindDescriptorSets(frame_index);
+        command_buffer->DrawIndirect(indirect_buffer->At(frame_index));
+        command_buffer->EndRenderPass();
+    }
 } // namespace ZEngine::Rendering::Renderers

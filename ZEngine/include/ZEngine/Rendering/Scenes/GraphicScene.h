@@ -54,7 +54,7 @@ namespace ZEngine::Rendering::Scenes
         std::map<uint32_t, Meshes::MeshMaterial> SceneNodeMaterialMap;
         std::map<uint32_t, std::string>          SceneNodeMaterialNameMap;
         std::map<uint32_t, std::set<uint32_t>>   LevelSceneNodeChangedMap;
-        Ref<Textures::TextureArray>              TextureCollection = CreateRef<Textures::TextureArray>();
+        std::set<int>                            TextureCollection;
         std::shared_ptr<entt::registry>          EntityRegistry;
     };
 

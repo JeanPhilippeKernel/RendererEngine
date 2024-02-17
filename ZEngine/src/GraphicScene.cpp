@@ -11,7 +11,9 @@
 #include <Rendering/Components/UUIComponent.h>
 #include <Rendering/Components/ValidComponent.h>
 #include <Rendering/Lights/DirectionalLight.h>
+
 #include <Core/Coroutine.h>
+#include <Rendering/Renderers/GraphicRenderer.h>
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
@@ -50,7 +52,6 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::Deinitialize()
     {
-        s_raw_data->TextureCollection->Dispose();
     }
 
     std::future<GraphicSceneEntity> GraphicScene::CreateEntityAsync(std::string_view entity_name)
@@ -100,7 +101,7 @@ namespace ZEngine::Rendering::Scenes
 
         if (entity_handle == entt::null)
         {
-            ZENGINE_CORE_ERROR("An entity with name {0} deosn't exist", entity_name)
+            ZENGINE_CORE_ERROR("An entity with name {0} deosn't exist", entity_name.data())
         }
 
         co_return GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, entity_handle);
@@ -166,10 +167,10 @@ namespace ZEngine::Rendering::Scenes
          * Extra SceneEntity information for a SceneNode
          */
         s_raw_data->SceneNodeEntityMap[scene_node_identifier] = s_raw_data->EntityRegistry->create();
-        auto entity_wrapper = GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, s_raw_data->SceneNodeEntityMap[scene_node_identifier]);
-        entity_wrapper.AddComponent<TransformComponent>(s_raw_data->LocalTransformCollection[scene_node_identifier]);
-        entity_wrapper.AddComponent<UUIComponent>();
-        entity_wrapper.AddComponent<NameComponent>();
+        //auto entity_wrapper = GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, s_raw_data->SceneNodeEntityMap[scene_node_identifier]);
+        //entity_wrapper.AddComponent<TransformComponent>(s_raw_data->LocalTransformCollection[scene_node_identifier]);
+        //entity_wrapper.AddComponent<UUIComponent>();
+        //entity_wrapper.AddComponent<NameComponent>();
 
         co_return scene_node_identifier;
     }
@@ -701,7 +702,7 @@ namespace ZEngine::Rendering::Scenes
 
                 if (!opacity_pixel)
                 {
-                    ZENGINE_CORE_ERROR("failed to load opacity file {0}", opacity_file)
+                    ZENGINE_CORE_ERROR("failed to load opacity file {0}", opacity_file.data())
                     return;
                 }
 
@@ -744,7 +745,8 @@ namespace ZEngine::Rendering::Scenes
 
         for (std::string_view file : s_texture_file_collection)
         {
-            s_raw_data->TextureCollection->Add(Textures::Texture2D::Read(file));
+            auto index = Renderers::GraphicRenderer::GlobalTextures->Add(Textures::Texture2D::Read(file));
+            s_raw_data->TextureCollection.emplace(index);
         }
     }
 

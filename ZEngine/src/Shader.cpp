@@ -24,9 +24,6 @@ namespace ZEngine::Rendering::Shaders
 
     Shader::Shader(const Specifications::ShaderSpecification& spec) : m_specification(spec)
     {
-        m_shader_create_info_collection.resize(2);
-        m_shader_module_collection.resize(2);
-
         CreateModule();
         CreateDescriptorSetLayouts();
         CreatePushConstantRange();
@@ -52,18 +49,18 @@ namespace ZEngine::Rendering::Shaders
          */
         if (!m_specification.VertexFilename.empty())
         {
-            m_shader_create_info_collection[0]                 = {};
+            auto& shader_create_info_collection                 = m_shader_create_info_collection.emplace_back();
+            auto&                    shader_module                 = m_shader_module_collection.emplace_back();
             std::vector<uint32_t>    vertex_shader_binary_code = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.VertexFilename);
             VkShaderModuleCreateInfo vertex_shader_create_info = {};
             vertex_shader_create_info.sType                    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             vertex_shader_create_info.codeSize                 = vertex_shader_binary_code.size() * sizeof(uint32_t);
             vertex_shader_create_info.pCode                    = vertex_shader_binary_code.data();
-            ZENGINE_VALIDATE_ASSERT(
-                vkCreateShaderModule(device, &vertex_shader_create_info, nullptr, &m_shader_module_collection[0]) == VK_SUCCESS, "Failed to create ShaderModule")
-            m_shader_create_info_collection[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            m_shader_create_info_collection[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
-            m_shader_create_info_collection[0].module = m_shader_module_collection[0];
-            m_shader_create_info_collection[0].pName  = "main";
+            ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(device, &vertex_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
+            shader_create_info_collection.sType       = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shader_create_info_collection.stage  = VK_SHADER_STAGE_VERTEX_BIT;
+            shader_create_info_collection.module      = shader_module;
+            shader_create_info_collection.pName  = "main";
             /*
              * Source Reflection
              */
@@ -114,18 +111,18 @@ namespace ZEngine::Rendering::Shaders
          */
         if (!m_specification.FragmentFilename.empty())
         {
-            m_shader_create_info_collection[1]                   = {};
+            auto&                    shader_create_info_collection = m_shader_create_info_collection.emplace_back();
+            auto&                    shader_module                 = m_shader_module_collection.emplace_back();
             std::vector<uint32_t>    fragment_shader_binary_code = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.FragmentFilename);
             VkShaderModuleCreateInfo fragment_shader_create_info = {};
             fragment_shader_create_info.sType                    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             fragment_shader_create_info.codeSize                 = fragment_shader_binary_code.size() * sizeof(uint32_t);
             fragment_shader_create_info.pCode                    = fragment_shader_binary_code.data();
-            ZENGINE_VALIDATE_ASSERT(
-                vkCreateShaderModule(device, &fragment_shader_create_info, nullptr, &m_shader_module_collection[1]) == VK_SUCCESS, "Failed to create ShaderModule")
-            m_shader_create_info_collection[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            m_shader_create_info_collection[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
-            m_shader_create_info_collection[1].module = m_shader_module_collection[1];
-            m_shader_create_info_collection[1].pName  = "main";
+            ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(device, &fragment_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
+            shader_create_info_collection.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shader_create_info_collection.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+            shader_create_info_collection.module = shader_module;
+            shader_create_info_collection.pName  = "main";
             /*
              * Source Reflection
              */

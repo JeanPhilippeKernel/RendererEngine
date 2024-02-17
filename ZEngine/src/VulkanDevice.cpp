@@ -321,7 +321,6 @@ namespace ZEngine::Hardwares
             vkGetPhysicalDeviceSurfacePresentModesKHR(s_physical_device, s_surface, &present_mode_count, s_present_mode_collection.data());
         }
 
-        s_surface_format = (s_surface_format_collection.size() > 0) ? s_surface_format_collection[0] : VkSurfaceFormatKHR{};
         for (const VkSurfaceFormatKHR& format_khr : s_surface_format_collection)
         {
             // default is: VK_FORMAT_B8G8R8A8_SRGB
@@ -336,6 +335,7 @@ namespace ZEngine::Hardwares
         /* Present Mode selection */
         if (window->IsVSyncEnable())
         {
+            s_present_mode = VK_PRESENT_MODE_FIFO_KHR;
             for (const VkPresentModeKHR present_mode_khr : s_present_mode_collection)
             {
                 if (present_mode_khr == VK_PRESENT_MODE_MAILBOX_KHR)
@@ -344,10 +344,10 @@ namespace ZEngine::Hardwares
                     break;
                 }
             }
-            s_present_mode = VK_PRESENT_MODE_FIFO_KHR;
         }
         else
         {
+            s_present_mode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
             for (const VkPresentModeKHR present_mode_khr : s_present_mode_collection)
             {
                 if (present_mode_khr == VK_PRESENT_MODE_IMMEDIATE_KHR)
@@ -356,7 +356,6 @@ namespace ZEngine::Hardwares
                     break;
                 }
             }
-            s_present_mode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
         }
 
         /*In Device Command Pool*/

@@ -22,10 +22,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     void GraphicPipeline::Bake()
     {
         auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        /*
-         * Framebuffer Creation
-         */
-
         /*Pipeline fixed states*/
         /*
          * Dynamic State
@@ -109,32 +105,40 @@ namespace ZEngine::Rendering::Renderers::Pipelines
          */
         VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {};
         depth_stencil_state_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        depth_stencil_state_create_info.depthTestEnable                       = m_pipeline_specification.EnableDepthTest ? VK_TRUE : VK_FALSE;
-        depth_stencil_state_create_info.depthWriteEnable                      = m_pipeline_specification.EnableDepthTest ? VK_TRUE : VK_FALSE;
-        depth_stencil_state_create_info.depthCompareOp                        = VK_COMPARE_OP_LESS;
-        depth_stencil_state_create_info.depthBoundsTestEnable                 = VK_FALSE;
-        depth_stencil_state_create_info.minDepthBounds                        = 0.0f;
-        depth_stencil_state_create_info.maxDepthBounds                        = 1.0f;
         depth_stencil_state_create_info.stencilTestEnable                     = m_pipeline_specification.EnableStencilTest ? VK_TRUE : VK_FALSE;
+        if (m_pipeline_specification.EnableDepthTest)
+        {
+            depth_stencil_state_create_info.depthTestEnable       = VK_TRUE;
+            depth_stencil_state_create_info.depthWriteEnable      = m_pipeline_specification.EnableDepthWrite ? VK_TRUE : VK_FALSE;
+            depth_stencil_state_create_info.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL;
+            depth_stencil_state_create_info.minDepthBounds        = 0.0f;
+            depth_stencil_state_create_info.maxDepthBounds        = 1.0f;
+        }
         /*
          * Color blend state and attachment
          */
-        VkPipelineColorBlendAttachmentState color_blend_attachment_state = {};
-        color_blend_attachment_state.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        color_blend_attachment_state.blendEnable         = VK_TRUE;
-        color_blend_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        color_blend_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        color_blend_attachment_state.colorBlendOp        = VK_BLEND_OP_ADD;
-        color_blend_attachment_state.srcAlphaBlendFactor = m_pipeline_specification.EnableBlending ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE;
-        color_blend_attachment_state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        color_blend_attachment_state.alphaBlendOp        = VK_BLEND_OP_ADD;
+        ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.Attachment, "Attachment can't be null")
+
+        uint32_t                                         attachment_count = m_pipeline_specification.Attachment->GetColorAttachmentCount();
+        std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachment_states{attachment_count};
+        for (uint32_t i = 0; i < attachment_count; ++i)
+        {
+            color_blend_attachment_states[i].colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            color_blend_attachment_states[i].blendEnable         = m_pipeline_specification.EnableBlending ? VK_TRUE : VK_FALSE;
+            color_blend_attachment_states[i].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            color_blend_attachment_states[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            color_blend_attachment_states[i].colorBlendOp        = VK_BLEND_OP_ADD;
+            color_blend_attachment_states[i].srcAlphaBlendFactor = m_pipeline_specification.EnableBlending ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE;
+            color_blend_attachment_states[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+            color_blend_attachment_states[i].alphaBlendOp        = VK_BLEND_OP_ADD;
+        }
 
         VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {};
         color_blend_state_create_info.sType                               = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         color_blend_state_create_info.logicOpEnable                       = VK_FALSE;
         color_blend_state_create_info.logicOp                             = VK_LOGIC_OP_COPY; // Optional
-        color_blend_state_create_info.attachmentCount                     = 1;
-        color_blend_state_create_info.pAttachments                        = &color_blend_attachment_state;
+        color_blend_state_create_info.attachmentCount                     = color_blend_attachment_states.size();
+        color_blend_state_create_info.pAttachments                        = color_blend_attachment_states.data();
         color_blend_state_create_info.blendConstants[0]                   = 0.0f; // Optional
         color_blend_state_create_info.blendConstants[1]                   = 0.0f; // Optional
         color_blend_state_create_info.blendConstants[2]                   = 0.0f; // Optional
@@ -172,26 +176,12 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.pColorBlendState              = &(color_blend_state_create_info);
         graphic_pipeline_create_info.pDynamicState                 = &(dynamic_state_create_info);
         graphic_pipeline_create_info.layout                        = m_pipeline_layout;
-
-        if (!m_pipeline_specification.SwapchainAsRenderTarget)
-        {
-            ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.TargetFrameBuffer, "Target framebuffer can't be null")
-            m_target_framebuffer                    = m_pipeline_specification.TargetFrameBuffer;
-            graphic_pipeline_create_info.renderPass = m_target_framebuffer->GetRenderPass();
-        }
-
-        if (m_pipeline_specification.SwapchainAsRenderTarget)
-        {
-            ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.SwapchainRenderTarget, "Swapchain can't be null")
-            m_target_swapchain                      = m_pipeline_specification.SwapchainRenderTarget;
-            graphic_pipeline_create_info.renderPass = m_target_swapchain->GetRenderPass();
-        }
-
-        graphic_pipeline_create_info.subpass            = 0;
-        graphic_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE; // Optional
-        graphic_pipeline_create_info.basePipelineIndex  = -1;             // Optional
-        graphic_pipeline_create_info.flags              = 0;              // Optional
-        graphic_pipeline_create_info.pNext              = nullptr;        // Optional
+        graphic_pipeline_create_info.renderPass                    = m_pipeline_specification.Attachment->GetHandle();
+        graphic_pipeline_create_info.subpass                       = 0;
+        graphic_pipeline_create_info.basePipelineHandle            = VK_NULL_HANDLE; // Optional
+        graphic_pipeline_create_info.basePipelineIndex             = -1;             // Optional
+        graphic_pipeline_create_info.flags                         = 0;              // Optional
+        graphic_pipeline_create_info.pNext                         = nullptr;        // Optional
         ZENGINE_VALIDATE_ASSERT(
             vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
     }
@@ -200,15 +190,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         m_shader->Dispose();
 
-        if (m_target_framebuffer)
-        {
-            m_target_framebuffer->Dispose();
-        }
-        if (m_target_swapchain)
-        {
-            m_target_swapchain.~IntrusivePtr();
-            m_target_swapchain = nullptr;
-        }
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, m_pipeline_layout);
         Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, m_pipeline_handle);
         m_pipeline_layout = VK_NULL_HANDLE;
@@ -223,26 +204,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     VkPipelineLayout GraphicPipeline::GetPipelineLayout() const
     {
         return m_pipeline_layout;
-    }
-
-    VkRenderPass GraphicPipeline::GetRenderPassHandle() const
-    {
-        if (!m_target_framebuffer && !m_target_swapchain)
-        {
-            return VK_NULL_HANDLE;
-        }
-
-        return m_pipeline_specification.SwapchainAsRenderTarget ? m_target_swapchain->GetRenderPass() : m_target_framebuffer->GetRenderPass();
-    }
-
-    Ref<Buffers::FramebufferVNext> GraphicPipeline::GetTargetFrameBuffer() const
-    {
-        return m_target_framebuffer;
-    }
-
-    Ref<Rendering::Swapchain> GraphicPipeline::GetTargetSwapchain() const
-    {
-        return m_target_swapchain;
     }
 
     Ref<Shaders::Shader> GraphicPipeline::GetShader() const

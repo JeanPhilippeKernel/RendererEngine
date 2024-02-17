@@ -35,7 +35,7 @@ namespace ZEngine::Rendering::Buffers
         if (m_command_pool && m_command_buffer)
         {
             VkCommandBuffer buffers[] = {m_command_buffer};
-            auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+            auto            device    = Hardwares::VulkanDevice::GetNativeDeviceHandle();
             vkFreeCommandBuffers(device, m_command_pool, 1, buffers);
         }
     }
@@ -47,11 +47,14 @@ namespace ZEngine::Rendering::Buffers
 
     void CommandBuffer::Begin()
     {
-        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Idle, "command buffer must be in Idle state")
+        if (m_one_time_usage)
+        {
+            ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Idle, "command buffer must be in Idle state")
+        }
 
         VkCommandBufferBeginInfo command_buffer_begin_info = {};
         command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        command_buffer_begin_info.flags |= (m_one_time_usage) ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+        command_buffer_begin_info.flags                    = m_one_time_usage ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
         ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(m_command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin the Command Buffer")
 
         m_command_buffer_state = CommanBufferState::Recording;
@@ -127,68 +130,71 @@ namespace ZEngine::Rendering::Buffers
         return m_signal_fence.get();
     }
 
+    void CommandBuffer::ClearColor(float r, float g, float b, float a)
+    {
+        m_clear_value[0].color = {r, g, b, a};
+    }
+
+    void CommandBuffer::ClearDepth(float depth_color, uint32_t stencil)
+    {
+        m_clear_value[1].depthStencil.depth   = depth_color;
+        m_clear_value[1].depthStencil.stencil = stencil;
+    }
+
     void CommandBuffer::BeginRenderPass(const Ref<Renderers::RenderPasses::RenderPass>& render_pass)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        uint32_t      extent_width       = 0;
-        uint32_t      extent_height      = 0;
-        VkRenderPass  render_pass_handle = VK_NULL_HANDLE;
-        VkFramebuffer framebuffer_handle = VK_NULL_HANDLE;
+        const auto&    render_pass_spec     = render_pass->GetSpecification();
+        auto           render_pass_pipeline = render_pass->GetPipeline();
+        const uint32_t width                = render_pass->GetRenderAreaWidth();
+        const uint32_t height               = render_pass->GetRenderAreaHeight();
 
-        auto        render_pass_pipeline = render_pass->GetPipeline();
-        const auto& pipeline_spec        = render_pass_pipeline->GetSpecification();
+        std::vector<VkClearValue> clear_values = {};
 
-        if (pipeline_spec.SwapchainAsRenderTarget)
+        if (render_pass_spec.SwapchainAsRenderTarget)
         {
-            auto swapchain     = render_pass_pipeline->GetTargetSwapchain();
-            framebuffer_handle = swapchain->GetCurrentFramebuffer();
-            render_pass_handle = render_pass_pipeline->GetRenderPassHandle();
-            extent_width       = Engine::GetWindow()->GetWidth();
-            extent_height      = Engine::GetWindow()->GetHeight();
+            clear_values.push_back(m_clear_value[0]);
         }
         else
         {
-            auto framebuffer   = render_pass_pipeline->GetTargetFrameBuffer();
-            extent_width       = framebuffer->GetWidth();
-            extent_height      = framebuffer->GetHeight();
-            framebuffer_handle = framebuffer->GetHandle();
-            render_pass_handle = render_pass_pipeline->GetRenderPassHandle();
+            auto& spec = render_pass->GetSpecification();
+            for (const auto& render_target : spec.Inputs)
+            {
+                if (render_target->IsDepthTexture())
+                {
+                    clear_values.push_back(m_clear_value[1]);
+                    continue;
+                }
+                clear_values.push_back(m_clear_value[0]);
+            }
+            for (const auto& render_target : spec.ExternalOutputs)
+            {
+                if (render_target->IsDepthTexture())
+                {
+                    clear_values.push_back(m_clear_value[1]);
+                    continue;
+                }
+                clear_values.push_back(m_clear_value[0]);
+            }
         }
 
         VkRenderPassBeginInfo render_pass_begin_info = {};
         render_pass_begin_info.sType                 = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        render_pass_begin_info.renderPass            = render_pass_pipeline->GetRenderPassHandle();
-        render_pass_begin_info.framebuffer           = framebuffer_handle;
+        render_pass_begin_info.renderPass            = render_pass->GetAttachment()->GetHandle();
+        render_pass_begin_info.framebuffer           = render_pass->GetFramebuffer();
         render_pass_begin_info.renderArea.offset     = {0, 0};
-        render_pass_begin_info.renderArea.extent     = VkExtent2D{extent_width, extent_height};
-
-
-        if (pipeline_spec.SwapchainAsRenderTarget)
-        {
-            std::array<VkClearValue, 1> clear_values = {};
-            clear_values[0].color                    = {0.0f, 0.0f, 0.0f, 1.0f};
-            render_pass_begin_info.clearValueCount   = clear_values.size();
-            render_pass_begin_info.pClearValues      = clear_values.data();
-        }
-        else
-        {
-            auto                        framebuffer  = render_pass_pipeline->GetTargetFrameBuffer();
-            auto&                       fb_spec      = framebuffer->GetSpecification();
-            std::array<VkClearValue, 2> clear_values = {};
-            clear_values[0].color                    = {fb_spec.ClearColorValue[0], fb_spec.ClearColorValue[1], fb_spec.ClearColorValue[2], fb_spec.ClearColorValue[3]};
-            clear_values[1].depthStencil             = {fb_spec.ClearDepthValue[0], (uint32_t) fb_spec.ClearDepthValue[1]};
-            render_pass_begin_info.clearValueCount   = clear_values.size();
-            render_pass_begin_info.pClearValues      = clear_values.data();
-        }
+        render_pass_begin_info.renderArea.extent     = VkExtent2D{width, height};
+        render_pass_begin_info.clearValueCount       = clear_values.size();
+        render_pass_begin_info.pClearValues          = clear_values.data();
 
         vkCmdBeginRenderPass(m_command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         VkViewport viewport = {};
         viewport.x          = 0.0f;
         viewport.y          = 0.0f;
-        viewport.width      = extent_width;
-        viewport.height     = extent_height;
+        viewport.width      = width;
+        viewport.height     = height;
         viewport.minDepth   = 0.0f;
         viewport.maxDepth   = 1.0f;
         vkCmdSetViewport(m_command_buffer, 0, 1, &viewport);
@@ -196,7 +202,7 @@ namespace ZEngine::Rendering::Buffers
         /*Scissor definition*/
         VkRect2D scissor = {};
         scissor.offset   = {0, 0};
-        scissor.extent   = {extent_width, extent_height};
+        scissor.extent   = {width, height};
         vkCmdSetScissor(m_command_buffer, 0, 1, &scissor);
 
         vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass_pipeline->GetHandle());
@@ -238,29 +244,29 @@ namespace ZEngine::Rendering::Buffers
         ZENGINE_VALIDATE_ASSERT(descriptor != nullptr, "DescriptorSet can't be null")
         if (auto render_pass = m_active_render_pass.lock())
         {
-            auto render_pass_pipeline = render_pass->GetPipeline();
-            auto pipeline_layout = render_pass_pipeline->GetPipelineLayout();
+            auto            render_pass_pipeline = render_pass->GetPipeline();
+            auto            pipeline_layout      = render_pass_pipeline->GetPipelineLayout();
             VkDescriptorSet desc_set[1]          = {descriptor};
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, desc_set, 0, nullptr);
         }
     }
 
-    void CommandBuffer::DrawIndirect(const Ref<Buffers::IndirectBuffer>& buffer)
+    void CommandBuffer::DrawIndirect(const Buffers::IndirectBuffer& buffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
-        if (buffer->GetNativeBufferHandle())
+        if (buffer.GetNativeBufferHandle())
         {
-            vkCmdDrawIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer->GetNativeBufferHandle()), 0, buffer->GetCommandCount(), sizeof(VkDrawIndirectCommand));
+            vkCmdDrawIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer.GetNativeBufferHandle()), 0, buffer.GetCommandCount(), sizeof(VkDrawIndirectCommand));
         }
     }
 
-    void CommandBuffer::DrawIndexedIndirect(const Ref<Buffers::IndirectBuffer>& buffer, uint32_t count)
+    void CommandBuffer::DrawIndexedIndirect(const Buffers::IndirectBuffer& buffer, uint32_t count)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        if (buffer->GetNativeBufferHandle())
+        if (buffer.GetNativeBufferHandle())
         {
-            vkCmdDrawIndexedIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer->GetNativeBufferHandle()), 0, count, sizeof(VkDrawIndexedIndirectCommand));
+            vkCmdDrawIndexedIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer.GetNativeBufferHandle()), 0, count, sizeof(VkDrawIndexedIndirectCommand));
         }
     }
 

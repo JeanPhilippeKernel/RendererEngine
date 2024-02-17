@@ -5,11 +5,13 @@
 #include <Rendering/Buffers/IndexBuffer.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 
+#include <Rendering/Renderers/RenderGraph.h>
+
 namespace ZEngine::Rendering::Renderers
 {
     struct ImGUIRenderer : public Helpers::RefCounted
     {
-        void Initialize(const Ref<Swapchain>& swapchain);
+        void Initialize(RenderGraph* const graph);
         void Deinitialize();
 
         void StyleDarkTheme();
@@ -18,7 +20,7 @@ namespace ZEngine::Rendering::Renderers
         void Draw(Rendering::Buffers::CommandBuffer* const commandbuffer, uint32_t frame_index);
         void EndFrame(Rendering::Buffers::CommandBuffer* const command_buffer, uint32_t frame_index);
 
-        VkDescriptorSet UpdateFrameOutput(const Ref<Buffers::Image2DBuffer>& buffer);
+        VkDescriptorSet UpdateFrameOutput(const Hardwares::BufferImage& buffer);
 
     private:
         VkDescriptorSet               m_frame_output{VK_NULL_HANDLE};

@@ -1,6 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Rendering/Specifications/TextureSpecification.h>
 
 namespace ZEngine::Rendering::Textures
 {
@@ -13,11 +14,27 @@ namespace ZEngine::Rendering::Textures
         virtual Hardwares::BufferImage&       GetBuffer()       = 0;
         virtual const Hardwares::BufferImage& GetBuffer() const = 0;
         virtual void                          Dispose()         = 0;
-        virtual const VkDescriptorImageInfo&  GetDescriptorImageInfo()
+
+        virtual const VkDescriptorImageInfo& GetDescriptorImageInfo()
         {
             const auto& buffer_image = GetBuffer();
             m_descriptor_image_info  = {.sampler = buffer_image.Sampler, .imageView = buffer_image.ViewHandle, .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
             return m_descriptor_image_info;
+        }
+
+        virtual const Specifications::TextureSpecification& GetSpecification() const
+        {
+            return m_specification;
+        }
+
+        virtual Specifications::TextureSpecification& GetSpecification()
+        {
+            return m_specification;
+        }
+
+        virtual bool IsDepthTexture() const
+        {
+            return m_is_depth;
         }
 
         virtual bool operator==(const Texture& right)
@@ -43,11 +60,13 @@ namespace ZEngine::Rendering::Textures
         }
 
     protected:
-        unsigned int          m_width{0};
-        unsigned int          m_height{0};
-        unsigned int          m_byte_per_pixel{0};
-        VkDeviceSize          m_buffer_size{0};
-        VkDescriptorImageInfo m_descriptor_image_info;
+        bool                                 m_is_depth{false};
+        uint32_t                             m_width{0};
+        uint32_t                             m_height{0};
+        uint32_t                             m_byte_per_pixel{0};
+        VkDeviceSize                         m_buffer_size{0};
+        VkDescriptorImageInfo                m_descriptor_image_info{};
+        Specifications::TextureSpecification m_specification{};
     };
 
     struct TextureArray : public Helpers::RefCounted
@@ -70,31 +89,53 @@ namespace ZEngine::Rendering::Textures
             return m_texture_array;
         }
 
-        void Add(const Ref<Texture>& texture)
+        int Add(const Ref<Texture>& texture)
         {
-            m_texture_array.push_back(texture);
+            int output_index = -1;
+
+            if (m_free_slot_index < m_count)
+            {
+                output_index                         = m_free_slot_index;
+                m_texture_array[m_free_slot_index++] = texture;
+            }
+
+            return output_index;
         }
 
-        void Add(Ref<Texture>&& texture)
+        int Add(Ref<Texture>&& texture)
         {
-            m_texture_array.emplace_back(texture);
+            int output_index = -1;
+
+            if (m_free_slot_index < m_count)
+            {
+                output_index                         = m_free_slot_index;
+                m_texture_array[m_free_slot_index++] = std::move(texture);
+            }
+
+            return output_index;
         }
 
         size_t Size() const
         {
-            return m_texture_array.size();
+            return m_count;
+        }
+
+        int GetUsedSlotCount() const
+        {
+            return m_free_slot_index;
         }
 
         void Dispose()
         {
-            for (auto& texture : m_texture_array)
+            for (size_t u = 0; u < m_free_slot_index; ++u)
             {
-                texture->Dispose();
+                m_texture_array[u]->Dispose();
             }
         }
 
     private:
         uint32_t                  m_count{0};
+        uint32_t                  m_free_slot_index{0};
         std::vector<Ref<Texture>> m_texture_array;
     };
 

@@ -141,6 +141,11 @@ namespace ZEngine::Rendering
         return m_identifier;
     }
 
+    Ref<Renderers::RenderPasses::Attachment> Swapchain::GetAttachment() const
+    {
+        return m_attachment;
+    }
+
     VkSwapchainKHR Swapchain::GetHandle() const
     {
         return m_handle;

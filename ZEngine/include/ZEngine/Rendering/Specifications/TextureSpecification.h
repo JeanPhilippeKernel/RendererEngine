@@ -6,15 +6,16 @@ namespace ZEngine::Rendering::Specifications
 {
     struct TextureSpecification
     {
-        bool        IsUsageSampled    = true;
-        bool        IsUsageTransfert  = true;
-        bool        PerformTransition = true;
-        bool        IsCubemap         = false;
-        uint32_t    Width             = 0;
-        uint32_t    Height            = 0;
-        uint32_t    BytePerPixel      = 4;
-        uint32_t    LayerCount        = 1;
-        ImageFormat Format            = ImageFormat::UNDEFINED;
-        const void* Data              = nullptr;
+        bool          IsUsageSampled    = true;
+        bool          IsUsageTransfert  = true;
+        bool          PerformTransition = true;
+        bool          IsCubemap         = false;
+        uint32_t      Width             = 0;
+        uint32_t      Height            = 0;
+        uint32_t      BytePerPixel      = 4;
+        uint32_t      LayerCount        = 1;
+        ImageFormat   Format            = ImageFormat::UNDEFINED;
+        LoadOperation LoadOp            = LoadOperation::CLEAR;
+        const void*   Data              = nullptr;
     };
 }
