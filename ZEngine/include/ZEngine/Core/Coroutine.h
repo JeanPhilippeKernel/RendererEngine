@@ -11,6 +11,8 @@
 #error Compiler support for coroutines missing!
 #endif
 
+#include <Core/CoroutineScheduler.h>
+
 
 #if defined(__cpp_impl_coroutine) || !defined(_MSC_VER)
 namespace ZENGINE_COROUTINE_NAMESPACE
@@ -107,13 +109,13 @@ namespace ZENGINE_COROUTINE_NAMESPACE
 
         void await_suspend(coroutine_handle<> callback)
         {
+            ZEngine::Core::CoroutineAction coroutine_action = {};
+            coroutine_action.Ready                          = [&m_internal_future = m_internal_future]() -> bool {
+                return future_status::ready == m_internal_future.wait_for(chrono::milliseconds::zero());
+            };
+            coroutine_action.Action = callback;
 
-            thread worker_thread([&m_internal_future = m_internal_future, callback]() mutable {
-                m_internal_future.wait();
-                callback();
-            });
-
-            worker_thread.detach();
+            ZEngine::Core::CoroutineScheduler::Schedule(std::move(coroutine_action));
         }
 
         decltype(auto) await_resume()

@@ -58,7 +58,7 @@ namespace ZEngine::Window::GLFWWindow
         glfwGetWindowContentScale(m_native_window, &x_scale, &y_scale);
         m_property.DpiScale = x_scale;
 
-        ZENGINE_CORE_INFO("Window created, Properties : Width = {0}, Height = {1}", m_property.Width, m_property.Height)
+        ZENGINE_CORE_INFO("Window created, Width = {0}, Height = {1}", m_property.Width, m_property.Height)
     }
 
     uint32_t VulkanWindow::GetWidth() const
@@ -182,7 +182,7 @@ namespace ZEngine::Window::GLFWWindow
             property->SetWidth(width);
             property->SetHeight(height);
 
-            ZENGINE_CORE_INFO("Window size updated, Properties : Width = {0}, Height = {1}", property->Width, property->Height)
+            ZENGINE_CORE_INFO("Window size updated, Width = {0}, Height = {1}", property->Width, property->Height)
         }
     }
 

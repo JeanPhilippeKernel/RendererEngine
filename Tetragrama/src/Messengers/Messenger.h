@@ -100,7 +100,7 @@ namespace Tetragrama::Messengers
 
                     if (component)
                     {
-                        const action_callback& callback = recipient.second;
+                        action_callback callback = recipient.second;
                         co_await callback(&message);
                     }
                 }

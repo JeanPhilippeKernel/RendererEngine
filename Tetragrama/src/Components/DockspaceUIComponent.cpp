@@ -7,6 +7,8 @@
 #include <Messengers/Messenger.h>
 #include <Helpers/WindowsHelper.h>
 
+#include <Helpers/ThreadPool.h>
+
 using namespace ZEngine::Components::UI::Event;
 
 namespace Tetragrama::Components
@@ -105,13 +107,12 @@ namespace Tetragrama::Components
 
                 if (ImGui::MenuItem("Import New Asset..."))
                 {
-                    /* We definitely need a ThreadPool*/
-                    std::thread([] {
-                        Helpers::OpenFileDialogAsync([](std::string_view filename) {
-                            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-                                EDITOR_RENDER_LAYER_SCENE_REQUEST_IMPORTASSETMODEL, Messengers::GenericMessage<std::string>{filename.data()});
-                        });
-                    }).detach();
+                    ZEngine::Helpers::ThreadPoolHelper::Submit([]() -> std::future<void> {
+
+                        auto selected_filename = co_await Helpers::OpenFileDialogAsync();
+                        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+                            EDITOR_RENDER_LAYER_SCENE_REQUEST_IMPORTASSETMODEL, Messengers::GenericMessage<std::string>{selected_filename.data()});
+                    });
                 }
 
                 ImGui::Separator();
@@ -159,7 +160,7 @@ namespace Tetragrama::Components
             auto layer = m_parent_layer.lock();
             layer->OnEvent(message.GetValue());
 
-            ZENGINE_EDITOR_WARN("ZEngine editor stopped")
+            ZENGINE_CORE_WARN("Editor stopped")
         }
         co_return;
     }

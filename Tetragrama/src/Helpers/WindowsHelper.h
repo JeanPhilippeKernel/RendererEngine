@@ -1,7 +1,8 @@
 #pragma once
 #include <future>
+#include <string>
 
 namespace Tetragrama::Helpers
 {
-    std::future<void> OpenFileDialogAsync(std::function<void(std::string_view)> callback);
+    std::future<std::string> OpenFileDialogAsync();
 }

@@ -64,10 +64,10 @@ namespace ZEngine
         m_request_terminate = false;
         m_window.reset();
 
-        ZENGINE_CORE_INFO("Engine destroyed")
-        Logging::Logger::Flush();
-
         Hardwares::VulkanDevice::Dispose();
+
+        ZENGINE_CORE_INFO("Engine destroyed")
+        Logging::Logger::Dispose();
     }
 
     void Engine::Update(Core::TimeStep delta_time)
