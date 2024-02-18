@@ -12,7 +12,6 @@ namespace ZEngine::Helpers
         ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency())
             : m_maxThreadCount(maxThreadCount), m_taskQueue(std::make_shared<ThreadSafeQueue<std::function<void()>>>())
         {
-            m_maxThreadCount -= m_reservedThreadsCount;
         }
 
         ~ThreadPool()
@@ -39,7 +38,6 @@ namespace ZEngine::Helpers
     private:
         size_t                                                  m_maxThreadCount;
         size_t                                                  m_currentThreadCount{0};
-        uint32_t                                                m_reservedThreadsCount{4};
         std::mutex                                              m_mutex;
         std::shared_ptr<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
 
