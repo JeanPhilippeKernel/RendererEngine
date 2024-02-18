@@ -2,21 +2,26 @@
 #include <ZEngine/ZEngine.h>
 #include <Message.h>
 
-namespace Tetragrama::Components {
-    class DockspaceUIComponent : public ZEngine::Components::UI::UIComponent {
+namespace Tetragrama::Components
+{
+    class DockspaceUIComponent : public ZEngine::Components::UI::UIComponent
+    {
     public:
         DockspaceUIComponent(std::string_view name = "Dockspace", bool visibility = true);
         virtual ~DockspaceUIComponent();
 
-        void Update(ZEngine::Core::TimeStep dt) override;
-
+        void         Update(ZEngine::Core::TimeStep dt) override;
         virtual void Render() override;
 
-    public:
-        std::future<void> RequestExitMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>&);
+        void RenderMenuBar();
 
-    protected:
-        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
+        std::future<void> OnNewSceneAsync();
+        std::future<void> OnOpenSceneAsync();
+        std::future<void> OnImportAssetAsync();
+        std::future<void> OnSaveAsync();
+        std::future<void> OnSaveAsAsync();
+        std::future<void> OnExitAsync();
+        std::future<void> RequestExitMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>&);
 
     private:
         ImGuiDockNodeFlags m_dockspace_node_flag;

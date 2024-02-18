@@ -21,7 +21,6 @@ namespace Tetragrama::Components {
     protected:
         void         RenderSceneNodeTree(int32_t node_identifier);
         void         RenderSceneNodeTrees(const std::vector<int32_t>& node_identifie_collection);
-        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
 
     private:
         ImGuiTreeNodeFlags                       m_node_flag;

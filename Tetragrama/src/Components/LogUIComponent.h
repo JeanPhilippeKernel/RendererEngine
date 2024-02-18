@@ -15,9 +15,6 @@ namespace Tetragrama::Components
 
         void OnLog(ZEngine::Logging::LogMessage);
 
-    protected:
-        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
-
         void ClearLog();
 
     private:

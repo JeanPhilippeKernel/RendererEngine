@@ -18,11 +18,6 @@ namespace Tetragrama::Components
     {
     }
 
-    bool LogUIComponent::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&)
-    {
-        return false;
-    }
-
     void LogUIComponent::ClearLog()
     {
         {
