@@ -7,16 +7,10 @@
 #include <ZEngineDef.h>
 #include <ZEngine/Components/UIComponentEvent.h>
 
-namespace ZEngine::Layers {
+namespace ZEngine::Layers
+{
     class ImguiLayer;
 }
-
-#define CHECK_IF_ALLOWED_TO_RENDER()   \
-    {                                  \
-        if (!m_is_allowed_to_render) { \
-            return;                    \
-        }                              \
-    }
 
 namespace ZEngine::Components::UI
 {
@@ -40,14 +34,6 @@ namespace ZEngine::Components::UI
 
         bool HasParentLayer() const;
         bool HasParentUI() const;
-        bool HasChildren() const;
-
-        void AddChild(Ref<UIComponent>& item);
-        void AddChild(Ref<UIComponent>&& item);
-        void AddChild(const Ref<UIComponent>& item);
-
-        void AddChildren(std::vector<Ref<UIComponent>>& items);
-        void AddChildren(std::vector<Ref<UIComponent>>&& items);
 
     protected:
         bool                          m_visibility{false};
@@ -56,8 +42,5 @@ namespace ZEngine::Components::UI
         std::string                   m_name;
         WeakRef<Layers::ImguiLayer>   m_parent_layer;
         WeakRef<UIComponent>          m_parent_ui;
-        std::vector<Ref<UIComponent>> m_children;
-
-        virtual bool OnUIComponentRaised(Event::UIComponentEvent&) = 0;
     };
 } // namespace ZEngine::Components::UI

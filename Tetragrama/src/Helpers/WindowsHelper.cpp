@@ -9,7 +9,7 @@
 
 namespace Tetragrama::Helpers
 {
-    std::future<void> OpenFileDialogAsync(std::function<void(std::string_view)> callback)
+    std::future<std::string> OpenFileDialogAsync()
     {
         std::string selected_filename;
 #ifdef _WIN32
@@ -51,11 +51,6 @@ namespace Tetragrama::Helpers
         }
         CoUninitialize();
 #endif
-
-        if (callback)
-        {
-            callback(selected_filename);
-        }
-        co_return;
+        co_return selected_filename;
     }
 }

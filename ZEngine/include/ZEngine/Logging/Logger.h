@@ -1,10 +1,6 @@
 #pragma once
 #include <mutex>
-#include <thread>
-#include <sstream>
-#include <condition_variable>
-#include <queue>
-#include <regex>
+#include <map>
 #include <ZEngineDef.h>
 #include <spdlog/spdlog.h>
 #include <Logging/LoggerConfiguration.h>
@@ -12,7 +8,7 @@
 
 namespace ZEngine::Logging
 {
-    struct LoggerMessage
+    struct LogMessage
     {
         float       Color[4] = {0.0f};
         std::string Message;
@@ -20,34 +16,121 @@ namespace ZEngine::Logging
 
     struct Logger
     {
+        using LogEventHandler = std::function<void(LogMessage)>;
+
+        static void Initialize(const LoggerConfiguration&);
+        static void Flush();
+        static void Dispose();
+        static void AddEventHandler(LogEventHandler handler);
+
+        static void Info(std::string msg);
+        static void Trace(std::string msg);
+        static void Warn(std::string msg);
+        static void Error(std::string msg);
+        static void Critical(std::string msg);
+
+    private:
         Logger()              = delete;
         Logger(const Logger&) = delete;
 
-        static void                            Initialize(const LoggerConfiguration&);
-        static void                            Flush();
-        static std::shared_ptr<spdlog::logger> GetEngineLogger();
-        static std::shared_ptr<spdlog::logger> GetEditorLogger();
-        static std::shared_ptr<spdlog::logger> GetLogger();
-
-        static bool GetLogMessage(LoggerMessage& message);
-
-    private:
-        static std::shared_ptr<spdlog::logger>  m_engine_logger;
-        static std::shared_ptr<spdlog::logger>  m_editor_logger;
-        static std::shared_ptr<spdlog::logger>  m_aggregate_logger;
-        static std::vector<spdlog::sink_ptr>    m_sink_collection;
-        static std::ostringstream               m_log_message;
-        static std::atomic_bool                 m_is_invoker_running;
-        static std::chrono::milliseconds        m_periodic_invoke_callback_interval;
-        static std::function<void(std::string)> m_message_callback;
-
-    private:
-        static std::string_view m_error_pattern;
-        static std::string_view m_warning_pattern;
-        static std::string_view m_info_pattern;
-        static std::string_view m_debug_pattern;
-        static std::string_view m_trace_pattern;
-        static std::string_view m_critical_pattern;
-        static std::string_view m_log_pattern;
+        static spdlog::sink_ptr                                  s_sink;
+        static std::recursive_mutex                              s_mutex;
+        static std::vector<std::shared_ptr<spdlog::logger>>      s_logger_collection;
+        static std::vector<std::pair<uint32_t, LogEventHandler>> s_log_event_handlers;
     };
+
+    inline void Logger::Info(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->info(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{.Color = {0.0f, 1.0f, 0.0f, 1.0f}, .Message = msg});
+        }
+    }
+
+    inline void Logger::Trace(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->trace(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{.Color = {0.5f, 0.5f, 0.5f, 1.0f}, .Message = msg});
+        }
+    }
+
+    inline void Logger::Warn(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->warn(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{.Color = {1.0f, 0.5f, 0.0f, 1.0f}, .Message = msg});
+        }
+    }
+
+    inline void Logger::Error(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->error(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{.Color = {1.0f, 0.0f, 0.0f, 1.0f}, .Message = msg});
+        }
+    }
+
+    inline void Logger::Critical(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->critical(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{.Color = {1.0f, 0.0f, 1.0f, 1.0f}, .Message = msg});
+        }
+    }
 } // namespace ZEngine::Logging

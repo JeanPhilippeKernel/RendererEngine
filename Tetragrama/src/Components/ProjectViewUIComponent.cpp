@@ -8,10 +8,6 @@ namespace Tetragrama::Components {
 
     void ProjectViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
-    bool ProjectViewUIComponent::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) {
-        return false;
-    }
-
     void ProjectViewUIComponent::Render() {
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 

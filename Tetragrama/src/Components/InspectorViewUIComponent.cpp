@@ -20,11 +20,6 @@ namespace Tetragrama::Components
 
     void InspectorViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
-    bool InspectorViewUIComponent::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&)
-    {
-        return false;
-    }
-
     std::future<void> InspectorViewUIComponent::SceneAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
     {
         {
@@ -78,8 +73,6 @@ namespace Tetragrama::Components
             m_recieved_deleted_request    = false;
             m_recieved_unselected_request = false;
         }
-
-        CHECK_IF_ALLOWED_TO_RENDER()
 
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
 

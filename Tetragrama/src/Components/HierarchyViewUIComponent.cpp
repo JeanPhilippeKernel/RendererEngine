@@ -48,11 +48,6 @@ namespace Tetragrama::Components
         co_return;
     }
 
-    bool HierarchyViewUIComponent::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&)
-    {
-        return false;
-    }
-
     void HierarchyViewUIComponent::Render()
     {
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);

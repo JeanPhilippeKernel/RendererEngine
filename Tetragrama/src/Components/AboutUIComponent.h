@@ -13,11 +13,6 @@ namespace Tetragrama::Components {
 
         void Update(ZEngine::Core::TimeStep dt) override {}
 
-    protected:
-        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override {
-            return false;
-        }
-
     private:
         bool m_is_open{true};
     };

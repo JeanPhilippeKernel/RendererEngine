@@ -11,8 +11,5 @@ namespace Tetragrama::Components {
         void Update(ZEngine::Core::TimeStep dt) override;
 
         virtual void Render() override;
-
-    protected:
-        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
     };
 } // namespace Tetragrama::Components

@@ -19,7 +19,6 @@ namespace Tetragrama
         m_render_layer = ZEngine::CreateRef<Layers::RenderLayer>();
 
         m_engine_configuration                     = {};
-        m_engine_configuration.LoggerConfiguration = {.PeriodicInvokeCallbackInterval = 50ms};
         m_engine_configuration.WindowConfiguration = {
             .Width = 1500, .Height = 800, .EnableVsync = true, .Title = "Tetragramma editor", .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
     }

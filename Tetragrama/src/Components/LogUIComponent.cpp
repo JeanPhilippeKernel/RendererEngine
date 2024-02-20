@@ -1,41 +1,30 @@
 #include <pch.h>
 #include <LogUIComponent.h>
-#include <Helpers/UIComponentDrawerHelper.h>
+
+using namespace ZEngine::Logging;
 
 namespace Tetragrama::Components
 {
-    LogUIComponent::LogUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {}
+    LogUIComponent::LogUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
+    {
+        Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
+    }
 
-    LogUIComponent::~LogUIComponent() {}
+    LogUIComponent::~LogUIComponent()
+    {
+    }
 
     void LogUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
-        if (ZEngine::Logging::Logger::GetLogMessage(m_logger_message))
-        {
-            int old_size = m_content_buffer.size();
-            m_content_buffer.append(m_logger_message.Message.data(), (m_logger_message.Message.data() + m_logger_message.Message.size()));
-            for (int new_size = m_content_buffer.size(); old_size < new_size; old_size++)
-            {
-                if (m_content_buffer[old_size] == '\n')
-                {
-                    m_line_offset.push_back(old_size + 1);
-                }
-            }
-        }
-    }
-
-    bool LogUIComponent::OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&)
-    {
-        return false;
     }
 
     void LogUIComponent::ClearLog()
     {
-        m_content_buffer.clear();
-        m_line_offset.clear();
-        m_line_offset.push_back(0);
-
-        m_logger_message.Message.clear();
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_log_queue.clear();
+            m_log_queue.shrink_to_fit();
+        }
     }
 
     void LogUIComponent::Render()
@@ -49,52 +38,63 @@ namespace Tetragrama::Components
         m_is_copy_button_pressed = ImGui::Button("Copy");
 
         ImGui::Separator();
-        if (ImGui::BeginChild("scrolling", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar))
+
+        if (m_is_copy_button_pressed)
         {
-            if (m_is_copy_button_pressed)
+            ImGui::LogToClipboard();
+        }
+
+        if (m_is_clear_button_pressed)
+        {
+            ClearLog();
+        }
+
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+
+        if (ImGui::BeginTable("log_table", 1, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY))
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
             {
-                ImGui::LogToClipboard();
-            }
-
-            if (m_is_clear_button_pressed)
-            {
-                ClearLog();
-            }
-
-            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-
-            const char* buffer_start = m_content_buffer.begin();
-            const char* buffer_end   = m_content_buffer.end();
-
-            ImGuiListClipper clipper;
-            clipper.Begin(m_line_offset.Size);
-            while (clipper.Step())
-            {
-                for (int line_no = clipper.DisplayStart; line_no < clipper.DisplayEnd; line_no++)
+                for (const ZEngine::Logging::LogMessage& message : m_log_queue)
                 {
-                    const char* line_start = buffer_start + m_line_offset[line_no];
-                    const char* line_end   = (line_no + 1 < m_line_offset.Size) ? (buffer_start + m_line_offset[line_no + 1] - 1) : buffer_end;
-                    Helpers::DrawColoredTextLine(
-                        line_start, line_end, ImVec4(m_logger_message.Color[0], m_logger_message.Color[1], m_logger_message.Color[2], m_logger_message.Color[3]));
+                    ImGui::TableNextRow();
+                    ImGui::PushStyleColor(ImGuiCol_Text, {message.Color[0], message.Color[1], message.Color[2], message.Color[3]});
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::Text(message.Message.data());
+                    ImGui::PopStyleColor();
                 }
             }
-            clipper.End();
-
-
-            if (m_is_copy_button_pressed)
-            {
-                ImGui::LogFinish();
-            }
-
-            if (m_auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
-            {
-                ImGui::SetScrollHereY(1.0f);
-            }
-
-            ImGui::PopStyleVar();
+            ImGui::EndTable();
         }
-        ImGui::EndChild();
+
+        if (m_is_copy_button_pressed)
+        {
+            ImGui::LogFinish();
+        }
+
+        // if (m_auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+        // {
+        //     ImGui::SetScrollHereY(1.0f);
+        // }
+
+        ImGui::PopStyleVar();
 
         ImGui::End();
+    }
+
+    void LogUIComponent::OnLog(ZEngine::Logging::LogMessage message)
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_currentCount > m_maxCount)
+            {
+                m_currentCount = 0;
+                m_log_queue.clear();
+                m_log_queue.shrink_to_fit();
+            }
+
+            m_log_queue.push_back(std::move(message));
+            m_currentCount++;
+        }
     }
 } // namespace Tetragrama::Components

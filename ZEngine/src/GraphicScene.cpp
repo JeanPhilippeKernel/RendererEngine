@@ -13,6 +13,7 @@
 #include <Rendering/Lights/DirectionalLight.h>
 
 #include <Core/Coroutine.h>
+#include <Helpers/ThreadPool.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 
 #include <assimp/Importer.hpp>
@@ -266,26 +267,27 @@ namespace ZEngine::Rendering::Scenes
     {
         std::unique_lock lock(s_scene_node_mutex);
 
-        if (!asset_filename.empty())
+        if (asset_filename.empty())
         {
-            __ReadAssetFileAsync(asset_filename, [](bool success, const void* scene, std::string_view material_texture_parent_path) -> std::future<void> {
-                if (success && scene)
-                {
-                    auto    scene_ptr         = reinterpret_cast<const aiScene*>(scene);
-                    aiNode* root_node         = scene_ptr->mRootNode;
-                    bool    traverse_complete = co_await __TraverseAssetNodeAsync(scene_ptr, root_node, SCENE_ROOT_PARENT_ID, SCENE_ROOT_DEPTH_LEVEL, material_texture_parent_path);
-
-                    if (traverse_complete)
-                    {
-                        /*
-                         * Post-processing Material data
-                         */
-                        PostProcessMaterials();
-                    }
-                }
-            });
+            co_return;
         }
-        co_return;
+
+        __ReadAssetFileAsync(asset_filename, [](bool success, const void* scene, std::string_view material_texture_parent_path) -> std::future<void> {
+            if (success && scene)
+            {
+                auto    scene_ptr         = reinterpret_cast<const aiScene*>(scene);
+                aiNode* root_node         = scene_ptr->mRootNode;
+                bool    traverse_complete = co_await __TraverseAssetNodeAsync(scene_ptr, root_node, SCENE_ROOT_PARENT_ID, SCENE_ROOT_DEPTH_LEVEL, material_texture_parent_path);
+
+                if (traverse_complete)
+                {
+                    /*
+                     * Post-processing Material data
+                     */
+                    PostProcessMaterials();
+                }
+            }
+        });
     }
 
     Ref<SceneRawData> GraphicScene::GetRawData()
@@ -752,11 +754,11 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::__ReadAssetFileAsync(std::string_view filename, ReadCallback callback)
     {
-        std::thread([path = std::string(filename.data()), callback] {
+        Helpers::ThreadPoolHelper::Submit([path = std::string(filename.data()), callback] {
             std::filesystem::path asset_path(path);
             auto                  parent_directory = asset_path.parent_path();
 
-            Assimp::Importer importer = {};
+            Assimp::Importer importer   = {};
             uint32_t         read_flags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_SplitLargeMeshes |
                                   aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_GenUVCoords | aiProcess_FlipUVs |
                                   aiProcess_ValidateDataStructure | aiProcess_FindDegenerates | aiProcess_FindInvalidData | aiProcess_LimitBoneWeights;
@@ -773,7 +775,7 @@ namespace ZEngine::Rendering::Scenes
                 callback(result, scene_ptr, parent_directory.string());
             }
             importer.FreeScene();
-        }).detach();
+        });
     }
 
     GraphicSceneEntity GraphicScene::GetPrimariyCameraEntity()

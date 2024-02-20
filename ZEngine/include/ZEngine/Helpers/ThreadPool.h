@@ -1,6 +1,7 @@
+#pragma once
 #include <atomic>
 #include <thread>
-#include "ThreadSafeQueue.h"
+#include <Helpers/ThreadSafeQueue.h>
 
 namespace ZEngine::Helpers
 {
@@ -31,14 +32,14 @@ namespace ZEngine::Helpers
         void Shutdown()
         {
             std::unique_lock<std::mutex> lock(m_mutex);
-            m_taskQueue->Clear();   
+            m_taskQueue->Clear();
         }
 
     private:
+        size_t                                                  m_maxThreadCount;
+        size_t                                                  m_currentThreadCount{0};
+        std::mutex                                              m_mutex;
         std::shared_ptr<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
-        std::mutex                                        m_mutex;
-        size_t                                            m_maxThreadCount;
-        size_t                                            m_currentThreadCount{0};
 
         static void WorkerThread(std::weak_ptr<ThreadSafeQueue<std::function<void()>>> weakQueue)
         {

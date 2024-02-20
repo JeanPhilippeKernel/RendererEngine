@@ -23,9 +23,6 @@ namespace Tetragrama::Components
         std::future<void> SceneEntityDeletedMessageHandlerAsync(Messengers::EmptyMessage&);
         std::future<void> RequestStartOrPauseRenderMessageHandlerAsync(Messengers::GenericMessage<bool>&);
 
-    protected:
-        virtual bool OnUIComponentRaised(ZEngine::Components::UI::Event::UIComponentEvent&) override;
-
     private:
         ImGuiTreeNodeFlags                                         m_node_flag;
         bool                                                       m_recieved_unselected_request{false};

@@ -21,20 +21,8 @@ namespace Tetragrama::Components
 
     DockspaceUIComponent::~DockspaceUIComponent() {}
 
-    bool DockspaceUIComponent::OnUIComponentRaised(UIComponentEvent& event)
-    {
-        return true;
-    }
-
     void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
-        if (HasChildren())
-        {
-            for (const auto& child : m_children)
-            {
-                child->Update(dt);
-            }
-        }
     }
 
     void DockspaceUIComponent::Render()
@@ -51,8 +39,7 @@ namespace Tetragrama::Components
 
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), m_window_flags);
 
-        ImGui::PopStyleVar();
-        ImGui::PopStyleVar(2);
+        ImGui::PopStyleVar(3);
 
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable)
         {
@@ -65,10 +52,9 @@ namespace Tetragrama::Components
                 ImGui::DockBuilderAddNode(window_id, ImGuiDockNodeFlags_None);
                 ImGui::DockBuilderSetNodeSize(window_id, ImGui::GetMainViewport()->Size);
 
-                ImGuiID dock_main_id  = window_id;
-                ImGuiID dock_left_id  = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Left, 0.2f, nullptr, &dock_main_id);
-                ImGuiID dock_right_id = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.2f, nullptr, &dock_main_id);
-
+                ImGuiID dock_main_id       = window_id;
+                ImGuiID dock_left_id       = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Left, 0.2f, nullptr, &dock_main_id);
+                ImGuiID dock_right_id      = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.2f, nullptr, &dock_main_id);
                 ImGuiID dock_right_down_id = ImGui::DockBuilderSplitNode(dock_right_id, ImGuiDir_Down, 0.3f, nullptr, &dock_right_id);
                 ImGuiID dock_down_id       = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.25f, nullptr, &dock_main_id);
                 ImGuiID dock_down_right_id = ImGui::DockBuilderSplitNode(dock_down_id, ImGuiDir_Right, 0.6f, nullptr, &dock_down_id);
@@ -88,79 +74,120 @@ namespace Tetragrama::Components
             ImGui::PopStyleVar();
         }
 
+        RenderMenuBar();
+
+        ImGui::End();
+    }
+
+    void DockspaceUIComponent::RenderMenuBar()
+    {
         if (ImGui::BeginMenuBar())
         {
             if (ImGui::BeginMenu("File"))
             {
                 if (ImGui::MenuItem("New Scene"))
                 {
-                    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::EmptyMessage>(EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE, Messengers::EmptyMessage{});
+                    OnNewSceneAsync();
                 }
 
                 if (ImGui::MenuItem("Open Scene"))
                 {
-                    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-                        EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>{""});
+                    OnOpenSceneAsync();
                 }
 
                 if (ImGui::MenuItem("Import New Asset..."))
                 {
-                    /* We definitely need a ThreadPool*/
-                    std::thread([] {
-                        Helpers::OpenFileDialogAsync([](std::string_view filename) {
-                            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-                                EDITOR_RENDER_LAYER_SCENE_REQUEST_IMPORTASSETMODEL, Messengers::GenericMessage<std::string>{filename.data()});
-                        });
-                    }).detach();
+                    OnImportAssetAsync();
                 }
 
                 ImGui::Separator();
 
                 if (ImGui::MenuItem("Save"))
                 {
-                    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-                        EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION, Messengers::GenericMessage<std::string>{""});
+                    OnSaveAsync();
                 }
 
                 if (ImGui::MenuItem("Save As ..."))
                 {
-                    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-                        EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION, Messengers::GenericMessage<std::string>{""});
+                    OnSaveAsAsync();
                 }
 
                 ImGui::Separator();
 
                 if (ImGui::MenuItem("Exit"))
                 {
-                    ZEngine::Event::WindowClosedEvent app_close_event{};
-                    Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>>(
-                        EDITOR_COMPONENT_DOCKSPACE_REQUEST_EXIT, Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>{std::move(app_close_event)});
+                    OnExitAsync();
                 }
 
                 ImGui::EndMenu();
             }
+
+            if (ImGui::BeginMenu("Settings"))
+            {
+                if (ImGui::MenuItem("Renderer"))
+                {
+                }
+                ImGui::EndMenu();
+            }
+
             ImGui::EndMenuBar();
         }
+    }
 
-        if (HasChildren())
-        {
-            std::for_each(std::begin(m_children), std::end(m_children), [this](const ZEngine::Ref<UIComponent>& item) {
-                item->Render();
-            });
-        }
+    std::future<void> DockspaceUIComponent::OnNewSceneAsync()
+    {
+        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::EmptyMessage>(EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE, Messengers::EmptyMessage{});
+        co_return;
+    }
 
-        ImGui::End();
+    std::future<void> DockspaceUIComponent::OnOpenSceneAsync()
+    {
+        auto scene_filename = co_await Helpers::OpenFileDialogAsync();
+        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>{scene_filename});
+
+        co_return;
+    }
+
+    std::future<void> DockspaceUIComponent::OnImportAssetAsync()
+    {
+        auto asset_filename = co_await Helpers::OpenFileDialogAsync();
+        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_IMPORTASSETMODEL, Messengers::GenericMessage<std::string>{asset_filename});
+
+        co_return;
+    }
+
+    std::future<void> DockspaceUIComponent::OnSaveAsync()
+    {
+        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION, Messengers::GenericMessage<std::string>{""});
+        co_return;
+    }
+
+    std::future<void> DockspaceUIComponent::OnSaveAsAsync()
+    {
+        Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
+            EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION, Messengers::GenericMessage<std::string>{""});
+
+        co_return;
+    }
+
+    std::future<void> DockspaceUIComponent::OnExitAsync()
+    {
+        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>>(
+            EDITOR_COMPONENT_DOCKSPACE_REQUEST_EXIT, Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>{ZEngine::Event::WindowClosedEvent{}});
+
+        co_return;
     }
 
     std::future<void> DockspaceUIComponent::RequestExitMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Event::WindowClosedEvent>& message)
     {
-        if (!m_parent_layer.expired())
+        if (auto layer = m_parent_layer.lock())
         {
-            auto layer = m_parent_layer.lock();
             layer->OnEvent(message.GetValue());
-
-            ZENGINE_EDITOR_WARN("ZEngine editor stopped")
         }
+        ZENGINE_CORE_WARN("Editor stopped")
         co_return;
     }
 } // namespace Tetragrama::Components
