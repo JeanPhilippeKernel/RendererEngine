@@ -40,3 +40,12 @@
 [submodule "__externals/VulkanMemoryAllocator"]
 	path = __externals/VulkanMemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+[submodule "__externals/glslang"]
+	path = __externals/glslang
+	url = https://github.com/khronosGroup/glslang.git
+[submodule "__externals/SPIRV-headers"]
+	path = __externals/SPIRV-headers
+	url = https://github.com/khronosGroup/SPIRV-headers.git
+[submodule "__externals/SPIRV-Tools"]
+	path = __externals/SPIRV-Tools
+	url = https://github.com/khronosGroup/SPIRV-Tools

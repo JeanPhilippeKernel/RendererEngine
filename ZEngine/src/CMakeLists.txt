@@ -50,3 +50,4 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 endif ()
 
 target_link_libraries (zEngineLib PUBLIC imported::External_libs)
+target_link_libraries (zEngineLib PRIVATE glslang SPIRV SPIRV-Tools)
