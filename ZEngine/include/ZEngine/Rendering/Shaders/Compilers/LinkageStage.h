@@ -1,5 +1,6 @@
 #pragma once
 #include <Rendering/Shaders/Compilers/ICompilerStage.h>
+#include <fmt/format.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
@@ -18,13 +19,16 @@ namespace ZEngine::Rendering::Shaders::Compilers
          *
          * @param information Collection of shader information
          */
-        virtual void Run(std::vector<ShaderInformation>& information) override;
+        std::string outputname(ShaderInformation& information_list);
 
         /**
          * Run asynchronously compiler stage
          *
          * @param information Collection of shader information
          */
-        virtual std::future<void> RunAsync(std::vector<ShaderInformation>& information) override;
+        virtual std::future<void> RunAsync(ShaderInformation& information) override;
+
+    private:
+        const char* outputDirectory = "Shaders/Cache/";
     };
 } // namespace ZEngine::Rendering::Shaders::Compilers

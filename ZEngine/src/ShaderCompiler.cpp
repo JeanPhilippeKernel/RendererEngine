@@ -1,8 +1,8 @@
 #include <pch.h>
-#include <Logging/LoggerDefinition.h>
-#include <Rendering/Shaders/Compilers/ShaderCompiler.h>
-#include <Rendering/Shaders/Compilers/CompilationStage.h>
 #include <Core/Coroutine.h>
+#include <Logging/LoggerDefinition.h>
+#include <Rendering/Shaders/Compilers/CompilationStage.h>
+#include <Rendering/Shaders/Compilers/ShaderCompiler.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
@@ -32,57 +32,44 @@ namespace ZEngine::Rendering::Shaders::Compilers
         m_source_file = filename.data();
     }
 
-
-    std::future<std::tuple<ShaderOperationResult, std::vector<ShaderInformation>>> ShaderCompiler::CompileAsync2()
+    std::future<std::tuple<ShaderOperationResult, ShaderInformation>> ShaderCompiler::CompileAsync()
     {
         std::unique_lock lock(m_mutex);
-
-        bool compile_process_succeeded{true};
-
-        std::vector<ShaderInformation> shader_information;
 
         ShaderOperationResult read_operation = co_await m_reader->ReadAsync(m_source_file);
         if (read_operation == ShaderOperationResult::FAILURE)
         {
             ZENGINE_CORE_CRITICAL("Compilation process stopped")
-            co_return std::make_tuple(ShaderOperationResult::FAILURE, std::vector<ShaderInformation>{});
+            co_return std::make_tuple(ShaderOperationResult::FAILURE, ShaderInformation{});
         }
 
-        shader_information = m_reader->GetInformations();
-        if (shader_information.empty())
-        {
-            ZENGINE_CORE_CRITICAL("Information collected while reading shader file are incorrect or not enough to continue compilation process")
-            ZENGINE_CORE_CRITICAL("Compilation process stopped")
-            co_return std::make_tuple(ShaderOperationResult::FAILURE, std::vector<ShaderInformation>{});
-        }
+        ShaderInformation shader_information = m_reader->GetInformations();
 
         while (m_running_stages)
         {
             ICompilerStage* stage = reinterpret_cast<ICompilerStage*>(m_stage.get());
             co_await stage->RunAsync(shader_information);
 
-            const auto& stage_info    = stage->GetInformation();
-            compile_process_succeeded = compile_process_succeeded && stage_info.IsSuccess;
+            const auto& stage_info = stage->GetInformation();
 
-            if (stage_info.IsSuccess && m_stage->HasNext())
+            if (!stage_info.IsSuccess)
+            {
+                // Log the critical error or perform any necessary cleanup
+                ZENGINE_CORE_CRITICAL("Compilation process encountered a failure at stage ...");
+                co_return std::make_tuple(ShaderOperationResult::FAILURE, ShaderInformation{});
+            }
+
+            if (m_stage->HasNext())
             {
                 m_stage->Next();
             }
             else
             {
-                m_running_stages = false;
+                m_running_stages = false; 
             }
         }
 
-        if (!compile_process_succeeded)
-        {
-            ZENGINE_CORE_CRITICAL("Compilation process weren't able to create a valid Shader Program")
-            co_return std::make_tuple(ShaderOperationResult::FAILURE, std::vector<ShaderInformation>{});
-        }
-
-        // We store it, so next time we won't run the compilation stage if it has been before
-        // s_already_compiled_shaders_collection.emplace(m_source_file, shader_information);
-
+        shader_information.CompiledOnce = true;
         co_return std::make_tuple(ShaderOperationResult::SUCCESS, std::move(shader_information));
     }
 } // namespace ZEngine::Rendering::Shaders::Compilers

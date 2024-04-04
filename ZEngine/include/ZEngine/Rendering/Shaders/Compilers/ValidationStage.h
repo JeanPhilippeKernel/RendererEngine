@@ -12,17 +12,10 @@ namespace ZEngine::Rendering::Shaders::Compilers {
         virtual ~ValidationStage();
 
         /**
-         * Run Compiler stage
-         *
-         * @param information Collection of shader information
-         */
-        virtual void Run(std::vector<ShaderInformation>& information) override;
-
-        /**
          * Run asynchronously compiler stage
          *
          * @param information Collection of shader information
          */
-        virtual std::future<void> RunAsync(std::vector<ShaderInformation>& information) override;
+        virtual std::future<void> RunAsync(ShaderInformation& information) override;
     };
 } // namespace ZEngine::Rendering::Shaders::Compilers

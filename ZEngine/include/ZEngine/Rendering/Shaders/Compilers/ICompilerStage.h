@@ -1,7 +1,7 @@
 #pragma once
-#include <future>
 #include <Core/IPipeline.h>
 #include <Rendering/Shaders/ShaderInformation.h>
+#include <future>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
@@ -16,18 +16,11 @@ namespace ZEngine::Rendering::Shaders::Compilers
         virtual ~ICompilerStage() = default;
 
         /**
-         * Run compiler stage
-         *
-         * @param information Collection of shader information
-         */
-        virtual void Run(std::vector<ShaderInformation>& information) = 0;
-
-        /**
          * Run asynchronously compiler stage
          *
          * @param information Collection of shader information
          */
-        virtual std::future<void> RunAsync(std::vector<ShaderInformation>& information) = 0;
+        virtual std::future<void> RunAsync(ShaderInformation& information) = 0;
 
     protected:
         std::recursive_mutex m_mutex;

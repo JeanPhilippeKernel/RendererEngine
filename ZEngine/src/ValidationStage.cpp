@@ -10,8 +10,8 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
     ValidationStage::~ValidationStage() {}
 
-    void ValidationStage::Run(std::vector<ShaderInformation>& information_list)
-    {
+    // void ValidationStage::Run(ShaderInformation& information_list)
+    // {
 
         //// We assume that all ShaderInformation object have the same ProgramId
         //const auto&  first          = information_list.at(0);
@@ -40,9 +40,9 @@ namespace ZEngine::Rendering::Shaders::Compilers
         //    ZENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage);
         //    return;
         //}
-    }
+    // }
 
-    std::future<void> ValidationStage::RunAsync(std::vector<ShaderInformation>& information_list)
+    std::future<void> ValidationStage::RunAsync(ShaderInformation& information_list)
     {
         co_return;
         //// We assume that all ShaderInformation object have the same ProgramId
