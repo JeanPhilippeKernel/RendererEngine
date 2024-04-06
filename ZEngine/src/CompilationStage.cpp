@@ -3,7 +3,7 @@
 #include <Core/Coroutine.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Shaders/Compilers/CompilationStage.h>
-#include <Rendering/Shaders/Compilers/LinkageStage.h>
+#include <Rendering/Shaders/Compilers/ValidationStage.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
@@ -24,7 +24,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
     CompilationStage::CompilationStage()
     {
-        m_next_stage = CreateRef<LinkageStage>();
+        m_next_stage = CreateRef<ValidationStage>();
     }
 
     CompilationStage::~CompilationStage() {}
@@ -56,6 +56,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
     std::future<void> CompilationStage::RunAsync(ShaderInformation& information_list)
     {
+        std::unique_lock   lock(m_mutex);
         GlslangInitializer glslangInit;
         if (!glslangInit.isSuccess())
         {

@@ -2,23 +2,13 @@
 #include <Core/Coroutine.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Shaders/Compilers/LinkageStage.h>
-#include <Rendering/Shaders/Compilers/ValidationStage.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
 
     LinkageStage::LinkageStage()
     {
-#ifdef __APPLE__
-        // we dont perform validation stage on macOs for the moment as it considers generated shader program as invalid
-#else
-        m_next_stage = CreateRef<ValidationStage>();
-#endif
-    }
-
-    LinkageStage::~LinkageStage()
-    {
-        // check if output dir exists if not create the folder, - works
+        // check if output dir exists if not create the folder
         if (!std::filesystem::exists(std::filesystem::path(outputDirectory)))
         {
             if (!std::filesystem::create_directories(std::filesystem::path(outputDirectory)))
@@ -27,6 +17,8 @@ namespace ZEngine::Rendering::Shaders::Compilers
             }
         }
     }
+
+    LinkageStage::~LinkageStage() {}
 
     std::string LinkageStage::outputname(ShaderInformation& information_list)
     {
@@ -39,13 +31,13 @@ namespace ZEngine::Rendering::Shaders::Compilers
         return file_path.string();
     }
 
-
     std::future<void> LinkageStage::RunAsync(ShaderInformation& information_list)
     {
-        std::string output_file = outputname(information_list);
-        std::ofstream out(output_file, std::ios::out | std::ios::binary);
+        std::unique_lock lock(m_mutex);
+        std::string      output_file = outputname(information_list);
+        std::ofstream    out(output_file, std::ios::out | std::ios::binary);
         if (!out.is_open() || !out)
-        { 
+        {
             m_information = {false, "Failed to open spriv file: " + output_file};
             co_return;
         }
