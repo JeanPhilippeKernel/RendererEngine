@@ -14,7 +14,6 @@ namespace ZEngine::Rendering::Shaders::Compilers
         /* .MaxTextureCoords = */ 32,
         /* .MaxVertexAttribs = */ 64,
         /* .MaxVertexUniformComponents = */ 4096,
-        // Initialize other fields to reasonable default values...
     };
 
     const TBuiltInResource* GetDefaultResources()
@@ -40,8 +39,8 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
     void CompilationStage::SetShaderRules(glslang::TShader& shader, ShaderInformation& information_list, TBuiltInResource& Resources)
     {
-        // Specify language-specific rules for parsing the shader
-        int                               ClientInputSemanticsVersion = 460; // Vulkan semantics
+        // Language-specific rules for parsing the shader
+        int                               ClientInputSemanticsVersion = 460;
         glslang::EShTargetClientVersion   VulkanVersion               = glslang::EShTargetVulkan_1_3;
         glslang::EShTargetLanguageVersion TargetVersion               = glslang::EShTargetSpv_1_6;
         shader.setEnvInput(glslang::EShSourceGlsl, GetEShLanguage(information_list.Type), glslang::EShClientVulkan, ClientInputSemanticsVersion);
@@ -75,14 +74,12 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
         ShaderIncluder includefiles;
 
-        // Parse the shader
         if (!shader.parse(&Resources, 100, false, messages, includefiles))
         {
             m_information = {false, shader.getInfoLog()};
             co_return;
         }
 
-        // Link the program (necessary even for a single shader, to prepare it for SPIR-V generation)
         glslang::TProgram program;
         program.addShader(&shader);
         if (!program.link(messages))
