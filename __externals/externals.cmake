@@ -43,6 +43,6 @@ target_link_libraries(imported::External_libs INTERFACE
 	yaml-cpp
 	spirv-cross-reflect spirv-cross-glsl
 	GPUOpen::VulkanMemoryAllocator
-	glslang::glslang  glslang::SPIRV
+	glslang  SPIRV
 	SPIRV-Tools
 )

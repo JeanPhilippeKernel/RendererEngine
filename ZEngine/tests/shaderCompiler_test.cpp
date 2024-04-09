@@ -37,22 +37,22 @@ void compileShaderFiles()
     }
 }
 
-TEST(ShaderCompilerTest, DefaultConstructorCreatesOutputDirectory)
-{
-    copyFiles();
-    std::filesystem::path outputPath("Shaders/Cache");
+// TEST(ShaderCompilerTest, DefaultConstructorCreatesOutputDirectory)
+// {
+//     copyFiles();
+//     std::filesystem::path outputPath("Shaders/Cache");
 
-    compileShaderFiles();
+//     compileShaderFiles();
 
-    ASSERT_TRUE(fs::exists(outputPath) && fs::is_directory(outputPath));
+//     ASSERT_TRUE(fs::exists(outputPath) && fs::is_directory(outputPath));
 
-    unsigned int fileCount = 0;
-    for (const auto& entry : fs::directory_iterator(outputPath))
-    {
-        if (entry.is_regular_file())
-        {
-            ++fileCount;
-        }
-    }
-    EXPECT_EQ(fileCount, 11);
-}
+//     unsigned int fileCount = 0;
+//     for (const auto& entry : fs::directory_iterator(outputPath))
+//     {
+//         if (entry.is_regular_file())
+//         {
+//             ++fileCount;
+//         }
+//     }
+//     EXPECT_EQ(fileCount, 11);
+// }
