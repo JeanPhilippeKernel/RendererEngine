@@ -5,7 +5,7 @@
 #include <future>
 #include <mutex>
 #include <unordered_map>
-#include "glslang/Public/ShaderLang.h"
+#include <glslang/Public/ShaderLang.h>
 
 namespace ZEngine::Rendering::Shaders
 {

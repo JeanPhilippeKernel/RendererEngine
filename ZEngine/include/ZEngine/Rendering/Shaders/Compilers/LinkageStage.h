@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
          *
          * @param information Collection of shader information
          */
-        std::string outputname(ShaderInformation& information_list);
+        std::string OutputName(ShaderInformation& information_list);
 
         /**
          * Run asynchronously compiler stage

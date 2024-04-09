@@ -20,7 +20,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
     LinkageStage::~LinkageStage() {}
 
-    std::string LinkageStage::outputname(ShaderInformation& information_list)
+    std::string LinkageStage::OutputName(ShaderInformation& information_list)
     {
         std::filesystem::path file_path;
         if (information_list.Type == ShaderType::VERTEX)
@@ -34,7 +34,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
     std::future<void> LinkageStage::RunAsync(ShaderInformation& information_list)
     {
         std::unique_lock lock(m_mutex);
-        std::string      output_file = outputname(information_list);
+        std::string      output_file = OutputName(information_list);
         std::ofstream    out(output_file, std::ios::out | std::ios::binary);
         if (!out.is_open() || !out)
         {

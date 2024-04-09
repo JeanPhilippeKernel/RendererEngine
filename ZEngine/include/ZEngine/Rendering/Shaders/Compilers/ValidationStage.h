@@ -1,7 +1,7 @@
 #pragma once
 #include <Rendering/Shaders/Compilers/ICompilerStage.h>
-#include "spirv-tools/libspirv.hpp"
-#include "spirv-tools/optimizer.hpp"
+#include <spirv-tools/libspirv.hpp>
+#include <spirv-tools/optimizer.hpp>
 
 namespace ZEngine::Rendering::Shaders::Compilers {
 

@@ -1,9 +1,9 @@
 #pragma once
 #include <Rendering/Shaders/Compilers/ICompilerStage.h>
 #include <Rendering/Shaders/ShaderIncluder.h>
-#include "glslang/Public/ResourceLimits.h"
-#include "glslang/Public/ShaderLang.h"
-#include "glslang/SPIRV/GlslangToSpv.h"
+#include <glslang/Public/ResourceLimits.h>
+#include <glslang/Public/ShaderLang.h>
+#include <glslang/SPIRV/GlslangToSpv.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
