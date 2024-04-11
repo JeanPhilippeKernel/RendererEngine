@@ -1,7 +1,7 @@
 #pragma once
-#include <string>
 #include <Rendering/Shaders/ShaderEnums.h>
 #include <vulkan/vulkan.h>
+#include <string>
 
 namespace ZEngine::Rendering::Shaders
 {
@@ -11,19 +11,6 @@ namespace ZEngine::Rendering::Shaders
         VkPipelineShaderStageCreateInfo ShaderStageCreateInfo;
         VkShaderModule                  ShaderModule;
         std::vector<uint32_t>           BinarySource;
-        /**
-         * Shader identifier
-         */
-        unsigned int ShaderId;
-        /**
-         * Shader program identifier
-         */
-        unsigned int ProgramId;
-        /**
-         * Enumeration of shader
-         * @see https://docs.gl/gl4/glCreateShader
-         */
-        unsigned int InternalType;
         /**
          * Wether the shader has been compiled once
          */

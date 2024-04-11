@@ -1,11 +1,11 @@
 #pragma once
 #include <Rendering/Shaders/ShaderInformation.h>
+#include <glslang/Public/ShaderLang.h>
 #include <filesystem>
 #include <fstream>
 #include <future>
 #include <mutex>
 #include <unordered_map>
-#include <glslang/Public/ShaderLang.h>
 
 namespace ZEngine::Rendering::Shaders
 {
@@ -18,14 +18,6 @@ namespace ZEngine::Rendering::Shaders
          */
         ShaderReader();
         ~ShaderReader();
-
-        /**
-         * Read synchronously content of shader file
-         *
-         * @param filename  Path to the shader file
-         * @return enum ShaderReaderState that describes the read operation state
-         */
-        ShaderOperationResult Read(std::string_view filename);
 
         static std::vector<uint32_t> ReadAsBinary(std::string_view filename);
 
@@ -52,11 +44,11 @@ namespace ZEngine::Rendering::Shaders
          * @return ShaderInformation
          */
         ShaderInformation& GetInformations();
-        ShaderType                      GetShaderType(const std::filesystem::path& path);
+        ShaderType         GetShaderType(const std::filesystem::path& path);
 
     private:
-        std::ifstream                  m_filestream{};
+        std::ifstream     m_filestream{};
         ShaderInformation m_shader_info_collection{};
-        std::mutex                     m_lock;
+        std::mutex        m_lock;
     };
 } // namespace ZEngine::Rendering::Shaders
