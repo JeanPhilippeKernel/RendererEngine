@@ -46,7 +46,7 @@ namespace ZEngine::Rendering::Shaders
             return ShaderType::VERTEX;
         if (path.extension() == ".frag")
             return ShaderType::FRAGMENT;
-        if (path.extension() == ".frag")
+        if (path.extension() == ".geom")
             return ShaderType::GEOMETRY;
         return ShaderType::UNKNOWN;
     }

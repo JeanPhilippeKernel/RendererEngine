@@ -32,7 +32,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
         m_source_file = filename.data();
     }
 
-    std::future<std::tuple<ShaderOperationResult, ShaderInformation>> ShaderCompiler::CompileAsync()
+    std::future<ShaderCompilerResult> ShaderCompiler::CompileAsync()
     {
         std::unique_lock lock(m_mutex);
 
@@ -40,7 +40,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
         if (read_operation == ShaderOperationResult::FAILURE)
         {
             ZENGINE_CORE_CRITICAL("Compilation process stopped")
-            co_return std::make_tuple(ShaderOperationResult::FAILURE, ShaderInformation{});
+            co_return ShaderCompilerResult{ShaderOperationResult::FAILURE, ShaderInformation{}};
         }
 
         ShaderInformation shader_information = m_reader->GetInformations();
@@ -56,7 +56,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
             {
                 // Log the critical error or perform any necessary cleanup
                 ZENGINE_CORE_CRITICAL("Compilation process encountered a failure at stage ...");
-                co_return std::make_tuple(ShaderOperationResult::FAILURE, ShaderInformation{});
+                co_return ShaderCompilerResult{ShaderOperationResult::FAILURE, ShaderInformation{}};
             }
 
             if (m_stage->HasNext())
@@ -70,6 +70,6 @@ namespace ZEngine::Rendering::Shaders::Compilers
         }
 
         shader_information.CompiledOnce = true;
-        co_return std::make_tuple(ShaderOperationResult::SUCCESS, std::move(shader_information));
+        co_return ShaderCompilerResult{ShaderOperationResult::SUCCESS, std::move(shader_information)};
     }
 } // namespace ZEngine::Rendering::Shaders::Compilers

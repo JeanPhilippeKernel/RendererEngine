@@ -7,6 +7,12 @@
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
+    struct ShaderCompilerResult
+    {
+        ShaderOperationResult OperationResult;
+        ShaderInformation     Information;
+    };
+
     class ShaderCompiler : public Core::IPipelineContext
     {
     public:
@@ -29,7 +35,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
          *			and the Shader Information
          */
 
-        std::future<std::tuple<ShaderOperationResult, ShaderInformation>> CompileAsync();
+        std::future<ShaderCompilerResult> CompileAsync();
 
     private:
         std::string                                                            m_source_file;

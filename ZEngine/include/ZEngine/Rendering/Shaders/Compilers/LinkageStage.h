@@ -1,6 +1,7 @@
 #pragma once
 #include <Rendering/Shaders/Compilers/ICompilerStage.h>
 #include <fmt/format.h>
+#include <string_view>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
@@ -29,6 +30,6 @@ namespace ZEngine::Rendering::Shaders::Compilers
         virtual std::future<void> RunAsync(ShaderInformation& information) override;
 
     private:
-        const char* outputDirectory = "Shaders/Cache/";
+        std::string_view outputDirectory = "Shaders/Cache/";
     };
 } // namespace ZEngine::Rendering::Shaders::Compilers
