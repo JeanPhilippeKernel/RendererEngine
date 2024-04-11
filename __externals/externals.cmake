@@ -13,6 +13,9 @@ set(EXTERNAL_INCLUDE_DIRS
 	${EXTERNAL_DIR}/assimp/include
 	${EXTERNAL_DIR}/stduuid/include
 	${EXTERNAL_DIR}/yaml-cpp/include
+	${EXTERNAL_DIR}/SPIRV-headers
+	${EXTERNAL_DIR}/SPIRV-Tools
+	${EXTERNAL_DIR}/glslang
 	${EXTERNAL_DIR}/SPIRV-Cross
 	${EXTERNAL_DIR}/VulkanMemoryAllocator
 )
@@ -40,4 +43,6 @@ target_link_libraries(imported::External_libs INTERFACE
 	yaml-cpp
 	spirv-cross-reflect spirv-cross-glsl
 	GPUOpen::VulkanMemoryAllocator
+	glslang  SPIRV
+	SPIRV-Tools
 )

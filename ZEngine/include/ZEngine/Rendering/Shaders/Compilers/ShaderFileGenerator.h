@@ -1,30 +1,35 @@
 #pragma once
 #include <Rendering/Shaders/Compilers/ICompilerStage.h>
+#include <fmt/format.h>
+#include <string_view>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
 
-    class LinkageStage : public ICompilerStage
+    class ShaderFileGenerator : public ICompilerStage
     {
     public:
         /**
-         * Initialize a new LinkageStage instance.
+         * Initialize a new ShaderFileGenerator instance.
          */
-        LinkageStage();
-        virtual ~LinkageStage();
+        ShaderFileGenerator();
+        virtual ~ShaderFileGenerator();
 
         /**
          * Run Compiler stage
          *
          * @param information Collection of shader information
          */
-        virtual void Run(std::vector<ShaderInformation>& information) override;
+        std::string OutputName(ShaderInformation& information_list);
 
         /**
          * Run asynchronously compiler stage
          *
          * @param information Collection of shader information
          */
-        virtual std::future<void> RunAsync(std::vector<ShaderInformation>& information) override;
+        virtual std::future<void> RunAsync(ShaderInformation& information) override;
+
+    private:
+        std::string_view outputDirectory = "Shaders/Cache/";
     };
 } // namespace ZEngine::Rendering::Shaders::Compilers

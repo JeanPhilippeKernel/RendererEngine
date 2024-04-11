@@ -1,76 +1,49 @@
 #include <pch.h>
-#include <Rendering/Shaders/Compilers/ValidationStage.h>
-#include <Logging/LoggerDefinition.h>
 #include <Core/Coroutine.h>
+#include <Logging/LoggerDefinition.h>
+#include <Rendering/Shaders/Compilers/ShaderFileGenerator.h>
+#include <Rendering/Shaders/Compilers/ValidationStage.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
 
-    ValidationStage::ValidationStage() {}
+    ValidationStage::ValidationStage()
+    {
+        m_next_stage = CreateRef<ShaderFileGenerator>();
+    }
 
     ValidationStage::~ValidationStage() {}
 
-    void ValidationStage::Run(std::vector<ShaderInformation>& information_list)
+    std::future<void> ValidationStage::RunAsync(ShaderInformation& information_list)
     {
+        std::unique_lock lock(m_mutex);
+        spvtools::SpirvTools         tools(SPV_ENV_UNIVERSAL_1_6);
+        
+        tools.SetMessageConsumer([this](spv_message_level_t level, const char* source, const spv_position_t& position, const char* message) {
+            m_information.ErrorMessage = "Validation Error (" + std::string(source) + ":" + std::to_string(position.index) + "): " + std::string(message) + "\n";
+        });
 
-        //// We assume that all ShaderInformation object have the same ProgramId
-        //const auto&  first          = information_list.at(0);
-        //const GLuint shader_program = first.ProgramId;
-        //glValidateProgram(shader_program);
+        // First validation pass on the original SPIR-V code
+        bool isValidInitial = tools.Validate(information_list.BinarySource.data(), information_list.BinarySource.size());
+        if (!isValidInitial)
+        {
+            m_information.IsSuccess = false;
+            co_return;
+        }
 
-        //GLint validate_status;
-        //glGetProgramiv(shader_program, GL_VALIDATE_STATUS, &validate_status);
-        //if (validate_status == GL_FALSE)
-        //{
+        // Optimization phase
+        spvtools::Optimizer optimizer(SPV_ENV_UNIVERSAL_1_6); 
+        optimizer.RegisterPassFromFlag("-0s"); 
+        optimizer.Run(information_list.BinarySource.data(), information_list.BinarySource.size(), &information_list.BinarySource);
 
-        //    GLint log_info_length = 0;
-        //    glGetProgramiv(shader_program, GL_INFO_LOG_LENGTH, &log_info_length);
+        // Second validation pass on the optimized SPIR-V code
+        bool isValidPostOptimization = tools.Validate(information_list.BinarySource.data(), information_list.BinarySource.size());
+        if (!isValidPostOptimization)
+        {
+            m_information = {false, "Post-optimization " + m_information.ErrorMessage};
+        }
 
-        //    std::vector<GLchar> log_message(log_info_length);
-        //    glGetProgramInfoLog(shader_program, log_info_length, &log_info_length, &log_message[0]);
-
-        //    this->m_information.IsSuccess = this->m_information.IsSuccess && false;
-        //    this->m_information.ErrorMessage.append(std::begin(log_message), std::end(log_message));
-        //    ZENGINE_CORE_ERROR("------> Shader Program is invalid");
-        //}
-
-        //if (!this->m_information.IsSuccess)
-        //{
-        //    ZENGINE_CORE_ERROR("------> Validation stage completed with errors");
-        //    ZENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage);
-        //    return;
-        //}
-    }
-
-    std::future<void> ValidationStage::RunAsync(std::vector<ShaderInformation>& information_list)
-    {
         co_return;
-        //// We assume that all ShaderInformation object have the same ProgramId
-        //const auto&  first          = information_list.at(0);
-        //const GLuint shader_program = first.ProgramId;
-        //glValidateProgram(shader_program);
-
-        //GLint validate_status;
-        //glGetProgramiv(shader_program, GL_VALIDATE_STATUS, &validate_status);
-        //if (validate_status == GL_FALSE)
-        //{
-
-        //    GLint log_info_length = 0;
-        //    glGetProgramiv(shader_program, GL_INFO_LOG_LENGTH, &log_info_length);
-
-        //    std::vector<GLchar> log_message(log_info_length);
-        //    glGetProgramInfoLog(shader_program, log_info_length, &log_info_length, &log_message[0]);
-
-        //    this->m_information.IsSuccess = this->m_information.IsSuccess && false;
-        //    this->m_information.ErrorMessage.append(std::begin(log_message), std::end(log_message));
-        //    ZENGINE_CORE_ERROR("------> Shader Program is invalid")
-        //}
-
-        //if (!this->m_information.IsSuccess)
-        //{
-        //    ZENGINE_CORE_ERROR("------> Validation stage completed with errors")
-        //    ZENGINE_CORE_ERROR("------> {}", this->m_information.ErrorMessage)
-        //    return;
-        //}
     }
+
 } // namespace ZEngine::Rendering::Shaders::Compilers

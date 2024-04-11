@@ -1,11 +1,14 @@
 #pragma once
-#include <fstream>
-#include <unordered_map>
-#include <future>
 #include <Rendering/Shaders/ShaderInformation.h>
+#include <filesystem>
+#include <fstream>
+#include <future>
 #include <mutex>
+#include <unordered_map>
+#include <glslang/Public/ShaderLang.h>
 
-namespace ZEngine::Rendering::Shaders {
+namespace ZEngine::Rendering::Shaders
+{
 
     class ShaderReader
     {
@@ -40,7 +43,7 @@ namespace ZEngine::Rendering::Shaders {
          * @see Read(std::string_view) and ReadAsync(std::string_view) methods
          * @return ShaderInformation
          */
-        const std::vector<ShaderInformation>& GetInformations() const;
+        const ShaderInformation& GetInformations() const;
 
         /**
          * Get shaders information collected during Reading process
@@ -48,12 +51,12 @@ namespace ZEngine::Rendering::Shaders {
          * @see Read(std::string_view) and ReadAsync(std::string_view) methods
          * @return ShaderInformation
          */
-        std::vector<ShaderInformation>& GetInformations();
+        ShaderInformation& GetInformations();
+        ShaderType                      GetShaderType(const std::filesystem::path& path);
 
     private:
-        const char*                    m_regex_expression{"#type[\\s][a-zA-Z]+"};
         std::ifstream                  m_filestream{};
-        std::vector<ShaderInformation> m_shader_info_collection{};
+        ShaderInformation m_shader_info_collection{};
         std::mutex                     m_lock;
     };
 } // namespace ZEngine::Rendering::Shaders
