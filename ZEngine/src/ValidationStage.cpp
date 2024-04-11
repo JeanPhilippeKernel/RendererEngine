@@ -1,7 +1,7 @@
 #include <pch.h>
 #include <Core/Coroutine.h>
 #include <Logging/LoggerDefinition.h>
-#include <Rendering/Shaders/Compilers/LinkageStage.h>
+#include <Rendering/Shaders/Compilers/ShaderFileGenerator.h>
 #include <Rendering/Shaders/Compilers/ValidationStage.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers
@@ -9,7 +9,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
     ValidationStage::ValidationStage()
     {
-        m_next_stage = CreateRef<LinkageStage>();
+        m_next_stage = CreateRef<ShaderFileGenerator>();
     }
 
     ValidationStage::~ValidationStage() {}

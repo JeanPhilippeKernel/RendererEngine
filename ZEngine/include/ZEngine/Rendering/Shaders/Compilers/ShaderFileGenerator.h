@@ -6,14 +6,14 @@
 namespace ZEngine::Rendering::Shaders::Compilers
 {
 
-    class LinkageStage : public ICompilerStage
+    class ShaderFileGenerator : public ICompilerStage
     {
     public:
         /**
-         * Initialize a new LinkageStage instance.
+         * Initialize a new ShaderFileGenerator instance.
          */
-        LinkageStage();
-        virtual ~LinkageStage();
+        ShaderFileGenerator();
+        virtual ~ShaderFileGenerator();
 
         /**
          * Run Compiler stage

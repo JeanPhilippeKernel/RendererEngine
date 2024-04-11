@@ -1,12 +1,12 @@
 #include <pch.h>
 #include <Core/Coroutine.h>
 #include <Logging/LoggerDefinition.h>
-#include <Rendering/Shaders/Compilers/LinkageStage.h>
+#include <Rendering/Shaders/Compilers/ShaderFileGenerator.h>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
 
-    LinkageStage::LinkageStage()
+    ShaderFileGenerator::ShaderFileGenerator()
     {
         // check if output dir exists if not create the folder
         if (!std::filesystem::exists(std::filesystem::path(outputDirectory)))
@@ -18,9 +18,9 @@ namespace ZEngine::Rendering::Shaders::Compilers
         }
     }
 
-    LinkageStage::~LinkageStage() {}
+    ShaderFileGenerator::~ShaderFileGenerator() {}
 
-    std::string LinkageStage::OutputName(ShaderInformation& information_list)
+    std::string ShaderFileGenerator::OutputName(ShaderInformation& information_list)
     {
         std::filesystem::path file_path;
         if (information_list.Type == ShaderType::VERTEX)
@@ -31,7 +31,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
         return file_path.string();
     }
 
-    std::future<void> LinkageStage::RunAsync(ShaderInformation& information_list)
+    std::future<void> ShaderFileGenerator::RunAsync(ShaderInformation& information_list)
     {
         std::unique_lock lock(m_mutex);
         std::string      output_file = OutputName(information_list);
