@@ -7,8 +7,6 @@
 namespace ZEngine::Rendering::Shaders::Compilers
 {
 
-    std::unordered_map<std::string, std::vector<ShaderInformation>> ShaderCompiler::s_already_compiled_shaders_collection;
-
     ShaderCompiler::ShaderCompiler()
     {
         m_reader = CreateScope<ShaderReader>();
@@ -65,11 +63,9 @@ namespace ZEngine::Rendering::Shaders::Compilers
             }
             else
             {
-                m_running_stages = false; 
+                m_running_stages = false;
             }
         }
-
-        shader_information.CompiledOnce = true;
         co_return ShaderCompilerResult{ShaderOperationResult::SUCCESS, std::move(shader_information)};
     }
 } // namespace ZEngine::Rendering::Shaders::Compilers

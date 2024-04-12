@@ -16,11 +16,6 @@ namespace ZEngine::Rendering::Shaders
         }
     }
 
-    ShaderOperationResult ShaderReader::Read(std::string_view filename)
-    {
-        return ShaderOperationResult::FAILURE;
-    }
-
     std::vector<uint32_t> ShaderReader::ReadAsBinary(std::string_view filename)
     {
         std::ifstream file_stream = {};

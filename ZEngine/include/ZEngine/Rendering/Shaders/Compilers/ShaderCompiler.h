@@ -41,6 +41,5 @@ namespace ZEngine::Rendering::Shaders::Compilers
         std::string                                                            m_source_file;
         Scope<ShaderReader>                                                    m_reader{nullptr};
         std::recursive_mutex                                                   m_mutex;
-        static std::unordered_map<std::string, std::vector<ShaderInformation>> s_already_compiled_shaders_collection;
     };
 } // namespace ZEngine::Rendering::Shaders::Compilers
