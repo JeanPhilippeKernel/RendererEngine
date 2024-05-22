@@ -33,7 +33,7 @@ namespace Tetragrama
         {
             title = fmt::format("{0} - Active Scene : {1}", title, s_editor_scene->GetName());
         }
-        m_engine_configuration.WindowConfiguration = {.Title = title, .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
+        m_engine_configuration.WindowConfiguration = {.Title = title, .EnableVsync = true, .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
     }
 
     Editor::~Editor()

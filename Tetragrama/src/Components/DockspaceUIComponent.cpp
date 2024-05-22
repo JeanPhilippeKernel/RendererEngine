@@ -522,6 +522,7 @@ namespace Tetragrama::Components
         {
             m_editor_serializer->Deserialize(scene_filename);
         }
+        ZENGINE_CORE_WARN("Editor stopped")
         co_return;
     }
 

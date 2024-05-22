@@ -43,3 +43,12 @@
 [submodule "__externals/nlohmann_json"]
 	path = __externals/nlohmann_json
 	url = https://github.com/nlohmann/json
+[submodule "__externals/glslang"]
+	path = __externals/glslang
+	url = https://github.com/khronosGroup/glslang.git
+[submodule "__externals/SPIRV-headers"]
+	path = __externals/SPIRV-headers
+	url = https://github.com/khronosGroup/SPIRV-headers.git
+[submodule "__externals/SPIRV-Tools"]
+	path = __externals/SPIRV-Tools
+	url = https://github.com/khronosGroup/SPIRV-Tools

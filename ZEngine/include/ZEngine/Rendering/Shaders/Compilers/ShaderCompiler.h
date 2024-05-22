@@ -1,13 +1,17 @@
 #pragma once
-#include <future>
-#include <tuple>
-#include <mutex>
-#include <ZEngineDef.h>
 #include <Core/IPipeline.h>
 #include <Rendering/Shaders/ShaderReader.h>
+#include <ZEngineDef.h>
+#include <future>
+#include <mutex>
 
 namespace ZEngine::Rendering::Shaders::Compilers
 {
+    struct ShaderCompilerResult
+    {
+        ShaderOperationResult OperationResult;
+        ShaderInformation     Information;
+    };
 
     class ShaderCompiler : public Core::IPipelineContext
     {
@@ -27,24 +31,15 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
         /**
          * Compile shader source code
-         * @return Tuple of <ShaderOperationResult, GLuint> that represents status of the compile process (Success or Failure)
-         *			and the identifier of generated shader program (0 in case of any errors)
+         * @return Tuple of <ShaderOperationResult, ShaderInformation> that represents status of the compile process (Success or Failure)
+         *			and the Shader Information
          */
-        //std::tuple<ShaderOperationResult, unsigned> Compile();
-        //std::tuple<ShaderOperationResult, std::vector<ShaderInformation>> Compile2() = delete;
 
-        /**
-         * Compile shader source code
-         * @return Tuple of <ShaderOperationResult, GLuint> that represents status of the compile process (Success or Failure)
-         *			and the identifier of generated shader program (0 in case of any errors)
-         */
-        std::future<std::tuple<ShaderOperationResult, unsigned>>                       CompileAsync();
-        std::future<std::tuple<ShaderOperationResult, std::vector<ShaderInformation>>> CompileAsync2();
+        std::future<ShaderCompilerResult> CompileAsync();
 
     private:
         std::string                                                            m_source_file;
         Scope<ShaderReader>                                                    m_reader{nullptr};
         std::recursive_mutex                                                   m_mutex;
-        static std::unordered_map<std::string, std::vector<ShaderInformation>> s_already_compiled_shaders_collection;
     };
 } // namespace ZEngine::Rendering::Shaders::Compilers

@@ -1,11 +1,14 @@
 #pragma once
-#include <fstream>
-#include <unordered_map>
-#include <future>
 #include <Rendering/Shaders/ShaderInformation.h>
+#include <glslang/Public/ShaderLang.h>
+#include <filesystem>
+#include <fstream>
+#include <future>
 #include <mutex>
+#include <unordered_map>
 
-namespace ZEngine::Rendering::Shaders {
+namespace ZEngine::Rendering::Shaders
+{
 
     class ShaderReader
     {
@@ -15,14 +18,6 @@ namespace ZEngine::Rendering::Shaders {
          */
         ShaderReader();
         ~ShaderReader();
-
-        /**
-         * Read synchronously content of shader file
-         *
-         * @param filename  Path to the shader file
-         * @return enum ShaderReaderState that describes the read operation state
-         */
-        ShaderOperationResult Read(std::string_view filename);
 
         static std::vector<uint32_t> ReadAsBinary(std::string_view filename);
 
@@ -40,7 +35,7 @@ namespace ZEngine::Rendering::Shaders {
          * @see Read(std::string_view) and ReadAsync(std::string_view) methods
          * @return ShaderInformation
          */
-        const std::vector<ShaderInformation>& GetInformations() const;
+        const ShaderInformation& GetInformations() const;
 
         /**
          * Get shaders information collected during Reading process
@@ -48,12 +43,12 @@ namespace ZEngine::Rendering::Shaders {
          * @see Read(std::string_view) and ReadAsync(std::string_view) methods
          * @return ShaderInformation
          */
-        std::vector<ShaderInformation>& GetInformations();
+        ShaderInformation& GetInformations();
+        ShaderType         GetShaderType(const std::filesystem::path& path);
 
     private:
-        const char*                    m_regex_expression{"#type[\\s][a-zA-Z]+"};
-        std::ifstream                  m_filestream{};
-        std::vector<ShaderInformation> m_shader_info_collection{};
-        std::mutex                     m_lock;
+        std::ifstream     m_filestream{};
+        ShaderInformation m_shader_info_collection{};
+        std::mutex        m_lock;
     };
 } // namespace ZEngine::Rendering::Shaders

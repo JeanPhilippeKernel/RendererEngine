@@ -1,8 +1,10 @@
 #pragma once
 
-namespace ZEngine::Rendering::Shaders {
+namespace ZEngine::Rendering::Shaders
+{
 
-    enum class ShaderType {
+    enum class ShaderType
+    {
         /**
          * Vertex shader type
          */
@@ -14,10 +16,15 @@ namespace ZEngine::Rendering::Shaders {
         /**
          * Geometry shader type
          */
-        GEOMETRY = 2
+        GEOMETRY = 2,
+        /**
+         * Unknown shader type
+         */
+        UNKNOWN = 3
     };
 
-    enum class ShaderOperationResult : int {
+    enum class ShaderOperationResult : int
+    {
         /**
          * Error happened during a shader processing operation
          */
@@ -28,5 +35,11 @@ namespace ZEngine::Rendering::Shaders {
         SUCCESS = 0
     };
 
-    enum class ShaderBuiltInType : int { BASIC = 0, BASIC_2, STANDARD, MIXED_TEXTURE };
+    enum class ShaderBuiltInType : int
+    {
+        BASIC = 0,
+        BASIC_2,
+        STANDARD,
+        MIXED_TEXTURE
+    };
 } // namespace ZEngine::Rendering::Shaders
