@@ -1,26 +1,39 @@
 #include <pch.h>
-#include <Components/Events/SceneViewportFocusedEvent.h>
-#include <Components/Events/SceneViewportResizedEvent.h>
 #include <Editor.h>
 #include <Layers/UILayer.h>
 #include <Messengers/Messenger.h>
 #include <MessageToken.h>
+#include <fmt/format.h>
 
-using namespace std::chrono_literals;
-using namespace ZEngine::Components::UI::Event;
 using namespace Tetragrama::Messengers;
 
 namespace Tetragrama
 {
+    EditorConfiguration       Editor::s_editor_configuration;
+    ZEngine::Ref<EditorScene> Editor::s_editor_scene{nullptr};
+    std::recursive_mutex      Editor::s_mutex;
 
-    Editor::Editor()
+    Editor::Editor(const EditorConfiguration& config) : m_engine_configuration()
     {
         m_ui_layer     = ZEngine::CreateRef<Layers::UILayer>();
         m_render_layer = ZEngine::CreateRef<Layers::RenderLayer>();
 
-        m_engine_configuration                     = {};
-        m_engine_configuration.WindowConfiguration = {
-            .Width = 1500, .Height = 800, .EnableVsync = true, .Title = "Tetragramma editor", .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
+        s_editor_configuration = config;
+        if ((!s_editor_scene) && config.ActiveSceneName.empty())
+        {
+            s_editor_scene = ZEngine::CreateRef<EditorScene>("Empty_Scene");
+        }
+        else if (!config.ActiveSceneName.empty())
+        {
+            s_editor_scene = ZEngine::CreateRef<EditorScene>(config.ActiveSceneName);
+        }
+
+        auto title = config.ProjectName;
+        if (s_editor_scene)
+        {
+            title = fmt::format("{0} - Active Scene : {1}", title, s_editor_scene->GetName());
+        }
+        m_engine_configuration.WindowConfiguration = {.Title = title, .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
     }
 
     Editor::~Editor()
@@ -56,34 +69,6 @@ namespace Tetragrama
             m_render_layer.get(),
             return m_render_layer->SceneRequestUnfocusMessageHandlerAsync(*message_ptr))
 
-        MESSENGER_REGISTER(
-            ZEngine::Layers::Layer,
-            GenericMessage<std::string>,
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION,
-            m_render_layer.get(),
-            return m_render_layer->SceneRequestSerializationMessageHandlerAsync(*message_ptr))
-     
-        MESSENGER_REGISTER(
-            ZEngine::Layers::Layer,
-            GenericMessage<std::string>,
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION,
-            m_render_layer.get(),
-            return m_render_layer->SceneRequestDeserializationMessageHandlerAsync(*message_ptr))
-
-        MESSENGER_REGISTER(
-            ZEngine::Layers::Layer,
-            EmptyMessage,
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE,
-            m_render_layer.get(),
-            return m_render_layer->SceneRequestNewSceneMessageHandlerAsync(*message_ptr))
-
-        MESSENGER_REGISTER(
-            ZEngine::Layers::Layer,
-            GenericMessage<std::string>,
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE,
-            m_render_layer.get(),
-            return m_render_layer->SceneRequestOpenSceneMessageHandlerAsync(*message_ptr))
-        
         using PairInt = std::pair<int, int>;
         MESSENGER_REGISTER(
             ZEngine::Layers::Layer,
@@ -91,13 +76,6 @@ namespace Tetragrama
             EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL,
             m_render_layer.get(),
             return m_render_layer->SceneRequestSelectEntityFromPixelMessageHandlerAsync(*message_ptr))
-        
-        MESSENGER_REGISTER(
-            ZEngine::Layers::Layer,
-            GenericMessage<std::string>,
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_IMPORTASSETMODEL,
-            m_render_layer.get(),
-            return m_render_layer->SceneRequestImportAssetModelAsync(*message_ptr))
     }
 
     void Editor::Run()
@@ -105,8 +83,65 @@ namespace Tetragrama
         ZEngine::Engine::Start();
     }
 
-    const ZEngine::EngineConfiguration& Editor::GetCurrentEngineConfiguration() const
+    const EditorConfiguration& Editor::GetCurrentEditorConfiguration()
     {
-        return m_engine_configuration;
+        return s_editor_configuration;
+    }
+
+    ZEngine::Ref<EditorScene> Editor::GetCurrentEditorScene()
+    {
+        {
+            std::unique_lock l(s_mutex);
+            return s_editor_scene;
+        }
+    }
+
+    void Editor::SetCurrentEditorScene(EditorScene&& scene)
+    {
+        {
+            std::unique_lock l(s_mutex);
+            s_editor_scene.reset(new EditorScene(scene));
+        }
+    }
+
+    void EditorScene::AddModel(const Model& m)
+    {
+        {
+            std::lock_guard l(m_mutex);
+            m_models[m.Name]     = m;
+            m_has_pending_change = true;
+        }
+    }
+
+    void EditorScene::AddModel(Model&& m)
+    {
+        {
+            std::lock_guard l(m_mutex);
+            m_models[m.Name]     = std::move(m);
+            m_has_pending_change = true;
+        }
+    }
+
+    void EditorScene::SetName(std::string_view name)
+    {
+        {
+            std::lock_guard l(m_mutex);
+            m_name = name;
+        }
+    }
+
+    std::string_view EditorScene::GetName() const
+    {
+        return m_name;
+    }
+
+    const std::unordered_map<std::string, EditorScene::Model>& EditorScene::GetModels() const
+    {
+        return m_models;
+    }
+
+    bool EditorScene::HasPendingChange() const
+    {
+        return m_has_pending_change;
     }
 } // namespace Tetragrama

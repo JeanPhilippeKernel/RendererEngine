@@ -1,0 +1,15 @@
+{
+    "projectName": "TestGame",
+    "version": "1.0.0",
+    "workingSpace": ".",
+    "defaultImportDir": {
+        "textureDir": "Imported/Textures",
+        "soundDir": "Imported/Sounds"
+    },
+    "sceneDir" : "Scenes",
+    "sceneDataDir" : "SceneData",
+    "sceneList": [{
+        "name": "Default Scene",
+        "isDefault": true
+    }]
+}

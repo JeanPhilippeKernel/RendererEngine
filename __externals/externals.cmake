@@ -15,6 +15,7 @@ set(EXTERNAL_INCLUDE_DIRS
 	${EXTERNAL_DIR}/yaml-cpp/include
 	${EXTERNAL_DIR}/SPIRV-Cross
 	${EXTERNAL_DIR}/VulkanMemoryAllocator
+	${EXTERNAL_DIR}/nlohmann_json/single_include
 )
 
 if (MSVC)

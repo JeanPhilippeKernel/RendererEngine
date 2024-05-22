@@ -31,13 +31,7 @@ namespace Tetragrama::Layers
         std::future<void> SceneRequestResizeMessageHandlerAsync(Messengers::GenericMessage<std::pair<float, float>>&);
         std::future<void> SceneRequestFocusMessageHandlerAsync(Messengers::GenericMessage<bool>&);
         std::future<void> SceneRequestUnfocusMessageHandlerAsync(Messengers::GenericMessage<bool>&);
-        std::future<void> SceneRequestSerializationMessageHandlerAsync(Messengers::GenericMessage<std::string>&);
-        std::future<void> SceneRequestDeserializationMessageHandlerAsync(Messengers::GenericMessage<std::string>&);
-
         std::future<void> SceneRequestNewSceneMessageHandlerAsync(Messengers::EmptyMessage&);
-        std::future<void> SceneRequestOpenSceneMessageHandlerAsync(Messengers::GenericMessage<std::string>&);
-        std::future<void> SceneRequestImportAssetModelAsync(Messengers::GenericMessage<std::string>&);
-
         std::future<void> SceneRequestSelectEntityFromPixelMessageHandlerAsync(Messengers::GenericMessage<std::pair<int, int>>&);
 
     private:

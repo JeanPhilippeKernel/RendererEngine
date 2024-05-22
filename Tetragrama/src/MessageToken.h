@@ -3,7 +3,6 @@
 
 namespace Tetragrama
 {
-    static const std::string_view EDITOR_COMPONENT_DOCKSPACE_REQUEST_EXIT                       = "editor::component::dockspace::request::exit";
     static const std::string_view EDITOR_COMPONENT_SCENEVIEWPORT_UNFOCUSED                      = "editor::component::sceneviewport::unfocused";
     static const std::string_view EDITOR_COMPONENT_SCENEVIEWPORT_FOCUSED                        = "editor::component::sceneviewport::focused";
     static const std::string_view EDITOR_COMPONENT_SCENEVIEWPORT_RESIZED                        = "editor::component::sceneviewport::resized";
@@ -17,11 +16,6 @@ namespace Tetragrama
     static const std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL    = "editor::render_layer::scene::request::select_entity_from_pixel";
     static const std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS                     = "editor::render_layer::scene::request::unfocus";
     static const std::string_view EDITOR_RENDER_LAYER_SCENE_AVAILABLE                           = "editor::render_layer::scene::available";
-    static const std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_SERIALIZATION               = "editor::render_layer::scene::request::serialization";
-    static const std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION             = "editor::render_layer::scene::request::deserialization";
-    static const std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_NEWSCENE                    = "editor::render_layer::scene::request::newscene";
-    static const std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_OPENSCENE                   = "editor::render_layer::scene::request::openscene";
-    static const std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_IMPORTASSETMODEL            = "editor::render_layer::scene::request::importassetmodel";
     static const std::string_view EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE               = "editor::render_layer::scene::camera_controller_available";
     static const std::string_view EDITOR_COMPONENT_LOG_RECEIVE_LOG_MESSAGE                      = "editor::component::log::receive_log_message";
 } // namespace Tetragrama

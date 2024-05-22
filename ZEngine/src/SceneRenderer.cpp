@@ -98,7 +98,7 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("VertexSB", vertex_buffer);
         handle->SetInput("IndexSB", index_buffer);
         handle->SetInput("DrawDataSB", draw_buffer);
-        handle->SetInput("TransformSB", transform_buffer);
+        handle->SetInput("TransformSBd", transform_buffer);
         handle->Verify();
         handle->Bake();
     }

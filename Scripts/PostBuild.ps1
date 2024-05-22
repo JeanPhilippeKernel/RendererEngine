@@ -68,6 +68,13 @@ $ContentsToProcess = @(
                 @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\Settings"}
             }
         )
+    },
+    @{
+        Name = "Tetragrama"
+        IsDirectory = $true
+        Contents = @(
+            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net8.0\Editor"}
+        )
     }
 )
 
