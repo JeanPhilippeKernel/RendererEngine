@@ -58,10 +58,8 @@ namespace Tetragrama::Components
                 for (const ZEngine::Logging::LogMessage& message : m_log_queue)
                 {
                     ImGui::TableNextRow();
-                    ImGui::PushStyleColor(ImGuiCol_Text, {message.Color[0], message.Color[1], message.Color[2], message.Color[3]});
                     ImGui::TableSetColumnIndex(0);
-                    ImGui::Text(message.Message.data());
-                    ImGui::PopStyleColor();
+                    ImGui::TextColored({message.Color[0], message.Color[1], message.Color[2], message.Color[3]}, message.Message.data());
                 }
             }
             ImGui::EndTable();

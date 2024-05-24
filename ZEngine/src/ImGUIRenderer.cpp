@@ -185,6 +185,8 @@ namespace ZEngine::Rendering::Renderers
         colors[ImGuiCol_SeparatorHovered] = ImVec4{1.f, 1.f, 1.0f, .5f};
         colors[ImGuiCol_SeparatorActive]  = ImVec4{1.f, 1.f, 1.0f, .5f};
         colors[ImGuiCol_CheckMark]        = ImVec4{1.0f, 1.f, 1.0f, 1.f};
+
+        colors[ImGuiCol_PlotHistogram] = ImVec4{1.0f, 1.f, 1.0f, 1.f};
     }
 
     void ImGUIRenderer::BeginFrame(Rendering::Buffers::CommandBuffer* const command_buffer)

@@ -40,6 +40,9 @@
 [submodule "__externals/VulkanMemoryAllocator"]
 	path = __externals/VulkanMemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+[submodule "__externals/nlohmann_json"]
+	path = __externals/nlohmann_json
+	url = https://github.com/nlohmann/json
 [submodule "__externals/glslang"]
 	path = __externals/glslang
 	url = https://github.com/khronosGroup/glslang.git

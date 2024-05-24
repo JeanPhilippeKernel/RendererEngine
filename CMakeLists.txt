@@ -14,7 +14,10 @@ get_filename_component (ENLISTMENT_ROOT "." ABSOLUTE CACHE)
 get_filename_component (EXTERNAL_DIR "${ENLISTMENT_ROOT}/__externals" ABSOLUTE CACHE)
 get_filename_component (EXAMPLE_DIR "${ENLISTMENT_ROOT}/Examples" ABSOLUTE CACHE)
 
-option (BUILD_SANDBOX_PROJECTS "build example projects that show how to use core engine" OFF)
+include(${ENLISTMENT_ROOT}/Scripts/CMake/NuGet.cmake)
+
+
+option (COPY_EXAMPLE_PROJECT "Copy example projects that show how to use Launcher" ON)
 
 # Externals dependencies
 #
@@ -41,9 +44,16 @@ add_subdirectory(ZEngine)
 # Editor is here
 #
 add_subdirectory(Tetragrama)
+
+# Launcher is here
+#
+add_subdirectory(Panzerfaust)
+
+
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT tetragrama)
+	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Panzerfaust)
 endif ()
+
 
 # Post build operation
 #
@@ -60,3 +70,11 @@ add_custom_command(TARGET AssembleContent
 	POST_BUILD
 	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -Configurations $<IF:$<CONFIG:Debug>,Debug,Release>
 )
+
+# Copying Examples dir
+#
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Examples/projectConfig.json)
+	file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Examples/projectConfig.json DESTINATION ${CMAKE_BINARY_DIR}/Examples)
+endif()
+
+

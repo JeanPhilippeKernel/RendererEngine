@@ -30,14 +30,17 @@ target_include_directories (${TARGET_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/Layers
         ${CMAKE_CURRENT_SOURCE_DIR}/Messengers
         ${CMAKE_CURRENT_SOURCE_DIR}/Helpers
+        ${CMAKE_CURRENT_SOURCE_DIR}/Importers
+        ${CMAKE_CURRENT_SOURCE_DIR}/Serializers
 		${ENLISTMENT_ROOT}/ZEngine/include
 )
 
 target_precompile_headers(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pch.h)
-
-target_compile_definitions (${TARGET_NAME}
-	PRIVATE
-		IMGUI_IMPL_OPENGL_LOADER_GLAD
+target_compile_definitions(${TARGET_NAME}
+    PRIVATE
+        NOMINMAX
+        UNICODE
+        _UNICODE
 )
 
 target_link_libraries(${TARGET_NAME}

@@ -43,19 +43,30 @@ namespace ZEngine::Rendering::Scenes
     {
         uint32_t                                 SVertexOffset{0};
         uint32_t                                 SIndexOffset{0};
-        std::vector<float>                       Vertices;
-        std::vector<uint32_t>                    Indices;
         std::vector<SceneNodeHierarchy>          NodeHierarchyCollection;
         std::vector<glm::mat4>                   LocalTransformCollection;
         std::vector<glm::mat4>                   GlobalTransformCollection;
         std::map<uint32_t, entt::entity>         SceneNodeEntityMap;
         std::map<uint32_t, Meshes::MeshVNext>    SceneNodeMeshMap;
-        std::map<uint32_t, std::string>          SceneNodeNameMap;
-        std::map<uint32_t, Meshes::MeshMaterial> SceneNodeMaterialMap;
-        std::map<uint32_t, std::string>          SceneNodeMaterialNameMap;
+        std::map<uint32_t, std::string>          SceneNodeNameMap;         // Todo : obsolete__delete
+        std::map<uint32_t, Meshes::MeshMaterial> SceneNodeMaterialMap;     // Todo : obsolete__delete
+        std::map<uint32_t, std::string>          SceneNodeMaterialNameMap; // Todo : obsolete__delete
         std::map<uint32_t, std::set<uint32_t>>   LevelSceneNodeChangedMap;
         std::set<int>                            TextureCollection;
         std::shared_ptr<entt::registry>          EntityRegistry;
+        /*
+         * New Properties
+         */
+        std::vector<float>                     Vertices;
+        std::vector<uint32_t>                  Indices;
+        std::vector<std::string>               Names;
+        std::vector<std::string>               MaterialNames;
+        std::unordered_map<uint32_t, uint32_t> NodeMeshes;
+        std::unordered_map<uint32_t, uint32_t> NodeNames;
+        std::unordered_map<uint32_t, uint32_t> NodeMaterials;
+        std::vector<Meshes::MeshVNext>         Meshes    = {};
+        std::vector<Meshes::MeshMaterial>      Materials = {};
+        std::vector<std::string>               Files     = {};
     };
 
     struct GraphicScene : public Helpers::RefCounted

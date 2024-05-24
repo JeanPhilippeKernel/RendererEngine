@@ -31,12 +31,6 @@ namespace Tetragrama::Layers
         /*
          *  Register Dockspace Component
          */
-        MESSENGER_REGISTER(
-            ZEngine::Components::UI::UIComponent,
-            GenericMessage<ZEngine::Event::WindowClosedEvent>,
-            EDITOR_COMPONENT_DOCKSPACE_REQUEST_EXIT,
-            m_dockspace_component.get(),
-            return m_dockspace_component->RequestExitMessageHandlerAsync(*message_ptr))
         /*
          *  Register Scene Component
          */
