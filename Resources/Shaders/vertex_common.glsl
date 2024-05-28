@@ -7,7 +7,6 @@ struct DrawVertex
 
 struct DrawData
 {
-	uint Index;
     uint TransformIndex;
     uint MaterialIndex;
     uint VertexOffset;

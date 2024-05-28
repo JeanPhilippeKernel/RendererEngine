@@ -60,10 +60,7 @@ namespace Tetragrama::Components
             ImGui::EndPopup();
         }
 
-        if (GraphicScene::HasSceneNodes())
-        {
-            RenderSceneNodeTrees(GraphicScene::GetRootSceneNodes());
-        }
+        RenderTreeNodes();
 
         // 0 means left buttom
         if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
@@ -73,65 +70,78 @@ namespace Tetragrama::Components
                 EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, Messengers::EmptyMessage{});
         }
 
-        /*
-         *  Guizmo operations
-         */
-        if (m_selected_node_identifier != -1)
-        {
-            auto entity_wrapper = GraphicScene::GetSceneNodeEntityWrapper(m_selected_node_identifier);
-            if (auto active_editor_camera = m_active_editor_camera.lock())
-            {
-                auto       camera             = active_editor_camera->GetCamera();
-                const auto camera_projection  = camera->GetPerspectiveMatrix();
-                const auto camera_view_matrix = camera->GetViewMatrix();
-
-                auto& global_transform  = GraphicScene::GetSceneNodeGlobalTransform(m_selected_node_identifier);
-                auto  initial_transform = global_transform;
-                auto& local_transform   = GraphicScene::GetSceneNodeLocalTransform(m_selected_node_identifier);
-
-                if (camera && ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, Engine::GetWindow()))
-                {
-                    active_editor_camera->SetTarget(glm::vec3(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
-                }
-
-                // snapping
-                float snap_value        = 0.5f;
-                bool  is_snap_operation = ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, Engine::GetWindow());
-                if (is_snap_operation && static_cast<ImGuizmo::OPERATION>(m_gizmo_operation) == ImGuizmo::ROTATE)
-                {
-                    snap_value = 45.0f;
-                }
-                float snap_array[3] = {snap_value, snap_value, snap_value};
-
-                if (m_gizmo_operation > 0)
-                {
-                    ImGuizmo::Manipulate(
-                        glm::value_ptr(camera_view_matrix),
-                        glm::value_ptr(camera_projection),
-                        (ImGuizmo::OPERATION) m_gizmo_operation,
-                        ImGuizmo::MODE::WORLD,
-                        glm::value_ptr(global_transform),
-                        nullptr,
-                        is_snap_operation ? snap_array : nullptr);
-                }
-
-                auto delta_transform = glm::inverse(initial_transform) * global_transform;
-                local_transform      = local_transform * delta_transform;
-                GraphicScene::MarkSceneNodeAsChanged(m_selected_node_identifier);
-
-                if (ImGuizmo::IsUsing())
-                {
-                    // ZEngine::Maths::Vector3 translation, rotation, scale;
-                    // ZEngine::Maths::DecomposeTransformComponent(transform, translation, rotation, scale);
-
-                    // entity_transform_component.SetPosition(translation);
-                    // entity_transform_component.SetScaleSize(scale);
-                    // entity_transform_component.SetRotation(rotation);
-                }
-            }
-        }
+        RenderGuizmo();
 
         ImGui::End();
+    }
+
+    void HierarchyViewUIComponent::RenderTreeNodes()
+    {
+        auto root_nodes = GraphicScene::GetRootSceneNodes();
+        for (int node : root_nodes)
+        {
+            RenderSceneNodeTree(node);
+        }
+    }
+
+    void HierarchyViewUIComponent::RenderGuizmo()
+    {
+        if (m_selected_node_identifier <= -1)
+        {
+            return;
+        }
+
+        // auto entity_wrapper = GraphicScene::GetSceneNodeEntityWrapper(m_selected_node_identifier);
+        if (auto active_editor_camera = m_active_editor_camera.lock())
+        {
+            auto       camera             = active_editor_camera->GetCamera();
+            const auto camera_projection  = camera->GetPerspectiveMatrix();
+            const auto camera_view_matrix = camera->GetViewMatrix();
+
+            auto& global_transform  = GraphicScene::GetSceneNodeGlobalTransform(m_selected_node_identifier);
+            auto  initial_transform = global_transform;
+            auto& local_transform   = GraphicScene::GetSceneNodeLocalTransform(m_selected_node_identifier);
+
+            if (camera && ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, Engine::GetWindow()))
+            {
+                active_editor_camera->SetTarget(glm::vec3(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
+            }
+
+            // snapping
+            float snap_value        = 0.5f;
+            bool  is_snap_operation = ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, Engine::GetWindow());
+            if (is_snap_operation && static_cast<ImGuizmo::OPERATION>(m_gizmo_operation) == ImGuizmo::ROTATE)
+            {
+                snap_value = 45.0f;
+            }
+            float snap_array[3] = {snap_value, snap_value, snap_value};
+
+            if (m_gizmo_operation > 0)
+            {
+                ImGuizmo::Manipulate(
+                    glm::value_ptr(camera_view_matrix),
+                    glm::value_ptr(camera_projection),
+                    (ImGuizmo::OPERATION) m_gizmo_operation,
+                    ImGuizmo::MODE::WORLD,
+                    glm::value_ptr(global_transform),
+                    nullptr,
+                    is_snap_operation ? snap_array : nullptr);
+            }
+
+            auto delta_transform = glm::inverse(initial_transform) * global_transform;
+            local_transform      = local_transform * delta_transform;
+            GraphicScene::MarkSceneNodeAsChanged(m_selected_node_identifier);
+
+            if (ImGuizmo::IsUsing())
+            {
+                // ZEngine::Maths::Vector3 translation, rotation, scale;
+                // ZEngine::Maths::DecomposeTransformComponent(transform, translation, rotation, scale);
+
+                // entity_transform_component.SetPosition(translation);
+                // entity_transform_component.SetScaleSize(scale);
+                // entity_transform_component.SetRotation(rotation);
+            }
+        }
     }
 
     void HierarchyViewUIComponent::RenderSceneNodeTree(int32_t node_identifier)
@@ -147,20 +157,17 @@ namespace Tetragrama::Components
         auto        flags                  = (node_hierarchy.FirstChild < 0) ? (ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | m_node_flag) : m_node_flag;
         flags |= (m_selected_node_identifier == node_identifier) ? ImGuiTreeNodeFlags_Selected : 0;
         auto label          = (!node_name.empty()) ? std::string(node_name) : fmt::format("Node_{0}", node_identifier);
-        bool is_node_opened = ImGui::TreeNodeEx(node_identifier_string.c_str(), flags, "%s", label.c_str());
 
-        if (ImGui::IsItemClicked())
+        if (ImGui::TreeNodeEx(node_identifier_string.c_str(), flags, "%s", label.c_str()))
         {
-            m_selected_node_identifier = node_identifier;
-            //Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<int32_t>>(
-            //    EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::GenericMessage<int32_t>{m_selected_node_identifier});
-        }
+            if (ImGui::IsItemClicked())
+            {
+                m_selected_node_identifier = node_identifier;
+            }
 
-        if (is_node_opened)
-        {
             /*
-            * Popup features
-            */
+             * Popup features
+             */
             bool request_entity_removal = false;
             if (ImGui::BeginPopupContextItem(node_identifier_string.c_str()))
             {
@@ -195,16 +202,7 @@ namespace Tetragrama::Components
                     RenderSceneNodeTree(sibling_identifier);
                 }
             }
-
             ImGui::TreePop();
-        }
-    }
-
-    void HierarchyViewUIComponent::RenderSceneNodeTrees(const std::vector<int32_t>& node_identifier_collection)
-    {
-        for (int32_t node_identifier : node_identifier_collection)
-        {
-            RenderSceneNodeTree(node_identifier);
         }
     }
 } // namespace Tetragrama::Components
