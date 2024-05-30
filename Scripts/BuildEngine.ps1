@@ -55,6 +55,8 @@ $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 Write-Host "Ensuring submodules are initialized and updated..."
 git -C $RepoRoot submodule update --init --recursive
 
+. (Join-Path $PSScriptRoot Nuget.ps1)
+
 function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
     $architecture = 'x64'
