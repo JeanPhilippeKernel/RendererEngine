@@ -51,6 +51,14 @@ else {
     throw 'CMake program not found'
 }
 
+$nugetProgram = Find-NuGet
+if ($nugetProgram) {
+    Write-Host "Nuget program found..."
+}
+else {
+    throw 'Nuget program not found'
+}
+
 $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 Write-Host "Ensuring submodules are initialized and updated..."
 git -C $RepoRoot submodule update --init --recursive
@@ -93,13 +101,13 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     # Define CMake Generator arguments
     $cMakeOptions = " -DCMAKE_SYSTEM_NAME=$systemName", " -DCMAKE_BUILD_TYPE=$configuration"
     $submoduleCMakeOptions = @{
-        'ENTT'= @("-DENTT_INCLUDE_HEADERS=ON")
-        'SPDLOG' = @("-DSPDLOG_BUILD_SHARED=OFF", "-DBUILD_STATIC_LIBS=ON", "-DSPDLOG_FMT_EXTERNAL=ON", "-DSPDLOG_FMT_EXTERNAL_HO=OFF");
-        'GLFW '= @("-DGLFW_BUILD_DOCS=OFF", "-DGLFW_BUILD_EXAMPLES=OFF", "-DGLFW_INSTALL=OFF");
-        'ASSIMP'=@("-DASSIMP_BUILD_TESTS=OFF", "-DASSIMP_INSTALL=OFF", "-DASSIMP_BUILD_SAMPLES=OFF", "-DASSIMP_BUILD_ASSIMP_TOOLS=OFF");
-        'STDUUID'=@("-DUUID_BUILD_TESTS=OFF", "-DUUID_USING_CXX20_SPAN=ON", "-DUUID_SYSTEM_GENERATOR=OFF");
-        'YAMLCPP'=@("-DYAML_CPP_BUILD_TOOLS=OFF", "-DYAML_CPP_BUILD_TESTS=OFF", "-DYAML_CPP_FORMAT_SOURCE=OFF", "-DYAML_BUILD_SHARED_LIBS=OFF");
-        'FRAMEWORK'=@("-DBUILD_FRAMEWORK=ON");
+        'ENTT'      = @("-DENTT_INCLUDE_HEADERS=ON")
+        'SPDLOG'    = @("-DSPDLOG_BUILD_SHARED=OFF", "-DBUILD_STATIC_LIBS=ON", "-DSPDLOG_FMT_EXTERNAL=ON", "-DSPDLOG_FMT_EXTERNAL_HO=OFF");
+        'GLFW '     = @("-DGLFW_BUILD_DOCS=OFF", "-DGLFW_BUILD_EXAMPLES=OFF", "-DGLFW_INSTALL=OFF");
+        'ASSIMP'    = @("-DASSIMP_BUILD_TESTS=OFF", "-DASSIMP_INSTALL=OFF", "-DASSIMP_BUILD_SAMPLES=OFF", "-DASSIMP_BUILD_ASSIMP_TOOLS=OFF");
+        'STDUUID'   = @("-DUUID_BUILD_TESTS=OFF", "-DUUID_USING_CXX20_SPAN=ON", "-DUUID_SYSTEM_GENERATOR=OFF");
+        'YAMLCPP'   = @("-DYAML_CPP_BUILD_TOOLS=OFF", "-DYAML_CPP_BUILD_TESTS=OFF", "-DYAML_CPP_FORMAT_SOURCE=OFF", "-DYAML_BUILD_SHARED_LIBS=OFF");
+        'FRAMEWORK' = @("-DBUILD_FRAMEWORK=ON");
     }  
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
@@ -181,7 +189,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 }
 
 # Run Shader Compilation
-[bool]$forceRebuild = If($ForceShaderRebuild) { $True } Else { $False }
+[bool]$forceRebuild = If ($ForceShaderRebuild) { $True } Else { $False }
 foreach ($config in $Configurations) {
     $shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"
     & pwsh -File $shaderCompileScript -Configuration:$config -ForceRebuild:$forceRebuild
