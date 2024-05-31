@@ -22,8 +22,6 @@ Before building, make sure your setup is correct :
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
 - Install [Vulkan SDK](https://sdk.lunarg.com/sdk/download/1.3.250.1/windows/VulkanSDK-1.3.250.1-Installer.exe) (uncheck the GLM headers component when installing)
 
-
-
 ## Building 
 
 1. Install [CMake](https://cmake.org/download/) 3.20 or later.
