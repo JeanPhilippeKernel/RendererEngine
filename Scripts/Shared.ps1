@@ -29,11 +29,57 @@ function CompareVersion([System.Version] $Version, [string] $ExpectedVersion) {
 function Get-RepositoryToolPath () {
     $toolPath = Join-Path $repositoryRootPath -ChildPath "__tools"
 
-    if(-not (Test-Path $toolPath)) {
+    if (-not (Test-Path $toolPath)) {
         $Null = New-Item -ItemType Directory -Path $toolPath -ErrorAction SilentlyContinue
     }
 
     return $toolPath
+}
+function Find-NuGet {
+    $installPath = Join-Path -Path $env:USERPROFILE -ChildPath NuGet
+    $nugetPath = Join-Path -Path $installPath -ChildPath "nuget.exe"
+
+    if (-not (Test-Path $nugetPath)) {
+        return Setup-NuGet -nugetPath $nugetPath -installPath $installPath
+    }
+
+    return $true
+}
+
+function Setup-NuGet {
+    param([string]$nugetPath, [string]$installPath)
+    try {
+        if (-not (Test-Path $installPath)) { 
+            New-Item -ItemType Directory -Path $installPath | Out-Null
+        }
+
+        $repoConfiguration = Get-RepositoryConfiguration
+        $nugetUrl = $repoConfiguration.Requirements.Nuget.Url
+        Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath
+
+        Add-ToSystemPath -installPath $installPath
+        
+        Write-Host "Installation and configuration completed successfully!"
+        return $true
+    } catch {
+        Write-Host "Setup-NuGet encountered an error: $_"
+        return $false    
+    }
+}
+
+function Add-ToSystemPath {
+    param([string]$installPath)
+    $path = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
+
+    if ($path -notlike "*$installPath*") {
+        $newPath = "$path;$installPath"
+        [Environment]::SetEnvironmentVariable("Path", $newPath, [EnvironmentVariableTarget]::User)
+        # Update the current session's PATH environment variable
+        $env:Path += ";$installPath"
+        Write-Host "Path added to user PATH: $installPath"
+    } else {
+        Write-Host "Path already exists in user PATH: $installPath"
+    }
 }
 
 function Get-RepositoryConfiguration () {
@@ -42,7 +88,7 @@ function Get-RepositoryConfiguration () {
     $configuration = Get-Content $repoConfigFile | ConvertFrom-Json
     $repositoryToolPath = Get-RepositoryToolPath
     $paths = New-Object -TypeName PSCustomObject -Property @{
-        Root = $repositoryRootPath
+        Root  = $repositoryRootPath
         Tools = $repositoryToolPath
     }
     $configuration | Add-Member -MemberType NoteProperty -Name 'Paths' -Value $paths
@@ -57,15 +103,15 @@ function Find-CMake () {
 
     $CMakeProgramCandidates = @(
         'cmake'
-        if($IsWindows){
+        if ($IsWindows) {
             Join-Path -Path $env:ProgramFiles -ChildPath 'CMake\bin\cmake.exe'
         }
     )
 
     foreach ($CMakeProgram in $CMakeProgramCandidates) {
         $Command = Get-Command $CMakeProgram -ErrorAction SilentlyContinue
-        if($Command) {
-            if($IsWindows -and (CompareVersion $Command.Version $CMakeMinimumVersion )){
+        if ($Command) {
+            if ($IsWindows -and (CompareVersion $Command.Version $CMakeMinimumVersion )) {
                 return $Command.Source
             }
 
@@ -90,7 +136,7 @@ function Find-GLSLC () {
 
     $GLSLCCandidates = @(
         'glslc'
-        if($IsWindows) {
+        if ($IsWindows) {
             Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslc.exe" # On Windows, the pipeline build might pick up this option...
             Join-Path -Path $env:VULKAN_SDK -ChildPath "\bin\glslc.exe"
         }
@@ -120,7 +166,7 @@ function Find-GlslangValidator () {
 
     $GlslangValidatorCandidates = @(
         'glslangValidator'
-        if($IsWindows) {
+        if ($IsWindows) {
             Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslangValidator.exe" # On Windows, the pipeline build might pick up this option...
             Join-Path -Path $env:VULKAN_SDK -ChildPath "\bin\glslangValidator.exe"
         }
@@ -147,7 +193,7 @@ function Setup-ShaderCCompilerTool () {
     $repoConfiguration = Get-RepositoryConfiguration
     $repositoryToolPath = $repoConfiguration.Paths.Tools
 
-    $shaderCToolPath =  Join-Path $repositoryToolPath -ChildPath "ShaderCCompiler"
+    $shaderCToolPath = Join-Path $repositoryToolPath -ChildPath "ShaderCCompiler"
     
     if (-not (Test-Path $shaderCToolPath)) {
         Write-Host "Downloading Shader Compiler Tools..."

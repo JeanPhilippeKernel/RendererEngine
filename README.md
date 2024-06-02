@@ -21,7 +21,6 @@ Before building, make sure your setup is correct :
 - Install Visual Studio 2022 Community or Professional, make sure to add "Desktop development with C++".
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
 - Install [Vulkan SDK](https://sdk.lunarg.com/sdk/download/1.3.250.1/windows/VulkanSDK-1.3.250.1-Installer.exe) (uncheck the GLM headers component when installing)
-- Download [nuget.exe CLI](https://docs.microsoft.com/en-us/nuget/install-nuget-client-tools#nugetexe-cli) and add it to PATH environment variable in Windows
 
 ## Building 
 
