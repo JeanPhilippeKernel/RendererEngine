@@ -58,6 +58,16 @@ namespace ZEngine::Rendering::Scenes
     }
 
     void GraphicScene::Deinitialize() {}
+    void GraphicScene::SetRootNodeName(std::string_view name)
+    {
+        {
+            std::lock_guard l(s_scene_node_mutex);
+            if (s_raw_data && (!s_raw_data->Names.empty()))
+            {
+                s_raw_data->Names[0] = name;
+            }
+        }
+    }
 
     void GraphicScene::Merge(std::span<SceneRawData> scenes)
     {

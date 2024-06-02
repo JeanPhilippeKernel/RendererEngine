@@ -541,6 +541,7 @@ namespace Tetragrama::Components
         if (!scene_data.empty())
         {
             ZEngine::Rendering::Scenes::GraphicScene::Merge(scene_data);
+            ZEngine::Rendering::Scenes::GraphicScene::SetRootNodeName(scene.GetName());
         }
 
         Editor::SetCurrentEditorScene(std::move(scene));

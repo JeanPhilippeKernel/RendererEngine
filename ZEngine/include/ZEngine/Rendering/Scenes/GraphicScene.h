@@ -71,6 +71,7 @@ namespace ZEngine::Rendering::Scenes
 
         static void                         Initialize();
         static void                         Deinitialize();
+        static void                         SetRootNodeName(std::string_view);
         static void                         Merge(std::span<SceneRawData> scenes);
         static Entities::GraphicSceneEntity GetPrimariyCameraEntity();
         /*
