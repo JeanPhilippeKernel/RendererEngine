@@ -71,6 +71,7 @@ namespace ZEngine::Rendering::Scenes
 
         static void                         Initialize();
         static void                         Deinitialize();
+        static void                         Merge(std::span<SceneRawData> scenes);
         static Entities::GraphicSceneEntity GetPrimariyCameraEntity();
         /*
          * SceneEntity operations
@@ -111,5 +112,25 @@ namespace ZEngine::Rendering::Scenes
         static Ref<SceneRawData>    s_raw_data;
         static std::recursive_mutex s_scene_node_mutex;
         friend class ZEngine::Serializers::GraphicScene3DSerializer;
+
+    private:
+        static void MergeScenes(std::span<SceneRawData> scenes);
+        static void MergeMeshData(std::span<SceneRawData> scenes);
+        static void MergeMaterials(std::span<SceneRawData> scenes);
+
+        template <typename T, typename V>
+        static void MergeMap(const std::unordered_map<T, V>& src, std::unordered_map<T, V>& dst, int index_off, int item_off)
+        {
+            for (const auto& i : src)
+            {
+                dst[i.first + index_off] = i.second + item_off;
+            }
+        }
+
+        template<typename T>
+        static void MergeVector(std::span<T> src, std::vector<T>& dst)
+        {
+            dst.insert(std::end(dst), std::cbegin(src), std::cend(src));
+        }
     };
 } // namespace ZEngine::Rendering::Scenes

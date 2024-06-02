@@ -16,7 +16,7 @@ void main()
     uint verIdx = IndexBuffer.Data[refIdx] + dd.VertexOffset;
     DrawVertex v = VertexBuffer.Data[verIdx];
 
-	mat4 model = TransformBuffer.Data[gl_BaseInstance];
+	mat4 model = TransformBuffer.Data[dd.TransformIndex];
 	worldPos   = model * vec4(v.x, v.y, v.z, 1.0);
 	worldNormal = transpose(inverse(mat3(model))) * vec3(v.nx, v.ny, v.nz);
 

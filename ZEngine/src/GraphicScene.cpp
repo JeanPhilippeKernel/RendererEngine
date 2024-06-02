@@ -47,10 +47,191 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::Initialize()
     {
+        std::string_view root_node = "Root";
+        s_raw_data->NodeNames[0]   = 0;
+        s_raw_data->Names.emplace_back(root_node);
+        s_raw_data->GlobalTransformCollection.emplace_back(1.0f);
+        s_raw_data->LocalTransformCollection.emplace_back(1.0f);
+        s_raw_data->NodeHierarchyCollection.push_back({.Parent = -1, .FirstChild = -1, .DepthLevel = 0});
+
         s_raw_data->EntityRegistry = std::make_shared<entt::registry>();
     }
 
     void GraphicScene::Deinitialize() {}
+
+    void GraphicScene::Merge(std::span<SceneRawData> scenes)
+    {
+        {
+            std::lock_guard l(s_scene_node_mutex);
+
+            if (!scenes.empty())
+            {
+                s_raw_data->NodeHierarchyCollection[0].FirstChild = 1;
+            }
+
+            MergeScenes(scenes);
+            MergeMeshData(scenes);
+            MergeMaterials(scenes);
+
+
+            for (std::string_view file : s_raw_data->Files)
+            {
+                auto index = Renderers::GraphicRenderer::GlobalTextures->Add(Textures::Texture2D::Read(file));
+                s_raw_data->TextureCollection.emplace(index);
+            }
+        }
+    }
+
+    void GraphicScene::MergeScenes(std::span<SceneRawData> scenes)
+    {
+        auto& hierarchy        = s_raw_data->NodeHierarchyCollection;
+        auto& global_transform = s_raw_data->GlobalTransformCollection;
+        auto& local_transform  = s_raw_data->LocalTransformCollection;
+        auto& names            = s_raw_data->Names;
+        auto& materialNames    = s_raw_data->MaterialNames;
+
+        int offs            = 1;
+        int mesh_offset     = 0;
+        int material_offset = 0;
+        int name_offset     = (int) names.size();
+
+        for (auto& scene : scenes)
+        {
+            MergeVector(std::span{scene.NodeHierarchyCollection}, hierarchy);
+            MergeVector(std::span{scene.LocalTransformCollection}, local_transform);
+            MergeVector(std::span{scene.GlobalTransformCollection}, global_transform);
+
+            MergeVector(std::span{scene.Names}, names);
+            MergeVector(std::span{scene.MaterialNames}, materialNames);
+
+            int node_count = scene.NodeHierarchyCollection.size();
+
+            // Shifting node index
+            for (int i = 0; i < node_count; ++i)
+            {
+                auto& h = hierarchy[i + offs];
+                if (h.Parent > -1)
+                {
+                    h.Parent += offs;
+                }
+                if (h.FirstChild > -1)
+                {
+                    h.FirstChild += offs;
+                }
+                if (h.RightSibling > -1)
+                {
+                    h.RightSibling += offs;
+                }
+            }
+
+            MergeMap(scene.NodeMeshes, s_raw_data->NodeMeshes, offs, mesh_offset);
+            MergeMap(scene.NodeNames, s_raw_data->NodeNames, offs, name_offset);
+            MergeMap(scene.NodeMaterials, s_raw_data->NodeMaterials, offs, material_offset);
+
+            offs += node_count;
+
+            material_offset += scene.MaterialNames.size();
+            name_offset += scene.Names.size();
+            mesh_offset += scene.Meshes.size();
+        }
+
+        offs    = 1;
+        int idx = 0;
+        for (auto& scene : scenes)
+        {
+            int  nodeCount = (int) scene.NodeHierarchyCollection.size();
+            bool isLast    = (idx == scenes.size() - 1);
+            // calculate new next sibling for the old scene roots
+            int next                     = isLast ? -1 : offs + nodeCount;
+            hierarchy[offs].RightSibling = next;
+            // attach to new root
+            hierarchy[offs].Parent = 0;
+
+            offs += nodeCount;
+            idx++;
+        }
+
+        for (int i = 1; i < hierarchy.size(); ++i)
+        {
+            hierarchy[i].DepthLevel++;
+        }
+    }
+
+    void GraphicScene::MergeMeshData(std::span<SceneRawData> scenes)
+    {
+        uint32_t totalVertexDataSize = 0;
+        uint32_t totalIndexDataSize  = 0;
+
+        uint32_t offs = 0;
+
+        auto& vertices = s_raw_data->Vertices;
+        auto& indices  = s_raw_data->Indices;
+        auto& meshes   = s_raw_data->Meshes;
+
+        for (auto& scene : scenes)
+        {
+            MergeVector(std::span{scene.Vertices}, vertices);
+            MergeVector(std::span{scene.Indices}, indices);
+            MergeVector(std::span{scene.Meshes}, meshes);
+
+            uint32_t vtxOffset = totalVertexDataSize / 8; /* 8 is the number of per-vertex attributes: position, normal + UV */
+
+            for (size_t j = 0; j < (uint32_t) scene.Meshes.size(); j++)
+            {
+                // m.vertexCount, m.lodCount and m.streamCount do not change
+                // m.vertexOffset also does not change, because vertex offsets are local (i.e., baked into the indices)
+                meshes[offs + j].IndexOffset += totalIndexDataSize;
+            }
+
+            // shift individual indices
+            for (size_t j = 0; j < scene.Indices.size(); j++)
+            {
+                indices[totalIndexDataSize + j] += vtxOffset;
+            }
+
+            offs += (uint32_t) scene.Meshes.size();
+
+            totalIndexDataSize += (uint32_t) scene.Indices.size();
+            totalVertexDataSize += (uint32_t) scene.Vertices.size();
+        }
+    }
+
+    void GraphicScene::MergeMaterials(std::span<SceneRawData> scenes)
+    {
+        auto& materials = s_raw_data->Materials;
+        auto& files     = s_raw_data->Files;
+        for (auto& scene : scenes)
+        {
+            for (auto& m : scene.Materials)
+            {
+                if (m.AlbedoTextureMap != 0xFFFFFFFF)
+                {
+                    auto& f = scene.Files[m.AlbedoTextureMap];
+                    files.push_back(f);
+                    m.AlbedoTextureMap = (files.size() - 1);
+                }
+                else if (m.EmissiveTextureMap != 0xFFFFFFFF)
+                {
+                    auto& f = scene.Files[m.EmissiveTextureMap];
+                    files.push_back(f);
+                    m.EmissiveTextureMap = (files.size() - 1);
+                }
+                else if (m.NormalTextureMap != 0xFFFFFFFF)
+                {
+                    auto& f = scene.Files[m.NormalTextureMap];
+                    files.push_back(f);
+                    m.NormalTextureMap = (files.size() - 1);
+                }
+                else if (m.OpacityTextureMap != 0xFFFFFFFF)
+                {
+                    auto& f = scene.Files[m.OpacityTextureMap];
+                    files.push_back(f);
+                    m.OpacityTextureMap = (files.size() - 1);
+                }
+            }
+            MergeVector(std::span{scene.Materials}, materials);
+        }
+    }
 
     std::future<GraphicSceneEntity> GraphicScene::CreateEntityAsync(std::string_view entity_name)
     {

@@ -540,11 +540,7 @@ namespace Tetragrama::Components
 
         if (!scene_data.empty())
         {
-            // Todo : Merge all models into single : Issue #324
-            // For testing purpose , we take the [0]
-            auto raw_data_ptr = ZEngine::CreateRef<ZEngine::Rendering::Scenes::SceneRawData>();
-            *raw_data_ptr     = scene_data.at(0);
-            ZEngine::Rendering::Scenes::GraphicScene::SetRawData(std::move(raw_data_ptr));
+            ZEngine::Rendering::Scenes::GraphicScene::Merge(scene_data);
         }
 
         Editor::SetCurrentEditorScene(std::move(scene));

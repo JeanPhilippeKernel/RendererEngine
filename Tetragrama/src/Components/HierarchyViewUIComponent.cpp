@@ -157,14 +157,15 @@ namespace Tetragrama::Components
         auto        flags                  = (node_hierarchy.FirstChild < 0) ? (ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | m_node_flag) : m_node_flag;
         flags |= (m_selected_node_identifier == node_identifier) ? ImGuiTreeNodeFlags_Selected : 0;
         auto label          = (!node_name.empty()) ? std::string(node_name) : fmt::format("Node_{0}", node_identifier);
+        bool is_node_opened = ImGui::TreeNodeEx(node_identifier_string.c_str(), flags, "%s", label.c_str());
 
-        if (ImGui::TreeNodeEx(node_identifier_string.c_str(), flags, "%s", label.c_str()))
+        if (ImGui::IsItemClicked())
         {
-            if (ImGui::IsItemClicked())
-            {
-                m_selected_node_identifier = node_identifier;
-            }
+            m_selected_node_identifier = node_identifier;
+        }
 
+        if (is_node_opened)
+        {
             /*
              * Popup features
              */

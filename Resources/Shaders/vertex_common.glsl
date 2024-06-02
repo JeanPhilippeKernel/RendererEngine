@@ -42,5 +42,6 @@ DrawVertex FetchVertexData()
 
 mat4 FetchTransform()
 {
-    return TransformBuffer.Data[gl_BaseInstance];
+    DrawData dd = DrawDataBuffer.Data[gl_BaseInstance];
+    return TransformBuffer.Data[dd.TransformIndex];
 }
