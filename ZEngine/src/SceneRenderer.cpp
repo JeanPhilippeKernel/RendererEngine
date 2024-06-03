@@ -11,7 +11,6 @@
         body m_write_once_control[frame_index] = true; \
     }
 
-
 using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
@@ -117,17 +116,10 @@ namespace ZEngine::Rendering::Renderers
         auto material_buffer  = graph->GetBufferSet("g_scene_material_buffer");
         auto indirect_buffer  = graph->GetIndirectBufferSet("g_scene_indirect_buffer");
 
-        const auto& sceneNodeMeshMap = scene_data->SceneNodeMeshMap;
         /*
          * Composing Transform Data
          */
-        std::vector<glm::mat4> tranform_collection = {};
-        for (const auto& sceneNodeMeshPair : sceneNodeMeshMap)
-        {
-            tranform_collection.push_back(scene_data->GlobalTransformCollection[sceneNodeMeshPair.first]);
-        }
-
-        transform_buffer->SetData<glm::mat4>(frame_index, tranform_collection);
+        transform_buffer->SetData<glm::mat4>(frame_index, scene_data->GlobalTransformCollection);
 
         /*
          * Scene Draw data
@@ -140,28 +132,19 @@ namespace ZEngine::Rendering::Renderers
 
         if (perform_draw_update)
         {
-            std::vector<DrawData>             draw_data_collection = {};
-            std::vector<Meshes::MeshMaterial> material_collection  = {};
-
-            uint32_t data_index = 0;
-            for (const auto& sceneNodeMeshPair : sceneNodeMeshMap)
+            std::vector<DrawData> draw_data_collection = {};
+            for (auto& [node, mesh] : scene_data->NodeMeshes)
             {
                 /*
                  * Composing DrawData
                  */
-                DrawData& draw_data      = draw_data_collection.emplace_back(DrawData{.Index = data_index});
-                draw_data.TransformIndex = data_index;
-                draw_data.VertexOffset   = sceneNodeMeshPair.second.VertexOffset;
-                draw_data.IndexOffset    = sceneNodeMeshPair.second.IndexOffset;
-                draw_data.VertexCount    = sceneNodeMeshPair.second.VertexCount;
-                draw_data.IndexCount     = sceneNodeMeshPair.second.IndexCount;
-                /*
-                 * Material data
-                 */
-                material_collection.push_back(scene_data->SceneNodeMaterialMap[sceneNodeMeshPair.first]);
-                draw_data.MaterialIndex = data_index;
-
-                data_index++;
+                DrawData& draw_data      = draw_data_collection.emplace_back();
+                draw_data.TransformIndex = node;
+                draw_data.MaterialIndex  = scene_data->NodeMaterials[node];
+                draw_data.VertexOffset   = scene_data->Meshes[mesh].VertexOffset;
+                draw_data.IndexOffset    = scene_data->Meshes[mesh].IndexOffset;
+                draw_data.VertexCount    = scene_data->Meshes[mesh].VertexCount;
+                draw_data.IndexCount     = scene_data->Meshes[mesh].IndexCount;
             }
             /*
              * Uploading Geometry data
@@ -175,7 +158,7 @@ namespace ZEngine::Rendering::Renderers
             /*
              * Uploading Material data
              */
-            material_buffer->SetData<Meshes::MeshMaterial>(frame_index, material_collection);
+            material_buffer->SetData<Meshes::MeshMaterial>(frame_index, scene_data->Materials);
             /*
              * Uploading Indirect Commands
              */

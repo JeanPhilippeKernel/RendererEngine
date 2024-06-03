@@ -91,6 +91,10 @@ namespace Tetragrama::Importers
         static void SerializeImporterData(ImporterData& data, const ImportConfiguration&);
         static void SerializeMapData(std::ostream&, const std::unordered_map<uint32_t, uint32_t>&);
         static void SerializeStringArrayData(std::ostream&, std::span<std::string>);
+
+        static ImporterData DeserializeImporterData(std::string_view model_path, std::string_view mesh_path, std::string_view material_path);
+        static void         DeserializeMapData(std::istream&, std::unordered_map<uint32_t, uint32_t>&);
+        static void         DeserializeStringArrayData(std::istream&, std::vector<std::string>&);
     };
 
 } // namespace Tetragrama::Importers

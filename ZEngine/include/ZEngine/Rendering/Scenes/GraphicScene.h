@@ -17,8 +17,6 @@ namespace ZEngine::Serializers
     class GraphicScene3DSerializer;
 }
 
-typedef std::future<void> (*ReadCallback)(bool success, const void* scene, std::string_view parent_path);
-
 namespace ZEngine::Rendering::Scenes
 {
     struct SceneNodeHierarchy
@@ -41,19 +39,15 @@ namespace ZEngine::Rendering::Scenes
      */
     struct SceneRawData : public Helpers::RefCounted
     {
-        uint32_t                                 SVertexOffset{0};
-        uint32_t                                 SIndexOffset{0};
-        std::vector<SceneNodeHierarchy>          NodeHierarchyCollection;
-        std::vector<glm::mat4>                   LocalTransformCollection;
-        std::vector<glm::mat4>                   GlobalTransformCollection;
-        std::map<uint32_t, entt::entity>         SceneNodeEntityMap;
-        std::map<uint32_t, Meshes::MeshVNext>    SceneNodeMeshMap;
-        std::map<uint32_t, std::string>          SceneNodeNameMap;         // Todo : obsolete__delete
-        std::map<uint32_t, Meshes::MeshMaterial> SceneNodeMaterialMap;     // Todo : obsolete__delete
-        std::map<uint32_t, std::string>          SceneNodeMaterialNameMap; // Todo : obsolete__delete
-        std::map<uint32_t, std::set<uint32_t>>   LevelSceneNodeChangedMap;
-        std::set<int>                            TextureCollection;
-        std::shared_ptr<entt::registry>          EntityRegistry;
+        uint32_t                               SVertexOffset{0};
+        uint32_t                               SIndexOffset{0};
+        std::vector<SceneNodeHierarchy>        NodeHierarchyCollection;
+        std::vector<glm::mat4>                 LocalTransformCollection;
+        std::vector<glm::mat4>                 GlobalTransformCollection;
+        std::map<uint32_t, entt::entity>       SceneNodeEntityMap;
+        std::map<uint32_t, std::set<uint32_t>> LevelSceneNodeChangedMap;
+        std::set<int>                          TextureCollection;
+        std::shared_ptr<entt::registry>        EntityRegistry;
         /*
          * New Properties
          */
@@ -77,6 +71,8 @@ namespace ZEngine::Rendering::Scenes
 
         static void                         Initialize();
         static void                         Deinitialize();
+        static void                         SetRootNodeName(std::string_view);
+        static void                         Merge(std::span<SceneRawData> scenes);
         static Entities::GraphicSceneEntity GetPrimariyCameraEntity();
         /*
          * SceneEntity operations
@@ -90,51 +86,52 @@ namespace ZEngine::Rendering::Scenes
         /*
          * SceneNode operations
          */
-        static std::future<int32_t>           AddNodeAsync(int parent_node, int depth_level);
-        static std::future<bool>              RemoveNodeAsync(int32_t node_identifier);
-        static int32_t                        GetSceneNodeParent(int32_t node_identifier);
-        static int32_t                        GetSceneNodeFirstChild(int32_t node_identifier);
-        static std::vector<int32_t>           GetSceneNodeSiblingCollection(int32_t node_identifier);
-        static std::string_view               GetSceneNodeName(int32_t node_identifier);
-        static glm::mat4&                     GetSceneNodeLocalTransform(int32_t node_identifier);
-        static glm::mat4&                     GetSceneNodeGlobalTransform(int32_t node_identifier);
-        static const SceneNodeHierarchy&      GetSceneNodeHierarchy(int32_t node_identifier);
-        static Entities::GraphicSceneEntity   GetSceneNodeEntityWrapper(int32_t node_identifier);
-        static std::future<void>              SetSceneNodeNameAsync(int32_t node_identifier, std::string_view node_name);
-        static std::future<Meshes::MeshVNext> GetSceneNodeMeshAsync(int32_t node_identifier);
-        static void                           MarkSceneNodeAsChanged(int32_t node_identifier);
+        static std::future<int>               AddNodeAsync(int parent_node, int depth_level);
+        static std::future<bool>              RemoveNodeAsync(int node_identifier);
+        static int                            GetSceneNodeParent(int node_identifier);
+        static int                            GetSceneNodeFirstChild(int node_identifier);
+        static std::vector<int>               GetSceneNodeSiblingCollection(int node_identifier);
+        static std::string_view               GetSceneNodeName(int node_identifier);
+        static glm::mat4&                     GetSceneNodeLocalTransform(int node_identifier);
+        static glm::mat4&                     GetSceneNodeGlobalTransform(int node_identifier);
+        static const SceneNodeHierarchy&      GetSceneNodeHierarchy(int node_identifier);
+        static Entities::GraphicSceneEntity   GetSceneNodeEntityWrapper(int node_identifier);
+        static std::future<void>              SetSceneNodeNameAsync(int node_identifier, std::string_view node_name);
+        static std::future<Meshes::MeshVNext> GetSceneNodeMeshAsync(int node_identifier);
+        static void                           MarkSceneNodeAsChanged(int node_identifier);
         /*
          * Scene Graph operations
          */
-        static bool                 HasSceneNodes();
-        static uint32_t             GetSceneNodeCount() = delete;
-        static std::vector<int32_t> GetRootSceneNodes();
-        static std::future<void>    ImportAssetAsync(std::string_view asset_filename);
-        static std::future<bool>    LoadSceneFilenameAsync(std::string_view scene_file) = delete;
-        static Ref<SceneRawData>    GetRawData();
-        static void                 ComputeAllTransforms();
-        /*
-         * Material textures operations
-         */
-        static int32_t AddTexture(std::string_view filename);
-        static void    PostProcessMaterials();
+        static bool              HasSceneNodes();
+        static uint32_t          GetSceneNodeCount() = delete;
+        static std::vector<int>  GetRootSceneNodes();
+        static Ref<SceneRawData> GetRawData();
+        static void              SetRawData(Ref<SceneRawData>&& data);
+        static void              ComputeAllTransforms();
 
     private:
-        static Ref<SceneRawData>        s_raw_data;
-        static std::vector<std::string> s_texture_file_collection;
-        static std::recursive_mutex     s_scene_node_mutex;
-        static std::future<bool>        __TraverseAssetNodeAsync(
-                   const aiScene*   assimp_scene,
-                   aiNode*          node,
-                   int              parent_node,
-                   int              depth_level,
-                   std::string_view material_texture_parent_path);
-        static std::future<Meshes::MeshVNext>    __ReadSceneNodeMeshDataAsync(const aiScene* assimp_scene, uint32_t mesh_identifier);
-        static std::future<Meshes::MeshMaterial> __ReadSceneNodeMeshMaterialDataAsync(
-            const aiScene*   assimp_scene,
-            uint32_t         material_identifier,
-            std::string_view material_texture_parent_path);
-        static void __ReadAssetFileAsync(std::string_view filename, ReadCallback callback);
+        static Ref<SceneRawData>    s_raw_data;
+        static std::recursive_mutex s_scene_node_mutex;
         friend class ZEngine::Serializers::GraphicScene3DSerializer;
+
+    private:
+        static void MergeScenes(std::span<SceneRawData> scenes);
+        static void MergeMeshData(std::span<SceneRawData> scenes);
+        static void MergeMaterials(std::span<SceneRawData> scenes);
+
+        template <typename T, typename V>
+        static void MergeMap(const std::unordered_map<T, V>& src, std::unordered_map<T, V>& dst, int index_off, int item_off)
+        {
+            for (const auto& i : src)
+            {
+                dst[i.first + index_off] = i.second + item_off;
+            }
+        }
+
+        template<typename T>
+        static void MergeVector(std::span<T> src, std::vector<T>& dst)
+        {
+            dst.insert(std::end(dst), std::cbegin(src), std::cend(src));
+        }
     };
 } // namespace ZEngine::Rendering::Scenes

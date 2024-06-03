@@ -1,9 +1,9 @@
 #pragma once
 #include <string>
+#include <mutex>
 #include <ZEngine/ZEngine.h>
 #include <Message.h>
 #include <EditorCameraController.h>
-#include <mutex>
 
 namespace Tetragrama::Components {
     class HierarchyViewUIComponent : public ZEngine::Components::UI::UIComponent
@@ -15,12 +15,14 @@ namespace Tetragrama::Components {
         void         Update(ZEngine::Core::TimeStep dt) override;
         virtual void Render() override;
 
+        void RenderTreeNodes();
+        void RenderGuizmo();
+
     public:
         std::future<void> EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<EditorCameraController>>&);
 
     protected:
         void         RenderSceneNodeTree(int32_t node_identifier);
-        void         RenderSceneNodeTrees(const std::vector<int32_t>& node_identifie_collection);
 
     private:
         ImGuiTreeNodeFlags                       m_node_flag;

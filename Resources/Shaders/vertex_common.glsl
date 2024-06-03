@@ -7,7 +7,6 @@ struct DrawVertex
 
 struct DrawData
 {
-	uint Index;
     uint TransformIndex;
     uint MaterialIndex;
     uint VertexOffset;
@@ -43,5 +42,6 @@ DrawVertex FetchVertexData()
 
 mat4 FetchTransform()
 {
-    return TransformBuffer.Data[gl_BaseInstance];
+    DrawData dd = DrawDataBuffer.Data[gl_BaseInstance];
+    return TransformBuffer.Data[dd.TransformIndex];
 }
