@@ -70,11 +70,7 @@ namespace ZEngine::Rendering::Cameras
         speed          = std::min(speed, 100.0f);
 
         m_distance -= delta * speed;
-        if (m_distance < 1.0f)
-        {
-            Target += GetForward();
-            m_distance = 1.0f;
-        }
+        m_distance = glm::clamp(static_cast<float>(m_distance), 3.0f, 100.0f);
     }
 
     void PerspectiveCamera::SetDistance(double distance)
@@ -96,7 +92,6 @@ namespace ZEngine::Rendering::Cameras
     void PerspectiveCamera::SetViewport(float width, float height)
     {
         AspectRatio            = width / height;
-        Projection             = glm::perspective(Fov, AspectRatio, ClipNear, ClipFar);
         m_viewport_width       = width;
         m_viewport_height      = height;
     }
@@ -112,7 +107,26 @@ namespace ZEngine::Rendering::Cameras
 
     glm::mat4 PerspectiveCamera::GetPerspectiveMatrix() const
     {
-        return glm::perspective(Fov, AspectRatio, ClipNear, ClipFar);
+        /*
+        * Ref : https://johannesugb.github.io/gpu-programming/why-do-opengl-proj-matrices-fail-in-vulkan/
+        * Unlike the article, for our implementation we decided to use have the y-axis Up.
+        * For future Gfx API we may want to revisit/adapt it.
+        */
+        glm::mat4 I = glm::identity<glm::mat4>();
+        I[2][2]     = -1;
+
+        float inv_a          = m_viewport_height / m_viewport_width;
+        float tan_half_fov   = glm::tan(Fov / 2);
+        float far_minus_near = ClipFar - ClipNear;
+
+        glm::mat4 P(0);
+        P[0][0] = (inv_a / tan_half_fov);
+        P[1][1] = (1.0f / tan_half_fov);
+        P[2][2] = (ClipFar / far_minus_near);
+        P[2][3] = 1;
+        P[3][2] = (-(ClipFar * ClipNear) / far_minus_near);
+
+        return P * I;
     }
 
     glm::vec3 PerspectiveCamera::GetPosition() const

@@ -109,7 +109,8 @@ namespace ZEngine::Rendering::Renderers
 
     VkDescriptorSet GraphicRenderer::GetImguiFrameOutput()
     {
-        auto& frame_color_res = s_render_graph->GetResource("gbuffer_colour");
+        auto& frame_color_res = s_render_graph->GetResource("Depth");
+        //auto& frame_color_res = s_render_graph->GetResource("gbuffer_colour");
         return s_imgui_renderer->UpdateFrameOutput(frame_color_res.ResourceInfo.TextureHandle->GetBuffer());
     }
 

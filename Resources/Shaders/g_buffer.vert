@@ -11,16 +11,15 @@ layout (location = 4) out vec4 ViewPosition;
 
 void main()
 {
-    DrawVertex v = FetchVertexData();
-    mat4 model = FetchTransform();
+    DrawDataView dataView = GetDrawDataView();
 
-    vec4 worldPosition = model * vec4(v.x, v.y, v.z, 1.0);
-    FragmentPosition = worldPosition.xyz;
+    vec4 worldPosition  = dataView.Transform * dataView.Vertex;
+    FragmentPosition    = worldPosition.xyz;
 
-    WorldNormal = transpose(inverse(mat3(model))) * vec3(v.nx, v.ny, v.nz);
-    TextureCoord = vec2(v.u, v.v);
-    MaterialIdx = DrawDataBuffer.Data[gl_BaseInstance].MaterialIndex;
-    ViewPosition = Camera.Position;
+    WorldNormal     = transpose(inverse(mat3(dataView.Transform))) * dataView.Normal;
+    TextureCoord    = dataView.TexCoord;
+    MaterialIdx     = dataView.MaterialId;
+    ViewPosition    = Camera.Position;
 
     gl_Position = Camera.Projection * Camera.View * worldPosition;
 }

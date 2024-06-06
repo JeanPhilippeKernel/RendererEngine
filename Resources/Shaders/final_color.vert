@@ -10,18 +10,12 @@ layout(location = 4) out vec4 CameraPosition;
 
 void main()
 {
-	DrawData dd = DrawDataBuffer.Data[gl_BaseInstance];
+    DrawDataView dataView   = GetDrawDataView();
+	worldPos                = dataView.Transform * dataView.Vertex;
+	worldNormal             = transpose(inverse(mat3(dataView.Transform))) * dataView.Normal;
 
-    uint refIdx = dd.IndexOffset + gl_VertexIndex;
-    uint verIdx = IndexBuffer.Data[refIdx] + dd.VertexOffset;
-    DrawVertex v = VertexBuffer.Data[verIdx];
-
-	mat4 model = TransformBuffer.Data[dd.TransformIndex];
-	worldPos   = model * vec4(v.x, v.y, v.z, 1.0);
-	worldNormal = transpose(inverse(mat3(model))) * vec3(v.nx, v.ny, v.nz);
-
-	gl_Position = Camera.Projection * Camera.View * worldPos;
-    uvw = vec3(v.u, v.v, 1.0);
-    materialIdx = dd.MaterialIndex;
-    CameraPosition = Camera.Position;
+	gl_Position     = Camera.Projection * Camera.View * worldPos;
+    uvw             = vec3(dataView.TexCoord, 1.0);
+    materialIdx     = dataView.MaterialId;
+    CameraPosition  = Camera.Position;
 }

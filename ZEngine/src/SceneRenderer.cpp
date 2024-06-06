@@ -5,10 +5,10 @@
 #include <Rendering/Textures/Texture2D.h>
 
 
-#define WRITE_BUFFERS_ONCE(frame_index, body)  \
-    if (!m_write_once_control.contains(frame_index))              \
-    {                                       \
-        body m_write_once_control[frame_index] = true; \
+#define WRITE_BUFFERS_ONCE(frame_index, body)           \
+    if (!m_write_once_control.contains(frame_index))    \
+    {                                                   \
+        body m_write_once_control[frame_index] = true;  \
     }
 
 using namespace ZEngine::Rendering::Specifications;
@@ -38,7 +38,7 @@ namespace ZEngine::Rendering::Renderers
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
 
         m_scene_depth_prepass = CreateRef<SceneDepthPrePass>();
-        m_skybox_pass        = CreateRef<SkyboxPass>();
+        m_skybox_pass         = CreateRef<SkyboxPass>();
         m_grid_pass           = CreateRef<GridPass>();
         m_gbuffer_pass        = CreateRef<GbufferPass>();
 
@@ -231,7 +231,7 @@ namespace ZEngine::Rendering::Renderers
         Buffers::CommandBuffer*                command_buffer,
         RenderGraph* const                     graph)
     {
-        WRITE_BUFFERS_ONCE(frame_index , {
+        WRITE_BUFFERS_ONCE(frame_index, {
             m_vertex_buffer->SetData<float>(frame_index, m_vertex_data);
             m_index_buffer->SetData<uint32_t>(frame_index, m_index_data);
             m_draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
