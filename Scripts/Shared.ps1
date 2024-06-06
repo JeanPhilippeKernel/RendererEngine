@@ -64,7 +64,8 @@ function Find-Nuget () {
 
 function Setup-NuGet {
     $installPath = Join-Path -Path (Get-RepositoryToolPath) -ChildPath "NuGet"
-    $nugetPath = Join-Path -Path $installPath -ChildPath "nuget.exe"
+    $nugetProgramName = If($IsWindows) {"nuget.exe"} Else {"nuget"}
+    $nugetPath = Join-Path -Path $installPath -ChildPath $nugetProgramName
 
     if (-not (Test-Path $installPath)) { 
         New-Item -ItemType Directory -Path $installPath | Out-Null
