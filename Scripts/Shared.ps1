@@ -42,8 +42,11 @@ function Find-Nuget () {
     $NugetMinimumVersion = $repoConfiguration.Requirements.Nuget.Version
 
     $NugetProgramCandidates = @(
-        'nuget'
-        if ($IsWindows) { 'nuget.exe' }
+        'nuget' 
+        Join-Path -Path $repoConfiguration.Paths.Tools -ChildPath 'NuGet\nuget'
+        if ($IsWindows) {
+          Join-Path -Path $repoConfiguration.Paths.Tools -ChildPath 'NuGet\nuget.exe'
+        }
     )
 
     foreach ($NugetProgram in $NugetProgramCandidates) {
@@ -60,25 +63,20 @@ function Find-Nuget () {
 }
 
 function Setup-NuGet {
-    $installPath = Join-Path -Path $env:LOCALAPPDATA -ChildPath NuGet
+    $installPath = Join-Path -Path (Get-RepositoryToolPath) -ChildPath "NuGet"
     $nugetPath = Join-Path -Path $installPath -ChildPath "nuget.exe"
-    try {
-        if (-not (Test-Path $installPath)) { 
-            New-Item -ItemType Directory -Path $installPath | Out-Null
-        }
 
-        $repoConfiguration = Get-RepositoryConfiguration
-        $nugetUrl = $repoConfiguration.Requirements.Nuget.Url
-        Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath
-
-        Add-ToSystemPath -installPath $installPath
-        
-        Write-Host "Installation and configuration completed successfully!"
-        return $true
-    } catch {
-        Write-Host "Setup-NuGet encountered an error: $_"
-        return $false    
+    if (-not (Test-Path $installPath)) { 
+        New-Item -ItemType Directory -Path $installPath | Out-Null
     }
+
+    $repoConfiguration = Get-RepositoryConfiguration
+    $nugetUrl = $repoConfiguration.Requirements.Nuget.Url
+    Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath
+
+    Add-ToSystemPath -installPath $installPath
+        
+    Write-Host " Nuget Installation and configuration completed successfully!"
 }
 
 function Add-ToSystemPath {
