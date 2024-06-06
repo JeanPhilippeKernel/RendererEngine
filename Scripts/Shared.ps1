@@ -35,19 +35,42 @@ function Get-RepositoryToolPath () {
 
     return $toolPath
 }
-function Find-NuGet {
-    $installPath = Join-Path -Path $env:USERPROFILE -ChildPath NuGet
-    $nugetPath = Join-Path -Path $installPath -ChildPath "nuget.exe"
 
-    if (-not (Test-Path $nugetPath)) {
-        return Setup-NuGet -nugetPath $nugetPath -installPath $installPath
+function Find-Nuget () {
+
+    $repoConfiguration = Get-RepositoryConfiguration
+    $NugetMinimumVersion = $repoConfiguration.Requirements.Nuget.Version
+
+    $NugetProgramCandidates = @(
+        'nuget'
+        if ($IsWindows) {
+            Join-Path -Path $env:LOCALAPPDATA -ChildPath 'nuget\nuget.exe'
+            Join-Path -Path $env:LOCALAPPDATA -ChildPath 'NuGet\nuget.exe'
+        
+            Join-Path -Path $env:ProgramFiles -ChildPath 'nuget\nuget.exe'
+            Join-Path -Path $env:ProgramFiles -ChildPath 'NuGet\nuget.exe'
+        
+            Join-Path -Path ${env:ProgramFiles(x86)} -ChildPath 'nuget\nuget.exe'
+            Join-Path -Path ${env:ProgramFiles(x86)} -ChildPath 'NuGet\nuget.exe'
+        }
+    )
+
+    foreach ($NugetProgram in $NugetProgramCandidates) {
+        $Command = Get-Command $NugetProgram -ErrorAction SilentlyContinue
+        if ($Command) {
+            if ((& $Command help | Select-String -Pattern "NuGet Version" | Out-String) -match "NuGet Version: ([\d\.]*)") {
+                [Version] $NugetVersion = $Matches[1]
+                if (CompareVersion $NugetVersion $NugetMinimumVersion) {
+                    return $Command.Source
+                }
+            }
+        }
     }
-
-    return $true
 }
 
 function Setup-NuGet {
-    param([string]$nugetPath, [string]$installPath)
+    $installPath = Join-Path -Path $env:LOCALAPPDATA -ChildPath NuGet
+    $nugetPath = Join-Path -Path $installPath -ChildPath "nuget.exe"
     try {
         if (-not (Test-Path $installPath)) { 
             New-Item -ItemType Directory -Path $installPath | Out-Null
