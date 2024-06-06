@@ -53,10 +53,19 @@ else {
 
 $nugetProgram = Find-NuGet
 if ($nugetProgram) {
-    Write-Host "Nuget program found..."
+    Write-Host "NuGet program found at: $nugetProgram"
 }
 else {
-    throw 'Nuget program not found'
+    Write-Warning "NuGet program not found. Attempting to download and install NuGet..."
+    Setup-NuGet
+    
+    $nugetProgram = Find-NuGet
+    if ($nugetProgram) {
+        Write-Host "NuGet installed successfully at: $nugetProgram"
+    }
+    else {
+        throw 'Nuget program not found'
+    }
 }
 
 $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
