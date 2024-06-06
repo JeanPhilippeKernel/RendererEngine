@@ -43,16 +43,7 @@ function Find-Nuget () {
 
     $NugetProgramCandidates = @(
         'nuget'
-        if ($IsWindows) {
-            Join-Path -Path $env:LOCALAPPDATA -ChildPath 'nuget\nuget.exe'
-            Join-Path -Path $env:LOCALAPPDATA -ChildPath 'NuGet\nuget.exe'
-        
-            Join-Path -Path $env:ProgramFiles -ChildPath 'nuget\nuget.exe'
-            Join-Path -Path $env:ProgramFiles -ChildPath 'NuGet\nuget.exe'
-        
-            Join-Path -Path ${env:ProgramFiles(x86)} -ChildPath 'nuget\nuget.exe'
-            Join-Path -Path ${env:ProgramFiles(x86)} -ChildPath 'NuGet\nuget.exe'
-        }
+        if ($IsWindows) { 'nuget.exe' }
     )
 
     foreach ($NugetProgram in $NugetProgramCandidates) {
