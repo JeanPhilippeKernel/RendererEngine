@@ -15,12 +15,14 @@ protected:
  
 TEST_F(ThreadPoolTest, Submit) {
     std::atomic<bool> executed = false;
-    ThreadPoolHelper::Submit([&executed] {
+    std::latch completion_latch(1);
+
+    ThreadPoolHelper::Submit([&executed, &completion_latch] {
         executed = true;
+        completion_latch.count_down();
     });
- 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
- 
+
+    completion_latch.wait(); 
     EXPECT_TRUE(executed);
 }
  
