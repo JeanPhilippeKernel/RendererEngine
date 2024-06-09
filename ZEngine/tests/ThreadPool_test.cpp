@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
+#include <latch>
 #include "Helpers/ThreadPool.h"
-
 using namespace ZEngine::Helpers;
  
 class ThreadPoolTest : public ::testing::Test {
@@ -26,29 +26,35 @@ TEST_F(ThreadPoolTest, Submit) {
  
 TEST_F(ThreadPoolTest, TaskExecution) {
     std::atomic<int> counter = 0;
-    for (int i = 0; i < 5; ++i) {
-        ThreadPoolHelper::Submit([&counter] {
+    const int tasks = 5;
+    std::latch latch(tasks);
+
+    for (int i = 0; i < tasks; ++i) {
+        ThreadPoolHelper::Submit([&counter, &latch] {
             counter++;
+            latch.count_down();
         });
     }
- 
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
- 
-    EXPECT_EQ(counter, 5);
+
+    latch.wait(); 
+
+    EXPECT_EQ(counter, tasks);
 }
  
 TEST_F(ThreadPoolTest, MultipleTasksExecution) {
     std::atomic<int> counter = 0;
     const int numberOfTasks = 10;
- 
+    std::latch latch(numberOfTasks);
+
     for (int i = 0; i < numberOfTasks; ++i) {
-        ThreadPoolHelper::Submit([&counter] {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
+        ThreadPoolHelper::Submit([&counter, &latch] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             ++counter;
+            latch.count_down();
         });
     }
- 
-    std::this_thread::sleep_for(std::chrono::seconds(2));
- 
+
+    latch.wait(); 
+
     EXPECT_EQ(counter, numberOfTasks);
 }
