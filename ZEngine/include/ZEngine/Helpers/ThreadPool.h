@@ -1,7 +1,8 @@
 #pragma once
+#include <Helpers/ThreadSafeQueue.h>
 #include <atomic>
 #include <thread>
-#include <Helpers/ThreadSafeQueue.h>
+
 
 namespace ZEngine::Helpers
 {
@@ -10,7 +11,7 @@ namespace ZEngine::Helpers
     {
     public:
         ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency())
-            : m_maxThreadCount(maxThreadCount), m_taskQueue(std::make_shared<ThreadSafeQueue<std::function<void()>>>())
+            : m_maxThreadCount(maxThreadCount), m_taskQueue(std::make_shared<ThreadSafeQueue<std::function<void()>>>()), m_shouldStop(false)
         {
         }
 
@@ -22,47 +23,51 @@ namespace ZEngine::Helpers
         void Enqueue(std::function<void()>&& f)
         {
             m_taskQueue->Enqueue(std::move(f));
-            std::unique_lock<std::mutex> lock(m_mutex);
-            if (!m_taskQueue->Empty())
+            std::unique_lock<std::mutex> m_lock(m_mutex);
+            if (!m_taskQueue->Empty() && m_currentThreadCount < m_maxThreadCount)
             {
+                m_lock.unlock();
                 StartWorkerThread();
             }
         }
 
         void Shutdown()
         {
-            std::unique_lock<std::mutex> lock(m_mutex);
+            {
+                std::unique_lock<std::mutex> m_lock(m_mutex);
+                m_shouldStop = true;
+            }
             m_taskQueue->Clear();
         }
 
     private:
-        size_t                                                  m_maxThreadCount;
-        size_t                                                  m_currentThreadCount{0};
-        std::mutex                                              m_mutex;
+        size_t m_maxThreadCount;
+        std::atomic<size_t> m_currentThreadCount{0};
+        std::mutex m_mutex;
         std::shared_ptr<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
+        std::atomic<bool> m_shouldStop;
 
-        static void WorkerThread(std::weak_ptr<ThreadSafeQueue<std::function<void()>>> weakQueue)
+        void WorkerThread()
         {
-            while (auto queue = weakQueue.lock())
+            while (!m_shouldStop)
             {
-                queue->Wait();
+                m_taskQueue->Wait();
+                if (m_shouldStop)
+                    break;
 
                 std::function<void()> task;
-                if (!queue->Pop(task))
+                if (m_taskQueue->Pop(task))
                 {
-                    continue;
+                    task();
                 }
-                task();
             }
+            m_currentThreadCount--;
         }
 
         void StartWorkerThread()
         {
-            if (m_currentThreadCount < m_maxThreadCount)
-            {
-                std::thread(ThreadPool::WorkerThread, m_taskQueue).detach();
-                m_currentThreadCount++;
-            }
+            std::thread(&ThreadPool::WorkerThread, this).detach();
+            m_currentThreadCount++;
         }
     };
 
@@ -78,9 +83,9 @@ namespace ZEngine::Helpers
         }
 
     private:
-        ThreadPoolHelper()  = delete;
+        ThreadPoolHelper() = delete;
         ~ThreadPoolHelper() = delete;
 
-        inline static std::unique_ptr<ThreadPool> m_threadPool = std::make_unique<ThreadPool>();;
+        inline static std::unique_ptr<ThreadPool> m_threadPool = std::make_unique<ThreadPool>();
     };
 } // namespace ZEngine::Helpers
