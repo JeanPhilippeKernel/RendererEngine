@@ -77,11 +77,6 @@ namespace ZEngine::Helpers
             }
         }
 
-        static void Shutdown()
-        {
-            m_threadPool->Shutdown();
-        }
-
     private:
         ThreadPoolHelper()  = delete;
         ~ThreadPoolHelper() = delete;
