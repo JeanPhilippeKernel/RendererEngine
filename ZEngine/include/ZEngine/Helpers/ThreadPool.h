@@ -45,12 +45,12 @@ namespace ZEngine::Helpers
         {
             while (auto queue = weakQueue.lock())
             {
-                if (cancellationToken.load() == true)
+                queue->Wait(cancellationToken);
+
+                if (cancellationToken == true)
                 {
                     break;
                 }
-
-                queue->WaitFor();
 
                 std::function<void()> task;
                 if (!queue->Pop(task))
@@ -79,16 +79,17 @@ namespace ZEngine::Helpers
         template <typename T>
         static void Submit(T&& f)
         {
-            if (m_threadPool)
+            if (!m_threadPool)
             {
-                m_threadPool->Enqueue(std::move(f));
+                m_threadPool = std::make_unique<ThreadPool>();
             }
+            m_threadPool->Enqueue(std::move(f));
         }
 
     private:
         ThreadPoolHelper()  = delete;
         ~ThreadPoolHelper() = delete;
 
-        inline static std::unique_ptr<ThreadPool> m_threadPool = std::make_unique<ThreadPool>();
+        static std::unique_ptr<ThreadPool> m_threadPool;
     };
 } // namespace ZEngine::Helpers
