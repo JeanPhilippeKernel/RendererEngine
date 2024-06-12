@@ -4,6 +4,7 @@
 #include <functional>
 #include <mutex>
 #include <queue>
+#include <chrono>
 
 namespace ZEngine::Helpers
 {
@@ -14,7 +15,7 @@ namespace ZEngine::Helpers
         void Enqueue(const T& task)
         {
             {
-                std::unique_lock<std::mutex> lock(m_mutex);
+                std::lock_guard<std::mutex> lock(m_mutex);
                 m_queue.push(task);
             }
             m_condition.notify_one();
@@ -66,11 +67,36 @@ namespace ZEngine::Helpers
             }
         }
 
+        void WaitFor(std::chrono::milliseconds time = std::chrono::milliseconds(1))
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            if (m_queue.empty())
+            {
+                m_condition.wait_for(
+                    lock, time, [this] {
+                    return !m_queue.empty();
+                });
+            }
+        }
+
+        void Wait(const std::atomic_bool& cancellationToken)
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            if (m_queue.empty())
+            {
+                m_condition.wait(lock, [this, &cancellationToken] {
+                    return !m_queue.empty() || (cancellationToken.load() == true);
+                });
+            }
+        }
+
         void Clear()
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            std::queue<T>               empty;
-            std::swap(m_queue, empty);
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                std::queue<T>               empty;
+                std::swap(m_queue, empty);
+            }
             m_condition.notify_all();
         }
 
