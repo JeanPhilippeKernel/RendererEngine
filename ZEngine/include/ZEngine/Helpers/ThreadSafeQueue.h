@@ -4,6 +4,7 @@
 #include <functional>
 #include <mutex>
 #include <queue>
+#include <chrono>
 
 namespace ZEngine::Helpers
 {
@@ -61,6 +62,18 @@ namespace ZEngine::Helpers
             if (m_queue.empty())
             {
                 m_condition.wait(lock, [this] {
+                    return !m_queue.empty();
+                });
+            }
+        }
+
+        void WaitFor(std::chrono::milliseconds time = std::chrono::milliseconds(1))
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            if (m_queue.empty())
+            {
+                m_condition.wait_for(
+                    lock, time, [this] {
                     return !m_queue.empty();
                 });
             }

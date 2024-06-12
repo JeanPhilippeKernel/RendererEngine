@@ -22,7 +22,6 @@ namespace ZEngine::Helpers
         void Enqueue(std::function<void()>&& f)
         {
             m_taskQueue->Enqueue(std::move(f));
-            std::unique_lock<std::mutex> lock(m_mutex);
             if (!m_taskQueue->Empty())
             {
                 StartWorkerThread();
@@ -31,21 +30,27 @@ namespace ZEngine::Helpers
 
         void Shutdown()
         {
-            std::unique_lock<std::mutex> lock(m_mutex);
+            m_cancellationToken.exchange(true);
             m_taskQueue->Clear();
         }
 
     private:
         size_t                                                  m_maxThreadCount;
         size_t                                                  m_currentThreadCount{0};
+        std::atomic_bool                                        m_cancellationToken{false};
         std::mutex                                              m_mutex;
         std::shared_ptr<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
 
-        static void WorkerThread(std::weak_ptr<ThreadSafeQueue<std::function<void()>>> weakQueue)
+        static void WorkerThread(std::weak_ptr<ThreadSafeQueue<std::function<void()>>> weakQueue, std::atomic_bool& cancellationToken)
         {
             while (auto queue = weakQueue.lock())
             {
-                queue->Wait();
+                if (cancellationToken.load() == true)
+                {
+                    break;
+                }
+
+                queue->WaitFor();
 
                 std::function<void()> task;
                 if (!queue->Pop(task))
@@ -58,10 +63,13 @@ namespace ZEngine::Helpers
 
         void StartWorkerThread()
         {
-            if (m_currentThreadCount < m_maxThreadCount)
             {
-                std::thread(ThreadPool::WorkerThread, m_taskQueue).detach();
-                m_currentThreadCount++;
+                std::unique_lock<std::mutex> lock(m_mutex);
+                if (m_currentThreadCount < m_maxThreadCount)
+                {
+                    std::thread(ThreadPool::WorkerThread, m_taskQueue, std::ref(m_cancellationToken)).detach();
+                    m_currentThreadCount++;
+                }
             }
         }
     };
@@ -75,11 +83,6 @@ namespace ZEngine::Helpers
             {
                 m_threadPool->Enqueue(std::move(f));
             }
-        }
-
-        static void Shutdown()
-        {
-            m_threadPool->Shutdown();
         }
 
     private:

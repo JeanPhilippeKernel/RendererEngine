@@ -9,7 +9,6 @@ protected:
     }
  
     void TearDown() override {
-        ThreadPoolHelper::Shutdown();
     }
 };
  
