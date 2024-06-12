@@ -21,7 +21,7 @@ namespace ZEngine::Helpers
 
         void Enqueue(std::function<void()>&& f)
         {
-            m_taskQueue->Enqueue(std::move(f));
+            m_taskQueue->Emplace(std::forward<std::function<void()>>(f));
             if (!m_taskQueue->Empty())
             {
                 StartWorkerThread();
@@ -41,7 +41,7 @@ namespace ZEngine::Helpers
         std::mutex                                              m_mutex;
         std::shared_ptr<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
 
-        static void WorkerThread(std::weak_ptr<ThreadSafeQueue<std::function<void()>>> weakQueue, std::atomic_bool& cancellationToken)
+        static void WorkerThread(std::weak_ptr<ThreadSafeQueue<std::function<void()>>> weakQueue, const std::atomic_bool& cancellationToken)
         {
             while (auto queue = weakQueue.lock())
             {
@@ -67,7 +67,7 @@ namespace ZEngine::Helpers
                 std::unique_lock<std::mutex> lock(m_mutex);
                 if (m_currentThreadCount < m_maxThreadCount)
                 {
-                    std::thread(ThreadPool::WorkerThread, m_taskQueue, std::ref(m_cancellationToken)).detach();
+                    std::thread(ThreadPool::WorkerThread, m_taskQueue, std::cref(m_cancellationToken)).detach();
                     m_currentThreadCount++;
                 }
             }
@@ -89,6 +89,6 @@ namespace ZEngine::Helpers
         ThreadPoolHelper()  = delete;
         ~ThreadPoolHelper() = delete;
 
-        inline static std::unique_ptr<ThreadPool> m_threadPool = std::make_unique<ThreadPool>();;
+        inline static std::unique_ptr<ThreadPool> m_threadPool = std::make_unique<ThreadPool>();
     };
 } // namespace ZEngine::Helpers
