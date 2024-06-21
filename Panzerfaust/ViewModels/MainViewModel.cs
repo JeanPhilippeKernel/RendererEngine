@@ -57,5 +57,7 @@ namespace Panzerfaust.ViewModels
         {
             IsPaneOpen = !IsPaneOpen;
         }
+
+
     }
 }
