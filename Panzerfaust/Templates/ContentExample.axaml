@@ -1,0 +1,15 @@
+﻿<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:Panzerfaust.Templates">
+  <Style Selector="controls|ContentExample">
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="#393939"
+                CornerRadius="3"
+                Padding="15">
+          <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding Template}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+</Styles>
