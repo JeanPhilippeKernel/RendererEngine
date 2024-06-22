@@ -9,6 +9,8 @@ using CommunityToolkit.Extensions.DependencyInjection;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
+using Panzerfaust.Service.AppEnvironment;
+using Panzerfaust.Service.Engine;
 
 namespace Panzerfaust
 {
@@ -27,6 +29,8 @@ namespace Panzerfaust
             var services = new ServiceCollection();
             ConfigureViewModels(services);
             ConfigureViews(services);
+            ConfigureServices(services);
+
             services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
 
             var provider = services.BuildServiceProvider();
@@ -59,5 +63,9 @@ namespace Panzerfaust
         [Transient(typeof(CustomSplashScreenView))]
         [Transient(typeof(SettingsViewModel))]
         internal static partial void ConfigureViews(IServiceCollection services);
+
+        [Singleton(typeof(EngineService), typeof(IEngineService))]
+        internal static partial void ConfigureServices(IServiceCollection services);
+
     }
 }

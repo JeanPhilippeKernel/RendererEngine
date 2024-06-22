@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Panzerfaust.ViewModels;
 
 namespace Panzerfaust.Views
 {
