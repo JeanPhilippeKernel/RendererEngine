@@ -68,6 +68,10 @@ else {
     }
 }
 
+# Add NuGet to the PATH for the current session
+$installPath = Split-Path -Path $nugetProgram -Parent
+$env:PATH = "$installPath;$env:PATH"
+
 $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 Write-Host "Ensuring submodules are initialized and updated..."
 git -C $RepoRoot submodule update --init --recursive
