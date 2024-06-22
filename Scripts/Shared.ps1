@@ -75,24 +75,7 @@ function Setup-NuGet {
     $nugetUrl = $repoConfiguration.Requirements.Nuget.Url
     Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath
 
-    Add-ToSystemPath -installPath $installPath
-
     Write-Host " Nuget Installation and configuration completed successfully!"
-}
-
-function Add-ToSystemPath {
-    param([string]$installPath)
-    $path = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
-
-    if ($path -notlike "*$installPath*") {
-        $newPath = "$path;$installPath"
-        [Environment]::SetEnvironmentVariable("Path", $newPath, [EnvironmentVariableTarget]::User)
-        # Update the current session's PATH environment variable
-        $env:Path += ";$installPath"
-        Write-Host "Path added to user PATH: $installPath"
-    } else {
-        Write-Host "Path already exists in user PATH: $installPath"
-    }
 }
 
 function Get-RepositoryConfiguration () {
