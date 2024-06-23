@@ -52,7 +52,7 @@ function Find-Nuget () {
     foreach ($NugetProgram in $NugetProgramCandidates) {
         $Command = Get-Command $NugetProgram -ErrorAction SilentlyContinue
         if ($Command) {
-            if ((& $Command help | Select-String -Pattern "NuGet Version" | Out-String) -match "NuGet Version: ([\d\.]*)") {
+            if ((& $Command help -ForceEnglishOutput | Select-String -Pattern "NuGet Version" | Out-String) -match "NuGet Version: ([\d\.]*)") {
                 [Version] $NugetVersion = $Matches[1]
                 if (CompareVersion $NugetVersion $NugetMinimumVersion) {
                     return $Command.Source

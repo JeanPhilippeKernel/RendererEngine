@@ -68,6 +68,12 @@ else {
     }
 }
 
+# Add NuGet to the PATH for the current session if it's not already there
+$installPath = Split-Path -Path $nugetProgram -Parent
+if ($env:PATH -notlike "*$installPath*") {
+    $env:PATH = "$installPath;$env:PATH"
+}
+
 $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 Write-Host "Ensuring submodules are initialized and updated..."
 git -C $RepoRoot submodule update --init --recursive
