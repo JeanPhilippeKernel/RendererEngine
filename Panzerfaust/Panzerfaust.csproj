@@ -1,11 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<PropertyGroup Condition= " $([MSBuild]::IsOSPlatform('Windows')) == 'true' ">
-		<OutputType>Exe</OutputType>
+	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) == 'true' ">
+		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<BaseOutputPath>..\Result.Windows.x64.MultiConfig\Panzerfaust</BaseOutputPath>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationIcon>./Assets/avalonia-logo.ico</ApplicationIcon>
 	</PropertyGroup>
 	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) == 'true' AND '$(Configuration)|$(Platform)' == 'Debug|x64' ">
 		<PlatformTarget>x64</PlatformTarget>
@@ -23,4 +25,31 @@
 		<OutputPath>..\Result.Windows.$(Platform).MultiConfig\Panzerfaust\$(Configuration)</OutputPath>
 		<DefineConstants>TRACE</DefineConstants>
 	</PropertyGroup>
+	<PropertyGroup>
+	  <ApplicationManifest>app.manifest</ApplicationManifest>
+	</PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.0.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.2" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.2" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.0" />
+    <PackageReference Include="Avalonia.Controls.ItemsRepeater" Version="11.0.2" />
+
+
+    <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
+    <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.Avalonia" Version="2.0.0-rc2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.Avalonia" Version="2.0.0-rc2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Folder Include="Assets\Images\" />
+  </ItemGroup>
 </Project>
