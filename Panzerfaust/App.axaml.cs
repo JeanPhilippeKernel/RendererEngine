@@ -5,13 +5,9 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Panzerfaust.ViewModels;
 using Panzerfaust.Views;
-using CommunityToolkit.Extensions.DependencyInjection;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Panzerfaust.Extensions;
-using CommunityToolkit.Mvvm.Messaging;
-using Panzerfaust.Service.AppEnvironment;
-using Panzerfaust.Service.Engine;
 
 namespace Panzerfaust
 {
