@@ -8,6 +8,7 @@ using Panzerfaust.Views;
 using CommunityToolkit.Extensions.DependencyInjection;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
+using Panzerfaust.Extensions;
 using CommunityToolkit.Mvvm.Messaging;
 using Panzerfaust.Service.AppEnvironment;
 using Panzerfaust.Service.Engine;
@@ -21,17 +22,13 @@ namespace Panzerfaust
             AvaloniaXamlLoader.Load(this);
         }
 
-        public override void OnFrameworkInitializationCompleted()
+        public override async void OnFrameworkInitializationCompleted()
         {
             var locator = new ViewLocator();
             DataTemplates.Add(locator);
 
             var services = new ServiceCollection();
-            ConfigureViewModels(services);
-            ConfigureViews(services);
-            ConfigureServices(services);
-
-            services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
+            services.AddCommonServices();
 
             var provider = services.BuildServiceProvider();
 
@@ -39,33 +36,46 @@ namespace Panzerfaust
 
             var vm = Ioc.Default.GetRequiredService<MainViewModel>();
 
+
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                desktop.MainWindow = new MainWindow(vm);
-            }
-            else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
-            {
-                singleViewPlatform.MainView = new MainView { DataContext = vm };
+                var splashScreenVM = new CustomSplashScreenViewModel();
+                var splashScreen = new CustomSplashScreenView
+                {
+                    DataContext = splashScreenVM
+                };
+
+                desktop.MainWindow = splashScreen;
+
+                splashScreen.Show();
+
+                try
+                {
+                    splashScreenVM.StartupMessage = "Searching for devices...";
+                    await Task.Delay(1000, splashScreenVM.CancellationToken);
+                    splashScreenVM.StartupMessage = "Connecting to device ...";
+                    await Task.Delay(2000, splashScreenVM.CancellationToken);
+                    splashScreenVM.StartupMessage = "Configuring device...";
+                    await Task.Delay(2000, splashScreenVM.CancellationToken);
+                }
+                catch (TaskCanceledException)
+                {
+                    splashScreen.Close();
+                    return;
+                }
+
+                var mainWin = new MainWindow
+                {
+                    DataContext = new MainViewModel(),
+                };
+                desktop.MainWindow = mainWin;
+                mainWin.Show();
+
+                splashScreen.Close();
             }
 
             base.OnFrameworkInitializationCompleted();
+
         }
-
-        [Singleton(typeof(MainViewModel))]
-        [Transient(typeof(HomePageViewModel))]
-        [Transient(typeof(CustomSplashScreenViewModel))]
-        [Transient(typeof(SettingsViewModel))]
-        [SuppressMessage("CommunityToolkit.Extensions.DependencyInjection.SourceGenerators.InvalidServiceRegistrationAnalyzer", "TKEXDI0004:Duplicate service type registration")]
-        internal static partial void ConfigureViewModels(IServiceCollection services);
-
-        [Singleton(typeof(MainWindow))]
-        [Transient(typeof(HomePageView))]
-        [Transient(typeof(CustomSplashScreenView))]
-        [Transient(typeof(SettingsViewModel))]
-        internal static partial void ConfigureViews(IServiceCollection services);
-
-        [Singleton(typeof(EngineService), typeof(IEngineService))]
-        internal static partial void ConfigureServices(IServiceCollection services);
-
     }
 }
