@@ -75,7 +75,7 @@ namespace Tetragrama::Layers
 
         MESSENGER_REGISTER(
             ZEngine::Components::UI::UIComponent,
-            PointerValueMessage<ZEngine::Rendering::Entities::GraphicSceneEntity>,
+            GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>,
             EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED,
             m_inspector_view_component.get(),
             return m_inspector_view_component->SceneEntitySelectedMessageHandlerAsync(*message_ptr));

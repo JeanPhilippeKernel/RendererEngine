@@ -7,6 +7,7 @@ namespace ZEngine::Rendering::Specifications
     struct TextureSpecification
     {
         bool          IsUsageSampled    = true;
+        bool          IsUsageStorage    = false;
         bool          IsUsageTransfert  = true;
         bool          PerformTransition = true;
         bool          IsCubemap         = false;

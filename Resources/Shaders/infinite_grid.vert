@@ -8,7 +8,7 @@ layout (location = 1) out float scaleFactor;
 
 void main()
 {
-    scaleFactor = 300.0;
+    scaleFactor = 80.0;
 
     DrawDataView dataView   = GetDrawDataView();
     vec3 posScale           = vec3((dataView.Vertex * scaleFactor).xyz);

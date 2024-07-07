@@ -69,6 +69,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             m_pipeline                                       = Pipelines::GraphicPipeline::Create(m_specification.PipelineSpecification);
 
             ResizeFramebuffer();
+            UpdateInputBinding();
         }
     }
 
@@ -422,6 +423,14 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
     }
 
+    void RenderPass::UpdateInputBinding()
+    {
+        for (auto& [binding_name, texture] : m_specification.InputTextures)
+        {
+            SetInput(binding_name, texture);
+        }
+    }
+
     Ref<Textures::Texture> RenderPass::GetOutputColor(uint32_t color_index)
     {
         if (m_specification.ExternalOutputs.empty())
@@ -727,6 +736,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
      {
         m_spec.Inputs.push_back(input);
         return *this;
+     }
+
+     RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Ref<Rendering::Textures::Texture>& input)
+     {
+         m_spec.InputTextures[key.data()] = input;
+         return *this;
      }
 
      RenderPassBuilder& RenderPassBuilder::UseSwapchainAsRenderTarget()

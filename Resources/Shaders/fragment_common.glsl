@@ -3,21 +3,64 @@
 
 struct MaterialData
 {
-    vec4 AmbientColor;
-    vec4 EmissiveColor;
-    vec4 AlbedoColor;
-    vec4 DiffuseColor;
-    vec4 RoughnessColor;
+    vec4 Ambient;
+    vec4 Emissive;
+    vec4 Albedo;
+	vec4 Specular;
+    vec4 Roughness;
+	vec4 Factors; // {x : transparency, y : Metallic, z : AlphaTest, w : _padding}
 
-    float TransparencyFactor;
-    float MetallicFactor;
-    float AlphaTest;
-
-    uint64_t EmissiveTextureMap;
-    uint64_t AlbedoTextureMap;
-    uint64_t NormalTextureMap;
-    uint64_t OpacityTextureMap;
+    uint64_t EmissiveMap;
+    uint64_t AlbedoMap;
+	uint64_t SpecularMap;
+    uint64_t NormalMap;
+    uint64_t OpacityMap;
+	uint64_t _padding;
 };
+
+struct DirectionalLight
+{
+	vec4 Direction;
+	vec4 Ambient;
+	vec4 Diffuse;
+	vec4 Specular;
+};
+
+struct PointLight
+{
+	vec4 Position;
+	vec4 Ambient;
+	vec4 Diffuse;
+	vec4 Specular;
+
+	float Constant;
+	float Linear;
+	float Quadratic;
+	float _padding;
+};
+
+struct SpotLight
+{
+	vec4 Position;
+	vec4 Direction;
+	vec4 Ambient;
+	vec4 Diffuse;
+	vec4 Specular;
+
+	float CutOff;
+	vec3 _padding;
+};
+
+#define INVALID_MAP_HANDLE 0xFFFFFFFFu
+
+layout(std140, set = 0, binding = 5) readonly buffer MatSB { MaterialData Data[]; } MaterialDataBuffer;
+layout(set = 0, binding = 9) uniform sampler2D TextureArray[];
+
+MaterialData FetchMaterial(uint dataIndex)
+{
+	return MaterialDataBuffer.Data[dataIndex];
+}
+
 
 // http://www.thetenthplanet.de/archives/1180
 // modified to fix handedness of the resulting cotangent frame
@@ -72,14 +115,4 @@ void runAlphaTest(float alpha, float alphaThreshold)
 		if (alpha < alphaThreshold)
 			discard;
 	}
-}
-
-#define INVALID_TEXTURE_INDEX 0xFFFFFFFFu
-
-layout(set = 0, binding = 5) readonly buffer MatSB { MaterialData Data[]; } MaterialDataBuffer;
-layout(set = 0, binding = 9) uniform sampler2D TextureArray[];
-
-MaterialData FetchMaterial(uint dataIndex)
-{
-	return MaterialDataBuffer.Data[dataIndex];
 }

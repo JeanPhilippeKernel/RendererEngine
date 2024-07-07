@@ -4,6 +4,11 @@
 #include <entt/entt.hpp>
 #include <ZEngine/Logging/LoggerDefinition.h>
 
+namespace ZEngine::Rendering::Scenes
+{
+    struct SceneRawData;
+}
+
 namespace ZEngine::Rendering::Entities
 {
     class GraphicSceneEntity
@@ -86,7 +91,7 @@ namespace ZEngine::Rendering::Entities
         }
 
     private:
-        entt::entity                   m_entity_handle{entt::null};
+        entt::entity                         m_entity_handle{entt::null};
         static std::weak_ptr<entt::registry> s_weak_registry_ptr;
     };
 

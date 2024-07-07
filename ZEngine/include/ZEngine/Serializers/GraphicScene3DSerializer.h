@@ -3,6 +3,7 @@
 #include <Rendering/Entities/GraphicSceneEntity.h>
 #include <Serializers/GraphicSceneSerializer.h>
 #include <yaml-cpp/yaml.h>
+#include <Maths/Math.h>
 
 namespace ZEngine::Serializers {
 

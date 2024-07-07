@@ -2,6 +2,7 @@
 #include <IAssetImporter.h>
 #include <assimp/Importer.hpp>
 #include <assimp/ProgressHandler.hpp>
+#include <assimp/scene.h>
 
 namespace Tetragrama::Importers
 {
@@ -39,7 +40,6 @@ namespace Tetragrama::Importers
         void      TraverseNode(const aiScene*, ZEngine::Rendering::Scenes::SceneRawData* const, const aiNode*, int parent_node_id, int depth_level);
         glm::mat4 ConvertToMat4(const aiMatrix4x4& m);
 
-        int AddNode(ZEngine::Rendering::Scenes::SceneRawData*, int parent, int depth);
         int GenerateFileIndex(std::vector<std::string>& data_viewer, std::string_view filename);
     };
 } // namespace Tetragrama::Importers

@@ -14,7 +14,6 @@
 #include <Rendering/Materials/BasicMaterial.h>
 #include <Rendering/Components/CameraComponent.h>
 #include <Controllers/PerspectiveCameraController.h>
-#include <Rendering/Lights/DirectionalLight.h>
 
 #include <Helpers/MeshHelper.h>
 
@@ -427,13 +426,13 @@ namespace ZEngine::Serializers {
             emitter << YAML::Key << "LightComponent";
             emitter << YAML::BeginMap;
 
-            if (light_type == ZEngine::Rendering::Lights::LightType::DIRECTIONAL_LIGHT) {
-                auto directional_light = reinterpret_cast<ZEngine::Rendering::Lights::DirectionalLight*>(light.get());
-                emitter << YAML::Key << "LightType" << YAML::Value << static_cast<int>(light_type);
-                emitter << YAML::Key << "Direction" << YAML::Value << directional_light->GetDirection();
-                emitter << YAML::Key << "AmbientColor" << YAML::Value << directional_light->GetAmbientColor();
-                emitter << YAML::Key << "DiffuseColor" << YAML::Value << directional_light->GetDiffuseColor();
-                emitter << YAML::Key << "SpecularColor" << YAML::Value << directional_light->GetSpecularColor();
+            if (light_type == ZEngine::Rendering::Lights::LightType::DIRECTIONAL) {
+                // auto directional_light = reinterpret_cast<ZEngine::Rendering::Lights::DirectionalLight*>(light.get());
+                // emitter << YAML::Key << "LightType" << YAML::Value << static_cast<int>(light_type);
+                // emitter << YAML::Key << "Direction" << YAML::Value << directional_light->GetDirection();
+                // emitter << YAML::Key << "AmbientColor" << YAML::Value << directional_light->GetAmbientColor();
+                // emitter << YAML::Key << "DiffuseColor" << YAML::Value << directional_light->GetDiffuseColor();
+                // emitter << YAML::Key << "SpecularColor" << YAML::Value << directional_light->GetSpecularColor();
             }
 
             emitter << YAML::EndMap;
