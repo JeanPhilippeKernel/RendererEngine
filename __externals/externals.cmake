@@ -2,10 +2,11 @@
 #
 find_package(Vulkan REQUIRED)
 
+message("Here is the include : ${Vulkan_INCLUDE_DIRS}")
+
 set(EXTERNAL_INCLUDE_DIRS
 	${Vulkan_INCLUDE_DIRS}
 	${EXTERNAL_DIR}/fmt/include
-	${EXTERNAL_DIR}/glm
 	${EXTERNAL_DIR}/imgui/src
 	${EXTERNAL_DIR}/spdlog/include
 	${EXTERNAL_DIR}/glfw/include
@@ -34,7 +35,6 @@ add_library (imported::External_libs INTERFACE IMPORTED)
 target_link_libraries(imported::External_libs INTERFACE
 	Vulkan::Vulkan
 	fmt
-	glm
 	imgui
 	spdlog
 	glfw

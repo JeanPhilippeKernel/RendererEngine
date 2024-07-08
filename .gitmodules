@@ -1,6 +1,3 @@
-[submodule "__externals/glm"]
-	path = __externals/glm
-	url = https://github.com/g-truc/glm
 [submodule "__externals/fmt"]
 	path = __externals/fmt
 	url = https://github.com/fmtlib/fmt

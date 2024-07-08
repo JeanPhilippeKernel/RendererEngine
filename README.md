@@ -22,7 +22,9 @@ Before building, make sure your setup is correct :
 
 - Install Visual Studio 2022 Community or Professional, make sure to add "Desktop development with C++".
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
-- Install [Vulkan SDK](https://sdk.lunarg.com/sdk/download/1.3.250.1/windows/VulkanSDK-1.3.250.1-Installer.exe) (uncheck the GLM headers component when installing)
+- Install [Vulkan SDK](https://sdk.lunarg.com/sdk/download/1.3.250.1/windows/VulkanSDK-1.3.250.1-Installer.exe)
+	- Be sure to check the following components:
+		- GLM headers
 - Install [Python](https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe)
 
 ## Building 
