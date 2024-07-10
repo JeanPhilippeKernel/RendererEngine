@@ -7,9 +7,8 @@
 #include <Rendering/Components/CameraComponent.h>
 #include <Rendering/Components/UUIComponent.h>
 
-#define SCENE_ROOT_PARENT_ID -1
-#define SCENE_ROOT_DEPTH_LEVEL 0
-#define INVALID_SCENE_NODE_ID -1
+#define NODE_PARENT_ID -1
+#define INVALID_NODE_ID -1
 
 using namespace ZEngine::Controllers;
 using namespace ZEngine::Rendering::Components;
@@ -174,19 +173,23 @@ namespace ZEngine::Rendering::Scenes
         {
             std::lock_guard l(s_scene_node_mutex);
 
-            if (!scenes.empty())
+            auto& hierarchy = s_raw_data->NodeHierarchyCollection[0];
+            if (!scenes.empty() && hierarchy.FirstChild == -1)
             {
-                s_raw_data->NodeHierarchyCollection[0].FirstChild = 1;
+                hierarchy.FirstChild = 1;
             }
 
             MergeScenes(scenes);
             MergeMeshData(scenes);
             MergeMaterials(scenes);
 
-            for (std::string_view file : s_raw_data->Files)
+            if (!s_raw_data->Files.empty())
             {
-                auto index = Renderers::GraphicRenderer::GlobalTextures->Add(Textures::Texture2D::Read(file));
-                s_raw_data->TextureCollection.emplace(index);
+                for (std::string_view file : s_raw_data->Files)
+                {
+                    auto index = Renderers::GraphicRenderer::GlobalTextures->Add(Textures::Texture2D::Read(file));
+                    s_raw_data->TextureCollection.emplace(index);
+                }
             }
         }
     }
@@ -319,19 +322,29 @@ namespace ZEngine::Rendering::Scenes
                     files.push_back(f);
                     m.AlbedoMap = (files.size() - 1);
                 }
-                else if (m.EmissiveMap != 0xFFFFFFFF)
+
+                if (m.EmissiveMap != 0xFFFFFFFF)
                 {
                     auto& f = scene.Files[m.EmissiveMap];
                     files.push_back(f);
                     m.EmissiveMap = (files.size() - 1);
                 }
-                else if (m.NormalMap != 0xFFFFFFFF)
+
+                if (m.SpecularMap != 0xFFFFFFFF)
+                {
+                    auto& f = scene.Files[m.SpecularMap];
+                    files.push_back(f);
+                    m.SpecularMap = (files.size() - 1);
+                }
+
+                if (m.NormalMap != 0xFFFFFFFF)
                 {
                     auto& f = scene.Files[m.NormalMap];
                     files.push_back(f);
                     m.NormalMap = (files.size() - 1);
                 }
-                else if (m.OpacityMap != 0xFFFFFFFF)
+
+                if (m.OpacityMap != 0xFFFFFFFF)
                 {
                     auto& f = scene.Files[m.OpacityMap];
                     files.push_back(f);
@@ -347,7 +360,7 @@ namespace ZEngine::Rendering::Scenes
         std::unique_lock lock(s_scene_node_mutex);
 
         SceneEntity entity  = {};
-        int                node_id = SceneRawData::AddNode(s_raw_data.get(), parent_id, depth_level);
+        int         node_id = SceneRawData::AddNode(s_raw_data.get(), parent_id, depth_level);
         if (SceneRawData::SetNodeName(s_raw_data.get(), node_id, entity_name))
         {
             entity = {node_id, s_raw_data.Weak()};
@@ -416,13 +429,13 @@ namespace ZEngine::Rendering::Scenes
     int GraphicScene::GetSceneNodeParent(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        return (node_identifier < 0) ? INVALID_SCENE_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].Parent;
+        return (node_identifier < 0) ? INVALID_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].Parent;
     }
 
     int GraphicScene::GetSceneNodeFirstChild(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        return (node_identifier < 0) ? INVALID_SCENE_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].FirstChild;
+        return (node_identifier < 0) ? INVALID_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].FirstChild;
     }
 
     std::vector<int> GraphicScene::GetSceneNodeSiblingCollection(int node_identifier)
@@ -435,7 +448,7 @@ namespace ZEngine::Rendering::Scenes
             return sibling_scene_nodes;
         }
 
-        for (auto sibling = s_raw_data->NodeHierarchyCollection[node_identifier].RightSibling; sibling != INVALID_SCENE_NODE_ID;
+        for (auto sibling = s_raw_data->NodeHierarchyCollection[node_identifier].RightSibling; sibling != INVALID_NODE_ID;
              sibling      = s_raw_data->NodeHierarchyCollection[sibling].RightSibling)
         {
             sibling_scene_nodes.push_back(sibling);
@@ -453,21 +466,21 @@ namespace ZEngine::Rendering::Scenes
     glm::mat4& GraphicScene::GetSceneNodeLocalTransform(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT((node_identifier > INVALID_SCENE_NODE_ID) && (node_identifier < s_raw_data->LocalTransformCollection.size()), "node identifier is invalid")
+        ZENGINE_VALIDATE_ASSERT((node_identifier > INVALID_NODE_ID) && (node_identifier < s_raw_data->LocalTransformCollection.size()), "node identifier is invalid")
         return s_raw_data->LocalTransformCollection[node_identifier];
     }
 
     glm::mat4& GraphicScene::GetSceneNodeGlobalTransform(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_SCENE_NODE_ID && node_identifier < s_raw_data->GlobalTransformCollection.size(), "node identifier is invalid")
+        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < s_raw_data->GlobalTransformCollection.size(), "node identifier is invalid")
         return s_raw_data->GlobalTransformCollection[node_identifier];
     }
 
     const SceneNodeHierarchy& GraphicScene::GetSceneNodeHierarchy(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_SCENE_NODE_ID && node_identifier < s_raw_data->NodeHierarchyCollection.size(), "node identifier is invalid")
+        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < s_raw_data->NodeHierarchyCollection.size(), "node identifier is invalid")
         return s_raw_data->NodeHierarchyCollection[node_identifier];
     }
 
@@ -480,7 +493,7 @@ namespace ZEngine::Rendering::Scenes
     std::future<void> GraphicScene::SetSceneNodeNameAsync(int node_identifier, std::string_view node_name)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_SCENE_NODE_ID, "node identifier is invalid")
+        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID, "node identifier is invalid")
         s_raw_data->Names[s_raw_data->NodeNames[node_identifier]] = node_name;
         co_return;
     }
@@ -561,7 +574,7 @@ namespace ZEngine::Rendering::Scenes
             const auto& hierarchy = s_raw_data->NodeHierarchyCollection;
             for (uint32_t i = 0; i < hierarchy.size(); ++i)
             {
-                if (hierarchy[i].Parent == SCENE_ROOT_PARENT_ID)
+                if (hierarchy[i].Parent == NODE_PARENT_ID)
                 {
                     root_scene_nodes.push_back(i);
                 }

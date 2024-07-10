@@ -48,7 +48,9 @@ struct SpotLight
 	vec4 Specular;
 
 	float CutOff;
-	vec3 _padding;
+    float Constant;
+    float Linear;
+    float Quadratic;
 };
 
 #define INVALID_MAP_HANDLE 0xFFFFFFFFu

@@ -12,6 +12,19 @@ namespace ZEngine::Rendering
         gpuvec3(float v) : x(v), y(v), z(v) {}
         explicit gpuvec3(const glm::vec3& v) : x(v.x), y(v.y), z(v.z) {}
 
+        template <typename T>
+        T As()
+        {
+            if constexpr (std::is_same_v<T, glm::vec2>)
+            {
+                return T(x, y);
+            }
+            else
+            {
+                return T(x, y, z);
+            }
+        }
+
         gpuvec3& operator=(const glm::vec3& v)
         {
             x = v.x;
@@ -29,6 +42,23 @@ namespace ZEngine::Rendering
         gpuvec4(float a, float b, float c, float d) : x(a), y(b), z(c), w(d) {}
         gpuvec4(float v) : x(v), y(v), z(v), w(v) {}
         explicit gpuvec4(const glm::vec4& v) : x(v.x), y(v.y), z(v.z), w(v.w) {}
+
+        template<typename T>
+        T As()
+        {
+            if constexpr (std::is_same_v<T, glm::vec3>)
+            {
+                return T(x, y, z);
+            }
+            else if constexpr (std::is_same_v<T, glm::vec2>)
+            {
+                return T(x, y);
+            }
+            else
+            {
+                return T(x, y, z, w);
+            }
+        }
 
         gpuvec4& operator=(const glm::vec4& v)
         {

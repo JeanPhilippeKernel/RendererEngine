@@ -97,9 +97,9 @@ namespace ZEngine::Rendering::Lights
         }
 
         gpuvec4 Position  = 1.0f;
-        float   Constant  = 0.0f;
-        float   Linear    = 0.0f;
-        float   Quadratic = 0.0f;
+        float   Constant  = 1.0f;
+        float   Linear    = 0.7f;
+        float   Quadratic = 1.8f;
 
         GpuPointLight GPUPackedData() const
         {
@@ -119,7 +119,9 @@ namespace ZEngine::Rendering::Lights
         gpuvec4 Diffuse    = 1.0f;
         gpuvec4 Specular   = 1.0f;
         float   CutOff     = 0.0f;
-        float   Padding[3] = {0};
+        float   Constant   = 1.0f;
+        float   Linear     = 0.7f;
+        float   Quadratic  = 1.8f;
     };
 
     struct Spotlight : public LightVNext
@@ -132,10 +134,22 @@ namespace ZEngine::Rendering::Lights
         gpuvec4 Position  = 1.0f;
         gpuvec4 Direction = 1.0f;
         float   CutOff    = 0.0f;
+        float   Constant  = 1.0f;
+        float   Linear    = 0.7f;
+        float   Quadratic = 1.8f;
 
         GpuSpotlight GPUPackedData() const
         {
-            return GpuSpotlight{.Position = Position, .Direction = Direction, .Ambient = Ambient, .Diffuse = Diffuse, .Specular = Specular, .CutOff = CutOff};
+            return GpuSpotlight{
+                .Position  = Position,
+                .Direction = Direction,
+                .Ambient   = Ambient,
+                .Diffuse   = Diffuse,
+                .Specular  = Specular,
+                .CutOff    = CutOff,
+                .Constant  = Constant,
+                .Linear    = Linear,
+                .Quadratic = Quadratic};
         }
     };
 

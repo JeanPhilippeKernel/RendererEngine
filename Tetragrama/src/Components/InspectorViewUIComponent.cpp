@@ -171,44 +171,155 @@ namespace Tetragrama::Components
             }
         });
 
-        Helpers::DrawEntityComponentControl<LightComponent>("Lighting", m_scene_entity, m_node_flag, true, [](LightComponent& component) {
-            auto light      = component.GetLight();
-            auto light_type = light->GetLightType();
-
-            const char* built_in_light_type[] = {"Directional", "Point", "Spot"};
+        Helpers::DrawEntityComponentControl<LightComponent>("Lighting", m_scene_entity, m_node_flag, true, [this](LightComponent& component) {
+            auto                            light           = component.GetLight();
+            auto                            light_type      = light->GetLightType();
+            std::array<std::string_view, 3> light_type_name = {"Directional", "Point", "Spot"};
 
             ImGui::Dummy(ImVec2(0, 3));
-            Helpers::DrawInputTextControl("Type", built_in_light_type[(int) light_type], nullptr, true);
+            Helpers::DrawInputTextControl("Type", light_type_name[static_cast<int>(light_type)], nullptr, true);
 
             if (light_type == LightType::DIRECTIONAL)
             {
                 auto light_ptr = reinterpret_cast<DirectionalLight*>(light.get());
+                auto direction = light_ptr->Direction.As<glm::vec3>();
+                auto ambient   = light_ptr->Ambient.As<glm::vec3>();
+                auto diffuse   = light_ptr->Diffuse.As<glm::vec3>();
+                auto specular  = light_ptr->Specular.As<glm::vec3>();
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
+                {
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) {
+                        light_ptr->Direction = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
 
-                auto direction = glm::vec3(light_ptr->Direction.x, light_ptr->Direction.y, light_ptr->Direction.z);
-                Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) {
-                    light_ptr->Direction = glm::vec4(value, 1.0f);
-                });
-                ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
+                        light_ptr->Ambient = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
 
-                auto ambient = glm::vec3(light_ptr->Ambient.x, light_ptr->Ambient.y, light_ptr->Ambient.z);
-                Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
-                    light_ptr->Ambient = glm::vec4(value, 1.0f);
-                });
-                ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
+                        light_ptr->Diffuse = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
 
-                auto diffuse = glm::vec3(light_ptr->Diffuse.x, light_ptr->Diffuse.y, light_ptr->Diffuse.z);
-                Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
-                    light_ptr->Diffuse = glm::vec4(value, 1.0f);
-                });
-                ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
+                        light_ptr->Specular = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+                }
+            }
 
-                auto specular = glm::vec3(light_ptr->Specular.x, light_ptr->Specular.y, light_ptr->Specular.z);
-                Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
-                    light_ptr->Specular = glm::vec4(value, 1.0f);
-                });
+            else if (light_type == LightType::POINT)
+            {
+                auto transform = m_scene_entity.GetTransform();
+                auto light_ptr = reinterpret_cast<PointLight*>(light.get());
+
+                auto position = glm::vec3(transform[3]);
+                auto ambient  = light_ptr->Ambient.As<glm::vec3>();
+                auto diffuse  = light_ptr->Diffuse.As<glm::vec3>();
+                auto specular = light_ptr->Specular.As<glm::vec3>();
+
                 ImGui::Dummy(ImVec2(0, 0.5f));
+                {
+                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) {
+                        light_ptr->Position = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
+                        light_ptr->Ambient = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
+                        light_ptr->Diffuse = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
+                        light_ptr->Specular = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f", [light_ptr](float value) {
+                        light_ptr->Constant = value;
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f", [light_ptr](float value) {
+                        light_ptr->Linear = value;
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f", [light_ptr](float value) {
+                        light_ptr->Quadratic = value;
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+                }
+            }
+
+            else if (light_type == LightType::SPOT)
+            {
+                auto transform = m_scene_entity.GetTransform();
+                auto light_ptr = reinterpret_cast<Spotlight*>(light.get());
+
+                auto direction = light_ptr->Direction.As<glm::vec3>();
+                auto position  = glm::vec3(transform[3]);
+                auto ambient   = light_ptr->Ambient.As<glm::vec3>();
+                auto diffuse   = light_ptr->Diffuse.As<glm::vec3>();
+                auto specular  = light_ptr->Specular.As<glm::vec3>();
+                static float phi_angle = 12.5f;
+
+                ImGui::Dummy(ImVec2(0, 0.5f));
+                {
+                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) {
+                        light_ptr->Position = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) {
+                        light_ptr->Direction = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
+                        light_ptr->Ambient = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
+                        light_ptr->Diffuse = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
+                        light_ptr->Specular = glm::vec4(value, 1.0f);
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawDragFloatControl("CutOff", phi_angle, 0.1f, 0.0f, 360.0f, "%.2f", [light_ptr](float value) {
+                        phi_angle         = value;
+                        light_ptr->CutOff = glm::cos(glm::radians(value));
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f", [light_ptr](float value) {
+                        light_ptr->Constant = value;
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f", [light_ptr](float value) {
+                        light_ptr->Linear = value;
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+
+                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f", [light_ptr](float value) {
+                        light_ptr->Quadratic = value;
+                    });
+                    ImGui::Dummy(ImVec2(0, 0.5f));
+                }
             }
         });
 
