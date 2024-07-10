@@ -693,21 +693,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
      RenderPassBuilder& RenderPassBuilder::UseShader(std::string_view name)
      {
-        const char* shader_dir = "Shaders/Cache/";
-
-        std::filesystem::path vertex_file_path   = fmt::format("{0}{1}_vertex.spv", shader_dir, name.data());
-        std::filesystem::path fragment_file_path = fmt::format("{0}{1}_fragment.spv", shader_dir, name.data());
-
-        if (std::filesystem::exists(vertex_file_path))
-        {
-            m_spec.PipelineSpecification.ShaderSpecification.VertexFilename = vertex_file_path.string();
-        }
-
-        if (std::filesystem::exists(fragment_file_path))
-        {
-            m_spec.PipelineSpecification.ShaderSpecification.FragmentFilename = fragment_file_path.string();
-        }
-
+        m_spec.PipelineSpecification.ShaderSpecification.Name = name.data();
         return *this;
      }
 

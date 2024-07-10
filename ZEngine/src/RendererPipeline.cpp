@@ -1,12 +1,13 @@
 #include <pch.h>
 #include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Managers/ShaderManager.h>
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
     GraphicPipeline::GraphicPipeline(Specifications::GraphicRendererPipelineSpecification&& spec) : m_pipeline_specification(std::move(spec))
     {
-        m_shader = Shaders::Shader::Create(m_pipeline_specification.ShaderSpecification);
+        m_shader = ZEngine::Managers::ShaderManager::Get(m_pipeline_specification.ShaderSpecification);
     }
 
     Specifications::GraphicRendererPipelineSpecification& GraphicPipeline::GetSpecification()

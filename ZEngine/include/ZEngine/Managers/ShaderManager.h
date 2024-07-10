@@ -1,12 +1,12 @@
 #pragma once
-#include <filesystem>
-
 #include <Managers/IAssetManager.h>
 #include <Rendering/Shaders/Shader.h>
 
-namespace ZEngine::Managers {
+namespace ZEngine::Managers
+{
 
-    class ShaderManager : public IAssetManager<Rendering::Shaders::Shader> {
+    class ShaderManager : public IAssetManager<Rendering::Shaders::Shader>
+    {
     public:
         ShaderManager();
         virtual ~ShaderManager() = default;
@@ -27,5 +27,15 @@ namespace ZEngine::Managers {
          * @return A shader instance
          */
         Ref<Rendering::Shaders::Shader> Load(const char* filename) override;
+
+        static const std::string FragmentFilename(const std::string& key);
+        static const std::string VertexFilename(const std::string& key);
+
+        static Ref<Rendering::Shaders::Shader> Get(ZEngine::Rendering::Specifications::ShaderSpecification spec);
+
+    private:
+        static const std::string base_dir;
+        static const std::unordered_map<std::string, std::pair<std::string, std::string>> m_shaderPath;
+        static std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>> m_shaderMappings;
     };
 } // namespace ZEngine::Managers
