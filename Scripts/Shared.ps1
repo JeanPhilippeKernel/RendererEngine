@@ -134,7 +134,6 @@ function Find-GLSLC () {
         'glslc'
         if ($IsWindows) {
             Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslc.exe" # On Windows, the pipeline build might pick up this option...
-            Join-Path -Path $env:VULKAN_SDK -ChildPath "\bin\glslc.exe"
         }
     )
 
@@ -164,7 +163,6 @@ function Find-GlslangValidator () {
         'glslangValidator'
         if ($IsWindows) {
             Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslangValidator.exe" # On Windows, the pipeline build might pick up this option...
-            Join-Path -Path $env:VULKAN_SDK -ChildPath "\bin\glslangValidator.exe"
         }
     )
 
