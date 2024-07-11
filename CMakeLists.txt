@@ -37,6 +37,12 @@ add_subdirectory (${EXTERNAL_DIR}/SPIRV-Cross)
 add_subdirectory (${EXTERNAL_DIR}/gtest)
 add_subdirectory (${EXTERNAL_DIR}/VulkanMemoryAllocator)
 
+set (CMAKE_PREFIX_PATH
+	${CMAKE_PREFIX_PATH}
+	${EXTERNAL_DIR}/Vulkan-Headers/build/install/share/cmake
+)
+add_subdirectory (${EXTERNAL_DIR}/Vulkan-Loader)
+
 # Core engine lib is here
 #
 add_subdirectory(ZEngine)
