@@ -2,9 +2,9 @@ name: ZEngine Window Build
 
 on:
   push:
-    branches: [ master, develop, user/kernel/move-to-vulkan ]
+    branches: [ master, develop ]
   pull_request:
-    branches: [ master, develop, user/kernel/move-to-vulkan ]
+    branches: [ master, develop ]
 
 jobs:
   Windows-Build:
@@ -16,7 +16,7 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
-      
+
     - name: Install CMake
       uses: jwlawson/actions-setup-cmake@v2
       with:
