@@ -123,6 +123,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'STDUUID'   = @("-DUUID_BUILD_TESTS=OFF", "-DUUID_USING_CXX20_SPAN=ON", "-DUUID_SYSTEM_GENERATOR=OFF");
         'YAMLCPP'   = @("-DYAML_CPP_BUILD_TOOLS=OFF", "-DYAML_CPP_BUILD_TESTS=OFF", "-DYAML_CPP_FORMAT_SOURCE=OFF", "-DYAML_BUILD_SHARED_LIBS=OFF");
         'FRAMEWORK' = @("-DBUILD_FRAMEWORK=ON");
+        'VULKAN_LOADER' = @("-DUPDATE_DEPS=ON", "-DBUILD_TESTS=OFF", "-DUSE_MASM=OFF", "-DUSE_GAS=OFF")
     }  
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
@@ -161,6 +162,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.ASSIMP -join ' ' 
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.STDUUID -join ' ' 
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.YAMLCPP -join ' '
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.VULKAN_LOADER -join ' '
 
     if (-not $IsLinux) {
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '

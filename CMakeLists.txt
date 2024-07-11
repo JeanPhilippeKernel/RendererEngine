@@ -21,6 +21,8 @@ option (COPY_EXAMPLE_PROJECT "Copy example projects that show how to use Launche
 
 # Externals dependencies
 #
+set (IN_ENGINE_VULKAN_HEADER_PATH ${EXTERNAL_DIR}/Vulkan-Loader/external/${CMAKE_SYSTEM_NAME}/${CMAKE_BUILD_TYPE}/Vulkan-Headers/build/install/include)
+
 add_subdirectory (${EXTERNAL_DIR}/fmt)
 add_subdirectory (${EXTERNAL_DIR}/imgui)
 add_subdirectory (${EXTERNAL_DIR}/glfw)
@@ -35,6 +37,12 @@ add_subdirectory (${EXTERNAL_DIR}/glslang)
 add_subdirectory (${EXTERNAL_DIR}/SPIRV-Cross)
 add_subdirectory (${EXTERNAL_DIR}/gtest)
 add_subdirectory (${EXTERNAL_DIR}/VulkanMemoryAllocator)
+
+set (CMAKE_PREFIX_PATH
+	${CMAKE_PREFIX_PATH}
+	${EXTERNAL_DIR}/Vulkan-Loader/external/${CMAKE_SYSTEM_NAME}/${CMAKE_BUILD_TYPE}/Vulkan-Headers/build/install/share/cmake
+)
+add_subdirectory (${EXTERNAL_DIR}/Vulkan-Loader)
 
 # Core engine lib is here
 #

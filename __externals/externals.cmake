@@ -1,11 +1,7 @@
 # Packages
 #
-find_package(Vulkan REQUIRED)
-
-message("Here is the include : ${Vulkan_INCLUDE_DIRS}")
-
 set(EXTERNAL_INCLUDE_DIRS
-	${Vulkan_INCLUDE_DIRS}
+	${IN_ENGINE_VULKAN_HEADER_PATH}
 	${EXTERNAL_DIR}/fmt/include
 	${EXTERNAL_DIR}/imgui/src
 	${EXTERNAL_DIR}/spdlog/include
@@ -33,7 +29,7 @@ endif()
 add_library (imported::External_libs INTERFACE IMPORTED)
 
 target_link_libraries(imported::External_libs INTERFACE
-	Vulkan::Vulkan
+	vulkan
 	fmt
 	imgui
 	spdlog
