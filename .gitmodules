@@ -49,9 +49,12 @@
 [submodule "__externals/SPIRV-Tools"]
 	path = __externals/SPIRV-Tools
 	url = https://github.com/khronosGroup/SPIRV-Tools
-[submodule "__externals/Vulkan-Headers"]
-	path = __externals/Vulkan-Headers
-	url = https://github.com/KhronosGroup/Vulkan-Headers
 [submodule "__externals/Vulkan-Loader"]
 	path = __externals/Vulkan-Loader
 	url = https://github.com/KhronosGroup/Vulkan-Loader
+[submodule "__externals/glm"]
+	path = __externals/glm
+	url = https://github.com/g-truc/glm
+[submodule "__externals/Vulkan-Headers"]
+	path = __externals/Vulkan-Headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers

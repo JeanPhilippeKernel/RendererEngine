@@ -22,6 +22,6 @@ target_include_directories (imgui
         ./src/backends
         ${EXTERNAL_DIR}/glfw/include
     PRIVATE
-        ${IN_ENGINE_VULKAN_HEADER_PATH}
+        ${EXTERNAL_DIR}/Vulkan-Headers/build/install/include
 )
 

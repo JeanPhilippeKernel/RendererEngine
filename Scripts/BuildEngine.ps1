@@ -78,6 +78,20 @@ $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 Write-Host "Ensuring submodules are initialized and updated..."
 git -C $RepoRoot submodule update --init --recursive
 
+
+Write-Host "Configuring Vulkan-Header submodule..."
+
+$ExternalVulkanHeadersDir = Join-Path -Path $RepoRoot -ChildPath "__externals/Vulkan-Headers"
+$ExternalVulkanHeadersOutputDir = Join-Path -Path $ExternalVulkanHeadersDir -ChildPath "build"
+$ExternalVulkanHeadersInstallDir = Join-Path -Path $ExternalVulkanHeadersOutputDir -ChildPath "install"
+
+if(-Not (Test-Path -Path $ExternalVulkanHeadersInstallDir))
+{
+    & $cMakeProgram -S $ExternalVulkanHeadersDir -B $ExternalVulkanHeadersOutputDir
+    & $cMakeProgram --install $ExternalVulkanHeadersOutputDir --prefix $ExternalVulkanHeadersInstallDir
+}
+
+
 function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
     $architecture = 'x64'
@@ -123,7 +137,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'STDUUID'   = @("-DUUID_BUILD_TESTS=OFF", "-DUUID_USING_CXX20_SPAN=ON", "-DUUID_SYSTEM_GENERATOR=OFF");
         'YAMLCPP'   = @("-DYAML_CPP_BUILD_TOOLS=OFF", "-DYAML_CPP_BUILD_TESTS=OFF", "-DYAML_CPP_FORMAT_SOURCE=OFF", "-DYAML_BUILD_SHARED_LIBS=OFF");
         'FRAMEWORK' = @("-DBUILD_FRAMEWORK=ON");
-        'VULKAN_LOADER' = @("-DUPDATE_DEPS=ON", "-DBUILD_TESTS=OFF", "-DUSE_MASM=OFF", "-DUSE_GAS=OFF")
+        'VULKAN_LOADER' = @("-DVULKAN_HEADERS_INSTALL_DIR=$ExternalVulkanHeadersInstallDir", "-DBUILD_TESTS=OFF", "-DUSE_MASM=OFF", "-DUSE_GAS=OFF")
     }  
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 

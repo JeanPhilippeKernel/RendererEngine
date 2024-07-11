@@ -1,8 +1,9 @@
 # Packages
 #
 set(EXTERNAL_INCLUDE_DIRS
-	${IN_ENGINE_VULKAN_HEADER_PATH}
+	${EXTERNAL_DIR}/Vulkan-Headers/build/install/include
 	${EXTERNAL_DIR}/fmt/include
+	${EXTERNAL_DIR}/glm/glm
 	${EXTERNAL_DIR}/imgui/src
 	${EXTERNAL_DIR}/spdlog/include
 	${EXTERNAL_DIR}/glfw/include
@@ -31,6 +32,7 @@ add_library (imported::External_libs INTERFACE IMPORTED)
 target_link_libraries(imported::External_libs INTERFACE
 	vulkan
 	fmt
+	glm
 	imgui
 	spdlog
 	glfw
