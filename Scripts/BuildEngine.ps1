@@ -137,7 +137,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'STDUUID'   = @("-DUUID_BUILD_TESTS=OFF", "-DUUID_USING_CXX20_SPAN=ON", "-DUUID_SYSTEM_GENERATOR=OFF");
         'YAMLCPP'   = @("-DYAML_CPP_BUILD_TOOLS=OFF", "-DYAML_CPP_BUILD_TESTS=OFF", "-DYAML_CPP_FORMAT_SOURCE=OFF", "-DYAML_BUILD_SHARED_LIBS=OFF");
         'FRAMEWORK' = @("-DBUILD_FRAMEWORK=ON");
-        'VULKAN_LOADER' = @("-DVULKAN_HEADERS_INSTALL_DIR=$ExternalVulkanHeadersInstallDir", "-DBUILD_TESTS=OFF", "-DUSE_MASM=OFF", "-DUSE_GAS=OFF")
+        'VULKAN_LOADER' = @("-DVULKAN_HEADERS_INSTALL_DIR=$ExternalVulkanHeadersInstallDir", "-DUSE_MASM=OFF", "-DUSE_GAS=OFF")
     }  
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 

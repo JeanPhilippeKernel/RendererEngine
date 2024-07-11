@@ -26,7 +26,6 @@ jobs:
       run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh
 
-    # @jeanphilippekernel : Disable tests for now as they're failing to run for unknown reasons
-    # - name: Run Tests
-    #   run: .\Scripts\RunTests.ps1 -Configurations ${{matrix.buildConfiguration}}
-    #   shell: pwsh
+    - name: Run Tests
+      run: .\Scripts\RunTests.ps1 -Configurations ${{matrix.buildConfiguration}}
+      shell: pwsh
