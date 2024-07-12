@@ -74,7 +74,14 @@ function RunTests {
     # Check if the executable exists
     if (Test-Path $testExecutablePath) {
         Write-Host "Running tests in $Configuration configuration..."
-        & $testExecutablePath
+        try {
+            & $testExecutablePath
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Test executable exited with code $LASTEXITCODE"
+            }
+        } catch {
+            Write-Error "Error running test executable: $_"
+        }
     }
     else {
         Write-Warning "Test executable does not exist: $testExecutablePath"
