@@ -8,8 +8,8 @@ namespace ZEngine::Managers
 
     Ref<Rendering::Shaders::Shader> ShaderManager::Get(ZEngine::Rendering::Specifications::ShaderSpecification spec)
     {
-        spec.VertexFilename = VertexFilename(spec.Name);
-        spec.FragmentFilename = FragmentFilename(spec.Name);
+        spec.VertexFilename = GetVertexFilename(spec.Name);
+        spec.FragmentFilename = GetFragmentFilename(spec.Name);
 
         auto& shader = m_shaderMappings[spec.Name];
         if (!shader)
@@ -31,9 +31,9 @@ namespace ZEngine::Managers
         {"skybox", {base_dir + "skybox_vertex.spv", base_dir + "skybox_fragment.spv"}},
         {"depth_prepass_scene", {base_dir + "depth_prepass_scene_vertex.spv", ""}}};
 
-    const std::string ShaderManager::FragmentFilename(const std::string& key)
+    const std::string ShaderManager::GetFragmentFilename(std::string_view key)
     {
-        auto it = m_shaderPath.find(key);
+        auto it = m_shaderPath.find(key.data());
         if (it == m_shaderPath.end())
         {
             return "";
@@ -41,9 +41,9 @@ namespace ZEngine::Managers
         return it->second.second;
     }
 
-    const std::string ShaderManager::VertexFilename(const std::string& key)
+    const std::string ShaderManager::GetVertexFilename(std::string_view key)
     {
-        auto it = m_shaderPath.find(key);
+        auto it = m_shaderPath.find(key.data());
         if (it == m_shaderPath.end())
         {
             return "";

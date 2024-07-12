@@ -28,8 +28,8 @@ namespace ZEngine::Managers
          */
         Ref<Rendering::Shaders::Shader> Load(const char* filename) override;
 
-        static const std::string FragmentFilename(const std::string& key);
-        static const std::string VertexFilename(const std::string& key);
+        static const std::string GetFragmentFilename(std::string_view key);
+        static const std::string GetVertexFilename(std::string_view key);
 
         static Ref<Rendering::Shaders::Shader> Get(ZEngine::Rendering::Specifications::ShaderSpecification spec);
 
