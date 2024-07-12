@@ -27,5 +27,7 @@ jobs:
         shell: pwsh
 
       - name: Run Tests
-        run: .\Scripts\RunTests.ps1 -Configurations ${{ matrix.buildConfiguration }}
+        env:
+          VERBOSE: true
+        run: .\Scripts\RunTests.ps1 -Configurations ${{ matrix.buildConfiguration }} -Verbose
         shell: pwsh
