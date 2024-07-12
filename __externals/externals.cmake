@@ -7,7 +7,7 @@ set(EXTERNAL_INCLUDE_DIRS
 	${EXTERNAL_DIR}/imgui/src
 	${EXTERNAL_DIR}/spdlog/include
 	${EXTERNAL_DIR}/glfw/include
-	${EXTERNAL_DIR}/entt/single_include
+	${EXTERNAL_DIR}/entt
 	${EXTERNAL_DIR}/assimp/include
 	${EXTERNAL_DIR}/stduuid/include
 	${EXTERNAL_DIR}/yaml-cpp/include

@@ -518,6 +518,8 @@ namespace Tetragrama::Components
     {
         ZENGINE_CORE_INFO("Scene {} loaded successfully", scene.GetName())
 
+        ZEngine::Rendering::Scenes::GraphicScene::SetRootNodeName(scene.GetName());
+
         const auto& config       = Editor::GetCurrentEditorConfiguration();
         const auto& scene_models = scene.GetModels();
 
@@ -541,7 +543,6 @@ namespace Tetragrama::Components
         if (!scene_data.empty())
         {
             ZEngine::Rendering::Scenes::GraphicScene::Merge(scene_data);
-            ZEngine::Rendering::Scenes::GraphicScene::SetRootNodeName(scene.GetName());
         }
 
         Editor::SetCurrentEditorScene(std::move(scene));

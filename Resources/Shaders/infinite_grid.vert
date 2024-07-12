@@ -8,10 +8,10 @@ layout (location = 1) out float scaleFactor;
 
 void main()
 {
-    scaleFactor = 300.0;
+    scaleFactor = 80.0;
 
-    DrawVertex v =  FetchVertexData();
-    vec3 posScale = vec3(v.x, v.y, v.z) * scaleFactor;
-    uv = posScale.xz;
+    DrawDataView dataView   = GetDrawDataView();
+    vec3 posScale           = vec3((dataView.Vertex * scaleFactor).xyz);
+    uv                      = posScale.xz;
     gl_Position = Camera.Projection * Camera.View * vec4(posScale, 1.0);
 }

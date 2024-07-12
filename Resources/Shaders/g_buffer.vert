@@ -2,25 +2,19 @@
 #extension GL_GOOGLE_include_directive : require
 #include "vertex_common.glsl"
 
-
-layout (location = 0) out vec3 FragmentPosition;
+layout (location = 0) out vec2 TexCoord;
 layout (location = 1) out vec3 WorldNormal;
-layout (location = 2) out vec2 TextureCoord;
+layout (location = 2) out vec4 FragPos;
 layout (location = 3) out flat uint MaterialIdx;
-layout (location = 4) out vec4 ViewPosition;
 
 void main()
 {
-    DrawVertex v = FetchVertexData();
-    mat4 model = FetchTransform();
+    DrawDataView dataView = GetDrawDataView();
 
-    vec4 worldPosition = model * vec4(v.x, v.y, v.z, 1.0);
-    FragmentPosition = worldPosition.xyz;
-
-    WorldNormal = transpose(inverse(mat3(model))) * vec3(v.nx, v.ny, v.nz);
-    TextureCoord = vec2(v.u, v.v);
-    MaterialIdx = DrawDataBuffer.Data[gl_BaseInstance].MaterialIndex;
-    ViewPosition = Camera.Position;
-
-    gl_Position = Camera.Projection * Camera.View * worldPosition;
+    vec4 worldPos   = dataView.Transform * dataView.Vertex;
+    WorldNormal     = transpose(inverse(mat3(dataView.Transform))) * dataView.Normal;
+    TexCoord        = dataView.TexCoord;
+    MaterialIdx     = dataView.MaterialId;
+    FragPos         = worldPos;
+    gl_Position     = Camera.Projection * Camera.View * worldPos;
 }

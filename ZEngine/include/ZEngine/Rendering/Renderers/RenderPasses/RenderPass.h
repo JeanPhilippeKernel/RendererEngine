@@ -55,6 +55,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::UniformBuffer>& buffer);
         void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::StorageBuffer>& buffer);
         void                            SetInput(std::string_view key_name, const Ref<Textures::Texture>& buffer);
+        void                            UpdateInputBinding();
         Ref<Textures::Texture>          GetOutputColor(uint32_t color_index);
         Ref<Textures::Texture>          GetOutputDepth();
 
@@ -106,6 +107,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder& UseRenderTarget(const Ref<Rendering::Textures::Texture>& target);
         RenderPassBuilder& AddRenderTarget(const Specifications::TextureSpecification& target_spec);
         RenderPassBuilder& AddInputAttachment(const Ref<Rendering::Textures::Texture>& target);
+        RenderPassBuilder& AddInputTexture(std::string_view key, const Ref<Rendering::Textures::Texture>& input);
         RenderPassBuilder& UseSwapchainAsRenderTarget();
 
         Ref<RenderPass> Create();

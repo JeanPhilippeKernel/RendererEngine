@@ -112,6 +112,18 @@ namespace ZEngine::Rendering::Renderers
             RenderGraph* const                     graph) override;
     };
 
+    struct LightingPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
+    {
+        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
+        virtual void Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
+        virtual void Execute(
+            uint32_t                               frame_index,
+            Rendering::Scenes::SceneRawData* const scene_data,
+            RenderPasses::RenderPass*              pass,
+            Buffers::CommandBuffer*                command_buffer,
+            RenderGraph* const                     graph) override;
+    };
+
     struct SceneRenderer : public Helpers::RefCounted
     {
         SceneRenderer()  = default;
@@ -125,5 +137,6 @@ namespace ZEngine::Rendering::Renderers
         Ref<SkyboxPass>        m_skybox_pass;
         Ref<GridPass>          m_grid_pass;
         Ref<GbufferPass>       m_gbuffer_pass;
+        Ref<LightingPass>      m_lighting_pass;
     };
 } // namespace ZEngine::Rendering::Renderers

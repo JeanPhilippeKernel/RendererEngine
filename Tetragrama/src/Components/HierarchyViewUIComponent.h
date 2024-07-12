@@ -5,7 +5,8 @@
 #include <Message.h>
 #include <EditorCameraController.h>
 
-namespace Tetragrama::Components {
+namespace Tetragrama::Components
+{
     class HierarchyViewUIComponent : public ZEngine::Components::UI::UIComponent
     {
     public:
@@ -17,12 +18,9 @@ namespace Tetragrama::Components {
 
         void RenderTreeNodes();
         void RenderGuizmo();
+        void RenderSceneNodeTree(int node_identifier);
 
-    public:
         std::future<void> EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<EditorCameraController>>&);
-
-    protected:
-        void         RenderSceneNodeTree(int32_t node_identifier);
 
     private:
         ImGuiTreeNodeFlags                       m_node_flag;

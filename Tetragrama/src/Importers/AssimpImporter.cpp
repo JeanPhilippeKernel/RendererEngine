@@ -2,13 +2,12 @@
 #include <AssimpImporter.h>
 #include <assimp/postprocess.h>
 #include <Core/Coroutine.h>
-#include <assimp/scene.h>
-
 #include <Helpers/ThreadPool.h>
 #include <fmt/format.h>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Meshes;
+using namespace ZEngine::Rendering::Scenes;
 
 namespace Tetragrama::Importers
 {
@@ -155,7 +154,7 @@ namespace Tetragrama::Importers
             return;
         }
 
-        uint32_t                  number_of_materials = scene->mNumMaterials;
+        uint32_t number_of_materials = scene->mNumMaterials;
         importer_data.Scene.Materials.reserve(number_of_materials);
         importer_data.Scene.MaterialNames.reserve(number_of_materials);
 
@@ -163,10 +162,10 @@ namespace Tetragrama::Importers
         {
             REPORT_LOG(fmt::format("Extrating materials : {0}/{1}", (m + 1), number_of_materials).c_str())
 
-            aiColor4D        color;
-            aiMaterial*      ai_material = scene->mMaterials[m];
-            aiString         mat_name    = ai_material->GetName();
-            MeshMaterial&    material    = importer_data.Scene.Materials.emplace_back();
+            aiColor4D     color;
+            aiMaterial*   ai_material = scene->mMaterials[m];
+            aiString      mat_name    = ai_material->GetName();
+            MeshMaterial& material    = importer_data.Scene.Materials.emplace_back();
 
             importer_data.Scene.MaterialNames.push_back(mat_name.C_Str() ? std::string(mat_name.C_Str()) : std::string("<unamed material>"));
 
@@ -178,8 +177,14 @@ namespace Tetragrama::Importers
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_DIFFUSE, &color) == AI_SUCCESS)
             {
-                material.DiffuseColor   = {color.r, color.g, color.b, color.a};
-                material.DiffuseColor.w = std::min(material.DiffuseColor.w, 1.0f);
+                material.AlbedoColor    = {color.r, color.g, color.b, color.a};
+                material.AlbedoColor.w = std::min(material.AlbedoColor.w, 1.0f);
+            }
+
+            if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_SPECULAR, &color) == AI_SUCCESS)
+            {
+                material.SpecularColor   = {color.r, color.g, color.b, color.a};
+                material.SpecularColor.w = std::min(material.SpecularColor.w, 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_EMISSIVE, &color) == AI_SUCCESS)
@@ -193,22 +198,22 @@ namespace Tetragrama::Importers
 
             if (aiGetMaterialFloat(ai_material, AI_MATKEY_OPACITY, &opacity) == AI_SUCCESS)
             {
-                material.TransparencyFactor = glm::clamp(1.f - opacity, 0.0f, 1.0f);
-                if (material.TransparencyFactor >= (1.0f - opaqueness_threshold))
+                material.Factors.x = glm::clamp(1.f - opacity, 0.0f, 1.0f);
+                if (material.Factors.x >= (1.0f - opaqueness_threshold))
                 {
-                    material.TransparencyFactor = 0.0f;
+                    material.Factors.x = 0.0f;
                 }
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_TRANSPARENT, &color) == AI_SUCCESS)
             {
                 const float component_as_opacity = std::max(std::max(color.r, color.g), color.b);
-                material.TransparencyFactor      = glm::clamp(component_as_opacity, 0.0f, 1.0f);
-                if (material.TransparencyFactor >= (1.0f - opaqueness_threshold))
+                material.Factors.x               = glm::clamp(component_as_opacity, 0.0f, 1.0f);
+                if (material.Factors.x >= (1.0f - opaqueness_threshold))
                 {
-                    material.TransparencyFactor = 0.0f;
+                    material.Factors.x = 0.0f;
                 }
-                material.AlphaTest = 0.5f;
+                material.Factors.z = 0.5f;
             }
         }
     }
@@ -239,30 +244,37 @@ namespace Tetragrama::Importers
                     ai_material, aiTextureType_DIFFUSE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
                 AI_SUCCESS)
             {
-                importer_data.Scene.Materials[m].AlbedoTextureMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                importer_data.Scene.Materials[m].AlbedoMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+            }
+
+            if (aiGetMaterialTexture(
+                    ai_material, aiTextureType_SPECULAR, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
+                AI_SUCCESS)
+            {
+                importer_data.Scene.Materials[m].SpecularMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
             }
 
             if (aiGetMaterialTexture(
                     ai_material, aiTextureType_EMISSIVE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
                 AI_SUCCESS)
             {
-                importer_data.Scene.Materials[m].EmissiveTextureMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                importer_data.Scene.Materials[m].EmissiveMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
             }
 
             if (aiGetMaterialTexture(
                     ai_material, aiTextureType_NORMALS, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
                 AI_SUCCESS)
             {
-                importer_data.Scene.Materials[m].NormalTextureMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                importer_data.Scene.Materials[m].NormalMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
             }
 
-            if (importer_data.Scene.Materials[m].NormalTextureMap == 0xFFFFFFFF)
+            if (importer_data.Scene.Materials[m].NormalMap == 0xFFFFFFFF)
             {
                 if (aiGetMaterialTexture(
                         ai_material, aiTextureType_HEIGHT, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
                     AI_SUCCESS)
                 {
-                    importer_data.Scene.Materials[m].NormalTextureMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                    importer_data.Scene.Materials[m].NormalMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
                 }
             }
 
@@ -270,8 +282,8 @@ namespace Tetragrama::Importers
                     ai_material, aiTextureType_OPACITY, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
                 AI_SUCCESS)
             {
-                importer_data.Scene.Materials[m].OpacityTextureMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
-                importer_data.Scene.Materials[m].AlphaTest   = 0.5f;
+                importer_data.Scene.Materials[m].OpacityMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                importer_data.Scene.Materials[m].Factors.z   = 0.5f;
             }
         }
     }
@@ -286,9 +298,9 @@ namespace Tetragrama::Importers
         TraverseNode(scene, &(importer_data.Scene), scene->mRootNode, -1, 0);
     }
 
-    void AssimpImporter::TraverseNode(const aiScene* ai_scene, ZEngine::Rendering::Scenes::SceneRawData* const scene, const aiNode* node, int parent_node_id, int depth_level)
+    void AssimpImporter::TraverseNode(const aiScene* ai_scene, SceneRawData* const scene, const aiNode* node, int parent_node_id, int depth_level)
     {
-        auto node_id              = AddNode(scene, parent_node_id, depth_level);
+        auto node_id              = SceneRawData::AddNode(scene, parent_node_id, depth_level);
         scene->NodeNames[node_id] = scene->Names.size();
         scene->Names.push_back(node->mName.C_Str() ? std::string(node->mName.C_Str()) : std::string{"<unamed node>"});
 
@@ -297,7 +309,7 @@ namespace Tetragrama::Importers
 
         for (uint32_t i = 0; i < node->mNumMeshes; ++i)
         {
-            auto     sub_node_id = AddNode(scene, node_id, depth_level + 1);
+            auto     sub_node_id = SceneRawData::AddNode(scene, node_id, depth_level + 1);
             uint32_t mesh        = node->mMeshes[i];
             aiString mesh_name   = ai_scene->mMeshes[mesh]->mName;
 
@@ -327,47 +339,6 @@ namespace Tetragrama::Importers
             }
         }
         return mm;
-    }
-
-    int AssimpImporter::AddNode(ZEngine::Rendering::Scenes::SceneRawData* scene, int parent, int depth)
-    {
-        int node_id = (int) scene->NodeHierarchyCollection.size();
-
-        scene->NodeHierarchyCollection.push_back({.Parent = parent});
-        scene->LocalTransformCollection.emplace_back(1.0f);
-        scene->GlobalTransformCollection.emplace_back(1.0f);
-
-        if (parent > -1)
-        {
-            int first_child = scene->NodeHierarchyCollection[parent].FirstChild;
-
-            if (first_child == -1)
-            {
-                scene->NodeHierarchyCollection[parent].FirstChild = node_id;
-            }
-            else
-            {
-                int right_sibling = scene->NodeHierarchyCollection[first_child].RightSibling;
-                if (right_sibling > -1)
-                {
-                    // iterate nextSibling_ indices
-                    for (right_sibling = first_child; scene->NodeHierarchyCollection[right_sibling].RightSibling != -1;
-                         right_sibling = scene->NodeHierarchyCollection[right_sibling].RightSibling)
-                    {
-                    }
-                    scene->NodeHierarchyCollection[right_sibling].RightSibling = node_id;
-                }
-                else
-                {
-                    scene->NodeHierarchyCollection[first_child].RightSibling = node_id;
-                }
-            }
-        }
-        scene->NodeHierarchyCollection[node_id].DepthLevel   = depth;
-        scene->NodeHierarchyCollection[node_id].RightSibling = -1;
-        scene->NodeHierarchyCollection[node_id].FirstChild   = -1;
-
-        return node_id;
     }
 
     int AssimpImporter::GenerateFileIndex(std::vector<std::string>& data, std::string_view filename)
