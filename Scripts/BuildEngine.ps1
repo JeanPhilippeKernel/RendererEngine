@@ -138,6 +138,8 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'YAMLCPP'   = @("-DYAML_CPP_BUILD_TOOLS=OFF", "-DYAML_CPP_BUILD_TESTS=OFF", "-DYAML_CPP_FORMAT_SOURCE=OFF", "-DYAML_BUILD_SHARED_LIBS=OFF");
         'FRAMEWORK' = @("-DBUILD_FRAMEWORK=ON");
         'VULKAN_LOADER' = @("-DVULKAN_HEADERS_INSTALL_DIR=$ExternalVulkanHeadersInstallDir", "-DUSE_MASM=OFF", "-DUSE_GAS=OFF")
+        'SPIRV_TOOLS' = @("-DSPIRV_SKIP_EXECUTABLES=ON", "-DSPIRV_SKIP_TESTS=ON")
+        'SPIRV_CROSS' = @("-DSPIRV_CROSS_ENABLE_TESTS=OFF")
     }  
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
@@ -177,6 +179,8 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.STDUUID -join ' ' 
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.YAMLCPP -join ' '
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.VULKAN_LOADER -join ' '
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_CROSS -join ' '
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_TOOLS -join ' '
 
     if (-not $IsLinux) {
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '
