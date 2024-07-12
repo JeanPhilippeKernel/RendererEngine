@@ -51,6 +51,7 @@ namespace ZEngine::Rendering::Renderers
     struct RenderGraphRenderPassInputOutputInfo
     {
         const char*             Name;
+        const char*             BindingInputKeyName;
         RenderGraphResourceType Type = RenderGraphResourceType::ATTACHMENT;
     };
 
@@ -74,10 +75,10 @@ namespace ZEngine::Rendering::Renderers
 
     struct RenderGraphNode
     {
-        RenderGraphRenderPassCreation Creation;
-        std::vector<std::string>      EdgeNodes;
-        Ref<RenderPasses::RenderPass> Handle;
-        Ref<IRenderGraphCallbackPass> CallbackPass;
+        RenderGraphRenderPassCreation   Creation;
+        std::unordered_set<std::string> EdgeNodes;
+        Ref<RenderPasses::RenderPass>   Handle;
+        Ref<IRenderGraphCallbackPass>   CallbackPass;
     };
 
     class RenderGraph : public Helpers::RefCounted
@@ -95,6 +96,8 @@ namespace ZEngine::Rendering::Renderers
         void Dispose();
 
         RenderGraphResource&            GetResource(std::string_view);
+        Ref<Textures::Texture>          GetRenderTarget(std::string_view);
+        Ref<Textures::Texture>          GetTexture(std::string_view);
         Ref<Buffers::StorageBufferSet>  GetBufferSet(std::string_view);
         Ref<Buffers::UniformBufferSet>  GetBufferUniformSet(std::string_view);
         Ref<Buffers::IndirectBufferSet> GetIndirectBufferSet(std::string_view);

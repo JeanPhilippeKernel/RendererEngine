@@ -16,17 +16,12 @@ add_library (imgui STATIC ${IMGUI_SOURCE})
 
 # include directories
 #
-find_package(Vulkan REQUIRED)
-
 target_include_directories (imgui
     PUBLIC
         ./src
         ./src/backends
+        ${EXTERNAL_DIR}/glfw/include
     PRIVATE
-        ${Vulkan_INCLUDE_DIRS}
-        ${EXTERNAL_DIR}/glad/include
-        ${EXTERNAL_DIR}/glad/include/KHR
+        ${EXTERNAL_DIR}/Vulkan-Headers/build/install/include
 )
-
-target_include_directories(imgui PUBLIC ${EXTERNAL_DIR}/glfw/include)
 

@@ -1,49 +1,150 @@
 ﻿#include <pch.h>
 #include <Rendering/Scenes/GraphicScene.h>
-#include <Rendering/Components/TransformComponent.h>
-#include <Rendering/Components/NameComponent.h>
-#include <Rendering/Components/MaterialComponent.h>
-#include <Rendering/Components/GeometryComponent.h>
+#include <Core/Coroutine.h>
+#include <Rendering/Renderers/GraphicRenderer.h>
+#include <Rendering/Textures/Texture2D.h>
 #include <Rendering/Components/LightComponent.h>
 #include <Rendering/Components/CameraComponent.h>
-#include <Rendering/Entities/GraphicSceneEntity.h>
-#include <Rendering/Materials/StandardMaterial.h>
 #include <Rendering/Components/UUIComponent.h>
-#include <Rendering/Components/ValidComponent.h>
-#include <Rendering/Lights/DirectionalLight.h>
 
-#include <Core/Coroutine.h>
-#include <Helpers/ThreadPool.h>
-#include <Rendering/Renderers/GraphicRenderer.h>
-
-#include <assimp/Importer.hpp>
-#include <assimp/postprocess.h>
-#include <assimp/pbrmaterial.h>
-#include <Helpers/MathHelper.h>
-#include <fmt/format.h>
-
-#include <Rendering/Textures/Texture2D.h>
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include <stb/stb_image_write.h>
-#include <stb/stb_image.h>
-#include <stb/stb_image_resize.h>
-
-
-#define SCENE_ROOT_PARENT_ID -1
-#define SCENE_ROOT_DEPTH_LEVEL 0
-#define INVALID_SCENE_NODE_ID -1
-#define INVALID_TEXTURE_MAP 0xFFFFFFFF
+#define NODE_PARENT_ID -1
+#define INVALID_NODE_ID -1
 
 using namespace ZEngine::Controllers;
 using namespace ZEngine::Rendering::Components;
-using namespace ZEngine::Rendering::Entities;
 
 namespace ZEngine::Rendering::Scenes
 {
     std::recursive_mutex GraphicScene::s_scene_node_mutex;
     Ref<SceneRawData>    GraphicScene::s_raw_data = CreateRef<SceneRawData>();
+
+    static entt::registry g_sceneEntityRegistry;
+
+    entt::registry& GetEntityRegistry()
+    {
+        return g_sceneEntityRegistry;
+    }
+
+    /*
+     * SceneRawData Implementation
+     */
+    int SceneRawData::AddNode(ZEngine::Rendering::Scenes::SceneRawData* scene, int parent, int depth)
+    {
+        if ((!scene) || (depth < 0))
+        {
+            return -1;
+        }
+
+        int node_id = (int) scene->NodeHierarchyCollection.size();
+
+        scene->NodeHierarchyCollection.push_back({.Parent = parent});
+        scene->LocalTransformCollection.emplace_back(1.0f);
+        scene->GlobalTransformCollection.emplace_back(1.0f);
+
+        if (parent > -1)
+        {
+            int first_child = scene->NodeHierarchyCollection[parent].FirstChild;
+
+            if (first_child == -1)
+            {
+                scene->NodeHierarchyCollection[parent].FirstChild = node_id;
+            }
+            else
+            {
+                int right_sibling = scene->NodeHierarchyCollection[first_child].RightSibling;
+                if (right_sibling > -1)
+                {
+                    // iterate nextSibling_ indices
+                    for (right_sibling = first_child; scene->NodeHierarchyCollection[right_sibling].RightSibling != -1;
+                         right_sibling = scene->NodeHierarchyCollection[right_sibling].RightSibling)
+                    {
+                    }
+                    scene->NodeHierarchyCollection[right_sibling].RightSibling = node_id;
+                }
+                else
+                {
+                    scene->NodeHierarchyCollection[first_child].RightSibling = node_id;
+                }
+            }
+        }
+        scene->NodeHierarchyCollection[node_id].DepthLevel   = depth;
+        scene->NodeHierarchyCollection[node_id].RightSibling = -1;
+        scene->NodeHierarchyCollection[node_id].FirstChild   = -1;
+
+        return node_id;
+    }
+
+    bool SceneRawData::SetNodeName(ZEngine::Rendering::Scenes::SceneRawData* scene, int node_id, std::string_view name)
+    {
+        if ((!scene) || node_id < 0)
+        {
+            return false;
+        }
+        scene->NodeNames[node_id] = scene->Names.size();
+        scene->Names.push_back(name.empty() ? std::string("") : name.data());
+        return true;
+    }
+
+    /*
+     * SceneEntity Implementation
+     */
+    void SceneEntity::SetName(std::string_view name)
+    {
+        if (auto scene = m_weak_scene.lock())
+        {
+            if (m_node > 0)
+            {
+                auto n          = scene->NodeNames[m_node];
+                scene->Names[n] = name;
+            }
+        }
+    }
+
+    std::string_view SceneEntity::GetName() const
+    {
+        std::string_view name = "";
+        if (auto scene = m_weak_scene.lock())
+        {
+            if (m_node > 0)
+            {
+                auto n = scene->NodeNames[m_node];
+                name   = scene->Names[n];
+            }
+        }
+        return name;
+    }
+
+    void SceneEntity::SetTransform(glm::mat4 transform)
+    {
+        if (auto scene = m_weak_scene.lock())
+        {
+            if (m_node < 0)
+            {
+                return;
+            }
+            scene->GlobalTransformCollection[m_node] = transform;
+        }
+    }
+
+    glm::mat4 SceneEntity::GetTransform() const
+    {
+        glm::mat4 transform = {};
+        if (auto scene = m_weak_scene.lock())
+        {
+            if (m_node > 0)
+            {
+                transform = scene->GlobalTransformCollection[m_node];
+            }
+        }
+        return transform;
+    }
+
+
+    int SceneEntity::GetNode() const
+    {
+        return m_node;
+    }
+
 
     void GraphicScene::Initialize()
     {
@@ -53,8 +154,6 @@ namespace ZEngine::Rendering::Scenes
         s_raw_data->GlobalTransformCollection.emplace_back(1.0f);
         s_raw_data->LocalTransformCollection.emplace_back(1.0f);
         s_raw_data->NodeHierarchyCollection.push_back({.Parent = -1, .FirstChild = -1, .DepthLevel = 0});
-
-        s_raw_data->EntityRegistry = std::make_shared<entt::registry>();
     }
 
     void GraphicScene::Deinitialize() {}
@@ -74,20 +173,23 @@ namespace ZEngine::Rendering::Scenes
         {
             std::lock_guard l(s_scene_node_mutex);
 
-            if (!scenes.empty())
+            auto& hierarchy = s_raw_data->NodeHierarchyCollection[0];
+            if (!scenes.empty() && hierarchy.FirstChild == -1)
             {
-                s_raw_data->NodeHierarchyCollection[0].FirstChild = 1;
+                hierarchy.FirstChild = 1;
             }
 
             MergeScenes(scenes);
             MergeMeshData(scenes);
             MergeMaterials(scenes);
 
-
-            for (std::string_view file : s_raw_data->Files)
+            if (!s_raw_data->Files.empty())
             {
-                auto index = Renderers::GraphicRenderer::GlobalTextures->Add(Textures::Texture2D::Read(file));
-                s_raw_data->TextureCollection.emplace(index);
+                for (std::string_view file : s_raw_data->Files)
+                {
+                    auto index = Renderers::GraphicRenderer::GlobalTextures->Add(Textures::Texture2D::Read(file));
+                    s_raw_data->TextureCollection.emplace(index);
+                }
             }
         }
     }
@@ -214,173 +316,126 @@ namespace ZEngine::Rendering::Scenes
         {
             for (auto& m : scene.Materials)
             {
-                if (m.AlbedoTextureMap != 0xFFFFFFFF)
+                if (m.AlbedoMap != 0xFFFFFFFF)
                 {
-                    auto& f = scene.Files[m.AlbedoTextureMap];
+                    auto& f = scene.Files[m.AlbedoMap];
                     files.push_back(f);
-                    m.AlbedoTextureMap = (files.size() - 1);
+                    m.AlbedoMap = (files.size() - 1);
                 }
-                else if (m.EmissiveTextureMap != 0xFFFFFFFF)
+
+                if (m.EmissiveMap != 0xFFFFFFFF)
                 {
-                    auto& f = scene.Files[m.EmissiveTextureMap];
+                    auto& f = scene.Files[m.EmissiveMap];
                     files.push_back(f);
-                    m.EmissiveTextureMap = (files.size() - 1);
+                    m.EmissiveMap = (files.size() - 1);
                 }
-                else if (m.NormalTextureMap != 0xFFFFFFFF)
+
+                if (m.SpecularMap != 0xFFFFFFFF)
                 {
-                    auto& f = scene.Files[m.NormalTextureMap];
+                    auto& f = scene.Files[m.SpecularMap];
                     files.push_back(f);
-                    m.NormalTextureMap = (files.size() - 1);
+                    m.SpecularMap = (files.size() - 1);
                 }
-                else if (m.OpacityTextureMap != 0xFFFFFFFF)
+
+                if (m.NormalMap != 0xFFFFFFFF)
                 {
-                    auto& f = scene.Files[m.OpacityTextureMap];
+                    auto& f = scene.Files[m.NormalMap];
                     files.push_back(f);
-                    m.OpacityTextureMap = (files.size() - 1);
+                    m.NormalMap = (files.size() - 1);
+                }
+
+                if (m.OpacityMap != 0xFFFFFFFF)
+                {
+                    auto& f = scene.Files[m.OpacityMap];
+                    files.push_back(f);
+                    m.OpacityMap = (files.size() - 1);
                 }
             }
             MergeVector(std::span{scene.Materials}, materials);
         }
     }
 
-    std::future<GraphicSceneEntity> GraphicScene::CreateEntityAsync(std::string_view entity_name)
+    std::future<SceneEntity> GraphicScene::CreateEntityAsync(std::string_view entity_name, int parent_id, int depth_level)
     {
         std::unique_lock lock(s_scene_node_mutex);
 
-        auto scene_node_identifier = co_await AddNodeAsync(SCENE_ROOT_PARENT_ID, SCENE_ROOT_DEPTH_LEVEL);
-        co_await SetSceneNodeNameAsync(scene_node_identifier, entity_name);
-
-        auto  scene_entity   = GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, s_raw_data->SceneNodeEntityMap[scene_node_identifier]);
-        auto& name_component = scene_entity.GetComponent<NameComponent>();
-        name_component.Name  = entity_name;
-        co_return scene_entity;
-    }
-
-    std::future<GraphicSceneEntity> GraphicScene::CreateEntityAsync(uuids::uuid uuid, std::string_view entity_name)
-    {
-        std::unique_lock lock(s_scene_node_mutex);
-        auto             scene_entity = co_await CreateEntityAsync(entity_name);
-        scene_entity.AddComponent<UUIComponent>(uuid);
-        co_return scene_entity;
-    }
-
-    std::future<GraphicSceneEntity> GraphicScene::CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name)
-    {
-        std::unique_lock lock(s_scene_node_mutex);
-        auto             scene_entity = co_await CreateEntityAsync(entity_name);
-        scene_entity.AddComponent<UUIComponent>(uuid_string);
-        co_return scene_entity;
-    }
-
-    std::future<Entities::GraphicSceneEntity> GraphicScene::GetEntityAsync(std::string_view entity_name)
-    {
-        std::unique_lock lock(s_scene_node_mutex);
-
-        entt::entity entity_handle{entt::null};
-        auto         views = s_raw_data->EntityRegistry->view<NameComponent>();
-        for (auto entity : views)
+        SceneEntity entity  = {};
+        int         node_id = SceneRawData::AddNode(s_raw_data.get(), parent_id, depth_level);
+        if (SceneRawData::SetNodeName(s_raw_data.get(), node_id, entity_name))
         {
-            auto name = views.get<NameComponent>(entity).Name;
-            if (name == entity_name)
+            entity = {node_id, s_raw_data.Weak()};
+        }
+        co_return entity;
+    }
+
+    std::future<SceneEntity> GraphicScene::CreateEntityAsync(uuids::uuid uuid, std::string_view entity_name)
+    {
+        std::unique_lock lock(s_scene_node_mutex);
+        auto             entity = co_await CreateEntityAsync(entity_name);
+        entity.AddComponent<UUIComponent>(uuid);
+        co_return entity;
+    }
+
+    std::future<SceneEntity> GraphicScene::CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name)
+    {
+        std::unique_lock lock(s_scene_node_mutex);
+        auto             entity = co_await CreateEntityAsync(entity_name);
+        entity.AddComponent<UUIComponent>(uuid_string);
+        co_return entity;
+    }
+
+    std::future<SceneEntity> GraphicScene::GetEntityAsync(std::string_view entity_name)
+    {
+        std::unique_lock lock(s_scene_node_mutex);
+
+        int   node       = -1;
+        auto& node_names = s_raw_data->NodeNames;
+        auto& names      = s_raw_data->Names;
+
+        for (auto& [id, name] : node_names)
+        {
+            if (names[name] == entity_name)
             {
-                entity_handle = entity;
-                break;
+                node = id;
             }
         }
 
-        if (entity_handle == entt::null)
+        if (node == -1)
         {
             ZENGINE_CORE_ERROR("An entity with name {0} deosn't exist", entity_name.data())
         }
-
-        co_return GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, entity_handle);
+        co_return SceneEntity{node, s_raw_data.Weak()};
     }
 
-    std::future<bool> GraphicScene::RemoveEntityAsync(const Entities::GraphicSceneEntity& entity)
+    std::future<bool> GraphicScene::RemoveEntityAsync(const SceneEntity& entity)
     {
-        std::unique_lock lock(s_scene_node_mutex);
-        if (!s_raw_data->EntityRegistry->valid(entity))
-        {
-            ZENGINE_CORE_ERROR("This entity is no longer valid")
-            co_return false;
-        }
-        s_raw_data->EntityRegistry->destroy(entity);
-        co_return true;
-    }
-
-    std::shared_ptr<entt::registry> GraphicScene::GetRegistry()
-    {
-        return s_raw_data->EntityRegistry;
-    }
-
-    std::future<int> GraphicScene::AddNodeAsync(int parent_node_id, int depth_level)
-    {
-        std::lock_guard lock(s_scene_node_mutex);
-
-        int scene_node_identifier = (int) s_raw_data->NodeHierarchyCollection.size();
-
-        s_raw_data->NodeHierarchyCollection.push_back({.Parent = parent_node_id});
-        s_raw_data->LocalTransformCollection.emplace_back(1.0f);
-        s_raw_data->GlobalTransformCollection.emplace_back(1.0f);
-
-        if (parent_node_id > SCENE_ROOT_PARENT_ID)
-        {
-            int first_child = s_raw_data->NodeHierarchyCollection[parent_node_id].FirstChild;
-
-            if (first_child == INVALID_SCENE_NODE_ID)
-            {
-                s_raw_data->NodeHierarchyCollection[parent_node_id].FirstChild = scene_node_identifier;
-            }
-            else
-            {
-                int right_sibling = s_raw_data->NodeHierarchyCollection[first_child].RightSibling;
-                if (right_sibling > INVALID_SCENE_NODE_ID)
-                {
-                    // iterate nextSibling_ indices
-                    for (right_sibling = first_child; s_raw_data->NodeHierarchyCollection[right_sibling].RightSibling != INVALID_SCENE_NODE_ID;
-                         right_sibling = s_raw_data->NodeHierarchyCollection[right_sibling].RightSibling)
-                    {
-                    }
-                    s_raw_data->NodeHierarchyCollection[right_sibling].RightSibling = scene_node_identifier;
-                }
-                else
-                {
-                    s_raw_data->NodeHierarchyCollection[first_child].RightSibling = scene_node_identifier;
-                }
-            }
-        }
-        s_raw_data->NodeHierarchyCollection[scene_node_identifier].DepthLevel   = depth_level;
-        s_raw_data->NodeHierarchyCollection[scene_node_identifier].RightSibling = INVALID_SCENE_NODE_ID;
-        s_raw_data->NodeHierarchyCollection[scene_node_identifier].FirstChild   = INVALID_SCENE_NODE_ID;
-        /*
-         * Extra SceneEntity information for a SceneNode
-         */
-        s_raw_data->SceneNodeEntityMap[scene_node_identifier] = s_raw_data->EntityRegistry->create();
-        // auto entity_wrapper = GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, s_raw_data->SceneNodeEntityMap[scene_node_identifier]);
-        // entity_wrapper.AddComponent<TransformComponent>(s_raw_data->LocalTransformCollection[scene_node_identifier]);
-        // entity_wrapper.AddComponent<UUIComponent>();
-        // entity_wrapper.AddComponent<NameComponent>();
-
-        co_return scene_node_identifier;
+        co_return false;
+        // std::unique_lock lock(s_scene_node_mutex);
+        // if (!s_raw_data->EntityRegistry->valid(entity))
+        //{
+        //     ZENGINE_CORE_ERROR("This entity is no longer valid")
+        //     co_return false;
+        // }
+        // s_raw_data->EntityRegistry->destroy(entity);
+        // co_return true;
     }
 
     std::future<bool> GraphicScene::RemoveNodeAsync(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-
         return std::future<bool>();
     }
 
     int GraphicScene::GetSceneNodeParent(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        return (node_identifier < 0) ? INVALID_SCENE_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].Parent;
+        return (node_identifier < 0) ? INVALID_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].Parent;
     }
 
     int GraphicScene::GetSceneNodeFirstChild(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        return (node_identifier < 0) ? INVALID_SCENE_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].FirstChild;
+        return (node_identifier < 0) ? INVALID_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].FirstChild;
     }
 
     std::vector<int> GraphicScene::GetSceneNodeSiblingCollection(int node_identifier)
@@ -393,7 +448,7 @@ namespace ZEngine::Rendering::Scenes
             return sibling_scene_nodes;
         }
 
-        for (auto sibling = s_raw_data->NodeHierarchyCollection[node_identifier].RightSibling; sibling != INVALID_SCENE_NODE_ID;
+        for (auto sibling = s_raw_data->NodeHierarchyCollection[node_identifier].RightSibling; sibling != INVALID_NODE_ID;
              sibling      = s_raw_data->NodeHierarchyCollection[sibling].RightSibling)
         {
             sibling_scene_nodes.push_back(sibling);
@@ -411,35 +466,34 @@ namespace ZEngine::Rendering::Scenes
     glm::mat4& GraphicScene::GetSceneNodeLocalTransform(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT((node_identifier > INVALID_SCENE_NODE_ID) && (node_identifier < s_raw_data->LocalTransformCollection.size()), "node identifier is invalid")
+        ZENGINE_VALIDATE_ASSERT((node_identifier > INVALID_NODE_ID) && (node_identifier < s_raw_data->LocalTransformCollection.size()), "node identifier is invalid")
         return s_raw_data->LocalTransformCollection[node_identifier];
     }
 
     glm::mat4& GraphicScene::GetSceneNodeGlobalTransform(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_SCENE_NODE_ID && node_identifier < s_raw_data->GlobalTransformCollection.size(), "node identifier is invalid")
+        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < s_raw_data->GlobalTransformCollection.size(), "node identifier is invalid")
         return s_raw_data->GlobalTransformCollection[node_identifier];
     }
 
     const SceneNodeHierarchy& GraphicScene::GetSceneNodeHierarchy(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_SCENE_NODE_ID && node_identifier < s_raw_data->NodeHierarchyCollection.size(), "node identifier is invalid")
+        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < s_raw_data->NodeHierarchyCollection.size(), "node identifier is invalid")
         return s_raw_data->NodeHierarchyCollection[node_identifier];
     }
 
-    GraphicSceneEntity GraphicScene::GetSceneNodeEntityWrapper(int node_identifier)
+    SceneEntity GraphicScene::GetSceneNodeEntityWrapper(int node_identifier)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(s_raw_data->SceneNodeEntityMap.contains(node_identifier), "node identifier is invalid")
-        return GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, s_raw_data->SceneNodeEntityMap[node_identifier]);
+        return SceneEntity{node_identifier, s_raw_data.Weak()};
     }
 
     std::future<void> GraphicScene::SetSceneNodeNameAsync(int node_identifier, std::string_view node_name)
     {
         std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_SCENE_NODE_ID, "node identifier is invalid")
+        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID, "node identifier is invalid")
         s_raw_data->Names[s_raw_data->NodeNames[node_identifier]] = node_name;
         co_return;
     }
@@ -453,7 +507,42 @@ namespace ZEngine::Rendering::Scenes
 
     Ref<SceneRawData> GraphicScene::GetRawData()
     {
-        std::lock_guard lock(s_scene_node_mutex);
+        {
+            std::lock_guard lock(s_scene_node_mutex);
+            s_raw_data->DirectionalLights.clear();
+            s_raw_data->PointLights.clear();
+            s_raw_data->SpotLights.clear();
+            s_raw_data->DirectionalLights.shrink_to_fit();
+            s_raw_data->PointLights.shrink_to_fit();
+            s_raw_data->SpotLights.shrink_to_fit();
+            auto light_cmp = g_sceneEntityRegistry.view<LightComponent>();
+            for (auto handle : light_cmp)
+            {
+                auto light     = light_cmp.get<LightComponent>(handle).GetLight();
+                auto ligh_type = light->GetLightType();
+                switch (ligh_type)
+                {
+                    case Lights::LightType::DIRECTIONAL:
+                    {
+                        auto directional = reinterpret_cast<Lights::DirectionalLight*>(light.get());
+                        s_raw_data->DirectionalLights.push_back(directional->GPUPackedData());
+                    }
+                    break;
+                    case Lights::LightType::POINT:
+                    {
+                        auto point = reinterpret_cast<Lights::PointLight*>(light.get());
+                        s_raw_data->PointLights.push_back(point->GPUPackedData());
+                    }
+                    break;
+                    case Lights::LightType::SPOT:
+                    {
+                        auto spot = reinterpret_cast<Lights::Spotlight*>(light.get());
+                        s_raw_data->SpotLights.push_back(spot->GPUPackedData());
+                    }
+                    break;
+                }
+            }
+        }
         return s_raw_data;
     }
 
@@ -485,7 +574,7 @@ namespace ZEngine::Rendering::Scenes
             const auto& hierarchy = s_raw_data->NodeHierarchyCollection;
             for (uint32_t i = 0; i < hierarchy.size(); ++i)
             {
-                if (hierarchy[i].Parent == SCENE_ROOT_PARENT_ID)
+                if (hierarchy[i].Parent == NODE_PARENT_ID)
                 {
                     root_scene_nodes.push_back(i);
                 }
@@ -526,7 +615,7 @@ namespace ZEngine::Rendering::Scenes
         {
             std::lock_guard l(s_scene_node_mutex);
 
-            auto&            hierarchy = s_raw_data->NodeHierarchyCollection;
+            auto& hierarchy = s_raw_data->NodeHierarchyCollection;
             if (hierarchy.empty())
             {
                 return;
@@ -561,20 +650,20 @@ namespace ZEngine::Rendering::Scenes
         }
     }
 
-    GraphicSceneEntity GraphicScene::GetPrimariyCameraEntity()
+    SceneEntity GraphicScene::GetPrimariyCameraEntity()
     {
-        GraphicSceneEntity camera_entity;
+        SceneEntity camera_entity;
 
-        auto view_cameras = s_raw_data->EntityRegistry->view<CameraComponent>();
-        for (auto entity : view_cameras)
-        {
-            auto& component = view_cameras.get<CameraComponent>(entity);
-            if (component.IsPrimaryCamera)
-            {
-                camera_entity = GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, entity);
-                break;
-            }
-        }
+        //auto view_cameras = s_raw_data->EntityRegistry->view<CameraComponent>();
+        //for (auto entity : view_cameras)
+        //{
+        //    auto& component = view_cameras.get<CameraComponent>(entity);
+        //    if (component.IsPrimaryCamera)
+        //    {
+        //        camera_entity = GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, entity);
+        //        break;
+        //    }
+        //}
         return camera_entity;
     }
 } // namespace ZEngine::Rendering::Scenes

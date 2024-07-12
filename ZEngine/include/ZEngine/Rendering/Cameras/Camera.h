@@ -35,7 +35,7 @@ namespace ZEngine::Rendering::Cameras
          */
         CameraType Type = CameraType::UNDEFINED;
 
-        virtual glm::mat4 GetViewMatrix()        = 0;
+        virtual glm::mat4 GetViewMatrix()              = 0;
         virtual glm::mat4 GetPerspectiveMatrix() const = 0;
         virtual glm::vec3 GetPosition() const          = 0;
     };

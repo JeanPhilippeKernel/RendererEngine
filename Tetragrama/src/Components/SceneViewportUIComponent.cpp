@@ -26,18 +26,16 @@ namespace Tetragrama::Components
             m_viewport_size           = m_content_region_available_size;
             m_request_renderer_resize = true;
         }
-        else
+
+        if (m_request_renderer_resize)
         {
-            if (m_request_renderer_resize)
-            {
-                GraphicRenderer::SetViewportSize(m_viewport_size.x, m_viewport_size.y);
-                m_refresh_texture_handle = true;
+            GraphicRenderer::SetViewportSize(m_viewport_size.x, m_viewport_size.y);
+            m_refresh_texture_handle = true;
 
-                Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
-                    EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
+            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
+                EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
 
-                m_request_renderer_resize = false;
-            }
+            m_request_renderer_resize = false;
         }
 
         if (m_is_window_hovered && m_is_window_focused)
@@ -78,6 +76,7 @@ namespace Tetragrama::Components
         m_is_window_clicked             = ImGui::IsMouseClicked(static_cast<int>(ZENGINE_KEY_MOUSE_LEFT));
 
         // ImGuizmo configuration
+        ImGuizmo::AllowAxisFlip(false);
         ImGuizmo::SetOrthographic(false);
         ImGuizmo::SetDrawlist();
         ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowWidth(), ImGui::GetWindowHeight());

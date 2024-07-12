@@ -10,6 +10,9 @@
 #define STBI_NO_SIMD
 #endif
 #include <stb/stb_image.h>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include <stb/stb_image_write.h>
 #include <stb/stb_image_resize.h>
 
@@ -171,36 +174,23 @@ namespace ZEngine::Rendering::Textures
         Hardwares::VulkanDevice::MapAndCopyToMemory(staging_buffer, texture->m_buffer_size, spec.Data);
 
         /* Create VkImage */
+        uint32_t storage_bit   = spec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;
         uint32_t transfert_bit = spec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
         uint32_t sampled_bit   = spec.IsUsageSampled ? VK_IMAGE_USAGE_SAMPLED_BIT : 0;
         uint32_t image_aspect  = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
         uint32_t image_usage_attachment =
             (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        VkFormat image_format = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Hardwares::VulkanDevice::FindDepthFormat()
-                                                                                                        : Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
-
-        if (spec.IsCubemap)
-        {
-            texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(
-                texture->m_width,
-                texture->m_height,
-                image_format,
-                VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit),
-                VkImageAspectFlagBits(image_aspect),
-                spec.LayerCount,
-                VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
-        }
-        else
-        {
-            texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(
-                texture->m_width,
-                texture->m_height,
-                image_format,
-                VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit),
-                VkImageAspectFlagBits(image_aspect),
-                spec.LayerCount);
-        }
+        VkFormat image_format      = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Hardwares::VulkanDevice::FindDepthFormat()
+                                                                                                             : Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
+        texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(
+            texture->m_width,
+            texture->m_height,
+            image_format,
+            VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit),
+            VkImageAspectFlagBits(image_aspect),
+            spec.LayerCount,
+            spec.IsCubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0);
 
         if (spec.PerformTransition)
         {

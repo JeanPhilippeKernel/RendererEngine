@@ -113,9 +113,9 @@ namespace ZEngine::Controllers
         }
 
     protected:
-        float                                               m_camera_fov{45.0f};
-        float                                               m_camera_near{0.1f};
-        float                                               m_camera_far{5000.0f};
+        float                                               m_camera_fov{90.0f};
+        float                                               m_camera_near{1.f};
+        float                                               m_camera_far{1000.0f};
         std::recursive_mutex                                m_event_mutex;
         bool                                                m_process_event{true};
         glm::vec3                                           m_camera_target{0.0f, 0.0f, 0.0f};

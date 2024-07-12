@@ -154,8 +154,8 @@ namespace Tetragrama::Helpers
         ImGui::Text(label.data());
         ImGui::NextColumn();
 
-        ImGui::PushMultiItemsWidths(3, ImGui::CalcItemWidth());
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.5f, 0});
+        ImGui::PushMultiItemsWidths(5, ImGui::CalcItemWidth());
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{1.0f, 0});
 
         float  line_height = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
         ImVec2 button_size = {line_height + 3.0f, line_height};
@@ -544,5 +544,37 @@ namespace Tetragrama::Helpers
         ImGui::PushStyleColor(ImGuiCol_Text, color);
         ImGui::TextUnformatted(start, end);
         ImGui::PopStyleColor();
+    }
+
+
+    void DrawEntityControl(
+        std::string_view                         component_name,
+        ZEngine::Rendering::Scenes::SceneEntity& entity,
+        ImGuiTreeNodeFlags                       flags,
+        std::function<void(void)>                callback)
+    {
+        if (entity.GetNode() <= 0)
+        {
+            return;
+        }
+
+        ImVec2 content_region_available = ImGui::GetContentRegionAvail();
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{2, 2});
+        float line_height = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+
+        bool opened = ImGui::TreeNodeEx(fmt::format("SceneEntity_{0}_cmpnt{1}", entity.GetNode(), component_name).c_str(), flags, "%s", component_name.data());
+        ImGui::PopStyleVar();
+
+        if (opened)
+        {
+            if (callback)
+            {
+                callback();
+            }
+            ImGui::TreePop();
+        }
+
+        ImGui::Dummy(ImVec2(0, 5));
+        ImGui::Separator();
     }
 } // namespace Tetragrama::Helpers

@@ -2,9 +2,9 @@ name: ZEngine Window Build
 
 on:
   push:
-    branches: [ master, develop, user/kernel/move-to-vulkan ]
+    branches: [ master, develop ]
   pull_request:
-    branches: [ master, develop, user/kernel/move-to-vulkan ]
+    branches: [ master, develop ]
 
 jobs:
   Windows-Build:

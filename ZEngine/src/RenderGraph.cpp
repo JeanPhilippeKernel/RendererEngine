@@ -110,7 +110,7 @@ namespace ZEngine::Rendering::Renderers
             {
                 RenderGraphResource& resource      = m_resource_map[pass.second.Creation.Inputs[i].Name];
                 RenderGraphNode&     producer_node = m_node[resource.ProducerNodeName];
-                producer_node.EdgeNodes.push_back(pass.first);
+                producer_node.EdgeNodes.insert(pass.first);
             }
         }
 
@@ -196,10 +196,15 @@ namespace ZEngine::Rendering::Renderers
 
             for (auto& input : node.Creation.Inputs)
             {
+                auto& resource = m_resource_map[input.Name];
+
                 if (input.Type == RenderGraphResourceType::ATTACHMENT)
                 {
-                    auto& resource = m_resource_map[input.Name];
                     pass_builder.AddInputAttachment(resource.ResourceInfo.TextureHandle);
+                }
+                else if (input.Type == RenderGraphResourceType::TEXTURE)
+                {
+                    pass_builder.AddInputTexture(input.BindingInputKeyName, resource.ResourceInfo.TextureHandle);
                 }
             }
 
@@ -217,6 +222,35 @@ namespace ZEngine::Rendering::Renderers
         for (auto& node_name : m_sorted_nodes)
         {
             auto& node = m_node[node_name];
+
+            for (auto& input : node.Creation.Inputs)
+            {
+                if (input.Type == RenderGraphResourceType::TEXTURE)
+                {
+                    auto& resource = m_resource_map[input.Name];
+                    /*
+                     * The input texture can from an attachment that should read as Shader Sampler2D data
+                     * So we need ensure the right config for transition
+                     */
+                    bool is_resource_attachment = resource.Type == RenderGraphResourceType::ATTACHMENT;
+
+                    auto& buffer = resource.ResourceInfo.TextureHandle->GetBuffer();
+
+                    Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
+                    barrier_spec.ImageHandle                                     = buffer.Handle;
+                    barrier_spec.OldLayout             = is_resource_attachment ? Specifications::ImageLayout::COLOR_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::UNDEFINED;
+                    barrier_spec.NewLayout             = Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+                    barrier_spec.ImageAspectMask       = VK_IMAGE_ASPECT_COLOR_BIT;
+                    barrier_spec.SourceAccessMask      = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    barrier_spec.DestinationAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                    barrier_spec.SourceStageMask       = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                    barrier_spec.DestinationStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                    barrier_spec.LayerCount            = 1;
+
+                    Primitives::ImageMemoryBarrier barrier{barrier_spec};
+                    command_buffer->TransitionImageLayout(barrier);
+                }
+            }
 
             for (auto& output : node.Creation.Outputs)
             {
@@ -280,6 +314,8 @@ namespace ZEngine::Rendering::Renderers
             pass_spec.Inputs.clear();
             pass_spec.Inputs.shrink_to_fit();
 
+            pass_spec.InputTextures.clear();
+
             for (auto& output : node.Creation.Outputs)
             {
                 auto& resource = m_resource_map[output.Name];
@@ -301,10 +337,22 @@ namespace ZEngine::Rendering::Renderers
             for (auto& input : node.Creation.Inputs)
             {
                 auto& resource = m_resource_map[input.Name];
-                pass_spec.Inputs.push_back(resource.ResourceInfo.TextureHandle);
+
+                if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::ATTACHMENT)
+                {
+                    pass_spec.Inputs.push_back(resource.ResourceInfo.TextureHandle);
+                }
+                /*
+                * The resource is an attachment from a RenderPass output, but the current node consumes it as Image for sampling operation
+                */
+                else if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::TEXTURE)
+                {
+                    pass_spec.InputTextures[input.BindingInputKeyName] = resource.ResourceInfo.TextureHandle;
+                }
             }
 
             node.Handle->ResizeFramebuffer();
+            node.Handle->UpdateInputBinding();
         }
     }
 
@@ -366,6 +414,34 @@ namespace ZEngine::Rendering::Renderers
             m_resource_map[resource_name].Name = name.data();
         }
         return m_resource_map[resource_name];
+    }
+
+    Ref<Textures::Texture> RenderGraph::GetRenderTarget(std::string_view name)
+    {
+        std::string resource_name(name);
+        if (!m_resource_map.contains(resource_name))
+        {
+            m_resource_map[resource_name].Name = name.data();
+        }
+        if (m_resource_map[resource_name].Type != RenderGraphResourceType::ATTACHMENT)
+        {
+            ZENGINE_CORE_WARN("{} isn't a valid Attachement Resource", name.data())
+        }
+        return m_resource_map[resource_name].ResourceInfo.TextureHandle;
+    }
+
+    Ref<Textures::Texture> RenderGraph::GetTexture(std::string_view name)
+    {
+        std::string resource_name(name);
+        if (!m_resource_map.contains(resource_name))
+        {
+            m_resource_map[resource_name].Name = name.data();
+        }
+        if (m_resource_map[resource_name].Type != RenderGraphResourceType::TEXTURE)
+        {
+            ZENGINE_CORE_WARN("{} isn't a valid Texture Resource", name.data())
+        }
+        return m_resource_map[resource_name].ResourceInfo.TextureHandle;
     }
 
     Ref<Buffers::StorageBufferSet> RenderGraph::GetBufferSet(std::string_view name)

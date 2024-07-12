@@ -1,15 +1,13 @@
 # Packages
 #
-find_package(Vulkan REQUIRED)
-
 set(EXTERNAL_INCLUDE_DIRS
-	${Vulkan_INCLUDE_DIRS}
+	${EXTERNAL_DIR}/Vulkan-Headers/build/install/include
 	${EXTERNAL_DIR}/fmt/include
-	${EXTERNAL_DIR}/glm
+	${EXTERNAL_DIR}/glm/glm
 	${EXTERNAL_DIR}/imgui/src
 	${EXTERNAL_DIR}/spdlog/include
 	${EXTERNAL_DIR}/glfw/include
-	${EXTERNAL_DIR}/entt/single_include
+	${EXTERNAL_DIR}/entt
 	${EXTERNAL_DIR}/assimp/include
 	${EXTERNAL_DIR}/stduuid/include
 	${EXTERNAL_DIR}/yaml-cpp/include
@@ -32,7 +30,7 @@ endif()
 add_library (imported::External_libs INTERFACE IMPORTED)
 
 target_link_libraries(imported::External_libs INTERFACE
-	Vulkan::Vulkan
+	vulkan
 	fmt
 	glm
 	imgui

@@ -13,7 +13,7 @@ namespace Tetragrama::Components
 {
     HierarchyViewUIComponent::HierarchyViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
     {
-        m_node_flag = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth/* | ImGuiTreeNodeFlags_DefaultOpen*/;
+        m_node_flag = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth /* | ImGuiTreeNodeFlags_DefaultOpen*/;
     }
 
     HierarchyViewUIComponent::~HierarchyViewUIComponent() {}
@@ -78,6 +78,7 @@ namespace Tetragrama::Components
     void HierarchyViewUIComponent::RenderTreeNodes()
     {
         auto root_nodes = GraphicScene::GetRootSceneNodes();
+
         for (int node : root_nodes)
         {
             RenderSceneNodeTree(node);
@@ -135,7 +136,7 @@ namespace Tetragrama::Components
             if (ImGuizmo::IsUsing())
             {
                 // ZEngine::Maths::Vector3 translation, rotation, scale;
-                // ZEngine::Maths::DecomposeTransformComponent(transform, translation, rotation, scale);
+                 //ZEngine::Maths::DecomposeTransformComponent(transform, translation, rotation, scale);
 
                 // entity_transform_component.SetPosition(translation);
                 // entity_transform_component.SetScaleSize(scale);
@@ -144,7 +145,7 @@ namespace Tetragrama::Components
         }
     }
 
-    void HierarchyViewUIComponent::RenderSceneNodeTree(int32_t node_identifier)
+    void HierarchyViewUIComponent::RenderSceneNodeTree(int node_identifier)
     {
         if (node_identifier < 0)
         {
@@ -162,6 +163,10 @@ namespace Tetragrama::Components
         if (ImGui::IsItemClicked())
         {
             m_selected_node_identifier = node_identifier;
+
+            auto entity = GraphicScene::GetSceneNodeEntityWrapper(m_selected_node_identifier);
+            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<SceneEntity>>(
+                EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::GenericMessage<SceneEntity>{std::move(entity)});
         }
 
         if (is_node_opened)
@@ -174,6 +179,7 @@ namespace Tetragrama::Components
             {
                 if (ImGui::MenuItem("Create Empty child"))
                 {
+                    GraphicScene::CreateEntityAsync("Empty Entity", m_selected_node_identifier, node_hierarchy.DepthLevel + 1);
                 }
 
                 if (ImGui::MenuItem("Rename"))

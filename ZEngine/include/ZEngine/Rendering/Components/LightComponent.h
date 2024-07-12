@@ -1,20 +1,22 @@
 #pragma once
 #include <Rendering/Lights/Light.h>
-#include <Maths/Math.h>
 
-namespace ZEngine::Rendering::Components {
-    struct LightComponent {
-        LightComponent(const Ref<Lights::Light>& light) : m_light(light) {}
-        LightComponent(Ref<Lights::Light>&& light) : m_light(std::move(light)) {}
+namespace ZEngine::Rendering::Components
+{
+    struct LightComponent
+    {
+        LightComponent(const Ref<Lights::LightVNext>& light) : m_light(light) {}
+        LightComponent(Ref<Lights::LightVNext>&& light) : m_light(std::move(light)) {}
 
         ~LightComponent() = default;
 
-        Ref<Lights::Light> GetLight() const {
+        Ref<Lights::LightVNext> GetLight() const
+        {
             return m_light;
         }
 
     private:
-        Ref<Lights::Light> m_light;
+        Ref<Lights::LightVNext> m_light;
     };
 
 } // namespace ZEngine::Rendering::Components
