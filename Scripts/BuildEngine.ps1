@@ -68,9 +68,29 @@ else {
     }
 }
 
+# Add NuGet to the PATH for the current session if it's not already there
+$installPath = Split-Path -Path $nugetProgram -Parent
+if ($env:PATH -notlike "*$installPath*") {
+    $env:PATH = "$installPath;$env:PATH"
+}
+
 $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 Write-Host "Ensuring submodules are initialized and updated..."
 git -C $RepoRoot submodule update --init --recursive
+
+
+Write-Host "Configuring Vulkan-Header submodule..."
+
+$ExternalVulkanHeadersDir = Join-Path -Path $RepoRoot -ChildPath "__externals/Vulkan-Headers"
+$ExternalVulkanHeadersOutputDir = Join-Path -Path $ExternalVulkanHeadersDir -ChildPath "build"
+$ExternalVulkanHeadersInstallDir = Join-Path -Path $ExternalVulkanHeadersOutputDir -ChildPath "install"
+
+if(-Not (Test-Path -Path $ExternalVulkanHeadersInstallDir))
+{
+    & $cMakeProgram -S $ExternalVulkanHeadersDir -B $ExternalVulkanHeadersOutputDir
+    & $cMakeProgram --install $ExternalVulkanHeadersOutputDir --prefix $ExternalVulkanHeadersInstallDir
+}
+
 
 function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
@@ -117,6 +137,9 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'STDUUID'   = @("-DUUID_BUILD_TESTS=OFF", "-DUUID_USING_CXX20_SPAN=ON", "-DUUID_SYSTEM_GENERATOR=OFF");
         'YAMLCPP'   = @("-DYAML_CPP_BUILD_TOOLS=OFF", "-DYAML_CPP_BUILD_TESTS=OFF", "-DYAML_CPP_FORMAT_SOURCE=OFF", "-DYAML_BUILD_SHARED_LIBS=OFF");
         'FRAMEWORK' = @("-DBUILD_FRAMEWORK=ON");
+        'VULKAN_LOADER' = @("-DVULKAN_HEADERS_INSTALL_DIR=$ExternalVulkanHeadersInstallDir", "-DUSE_MASM=OFF", "-DUSE_GAS=OFF")
+        'SPIRV_TOOLS' = @("-DSPIRV_SKIP_EXECUTABLES=ON", "-DSPIRV_SKIP_TESTS=ON")
+        'SPIRV_CROSS' = @("-DSPIRV_CROSS_ENABLE_TESTS=OFF")
     }  
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
@@ -155,6 +178,9 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.ASSIMP -join ' ' 
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.STDUUID -join ' ' 
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.YAMLCPP -join ' '
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.VULKAN_LOADER -join ' '
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_CROSS -join ' '
+    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_TOOLS -join ' '
 
     if (-not $IsLinux) {
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '
