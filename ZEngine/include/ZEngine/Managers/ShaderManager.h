@@ -28,14 +28,14 @@ namespace ZEngine::Managers
          */
         Ref<Rendering::Shaders::Shader> Load(const char* filename) override;
 
-        static const std::string GetFragmentFilename(const std::string_view key);
-        static const std::string GetVertexFilename(const std::string_view key);
+        static const std::string GetFragmentFilename(std::string_view key);
+        static const std::string GetVertexFilename(std::string_view key);
 
-        static Ref<Rendering::Shaders::Shader> Get(ZEngine::Rendering::Specifications::ShaderSpecification spec);
+        static Ref<Rendering::Shaders::Shader> Get(ZEngine::Rendering::Specifications::ShaderSpecification& spec);
 
     private:
-        static const std::string_view                                                     base_dir;
-        static const std::unordered_map<std::string, std::pair<std::string, std::string>> m_shader_path;
-        static std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>>           m_shader_mappings;
+        static const std::string_view                                                     s_base_dir;
+        static const std::unordered_map<std::string, std::pair<std::string, std::string>> s_shader_path;
+        static std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>>           s_shader_mappings;
     };
 } // namespace ZEngine::Managers

@@ -4,47 +4,47 @@
 
 namespace ZEngine::Managers
 {
-    std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>> ShaderManager::m_shader_mappings = {};
+    std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>> ShaderManager::s_shader_mappings = {};
 
-    Ref<Rendering::Shaders::Shader> ShaderManager::Get(ZEngine::Rendering::Specifications::ShaderSpecification spec)
+    Ref<Rendering::Shaders::Shader> ShaderManager::Get(ZEngine::Rendering::Specifications::ShaderSpecification& spec)
     {
         spec.VertexFilename   = GetVertexFilename(spec.Name);
         spec.FragmentFilename = GetFragmentFilename(spec.Name);
 
-        auto& shader = m_shader_mappings[spec.Name];
+        auto& shader = s_shader_mappings[spec.Name];
         if (!shader)
         {
             shader                       = ZEngine::Rendering::Shaders::Shader::Create(spec);
-            m_shader_mappings[spec.Name] = shader;
+            s_shader_mappings[spec.Name] = shader;
         }
         return shader;
     }
 
-    const std::string_view ShaderManager::base_dir = "Shaders/Cache/";
+    const std::string_view ShaderManager::s_base_dir = "Shaders/Cache/";
 
-    const std::unordered_map<std::string, std::pair<std::string, std::string>> ShaderManager::m_shader_path = {
-        {"color", {fmt::format("{}final_color_vertex.spv", base_dir), fmt::format("{}final_color_fragment.spv", base_dir)}},
-        {"g_buffer", {fmt::format("{}g_buffer_vertex.spv", base_dir), fmt::format("{}g_buffer_fragment.spv", base_dir)}},
-        {"imgui", {fmt::format("{}imgui_vertex.spv", base_dir), fmt::format("{}imgui_fragment.spv", base_dir)}},
-        {"infinite_grid", {fmt::format("{}infinite_grid_vertex.spv", base_dir), fmt::format("{}infinite_grid_fragment.spv", base_dir)}},
-        {"skybox", {fmt::format("{}skybox_vertex.spv", base_dir), fmt::format("{}skybox_fragment.spv", base_dir)}},
-        {"depth_prepass_scene", {fmt::format("{}depth_prepass_scene_vertex.spv", base_dir), ""}},
-        {"deferred_lighting", {fmt::format("{}deferred_lighting_vertex.spv", base_dir), fmt::format("{}deferred_lighting_fragment.spv", base_dir)}}};
+    const std::unordered_map<std::string, std::pair<std::string, std::string>> ShaderManager::s_shader_path = {
+        {"color", {fmt::format("{}final_color_vertex.spv", s_base_dir), fmt::format("{}final_color_fragment.spv", s_base_dir)}},
+        {"g_buffer", {fmt::format("{}g_buffer_vertex.spv", s_base_dir), fmt::format("{}g_buffer_fragment.spv", s_base_dir)}},
+        {"imgui", {fmt::format("{}imgui_vertex.spv", s_base_dir), fmt::format("{}imgui_fragment.spv", s_base_dir)}},
+        {"infinite_grid", {fmt::format("{}infinite_grid_vertex.spv", s_base_dir), fmt::format("{}infinite_grid_fragment.spv", s_base_dir)}},
+        {"skybox", {fmt::format("{}skybox_vertex.spv", s_base_dir), fmt::format("{}skybox_fragment.spv", s_base_dir)}},
+        {"depth_prepass_scene", {fmt::format("{}depth_prepass_scene_vertex.spv", s_base_dir), ""}},
+        {"deferred_lighting", {fmt::format("{}deferred_lighting_vertex.spv", s_base_dir), fmt::format("{}deferred_lighting_fragment.spv", s_base_dir)}}};
 
-    const std::string ShaderManager::GetFragmentFilename(const std::string_view key)
+    const std::string ShaderManager::GetFragmentFilename(std::string_view key)
     {
-        auto it = m_shader_path.find(key.data());
-        if (it == m_shader_path.end())
+        auto it = s_shader_path.find(key.data());
+        if (it == s_shader_path.end())
         {
             return "";
         }
         return it->second.second;
     }
 
-    const std::string ShaderManager::GetVertexFilename(const std::string_view key)
+    const std::string ShaderManager::GetVertexFilename(std::string_view key)
     {
-        auto it = m_shader_path.find(key.data());
-        if (it == m_shader_path.end())
+        auto it = s_shader_path.find(key.data());
+        if (it == s_shader_path.end())
         {
             return "";
         }
