@@ -70,7 +70,7 @@ namespace ZEngine::Rendering::Cameras
         speed          = std::min(speed, 100.0f);
 
         m_distance -= delta * speed;
-        m_distance = glm::clamp(static_cast<float>(m_distance), 3.0f, 100.0f);
+        m_distance = glm::clamp(static_cast<float>(m_distance), 3.0f, ClipFar);
     }
 
     void PerspectiveCamera::SetDistance(double distance)
@@ -80,10 +80,10 @@ namespace ZEngine::Rendering::Cameras
 
     std::pair<float, float> PerspectiveCamera::PanSpeed() const
     {
-        float x       = std::min(m_viewport_width / 1000.0f, 2.4f); // max = 2.4f
+        float x       = std::min(m_viewport_width / 1000.0f, 4.4f); // max = 2.4f
         float xFactor = 0.0366f * (x * x) - 0.1778f * x + 0.3021f;
 
-        float y       = std::min(m_viewport_height / 1000.0f, 2.4f); // max = 2.4f
+        float y       = std::min(m_viewport_height / 1000.0f, 4.4f); // max = 2.4f
         float yFactor = 0.0366f * (y * y) - 0.1778f * y + 0.3021f;
 
         return {xFactor, yFactor};

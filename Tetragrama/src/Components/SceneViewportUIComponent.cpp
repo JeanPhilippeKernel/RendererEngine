@@ -15,7 +15,12 @@ using namespace ZEngine::Rendering;
 
 namespace Tetragrama::Components
 {
-    SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false) {}
+    SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
+    {
+        // ImGuizmo configuration
+        ImGuizmo::AllowAxisFlip(false);
+        ImGuizmo::SetOrthographic(false);
+    }
 
     SceneViewportUIComponent::~SceneViewportUIComponent() {}
 
@@ -75,12 +80,6 @@ namespace Tetragrama::Components
         m_is_window_hovered             = ImGui::IsWindowHovered();
         m_is_window_clicked             = ImGui::IsMouseClicked(static_cast<int>(ZENGINE_KEY_MOUSE_LEFT));
 
-        // ImGuizmo configuration
-        ImGuizmo::AllowAxisFlip(false);
-        ImGuizmo::SetOrthographic(false);
-        ImGuizmo::SetDrawlist();
-        ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
-
         // Scene texture representation
         if (!m_scene_texture || m_refresh_texture_handle)
         {
@@ -99,6 +98,10 @@ namespace Tetragrama::Components
 
         m_viewport_bounds[0] = minimum_bound;
         m_viewport_bounds[1] = maximum_bound;
+
+        // ImGuizmo configuration
+        ImGuizmo::SetRect(minimum_bound.x, minimum_bound.y, m_viewport_size.x, m_viewport_size.y);
+        ImGuizmo::SetDrawlist();
 
         ImGui::End();
 
