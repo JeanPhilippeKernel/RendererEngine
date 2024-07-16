@@ -8,12 +8,11 @@ namespace ZEngine::Managers
 
     Ref<Rendering::Shaders::Shader> ShaderManager::Get(ZEngine::Rendering::Specifications::ShaderSpecification& spec)
     {
-        spec.VertexFilename   = GetVertexFilename(spec.Name);
-        spec.FragmentFilename = GetFragmentFilename(spec.Name);
-
         auto& shader = s_shader_mappings[spec.Name];
         if (!shader)
         {
+            spec.VertexFilename          = GetVertexFilename(spec.Name);
+            spec.FragmentFilename        = GetFragmentFilename(spec.Name);
             shader                       = ZEngine::Rendering::Shaders::Shader::Create(spec);
             s_shader_mappings[spec.Name] = shader;
         }
