@@ -271,11 +271,6 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::MergeMeshData(std::span<SceneRawData> scenes)
     {
-        uint32_t totalVertexDataSize = 0;
-        uint32_t totalIndexDataSize  = 0;
-
-        uint32_t offs = 0;
-
         auto& vertices = s_raw_data->Vertices;
         auto& indices  = s_raw_data->Indices;
         auto& meshes   = s_raw_data->Meshes;
@@ -286,25 +281,25 @@ namespace ZEngine::Rendering::Scenes
             MergeVector(std::span{scene.Indices}, indices);
             MergeVector(std::span{scene.Meshes}, meshes);
 
-            uint32_t vtxOffset = totalVertexDataSize / 8; /* 8 is the number of per-vertex attributes: position, normal + UV */
+            uint32_t vtxOffset = s_raw_data->SVertexDataSize / 8; /* 8 is the number of per-vertex attributes: position, normal + UV */
 
             for (size_t j = 0; j < (uint32_t) scene.Meshes.size(); j++)
             {
                 // m.vertexCount, m.lodCount and m.streamCount do not change
                 // m.vertexOffset also does not change, because vertex offsets are local (i.e., baked into the indices)
-                meshes[offs + j].IndexOffset += totalIndexDataSize;
+                meshes[s_raw_data->SMeshCountOffset + j].IndexOffset += s_raw_data->SIndexDataSize;
             }
 
             // shift individual indices
             for (size_t j = 0; j < scene.Indices.size(); j++)
             {
-                indices[totalIndexDataSize + j] += vtxOffset;
+                indices[s_raw_data->SIndexDataSize + j] += vtxOffset;
             }
 
-            offs += (uint32_t) scene.Meshes.size();
+            s_raw_data->SMeshCountOffset += (uint32_t) scene.Meshes.size();
 
-            totalIndexDataSize += (uint32_t) scene.Indices.size();
-            totalVertexDataSize += (uint32_t) scene.Vertices.size();
+            s_raw_data->SIndexDataSize += (uint32_t) scene.Indices.size();
+            s_raw_data->SVertexDataSize += (uint32_t) scene.Vertices.size();
         }
     }
 
@@ -363,6 +358,36 @@ namespace ZEngine::Rendering::Scenes
         int         node_id = SceneRawData::AddNode(s_raw_data.get(), parent_id, depth_level);
         if (SceneRawData::SetNodeName(s_raw_data.get(), node_id, entity_name))
         {
+            auto  vertices         = std::vector<float>{0, 0, 0, 0, 1, 0, 0, 0};
+            auto  indices          = std::vector<uint32_t>{0};
+            auto& m                = s_raw_data->Meshes.emplace_back();
+            m.VertexCount          = 1;
+            m.IndexCount           = 1;
+            m.VertexOffset         = 0;
+            m.IndexOffset          = 0;
+            m.VertexUnitStreamSize = sizeof(float) * (3 + 3 + 2);
+            m.IndexUnitStreamSize  = sizeof(uint32_t);
+            m.StreamOffset         = (m.VertexUnitStreamSize * m.VertexOffset);
+            m.IndexStreamOffset    = (m.IndexUnitStreamSize * m.IndexOffset);
+            m.TotalByteSize        = (m.VertexCount * m.VertexUnitStreamSize) + (m.IndexCount * m.IndexUnitStreamSize);
+
+            MergeVector(std::span{vertices}, s_raw_data->Vertices);
+            MergeVector(std::span{indices}, s_raw_data->Indices);
+
+            uint32_t vtx_off = s_raw_data->SVertexDataSize / 8;
+            s_raw_data->Meshes[s_raw_data->SMeshCountOffset].IndexOffset += s_raw_data->SIndexDataSize;
+            s_raw_data->Indices[s_raw_data->SIndexDataSize] += vtx_off;
+
+            s_raw_data->SMeshCountOffset++;
+            s_raw_data->SIndexDataSize += indices.size();
+            s_raw_data->SVertexDataSize += (uint32_t) vertices.size();
+
+            s_raw_data->NodeMeshes[node_id] = s_raw_data->Meshes.size() - 1;
+
+            s_raw_data->MaterialNames.push_back("<unamed material>");
+            s_raw_data->Materials.emplace_back();
+            s_raw_data->NodeMaterials[node_id] = s_raw_data->Materials.size() - 1;
+
             entity = {node_id, s_raw_data.Weak()};
         }
         co_return entity;
