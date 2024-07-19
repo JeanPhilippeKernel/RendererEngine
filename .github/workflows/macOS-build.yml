@@ -17,11 +17,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v2
 
-    - name: Install CMake
-      uses: jwlawson/actions-setup-cmake@v2
-      with:
-        cmake-version: '3.21.x'
-
     - name: CMake Build
       run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
       shell: pwsh
