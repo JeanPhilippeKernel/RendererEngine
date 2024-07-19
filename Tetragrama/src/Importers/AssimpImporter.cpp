@@ -171,25 +171,25 @@ namespace Tetragrama::Importers
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_AMBIENT, &color) == AI_SUCCESS)
             {
-                material.AmbientColor   = {color.r, color.g, color.b, color.a};
+                material.AmbientColor   = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
                 material.AmbientColor.w = glm::min(material.AmbientColor.w, 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_DIFFUSE, &color) == AI_SUCCESS)
             {
-                material.AlbedoColor    = {color.r, color.g, color.b, color.a};
+                material.AlbedoColor    = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
                 material.AlbedoColor.w = std::min(material.AlbedoColor.w, 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_SPECULAR, &color) == AI_SUCCESS)
             {
-                material.SpecularColor   = {color.r, color.g, color.b, color.a};
+                material.SpecularColor   = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
                 material.SpecularColor.w = std::min(material.SpecularColor.w, 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_EMISSIVE, &color) == AI_SUCCESS)
             {
-                material.EmissiveColor   = {color.r, color.g, color.b, color.a};
+                material.EmissiveColor   = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
                 material.EmissiveColor.w = std::min(material.EmissiveColor.w, 1.0f);
             }
 

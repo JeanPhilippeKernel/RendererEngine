@@ -42,7 +42,7 @@ namespace ZEngine
         {                                           \
             ZENGINE_CORE_CRITICAL(message)          \
             assert(condition && message);           \
-            __debugbreak();                         \
+            /*__debugbreak();*/                         \
         }                                           \
     }
 

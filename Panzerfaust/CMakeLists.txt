@@ -5,7 +5,7 @@ project (Panzerfaust
 	DESCRIPTION "Panzerfaust, the ZEngine Launcher"
 )
 
-if (CMAKE_GENERATOR STREQUAL "Visual Studio 17 2022")
+if ((APPLE) OR (CMAKE_GENERATOR STREQUAL "Visual Studio 17 2022"))
     set(CSPROJ Panzerfaust)
 
     restore_nuget_packages(

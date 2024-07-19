@@ -73,7 +73,7 @@ $ContentsToProcess = @(
         Name = "Tetragrama"
         IsDirectory = $true
         Contents = @(
-            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net8.0\Editor"}
+            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\Editor"}
         )
     }
 )

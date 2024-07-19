@@ -21,7 +21,9 @@ set(EXTERNAL_INCLUDE_DIRS
 
 if (MSVC)
 	target_compile_options(assimp PRIVATE /Wv:18) # Fix zip lib compile issue
-endif ()
+elseif(APPLE)
+	target_compile_options(assimp PRIVATE -Wno-shorten-64-to-32 -Wno-unused-but-set-variable -Wno-deprecated-declarations)
+endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	target_link_libraries(imgui PUBLIC ${CMAKE_DL_LIBS})

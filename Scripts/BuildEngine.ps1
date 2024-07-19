@@ -51,28 +51,28 @@ else {
     throw 'CMake program not found'
 }
 
-$nugetProgram = Find-NuGet
-if ($nugetProgram) {
-    Write-Host "NuGet program found at: $nugetProgram"
-}
-else {
-    Write-Warning "NuGet program not found. Attempting to download and install NuGet..."
-    Setup-NuGet
+# $nugetProgram = Find-NuGet
+# if ($nugetProgram) {
+#     Write-Host "NuGet program found at: $nugetProgram"
+# }
+# else {
+#     Write-Warning "NuGet program not found. Attempting to download and install NuGet..."
+#     Setup-NuGet
     
-    $nugetProgram = Find-NuGet
-    if ($nugetProgram) {
-        Write-Host "NuGet installed successfully at: $nugetProgram"
-    }
-    else {
-        throw 'Nuget program not found'
-    }
-}
+#     $nugetProgram = Find-NuGet
+#     if ($nugetProgram) {
+#         Write-Host "NuGet installed successfully at: $nugetProgram"
+#     }
+#     else {
+#         throw 'Nuget program not found'
+#     }
+# }
 
 # Add NuGet to the PATH for the current session if it's not already there
-$installPath = Split-Path -Path $nugetProgram -Parent
-if ($env:PATH -notlike "*$installPath*") {
-    $env:PATH = "$installPath;$env:PATH"
-}
+# $installPath = Split-Path -Path $nugetProgram -Parent
+# if ($env:PATH -notlike "*$installPath*") {
+#     $env:PATH = "$installPath;$env:PATH"
+# }
 
 $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 Write-Host "Ensuring submodules are initialized and updated..."
