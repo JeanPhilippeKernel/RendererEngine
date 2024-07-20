@@ -10,7 +10,7 @@
 
   <Application.Styles>
     <FluentTheme />
-    <StyleInclude Source="avares://Panzerfaust/Assets/Icons.axaml" />
-    <StyleInclude Source="avares://Panzerfaust/Templates/ContentExample.axaml" />
+    <StyleInclude Source="/Assets/Icons.axaml" />
+    <StyleInclude Source="/Templates/ContentExample.axaml" />
   </Application.Styles>
 </Application>
