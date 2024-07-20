@@ -40,7 +40,7 @@ namespace Panzerfaust.Service.Engine
 #if _WIN32
             engineExtension = ".exe";
 #endif
-            enginePath = @$"{Environment.CurrentDirectory}/Editor/{editorAppName}/{engineExtension}";
+            enginePath = @$"{Environment.CurrentDirectory}/Editor/{editorAppName}{engineExtension}";
             workingDirectory = @$"{Environment.CurrentDirectory}/Editor";
 
             processStartInfo = new ProcessStartInfo(enginePath, string.Join(" ", engineArgs))
