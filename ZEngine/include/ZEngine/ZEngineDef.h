@@ -40,7 +40,7 @@ namespace ZEngine
     #define ZENGINE_DEBUG_BREAK() __debugbreak();
 #elif defined(__APPLE__)
     #include <signal.h>
-    #define ZENGINE_DEBUG_BREAK() __builtin_trap()
+    #define ZENGINE_DEBUG_BREAK() __builtin_trap();
 #else
     #error "Platform not supported!"
 #endif
