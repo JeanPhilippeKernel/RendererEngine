@@ -1,43 +1,43 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<OutputType>Exe</OutputType>
+		<OutputType>WinExe</OutputType>
 		<TargetFramework>net6.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-    	<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    	<ApplicationIcon>./Assets/avalonia-logo.ico</ApplicationIcon>
-		<Platforms>x64</Platforms>
-		<Platform>x64</Platform>
+		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+		<ApplicationIcon>./Assets/avalonia-logo.ico</ApplicationIcon>
+		<BaseOutputPath Condition="$([MSBuild]::IsOSPlatform('Windows')) == 'true'">..\Result.Windows.x64.MultiConfig</BaseOutputPath>
+		<BaseOutputPath Condition="$([MSBuild]::IsOSPlatform('OSX')) == 'true'">..\Result.Darwin.x64.$(Configuration)</BaseOutputPath>
 	</PropertyGroup>
-	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) AND '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) == 'true' AND '$(Configuration)' == 'Debug' ">
 		<PlatformTarget>x64</PlatformTarget>
 		<DebugSymbols>true</DebugSymbols>
 		<DebugType>full</DebugType>
 		<Optimize>false</Optimize>
-		<OutputPath>..\Result.Windows.$(Platform).MultiConfig\Panzerfaust\$(Configuration)</OutputPath>
+		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
 		<DefineConstants>TRACE;DEBUG;_WIN32</DefineConstants>
 	</PropertyGroup>
-	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('OSX')) AND '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('OSX')) == 'true' AND '$(Configuration)' == 'Debug' ">
 		<PlatformTarget>x64</PlatformTarget>
 		<DebugSymbols>true</DebugSymbols>
 		<DebugType>full</DebugType>
 		<Optimize>false</Optimize>
-		<OutputPath>..\Result.Darwin.$(Platform).$(Configuration)\Panzerfaust\$(Configuration)</OutputPath>
+		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
 		<DefineConstants>TRACE;DEBUG;__MACOS__</DefineConstants>
 	</PropertyGroup>
-	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) AND '$(Configuration)|$(Platform)' == 'Release|x64' ">
+	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) == 'true' AND '$(Configuration)' == 'Release' ">
 		<PlatformTarget>x64</PlatformTarget>
 		<DebugType>pdbonly</DebugType>
 		<Optimize>true</Optimize>
-		<OutputPath>..\Result.Windows.$(Platform).MultiConfig\Panzerfaust\$(Configuration)</OutputPath>
+		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
 		<DefineConstants>TRACE;_WIN32</DefineConstants>
 	</PropertyGroup>
-	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('OSX')) AND '$(Configuration)|$(Platform)' == 'Release|x64' ">
+	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('OSX')) == 'true' AND '$(Configuration)' == 'Release' ">
 		<PlatformTarget>x64</PlatformTarget>
 		<DebugType>pdbonly</DebugType>
 		<Optimize>true</Optimize>
-		<OutputPath>..\Result.Darwin.$(Platform).$(Configuration)\Panzerfaust\$(Configuration)</OutputPath>
+		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
 		<DefineConstants>TRACE;__MACOS__</DefineConstants>
 	</PropertyGroup>
 	<PropertyGroup>
