@@ -36,13 +36,23 @@ namespace ZEngine
 
 #include "Logging/LoggerDefinition.h"
 
+#ifdef _MSC_VER
+    #define ZENGINE_DEBUG_BREAK() __debugbreak();
+#elif defined(__APPLE__)
+    #include <signal.h>
+    #define ZENGINE_DEBUG_BREAK() __builtin_trap()
+#else
+    #error "Platform not supported!"
+#endif
+
+
 #define ZENGINE_VALIDATE_ASSERT(condition, message) \
     {                                               \
         if (!(condition))                           \
         {                                           \
             ZENGINE_CORE_CRITICAL(message)          \
             assert(condition && message);           \
-            /*__debugbreak();*/                         \
+            ZENGINE_DEBUG_BREAK()                   \
         }                                           \
     }
 
