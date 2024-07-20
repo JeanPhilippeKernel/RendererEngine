@@ -9,7 +9,7 @@
 		<ApplicationIcon>./Assets/avalonia-logo.ico</ApplicationIcon>
 		<BaseOutputPath Condition="$([MSBuild]::IsOSPlatform('Windows')) == 'true'">..\Result.Windows.x64.MultiConfig</BaseOutputPath>
 		<BaseOutputPath Condition="$([MSBuild]::IsOSPlatform('OSX')) == 'true'">..\Result.Darwin.x64.$(Configuration)</BaseOutputPath>
-		<Platforms Condition="$([MSBuild]::IsOSPlatform('OSX')) == 'true'">x64</Platforms>
+		<Platforms>x64</Platforms>
 	</PropertyGroup>
 	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) == 'true' AND '$(Configuration)' == 'Debug' ">
 		<PlatformTarget>x64</PlatformTarget>
