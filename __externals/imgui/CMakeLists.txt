@@ -1,3 +1,5 @@
+set(CMAKE_CXX_STANDARD 11)
+
 list (APPEND IMGUI_SOURCE
         src/imgui.h
         src/imgui_internal.h

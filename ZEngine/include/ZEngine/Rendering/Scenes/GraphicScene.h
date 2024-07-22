@@ -36,8 +36,9 @@ namespace ZEngine::Rendering::Scenes
      */
     struct SceneRawData : public Helpers::RefCounted
     {
-        uint32_t                               SVertexOffset{0};
-        uint32_t                               SIndexOffset{0};
+        uint32_t                               SVertexDataSize{0};
+        uint32_t                               SIndexDataSize{0};
+        uint32_t                               SMeshCountOffset{0};
         std::vector<SceneNodeHierarchy>        NodeHierarchyCollection;
         std::vector<glm::mat4>                 LocalTransformCollection;
         std::vector<glm::mat4>                 GlobalTransformCollection;

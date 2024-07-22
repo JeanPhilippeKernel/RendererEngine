@@ -22,11 +22,10 @@ namespace Panzerfaust.ViewModels
         }
         public MainViewModel() : this(new WeakReferenceMessenger()) { }
 
-        private readonly List<ListItemTemplate> _templates =
-            [
+        private readonly List<ListItemTemplate> _templates = new List<ListItemTemplate> {
                 new ListItemTemplate(typeof(HomePageViewModel), "HomeRegular", "Home"),
                 new ListItemTemplate(typeof(SettingsViewModel), "CursorHoverRegular", "Settings"),
-            ];
+            };
 
         [ObservableProperty]
         private bool _isPaneOpen;

@@ -64,8 +64,7 @@ function Find-Nuget () {
 
 function Setup-NuGet {
     $installPath = Join-Path -Path (Get-RepositoryToolPath) -ChildPath "NuGet"
-    $nugetProgramName = If($IsWindows) {"nuget.exe"} Else {"nuget"}
-    $nugetPath = Join-Path -Path $installPath -ChildPath $nugetProgramName
+    $nugetPath = Join-Path -Path $installPath -ChildPath "nuget.exe"
 
     if (-not (Test-Path $installPath)) { 
         New-Item -ItemType Directory -Path $installPath | Out-Null
@@ -164,6 +163,9 @@ function Find-GlslangValidator () {
         if ($IsWindows) {
             Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslangValidator.exe" # On Windows, the pipeline build might pick up this option...
         }
+        if ($IsMacOS) {
+            Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslangValidator" # On macOS, the pipeline build might pick up this option...
+        }
     )
 
     foreach ($GlslangValidatorProgram in $GlslangValidatorCandidates) {
@@ -187,22 +189,30 @@ function Setup-ShaderCCompilerTool () {
     $repoConfiguration = Get-RepositoryConfiguration
     $repositoryToolPath = $repoConfiguration.Paths.Tools
 
-    $shaderCToolPath = Join-Path $repositoryToolPath -ChildPath "ShaderCCompiler"
+    $shaderCToolPath = Join-Path "$repositoryToolPath" -ChildPath "ShaderCCompiler"
     
     if (-not (Test-Path $shaderCToolPath)) {
+        $outputFileExtension = if($IsWindows) {".zip"} Else {".tgz"}
+        $outputFile = Join-Path -Path $repositoryToolPath -ChildPath "ShaderCCompiler$outputFileExtension"
         Write-Host "Downloading Shader Compiler Tools..."
 
-        $shaderCToolUrl = $repoConfiguration.Requirements.ShaderC.Url
-        Invoke-WebRequest -Uri $shaderCToolUrl -OutFile "$repositoryToolPath\ShaderCCompiler.zip"
+        $shaderCToolUrl = IF($IsWindows) {$repoConfiguration.Requirements.ShaderC.Windows.Url} Elseif($IsMacOS) {$repoConfiguration.Requirements.ShaderC.macOS.Url}
+        Invoke-WebRequest -Uri $shaderCToolUrl -OutFile $outputFile
 
         # Extract contents
-        Expand-Archive -Path "$repositoryToolPath\ShaderCCompiler.zip" -DestinationPath "$repositoryToolPath"
+        if($IsWindows) {
+            Expand-Archive -Path $outputFile  -DestinationPath $repositoryToolPath
+        }
+        else {
+            [string[]] $unzipArguments = '-xvzf', $outputFile, '-C', $repositoryToolPath
+            & tar $unzipArguments
+        }
 
         # Reorganize contents
-        $oldPathName = Join-Path "$repositoryToolPath" -ChildPath "install"
-        $newPathName = Join-Path "$repositoryToolPath" -ChildPath "ShaderCCompiler"
+        $oldPathName = Join-Path $repositoryToolPath -ChildPath "install"
+        $newPathName = Join-Path $repositoryToolPath -ChildPath "ShaderCCompiler"
         Rename-Item -Path $oldPathName -NewName $newPathName -Force
-        Remove-Item "$repositoryToolPath\ShaderCCompiler.zip" -Force
+        Remove-Item $outputFile -Force
     }
 
     return $shaderCToolPath

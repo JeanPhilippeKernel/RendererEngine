@@ -814,12 +814,12 @@ namespace ZEngine::Hardwares
     {
         if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
         {
-            ZENGINE_CORE_ERROR(pCallbackData->pMessage)
+            ZENGINE_CORE_ERROR("{}", pCallbackData->pMessage)
         }
 
         if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
         {
-            ZENGINE_CORE_WARN(pCallbackData->pMessage)
+            ZENGINE_CORE_WARN("{}", pCallbackData->pMessage)
         }
 
         return VK_FALSE;

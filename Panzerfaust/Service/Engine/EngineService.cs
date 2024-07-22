@@ -27,18 +27,23 @@ namespace Panzerfaust.Service.Engine
 
         private void LoadConfig()
         {
-            #if DEBUG
+#if DEBUG
             configuration = "Debug";
-            exampleProjectConfig = @$"{Environment.CurrentDirectory}\..\..\..\Examples\projectConfig.json";
+            exampleProjectConfig = @$"{Environment.CurrentDirectory}/../../../Examples/projectConfig.json";
             engineArgs.Add(exampleProjectConfig);
-            #else
+#else
             configuration = "Release";
-            #endif
+#endif
 
-            enginePath = @$"{Environment.CurrentDirectory}\Editor\{editorAppName}.exe";
-            workingDirectory = @$"{Environment.CurrentDirectory}\Editor";
+            string engineExtension = string.Empty;
 
-            processStartInfo = new ProcessStartInfo(enginePath, engineArgs)
+#if _WIN32
+            engineExtension = ".exe";
+#endif
+            enginePath = @$"{Environment.CurrentDirectory}/Editor/{editorAppName}{engineExtension}";
+            workingDirectory = @$"{Environment.CurrentDirectory}/Editor";
+
+            processStartInfo = new ProcessStartInfo(enginePath, string.Join(" ", engineArgs))
             {
                 UseShellExecute = false,
                 WorkingDirectory = workingDirectory

@@ -45,7 +45,7 @@ namespace ZEngine::Rendering::Shaders
             std::ifstream fileStream(filePath, std::ios::in | std::ios::binary);
             if (!fileStream)
             {
-                ZENGINE_CORE_ERROR("Failed to open shader file: " + filePath.string());
+                ZENGINE_CORE_ERROR("Failed to open shader file: {}", filePath.string());
             }
             return std::string((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
         }
