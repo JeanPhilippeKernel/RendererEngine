@@ -65,11 +65,22 @@ endif ()
 #
 set(SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
 
-add_custom_target(AssembleContent ALL
-	COMMENT "Copying assets and resources contents"
+add_custom_target(BuildLauncher ALL
+	COMMENT "Building Panzerfaust"
 	DEPENDS
 		zEngineLib
 		tetragrama
+)
+
+add_custom_command(TARGET BuildLauncher
+	POST_BUILD
+	COMMAND dotnet build ${CMAKE_CURRENT_SOURCE_DIR}/Panzerfaust/Panzerfaust.csproj -c $<IF:$<CONFIG:Debug>,Debug,Release> -v n
+)
+
+add_custom_target(AssembleContent ALL
+	COMMENT "Copying assets and resources contents"
+	DEPENDS
+		BuildLauncher
 )
 
 add_custom_command(TARGET AssembleContent

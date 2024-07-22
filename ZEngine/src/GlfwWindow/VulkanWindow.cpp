@@ -4,7 +4,9 @@
 #include <Inputs/KeyCode.h>
 #include <Logging/LoggerDefinition.h>
 
-#define GLFW_EXPOSE_NATIVE_WIN32
+#ifdef _WIN32
+    #define GLFW_EXPOSE_NATIVE_WIN32
+#endif
 #include <GLFW/glfw3native.h>
 
 using namespace ZEngine;
@@ -29,7 +31,7 @@ namespace ZEngine::Window::GLFWWindow
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
         glfwSetErrorCallback([](int error, const char* description) {
-            ZENGINE_CORE_CRITICAL(description)
+            ZENGINE_CORE_CRITICAL("{}", description)
             ZENGINE_EXIT_FAILURE()
         });
 
