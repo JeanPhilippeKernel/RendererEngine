@@ -235,6 +235,18 @@ namespace ZEngine::Rendering::Shaders
         return set_layout_collection;
     }
 
+    std::vector<Specifications::LayoutBindingSpecification> Shader::GetLayoutBindingSpecificationList() const
+    {
+        std::vector<Specifications::LayoutBindingSpecification> m_list = {};
+
+        for (const auto& layout_binding : m_layout_binding_specification_map)
+        {
+            for (const auto& spec : layout_binding.second)
+            m_list.emplace_back(spec);
+        }
+        return m_list;
+    }
+
     const std::map<uint32_t, std::vector<VkDescriptorSet>>& Shader::GetDescriptorSetMap() const
     {
         return m_descriptor_set_map;

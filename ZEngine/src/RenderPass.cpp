@@ -70,7 +70,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
             ResizeFramebuffer();
             UpdateInputBinding();
-            InitializeExpectedInputs();
         }
     }
 
@@ -109,18 +108,33 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         m_pipeline->Bake();
     }
 
-    bool RenderPass::Verify(std::string_view key)
+    bool RenderPass::Verify()
     {
-        if (!m_expected_inputs.empty())
+        const auto& m_layout_bindings = m_pipeline->GetShader()->GetLayoutBindingSpecificationList();
+
+        if (m_input_collection.size() != m_layout_bindings.size())
         {
-            std::ostringstream warning_stream;
-            warning_stream << "Shader '" << key << "': " << m_expected_inputs.size() << " unset input(s): ";
+            std::unordered_set<std::string> m_input_names;
+            for (const auto& input : m_input_collection)
+            {
+                m_input_names.insert(input.DebugName);
+            }
 
-            warning_stream << std::accumulate(std::next(m_expected_inputs.begin()), m_expected_inputs.end(), *m_expected_inputs.begin(), [](const std::string& a, const std::string& b) {
-                return a + ", " + b;
-            });
+            std::vector<std::string> m_missing_names;
+            for (const auto& binding : m_layout_bindings)
+            {
+                if (m_input_names.find(binding.Name) == m_input_names.end())
+                {
+                    m_missing_names.push_back(binding.Name);
+                }
+            }
+            std::string m_unset_inputs =
+                std::accumulate(std::next(m_missing_names.begin()), m_missing_names.end(), *m_missing_names.begin(), [](const std::string& a, const std::string& b) {
+                    return a + ", " + b;
+                });
 
-            ZENGINE_CORE_WARN(warning_stream.str());
+            ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", m_specification.PipelineSpecification.DebugName, m_missing_names.size(), m_unset_inputs);
+
             return false;
         }
         return true;
@@ -323,7 +337,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER_SET, .Input = buffer.get()});
 
             m_perform_update = true;
-            m_expected_inputs.erase(key_name.data());
         }
     }
 
@@ -346,7 +359,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER_SET, .Input = buffer.get()});
 
             m_perform_update = true;
-            m_expected_inputs.erase(key_name.data());
         }
     }
 
@@ -369,7 +381,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE_ARRAY, .Input = textures.get()});
 
             m_perform_update = true;
-            m_expected_inputs.erase(key_name.data());
         }
     }
 
@@ -392,7 +403,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER, .Input = buffer.get()});
 
             m_perform_update = true;
-            m_expected_inputs.erase(key_name.data());
         }
     }
 
@@ -415,7 +425,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER, .Input = buffer.get()});
 
             m_perform_update = true;
-            m_expected_inputs.erase(key_name.data());
         }
     }
 
@@ -438,7 +447,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE, .Input = buffer.get()});
 
             m_perform_update = true;
-            m_expected_inputs.erase(key_name.data());
         }
     }
 
@@ -623,17 +631,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             valid = false;
         }
         return {valid, binding_spec};
-    }
-
-    void RenderPass::InitializeExpectedInputs()
-    {
-        for (const auto& [set, specs] : m_pipeline->GetShader()->GetLayoutBindingSetMap())
-        {
-            for (const auto& spec : specs)
-            {
-                m_expected_inputs.emplace(spec.Name);
-            }
-        }
     }
 
     /*

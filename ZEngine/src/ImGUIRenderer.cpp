@@ -88,7 +88,7 @@ namespace ZEngine::Rendering::Renderers
                         .UseSwapchainAsRenderTarget()
                         .Create();
 
-        m_ui_pass->Verify("imgui");
+        m_ui_pass->Verify();
         m_ui_pass->Bake();
 
         auto pipeline             = m_ui_pass->GetPipeline();

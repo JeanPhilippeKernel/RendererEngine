@@ -46,7 +46,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         Ref<Pipelines::GraphicPipeline> GetPipeline() const;
         void                            Bake();
-        bool                            Verify(std::string_view key);
+        bool                            Verify();
         void                            Update();
         void                            MarkDirty();
         void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::UniformBufferSet>& buffer);
@@ -73,7 +73,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     private:
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
-        void                                                        InitializeExpectedInputs();
 
     private:
         bool                                     m_perform_update{false};
@@ -82,7 +81,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Ref<Pipelines::GraphicPipeline>          m_pipeline;
         Ref<Renderers::RenderPasses::Attachment> m_attachment;
         Ref<Buffers::FramebufferVNext>           m_framebuffer;
-        std::set<std::string>                    m_expected_inputs;
     };
 
     struct RenderPassBuilder : public Helpers::RefCounted

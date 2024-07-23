@@ -100,7 +100,7 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("DrawDataSB", draw_buffer);
         handle->SetInput("TransformSB", transform_buffer);
 
-        handle->Verify("depth_prepass_scene");
+        handle->Verify();
         handle->Bake();
     }
 
@@ -218,7 +218,7 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("DrawDataSB", m_draw_buffer);
         handle->SetInput("TransformSB", m_transform_buffer);
         handle->SetInput("CubemapTexture", m_environment_map);
-        handle->Verify("skybox");
+        handle->Verify();
         handle->Bake();
     }
 
@@ -261,7 +261,7 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("IndexSB", m_index_buffer);
         handle->SetInput("DrawDataSB", m_draw_buffer);
         handle->SetInput("TransformSB", m_transform_buffer);
-        handle->Verify("infinite_grid");
+        handle->Verify();
         handle->Bake();
     }
 
@@ -326,7 +326,7 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("DrawDataSB", draw_buffer);
         handle->SetInput("TransformSB", transform_buffer);
         handle->SetInput("MatSB", material_buffer);
-        handle->Verify("g_buffer");
+        handle->Verify();
         handle->Bake();
     }
 
@@ -395,7 +395,7 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("PointLightSB", point_light_buffer);
         handle->SetInput("SpotLightSB", spot_light_buffer);
 
-        handle->Verify("deferred_lighting");
+        handle->Verify();
         handle->Bake();
     }
 
