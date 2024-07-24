@@ -110,30 +110,32 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     bool RenderPass::Verify()
     {
-        const auto& m_layout_bindings = m_pipeline->GetShader()->GetLayoutBindingSpecificationList();
+        const auto& m_layout_bindings = m_pipeline->GetShader()->GetLayoutBindingSpecificationCollection();
 
         if (m_input_collection.size() != m_layout_bindings.size())
         {
-            std::unordered_set<std::string> m_input_names;
+            std::unordered_set<std::string> input_names;
             for (const auto& input : m_input_collection)
             {
-                m_input_names.insert(input.DebugName);
+                input_names.insert(input.DebugName);
             }
 
-            std::vector<std::string> m_missing_names;
+            std::vector<std::string> missing_names;
             for (const auto& binding : m_layout_bindings)
             {
-                if (m_input_names.find(binding.Name) == m_input_names.end())
+                if (input_names.find(binding.Name) == input_names.end())
                 {
-                    m_missing_names.push_back(binding.Name);
+                    missing_names.push_back(binding.Name);
                 }
             }
-            std::string m_unset_inputs =
-                std::accumulate(std::next(m_missing_names.begin()), m_missing_names.end(), *m_missing_names.begin(), [](const std::string& a, const std::string& b) {
+            auto start = missing_names.begin();
+            auto  end = missing_names.end();
+            std::string unset_inputs =
+                std::accumulate(std::next(start), end, *start, [](const std::string& a, const std::string& b) {
                     return a + ", " + b;
                 });
 
-            ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", m_specification.PipelineSpecification.DebugName, m_missing_names.size(), m_unset_inputs);
+            ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", m_specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs);
 
             return false;
         }
