@@ -128,12 +128,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                     missing_names.push_back(binding.Name);
                 }
             }
-            auto start = missing_names.begin();
-            auto  end = missing_names.end();
-            std::string unset_inputs =
-                std::accumulate(std::next(start), end, *start, [](const std::string& a, const std::string& b) {
-                    return a + ", " + b;
-                });
+            auto        start        = missing_names.begin();
+            auto        end          = missing_names.end();
+            std::string unset_inputs = std::accumulate(std::next(start), end, *start, [](std::string_view a, std::string_view b) {
+                return fmt::format("{}, {}", a, b);
+            });
 
             ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", m_specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs);
 

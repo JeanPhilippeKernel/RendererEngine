@@ -241,8 +241,9 @@ namespace ZEngine::Rendering::Shaders
 
         for (const auto& layout_binding : m_layout_binding_specification_map)
         {
-            for (const auto& spec : layout_binding.second)
-            layout_collection.emplace_back(spec);
+            for (const auto& spec : layout_binding.second) {
+                layout_collection.emplace_back(spec);
+            }           
         }
         return layout_collection;
     }
