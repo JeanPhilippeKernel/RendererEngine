@@ -18,39 +18,42 @@ include(${ENLISTMENT_ROOT}/Scripts/CMake/NuGet.cmake)
 
 
 option (COPY_EXAMPLE_PROJECT "Copy example projects that show how to use Launcher" ON)
+option (LAUNCHER_ONLY "Build Launcher only" OFF)
 
-# Externals dependencies
-#
-add_subdirectory (${EXTERNAL_DIR}/fmt)
-add_subdirectory (${EXTERNAL_DIR}/imgui)
-add_subdirectory (${EXTERNAL_DIR}/glfw)
-add_subdirectory (${EXTERNAL_DIR}/spdlog)
-add_subdirectory (${EXTERNAL_DIR}/glm)
-add_subdirectory (${EXTERNAL_DIR}/entt)
-add_subdirectory (${EXTERNAL_DIR}/assimp)
-add_subdirectory (${EXTERNAL_DIR}/stduuid)
-add_subdirectory (${EXTERNAL_DIR}/yaml-cpp)
-add_subdirectory (${EXTERNAL_DIR}/SPIRV-headers)
-add_subdirectory (${EXTERNAL_DIR}/SPIRV-Tools)
-add_subdirectory (${EXTERNAL_DIR}/glslang)
-add_subdirectory (${EXTERNAL_DIR}/SPIRV-Cross)
-add_subdirectory (${EXTERNAL_DIR}/gtest)
-add_subdirectory (${EXTERNAL_DIR}/VulkanMemoryAllocator)
 
-set (CMAKE_PREFIX_PATH
-	${CMAKE_PREFIX_PATH}
-	${EXTERNAL_DIR}/Vulkan-Headers/build/install/share/cmake
-)
-add_subdirectory (${EXTERNAL_DIR}/Vulkan-Loader)
+if(NOT LAUNCHER_ONLY)
+	# Externals dependencies
+	#
+	add_subdirectory (${EXTERNAL_DIR}/fmt)
+	add_subdirectory (${EXTERNAL_DIR}/imgui)
+	add_subdirectory (${EXTERNAL_DIR}/glfw)
+	add_subdirectory (${EXTERNAL_DIR}/spdlog)
+	add_subdirectory (${EXTERNAL_DIR}/glm)
+	add_subdirectory (${EXTERNAL_DIR}/entt)
+	add_subdirectory (${EXTERNAL_DIR}/assimp)
+	add_subdirectory (${EXTERNAL_DIR}/stduuid)
+	add_subdirectory (${EXTERNAL_DIR}/yaml-cpp)
+	add_subdirectory (${EXTERNAL_DIR}/SPIRV-headers)
+	add_subdirectory (${EXTERNAL_DIR}/SPIRV-Tools)
+	add_subdirectory (${EXTERNAL_DIR}/glslang)
+	add_subdirectory (${EXTERNAL_DIR}/SPIRV-Cross)
+	add_subdirectory (${EXTERNAL_DIR}/gtest)
+	add_subdirectory (${EXTERNAL_DIR}/VulkanMemoryAllocator)
 
-# Core engine lib is here
-#
-add_subdirectory(ZEngine)
+	set (CMAKE_PREFIX_PATH
+		${CMAKE_PREFIX_PATH}
+		${EXTERNAL_DIR}/Vulkan-Headers/build/install/share/cmake
+	)
+	add_subdirectory (${EXTERNAL_DIR}/Vulkan-Loader)
 
-# Editor is here
-#
-add_subdirectory(Tetragrama)
+	# Core engine lib is here
+	#
+	add_subdirectory(ZEngine)
 
+	# Editor is here
+	#
+	add_subdirectory(Tetragrama)
+endif ()
 # Launcher is here
 #
 add_subdirectory(Panzerfaust)
@@ -65,12 +68,18 @@ endif ()
 #
 set(SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
 
-add_custom_target(BuildLauncher ALL
+if(NOT LAUNCHER_ONLY)
+	add_custom_target(BuildLauncher ALL
 	COMMENT "Building Panzerfaust"
 	DEPENDS
 		zEngineLib
 		tetragrama
-)
+	)
+else ()
+	add_custom_target(BuildLauncher ALL
+	COMMENT "Building Panzerfaust"
+	)
+endif ()
 
 add_custom_command(TARGET BuildLauncher
 	POST_BUILD
@@ -83,10 +92,17 @@ add_custom_target(AssembleContent ALL
 		BuildLauncher
 )
 
-add_custom_command(TARGET AssembleContent
+if(NOT LAUNCHER_ONLY)
+	add_custom_command(TARGET AssembleContent
+		POST_BUILD
+		COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -Configurations $<IF:$<CONFIG:Debug>,Debug,Release>
+	)
+else ()
+	add_custom_command(TARGET AssembleContent
 	POST_BUILD
-	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -Configurations $<IF:$<CONFIG:Debug>,Debug,Release>
-)
+	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -Configurations $<IF:$<CONFIG:Debug>,Debug,Release> -LauncherOnly
+	)
+endif ()
 
 # Copying Examples dir
 #

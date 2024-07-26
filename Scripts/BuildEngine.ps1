@@ -36,7 +36,10 @@ param (
 
     [Parameter(HelpMessage = "VS version use to build, default to 2022")]
     [ValidateSet(2022)]
-    [int] $VsVersion = 2022
+    [int] $VsVersion = 2022,
+
+    [Parameter(HelpMessage = "Build Launcher only")]
+    [switch] $LauncherOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -73,7 +76,7 @@ if ($IsWindows) {
     $installPath = Split-Path -Path $nugetProgram -Parent
     if ($env:PATH -notlike "*$installPath*") {
         $env:PATH = "$installPath;$env:PATH"
-    }
+    } 
 }
 
 
@@ -143,6 +146,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'VULKAN_LOADER' = @("-DVULKAN_HEADERS_INSTALL_DIR=$ExternalVulkanHeadersInstallDir", "-DUSE_MASM=OFF", "-DUSE_GAS=OFF")
         'SPIRV_TOOLS' = @("-DSPIRV_SKIP_EXECUTABLES=ON", "-DSPIRV_SKIP_TESTS=ON")
         'SPIRV_CROSS' = @("-DSPIRV_CROSS_ENABLE_TESTS=OFF")
+        'LAUNCHER_ONLY' = @("-DLAUNCHER_ONLY=ON")
     }  
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
@@ -184,6 +188,11 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.VULKAN_LOADER -join ' '
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_CROSS -join ' '
     $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_TOOLS -join ' '
+
+    if($LauncherOnly)
+    {
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.LAUNCHER_ONLY -join ' '
+    }
 
     if (-not $IsLinux) {
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '
