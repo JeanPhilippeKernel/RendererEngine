@@ -110,7 +110,35 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     bool RenderPass::Verify()
     {
-        return false;
+        const auto& m_layout_bindings = m_pipeline->GetShader()->GetLayoutBindingSpecificationCollection();
+
+        if (m_input_collection.size() != m_layout_bindings.size())
+        {
+            std::unordered_set<std::string> input_names;
+            for (const auto& input : m_input_collection)
+            {
+                input_names.insert(input.DebugName);
+            }
+
+            std::vector<std::string> missing_names;
+            for (const auto& binding : m_layout_bindings)
+            {
+                if (input_names.find(binding.Name) == input_names.end())
+                {
+                    missing_names.push_back(binding.Name);
+                }
+            }
+            auto        start        = missing_names.begin();
+            auto        end          = missing_names.end();
+            std::string unset_inputs = std::accumulate(std::next(start), end, *start, [](std::string_view a, std::string_view b) {
+                return fmt::format("{}, {}", a, b);
+            });
+
+            ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", m_specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs);
+
+            return false;
+        }
+        return true;
     }
 
     void RenderPass::Update()

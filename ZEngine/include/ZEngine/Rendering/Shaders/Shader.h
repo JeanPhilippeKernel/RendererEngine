@@ -19,6 +19,7 @@ namespace ZEngine::Rendering::Shaders
         Specifications::ShaderSpecification                                                GetSpecification()           = delete;
         Specifications::LayoutBindingSpecification                                         GetLayoutBindingSpecification(std::string_view name) const;
         std::vector<VkDescriptorSetLayout>                                                 GetDescriptorSetLayout() const;
+        std::vector<Specifications::LayoutBindingSpecification>                            GetLayoutBindingSpecificationCollection() const;
         const std::map<uint32_t, std::vector<VkDescriptorSet>>&                            GetDescriptorSetMap() const;
         std::map<uint32_t, std::vector<VkDescriptorSet>>&                            GetDescriptorSetMap();
         VkDescriptorPool                                                                   GetDescriptorPool() const;
