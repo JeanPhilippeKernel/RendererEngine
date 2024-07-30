@@ -34,7 +34,7 @@ TEST(BitmapTest, GetOrSetPixel)
 TEST(BitmapTest, TestVerticalCross)
 {
     int          width = 0, height = 0, channel = 0;
-    const float* image_data = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
+   // const float* image_data = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
 
     EXPECT_EQ(10, 10);
 }
