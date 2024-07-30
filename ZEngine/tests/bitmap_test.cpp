@@ -31,24 +31,24 @@ TEST(BitmapTest, GetOrSetPixel)
     EXPECT_TRUE(approximatelyEqual(pp.z, p.z, epsilon));
 }
 
-// TEST(BitmapTest, TestVerticalCross)
-// {
-//     int          width = 0, height = 0, channel = 0;
-//     const float* image_data = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
+TEST(BitmapTest, TestVerticalCross)
+{
+    int          width = 0, height = 0, channel = 0;
+    const float* image_data = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
 
-//     Bitmap in             = {width, height, channel, BitmapFormat::FLOAT, image_data};
-//     Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(in);
-//     Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
-//     stbi_image_free((void*) image_data);
+    Bitmap in             = {width, height, channel, BitmapFormat::FLOAT, image_data};
+    Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(in);
+    Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
+    stbi_image_free((void*) image_data);
 
-//     stbi_write_hdr("screenshot.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer.data());
-//     stbi_write_hdr("screenshot2.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer.data());
+    stbi_write_hdr("screenshot.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer.data());
+    stbi_write_hdr("screenshot2.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer.data());
 
-//     auto current_path = std::filesystem::current_path().string();
+    auto current_path = std::filesystem::current_path().string();
 
-//     EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot.hdr"));
-//     EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot2.hdr"));
-// }
+    EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot.hdr"));
+    EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot2.hdr"));
+}
 
 
 // TEST(BitmapTest, TestVerticalCross2)
