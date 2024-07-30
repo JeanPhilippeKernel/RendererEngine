@@ -38,6 +38,7 @@ Before building, make sure your setup is correct :
 	- `RunBuilds` can be omitted as its default value is: `$True`.
 	- You can build `Debug` and `Release` versions at once by omitting the `Configuration` parameter
 	- On Windows, you can specify the Visual Studio version with `VsVersion`, it can be omitted as its default value is: `2022`
+	- If you want to work on the launcher only, you can specify the Launcher only parameter with `LauncherOnly` then only the launcher will be build.
 
 ## Dependencies
 
