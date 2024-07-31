@@ -34,7 +34,7 @@ TEST(BitmapTest, GetOrSetPixel)
 TEST(BitmapTest, TestVerticalCross)
 {
     int          width = 0, height = 0, channel = 0;
-    const float* image_data;
+    const float* image_data = stbi_loadf("", &width, &height, &channel, 3);
 
     Bitmap in             = {width, height, channel, BitmapFormat::FLOAT, image_data};
     Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(in);
