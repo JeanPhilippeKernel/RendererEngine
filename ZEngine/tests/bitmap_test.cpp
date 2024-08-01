@@ -40,10 +40,10 @@ TEST(BitmapTest, TestVerticalCross)
     Bitmap in             = {width, height, channel, BitmapFormat::FLOAT, image_data};
     Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(in);
     Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
-    stbi_image_free((void*) image_data);
+    //stbi_image_free((void*) image_data);
 
-    stbi_write_hdr("screenshot.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer.data());
-    stbi_write_hdr("screenshot2.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer.data());
+    //stbi_write_hdr("screenshot.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer.data());
+    //stbi_write_hdr("screenshot2.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer.data());
 
     auto current_path = std::filesystem::current_path().string();
 
