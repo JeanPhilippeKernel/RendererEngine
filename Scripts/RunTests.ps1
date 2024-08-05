@@ -74,7 +74,44 @@ function RunTests {
     # Check if the executable exists
     if (Test-Path $testExecutablePath) {
         Write-Host "Running tests in $Configuration configuration..."
-        & $testExecutablePath
+        
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $testExecutablePath
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        
+        try {
+            $process = [System.Diagnostics.Process]::Start($psi)
+            $output = $process.StandardOutput.ReadToEnd()
+            $error_output = $process.StandardError.ReadToEnd()
+            $process.WaitForExit()
+            
+            Write-Host "Standard Output: $output"
+            Write-Host "Error Output: $error_output"
+            Write-Host "Exit Code: " $process.ExitCode
+            
+            if ($process.ExitCode -ne 0) {
+                Write-Host "Test executable exited with code $($process.ExitCode)"
+                
+                # Additional error information for DLL not found
+                if ($process.ExitCode -eq -1073741515) {
+                    Write-Host "This error code typically indicates a missing DLL."
+                    Write-Host "Check the Error Output above for any mentions of specific DLLs."
+                    Write-Host "You may need to use a tool like Process Monitor in your local environment to identify the missing DLL."
+                }
+                
+                exit $process.ExitCode
+            }
+        } 
+        catch {
+            Write-Error "Error running test executable: $_"
+            Write-Host "An error occurred:"
+            Write-Host $_.Exception.Message
+            Write-Host "Stack Trace:"
+            Write-Host $_.ScriptStackTrace
+            exit 1
+        }
     }
     else {
         Write-Warning "Test executable does not exist: $testExecutablePath"
