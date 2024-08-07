@@ -62,7 +62,7 @@ if ($IsWindows) {
     else {
         Write-Warning "NuGet program not found. Attempting to download and install NuGet..."
         Setup-NuGet
-        
+
         $nugetProgram = Find-NuGet
         if ($nugetProgram) {
             Write-Host "NuGet installed successfully at: $nugetProgram"
@@ -71,35 +71,37 @@ if ($IsWindows) {
             throw 'Nuget program not found'
         }
     }
-    
+
     #Add NuGet to the PATH for the current session if it's not already there
     $installPath = Split-Path -Path $nugetProgram -Parent
     if ($env:PATH -notlike "*$installPath*") {
         $env:PATH = "$installPath;$env:PATH"
-    } 
+    }
 }
 
 
-$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
-Write-Host "Ensuring submodules are initialized and updated..."
-git -C $RepoRoot submodule update --init --recursive
-
-
-Write-Host "Configuring Vulkan-Header submodule..."
-
-$ExternalVulkanHeadersDir = Join-Path -Path $RepoRoot -ChildPath "__externals/Vulkan-Headers"
-$ExternalVulkanHeadersOutputDir = Join-Path -Path $ExternalVulkanHeadersDir -ChildPath "build"
-$ExternalVulkanHeadersInstallDir = Join-Path -Path $ExternalVulkanHeadersOutputDir -ChildPath "install"
-
-if(-Not (Test-Path -Path $ExternalVulkanHeadersInstallDir))
-{
-    & $cMakeProgram -S $ExternalVulkanHeadersDir -B $ExternalVulkanHeadersOutputDir
-    & $cMakeProgram --install $ExternalVulkanHeadersOutputDir --prefix $ExternalVulkanHeadersInstallDir
+if(-Not $LauncherOnly) {
+    $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
+    Write-Host "Ensuring submodules are initialized and updated..."
+    & git -C $RepoRoot submodule update --init --recursive
+    
+    Write-Host "Configuring Vulkan-Header submodule..."
+    
+    $ExternalVulkanHeadersDir = Join-Path -Path $RepoRoot -ChildPath "__externals/Vulkan-Headers"
+    $ExternalVulkanHeadersOutputDir = Join-Path -Path $ExternalVulkanHeadersDir -ChildPath "build"
+    $ExternalVulkanHeadersInstallDir = Join-Path -Path $ExternalVulkanHeadersOutputDir -ChildPath "install"
+    
+    if(-Not (Test-Path -Path $ExternalVulkanHeadersInstallDir)) {
+        & $cMakeProgram -S $ExternalVulkanHeadersDir -B $ExternalVulkanHeadersOutputDir
+        & $cMakeProgram --install $ExternalVulkanHeadersOutputDir --prefix $ExternalVulkanHeadersInstallDir
+    }
+} else {
+    Write-Host "Skipping submodules initialization..."
 }
 
 
 function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
-    
+
     $architecture = 'x64'
 
     # Check if the system supports multiple configurations
@@ -108,7 +110,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     # Check the system name
     if ($IsLinux) {
         $systemName = "Linux"
-        $cMakeGenerator 
+        $cMakeGenerator
     }
     elseif ($IsMacOS) {
         $systemName = "Darwin"
@@ -117,7 +119,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         $systemName = "Windows"
     }
     else {
-        throw 'The OS is not supported' 
+        throw 'The OS is not supported'
     }
 
     Write-Host "Building $systemName $architecture $configuration"
@@ -131,7 +133,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     # Create build directory
     if (-Not (Test-Path $buildDirectoryPath)) {
         $Null = New-Item -ItemType Directory -Path $BuildDirectoryPath -ErrorAction SilentlyContinue
-    }     
+    }
 
     # Define CMake Generator arguments
     $cMakeOptions = " -DCMAKE_SYSTEM_NAME=$systemName", " -DCMAKE_BUILD_TYPE=$configuration"
@@ -147,62 +149,58 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'SPIRV_TOOLS' = @("-DSPIRV_SKIP_EXECUTABLES=ON", "-DSPIRV_SKIP_TESTS=ON")
         'SPIRV_CROSS' = @("-DSPIRV_CROSS_ENABLE_TESTS=OFF")
         'LAUNCHER_ONLY' = @("-DLAUNCHER_ONLY=ON")
-    }  
+    }
 
-    $cMakeCacheVariableOverride = $cMakeOptions -join ' ' 
+    $cMakeCacheVariableOverride = $cMakeOptions -join ' '
 
-    # Define CMake Generator argument 
+    # Define CMake Generator argument
     switch ($systemName) {
-        "Windows" { 
+        "Windows" {
             switch ($VsVersion) {
-                2022 { 
+                2022 {
                     $cMakeGenerator = "-G `"Visual Studio 17 2022`" -A $architecture"
                 }
                 Default {
-                    throw 'This version of Visual Studio is not supported' 
+                    throw 'This version of Visual Studio is not supported'
                 }
-            }          
+            }
             $cMakeCacheVariableOverride += ' -DCMAKE_CONFIGURATION_TYPES=Debug;Release '
         }
-        "Linux" { 
+        "Linux" {
             $cMakeGenerator = "-G `"Unix Makefiles`""
 
             # Set Linux build compiler
             $env:CC = '/usr/bin/gcc-11'
             $env:CXX = '/usr/bin/g++-11'
         }
-        "Darwin" { 
+        "Darwin" {
             $cMakeGenerator = "-G `"Xcode`""
-            $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.FRAMEWORK -join ' ' 
+            $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.FRAMEWORK -join ' '
         }
         Default {
             throw 'This system is not supported'
         }
     }
 
-    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.ENT -join ' ' 
-    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPDLOG -join ' ' 
-    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.ASSIMP -join ' ' 
-    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.STDUUID -join ' ' 
-    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.YAMLCPP -join ' '
-    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.VULKAN_LOADER -join ' '
-    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_CROSS -join ' '
-    $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_TOOLS -join ' '
-
-    if($LauncherOnly)
-    {
+    if($LauncherOnly) {
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.LAUNCHER_ONLY -join ' '
-    }
-
-    if (-not $IsLinux) {
+    } else {
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.ENT -join ' '
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPDLOG -join ' '
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.ASSIMP -join ' '
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.STDUUID -join ' '
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.YAMLCPP -join ' '
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.VULKAN_LOADER -join ' '
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_CROSS -join ' '
+        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_TOOLS -join ' '
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '
     }
 
-    $cMakeArguments = " -S $repositoryRootPath -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"   
+    $cMakeArguments = " -S $repositoryRootPath -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"
 
     # CMake Generation process
     Write-Host $cMakeArguments
-    $cMakeProcess = Start-Process $cMakeProgram -ArgumentList $cMakeArguments -NoNewWindow -Wait -PassThru   
+    $cMakeProcess = Start-Process $cMakeProgram -ArgumentList $cMakeArguments -NoNewWindow -Wait -PassThru
     if ($cMakeProcess.ExitCode -ne 0 ) {
         throw "cmake failed generation for '$cMakeArguments' with exit code '$cMakeProcess.ExitCode'"
     }
@@ -236,14 +234,16 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 }
 
 # Run Shader Compilation
-[bool]$forceRebuild = If ($ForceShaderRebuild) { $True } Else { $False }
-foreach ($config in $Configurations) {
-    $shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"
-    & pwsh -File $shaderCompileScript -Configuration:$config -ForceRebuild:$forceRebuild
-}
+if(-Not $LauncherOnly) {
+    [bool]$forceRebuild = If ($ForceShaderRebuild) { $True } Else { $False }
+    foreach ($config in $Configurations) {
+        $shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"
+        & pwsh -File $shaderCompileScript -Configuration:$config -ForceRebuild:$forceRebuild
+    }
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Stopped build process..." -ErrorAction Stop
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Stopped build process..." -ErrorAction Stop
+    }
 }
 
 # Run Engine Build
