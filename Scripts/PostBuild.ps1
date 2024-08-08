@@ -53,56 +53,58 @@ elseif ($IsWindows) {
     [IO.Path]::Combine($RepoRoot, "Result.$SystemName.x64.$Configurations")
 }
 
-if(-not $LauncherOnly)
-{ 
-    $ContentsToProcess = @(
-        @{
-            Name = "Resources"
-            IsDirectory = $true
-            Contents = @(
-            
-                if ($IsWindows) {
-                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
-                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
-                }
-                elseif ($IsMacOS) {
-                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
-                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
-                }
-                else {
-                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\Shaders"}
-                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\Settings"}
-                }
-            )
-        },
-        @{
-            Name = "Tetragrama"
-            IsDirectory = $true
-            Contents = @(
-                @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\Editor"}
-            )
-        }
-    )
+if($LauncherOnly) {
+    Write-Host "Skipping resources copy..."
+    return;
+}
 
-    foreach ($item in $ContentsToProcess) {
-        foreach($content in $item.Contents) {
-
-            if($item.IsDirectory -eq $true) {
-
-                # Delete if directories or files already exist
-                #
-                if(Test-Path $content.To) {
-                    Remove-Item $content.To -Recurse -Force
-                }
-                Copy-Item -Path $content.From -Destination $content.To -Recurse -Force
+$ContentsToProcess = @(
+    @{
+        Name = "Resources"
+        IsDirectory = $true
+        Contents = @(
+        
+            if ($IsWindows) {
+                @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
+                @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
+            }
+            elseif ($IsMacOS) {
+                @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
+                @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
             }
             else {
-                Copy-Item -Path $content.From -Destination $content.To -Force
+                @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\Shaders"}
+                @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\Settings"}
             }
+        )
+    },
+    @{
+        Name = "Tetragrama"
+        IsDirectory = $true
+        Contents = @(
+            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\Editor"}
+        )
+    }
+)
 
-            [string]$name = $item.Name
-            [string]$ToDirectory = $content.To
-            Write-Host "Copied $name --> $ToDirectory"
+foreach ($item in $ContentsToProcess) {
+    foreach($content in $item.Contents) {
+
+        if($item.IsDirectory -eq $true) {
+
+            # Delete if directories or files already exist
+            #
+            if(Test-Path $content.To) {
+                Remove-Item $content.To -Recurse -Force
+            }
+            Copy-Item -Path $content.From -Destination $content.To -Recurse -Force
         }
+        else {
+            Copy-Item -Path $content.From -Destination $content.To -Force
+        }
+
+        [string]$name = $item.Name
+        [string]$ToDirectory = $content.To
+        Write-Host "Copied $name --> $ToDirectory"
     }
 }
