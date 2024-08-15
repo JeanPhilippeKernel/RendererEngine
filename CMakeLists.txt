@@ -20,6 +20,11 @@ include(${ENLISTMENT_ROOT}/Scripts/CMake/NuGet.cmake)
 option (COPY_EXAMPLE_PROJECT "Copy example projects that show how to use Launcher" ON)
 option (LAUNCHER_ONLY "Build Launcher only" OFF)
 
+set (MACOSX_ARM64 OFF)
+message("Hellllllllllooooooooooo ${CMAKE_SYSTEM_PROCESSOR}")
+if (APPLE AND (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64"))
+	set (MACOSX_ARM64 ON)
+endif ()
 
 # Externals dependencies
 #
@@ -77,10 +82,18 @@ add_custom_target (BuildLauncher ALL
 	DEPENDS ${BUILD_LAUNCHER_DEPENDS_LIB}
 )
 
-add_custom_command (TARGET BuildLauncher
-	POST_BUILD
-	COMMAND dotnet build ${CMAKE_CURRENT_SOURCE_DIR}/Panzerfaust/Panzerfaust.csproj -c $<IF:$<CONFIG:Debug>,Debug,Release> -v n
-)
+if(APPLE)
+	add_custom_command (TARGET BuildLauncher
+		POST_BUILD
+		COMMAND dotnet build ${CMAKE_CURRENT_SOURCE_DIR}/Panzerfaust/Panzerfaust.csproj -r $<IF:$<BOOL:${MACOSX_ARM64}>,osx-arm64,osx-x64> -c $<IF:$<CONFIG:Debug>,Debug,Release> -v n
+	)
+else()
+	add_custom_command (TARGET BuildLauncher
+		POST_BUILD
+		COMMAND dotnet build ${CMAKE_CURRENT_SOURCE_DIR}/Panzerfaust/Panzerfaust.csproj -c $<IF:$<CONFIG:Debug>,Debug,Release> -v n
+	)
+endif ()
+
 
 add_custom_target (AssembleContent ALL
 	COMMENT "Copying assets and resources contents"
