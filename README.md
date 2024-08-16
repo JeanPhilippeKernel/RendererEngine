@@ -43,7 +43,7 @@ Before building, make sure your setup is correct :
 - Install NuGet through Homebrew :
 ```bash
     brew update
-	brew install nuget
+    brew install nuget
 ```
 
 - Install PowerShell Core through Homebrew:
