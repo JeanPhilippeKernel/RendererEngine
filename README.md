@@ -40,6 +40,12 @@ Before building, make sure your setup is correct :
     brew install cmake
 ```
 
+- Install NuGet through Homebrew :
+```bash
+    brew update
+	brew install nuget
+```
+
 - Install PowerShell Core through Homebrew:
 ```bash
     brew update
