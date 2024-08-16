@@ -33,6 +33,10 @@ if (APPLE)
 	endif ()
 endif ()
 
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	add_compile_definitions(_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING) # Fix Warning from VS 2022 +
+endif()
+
 # Externals dependencies
 #
 if (NOT LAUNCHER_ONLY)
