@@ -111,9 +111,20 @@ add_custom_target (AssembleContent ALL
 	DEPENDS BuildLauncher
 )
 
+
+set (SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
+if ((${CMAKE_SYSTEM_NAME} STREQUAL "Windows") OR (${CMAKE_SYSTEM_NAME} STREQUAL "Linux"))
+	set (SYSTEM_ARCHITECTURE "x64")
+elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+	if (MACOSX_ARCHITECTURE_ARM64)
+		set (SYSTEM_ARCHITECTURE "osx-arm64")
+	else ()
+		set (SYSTEM_ARCHITECTURE "osx-x64")
+	endif ()
+endif ()
 add_custom_command (TARGET AssembleContent
 	POST_BUILD
-	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -Configurations $<IF:$<CONFIG:Debug>,Debug,Release> $<$<BOOL:${LAUNCHER_ONLY}>:-LauncherOnly>
+	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -SystemName ${SYSTEM_NAME} -Architectures ${SYSTEM_ARCHITECTURE} -Configurations $<IF:$<CONFIG:Debug>,Debug,Release> $<$<BOOL:${LAUNCHER_ONLY}>:-LauncherOnly>
 )
 
 # Copying Examples dir
@@ -121,5 +132,3 @@ add_custom_command (TARGET AssembleContent
 if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Examples/projectConfig.json)
 	file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Examples/projectConfig.json DESTINATION ${CMAKE_BINARY_DIR}/Examples)
 endif ()
-
-

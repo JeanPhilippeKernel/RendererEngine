@@ -7,13 +7,27 @@ on:
     branches: [ master, develop ]
 
 jobs:
-  macOS-Build:
+  macOS-Intel-Build:
     runs-on: macos-13
     strategy:
       matrix:
           buildConfiguration: [Debug, Release]
 
-    steps:      
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: CMake Build
+      run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
+      shell: pwsh
+
+  macOS-Silicon-Build:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+          buildConfiguration: [Debug, Release]
+
+    steps:
     - name: Checkout repository
       uses: actions/checkout@v2
 
