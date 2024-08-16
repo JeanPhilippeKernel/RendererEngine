@@ -9,7 +9,7 @@
 		<ApplicationIcon>./Assets/avalonia-logo.ico</ApplicationIcon>
 		<BaseOutputPath Condition="$([MSBuild]::IsOSPlatform('Windows')) == 'true'">..\Result.Windows.x64.MultiConfig</BaseOutputPath>
 		<BaseOutputPath Condition="$([MSBuild]::IsOSPlatform('OSX')) == 'true'">..\Result.Darwin.x64.$(Configuration)</BaseOutputPath>
-		<Platforms>x64</Platforms>
+		<Platforms>x64;arm64</Platforms>
 	</PropertyGroup>
 	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) == 'true' AND '$(Configuration)' == 'Debug' ">
 		<PlatformTarget>x64</PlatformTarget>
@@ -19,14 +19,6 @@
 		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
 		<DefineConstants>TRACE;DEBUG;_WIN32</DefineConstants>
 	</PropertyGroup>
-	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('OSX')) == 'true' AND '$(Configuration)' == 'Debug' ">
-		<PlatformTarget>x64</PlatformTarget>
-		<DebugSymbols>true</DebugSymbols>
-		<DebugType>full</DebugType>
-		<Optimize>false</Optimize>
-		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
-		<DefineConstants>TRACE;DEBUG;__MACOS__</DefineConstants>
-	</PropertyGroup>
 	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) == 'true' AND '$(Configuration)' == 'Release' ">
 		<PlatformTarget>x64</PlatformTarget>
 		<DebugType>pdbonly</DebugType>
@@ -34,7 +26,30 @@
 		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
 		<DefineConstants>TRACE;_WIN32</DefineConstants>
 	</PropertyGroup>
-	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('OSX')) == 'true' AND '$(Configuration)' == 'Release' ">
+	<PropertyGroup Condition=" '$(RuntimeIdentifier)' == 'osx-arm64' AND '$(Configuration)' == 'Debug' ">
+		<PlatformTarget>arm64</PlatformTarget>
+		<DebugSymbols>true</DebugSymbols>
+		<DebugType>full</DebugType>
+		<Optimize>false</Optimize>
+		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
+		<DefineConstants>TRACE;DEBUG;__MACOS__</DefineConstants>
+	</PropertyGroup>
+	<PropertyGroup Condition=" '$(RuntimeIdentifier)' == 'osx-arm64' AND '$(Configuration)' == 'Release' ">
+		<PlatformTarget>arm64</PlatformTarget>
+		<DebugType>pdbonly</DebugType>
+		<Optimize>true</Optimize>
+		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
+		<DefineConstants>TRACE;__MACOS__</DefineConstants>
+	</PropertyGroup>
+	<PropertyGroup Condition=" '$(RuntimeIdentifier)' == 'osx-x64' AND '$(Configuration)' == 'Debug' ">
+		<PlatformTarget>x64</PlatformTarget>
+		<DebugSymbols>true</DebugSymbols>
+		<DebugType>full</DebugType>
+		<Optimize>false</Optimize>
+		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
+		<DefineConstants>TRACE;DEBUG;__MACOS__</DefineConstants>
+	</PropertyGroup>
+	<PropertyGroup Condition=" '$(RuntimeIdentifier)' == 'osx-x64' AND '$(Configuration)' == 'Release' ">
 		<PlatformTarget>x64</PlatformTarget>
 		<DebugType>pdbonly</DebugType>
 		<Optimize>true</Optimize>
