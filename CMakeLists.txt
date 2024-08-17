@@ -79,42 +79,18 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	set_property (DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Panzerfaust)
 endif ()
 
-
 # Post build operation
 #
-set (SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
-
-if (NOT LAUNCHER_ONLY)
-	set (BUILD_LAUNCHER_DEPENDS_LIB zEngineLib tetragrama)
-endif ()
-
-add_custom_target (BuildLauncher ALL
-	COMMENT "Building Panzerfaust"
-	DEPENDS ${BUILD_LAUNCHER_DEPENDS_LIB}
-)
-
-if(APPLE)
-	add_custom_command (TARGET BuildLauncher
-		POST_BUILD
-		COMMAND dotnet build ${CMAKE_CURRENT_SOURCE_DIR}/Panzerfaust/Panzerfaust.csproj -r $<IF:$<BOOL:${MACOSX_ARCHITECTURE_ARM64}>,osx-arm64,osx-x64> -c $<IF:$<CONFIG:Debug>,Debug,Release> -v n
-	)
-else()
-	add_custom_command (TARGET BuildLauncher
-		POST_BUILD
-		COMMAND dotnet build ${CMAKE_CURRENT_SOURCE_DIR}/Panzerfaust/Panzerfaust.csproj -c $<IF:$<CONFIG:Debug>,Debug,Release> -v n
-	)
-endif ()
-
-
 add_custom_target (AssembleContent ALL
 	COMMENT "Copying assets and resources contents"
 	DEPENDS BuildLauncher
 )
 
-
 set (SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
-if ((${CMAKE_SYSTEM_NAME} STREQUAL "Windows") OR (${CMAKE_SYSTEM_NAME} STREQUAL "Linux"))
-	set (SYSTEM_ARCHITECTURE "x64")
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	set (SYSTEM_ARCHITECTURE "win-x64")
+elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	set (SYSTEM_ARCHITECTURE "linux-x64")
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 	if (MACOSX_ARCHITECTURE_ARM64)
 		set (SYSTEM_ARCHITECTURE "osx-arm64")

@@ -5,18 +5,41 @@ project (Panzerfaust
 	DESCRIPTION "Panzerfaust, the ZEngine Launcher"
 )
 
+set(CSPROJ Panzerfaust)
+set (CSPROJ_SOURCE_FILE ${CMAKE_CURRENT_LIST_DIR}/${CSPROJ}.csproj)
+
 if ((APPLE) OR (CMAKE_GENERATOR STREQUAL "Visual Studio 17 2022"))
-    set(CSPROJ Panzerfaust)
 
-    restore_nuget_packages(
-        ${CMAKE_CURRENT_LIST_DIR}/${CSPROJ}.csproj)
+    restore_nuget_packages(${CSPROJ_SOURCE_FILE})
 
+    set (Platform "x64")
+    if (APPLE AND MACOSX_ARCHITECTURE_ARM64)
+        set (Platform "arm64")
+    endif ()
     include_external_msproject(
         ${CSPROJ}
-        ${CMAKE_CURRENT_LIST_DIR}/${CSPROJ}.csproj
-        PLATFORM "x64"
+        ${CSPROJ_SOURCE_FILE}
+        PLATFORM ${Platform}
         TYPE "4301B74A-9ED7-48ED-9DE5-FC2E1457778D"
         GUID "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC"
     )
 endif()
 
+if (NOT LAUNCHER_ONLY)
+	set (BUILD_LAUNCHER_DEPENDS_LIB zEngineLib tetragrama)
+endif ()
+
+add_custom_target (BuildLauncher ALL
+	COMMENT "Building and Publishing Panzerfaust"
+	DEPENDS ${BUILD_LAUNCHER_DEPENDS_LIB}
+)
+
+set (BUILD_CONFIGURATION -c $<IF:$<CONFIG:Debug>,Debug,Release>)
+if (APPLE)
+    set (RUNTIME_IDENTIFIER -r $<IF:$<BOOL:${MACOSX_ARCHITECTURE_ARM64}>,osx-arm64,osx-x64>)
+endif ()
+
+add_custom_command (TARGET BuildLauncher POST_BUILD
+    COMMAND dotnet build ${CSPROJ_SOURCE_FILE} ${RUNTIME_IDENTIFIER} ${BUILD_CONFIGURATION} -v n
+    COMMAND dotnet publish ${CSPROJ_SOURCE_FILE} ${RUNTIME_IDENTIFIER} ${BUILD_CONFIGURATION} -p:PublishSingleFile=True --self-contained True
+)

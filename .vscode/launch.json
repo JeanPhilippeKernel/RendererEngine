@@ -2,6 +2,26 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Panzerfaust (Windows Debug)",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Windows.x64.MultiConfig/Panzerfaust/Debug/net6.0/win-x64/Panzerfaust.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "internalConsole",
+        },
+        {
+            "name": "Panzerfaust (Windows Release)",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/Result.Windows.x64.MultiConfig/Panzerfaust/Release/net6.0/win-x64/Panzerfaust.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "internalConsole",
+        },
+        {
             "name": "Sandbox3D (Darwin Debug)",
             "type": "cppdbg",
             "request": "launch",
