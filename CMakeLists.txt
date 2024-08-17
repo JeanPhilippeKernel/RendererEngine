@@ -83,7 +83,7 @@ endif ()
 #
 add_custom_target (AssembleContent ALL
 	COMMENT "Copying assets and resources contents"
-	DEPENDS BuildLauncher
+	DEPENDS Panzerfaust
 )
 
 set (SYSTEM_NAME ${CMAKE_SYSTEM_NAME})

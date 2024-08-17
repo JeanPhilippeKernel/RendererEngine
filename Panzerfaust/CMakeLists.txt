@@ -32,7 +32,7 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set (RUNTIME_IDENTIFIER -r win-x64)
 endif ()
 
-add_custom_target (BuildLauncher ALL
+add_custom_target (${CSPROJ} ALL
     COMMENT "Building and Publishing Panzerfaust"
     COMMAND dotnet build ${CSPROJ_SOURCE_FILE} ${RUNTIME_IDENTIFIER} ${BUILD_CONFIGURATION} -v n
     COMMAND dotnet publish ${CSPROJ_SOURCE_FILE} ${RUNTIME_IDENTIFIER} ${BUILD_CONFIGURATION}
@@ -41,5 +41,5 @@ add_custom_target (BuildLauncher ALL
 )
 
 if (NOT LAUNCHER_ONLY)
-    add_dependencies(BuildLauncher zEngineLib tetragrama)
+    add_dependencies(${CSPROJ} zEngineLib tetragrama)
 endif ()
