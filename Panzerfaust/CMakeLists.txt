@@ -25,21 +25,21 @@ if ((APPLE) OR (CMAKE_GENERATOR STREQUAL "Visual Studio 17 2022"))
     )
 endif()
 
-if (NOT LAUNCHER_ONLY)
-	set (BUILD_LAUNCHER_DEPENDS_LIB zEngineLib tetragrama)
-endif ()
-
-add_custom_target (BuildLauncher ALL
-	COMMENT "Building and Publishing Panzerfaust"
-	DEPENDS ${BUILD_LAUNCHER_DEPENDS_LIB}
-)
-
 set (BUILD_CONFIGURATION -c $<IF:$<CONFIG:Debug>,Debug,Release>)
 if (APPLE)
     set (RUNTIME_IDENTIFIER -r $<IF:$<BOOL:${MACOSX_ARCHITECTURE_ARM64}>,osx-arm64,osx-x64>)
+elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+    set (RUNTIME_IDENTIFIER -r win-x64)
 endif ()
 
-add_custom_command (TARGET BuildLauncher POST_BUILD
+add_custom_target (BuildLauncher ALL
+    COMMENT "Building and Publishing Panzerfaust"
     COMMAND dotnet build ${CSPROJ_SOURCE_FILE} ${RUNTIME_IDENTIFIER} ${BUILD_CONFIGURATION} -v n
-    COMMAND dotnet publish ${CSPROJ_SOURCE_FILE} ${RUNTIME_IDENTIFIER} ${BUILD_CONFIGURATION} -p:PublishSingleFile=True --self-contained True
+    COMMAND dotnet publish ${CSPROJ_SOURCE_FILE} ${RUNTIME_IDENTIFIER} ${BUILD_CONFIGURATION}
+    DEPENDS ${BUILD_LAUNCHER_DEPENDS_LIB}
+    VERBATIM
 )
+
+if (NOT LAUNCHER_ONLY)
+    add_dependencies(BuildLauncher zEngineLib tetragrama)
+endif ()
