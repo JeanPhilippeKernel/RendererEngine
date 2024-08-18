@@ -34,7 +34,7 @@ jobs:
       shell: pwsh
 
     - name: Publish Artifacts
-      use: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v2
       with:
         name: Windows-x64
         path: Result.Windows.x64.MultiConfig
