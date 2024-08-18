@@ -88,10 +88,10 @@ $ContentsToProcess = @(
                 "Darwin" {
                     switch ($Architectures) {
                         "osx-x64" {
-                            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Editor"}
                         }
                         "osx-arm64" {
-                            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Editor"}
                         }
                         Default {
                             throw 'This architecture is not supported'
