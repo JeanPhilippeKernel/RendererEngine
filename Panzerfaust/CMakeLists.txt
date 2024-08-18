@@ -8,21 +8,19 @@ project (Panzerfaust
 set(CSPROJ Panzerfaust)
 set (CSPROJ_SOURCE_FILE ${CMAKE_CURRENT_LIST_DIR}/${CSPROJ}.csproj)
 
-if ((APPLE) OR (CMAKE_GENERATOR STREQUAL "Visual Studio 17 2022"))
+if ((APPLE) OR (${CMAKE_SYSTEM_NAME} STREQUAL "Windows"))
 
     restore_nuget_packages(${CSPROJ_SOURCE_FILE})
 
-    set (Platform "x64")
-    if (APPLE AND MACOSX_ARCHITECTURE_ARM64)
-        set (Platform "arm64")
+    if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+        include_external_msproject(
+            ${CSPROJ}
+            ${CSPROJ_SOURCE_FILE}
+            PLATFORM "x64"
+            TYPE "4301B74A-9ED7-48ED-9DE5-FC2E1457778D"
+            GUID "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC"
+        )
     endif ()
-    include_external_msproject(
-        ${CSPROJ}
-        ${CSPROJ_SOURCE_FILE}
-        PLATFORM ${Platform}
-        TYPE "4301B74A-9ED7-48ED-9DE5-FC2E1457778D"
-        GUID "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC"
-    )
 endif()
 
 set (BUILD_CONFIGURATION -c $<IF:$<CONFIG:Debug>,Debug,Release>)
@@ -32,14 +30,15 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set (RUNTIME_IDENTIFIER -r win-x64)
 endif ()
 
-add_custom_target (${CSPROJ} ALL
+set (CUSTOM_TARGET_NAME ${CSPROJ})
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+    set (CUSTOM_TARGET_NAME Panzerfaust-WinBuild)
+endif ()
+add_custom_target (${CUSTOM_TARGET_NAME} ALL)
+
+add_custom_command (TARGET ${CUSTOM_TARGET_NAME} POST_BUILD
     COMMENT "Building and Publishing Panzerfaust"
     COMMAND dotnet build ${CSPROJ_SOURCE_FILE} ${RUNTIME_IDENTIFIER} ${BUILD_CONFIGURATION} -v n
     COMMAND dotnet publish ${CSPROJ_SOURCE_FILE} ${RUNTIME_IDENTIFIER} ${BUILD_CONFIGURATION}
-    DEPENDS ${BUILD_LAUNCHER_DEPENDS_LIB}
     VERBATIM
 )
-
-if (NOT LAUNCHER_ONLY)
-    add_dependencies(${CSPROJ} zEngineLib tetragrama)
-endif ()

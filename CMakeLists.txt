@@ -81,11 +81,6 @@ endif ()
 
 # Post build operation
 #
-add_custom_target (AssembleContent ALL
-	COMMENT "Copying assets and resources contents"
-	DEPENDS Panzerfaust
-)
-
 set (SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	set (SYSTEM_ARCHITECTURE "win-x64")
@@ -98,10 +93,21 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 		set (SYSTEM_ARCHITECTURE "osx-x64")
 	endif ()
 endif ()
-add_custom_command (TARGET AssembleContent
-	POST_BUILD
+
+add_custom_target (AssembleContent ALL
+	COMMENT "Copying assets and resources contents"
 	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -SystemName ${SYSTEM_NAME} -Architectures ${SYSTEM_ARCHITECTURE} -Configurations $<IF:$<CONFIG:Debug>,Debug,Release> $<$<BOOL:${LAUNCHER_ONLY}>:-LauncherOnly>
 )
+
+if (NOT LAUNCHER_ONLY)
+	add_dependencies(AssembleContent zEngineLib tetragrama)
+endif ()
+
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	add_dependencies(AssembleContent Panzerfaust-WinBuild)
+else ()
+	add_dependencies(AssembleContent Panzerfaust)
+endif ()
 
 # Copying Examples dir
 #
