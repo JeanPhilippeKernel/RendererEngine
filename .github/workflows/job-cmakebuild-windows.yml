@@ -13,23 +13,23 @@ jobs:
   name: cmake-build-windows-${{inputs.configuration}}
   runs-on: windows-2022
   steps:
-  - name: Checkout repository
-    uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-  - name: CMake Build
-    run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}}
-    shell: pwsh
+    - name: CMake Build
+      run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}}
+      shell: pwsh
 
-  - name: Publish Build Artifacts
-    uses: actions/upload-artifact@v4
-    with:
-      name: Windows-x64
-      path: |
-        Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/
-        Result.Windows.x64.MultiConfig/ZEngine/tests/${{inputs.configuration}}/
-        !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.resources.dll
-        !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
-        !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.resources.dll
-        !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.Scripting.resources.dll
-        !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/runtimes/
-        !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/createdump.exe
+    - name: Publish Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Windows-x64
+        path: |
+          Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/
+          Result.Windows.x64.MultiConfig/ZEngine/tests/${{inputs.configuration}}/
+          !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.resources.dll
+          !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
+          !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.resources.dll
+          !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.Scripting.resources.dll
+          !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/runtimes/
+          !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/createdump.exe
