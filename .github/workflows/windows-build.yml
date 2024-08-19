@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         buildConfiguration: [Debug, Release]
-    uses: .github/workflows/templates/job-cmakebuild-windows.yml@v${{inputs.version_file}}
+    uses: .github/workflows/job-cmakebuild-windows.yml@v${{inputs.version_file}}
     with:
       configuration: ${{matrix.buildConfiguration}}
 
@@ -20,10 +20,10 @@ jobs:
     strategy:
       matrix:
         testConfiguration: [Debug, Release]
-    uses: .github/workflows/templates/job-test-windows.yml@v${{inputs.version_file}}
+    uses: .github/workflows/job-test-windows.yml@v${{inputs.version_file}}
     with:
       configuration: ${{matrix.testConfiguration}}
 
   deploy:
     needs: test
-    uses: .github/workflows/templates/job-deploy-windows.yml@v${{inputs.version_file}}
+    uses: .github/workflows/job-deploy-windows.yml@v${{inputs.version_file}}
