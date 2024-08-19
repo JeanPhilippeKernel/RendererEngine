@@ -10,24 +10,25 @@ on:
         default: 'Debug'
 
 jobs:
-  name: test-windows-${{ inputs.configuration }}
-  runs-on: windows-2022
-  steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-
-    - uses: actions/download-artifact@v4
-      with:
-        name: Windows-x64
-        path: Result.Windows.x64.MultiConfig
-
-    - name: Install Vulkan SDK
-      uses: humbletim/setup-vulkan-sdk@v1.2.0
-      with:
-        vulkan-query-version: 1.3.204.0
-        vulkan-components: Vulkan-Headers, Vulkan-Loader
-        vulkan-use-cache: true
-
-    - name: Run Tests
-      run: .\Scripts\RunTests.ps1 -Configurations ${{inputs.configuration}}
-      shell: pwsh
+  test:
+    name: test-windows-${{ inputs.configuration }}
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+  
+      - uses: actions/download-artifact@v4
+        with:
+          name: Windows-x64
+          path: Result.Windows.x64.MultiConfig
+  
+      - name: Install Vulkan SDK
+        uses: humbletim/setup-vulkan-sdk@v1.2.0
+        with:
+          vulkan-query-version: 1.3.204.0
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+  
+      - name: Run Tests
+        run: .\Scripts\RunTests.ps1 -Configurations ${{inputs.configuration}}
+        shell: pwsh
