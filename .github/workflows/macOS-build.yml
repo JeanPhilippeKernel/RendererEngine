@@ -1,11 +1,5 @@
 name: ZEngine macOS Build
 
-on:
-  push:
-    branches: [ master, develop ]
-  pull_request:
-    branches: [ master, develop ]
-
 jobs:
   macOS-Intel-Build:
     runs-on: macos-13
