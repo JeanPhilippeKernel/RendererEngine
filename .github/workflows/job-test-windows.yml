@@ -10,12 +10,17 @@ on:
         default: 'Debug'
 
 jobs:
-  test:
+  test-windows-${{inputs.configuration}}:
     runs-on: windows-2022
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: Windows-x64
+        path: Result.Windows.x64.MultiConfig
 
     - name: Install Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.2.0
