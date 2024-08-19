@@ -1,11 +1,7 @@
 name: ZEngine Window Build
 
-on:
-  workflow_call:
-    inputs:
-      version_file:
-        type: string
-        default: '1'
+on: workflow_call
+
 jobs:
   cmake-build:
     strategy:
