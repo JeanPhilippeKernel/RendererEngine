@@ -6,7 +6,7 @@ on:
 
 jobs:
   windows:
-    uses: ./.github/workflows/windows-build.yml
+    uses: .github/workflows/windows-build.yml
 
   macOS:
     uses: ./.github/workflows/macOS-build.yml
