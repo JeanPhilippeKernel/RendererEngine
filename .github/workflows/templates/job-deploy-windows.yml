@@ -1,0 +1,17 @@
+# Deploy for Windows
+#
+name: Deploy Workflow
+
+jobs:
+  test:
+    runs-on: windows-2022
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Publish Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: Windows-x64
+        path: Result.Windows.x64.MultiConfig

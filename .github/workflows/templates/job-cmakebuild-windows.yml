@@ -1,0 +1,22 @@
+# CMake build of ZEngine for Windows
+#
+name: Build Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Debug'
+
+jobs:
+  cmake-build:
+    runs-on: windows-2022
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: CMake Build
+      run: .\Scripts\BuildEngine.ps1 -Configurations ${{input.configuration}}
+      shell: pwsh
