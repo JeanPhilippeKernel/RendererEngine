@@ -6,10 +6,10 @@ on:
 
 jobs:
   windows:
-    uses: .github/workflows/windows-build.yml
+    uses: .github/workflows/windows-build.yml@v1
 
   macOS:
-    uses: ./.github/workflows/macOS-build.yml
+    uses: ./.github/workflows/macOS-build.yml@v1
 
   # linux:
   #   uses: ./.github/workflows/linux-build.yml
