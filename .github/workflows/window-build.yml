@@ -1,5 +1,7 @@
 name: ZEngine Window Build
 
+on: workflow_call
+
 jobs:
   cmake-build:
     strategy:

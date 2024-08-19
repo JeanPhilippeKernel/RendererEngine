@@ -1,5 +1,7 @@
 name: ZEngine macOS Build
 
+on: workflow_call
+
 jobs:
   macOS-Intel-Build:
     runs-on: macos-13
