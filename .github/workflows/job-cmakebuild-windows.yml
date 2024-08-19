@@ -10,7 +10,7 @@ on:
         default: 'Debug'
 
 jobs:
-  name: cmake-build-windows-${{inputs.configuration}}
+  name: cmake-build-windows-${{ inputs.configuration }}
   runs-on: windows-2022
   steps:
     - name: Checkout repository
