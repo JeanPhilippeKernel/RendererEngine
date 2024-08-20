@@ -1,9 +1,9 @@
 #include <pch.h>
 #include <Core/Coroutine.h>
-#include <Rendering/Textures/Texture2D.h>
 #include <Hardwares/VulkanDevice.h>
-#include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/Buffers/Bitmap.h>
+#include <Rendering/Primitives/ImageMemoryBarrier.h>
+#include <Rendering/Textures/Texture2D.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__
@@ -13,8 +13,8 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include <stb/stb_image_write.h>
 #include <stb/stb_image_resize.h>
+#include <stb/stb_image_write.h>
 
 namespace ZEngine::Rendering::Textures
 {
@@ -114,7 +114,7 @@ namespace ZEngine::Rendering::Textures
 
     Ref<Texture2D> Texture2D::Create(const Specifications::TextureSpecification& spec)
     {
-        Ref<Texture2D> texture = CreateRef<Texture2D>();
+        Ref<Texture2D> texture   = CreateRef<Texture2D>();
         texture->m_specification = spec;
         FillAsVulkanImage(texture, spec);
         return texture;
@@ -122,30 +122,45 @@ namespace ZEngine::Rendering::Textures
 
     Ref<Texture2D> Texture2D::Create(uint32_t width, uint32_t height)
     {
-        unsigned char image_data[] = {255, 255, 255, 255, '\0'};
 
         Specifications::TextureSpecification spec = {};
         spec.Width                                = width;
         spec.Height                               = height;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
         spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-        spec.Data                                 = image_data;
+
+        size_t                     dataSize = width * height * spec.BytePerPixel;
+        std::vector<unsigned char> image_data(dataSize, 255);
+
+        spec.Data = image_data.data();
         return Create(spec);
     }
 
     Ref<Texture2D> Texture2D::Create(uint32_t width, uint32_t height, float r, float g, float b, float a)
     {
-        unsigned char image_data[]                = {0, 0, 0, 0, '\0'};
-        image_data[0]                             = static_cast<unsigned char>(std::clamp(r, .0f, 255.0f));
-        image_data[1]                             = static_cast<unsigned char>(std::clamp(g, .0f, 255.0f));
-        image_data[2]                             = static_cast<unsigned char>(std::clamp(b, .0f, 255.0f));
-        image_data[3]                             = static_cast<unsigned char>(std::clamp(a, .0f, 255.0f));
         Specifications::TextureSpecification spec = {};
         spec.Width                                = width;
         spec.Height                               = height;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
         spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-        spec.Data                                 = image_data;
+
+        size_t dataSize = width * height * spec.BytePerPixel;
+        std::vector<unsigned char> image_data(dataSize);
+
+        unsigned char r_byte = static_cast<unsigned char>(std::clamp(r * 255.0f, 0.0f, 255.0f));
+        unsigned char g_byte = static_cast<unsigned char>(std::clamp(g * 255.0f, 0.0f, 255.0f));
+        unsigned char b_byte = static_cast<unsigned char>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+        unsigned char a_byte = static_cast<unsigned char>(std::clamp(a * 255.0f, 0.0f, 255.0f));
+
+        for (size_t i = 0; i < dataSize; i += spec.BytePerPixel)
+        {
+            image_data[i]     = r_byte;
+            image_data[i + 1] = g_byte;
+            image_data[i + 2] = b_byte;
+            image_data[i + 3] = a_byte;
+        }
+
+        spec.Data = image_data.data();
         return Create(spec);
     }
 
