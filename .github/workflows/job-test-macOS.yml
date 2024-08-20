@@ -1,6 +1,6 @@
-# Run tests for macOS x64
+# Run tests for macOS
 #
-name: macOS x64 Test Workflow
+name: macOS Test Workflow
 
 on:
   workflow_call:
@@ -8,18 +8,21 @@ on:
       configuration:
         type: string
         default: 'Debug'
+      architecture:
+        type: string
+        default: 'x64'
 
 jobs:
   test:
-    name: test-macOS-x64-${{ inputs.configuration }}
-    runs-on: macos-13
+    name: test-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
+    runs-on: ${{ inputs.architecture == 'x64' && 'macos-13' || 'macos-latest' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v4
         with:
-          name: Build-macOS-x64-${{ inputs.configuration }}
+          name: Build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
           path: Result.Darwin.x64.${{ inputs.configuration }}
 
       - name: Run Tests

@@ -8,9 +8,10 @@ jobs:
       matrix:
         buildConfiguration: [Debug, Release]
         architecture: [x64, arm64]
-    uses: ./.github/workflows/job-cmakebuild-macOS-${{ matrix.architecture }}.yml
+    uses: ./.github/workflows/job-cmakebuild-macOS.yml
     with:
       configuration: ${{matrix.buildConfiguration}}
+      architecture: ${{ matrix.architecture }}
 
   test:
     needs: cmake-build
@@ -18,9 +19,10 @@ jobs:
       matrix:
         testConfiguration: [Debug, Release]
         architecture: [x64, arm64]
-    uses: ./.github/workflows/job-test-macOS-${{ matrix.architecture }}.yml
+    uses: ./.github/workflows/job-test-macOS.yml
     with:
       configuration: ${{matrix.testConfiguration}}
+      architecture: ${{ matrix.architecture }}
 
   deploy:
     needs: test

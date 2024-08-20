@@ -1,6 +1,6 @@
-# CMake build of ZEngine for macOS x64
+# CMake build of ZEngine for macOS
 #
-name: ZEngine macOS x64 Workflow
+name: ZEngine macOS Workflow
 
 on:
   workflow_call:
@@ -8,11 +8,14 @@ on:
       configuration:
         type: string
         default: 'Debug'
+      architecture:
+        type: string
+        default: 'x64'
 
 jobs:
   cmake-build:
-    name: cmake-build-macOS-x64-${{ inputs.configuration }}
-    runs-on: macos-13
+    name: cmake-build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
+    runs-on: ${{ inputs.architecture == 'x64' && 'macos-13' || 'macos-latest' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -24,9 +27,9 @@ jobs:
       - name: Publish Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Build-macOS-x64-${{inputs.configuration}}
+          name: Build-macOS-${{ inputs.architecture }}-${{inputs.configuration}}
           path: |
-            Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/osx-x64/publish/
+            Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/osx-${{ inputs.architecture }}/publish/
             Result.Darwin.x64.${{inputs.configuration}}/ZEngine/tests/${{inputs.configuration}}/
             !Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.resources.dll
             !Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll

@@ -15,7 +15,7 @@ on:
 jobs:
   deploy:
     name: deploy-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
-    runs-on: ${{ matrix.architecture == 'x64' && 'macos-13' || 'macos-latest' }}
+    runs-on: ${{ inputs.architecture == 'x64' && 'macos-13' || 'macos-latest' }}
     steps:
       - uses: actions/download-artifact@v4
         with:
