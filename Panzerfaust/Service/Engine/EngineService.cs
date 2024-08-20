@@ -29,7 +29,7 @@ namespace Panzerfaust.Service.Engine
         {
 #if DEBUG
             configuration = "Debug";
-            exampleProjectConfig = @$"{Environment.CurrentDirectory}/../../../Examples/projectConfig.json";
+            exampleProjectConfig = @$"{Environment.CurrentDirectory}/Examples/projectConfig.json";
             engineArgs.Add(exampleProjectConfig);
 #else
             configuration = "Release";

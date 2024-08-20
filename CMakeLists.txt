@@ -108,9 +108,3 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 else ()
 	add_dependencies(AssembleContent Panzerfaust)
 endif ()
-
-# Copying Examples dir
-#
-if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Examples/projectConfig.json)
-	file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Examples/projectConfig.json DESTINATION ${CMAKE_BINARY_DIR}/Examples)
-endif ()
