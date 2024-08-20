@@ -30,6 +30,7 @@ jobs:
           name: Build-macOS-${{ inputs.architecture }}-${{inputs.configuration}}
           path: |
             Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/osx-${{ inputs.architecture }}/publish/
+            Result.Darwin.x64.${{inputs.configuration}}/__externals/Vulkan-Loader/loader/${{ inputs.configuration }}/
             Result.Darwin.x64.${{inputs.configuration}}/ZEngine/tests/${{inputs.configuration}}/
             !Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.resources.dll
             !Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
