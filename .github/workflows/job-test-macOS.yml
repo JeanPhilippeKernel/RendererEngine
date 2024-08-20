@@ -19,8 +19,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          path: macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
 
       - name: Download Artifacts
         uses: actions/download-artifact@v4
