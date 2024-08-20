@@ -18,7 +18,7 @@ jobs:
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-13' || 'macos-latest' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: CMake Build
         run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}}

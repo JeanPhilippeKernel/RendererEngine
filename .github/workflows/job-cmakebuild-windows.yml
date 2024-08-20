@@ -15,7 +15,7 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: CMake Build
         run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}}

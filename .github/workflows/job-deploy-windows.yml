@@ -20,7 +20,7 @@ jobs:
           name: Build-Windows-x64-Release
 
       - name: Publish Artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: Windows-x64-${{ inputs.configuration }}
           path: Result.Windows.x64.MultiConfig/Panzerfaust/${{ inputs.configuration }}/net6.0/win-x64/publish/

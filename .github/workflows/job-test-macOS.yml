@@ -18,15 +18,17 @@ jobs:
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-13' || 'macos-latest' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
         with:
           name: Build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
           path: Result.Darwin.x64.${{ inputs.configuration }}
 
+      - name: Update access permission of tests
+        run: chmod +x ./Result.Darwin.x64.${{ inputs.configuration }}/ZEngine/tests/${{ inputs.configuration }}/ZEngineTests
+
       - name: Run Tests
+        run: .\Scripts\RunTests.ps1 -Configurations ${{inputs.configuration}}
         shell: pwsh
-        run: |
-        chmod +x .\Result.Darwin.x64.${{ inputs.configuration }}\ZEngine\tests\${{ inputs.configuration }}\ZEngineTests
-        .\Scripts\RunTests.ps1 -Configurations ${{inputs.configuration}}
