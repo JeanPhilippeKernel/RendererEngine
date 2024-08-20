@@ -129,8 +129,8 @@ namespace ZEngine::Rendering::Textures
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
         spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
 
-        size_t                     dataSize = width * height * spec.BytePerPixel;
-        std::vector<unsigned char> image_data(dataSize, 255);
+        size_t                     data_size = width * height * spec.BytePerPixel;
+        std::vector<unsigned char> image_data(data_size, 255);
 
         spec.Data = image_data.data();
         return Create(spec);
@@ -144,15 +144,15 @@ namespace ZEngine::Rendering::Textures
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
         spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
 
-        size_t dataSize = width * height * spec.BytePerPixel;
-        std::vector<unsigned char> image_data(dataSize);
+        size_t                     data_size = width * height * spec.BytePerPixel;
+        std::vector<unsigned char> image_data(data_size);
 
         unsigned char r_byte = static_cast<unsigned char>(std::clamp(r * 255.0f, 0.0f, 255.0f));
         unsigned char g_byte = static_cast<unsigned char>(std::clamp(g * 255.0f, 0.0f, 255.0f));
         unsigned char b_byte = static_cast<unsigned char>(std::clamp(b * 255.0f, 0.0f, 255.0f));
         unsigned char a_byte = static_cast<unsigned char>(std::clamp(a * 255.0f, 0.0f, 255.0f));
 
-        for (size_t i = 0; i < dataSize; i += spec.BytePerPixel)
+        for (size_t i = 0; i < data_size; i += spec.BytePerPixel)
         {
             image_data[i]     = r_byte;
             image_data[i + 1] = g_byte;
