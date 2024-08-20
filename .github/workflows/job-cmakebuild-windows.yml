@@ -24,13 +24,12 @@ jobs:
       - name: Publish Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Windows-x64
+          name: Windows-x64-${{inputs.configuration}}
           path: |
-            Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/
+            Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/win-x64/publish/
             Result.Windows.x64.MultiConfig/ZEngine/tests/${{inputs.configuration}}/
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.resources.dll
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.resources.dll
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.Scripting.resources.dll
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/runtimes/
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/createdump.exe
