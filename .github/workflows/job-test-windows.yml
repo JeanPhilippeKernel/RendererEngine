@@ -1,6 +1,6 @@
 # Run tests for Windows
 #
-name: Test Workflow
+name: Windows Test Workflow
 
 on:
   workflow_call:
@@ -21,7 +21,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: Result.Windows.x64.MultiConfig
-          pattern: Windows-x64-*
+          pattern: Build-Windows-x64-*
           merge-multiple: true
   
       - name: Install Vulkan SDK

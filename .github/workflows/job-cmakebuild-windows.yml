@@ -1,6 +1,6 @@
 # CMake build of ZEngine for Windows
 #
-name: Build Workflow
+name: Windows Build Workflow
 
 on:
   workflow_call:
@@ -24,7 +24,7 @@ jobs:
       - name: Publish Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Windows-x64-${{inputs.configuration}}
+          name: Build-Windows-x64-${{inputs.configuration}}
           path: |
             Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/win-x64/publish/
             Result.Windows.x64.MultiConfig/ZEngine/tests/${{inputs.configuration}}/

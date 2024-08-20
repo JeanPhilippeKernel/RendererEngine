@@ -23,3 +23,5 @@ jobs:
   deploy:
     needs: test
     uses: ./.github/workflows/job-deploy-windows.yml
+    with:
+      configuration: Release
