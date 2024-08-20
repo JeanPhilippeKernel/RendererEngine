@@ -26,5 +26,7 @@ jobs:
           path: Result.Darwin.x64.${{ inputs.configuration }}
 
       - name: Run Tests
-        run: .\Scripts\RunTests.ps1 -Configurations ${{inputs.configuration}}
         shell: pwsh
+        run: |
+        chmod +x .\Result.Darwin.x64.${{ inputs.configuration }}\ZEngine\tests\${{ inputs.configuration }}\ZEngineTests
+        .\Scripts\RunTests.ps1 -Configurations ${{inputs.configuration}}
