@@ -1,0 +1,27 @@
+# Run tests for macOS arm64
+#
+name: macOS arm64 Test Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Debug'
+
+jobs:
+  test:
+    name: test-macOS-arm64-${{ inputs.configuration }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Build-macOS-arm64-${{ inputs.configuration }}
+          path: Result.Darwin.x64.${{ inputs.configuration }}
+
+      - name: Run Tests
+        run: .\Scripts\RunTests.ps1 -Configurations ${{inputs.configuration}}
+        shell: pwsh

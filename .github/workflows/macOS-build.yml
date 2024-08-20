@@ -3,30 +3,31 @@ name: ZEngine macOS Build
 on: workflow_call
 
 jobs:
-  macOS-Intel-Build:
-    runs-on: macos-13
+  cmake-build:
     strategy:
       matrix:
-          buildConfiguration: [Debug, Release]
+        buildConfiguration: [Debug, Release]
+        architecture: [x64, arm64]
+    uses: ./.github/workflows/job-cmakebuild-macOS-${{ matrix.architecture }}.yml
+    with:
+      configuration: ${{matrix.buildConfiguration}}
 
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-
-    - name: CMake Build
-      run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
-      shell: pwsh
-
-  macOS-Silicon-Build:
-    runs-on: macos-latest
+  test:
+    needs: cmake-build
     strategy:
       matrix:
-          buildConfiguration: [Debug, Release]
+        testConfiguration: [Debug, Release]
+        architecture: [x64, arm64]
+    uses: ./.github/workflows/job-test-macOS-${{ matrix.architecture }}.yml
+    with:
+      configuration: ${{matrix.testConfiguration}}
 
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-
-    - name: CMake Build
-      run: .\Scripts\BuildEngine.ps1 -Configurations ${{matrix.buildConfiguration}}
-      shell: pwsh
+  deploy:
+    needs: test
+    strategy:
+      matrix:
+        architecture: [x64, arm64]
+    uses: ./.github/workflows/job-deploy-macOS.yml
+    with:
+      configuration: Release
+      architecture: ${{ matrix.architecture }}
