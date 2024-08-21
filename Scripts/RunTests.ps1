@@ -64,8 +64,10 @@ function RunTests {
         "Windows" {
             $testExecutablePath = [IO.Path]::Combine($OutputBuildDirectory, "ZEngine", "tests", $Configuration, "ZEngineTests.exe")
         }
+        "Darwin" {
+            $testExecutablePath = Join-Path $OutputBuildDirectory -ChildPath "ZEngine/tests/$Configuration/ZEngineTests"
+        }
         "Linux" {}
-        "Darwin" {}
         Default {
             throw 'This system is not supported'
         }

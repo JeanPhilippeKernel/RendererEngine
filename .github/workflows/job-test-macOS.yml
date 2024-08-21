@@ -1,0 +1,34 @@
+# Run tests for macOS
+#
+name: macOS Test Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Debug'
+      architecture:
+        type: string
+        default: 'x64'
+
+jobs:
+  test:
+    name: test-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
+    runs-on: ${{ inputs.architecture == 'x64' && 'macos-13' || 'macos-latest' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
+          path: Result.Darwin.x64.${{ inputs.configuration }}
+
+      - name: Update access permission of ZEngineTests
+        run: chmod +x ./Result.Darwin.x64.${{ inputs.configuration }}/ZEngine/tests/${{ inputs.configuration }}/ZEngineTests
+
+      - name: Run Tests
+        run: .\Scripts\RunTests.ps1 -Configurations ${{ inputs.configuration }}
+        shell: pwsh
