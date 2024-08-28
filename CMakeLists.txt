@@ -20,10 +20,26 @@ include(${ENLISTMENT_ROOT}/Scripts/CMake/NuGet.cmake)
 option (COPY_EXAMPLE_PROJECT "Copy example projects that show how to use Launcher" ON)
 option (LAUNCHER_ONLY "Build Launcher only" OFF)
 
+set (MACOSX_ARCHITECTURE_ARM64 OFF)
+if (APPLE)
+    # Use uname to detect the macOS processor architecture
+    execute_process(
+        COMMAND uname -m
+        OUTPUT_VARIABLE MACOSX_ARCHITECTURE
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+	if (MACOSX_ARCHITECTURE STREQUAL "arm64")
+		set (MACOSX_ARCHITECTURE_ARM64 ON)
+	endif ()
+endif ()
 
-if(NOT LAUNCHER_ONLY)
-	# Externals dependencies
-	#
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	add_compile_definitions(_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING) # Fix Warning from VS 2022 +
+endif()
+
+# Externals dependencies
+#
+if (NOT LAUNCHER_ONLY)
 	add_subdirectory (${EXTERNAL_DIR}/fmt)
 	add_subdirectory (${EXTERNAL_DIR}/imgui)
 	add_subdirectory (${EXTERNAL_DIR}/glfw)
@@ -48,66 +64,47 @@ if(NOT LAUNCHER_ONLY)
 
 	# Core engine lib is here
 	#
-	add_subdirectory(ZEngine)
+	add_subdirectory (ZEngine)
 
 	# Editor is here
 	#
-	add_subdirectory(Tetragrama)
+	add_subdirectory (Tetragrama)
 endif ()
+
 # Launcher is here
 #
-add_subdirectory(Panzerfaust)
-
+add_subdirectory (Panzerfaust)
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Panzerfaust)
+	set_property (DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Panzerfaust)
 endif ()
-
 
 # Post build operation
 #
-set(SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
-
-if(NOT LAUNCHER_ONLY)
-	add_custom_target(BuildLauncher ALL
-	COMMENT "Building Panzerfaust"
-	DEPENDS
-		zEngineLib
-		tetragrama
-	)
-else ()
-	add_custom_target(BuildLauncher ALL
-	COMMENT "Building Panzerfaust"
-	)
+set (SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	set (SYSTEM_ARCHITECTURE "win-x64")
+elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	set (SYSTEM_ARCHITECTURE "linux-x64")
+elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+	if (MACOSX_ARCHITECTURE_ARM64)
+		set (SYSTEM_ARCHITECTURE "osx-arm64")
+	else ()
+		set (SYSTEM_ARCHITECTURE "osx-x64")
+	endif ()
 endif ()
 
-add_custom_command(TARGET BuildLauncher
-	POST_BUILD
-	COMMAND dotnet build ${CMAKE_CURRENT_SOURCE_DIR}/Panzerfaust/Panzerfaust.csproj -c $<IF:$<CONFIG:Debug>,Debug,Release> -v n
-)
-
-add_custom_target(AssembleContent ALL
+add_custom_target (AssembleContent ALL
 	COMMENT "Copying assets and resources contents"
-	DEPENDS
-		BuildLauncher
+	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -SystemName ${SYSTEM_NAME} -Architectures ${SYSTEM_ARCHITECTURE} -Configurations $<IF:$<CONFIG:Debug>,Debug,Release> $<$<BOOL:${LAUNCHER_ONLY}>:-LauncherOnly>
 )
 
-if(NOT LAUNCHER_ONLY)
-	add_custom_command(TARGET AssembleContent
-		POST_BUILD
-		COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -Configurations $<IF:$<CONFIG:Debug>,Debug,Release>
-	)
-else ()
-	add_custom_command(TARGET AssembleContent
-	POST_BUILD
-	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -Configurations $<IF:$<CONFIG:Debug>,Debug,Release> -LauncherOnly
-	)
+if (NOT LAUNCHER_ONLY)
+	add_dependencies(AssembleContent zEngineLib tetragrama)
 endif ()
 
-# Copying Examples dir
-#
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Examples/projectConfig.json)
-	file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Examples/projectConfig.json DESTINATION ${CMAKE_BINARY_DIR}/Examples)
-endif()
-
-
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	add_dependencies(AssembleContent Panzerfaust-WinBuild)
+else ()
+	add_dependencies(AssembleContent Panzerfaust)
+endif ()

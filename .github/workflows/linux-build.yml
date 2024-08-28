@@ -1,24 +1,24 @@
 # @JeanPhilippeKernel : Disabled because we only support Windows as platform for now
 #
-# name: ZEngine Linux Build
+name: ZEngine Linux Build
 
-# on:
-#   push:
-#     branches: [ master, develop ]
-#   pull_request:
-#     branches: [ master, develop ]
-    
-# jobs:
-#   Linux-Build:
-#     runs-on: ubuntu-latest
-#     strategy:
-#       matrix:
-#           buildConfiguration: [Debug, Release]
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
 
-#     steps:
-#     - name: Checkout repository
-#       uses: actions/checkout@v2
-      
+jobs:
+  Linux-Build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+          buildConfiguration: [Debug, Release]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
 #     - name: Checkout submodules
 #       run: git submodule update --init --recursive
 

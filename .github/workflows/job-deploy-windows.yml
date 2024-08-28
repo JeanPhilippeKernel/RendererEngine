@@ -1,0 +1,26 @@
+# Deploy for Windows
+#
+name: Windows Deploy Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Release'
+
+jobs:
+  deploy:
+    name: deploy-windows-x64-${{ inputs.configuration }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: Result.Windows.x64.MultiConfig
+          name: Build-Windows-x64-Release
+
+      - name: Publish Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-x64-${{ inputs.configuration }}
+          path: Result.Windows.x64.MultiConfig/Panzerfaust/${{ inputs.configuration }}/net6.0/win-x64/publish/

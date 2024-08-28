@@ -23,22 +23,54 @@ Before building, make sure your setup is correct :
 - Install Visual Studio 2022 Community or Professional, make sure to add "Desktop development with C++".
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
 - Install [Python](https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe)
+- Install [CMake](https://cmake.org/download/) 3.20 or later.
+- Install [DOTNET SDK 6](https://dotnet.microsoft.com/en-us/download/dotnet/6.0)
 
-## Building 
+### Setup macOS machine
 
-1. Install [CMake](https://cmake.org/download/) 3.20 or later.
-2. Start `Powershell Core` and make sure that you can run CMake, You can type `cmake --version` to simply output the current CMake version installed.
-3. Change directories to the location where you've cloned the repository.
-4. Building on different systems
-	- Building on Windows : 
-		- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True -VsVersion 2022`
-		- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True -VsVersion 2022`
+- Install Xcode from the App Store.
+- Install Homebrew from a terminal:
+```bash
+/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+```
 
-- Notes :
-	- `RunBuilds` can be omitted as its default value is: `$True`.
-	- You can build `Debug` and `Release` versions at once by omitting the `Configuration` parameter
-	- On Windows, you can specify the Visual Studio version with `VsVersion`, it can be omitted as its default value is: `2022`
-	- If you want to work on the launcher only, you can specify the Launcher only parameter with `LauncherOnly` then only the launcher will be build.
+- Install CMake through Homebrew :
+```bash
+    brew update
+    brew install cmake
+```
+
+- Install NuGet through Homebrew :
+```bash
+    brew update
+    brew install nuget
+```
+
+- Install PowerShell Core through Homebrew:
+```bash
+    brew update
+    brew install --cask powershell
+```
+- Install [DOTNET SDK 6](https://dotnet.microsoft.com/en-us/download/dotnet/6.0)
+
+## Building the engine & launcher
+
+1. Start `Powershell Core` and make sure that you can run CMake, You can type `cmake --version` to simply output the current CMake version installed.
+2. Change directories to the location where you've cloned the repository.
+3. Run the following command depending on the configuration:
+	- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True`
+	- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True`
+
+## Building the launcher only
+
+To only build the Launcher only, you can specify `-LauncherOnly` which will skip building the engine :
+- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True -LauncherOnly`
+- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True -LauncherOnly`
+
+### Important Notes:
+- Setting `-RunBuilds` to `$false` will result to *only* generate the build directory.
+- Omitting `-Configuration` will result to generate and build for both `Debug` and `Release` versions.
+- Specifying `-ForceShaderRebuild` option will force the engine's shaders rebuilding.
 
 ## Dependencies
 
