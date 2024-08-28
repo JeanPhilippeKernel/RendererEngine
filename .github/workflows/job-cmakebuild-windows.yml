@@ -33,3 +33,13 @@ jobs:
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.resources.dll
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.Scripting.resources.dll
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/createdump.exe
+
+      - name: Publish Vulkan Build Artifacts
+        if: ${{ inputs.configuration == 'Release'}}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vulkan-build-x64-release
+          path: |
+            Result.Windows.x64.MultiConfig/__externals/Vulkan-Loader/loader/release/vulkan-1.dll
+            Result.Windows.x64.MultiConfig/__externals/Vulkan-Loader/loader/release/vulkan-1.exp
+            Result.Windows.x64.MultiConfig/__externals/Vulkan-Loader/loader/release/vulkan-1.lib
