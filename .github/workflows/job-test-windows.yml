@@ -24,5 +24,7 @@ jobs:
           name: Build-Windows-x64-${{ inputs.configuration }}
 
       - name: Run Tests
-        run: .\Scripts\RunTests.ps1 -Configurations ${{inputs.configuration}}
+        run: |
+          $env:PATH = ".\Result.Windows.x64.MultiConfig\__externals\Vulkan-Loader\loader\${{ inputs.configuration }}\;$env:PATH"
+          .\Scripts\RunTests.ps1 -Configurations ${{ inputs.configuration }}
         shell: pwsh

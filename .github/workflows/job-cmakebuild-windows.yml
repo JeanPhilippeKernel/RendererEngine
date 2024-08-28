@@ -27,6 +27,7 @@ jobs:
           name: Build-Windows-x64-${{inputs.configuration}}
           path: |
             Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/win-x64/publish/
+            Result.Windows.x64.MultiConfig/__externals/Vulkan-Loader/loader/${{inputs.configuration}}/
             Result.Windows.x64.MultiConfig/ZEngine/tests/${{inputs.configuration}}/
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.resources.dll
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
