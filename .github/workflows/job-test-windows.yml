@@ -26,11 +26,11 @@ jobs:
       - name: Download Vulkan Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: Vulkan-build
+          path: vulkan-build
           name: Vulkan-build-x64-release
 
       - name: Run Tests
         shell: pwsh
         run: |
-          $env:PATH = ".\Vulkan-build\;$env:PATH"
+          $env:PATH = ".\vulkan-build\;$env:PATH"
           .\Scripts\RunTests.ps1 -Configurations ${{ inputs.configuration }}

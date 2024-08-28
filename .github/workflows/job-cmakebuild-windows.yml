@@ -34,8 +34,8 @@ jobs:
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.Scripting.resources.dll
             !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net6.0/**/createdump.exe
 
-        if: ${{ inputs.configuration == 'Release'}}
       - name: Publish Vulkan Build Artifacts
+        if: ${{ inputs.configuration == 'Release'}}
         uses: actions/upload-artifact@v4
         with:
           name: Vulkan-build-x64-release
