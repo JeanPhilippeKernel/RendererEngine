@@ -23,8 +23,14 @@ jobs:
           path: Result.Windows.x64.MultiConfig
           name: Build-Windows-x64-${{ inputs.configuration }}
 
+      - name: Download Vulkan Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: Vulkan-build
+          name: Vulkan-build-x64-release
+
       - name: Run Tests
-        run: |
-          $env:PATH = ".\Result.Windows.x64.MultiConfig\__externals\Vulkan-Loader\loader\${{ inputs.configuration }}\;$env:PATH"
-          .\Scripts\RunTests.ps1 -Configurations ${{ inputs.configuration }}
         shell: pwsh
+        run: |
+          $env:PATH = ".\Vulkan-build\;$env:PATH"
+          .\Scripts\RunTests.ps1 -Configurations ${{ inputs.configuration }}
