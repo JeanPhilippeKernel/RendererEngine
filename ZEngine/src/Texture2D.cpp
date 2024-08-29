@@ -183,14 +183,15 @@ namespace ZEngine::Rendering::Textures
 
         VkFormat image_format      = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Hardwares::VulkanDevice::FindDepthFormat()
                                                                                                              : Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
-        texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(
+        texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(Specifications::Image2DBufferSpecification(
             texture->m_width,
             texture->m_height,
+            spec.IsCubemap ? Specifications::ImageType::Cubemap : Specifications::ImageType::Flat2D,
             image_format,
             VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit),
             VkImageAspectFlagBits(image_aspect),
             spec.LayerCount,
-            spec.IsCubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0);
+            spec.IsCubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0));
 
         if (spec.PerformTransition)
         {

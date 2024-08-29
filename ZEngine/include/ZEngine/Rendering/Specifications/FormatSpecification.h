@@ -112,4 +112,11 @@ namespace ZEngine::Rendering::Specifications
         COMPUTE
     };
 
+    enum class ImageType : uint32_t
+    {
+        Flat2D,
+        Cubemap,
+    };
+
+    static VkImageViewType ImageViewTypeMap[] = {VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_VIEW_TYPE_CUBE};
 } // namespace ZEngine::Rendering::Specifications
