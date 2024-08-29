@@ -22,28 +22,14 @@ namespace ZEngine::Rendering::Specifications
 
     struct Image2DBufferSpecification
     {
-        uint32_t              width;
-        uint32_t              height;
-        ImageType             image_view_type;
-        VkFormat              image_format;
-        VkImageUsageFlags     image_usage;
-        VkImageAspectFlagBits image_aspect_flag;
-        uint32_t              layer_count           = 1U;
-        VkImageCreateFlags    image_create_flag_bit = 0;
-
-        Image2DBufferSpecification(
-            uint32_t              w,
-            uint32_t              h,
-            ImageType             view_type,
-            VkFormat              format,
-            VkImageUsageFlags     usage,
-            VkImageAspectFlagBits aspect,
-            uint32_t              layers       = 1U,
-            VkImageCreateFlags    create_flags = 0)
-            : width(w), height(h), image_view_type(view_type), image_format(format), image_usage(usage), image_aspect_flag(aspect), layer_count(layers),
-              image_create_flag_bit(create_flags)
-        {
-        }
+        uint32_t              Width;
+        uint32_t              Height;
+        ImageViewType         ImageViewType;
+        VkFormat              ImageFormat;
+        VkImageUsageFlags     ImageUsage;
+        VkImageAspectFlagBits ImageAspectFlag;
+        uint32_t              LayerCount           = 1U;
+        ImageCreateFlag       ImageCreateFlag = ImageCreateFlag::SPARSE_BINDING_BIT;
     };
 
 } // namespace ZEngine::Rendering::Specifications

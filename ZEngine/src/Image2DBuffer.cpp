@@ -4,7 +4,7 @@
 namespace ZEngine::Rendering::Buffers
 {
     Image2DBuffer::Image2DBuffer(const Specifications::Image2DBufferSpecification& spec)
-        : m_width(spec.width), m_height(spec.height)
+        : m_width(spec.Width), m_height(spec.Height)
     {
         ZENGINE_VALIDATE_ASSERT(m_width > 0, "Image width must be greater then zero")
         ZENGINE_VALIDATE_ASSERT(m_height > 0, "Image height must be greater then zero")
@@ -13,15 +13,15 @@ namespace ZEngine::Rendering::Buffers
             m_width,
             m_height,
             VK_IMAGE_TYPE_2D,
-            Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(spec.image_view_type)],
-            spec.image_format,
+            Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(spec.ImageViewType)],
+            spec.ImageFormat,
             VK_IMAGE_TILING_OPTIMAL,
             VK_IMAGE_LAYOUT_UNDEFINED,
-            spec.image_usage,
+            spec.ImageUsage,
             VK_SHARING_MODE_EXCLUSIVE,
             VK_SAMPLE_COUNT_1_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            spec.image_aspect_flag, spec.layer_count, spec.image_create_flag_bit);
+            spec.ImageAspectFlag, spec.LayerCount, Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(spec.ImageCreateFlag)]);
     }
 
     Image2DBuffer::~Image2DBuffer()

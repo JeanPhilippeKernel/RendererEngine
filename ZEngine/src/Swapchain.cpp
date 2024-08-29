@@ -275,7 +275,7 @@ namespace ZEngine::Rendering
 
         for (size_t i = 0; i < m_image_view_collection.size(); ++i)
         {
-            m_image_view_collection[i] = Hardwares::VulkanDevice::CreateImageView(m_image_collection[i], m_surface_format.format, VK_IMAGE_VIEW_TYPE_CUBE, VK_IMAGE_ASPECT_COLOR_BIT);
+            m_image_view_collection[i] = Hardwares::VulkanDevice::CreateImageView(m_image_collection[i], m_surface_format.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
         }
 
         /*Swapchain framebuffer*/
