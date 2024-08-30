@@ -1,0 +1,38 @@
+# CMake build of ZEngine for macOS
+#
+name: ZEngine macOS Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Debug'
+      architecture:
+        type: string
+        default: 'x64'
+
+jobs:
+  cmake-build:
+    name: cmake-build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
+    runs-on: ${{ inputs.architecture == 'x64' && 'macos-13' || 'macos-latest' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: CMake Build
+        run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}}
+        shell: pwsh
+
+      - name: Publish Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build-macOS-${{ inputs.architecture }}-${{inputs.configuration}}
+          path: |
+            Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/osx-${{ inputs.architecture }}/publish/
+            Result.Darwin.x64.${{inputs.configuration}}/__externals/Vulkan-Loader/loader/${{ inputs.configuration }}/
+            Result.Darwin.x64.${{inputs.configuration}}/ZEngine/tests/${{inputs.configuration}}/
+            !Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.resources.dll
+            !Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
+            !Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.resources.dll
+            !Result.Darwin.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/net6.0/**/Microsoft.CodeAnalysis.Scripting.resources.dll
