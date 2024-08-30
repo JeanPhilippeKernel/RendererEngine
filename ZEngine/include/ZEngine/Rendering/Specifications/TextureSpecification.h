@@ -20,16 +20,25 @@ namespace ZEngine::Rendering::Specifications
         const void*   Data              = nullptr;
     };
 
+    enum class ImageBufferUsageType
+    {
+        CUBEMAP = 0,
+        SINGLE_2D_IMAGE,
+        SINGLE_3D_IMAGE,
+        ARRAYOF_2D_IMAGE
+    };
+
     struct Image2DBufferSpecification
     {
         uint32_t              Width;
         uint32_t              Height;
-        ImageViewType         ImageViewType;
+        ImageViewType         ImageViewType = ImageViewType::TYPE_2D;
+        ImageBufferUsageType  BufferUsageType;
         VkFormat              ImageFormat;
         VkImageUsageFlags     ImageUsage;
         VkImageAspectFlagBits ImageAspectFlag;
-        uint32_t              LayerCount           = 1U;
-        ImageCreateFlag       ImageCreateFlag = ImageCreateFlag::SPARSE_BINDING_BIT;
+        uint32_t              LayerCount      = 1U;
+        ImageCreateFlag       ImageCreateFlag = ImageCreateFlag::NONE;
     };
 
 } // namespace ZEngine::Rendering::Specifications

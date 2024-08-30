@@ -114,7 +114,7 @@ namespace ZEngine::Rendering::Textures
 
     Ref<Texture2D> Texture2D::Create(const Specifications::TextureSpecification& spec)
     {
-        Ref<Texture2D> texture = CreateRef<Texture2D>();
+        Ref<Texture2D> texture   = CreateRef<Texture2D>();
         texture->m_specification = spec;
         FillAsVulkanImage(texture, spec);
         return texture;
@@ -184,13 +184,13 @@ namespace ZEngine::Rendering::Textures
         VkFormat image_format = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Hardwares::VulkanDevice::FindDepthFormat()
                                                                                                         : Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
         Specifications::Image2DBufferSpecification buffer_spec;
-        buffer_spec.Width         = texture->m_width;
-        buffer_spec.Height        = texture->m_height;
-        buffer_spec.ImageViewType = spec.IsCubemap ? Specifications::ImageViewType::TYPE_CUBE : Specifications::ImageViewType::TYPE_2D, buffer_spec.ImageFormat = image_format;
+        buffer_spec.Width           = texture->m_width;
+        buffer_spec.Height          = texture->m_height;
+        buffer_spec.BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE;
+        buffer_spec.ImageFormat     = image_format;
         buffer_spec.ImageUsage      = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
         buffer_spec.ImageAspectFlag = VkImageAspectFlagBits(image_aspect);
         buffer_spec.LayerCount      = spec.LayerCount;
-        buffer_spec.ImageCreateFlag = spec.IsCubemap ? Specifications::ImageCreateFlag::CUBE_COMPATIBLE_BIT : Specifications::ImageCreateFlag::SPARSE_BINDING_BIT;
 
         texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(std::move(buffer_spec));
 
