@@ -219,9 +219,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 break;
                 case TEXTURE_ARRAY:
                 {
-                    auto  texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
-                    auto& texture_collection = texture_array->Data();
-                    uint32_t slot_count = texture_array->GetUsedSlotCount();
+                    auto     texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
+                    auto&    texture_collection = texture_array->Data();
+                    uint32_t slot_count         = texture_array->GetUsedSlotCount();
 
                     for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
                     {
@@ -271,36 +271,42 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 break;
                 case UNIFORM_BUFFER:
                 {
-                    auto        buffer      = reinterpret_cast<UniformBuffer*>(input.Input.Data);
-                    const auto& buffer_info = buffer->GetDescriptorBufferInfo();
-                    write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                        .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .pNext            = nullptr,
-                        .dstSet           = descriptor_set_map.at(input.Set)[0],
-                        .dstBinding       = input.Binding,
-                        .dstArrayElement  = 0,
-                        .descriptorCount  = 1,
-                        .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pImageInfo       = nullptr,
-                        .pBufferInfo      = &(buffer_info),
-                        .pTexelBufferView = nullptr});
+                    auto buffer = reinterpret_cast<UniformBuffer*>(input.Input.Data);
+                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    {
+                        const auto& buffer_info = buffer->GetDescriptorBufferInfo();
+                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .pNext            = nullptr,
+                            .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
+                            .dstBinding       = input.Binding,
+                            .dstArrayElement  = 0,
+                            .descriptorCount  = 1,
+                            .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                            .pImageInfo       = nullptr,
+                            .pBufferInfo      = &(buffer_info),
+                            .pTexelBufferView = nullptr});
+                    }
                 }
                 break;
                 case STORAGE_BUFFER:
                 {
-                    auto        buffer      = reinterpret_cast<StorageBuffer*>(input.Input.Data);
-                    const auto& buffer_info = buffer->GetDescriptorBufferInfo();
-                    write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                        .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .pNext            = nullptr,
-                        .dstSet           = descriptor_set_map.at(input.Set)[0],
-                        .dstBinding       = input.Binding,
-                        .dstArrayElement  = 0,
-                        .descriptorCount  = 1,
-                        .descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .pImageInfo       = nullptr,
-                        .pBufferInfo      = &(buffer_info),
-                        .pTexelBufferView = nullptr});
+                    auto buffer = reinterpret_cast<StorageBuffer*>(input.Input.Data);
+                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    {
+                        const auto& buffer_info = buffer->GetDescriptorBufferInfo();
+                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .pNext            = nullptr,
+                            .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
+                            .dstBinding       = input.Binding,
+                            .dstArrayElement  = 0,
+                            .descriptorCount  = 1,
+                            .descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                            .pImageInfo       = nullptr,
+                            .pBufferInfo      = &(buffer_info),
+                            .pTexelBufferView = nullptr});
+                    }
                 }
                 break;
             }
