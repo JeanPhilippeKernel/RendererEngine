@@ -960,6 +960,7 @@ namespace ZEngine::Hardwares
         uint32_t              width,
         uint32_t              height,
         VkImageType           image_type,
+        VkImageViewType       image_view_type,
         VkFormat              image_format,
         VkImageTiling         image_tiling,
         VkImageLayout         image_initial_layout,
@@ -996,7 +997,7 @@ namespace ZEngine::Hardwares
             vmaCreateImage(s_vma_allocator, &image_create_info, &allocation_create_info, &(buffer_image.Handle), &(buffer_image.Allocation), nullptr) == VK_SUCCESS,
             "Failed to create buffer");
 
-        buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_aspect_flag, layer_count);
+        buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_view_type, image_aspect_flag, layer_count);
         buffer_image.Sampler    = CreateImageSampler();
         return buffer_image;
     }
@@ -1059,16 +1060,14 @@ namespace ZEngine::Hardwares
             {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
     }
 
-    VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count)
+    VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count)
     {
         VkImageView           image_view{VK_NULL_HANDLE};
         VkImageViewCreateInfo image_view_create_info           = {};
         image_view_create_info.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         image_view_create_info.format                          = image_format;
         image_view_create_info.image                           = image;
-        image_view_create_info.viewType                        = (image_format == VK_FORMAT_R32G32B32A32_SFLOAT)
-                                                                     ? VK_IMAGE_VIEW_TYPE_CUBE
-                                                                     : VK_IMAGE_VIEW_TYPE_2D; // ToDo : We should better abstract the creation of ImageView.. introduce Image2DBufferSpecification ?
+        image_view_create_info.viewType                        = image_view_type;
         image_view_create_info.components.r                    = VK_COMPONENT_SWIZZLE_R;
         image_view_create_info.components.g                    = VK_COMPONENT_SWIZZLE_G;
         image_view_create_info.components.b                    = VK_COMPONENT_SWIZZLE_B;

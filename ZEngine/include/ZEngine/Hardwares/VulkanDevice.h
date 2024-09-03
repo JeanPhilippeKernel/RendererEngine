@@ -133,6 +133,7 @@ namespace ZEngine::Hardwares
             uint32_t              width,
             uint32_t              height,
             VkImageType           image_type,
+            VkImageViewType       image_view_type,
             VkFormat              image_format,
             VkImageTiling         image_tiling,
             VkImageLayout         image_initial_layout,
@@ -147,7 +148,12 @@ namespace ZEngine::Hardwares
         static VkSampler     CreateImageSampler();
         static VkFormat      FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
         static VkFormat      FindDepthFormat();
-        static VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
+        static VkImageView   CreateImageView(
+            VkImage               image,
+            VkFormat              image_format,
+            VkImageViewType       image_view_type,
+            VkImageAspectFlagBits image_aspect_flag,
+            uint32_t              layer_count = 1U);
         static VkFramebuffer CreateFramebuffer(
             const std::vector<VkImageView>& attachments,
             const VkRenderPass&             render_pass,

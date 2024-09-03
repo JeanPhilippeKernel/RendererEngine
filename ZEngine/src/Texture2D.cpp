@@ -114,7 +114,7 @@ namespace ZEngine::Rendering::Textures
 
     Ref<Texture2D> Texture2D::Create(const Specifications::TextureSpecification& spec)
     {
-        Ref<Texture2D> texture = CreateRef<Texture2D>();
+        Ref<Texture2D> texture   = CreateRef<Texture2D>();
         texture->m_specification = spec;
         FillAsVulkanImage(texture, spec);
         return texture;
@@ -181,16 +181,18 @@ namespace ZEngine::Rendering::Textures
         uint32_t image_usage_attachment =
             (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        VkFormat image_format      = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Hardwares::VulkanDevice::FindDepthFormat()
-                                                                                                             : Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
-        texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(
-            texture->m_width,
-            texture->m_height,
-            image_format,
-            VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit),
-            VkImageAspectFlagBits(image_aspect),
-            spec.LayerCount,
-            spec.IsCubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0);
+        VkFormat image_format = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Hardwares::VulkanDevice::FindDepthFormat()
+                                                                                                        : Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
+        Specifications::Image2DBufferSpecification buffer_spec;
+        buffer_spec.Width           = texture->m_width;
+        buffer_spec.Height          = texture->m_height;
+        buffer_spec.BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE;
+        buffer_spec.ImageFormat     = image_format;
+        buffer_spec.ImageUsage      = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
+        buffer_spec.ImageAspectFlag = VkImageAspectFlagBits(image_aspect);
+        buffer_spec.LayerCount      = spec.LayerCount;
+
+        texture->m_image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(std::move(buffer_spec));
 
         if (spec.PerformTransition)
         {

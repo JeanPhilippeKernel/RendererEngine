@@ -112,4 +112,39 @@ namespace ZEngine::Rendering::Specifications
         COMPUTE
     };
 
+    enum class ImageViewType : uint32_t
+    {
+        TYPE_1D = 0,
+        TYPE_2D,
+        TYPE_3D,
+        TYPE_CUBE
+    };
+
+    static VkImageViewType ImageViewTypeMap[] = {
+        VK_IMAGE_VIEW_TYPE_1D,
+        VK_IMAGE_VIEW_TYPE_2D,
+        VK_IMAGE_VIEW_TYPE_3D,
+        VK_IMAGE_VIEW_TYPE_CUBE,
+        VK_IMAGE_VIEW_TYPE_1D_ARRAY,
+        VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+        VK_IMAGE_VIEW_TYPE_CUBE_ARRAY,
+    };
+
+    enum class ImageCreateFlag
+    {
+        NONE = 0,
+        SPARSE_BINDING_BIT,
+        SPARSE_RESIDENCY_BIT,
+        SPARSE_ALIASED_BIT,
+        MUTABLE_FORMAT_BIT,
+        CUBE_COMPATIBLE_BIT
+    };
+
+    static VkImageCreateFlagBits ImageCreateFlagMap[]{
+        VkImageCreateFlagBits(0),
+        VK_IMAGE_CREATE_SPARSE_BINDING_BIT,
+        VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT,
+        VK_IMAGE_CREATE_SPARSE_ALIASED_BIT,
+        VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
+        VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT};
 } // namespace ZEngine::Rendering::Specifications
