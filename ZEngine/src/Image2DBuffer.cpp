@@ -13,7 +13,6 @@ namespace ZEngine::Rendering::Buffers
 
         if (spec.BufferUsageType == Specifications::ImageBufferUsageType::CUBEMAP)
         {
-
             image_view_type   = Specifications::ImageViewType::TYPE_CUBE;
             image_create_flag = Specifications::ImageCreateFlag::CUBE_COMPATIBLE_BIT;
         }
