@@ -1,12 +1,14 @@
 #pragma once
+#include <Event/MouseButtonMovedEvent.h>
 #include <Event/MouseButtonPressedEvent.h>
 #include <Event/MouseButtonReleasedEvent.h>
-#include <Event/MouseButtonMovedEvent.h>
 #include <Event/MouseButtonWheelEvent.h>
 
-namespace ZEngine::Inputs {
+namespace ZEngine::Inputs
+{
 
-    struct IMouseEventCallback {
+    struct IMouseEventCallback
+    {
         IMouseEventCallback()  = default;
         ~IMouseEventCallback() = default;
 

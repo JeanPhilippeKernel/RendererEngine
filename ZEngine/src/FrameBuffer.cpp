@@ -1,7 +1,7 @@
 #include <pch.h>
 #include <Rendering/Buffers/Framebuffer.h>
 
-using namespace  ZEngine::Rendering::Specifications;
+using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Buffers
 {

@@ -37,7 +37,7 @@ namespace ZEngine::Rendering::Shaders
         }
 
     private:
-        std::string_view                                              basePath = "Shaders/";
+        std::string_view                             basePath = "Shaders/";
         std::unordered_map<std::string, std::string> cache;
 
         std::string readFileContent(const std::filesystem::path& filePath) const

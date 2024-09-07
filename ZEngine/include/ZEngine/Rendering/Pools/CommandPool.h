@@ -1,9 +1,9 @@
 #pragma once
-#include <ZEngineDef.h>
-#include <deque>
-#include <vulkan/vulkan.h>
 #include <Rendering/Buffers/CommandBuffer.h>
 #include <Rendering/ResourceTypes.h>
+#include <ZEngineDef.h>
+#include <vulkan/vulkan.h>
+#include <deque>
 
 namespace ZEngine::Rendering::Pools
 {
@@ -21,4 +21,4 @@ namespace ZEngine::Rendering::Pools
         VkCommandPool                           m_handle{VK_NULL_HANDLE};
         Rendering::QueueType                    m_queue_type;
     };
-}
+} // namespace ZEngine::Rendering::Pools

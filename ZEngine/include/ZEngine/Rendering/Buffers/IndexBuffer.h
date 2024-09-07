@@ -1,7 +1,7 @@
 #pragma once
-#include <ZEngineDef.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Buffers
 {
@@ -112,7 +112,7 @@ namespace ZEngine::Rendering::Buffers
         }
 
     private:
-        Hardwares::BufferView m_index_buffer;
+        Hardwares::BufferView  m_index_buffer;
         VkDescriptorBufferInfo m_buffer_info{};
     };
 

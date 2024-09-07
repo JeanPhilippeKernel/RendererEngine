@@ -183,7 +183,36 @@ function Find-GlslangValidator () {
     throw "Failed to find glslangValidator. Tried: " + ($GlslangValidatorCandidates -join ', ')
 }
 
+function Find-ClangFormat () {
+    $repoConfiguration = Get-RepositoryConfiguration
+    $LLVMMinimumVersion = $repoConfiguration.Requirements.LLVM.Version
+    $LLVMMaximumVersion = $repoConfiguration.Requirements.LLVM.MaximumVersion
 
+    $candidates = @(
+        'clang-format'
+        if ($IsMacOS) {
+            $brewPrefixPath = Invoke-Expression -Command "& brew --prefix"
+            Join-Path $brewPrefixPath -ChildPath 'opt/llvm/bin/clang-format'
+        }
+        if ($IsWindows) {
+            Join-Path -Path $env:ProgramFiles -ChildPath 'LLVM\bin\clang-format.exe'
+        }
+    )
+
+    foreach ($candidate in $candidates) {
+        $clangFormatCommand = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($clangFormatCommand) {
+            if ((& $clangFormatCommand --version | Out-String) -match "clang-format version ([\d\.]*)") {
+                [Version] $clangFormatVersion = $Matches[1]
+                if ((CompareVersion $clangFormatVersion $LLVMMinimumVersion) -and (CompareVersion $LLVMMaximumVersion $clangFormatVersion)) {
+                    return $clangFormatCommand.Source
+                }
+            }
+        }
+    }
+
+    throw "Failed to find clang-format min $LLVMMinimumVersion max $LLVMMaximumVersion. Tried: " + ($candidates -join ', ')
+}
 
 function Setup-ShaderCCompilerTool () {
     $repoConfiguration = Get-RepositoryConfiguration

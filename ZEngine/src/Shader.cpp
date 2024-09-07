@@ -1,12 +1,11 @@
 #include <pch.h>
-#include <vulkan/vulkan.h>
-#include <spirv_cross.hpp>
 #include <Hardwares/VulkanDevice.h>
-#include <Rendering/Shaders/ShaderReader.h>
-#include <Rendering/Shaders/Shader.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
-
+#include <Rendering/Shaders/Shader.h>
+#include <Rendering/Shaders/ShaderReader.h>
+#include <spirv_cross.hpp>
+#include <vulkan/vulkan.h>
 
 using namespace ZEngine::Rendering::Specifications;
 
@@ -49,17 +48,17 @@ namespace ZEngine::Rendering::Shaders
          */
         if (!m_specification.VertexFilename.empty())
         {
-            auto& shader_create_info_collection                 = m_shader_create_info_collection.emplace_back();
+            auto&                    shader_create_info_collection = m_shader_create_info_collection.emplace_back();
             auto&                    shader_module                 = m_shader_module_collection.emplace_back();
-            std::vector<uint32_t>    vertex_shader_binary_code = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.VertexFilename);
-            VkShaderModuleCreateInfo vertex_shader_create_info = {};
-            vertex_shader_create_info.sType                    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-            vertex_shader_create_info.codeSize                 = vertex_shader_binary_code.size() * sizeof(uint32_t);
-            vertex_shader_create_info.pCode                    = vertex_shader_binary_code.data();
+            std::vector<uint32_t>    vertex_shader_binary_code     = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.VertexFilename);
+            VkShaderModuleCreateInfo vertex_shader_create_info     = {};
+            vertex_shader_create_info.sType                        = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            vertex_shader_create_info.codeSize                     = vertex_shader_binary_code.size() * sizeof(uint32_t);
+            vertex_shader_create_info.pCode                        = vertex_shader_binary_code.data();
             ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(device, &vertex_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
-            shader_create_info_collection.sType       = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shader_create_info_collection.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             shader_create_info_collection.stage  = VK_SHADER_STAGE_VERTEX_BIT;
-            shader_create_info_collection.module      = shader_module;
+            shader_create_info_collection.module = shader_module;
             shader_create_info_collection.pName  = "main";
             /*
              * Source Reflection
@@ -86,7 +85,7 @@ namespace ZEngine::Rendering::Shaders
 
             for (const auto& pushConstant_resource : vertex_resources.push_constant_buffers)
             {
-                const spirv_cross::SPIRType& type   = spirv_compiler->get_type(pushConstant_resource.base_type_id);
+                const spirv_cross::SPIRType& type          = spirv_compiler->get_type(pushConstant_resource.base_type_id);
                 uint32_t                     struct_offset = !m_push_constant_specification_collection.empty() ? m_push_constant_specification_collection.back().Offset : 0;
 
                 if (type.basetype == spirv_cross::SPIRType::Struct)
@@ -113,11 +112,11 @@ namespace ZEngine::Rendering::Shaders
         {
             auto&                    shader_create_info_collection = m_shader_create_info_collection.emplace_back();
             auto&                    shader_module                 = m_shader_module_collection.emplace_back();
-            std::vector<uint32_t>    fragment_shader_binary_code = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.FragmentFilename);
-            VkShaderModuleCreateInfo fragment_shader_create_info = {};
-            fragment_shader_create_info.sType                    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-            fragment_shader_create_info.codeSize                 = fragment_shader_binary_code.size() * sizeof(uint32_t);
-            fragment_shader_create_info.pCode                    = fragment_shader_binary_code.data();
+            std::vector<uint32_t>    fragment_shader_binary_code   = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.FragmentFilename);
+            VkShaderModuleCreateInfo fragment_shader_create_info   = {};
+            fragment_shader_create_info.sType                      = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            fragment_shader_create_info.codeSize                   = fragment_shader_binary_code.size() * sizeof(uint32_t);
+            fragment_shader_create_info.pCode                      = fragment_shader_binary_code.data();
             ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(device, &fragment_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
             shader_create_info_collection.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             shader_create_info_collection.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -212,7 +211,7 @@ namespace ZEngine::Rendering::Shaders
         for (const auto& layout_binding : m_layout_binding_specification_map)
         {
             const auto& binding_specification_collection = layout_binding.second;
-            auto find_it = std::find_if(binding_specification_collection.begin(), binding_specification_collection.end(), [&](const LayoutBindingSpecification& spec) {
+            auto        find_it = std::find_if(binding_specification_collection.begin(), binding_specification_collection.end(), [&](const LayoutBindingSpecification& spec) {
                 return spec.Name == name;
             });
 
@@ -241,9 +240,10 @@ namespace ZEngine::Rendering::Shaders
 
         for (const auto& layout_binding : m_layout_binding_specification_map)
         {
-            for (const auto& spec : layout_binding.second) {
+            for (const auto& spec : layout_binding.second)
+            {
                 layout_collection.emplace_back(spec);
-            }           
+            }
         }
         return layout_collection;
     }
@@ -290,7 +290,7 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::CreateDescriptorSetLayouts()
     {
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        auto        device        = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
 
         std::vector<VkDescriptorPoolSize> pool_size_collection = {};

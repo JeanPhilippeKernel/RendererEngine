@@ -1,6 +1,6 @@
 #pragma once
-#include <Rendering/Buffers/GraphicBuffer.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Rendering/Buffers/GraphicBuffer.h>
 #include <span>
 
 namespace ZEngine::Rendering::Buffers

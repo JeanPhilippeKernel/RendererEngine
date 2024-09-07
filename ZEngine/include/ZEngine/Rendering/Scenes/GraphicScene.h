@@ -1,13 +1,13 @@
 ﻿#pragma once
-#include <vector>
-#include <future>
-#include <set>
-#include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Lights/Light.h>
+#include <Rendering/Meshes/Mesh.h>
+#include <ZEngineDef.h>
 #include <entt/entt.hpp>
 #include <uuid.h>
+#include <future>
 #include <mutex>
-#include <ZEngineDef.h>
+#include <set>
+#include <vector>
 
 namespace ZEngine::Serializers
 {
@@ -138,7 +138,6 @@ namespace ZEngine::Rendering::Scenes
         WeakRef<Scenes::SceneRawData> m_weak_scene;
     };
 
-
     struct GraphicScene : public Helpers::RefCounted
     {
         GraphicScene()                    = delete;
@@ -153,11 +152,11 @@ namespace ZEngine::Rendering::Scenes
         /*
          * SceneEntity operations
          */
-        static std::future<SceneEntity>        CreateEntityAsync(std::string_view entity_name = "Empty Entity", int parent_id = 0, int depth_level = 1);
-        static std::future<SceneEntity>        CreateEntityAsync(uuids::uuid uuid, std::string_view entity_name);
-        static std::future<SceneEntity>        CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name);
-        static std::future<SceneEntity>        GetEntityAsync(std::string_view entity_name);
-        static std::future<bool>               RemoveEntityAsync(const SceneEntity& entity);
+        static std::future<SceneEntity> CreateEntityAsync(std::string_view entity_name = "Empty Entity", int parent_id = 0, int depth_level = 1);
+        static std::future<SceneEntity> CreateEntityAsync(uuids::uuid uuid, std::string_view entity_name);
+        static std::future<SceneEntity> CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name);
+        static std::future<SceneEntity> GetEntityAsync(std::string_view entity_name);
+        static std::future<bool>        RemoveEntityAsync(const SceneEntity& entity);
         /*
          * SceneNode operations
          */

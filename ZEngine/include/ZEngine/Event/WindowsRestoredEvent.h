@@ -2,23 +2,29 @@
 #include <Event/CoreEvent.h>
 #include <fmt/format.h>
 
-namespace ZEngine::Event {
-    class WindowRestoredEvent : public CoreEvent {
+namespace ZEngine::Event
+{
+    class WindowRestoredEvent : public CoreEvent
+    {
     public:
-        WindowRestoredEvent() {
+        WindowRestoredEvent()
+        {
             m_name = "WindowRestored";
         }
         ~WindowRestoredEvent() = default;
 
-        EventType GetType() const override {
+        EventType GetType() const override
+        {
             return GetStaticType();
         }
 
-        int GetCategory() const override {
+        int GetCategory() const override
+        {
             return GetStaticCategory();
         }
 
-        std::string ToString() const override {
+        std::string ToString() const override
+        {
             return fmt::format("WindowRestoredEvent");
         }
 

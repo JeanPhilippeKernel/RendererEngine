@@ -1,10 +1,10 @@
 #include <pch.h>
 #include <Engine.h>
-#include <Logging/LoggerDefinition.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Logging/LoggerDefinition.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 
-using namespace  ZEngine::Rendering::Renderers;
+using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine
 {

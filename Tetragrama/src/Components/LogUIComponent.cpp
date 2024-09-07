@@ -10,13 +10,9 @@ namespace Tetragrama::Components
         Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
     }
 
-    LogUIComponent::~LogUIComponent()
-    {
-    }
+    LogUIComponent::~LogUIComponent() {}
 
-    void LogUIComponent::Update(ZEngine::Core::TimeStep dt)
-    {
-    }
+    void LogUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
     void LogUIComponent::ClearLog()
     {

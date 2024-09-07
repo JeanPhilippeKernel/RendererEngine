@@ -1,8 +1,10 @@
 #pragma once
 
-namespace ZEngine::Core {
+namespace ZEngine::Core
+{
 
-    struct IRenderable {
+    struct IRenderable
+    {
         IRenderable()          = default;
         virtual ~IRenderable() = default;
 

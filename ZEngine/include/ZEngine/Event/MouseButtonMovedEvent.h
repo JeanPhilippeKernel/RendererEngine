@@ -1,35 +1,41 @@
 #pragma once
 
-#include <fmt/format.h>
 #include <Event/MouseEvent.h>
 #include <Inputs/KeyCode.h>
 #include <ZEngineDef.h>
+#include <fmt/format.h>
 
-namespace ZEngine::Event {
+namespace ZEngine::Event
+{
 
-
-    class MouseButtonMovedEvent : public MouseEvent {
+    class MouseButtonMovedEvent : public MouseEvent
+    {
     public:
         MouseButtonMovedEvent(double xpos, double ypos) : m_xpos(xpos), m_ypos(ypos) {}
 
-        double GetPosX() const {
+        double GetPosX() const
+        {
             return m_xpos;
         }
-        double GetPosY() const {
+        double GetPosY() const
+        {
             return m_ypos;
         }
 
         EVENT_TYPE(MouseMoved)
 
-        virtual EventType GetType() const override {
+        virtual EventType GetType() const override
+        {
             return GetStaticType();
         }
 
-        virtual int GetCategory() const override {
+        virtual int GetCategory() const override
+        {
             return GetStaticCategory();
         }
 
-        virtual std::string ToString() const override {
+        virtual std::string ToString() const override
+        {
             return fmt::format("MouseButtonMovedEvent");
         }
 

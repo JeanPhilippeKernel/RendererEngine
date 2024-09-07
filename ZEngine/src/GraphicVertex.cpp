@@ -49,7 +49,6 @@ namespace ZEngine::Rendering::Renderers::Storages
         m_buffer[5] = m_normal.z;
     }
 
-
     void GraphicVertex::SetTextureCoord(const glm::vec2& value)
     {
         m_texture_coord = value;
@@ -78,8 +77,9 @@ namespace ZEngine::Rendering::Renderers::Storages
         m_buffer[7] = m_texture_coord.y;
     }
 
-    Buffers::Layout::BufferLayout<float> GraphicVertex::Descriptor::m_internal_layout{{Buffers::Layout::ElementLayout<float>(3, "position", false, VK_FORMAT_R32G32B32_SFLOAT),
-        Buffers::Layout::ElementLayout<float>(3, "normal", false, VK_FORMAT_R32G32B32_SFLOAT),
-        Buffers::Layout::ElementLayout<float>(2, "texture_coord", false, VK_FORMAT_R32G32_SFLOAT)}};
+    Buffers::Layout::BufferLayout<float> GraphicVertex::Descriptor::m_internal_layout{
+        {Buffers::Layout::ElementLayout<float>(3, "position", false, VK_FORMAT_R32G32B32_SFLOAT),
+         Buffers::Layout::ElementLayout<float>(3, "normal", false, VK_FORMAT_R32G32B32_SFLOAT),
+         Buffers::Layout::ElementLayout<float>(2, "texture_coord", false, VK_FORMAT_R32G32_SFLOAT)}};
 
 } // namespace ZEngine::Rendering::Renderers::Storages

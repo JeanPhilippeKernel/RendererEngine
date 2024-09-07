@@ -1,8 +1,8 @@
 #include <pch.h>
 #include <Editor.h>
 #include <Layers/UILayer.h>
-#include <Messengers/Messenger.h>
 #include <MessageToken.h>
+#include <Messengers/Messenger.h>
 #include <fmt/format.h>
 
 using namespace Tetragrama::Messengers;

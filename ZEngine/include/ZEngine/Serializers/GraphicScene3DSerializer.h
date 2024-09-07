@@ -1,31 +1,36 @@
 #pragma once
-#include <ZEngineDef.h>
+#include <Maths/Math.h>
 #include <Rendering/Entities/GraphicSceneEntity.h>
 #include <Serializers/GraphicSceneSerializer.h>
+#include <ZEngineDef.h>
 #include <yaml-cpp/yaml.h>
-#include <Maths/Math.h>
 
-namespace ZEngine::Serializers {
+namespace ZEngine::Serializers
+{
 
-    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Maths::Vector4& v) {
+    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Maths::Vector4& v)
+    {
         emitter << YAML::Flow;
         emitter << YAML::BeginSeq << v.x << v.y << v.z << v.w << YAML::EndSeq;
         return emitter;
     }
 
-    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Maths::Vector3& v) {
+    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Maths::Vector3& v)
+    {
         emitter << YAML::Flow;
         emitter << YAML::BeginSeq << v.x << v.y << v.z << YAML::EndSeq;
         return emitter;
     }
 
-    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Maths::Vector2& v) {
+    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Maths::Vector2& v)
+    {
         emitter << YAML::Flow;
         emitter << YAML::BeginSeq << v.x << v.y << YAML::EndSeq;
         return emitter;
     }
 
-    class GraphicScene3DSerializer : public GraphicSceneSerializer {
+    class GraphicScene3DSerializer : public GraphicSceneSerializer
+    {
     public:
         GraphicScene3DSerializer(const Ref<ZEngine::Rendering::Scenes::GraphicScene>& scene);
         virtual ~GraphicScene3DSerializer() = default;
@@ -38,8 +43,12 @@ namespace ZEngine::Serializers {
 
         template <typename T>
         void SerializeSceneEntityComponent(
-            YAML::Emitter& emitter, const ZEngine::Rendering::Entities::GraphicSceneEntity& entity, std::function<void(YAML::Emitter&, T&)> serialize_function) {
-            if (entity.HasComponent<T>()) {
+            YAML::Emitter&                                          emitter,
+            const ZEngine::Rendering::Entities::GraphicSceneEntity& entity,
+            std::function<void(YAML::Emitter&, T&)>                 serialize_function)
+        {
+            if (entity.HasComponent<T>())
+            {
                 auto& component = entity.GetComponent<T>();
                 serialize_function(emitter, component);
             }

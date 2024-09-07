@@ -1,12 +1,15 @@
 #pragma once
-#include <Rendering/Meshes/Mesh.h>
 #include <Maths/Math.h>
 #include <Rendering/Lights/Light.h>
+#include <Rendering/Meshes/Mesh.h>
 
-namespace ZEngine::Rendering::Mesh {
+namespace ZEngine::Rendering::Mesh
+{
 
-    struct MeshLight : public Meshes::Mesh {
-        explicit MeshLight() : Mesh() {
+    struct MeshLight : public Meshes::Mesh
+    {
+        explicit MeshLight() : Mesh()
+        {
             m_is_MeshLight_mesh_object = true;
         }
 

@@ -1,9 +1,9 @@
 #include <pch.h>
-#include <Rendering/Renderers/RenderPasses/RenderPass.h>
-#include <Hardwares/VulkanDevice.h>
 #include <Engine.h>
-#include <fmt/format.h>
+#include <Hardwares/VulkanDevice.h>
+#include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/Textures/Texture2D.h>
+#include <fmt/format.h>
 
 using namespace ZEngine::Rendering::Buffers;
 using namespace ZEngine::Rendering::Specifications;
@@ -641,139 +641,139 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     }
 
     /*
-    * RenderPassBuilder
-    */
-     RenderPassBuilder& RenderPassBuilder::SetName(std::string_view name)
-     {
+     * RenderPassBuilder
+     */
+    RenderPassBuilder& RenderPassBuilder::SetName(std::string_view name)
+    {
         m_spec.DebugName = name.data();
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetPipelineName(std::string_view name)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetPipelineName(std::string_view name)
+    {
         m_spec.PipelineSpecification.DebugName = name.data();
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::EnablePipelineDepthTest(bool value)
-     {
+    RenderPassBuilder& RenderPassBuilder::EnablePipelineDepthTest(bool value)
+    {
         m_spec.PipelineSpecification.EnableDepthTest = value;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::EnablePipelineDepthWrite(bool value)
-     {
+    RenderPassBuilder& RenderPassBuilder::EnablePipelineDepthWrite(bool value)
+    {
         m_spec.PipelineSpecification.EnableDepthWrite = value;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::EnablePipelineBlending(bool value)
-     {
+    RenderPassBuilder& RenderPassBuilder::EnablePipelineBlending(bool value)
+    {
         m_spec.PipelineSpecification.EnableBlending = value;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetShaderOverloadMaxSet(uint32_t count)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetShaderOverloadMaxSet(uint32_t count)
+    {
         m_spec.PipelineSpecification.ShaderSpecification.OverloadMaxSet = count;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetOverloadPoolSize(uint32_t count)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetOverloadPoolSize(uint32_t count)
+    {
         m_spec.PipelineSpecification.ShaderSpecification.OverloadPoolSize = count;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetInputBindingCount(uint32_t count)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetInputBindingCount(uint32_t count)
+    {
         m_spec.PipelineSpecification.VertexInputBindingSpecifications.resize(count);
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetStride(uint32_t input_binding_index, uint32_t value)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetStride(uint32_t input_binding_index, uint32_t value)
+    {
         m_spec.PipelineSpecification.VertexInputBindingSpecifications[input_binding_index].Stride = value;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetRate(uint32_t input_binding_index, uint32_t value)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetRate(uint32_t input_binding_index, uint32_t value)
+    {
         m_spec.PipelineSpecification.VertexInputBindingSpecifications[input_binding_index].Rate = value;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetInputAttributeCount(uint32_t count)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetInputAttributeCount(uint32_t count)
+    {
         m_spec.PipelineSpecification.VertexInputAttributeSpecifications.resize(count);
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetLocation(uint32_t input_attribute_index, uint32_t value)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetLocation(uint32_t input_attribute_index, uint32_t value)
+    {
         m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Location = value;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetBinding(uint32_t input_attribute_index, uint32_t input_binding_index)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetBinding(uint32_t input_attribute_index, uint32_t input_binding_index)
+    {
         m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Binding =
             m_spec.PipelineSpecification.VertexInputBindingSpecifications[input_binding_index].Binding;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetFormat(uint32_t input_attribute_index, Specifications::ImageFormat value)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetFormat(uint32_t input_attribute_index, Specifications::ImageFormat value)
+    {
         m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Format = value;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::SetOffset(uint32_t input_attribute_index, uint32_t offset)
-     {
+    RenderPassBuilder& RenderPassBuilder::SetOffset(uint32_t input_attribute_index, uint32_t offset)
+    {
         m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Offset = offset;
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::UseShader(std::string_view name)
-     {
+    RenderPassBuilder& RenderPassBuilder::UseShader(std::string_view name)
+    {
         m_spec.PipelineSpecification.ShaderSpecification.Name = name.data();
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Ref<Rendering::Textures::Texture>& target)
-     {
+    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Ref<Rendering::Textures::Texture>& target)
+    {
         m_spec.ExternalOutputs.push_back(target);
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::AddRenderTarget(const Specifications::TextureSpecification& target_spec)
-     {
+    RenderPassBuilder& RenderPassBuilder::AddRenderTarget(const Specifications::TextureSpecification& target_spec)
+    {
         m_spec.Outputs.push_back(target_spec);
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::AddInputAttachment(const Ref<Rendering::Textures::Texture>& input)
-     {
+    RenderPassBuilder& RenderPassBuilder::AddInputAttachment(const Ref<Rendering::Textures::Texture>& input)
+    {
         m_spec.Inputs.push_back(input);
         return *this;
-     }
+    }
 
-     RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Ref<Rendering::Textures::Texture>& input)
-     {
-         m_spec.InputTextures[key.data()] = input;
-         return *this;
-     }
+    RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Ref<Rendering::Textures::Texture>& input)
+    {
+        m_spec.InputTextures[key.data()] = input;
+        return *this;
+    }
 
-     RenderPassBuilder& RenderPassBuilder::UseSwapchainAsRenderTarget()
-     {
+    RenderPassBuilder& RenderPassBuilder::UseSwapchainAsRenderTarget()
+    {
         m_spec.SwapchainAsRenderTarget = true;
         return *this;
-     }
+    }
 
-     Ref<RenderPass> RenderPassBuilder::Create()
-     {
+    Ref<RenderPass> RenderPassBuilder::Create()
+    {
         auto pass = RenderPass::Create(m_spec);
         m_spec    = {};
         return pass;
-     }
+    }
 } // namespace ZEngine::Rendering::Renderers::RenderPasses

@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 #include <ZEngine/Helpers/ThreadPool.h>
 
 namespace Tetragrama::Helpers
@@ -12,4 +12,4 @@ namespace Tetragrama::Helpers
             ZEngine::Helpers::ThreadPoolHelper::Submit(action);
         }
     };
-}
+} // namespace Tetragrama::Helpers

@@ -1,8 +1,8 @@
 #pragma once
-#include <string>
-#include <map>
-#include <ZEngineDef.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
+#include <ZEngineDef.h>
+#include <map>
+#include <string>
 
 namespace ZEngine::Rendering::Shaders
 {
@@ -21,7 +21,7 @@ namespace ZEngine::Rendering::Shaders
         std::vector<VkDescriptorSetLayout>                                                 GetDescriptorSetLayout() const;
         std::vector<Specifications::LayoutBindingSpecification>                            GetLayoutBindingSpecificationCollection() const;
         const std::map<uint32_t, std::vector<VkDescriptorSet>>&                            GetDescriptorSetMap() const;
-        std::map<uint32_t, std::vector<VkDescriptorSet>>&                            GetDescriptorSetMap();
+        std::map<uint32_t, std::vector<VkDescriptorSet>>&                                  GetDescriptorSetMap();
         VkDescriptorPool                                                                   GetDescriptorPool() const;
         const std::vector<VkPushConstantRange>&                                            GetPushConstants() const;
         void                                                                               Dispose();

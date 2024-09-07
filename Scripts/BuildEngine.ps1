@@ -31,6 +31,9 @@ param (
     [Parameter(HelpMessage = "Whether to run build, default to True")]
     [bool] $RunBuilds = $True,
 
+    [Parameter(HelpMessage = "Whether to run clang format to check formatting correctness, default to False")]
+    [bool] $VerifyFormatting = $False,
+
     [Parameter(HelpMessage = "Whether to rebuild shader files")]
     [switch] $ForceShaderRebuild,
 
@@ -233,8 +236,26 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     }
 }
 
-# Run Shader Compilation
+
 if(-Not $LauncherOnly) {
+
+    # Run Clang format
+    [string]$clangFormatScript = Join-Path $PSScriptRoot -ChildPath "ClangFormat.ps1"
+    [string[]]$srcDirectories = @(
+        (Join-Path $repositoryRootPath -ChildPath "ZEngine"),
+        (Join-Path $repositoryRootPath -ChildPath "Tetragrama")
+    )
+
+    foreach ($directory in $srcDirectories) {
+        & pwsh -File $clangFormatScript -SourceDirectory $directory -RunAsCheck:$VerifyFormatting
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Stopped build process..." -ErrorAction Stop
+        }
+    }
+
+
+    # Run Shader Compilation
     [bool]$forceRebuild = If ($ForceShaderRebuild) { $True } Else { $False }
     foreach ($config in $Configurations) {
         $shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"

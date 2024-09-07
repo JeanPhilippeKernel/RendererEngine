@@ -1,12 +1,12 @@
 #pragma once
-#include <ZEngine/ZEngine.h>
-#include <Components/DockspaceUIComponent.h>
-#include <Components/SceneViewportUIComponent.h>
-#include <Components/LogUIComponent.h>
 #include <Components/DemoUIComponent.h>
-#include <Components/ProjectViewUIComponent.h>
-#include <Components/InspectorViewUIComponent.h>
+#include <Components/DockspaceUIComponent.h>
 #include <Components/HierarchyViewUIComponent.h>
+#include <Components/InspectorViewUIComponent.h>
+#include <Components/LogUIComponent.h>
+#include <Components/ProjectViewUIComponent.h>
+#include <Components/SceneViewportUIComponent.h>
+#include <ZEngine/ZEngine.h>
 
 namespace Tetragrama::Layers
 {

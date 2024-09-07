@@ -1,11 +1,10 @@
 #pragma once
-#include <memory>
-#include <stdlib.h>
 #include <Helpers/IntrusivePtr.h>
+#include <stdlib.h>
+#include <memory>
 
-#define BIT(x) (1 << (x))
+#define BIT(x)                 (1 << (x))
 #define ZENGINE_EXIT_FAILURE() exit(EXIT_FAILURE);
-
 
 #define ZENGINE_KEYCODE ZEngine::Inputs::GlfwKeyCode
 
@@ -33,25 +32,23 @@ namespace ZEngine
     }
 } // namespace ZEngine
 
-
 #include "Logging/LoggerDefinition.h"
 
 #ifdef _MSC_VER
-    #define ZENGINE_DEBUG_BREAK() __debugbreak();
+#define ZENGINE_DEBUG_BREAK() __debugbreak();
 #elif defined(__APPLE__)
-    #include <signal.h>
-    #define ZENGINE_DEBUG_BREAK() __builtin_trap();
+#include <signal.h>
+#define ZENGINE_DEBUG_BREAK() __builtin_trap();
 #else
-    #error "Platform not supported!"
+#error "Platform not supported!"
 #endif
-
 
 #define ZENGINE_VALIDATE_ASSERT(condition, message) \
     {                                               \
         if (!(condition))                           \
         {                                           \
             ZENGINE_CORE_CRITICAL(message)          \
-            assert(condition && message);           \
+            assert(condition&& message);            \
             ZENGINE_DEBUG_BREAK()                   \
         }                                           \
     }
@@ -61,6 +58,6 @@ namespace ZEngine
     {                                                                \
         function(device, handle, __VA_ARGS__);                       \
         handle = nullptr;                                            \
-    }                                                                \
+    }
 
 #define SINGLE_ARG(...) __VA_ARGS__

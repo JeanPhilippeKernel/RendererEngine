@@ -1,13 +1,14 @@
 #pragma once
-#include <array>
-#include <glm/glm.hpp>
-
-#include <Rendering/Renderers/Storages/IVertex.h>
 #include <Rendering/Buffers/BufferLayout.h>
+#include <Rendering/Renderers/Storages/IVertex.h>
+#include <glm/glm.hpp>
+#include <array>
 
-namespace ZEngine::Rendering::Renderers::Storages {
+namespace ZEngine::Rendering::Renderers::Storages
+{
 
-    class GraphicVertex : public IVertex {
+    class GraphicVertex : public IVertex
+    {
     public:
         struct Descriptor;
 
@@ -27,7 +28,8 @@ namespace ZEngine::Rendering::Renderers::Storages {
 
         void TransformPosition(const glm::mat4& matrix);
 
-        const std::array<float, 8>& GetData() const {
+        const std::array<float, 8>& GetData() const
+        {
             return m_buffer;
         }
 
@@ -38,9 +40,11 @@ namespace ZEngine::Rendering::Renderers::Storages {
         std::array<float, 8> m_buffer;
     };
 
-    struct GraphicVertex::Descriptor {
+    struct GraphicVertex::Descriptor
+    {
     public:
-        static Buffers::Layout::BufferLayout<float>& GetLayout() {
+        static Buffers::Layout::BufferLayout<float>& GetLayout()
+        {
             return m_internal_layout;
         }
 

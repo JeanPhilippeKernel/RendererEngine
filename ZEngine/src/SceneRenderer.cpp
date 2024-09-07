@@ -1,14 +1,13 @@
 #include <pch.h>
 #include <Rendering/Renderers/Contracts/RendererDataContract.h>
-#include <Rendering/Renderers/SceneRenderer.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
+#include <Rendering/Renderers/SceneRenderer.h>
 #include <Rendering/Textures/Texture2D.h>
 
-
-#define WRITE_BUFFERS_ONCE(frame_index, body)           \
-    if (!m_write_once_control.contains(frame_index))    \
-    {                                                   \
-        body m_write_once_control[frame_index] = true;  \
+#define WRITE_BUFFERS_ONCE(frame_index, body)          \
+    if (!m_write_once_control.contains(frame_index))   \
+    {                                                  \
+        body m_write_once_control[frame_index] = true; \
     }
 
 using namespace ZEngine::Rendering::Specifications;

@@ -1,13 +1,11 @@
-#include <filesystem>
-#include <gtest/gtest.h>
-#include <cmath>
 #include <Rendering/Buffers/Bitmap.h>
-
+#include <gtest/gtest.h>
 #include <stb/stb_image.h>
 #include <stb/stb_image_write.h>
+#include <cmath>
+#include <filesystem>
 
 using namespace ZEngine::Rendering::Buffers;
-
 
 constexpr float epsilon = 1e-2;
 
@@ -49,7 +47,6 @@ TEST(BitmapTest, TestVerticalCross)
     EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot.hdr"));
     EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot2.hdr"));
 }
-
 
 TEST(BitmapTest, TestVerticalCross2)
 {

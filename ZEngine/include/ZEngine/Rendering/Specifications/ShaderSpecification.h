@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Specifications
@@ -75,7 +75,6 @@ namespace ZEngine::Rendering::Specifications
         uint32_t    OverloadPoolSize = 0;
         std::string VertexFilename   = {};
         std::string FragmentFilename = {};
-        std::string Name   = {};
+        std::string Name             = {};
     };
-} // ZEngine::Rendering::Specifications
-
+} // namespace ZEngine::Rendering::Specifications

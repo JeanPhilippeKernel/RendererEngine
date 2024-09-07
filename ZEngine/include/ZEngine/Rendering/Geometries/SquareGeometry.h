@@ -1,9 +1,11 @@
 #pragma once
 #include <Rendering/Geometries/IGeometry.h>
 
-namespace ZEngine::Rendering::Geometries {
+namespace ZEngine::Rendering::Geometries
+{
 
-    struct SquareGeometry : public IGeometry {
+    struct SquareGeometry : public IGeometry
+    {
         SquareGeometry();
         ~SquareGeometry() = default;
     };

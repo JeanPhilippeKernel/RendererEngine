@@ -1,6 +1,6 @@
 #pragma once
-#include <string>
 #include <ZEngineDef.h>
+#include <string>
 
 namespace ZEngine::Core
 {

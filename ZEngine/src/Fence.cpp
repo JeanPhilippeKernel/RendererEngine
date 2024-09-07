@@ -1,6 +1,6 @@
 #include <pch.h>
-#include <Rendering/Primitives/Fence.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Rendering/Primitives/Fence.h>
 
 namespace ZEngine::Rendering::Primitives
 {
@@ -63,4 +63,4 @@ namespace ZEngine::Rendering::Primitives
     {
         return m_handle;
     }
-}
+} // namespace ZEngine::Rendering::Primitives

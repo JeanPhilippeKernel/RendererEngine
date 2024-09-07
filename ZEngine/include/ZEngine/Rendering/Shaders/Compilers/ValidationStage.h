@@ -3,9 +3,11 @@
 #include <spirv-tools/libspirv.hpp>
 #include <spirv-tools/optimizer.hpp>
 
-namespace ZEngine::Rendering::Shaders::Compilers {
+namespace ZEngine::Rendering::Shaders::Compilers
+{
 
-    class ValidationStage : public ICompilerStage {
+    class ValidationStage : public ICompilerStage
+    {
     public:
         /**
          * Initialize a new ValidationStage instance.

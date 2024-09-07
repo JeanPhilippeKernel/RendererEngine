@@ -1,7 +1,7 @@
 #pragma once
-#include <span>
 #include <Helpers/IntrusivePtr.h>
 #include <Helpers/MemoryOperations.h>
+#include <span>
 
 namespace ZEngine::Rendering::Buffers
 {

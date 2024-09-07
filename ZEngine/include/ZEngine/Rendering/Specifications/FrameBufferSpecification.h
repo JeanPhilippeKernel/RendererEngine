@@ -1,7 +1,7 @@
 #pragma once
-#include <map>
-#include <Rendering/Textures/Texture.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
+#include <Rendering/Textures/Texture.h>
+#include <map>
 
 namespace ZEngine::Rendering::Specifications
 {

@@ -1,8 +1,10 @@
 #pragma once
 
-namespace ZEngine::Core {
+namespace ZEngine::Core
+{
 
-    struct IInitializable {
+    struct IInitializable
+    {
         IInitializable()          = default;
         virtual ~IInitializable() = default;
 

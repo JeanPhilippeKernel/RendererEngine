@@ -2,10 +2,12 @@
 #include <Managers/IManager.h>
 #include <ZEngineDef.h>
 
-namespace ZEngine::Managers {
+namespace ZEngine::Managers
+{
 
     template <typename T>
-    struct IAssetManager : public IManager<std::string, ZEngine::Ref<T>> {
+    struct IAssetManager : public IManager<std::string, ZEngine::Ref<T>>
+    {
         IAssetManager()          = default;
         virtual ~IAssetManager() = default;
 
@@ -33,7 +35,8 @@ namespace ZEngine::Managers {
          * @return An asset instance.
          *		  The asset must exists in the store, otherwise an assertion will be raised
          */
-        ZEngine::Ref<T> Obtains(const char* name) {
+        ZEngine::Ref<T> Obtains(const char* name)
+        {
             const auto key    = std::string(name).append(this->m_suffix);
             const auto result = IManager<std::string, ZEngine::Ref<T>>::Get(key);
             assert(result.has_value() == true);

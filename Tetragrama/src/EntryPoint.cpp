@@ -80,7 +80,7 @@ int applicationEntryPoint(int argc, char* argv[])
     {
         return -2; // Missing arguments
     }
-    else if(argc > 1)
+    else if (argc > 1)
     {
         std::string_view config_file_arg = "--projectConfigFile";
         for (int i = 1; i < argc; ++i)

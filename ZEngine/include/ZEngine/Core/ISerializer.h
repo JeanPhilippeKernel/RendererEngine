@@ -1,6 +1,6 @@
 #pragma once
-#include <future>
 #include <Helpers/IntrusivePtr.h>
+#include <future>
 
 namespace ZEngine::Core
 {

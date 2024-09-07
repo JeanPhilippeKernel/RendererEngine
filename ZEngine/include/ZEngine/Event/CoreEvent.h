@@ -1,36 +1,44 @@
 #pragma once
-#include <string>
-#include <ZEngineDef.h>
-#include <Event/EventType.h>
 #include <Event/EventCategory.h>
+#include <Event/EventType.h>
+#include <ZEngineDef.h>
+#include <string>
 
-#define EVENT_TYPE(x)                                  \
-    static ZEngine::Event::EventType GetStaticType() { \
-        return ZEngine::Event::EventType::x;           \
+#define EVENT_TYPE(x)                                \
+    static ZEngine::Event::EventType GetStaticType() \
+    {                                                \
+        return ZEngine::Event::EventType::x;         \
     }
 #define EVENT_CATEGORY(x)                        \
-    static int GetStaticCategory() {             \
+    static int GetStaticCategory()               \
+    {                                            \
         return ZEngine::Event::EventCategory::x; \
     }
 
-namespace ZEngine::Event {
+namespace ZEngine::Event
+{
 
-    class CoreEvent {
+    class CoreEvent
+    {
     public:
         CoreEvent()          = default;
         virtual ~CoreEvent() = default;
 
-        void SetHandled(bool value) {
+        void SetHandled(bool value)
+        {
             m_handled = value;
         }
-        bool IsHandled() const {
+        bool IsHandled() const
+        {
             return m_handled;
         }
 
-        const std::string& GetName() const {
+        const std::string& GetName() const
+        {
             return m_name;
         }
-        void SetName(const char* value) {
+        void SetName(const char* value)
+        {
             m_name = std::string(value);
         }
 

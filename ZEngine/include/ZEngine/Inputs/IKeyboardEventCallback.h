@@ -2,9 +2,11 @@
 #include <Event/KeyPressedEvent.h>
 #include <Event/KeyReleasedEvent.h>
 
-namespace ZEngine::Inputs {
+namespace ZEngine::Inputs
+{
 
-    struct IKeyboardEventCallback {
+    struct IKeyboardEventCallback
+    {
         IKeyboardEventCallback()  = default;
         ~IKeyboardEventCallback() = default;
 

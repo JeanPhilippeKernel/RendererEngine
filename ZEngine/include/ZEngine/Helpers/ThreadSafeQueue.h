@@ -1,10 +1,10 @@
 #pragma once
 #include <Helpers/IntrusivePtr.h>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <mutex>
 #include <queue>
-#include <chrono>
 
 namespace ZEngine::Helpers
 {
@@ -72,8 +72,7 @@ namespace ZEngine::Helpers
             std::unique_lock<std::mutex> lock(m_mutex);
             if (m_queue.empty())
             {
-                m_condition.wait_for(
-                    lock, time, [this] {
+                m_condition.wait_for(lock, time, [this] {
                     return !m_queue.empty();
                 });
             }

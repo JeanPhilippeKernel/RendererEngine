@@ -1,18 +1,19 @@
 #pragma once
 
 #include <glm/glm.hpp>
-#include <glm/gtx/quaternion.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/quaternion.hpp>
 
-
-namespace ZEngine {
+namespace ZEngine
+{
     namespace Maths = glm;
 }
 
 // GLM extensions
-namespace glm {
+namespace glm
+{
     using Vector4 = vec4;
     using Vector3 = vec3;
     using Vector2 = vec2;

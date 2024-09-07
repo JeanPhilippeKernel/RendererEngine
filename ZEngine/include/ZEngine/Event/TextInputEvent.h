@@ -1,30 +1,36 @@
 #pragma once
 
-#include <fmt/format.h>
 #include <Event/CoreEvent.h>
+#include <fmt/format.h>
 
-namespace ZEngine::Event {
+namespace ZEngine::Event
+{
 
-    class TextInputEvent : public CoreEvent {
+    class TextInputEvent : public CoreEvent
+    {
     public:
         TextInputEvent(const char* content) : m_text(content) {}
 
         EVENT_TYPE(TextInput)
         EVENT_CATEGORY(Keyboard | EventCategory::Input)
 
-        virtual EventType GetType() const override {
+        virtual EventType GetType() const override
+        {
             return GetStaticType();
         }
 
-        virtual int GetCategory() const override {
+        virtual int GetCategory() const override
+        {
             return GetStaticCategory();
         }
 
-        virtual std::string ToString() const override {
+        virtual std::string ToString() const override
+        {
             return fmt::format("TextInputEvent : {0}", this->m_text);
         }
 
-        const std::string& GetText() const {
+        const std::string& GetText() const
+        {
             return m_text;
         }
 

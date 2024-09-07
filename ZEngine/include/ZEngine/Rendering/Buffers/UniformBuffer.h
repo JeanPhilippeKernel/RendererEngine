@@ -86,8 +86,8 @@ namespace ZEngine::Rendering::Buffers
             if (this->m_byte_size < byte_size || (!m_uniform_buffer_mapped))
             {
                 /*
-                * Tracking the size change..
-                */
+                 * Tracking the size change..
+                 */
                 m_last_byte_size = m_byte_size;
 
                 CleanUpMemory();
@@ -105,8 +105,7 @@ namespace ZEngine::Rendering::Buffers
             if (allocation_info.pMappedData)
             {
                 ZENGINE_VALIDATE_ASSERT(
-                    Helpers::secure_memset(allocation_info.pMappedData, 0, this->m_byte_size, allocation_info.size) ==
-                        Helpers::MEMORY_OP_SUCCESS,
+                    Helpers::secure_memset(allocation_info.pMappedData, 0, this->m_byte_size, allocation_info.size) == Helpers::MEMORY_OP_SUCCESS,
                     "Failed to perform memory set operation")
             }
 
@@ -164,33 +163,33 @@ namespace ZEngine::Rendering::Buffers
         VkDescriptorBufferInfo m_buffer_info{};
     };
 
-    struct UniformBufferSet :  public Helpers::RefCounted
+    struct UniformBufferSet : public Helpers::RefCounted
     {
         UniformBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
 
-         UniformBuffer& operator[](uint32_t index)
-         {
+        UniformBuffer& operator[](uint32_t index)
+        {
             assert(index < m_buffer_set.size());
             return m_buffer_set[index];
-         }
+        }
 
-         const std::vector<UniformBuffer>& Data() const
-         {
+        const std::vector<UniformBuffer>& Data() const
+        {
             return m_buffer_set;
-         }
+        }
 
-         std::vector<UniformBuffer>& Data()
-         {
+        std::vector<UniformBuffer>& Data()
+        {
             return m_buffer_set;
-         }
+        }
 
-         void Dispose()
-         {
+        void Dispose()
+        {
             for (auto& buffer : m_buffer_set)
             {
                 buffer.Dispose();
             }
-         }
+        }
 
     private:
         std::vector<UniformBuffer> m_buffer_set;

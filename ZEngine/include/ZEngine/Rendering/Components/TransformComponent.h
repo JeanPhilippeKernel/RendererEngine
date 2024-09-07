@@ -5,10 +5,9 @@ namespace ZEngine::Rendering::Components
 {
     struct TransformComponent
     {
-        TransformComponent() = default;
+        TransformComponent()  = default;
         ~TransformComponent() = default;
         TransformComponent(glm::mat4& transform) : m_transform(transform) {}
-
 
         void SetPosition(const Maths::Vector3& value)
         {

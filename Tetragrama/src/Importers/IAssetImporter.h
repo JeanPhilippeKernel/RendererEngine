@@ -1,12 +1,11 @@
 #pragma once
-#include <atomic>
-#include <mutex>
-#include <future>
-#include <string>
 #include <Helpers/IntrusivePtr.h>
-
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Scenes/GraphicScene.h>
+#include <atomic>
+#include <future>
+#include <mutex>
+#include <string>
 
 #define REPORT_LOG(msg)          \
     {                            \
@@ -15,7 +14,6 @@
             m_log_callback(msg); \
         }                        \
     }
-
 
 namespace Tetragrama::Importers
 {

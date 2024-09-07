@@ -1,9 +1,9 @@
 #pragma once
-#include <mutex>
 #include <Controllers/ICameraController.h>
-#include <Rendering/Cameras/PerspectiveCamera.h>
 #include <Inputs/IMouseEventCallback.h>
+#include <Rendering/Cameras/PerspectiveCamera.h>
 #include <Window/ICoreWindowEventCallback.h>
+#include <mutex>
 
 namespace ZEngine::Controllers
 {
@@ -15,14 +15,14 @@ namespace ZEngine::Controllers
         {
             m_position        = {0.0f, 0.0f, 1.5f};
             m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
-            m_process_event = true;
+            m_process_event   = true;
         }
 
         explicit PerspectiveCameraController(Rendering::Cameras::PerspectiveCamera* const camera) : m_perspective_camera(camera)
         {
             m_position        = {0.0f, 0.0f, 1.5f};
             m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
-            m_process_event = true;
+            m_process_event   = true;
         }
 
         explicit PerspectiveCameraController(float aspect_ratio, Rendering::Cameras::PerspectiveCamera* const camera)
@@ -30,7 +30,7 @@ namespace ZEngine::Controllers
         {
             m_position        = {0.0f, 0.0f, 1.5f};
             m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
-            m_process_event = true;
+            m_process_event   = true;
         }
 
         explicit PerspectiveCameraController(float aspect_ratio)
@@ -38,7 +38,7 @@ namespace ZEngine::Controllers
         {
             m_position        = {0.0f, 0.0f, 1.5f};
             m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
-            m_process_event = true;
+            m_process_event   = true;
         }
 
         virtual ~PerspectiveCameraController() = default;

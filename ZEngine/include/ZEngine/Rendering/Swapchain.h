@@ -1,9 +1,9 @@
 #pragma once
-#include <vector>
-#include <vulkan/vulkan.h>
 #include <Rendering/Buffers/Image2DBuffer.h>
 #include <Rendering/Primitives/Semaphore.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
+#include <vulkan/vulkan.h>
+#include <vector>
 
 namespace ZEngine::Rendering
 {
@@ -54,4 +54,4 @@ namespace ZEngine::Rendering
         std::mutex                               m_image_mutex;
         uint64_t                                 m_identifier{0};
     };
-}
+} // namespace ZEngine::Rendering

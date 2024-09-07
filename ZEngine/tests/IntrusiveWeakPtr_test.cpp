@@ -23,30 +23,34 @@ public:
 };
 
 // Test default constructor
-TEST(IntrusiveWeakPtrTest, DefaultConstructor) {
+TEST(IntrusiveWeakPtrTest, DefaultConstructor)
+{
     IntrusiveWeakPtr<MockWeakObject> weakPtr;
     EXPECT_TRUE(weakPtr.expired());
 }
 
 // Test constructing from an IntrusivePtr
-TEST(IntrusiveWeakPtrTest, ConstructFromIntrusivePtr) {
-    IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(5));
+TEST(IntrusiveWeakPtrTest, ConstructFromIntrusivePtr)
+{
+    IntrusivePtr<MockWeakObject>     strongPtr(new MockWeakObject(5));
     IntrusiveWeakPtr<MockWeakObject> weakPtr(strongPtr);
     EXPECT_FALSE(weakPtr.expired());
 }
 
 // Test reset functionality
-TEST(IntrusiveWeakPtrTest, ResetFunctionality) {
-    IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(35));
+TEST(IntrusiveWeakPtrTest, ResetFunctionality)
+{
+    IntrusivePtr<MockWeakObject>     strongPtr(new MockWeakObject(35));
     IntrusiveWeakPtr<MockWeakObject> weakPtr(strongPtr);
     weakPtr.reset();
     EXPECT_TRUE(weakPtr.expired());
 }
 
 // Test swap functionality
-TEST(IntrusiveWeakPtrTest, SwapFunctionality) {
-    IntrusivePtr<MockWeakObject> strongPtr1(new MockWeakObject(40));
-    IntrusivePtr<MockWeakObject> strongPtr2(new MockWeakObject(45));
+TEST(IntrusiveWeakPtrTest, SwapFunctionality)
+{
+    IntrusivePtr<MockWeakObject>     strongPtr1(new MockWeakObject(40));
+    IntrusivePtr<MockWeakObject>     strongPtr2(new MockWeakObject(45));
     IntrusiveWeakPtr<MockWeakObject> weakPtr1(strongPtr1);
     IntrusiveWeakPtr<MockWeakObject> weakPtr2(strongPtr2);
     weakPtr1.swap(weakPtr2);
@@ -55,16 +59,18 @@ TEST(IntrusiveWeakPtrTest, SwapFunctionality) {
 }
 
 // Test lock functionality
-TEST(IntrusiveWeakPtrTest, LockFunctionality) {
-    IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(10));
+TEST(IntrusiveWeakPtrTest, LockFunctionality)
+{
+    IntrusivePtr<MockWeakObject>     strongPtr(new MockWeakObject(10));
     IntrusiveWeakPtr<MockWeakObject> weakPtr(strongPtr);
-    auto lockedPtr = weakPtr.lock();
+    auto                             lockedPtr = weakPtr.lock();
     ASSERT_NE(lockedPtr, nullptr);
     EXPECT_EQ(lockedPtr->GetValue(), 10);
 }
 
 // Test expiration after strongPtr is reset
-TEST(IntrusiveWeakPtrTest, ExpirationAfterStrongPtrReset) {
+TEST(IntrusiveWeakPtrTest, ExpirationAfterStrongPtrReset)
+{
     IntrusiveWeakPtr<MockWeakObject> weakPtr;
     {
         IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(50));
@@ -75,18 +81,19 @@ TEST(IntrusiveWeakPtrTest, ExpirationAfterStrongPtrReset) {
     EXPECT_TRUE(weakPtr.expired());
 }
 
-
 // Test copy constructor
-TEST(IntrusiveWeakPtrTest, CopyConstructor) {
-    IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(15));
+TEST(IntrusiveWeakPtrTest, CopyConstructor)
+{
+    IntrusivePtr<MockWeakObject>     strongPtr(new MockWeakObject(15));
     IntrusiveWeakPtr<MockWeakObject> weakPtr1(strongPtr);
     IntrusiveWeakPtr<MockWeakObject> weakPtr2(weakPtr1);
     EXPECT_FALSE(weakPtr2.expired());
 }
 
 // Test move constructor
-TEST(IntrusiveWeakPtrTest, MoveConstructor) {
-    IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(20));
+TEST(IntrusiveWeakPtrTest, MoveConstructor)
+{
+    IntrusivePtr<MockWeakObject>     strongPtr(new MockWeakObject(20));
     IntrusiveWeakPtr<MockWeakObject> weakPtr1(strongPtr);
     IntrusiveWeakPtr<MockWeakObject> weakPtr2(std::move(weakPtr1));
     EXPECT_TRUE(weakPtr1.expired());
@@ -94,8 +101,9 @@ TEST(IntrusiveWeakPtrTest, MoveConstructor) {
 }
 
 // Test copy assignment
-TEST(IntrusiveWeakPtrTest, CopyAssignment) {
-    IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(25));
+TEST(IntrusiveWeakPtrTest, CopyAssignment)
+{
+    IntrusivePtr<MockWeakObject>     strongPtr(new MockWeakObject(25));
     IntrusiveWeakPtr<MockWeakObject> weakPtr1(strongPtr);
     IntrusiveWeakPtr<MockWeakObject> weakPtr2;
     weakPtr2 = weakPtr1;
@@ -103,8 +111,9 @@ TEST(IntrusiveWeakPtrTest, CopyAssignment) {
 }
 
 // Test move assignment
-TEST(IntrusiveWeakPtrTest, MoveAssignment) {
-    IntrusivePtr<MockWeakObject> strongPtr(new MockWeakObject(30));
+TEST(IntrusiveWeakPtrTest, MoveAssignment)
+{
+    IntrusivePtr<MockWeakObject>     strongPtr(new MockWeakObject(30));
     IntrusiveWeakPtr<MockWeakObject> weakPtr1(strongPtr);
     IntrusiveWeakPtr<MockWeakObject> weakPtr2;
     weakPtr2 = std::move(weakPtr1);

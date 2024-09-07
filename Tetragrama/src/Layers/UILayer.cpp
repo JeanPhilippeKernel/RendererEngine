@@ -1,7 +1,7 @@
 #include <pch.h>
-#include <UILayer.h>
-#include <Messenger.h>
 #include <MessageToken.h>
+#include <Messenger.h>
+#include <UILayer.h>
 
 using namespace Tetragrama::Messengers;
 

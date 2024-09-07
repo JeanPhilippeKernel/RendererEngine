@@ -1,7 +1,7 @@
 #pragma once
+#include <Rendering/Specifications/AttachmentSpecification.h>
 #include <ZEngineDef.h>
 #include <vulkan/vulkan.h>
-#include <Rendering/Specifications/AttachmentSpecification.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
@@ -17,7 +17,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         uint32_t GetColorAttachmentCount() const;
         uint32_t GetDepthAttachmentCount() const;
 
-
         static Ref<Attachment> Create(const Specifications::AttachmentSpecification&);
 
     private:
@@ -26,4 +25,4 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Specifications::AttachmentSpecification m_specification;
         VkRenderPass                            m_handle{VK_NULL_HANDLE};
     };
-}
+} // namespace ZEngine::Rendering::Renderers::RenderPasses

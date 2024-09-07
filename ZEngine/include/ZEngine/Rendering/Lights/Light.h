@@ -113,15 +113,15 @@ namespace ZEngine::Rendering::Lights
      */
     struct alignas(16) GpuSpotlight
     {
-        gpuvec4 Position   = 1.0f;
-        gpuvec4 Direction  = 1.0f;
-        gpuvec4 Ambient    = 1.0f;
-        gpuvec4 Diffuse    = 1.0f;
-        gpuvec4 Specular   = 1.0f;
-        float   CutOff     = 0.0f;
-        float   Constant   = 1.0f;
-        float   Linear     = 0.7f;
-        float   Quadratic  = 1.8f;
+        gpuvec4 Position  = 1.0f;
+        gpuvec4 Direction = 1.0f;
+        gpuvec4 Ambient   = 1.0f;
+        gpuvec4 Diffuse   = 1.0f;
+        gpuvec4 Specular  = 1.0f;
+        float   CutOff    = 0.0f;
+        float   Constant  = 1.0f;
+        float   Linear    = 0.7f;
+        float   Quadratic = 1.8f;
     };
 
     struct Spotlight : public LightVNext

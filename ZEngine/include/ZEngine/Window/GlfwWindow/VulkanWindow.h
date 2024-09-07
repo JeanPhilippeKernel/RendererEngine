@@ -1,9 +1,9 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
+#include <Rendering/Swapchain.h>
 #include <Window/CoreWindow.h>
 #include <Window/WindowConfiguration.h>
-#include <Rendering/Swapchain.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Window::GLFWWindow
 {
@@ -69,8 +69,8 @@ namespace ZEngine::Window::GLFWWindow
         static void __OnGlfwFrameBufferSizeChanged(GLFWwindow*, int width, int height);
 
     private:
-        GLFWwindow*                               m_native_window{nullptr};
-        Ref<Rendering::Swapchain>                 m_swapchain;
+        GLFWwindow*               m_native_window{nullptr};
+        Ref<Rendering::Swapchain> m_swapchain;
     };
 
 } // namespace ZEngine::Window::GLFWWindow

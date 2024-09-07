@@ -1,6 +1,6 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include <Helpers/IntrusivePtr.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Primitives
 {
@@ -29,4 +29,4 @@ namespace ZEngine::Rendering::Primitives
         FenceState m_fence_state{FenceState::Idle};
         VkFence    m_handle{VK_NULL_HANDLE};
     };
-}
+} // namespace ZEngine::Rendering::Primitives

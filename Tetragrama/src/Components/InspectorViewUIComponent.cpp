@@ -265,11 +265,11 @@ namespace Tetragrama::Components
                 auto transform = m_scene_entity.GetTransform();
                 auto light_ptr = reinterpret_cast<Spotlight*>(light.get());
 
-                auto direction = light_ptr->Direction.As<glm::vec3>();
-                auto position  = glm::vec3(transform[3]);
-                auto ambient   = light_ptr->Ambient.As<glm::vec3>();
-                auto diffuse   = light_ptr->Diffuse.As<glm::vec3>();
-                auto specular  = light_ptr->Specular.As<glm::vec3>();
+                auto         direction = light_ptr->Direction.As<glm::vec3>();
+                auto         position  = glm::vec3(transform[3]);
+                auto         ambient   = light_ptr->Ambient.As<glm::vec3>();
+                auto         diffuse   = light_ptr->Diffuse.As<glm::vec3>();
+                auto         specular  = light_ptr->Specular.As<glm::vec3>();
                 static float phi_angle = 12.5f;
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
@@ -414,7 +414,7 @@ namespace Tetragrama::Components
                     // mesh_id = active_scene->AddMesh(std::move(cube_mesh));
                 }
 
-                //m_scene_entity->AddComponent<MeshComponent>(mesh_id);
+                // m_scene_entity->AddComponent<MeshComponent>(mesh_id);
                 ImGui::CloseCurrentPopup();
             }
 
@@ -426,7 +426,7 @@ namespace Tetragrama::Components
                 material->SetDiffuseMap(ZEngine::Ref<Texture>(CreateTexture(1, 1)));
                 material->SetSpecularMap(ZEngine::Ref<Texture>(CreateTexture(1, 1)));
 
-                //m_scene_entity->AddComponent<MaterialComponent>(std::move(material));
+                // m_scene_entity->AddComponent<MaterialComponent>(std::move(material));
                 ImGui::CloseCurrentPopup();
             }
 

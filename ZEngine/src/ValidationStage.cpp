@@ -16,9 +16,9 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
     std::future<void> ValidationStage::RunAsync(ShaderInformation& information_list)
     {
-        std::unique_lock lock(m_mutex);
-        spvtools::SpirvTools         tools(SPV_ENV_UNIVERSAL_1_6);
-        
+        std::unique_lock     lock(m_mutex);
+        spvtools::SpirvTools tools(SPV_ENV_UNIVERSAL_1_6);
+
         tools.SetMessageConsumer([this](spv_message_level_t level, const char* source, const spv_position_t& position, const char* message) {
             m_information.ErrorMessage = "Validation Error (" + std::string(source) + ":" + std::to_string(position.index) + "): " + std::string(message) + "\n";
         });
@@ -32,8 +32,8 @@ namespace ZEngine::Rendering::Shaders::Compilers
         }
 
         // Optimization phase
-        spvtools::Optimizer optimizer(SPV_ENV_UNIVERSAL_1_6); 
-        optimizer.RegisterPassFromFlag("-0s"); 
+        spvtools::Optimizer optimizer(SPV_ENV_UNIVERSAL_1_6);
+        optimizer.RegisterPassFromFlag("-0s");
         optimizer.Run(information_list.BinarySource.data(), information_list.BinarySource.size(), &information_list.BinarySource);
 
         // Second validation pass on the optimized SPIR-V code

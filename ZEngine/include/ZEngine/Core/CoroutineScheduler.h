@@ -1,8 +1,8 @@
 #pragma once
-#include <ZEngineDef.h>
 #include <Helpers/ThreadSafeQueue.h>
-#include <functional>
+#include <ZEngineDef.h>
 #include <atomic>
+#include <functional>
 
 namespace ZEngine::Core
 {
@@ -27,11 +27,11 @@ namespace ZEngine::Core
         static void Schedule(CoroutineAction&& action);
 
     private:
-        static std::atomic_bool    s_running;
+        static std::atomic_bool                               s_running;
         static Ref<Helpers::ThreadSafeQueue<CoroutineAction>> s_action_queue;
 
         static void Start();
         static void Run(WeakRef<SchedulerQueue> queue);
     };
-    
+
 } // namespace ZEngine::Core
