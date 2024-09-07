@@ -1,0 +1,19 @@
+name: ZEngine Code Formatting
+
+on:
+    workflow_call:
+        inputs:
+            srcDirectory:
+                type: string
+
+jobs:
+    format:
+        name: clang-format
+        runs-on: windows-2022
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Checking formatting
+              run: .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ inputs.srcDirectory }} -RunAsCheck 1
+              shell: pwsh
