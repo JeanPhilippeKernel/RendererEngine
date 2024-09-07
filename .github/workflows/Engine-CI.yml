@@ -8,7 +8,7 @@ jobs:
   clang-format:
     strategy:
       matrix:
-        directories: ['${{github.workspace }}/RendererEngine/ZEngine', '${{github.workspace }}/RendererEngine/Tetragrama']
+        directories: [ZEngine, Tetragrama]
     uses: ./.github/workflows/job-clangformat.yml
     with:
       srcDirectory: ${{ matrix.directories }}
