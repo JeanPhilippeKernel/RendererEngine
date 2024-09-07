@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <HierarchyViewUIComponent.h>
+#include <ImGuizmo/ImGuizmo.h>
 #include <MessageToken.h>
 #include <Messenger.h>
 

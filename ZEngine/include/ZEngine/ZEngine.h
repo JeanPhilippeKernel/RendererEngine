@@ -1,5 +1,4 @@
 #pragma once
-#include <ImGuizmo/ImGuizmo.h>
 #include "Components/UIComponent.h"
 #include "Components/UIComponentEvent.h"
 #include "Controllers/ICameraController.h"

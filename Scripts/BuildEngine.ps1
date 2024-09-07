@@ -31,7 +31,10 @@ param (
     [Parameter(HelpMessage = "Whether to run build, default to True")]
     [bool] $RunBuilds = $True,
 
-    [Parameter(HelpMessage = "Whether to run clang format to check formatting correctness, default to False")]
+    [Parameter(HelpMessage = "Whether to run clang format to format the code, default to True")]
+    [bool] $RunClangFormat = $True,
+
+    [Parameter(HelpMessage = "Whether to check code formatting correctness, default to False")]
     [bool] $VerifyFormatting = $False,
 
     [Parameter(HelpMessage = "Whether to rebuild shader files")]
@@ -240,17 +243,19 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 if(-Not $LauncherOnly) {
 
     # Run Clang format
-    [string]$clangFormatScript = Join-Path $PSScriptRoot -ChildPath "ClangFormat.ps1"
-    [string[]]$srcDirectories = @(
-        (Join-Path $repositoryRootPath -ChildPath "ZEngine"),
-        (Join-Path $repositoryRootPath -ChildPath "Tetragrama")
-    )
-
-    foreach ($directory in $srcDirectories) {
-        & pwsh -File $clangFormatScript -SourceDirectory $directory -RunAsCheck:$VerifyFormatting
-
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Stopped build process..." -ErrorAction Stop
+    if ($RunClangFormat) {
+        [string]$clangFormatScript = Join-Path $PSScriptRoot -ChildPath "ClangFormat.ps1"
+        [string[]]$srcDirectories = @(
+            (Join-Path $repositoryRootPath -ChildPath "ZEngine"),
+            (Join-Path $repositoryRootPath -ChildPath "Tetragrama")
+        )
+    
+        foreach ($directory in $srcDirectories) {
+            & pwsh -File $clangFormatScript -SourceDirectory $directory -RunAsCheck:$VerifyFormatting
+    
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Stopped build process..." -ErrorAction Stop
+            }
         }
     }
 

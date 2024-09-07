@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: CMake Build
-        run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}}
+        run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}} -RunClangFormat 0 # @jeanphilippeKernel : We disable formatting on macOS till we sort out the version to use on this platform
         shell: pwsh
 
       - name: Publish Build Artifacts

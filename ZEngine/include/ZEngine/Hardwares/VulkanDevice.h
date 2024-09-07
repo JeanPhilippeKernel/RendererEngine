@@ -1,4 +1,10 @@
 #pragma once
+#include <vk_mem_alloc.h>
+#include <vulkan/vulkan.h>
+
+/*
+ * ^^^^ Headers above are not candidates for sorting by clang-format ^^^^^
+ */
 #include <GLFW/glfw3.h>
 #include <Hardwares/VulkanLayer.h>
 #include <Rendering/Pools/CommandPool.h>
@@ -6,8 +12,6 @@
 #include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/Primitives/Semaphore.h>
 #include <Rendering/ResourceTypes.h>
-#include <vk_mem_alloc.h>
-#include <vulkan/vulkan.h>
 #include <map>
 
 namespace ZEngine::Window
