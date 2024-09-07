@@ -19,7 +19,7 @@ namespace Tetragrama::Importers
             {
                 out.seekp(std::ios::beg);
 
-                size_t mesh_count   =    importer_data.Scene.Meshes.size();
+                size_t mesh_count = importer_data.Scene.Meshes.size();
                 out.write(reinterpret_cast<const char*>(&mesh_count), sizeof(size_t));
                 out.write(reinterpret_cast<const char*>(importer_data.Scene.Meshes.data()), sizeof(ZEngine::Rendering::Meshes::MeshVNext) * mesh_count);
 
