@@ -1,20 +1,19 @@
 #pragma once
-#include <functional>
-#include <vector>
-#include <string_view>
-#include <Layers/Layer.h>
+#include <Components/UIComponent.h>
 #include <Core/TimeStep.h>
-#include <Inputs/KeyCode.h>
-
-#include <imgui.h>
-#include <imconfig.h>
-#include <backends/imgui_impl_vulkan.h>
 #include <Inputs/IKeyboardEventCallback.h>
 #include <Inputs/IMouseEventCallback.h>
 #include <Inputs/ITextInputEventCallback.h>
-#include <Window/ICoreWindowEventCallback.h>
-#include <Components/UIComponent.h>
+#include <Inputs/KeyCode.h>
+#include <Layers/Layer.h>
 #include <Rendering/Swapchain.h>
+#include <Window/ICoreWindowEventCallback.h>
+#include <backends/imgui_impl_vulkan.h>
+#include <imconfig.h>
+#include <imgui.h>
+#include <functional>
+#include <string_view>
+#include <vector>
 
 namespace ZEngine::Components::UI
 {

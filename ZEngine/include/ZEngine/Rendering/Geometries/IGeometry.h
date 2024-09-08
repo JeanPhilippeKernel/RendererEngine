@@ -1,10 +1,10 @@
 #pragma once
-#include <vector>
-#include <algorithm>
-#include <Maths/Math.h>
-#include <Rendering/Renderers/Storages/GraphicVertex.h>
-#include <Rendering/Geometries/GeometryEnum.h>
 #include <Helpers/IntrusivePtr.h>
+#include <Maths/Math.h>
+#include <Rendering/Geometries/GeometryEnum.h>
+#include <Rendering/Renderers/Storages/GraphicVertex.h>
+#include <algorithm>
+#include <vector>
 
 namespace ZEngine::Rendering::Geometries
 {

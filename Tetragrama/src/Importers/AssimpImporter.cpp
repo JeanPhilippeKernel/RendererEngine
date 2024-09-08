@@ -1,8 +1,8 @@
 #include <pch.h>
 #include <AssimpImporter.h>
-#include <assimp/postprocess.h>
 #include <Core/Coroutine.h>
 #include <Helpers/ThreadPool.h>
+#include <assimp/postprocess.h>
 #include <fmt/format.h>
 
 using namespace ZEngine::Helpers;
@@ -20,9 +20,7 @@ namespace Tetragrama::Importers
         m_progress_handler.SetImporter(this);
     }
 
-    AssimpImporter::~AssimpImporter()
-    {
-    }
+    AssimpImporter::~AssimpImporter() {}
 
     std::future<void> AssimpImporter::ImportAsync(std::string_view filename, ImportConfiguration config)
     {
@@ -177,7 +175,7 @@ namespace Tetragrama::Importers
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_DIFFUSE, &color) == AI_SUCCESS)
             {
-                material.AlbedoColor    = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
+                material.AlbedoColor   = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
                 material.AlbedoColor.w = std::min(material.AlbedoColor.w, 1.0f);
             }
 
@@ -283,7 +281,7 @@ namespace Tetragrama::Importers
                 AI_SUCCESS)
             {
                 importer_data.Scene.Materials[m].OpacityMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
-                importer_data.Scene.Materials[m].Factors.z   = 0.5f;
+                importer_data.Scene.Materials[m].Factors.z  = 0.5f;
             }
         }
     }

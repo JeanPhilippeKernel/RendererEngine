@@ -1,6 +1,6 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include <Helpers/IntrusivePtr.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Primitives
 {
@@ -26,4 +26,4 @@ namespace ZEngine::Rendering::Primitives
         SemaphoreState m_semaphore_state{SemaphoreState::Idle};
         VkSemaphore    m_handle{VK_NULL_HANDLE};
     };
-}
+} // namespace ZEngine::Rendering::Primitives

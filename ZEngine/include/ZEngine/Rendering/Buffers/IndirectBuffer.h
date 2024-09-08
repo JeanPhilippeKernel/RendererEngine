@@ -1,6 +1,6 @@
 #pragma once
-#include <Rendering/Buffers/GraphicBuffer.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Rendering/Buffers/GraphicBuffer.h>
 
 namespace ZEngine::Rendering::Buffers
 {
@@ -115,8 +115,6 @@ namespace ZEngine::Rendering::Buffers
         uint32_t              m_command_count{0};
         Hardwares::BufferView m_indirect_buffer;
     };
-
-
 
     struct IndirectBufferSet : public Helpers::RefCounted
     {

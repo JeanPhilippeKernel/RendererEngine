@@ -1,17 +1,17 @@
 #pragma once
 
-#include <ZEngineDef.h>
-#include <Window/CoreWindow.h>
-#include <Event/EventDispatcher.h>
-#include <Event/EngineClosedEvent.h>
-#include <Event/KeyPressedEvent.h>
-#include <Event/KeyReleasedEvent.h>
-#include <Core/TimeStep.h>
-#include <Core/IUpdatable.h>
-#include <Core/IRenderable.h>
 #include <Core/IEventable.h>
 #include <Core/IInitializable.h>
+#include <Core/IRenderable.h>
+#include <Core/IUpdatable.h>
+#include <Core/TimeStep.h>
 #include <EngineConfiguration.h>
+#include <Event/EngineClosedEvent.h>
+#include <Event/EventDispatcher.h>
+#include <Event/KeyPressedEvent.h>
+#include <Event/KeyReleasedEvent.h>
+#include <Window/CoreWindow.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine
 {

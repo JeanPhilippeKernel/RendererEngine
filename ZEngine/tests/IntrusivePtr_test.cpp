@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
 #include "Helpers/IntrusivePtr.h"
 
-
-
 using namespace ZEngine::Helpers;
 
 class MockObject : public RefCounted
@@ -26,35 +24,38 @@ public:
     MockObjectChild(int value = 0) : MockObject(value) {}
 };
 
-
 // Test default constructor
-TEST(IntrusivePtrTest, DefaultConstructor) {
+TEST(IntrusivePtrTest, DefaultConstructor)
+{
     IntrusivePtr<MockObject> ptr;
     EXPECT_EQ(ptr.get(), nullptr);
 }
 
 // Test constructor with object
-TEST(IntrusivePtrTest, ConstructorWithObject) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, ConstructorWithObject)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
     EXPECT_EQ(ptr.get(), rawPtr);
     EXPECT_EQ(rawPtr->RefCount(), 1);
 }
 
 // Test copy constructor
-TEST(IntrusivePtrTest, CopyConstructor) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, CopyConstructor)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> originalPtr(rawPtr);
     IntrusivePtr<MockObject> copyPtr(originalPtr);
-    
+
     EXPECT_EQ(copyPtr.get(), rawPtr);
     EXPECT_EQ(originalPtr.get(), rawPtr);
     EXPECT_EQ(rawPtr->RefCount(), 2);
 }
 
 // Test move constructor
-TEST(IntrusivePtrTest, MoveConstructor) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, MoveConstructor)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> originalPtr(rawPtr);
     IntrusivePtr<MockObject> movedPtr(std::move(originalPtr));
 
@@ -64,9 +65,10 @@ TEST(IntrusivePtrTest, MoveConstructor) {
 }
 
 // Test Copy Assignment Operator
-TEST(IntrusivePtrTest, CopyAssignmentOperator) {
-    MockObject* rawPtr1 = new MockObject();
-    MockObject* rawPtr2 = new MockObject();
+TEST(IntrusivePtrTest, CopyAssignmentOperator)
+{
+    MockObject*              rawPtr1 = new MockObject();
+    MockObject*              rawPtr2 = new MockObject();
     IntrusivePtr<MockObject> ptr1(rawPtr1);
     IntrusivePtr<MockObject> ptr2(rawPtr2);
 
@@ -78,8 +80,9 @@ TEST(IntrusivePtrTest, CopyAssignmentOperator) {
 }
 
 // Test Move Assignment Operator
-TEST(IntrusivePtrTest, MoveAssignmentOperator) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, MoveAssignmentOperator)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr1(rawPtr);
     IntrusivePtr<MockObject> ptr2;
 
@@ -90,8 +93,9 @@ TEST(IntrusivePtrTest, MoveAssignmentOperator) {
 }
 
 // Test Assignment From Raw Pointer
-TEST(IntrusivePtrTest, AssignmentFromRawPointer) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, AssignmentFromRawPointer)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr;
 
     ptr = rawPtr;
@@ -101,8 +105,9 @@ TEST(IntrusivePtrTest, AssignmentFromRawPointer) {
 }
 
 // Test Reset Method
-TEST(IntrusivePtrTest, ResetMethod) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, ResetMethod)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
 
     ptr.reset();
@@ -112,9 +117,10 @@ TEST(IntrusivePtrTest, ResetMethod) {
 }
 
 // Test Swap Method
-TEST(IntrusivePtrTest, SwapMethod) {
-    MockObject* rawPtr1 = new MockObject();
-    MockObject* rawPtr2 = new MockObject();
+TEST(IntrusivePtrTest, SwapMethod)
+{
+    MockObject*              rawPtr1 = new MockObject();
+    MockObject*              rawPtr2 = new MockObject();
     IntrusivePtr<MockObject> ptr1(rawPtr1);
     IntrusivePtr<MockObject> ptr2(rawPtr2);
 
@@ -125,31 +131,35 @@ TEST(IntrusivePtrTest, SwapMethod) {
 }
 
 // Test Get Method
-TEST(IntrusivePtrTest, GetMethod) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, GetMethod)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
 
     EXPECT_EQ(ptr.get(), rawPtr);
 }
 
 // Test Dereference Operator
-TEST(IntrusivePtrTest, DereferenceOperator) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, DereferenceOperator)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
 
     EXPECT_EQ(&(*ptr), rawPtr);
 }
 
 // Test Member Access Operator
-TEST(IntrusivePtrTest, MemberAccessOperator) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, MemberAccessOperator)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
 
     EXPECT_EQ(ptr->RefCount(), 1);
 }
 
 // Test Not Operator
-TEST(IntrusivePtrTest, NotOperator) {
+TEST(IntrusivePtrTest, NotOperator)
+{
     IntrusivePtr<MockObject> ptr;
     EXPECT_TRUE(!ptr);
 
@@ -158,7 +168,8 @@ TEST(IntrusivePtrTest, NotOperator) {
 }
 
 // Test Bool Conversion Operator
-TEST(IntrusivePtrTest, BoolConversionOperator) {
+TEST(IntrusivePtrTest, BoolConversionOperator)
+{
     IntrusivePtr<MockObject> ptr;
     EXPECT_FALSE(static_cast<bool>(ptr));
 
@@ -167,7 +178,8 @@ TEST(IntrusivePtrTest, BoolConversionOperator) {
 }
 
 // Test Equality with nullptr
-TEST(IntrusivePtrTest, EqualityWithNullptr) {
+TEST(IntrusivePtrTest, EqualityWithNullptr)
+{
     IntrusivePtr<MockObject> ptr;
     EXPECT_TRUE(ptr == nullptr);
 
@@ -176,7 +188,8 @@ TEST(IntrusivePtrTest, EqualityWithNullptr) {
 }
 
 // Test Inequality with nullptr
-TEST(IntrusivePtrTest, InequalityWithNullptr) {
+TEST(IntrusivePtrTest, InequalityWithNullptr)
+{
     IntrusivePtr<MockObject> ptr;
     EXPECT_FALSE(ptr != nullptr);
 
@@ -185,8 +198,9 @@ TEST(IntrusivePtrTest, InequalityWithNullptr) {
 }
 
 // Test Equality with Raw Pointer
-TEST(IntrusivePtrTest, EqualityWithRawPointer) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, EqualityWithRawPointer)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
     EXPECT_TRUE(ptr == rawPtr);
 
@@ -195,8 +209,9 @@ TEST(IntrusivePtrTest, EqualityWithRawPointer) {
 }
 
 // Test Inequality with Raw Pointer
-TEST(IntrusivePtrTest, InequalityWithRawPointer) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, InequalityWithRawPointer)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
     EXPECT_FALSE(ptr != rawPtr);
 
@@ -205,8 +220,9 @@ TEST(IntrusivePtrTest, InequalityWithRawPointer) {
 }
 
 // Test Equality with Another IntrusivePtr
-TEST(IntrusivePtrTest, EqualityWithAnotherIntrusivePtr) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, EqualityWithAnotherIntrusivePtr)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr1(rawPtr);
     IntrusivePtr<MockObject> ptr2(rawPtr);
     EXPECT_TRUE(ptr1 == ptr2);
@@ -216,8 +232,9 @@ TEST(IntrusivePtrTest, EqualityWithAnotherIntrusivePtr) {
 }
 
 // Test Inequality with Another IntrusivePtr
-TEST(IntrusivePtrTest, InequalityWithAnotherIntrusivePtr) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, InequalityWithAnotherIntrusivePtr)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr1(rawPtr);
     IntrusivePtr<MockObject> ptr2(rawPtr);
     EXPECT_FALSE(ptr1 != ptr2);
@@ -226,7 +243,8 @@ TEST(IntrusivePtrTest, InequalityWithAnotherIntrusivePtr) {
     EXPECT_TRUE(ptr1 != ptr3);
 }
 
-TEST(IntrusivePtrTest, NonMemberSwapFunction) {
+TEST(IntrusivePtrTest, NonMemberSwapFunction)
+{
     IntrusivePtr<MockObject> ptr1(new MockObject(10));
     IntrusivePtr<MockObject> ptr2(new MockObject(20));
 
@@ -237,7 +255,8 @@ TEST(IntrusivePtrTest, NonMemberSwapFunction) {
 }
 
 // Test make_intrusive Function
-TEST(IntrusivePtrTest, MakeIntrusiveFunction) {
+TEST(IntrusivePtrTest, MakeIntrusiveFunction)
+{
     IntrusivePtr<MockObject> ptr = make_intrusive<MockObject>(30);
 
     EXPECT_TRUE(ptr != nullptr);
@@ -245,12 +264,13 @@ TEST(IntrusivePtrTest, MakeIntrusiveFunction) {
 }
 
 // Test std::hash Specialization
-TEST(IntrusivePtrTest, HashSpecialization) {
-    MockObject* rawPtr = new MockObject();
+TEST(IntrusivePtrTest, HashSpecialization)
+{
+    MockObject*              rawPtr = new MockObject();
     IntrusivePtr<MockObject> ptr(rawPtr);
 
     std::hash<IntrusivePtr<MockObject>> intrusivePtrHash;
-    std::hash<MockObject*> rawPtrHash;
+    std::hash<MockObject*>              rawPtrHash;
 
     EXPECT_EQ(intrusivePtrHash(ptr), rawPtrHash(rawPtr));
 }
@@ -284,7 +304,6 @@ TEST(IntrusivePtrTest, SwapDeferencedValue)
     EXPECT_EQ(intrusivePtrTwo->GetValue(), 23);
     EXPECT_EQ(intrusivePtr->GetValue(), 45);
 }
-
 
 TEST(IntrusivePtrTest, BaseDerivedType)
 {

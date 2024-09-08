@@ -1,17 +1,18 @@
 #include <pch.h>
+#include <Event/EventDispatcher.h>
+#include <Layers/UILayer.h>
+#include <MessageToken.h>
+#include <Messengers/Messenger.h>
 #include <SceneViewportUIComponent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
-#include <Layers/UILayer.h>
-#include <Event/EventDispatcher.h>
-#include <Messengers/Messenger.h>
-#include <MessageToken.h>
+/**/
+#include <ImGuizmo/ImGuizmo.h>
 
 using namespace ZEngine::Components::UI::Event;
 using namespace Tetragrama::Components::Event;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering;
-
 
 namespace Tetragrama::Components
 {
@@ -101,6 +102,7 @@ namespace Tetragrama::Components
 
         // ImGuizmo configuration
         ImGuizmo::SetRect(minimum_bound.x, minimum_bound.y, m_viewport_size.x, m_viewport_size.y);
+
         ImGuizmo::SetDrawlist();
 
         ImGui::End();

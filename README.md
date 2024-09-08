@@ -1,4 +1,4 @@
-[![ZEngine Windows Build](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/windows-build.yml/badge.svg)](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/windows-build.yml)	[![ZEngine Linux Build](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/linux-build.yml/badge.svg)](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/linux-build.yml) [![ZEngine macOS Build](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/macOS-build.yml/badge.svg)](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/macOS-build.yml) 
+[![Engine Build and Tests](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/Engine-CI.yml/badge.svg)]
 
 [![Discord Server](https://discord.com/api/guilds/1249429728624906405/widget.png?style=banner2)](https://discord.gg/jC3GPVKKsW)
 
@@ -25,6 +25,7 @@ Before building, make sure your setup is correct :
 - Install [Python](https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe)
 - Install [CMake](https://cmake.org/download/) 3.20 or later.
 - Install [DOTNET SDK 6](https://dotnet.microsoft.com/en-us/download/dotnet/6.0)
+- Install [LLVM](https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe)
 
 ### Setup macOS machine
 
@@ -52,6 +53,12 @@ Before building, make sure your setup is correct :
     brew install --cask powershell
 ```
 - Install [DOTNET SDK 6](https://dotnet.microsoft.com/en-us/download/dotnet/6.0)
+
+- Install ClangFormat through Homebrew:
+```bash
+    brew update
+    brew install clang-format@18
+```
 
 ## Building the engine & launcher
 

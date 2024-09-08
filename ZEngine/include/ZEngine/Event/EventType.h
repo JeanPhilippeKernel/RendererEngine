@@ -1,7 +1,9 @@
 #pragma once
 
-namespace ZEngine::Event {
-    enum class EventType {
+namespace ZEngine::Event
+{
+    enum class EventType
+    {
         None = 0,
 
         WindowShown,
@@ -33,4 +35,4 @@ namespace ZEngine::Event {
         SceneViewportUnfocused,
         SceneTextureAvailable
     };
-}
+} // namespace ZEngine::Event

@@ -1,11 +1,11 @@
 #include <pch.h>
-#include <fmt/format.h>
-#include <Logging/LoggerDefinition.h>
 #include <Logging/Logger.h>
-#include <spdlog/async_logger.h>
+#include <Logging/LoggerDefinition.h>
+#include <fmt/format.h>
 #include <spdlog/async.h>
-#include <spdlog/sinks/rotating_file_sink.h>
+#include <spdlog/async_logger.h>
 #include <spdlog/details/thread_pool.h>
+#include <spdlog/sinks/rotating_file_sink.h>
 
 namespace ZEngine::Logging
 {

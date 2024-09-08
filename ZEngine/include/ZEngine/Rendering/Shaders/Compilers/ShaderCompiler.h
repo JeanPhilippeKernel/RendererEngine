@@ -38,8 +38,8 @@ namespace ZEngine::Rendering::Shaders::Compilers
         std::future<ShaderCompilerResult> CompileAsync();
 
     private:
-        std::string                                                            m_source_file;
-        Scope<ShaderReader>                                                    m_reader{nullptr};
-        std::recursive_mutex                                                   m_mutex;
+        std::string          m_source_file;
+        Scope<ShaderReader>  m_reader{nullptr};
+        std::recursive_mutex m_mutex;
     };
 } // namespace ZEngine::Rendering::Shaders::Compilers

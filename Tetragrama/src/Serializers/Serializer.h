@@ -1,11 +1,10 @@
 #pragma once
-#include <atomic>
-#include <mutex>
-#include <future>
-#include <string>
 #include <Helpers/IntrusivePtr.h>
 #include <ZEngineDef.h>
-
+#include <atomic>
+#include <future>
+#include <mutex>
+#include <string>
 
 #define REPORT_PROGRESS(value)          \
     {                                   \

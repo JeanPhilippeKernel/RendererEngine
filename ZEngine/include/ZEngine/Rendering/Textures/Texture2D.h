@@ -1,7 +1,7 @@
 #pragma once
-#include <future>
-#include <Rendering/Textures/Texture.h>
 #include <Rendering/Buffers/Image2DBuffer.h>
+#include <Rendering/Textures/Texture.h>
+#include <future>
 
 namespace ZEngine::Rendering::Textures
 {

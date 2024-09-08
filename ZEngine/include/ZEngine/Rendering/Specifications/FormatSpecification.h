@@ -1,11 +1,10 @@
 #pragma once
-#include <map>
 #include <vulkan/vulkan.h>
-
+#include <map>
 
 namespace ZEngine::Rendering::Specifications
 {
-    #define VALUE_FROM_SPEC_MAP(x) static_cast<uint32_t>(x)
+#define VALUE_FROM_SPEC_MAP(x) static_cast<uint32_t>(x)
 
     enum class ImageFormat : uint32_t
     {
@@ -25,9 +24,9 @@ namespace ZEngine::Rendering::Specifications
     };
 
     /*
-    * BytePerChannelMap follows ImageFormat enum alignment value
-    */
-    static uint32_t BytePerChannelMap[] = {0u, 4u, 4u, (4u * ( sizeof(float) / 2 )), (4u * sizeof(float))};
+     * BytePerChannelMap follows ImageFormat enum alignment value
+     */
+    static uint32_t BytePerChannelMap[] = {0u, 4u, 4u, (4u * (sizeof(float) / 2)), (4u * sizeof(float))};
 
     static VkFormat ImageFormatMap[] = {
         VK_FORMAT_UNDEFINED,

@@ -1,6 +1,6 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include <Rendering/Specifications/ImageMemoryBarrierSpecification.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Primitives
 {
@@ -16,4 +16,4 @@ namespace ZEngine::Rendering::Primitives
         VkImageMemoryBarrier                            m_handle{};
         Specifications::ImageMemoryBarrierSpecification m_specification;
     };
-}
+} // namespace ZEngine::Rendering::Primitives

@@ -1,19 +1,24 @@
 #pragma once
 
-namespace ZEngine::Core {
+namespace ZEngine::Core
+{
 
-    class TimeStep {
+    class TimeStep
+    {
     public:
         TimeStep(float time = 0.0f) : m_time(time) {}
 
-        operator float() const {
+        operator float() const
+        {
             return m_time;
         }
 
-        float GetSecond() const {
+        float GetSecond() const
+        {
             return m_time;
         }
-        float GetMillisecond() const {
+        float GetMillisecond() const
+        {
             return m_time * 1000.0f;
         }
 

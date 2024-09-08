@@ -5,10 +5,20 @@ on:
     branches: [ master, develop ]
 
 jobs:
+  clang-format:
+    strategy:
+      matrix:
+        directories: [ZEngine, Tetragrama]
+    uses: ./.github/workflows/job-clangformat.yml
+    with:
+      srcDirectory: ${{ matrix.directories }}
+
   windows:
+    needs: clang-format
     uses: ./.github/workflows/windows-build.yml
 
   macOS:
+    needs: clang-format
     uses: ./.github/workflows/macOS-build.yml
 
   # linux:

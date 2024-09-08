@@ -1,29 +1,25 @@
 #pragma once
 
-#include <memory>
-
-#include <Window/WindowProperty.h>
+#include <Core/IEventable.h>
+#include <Core/IInitializable.h>
+#include <Core/IRenderable.h>
+#include <Core/IUpdatable.h>
+#include <Core/TimeStep.h>
 #include <Event/CoreEvent.h>
-#include <Event/WindowClosedEvent.h>
-#include <Event/WindowResizedEvent.h>
 #include <Event/EventDispatcher.h>
 #include <Event/TextInputEvent.h>
-#include <Core/TimeStep.h>
-
+#include <Event/WindowClosedEvent.h>
+#include <Event/WindowResizedEvent.h>
 #include <Inputs/IKeyboardEventCallback.h>
 #include <Inputs/IMouseEventCallback.h>
 #include <Inputs/ITextInputEventCallback.h>
-
-#include <Core/IInitializable.h>
-#include <Core/IUpdatable.h>
-#include <Core/IRenderable.h>
-#include <Core/IEventable.h>
-
-#include <Window/ICoreWindowEventCallback.h>
 #include <Layers/Layer.h>
 #include <Layers/LayerStack.h>
-#include <Window/WindowConfiguration.h>
 #include <Rendering/Swapchain.h>
+#include <Window/ICoreWindowEventCallback.h>
+#include <Window/WindowConfiguration.h>
+#include <Window/WindowProperty.h>
+#include <memory>
 
 namespace ZEngine
 {

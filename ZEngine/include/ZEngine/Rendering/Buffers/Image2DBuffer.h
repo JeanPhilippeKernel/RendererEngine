@@ -1,7 +1,7 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Specifications/TextureSpecification.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Buffers
 {
@@ -24,4 +24,4 @@ namespace ZEngine::Rendering::Buffers
         uint32_t               m_height{1};
         Hardwares::BufferImage m_buffer_image;
     };
-}
+} // namespace ZEngine::Rendering::Buffers

@@ -1,11 +1,11 @@
 #pragma once
-#include <string>
-#include <vector>
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
 #include <Layers/ImguiLayer.h>
-#include <ZEngineDef.h>
 #include <ZEngine/Components/UIComponentEvent.h>
+#include <ZEngineDef.h>
+#include <string>
+#include <vector>
 
 namespace ZEngine::Layers
 {
@@ -36,11 +36,11 @@ namespace ZEngine::Components::UI
         bool HasParentUI() const;
 
     protected:
-        bool                          m_visibility{false};
-        bool                          m_can_be_closed{false};
-        bool                          m_is_allowed_to_render{true};
-        std::string                   m_name;
-        WeakRef<Layers::ImguiLayer>   m_parent_layer;
-        WeakRef<UIComponent>          m_parent_ui;
+        bool                        m_visibility{false};
+        bool                        m_can_be_closed{false};
+        bool                        m_is_allowed_to_render{true};
+        std::string                 m_name;
+        WeakRef<Layers::ImguiLayer> m_parent_layer;
+        WeakRef<UIComponent>        m_parent_ui;
     };
 } // namespace ZEngine::Components::UI

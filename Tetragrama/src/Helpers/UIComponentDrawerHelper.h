@@ -67,11 +67,7 @@ namespace Tetragrama::Helpers
 
     void DrawColoredTextLine(const char* start, const char* end, const ImVec4& color);
 
-    void DrawEntityControl(
-        std::string_view                         component_name,
-        ZEngine::Rendering::Scenes::SceneEntity& entity,
-        ImGuiTreeNodeFlags                       flags,
-        std::function<void(void)>                callback);
+    void DrawEntityControl(std::string_view component_name, ZEngine::Rendering::Scenes::SceneEntity& entity, ImGuiTreeNodeFlags flags, std::function<void(void)> callback);
 
     template <typename TComponent>
     void DrawEntityComponentControl(

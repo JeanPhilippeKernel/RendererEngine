@@ -1,10 +1,10 @@
 #pragma once
-#include <vector>
-#include <string>
-#include <type_traits>
 #include <initializer_list>
-#include <typeinfo>
+#include <string>
 #include <string_view>
+#include <type_traits>
+#include <typeinfo>
+#include <vector>
 
 namespace ZEngine::Rendering::Buffers::Layout
 {
@@ -107,7 +107,6 @@ namespace ZEngine::Rendering::Buffers::Layout
 
             return x;
         }
-
 
         void ComputeOffset()
         {

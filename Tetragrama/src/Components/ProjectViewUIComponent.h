@@ -1,9 +1,11 @@
 #pragma once
-#include <string>
 #include <ZEngine/ZEngine.h>
+#include <string>
 
-namespace Tetragrama::Components {
-    class ProjectViewUIComponent : public ZEngine::Components::UI::UIComponent {
+namespace Tetragrama::Components
+{
+    class ProjectViewUIComponent : public ZEngine::Components::UI::UIComponent
+    {
     public:
         ProjectViewUIComponent(std::string_view name = "Project", bool visibility = true);
         virtual ~ProjectViewUIComponent();

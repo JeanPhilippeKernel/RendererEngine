@@ -26,7 +26,6 @@ namespace ZEngine::Rendering::Shaders::Compilers
         EShLanguage GetEShLanguage(const ShaderType type);
 
         void SetShaderRules(glslang::TShader& shader, ShaderInformation& information_list, TBuiltInResource& Resources);
-
     };
 
     class GlslangInitializer

@@ -1,6 +1,6 @@
 #include <pch.h>
-#include <glm/gtx/quaternion.hpp>
 #include <Rendering/Cameras/PerspectiveCamera.h>
+#include <glm/gtx/quaternion.hpp>
 
 namespace ZEngine::Rendering::Cameras
 {
@@ -13,12 +13,12 @@ namespace ZEngine::Rendering::Cameras
     PerspectiveCamera::PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad, float pitch_rad)
         : m_yaw_angle(yaw_rad), m_pitch_angle(pitch_rad)
     {
-        Fov           = glm::radians(field_of_view);
-        AspectRatio   = aspect_ratio;
-        ClipNear      = clip_near;
-        ClipFar       = clip_far;
-        Target        = {0.f, 0.f, 0.f};
-        Type          = CameraType::PERSPECTIVE;
+        Fov         = glm::radians(field_of_view);
+        AspectRatio = aspect_ratio;
+        ClipNear    = clip_near;
+        ClipFar     = clip_far;
+        Target      = {0.f, 0.f, 0.f};
+        Type        = CameraType::PERSPECTIVE;
     }
 
     void PerspectiveCamera::SetTarget(const glm::vec3& target)
@@ -56,7 +56,7 @@ namespace ZEngine::Rendering::Cameras
 
             if (Movement.MouseZoom)
             {
-                Zoom(delta.y *0.1f);
+                Zoom(delta.y * 0.1f);
             }
         }
         m_mouse_pos = mouse_position;
@@ -91,9 +91,9 @@ namespace ZEngine::Rendering::Cameras
 
     void PerspectiveCamera::SetViewport(float width, float height)
     {
-        AspectRatio            = width / height;
-        m_viewport_width       = width;
-        m_viewport_height      = height;
+        AspectRatio       = width / height;
+        m_viewport_width  = width;
+        m_viewport_height = height;
     }
 
     glm::mat4 PerspectiveCamera::GetViewMatrix()
@@ -108,10 +108,10 @@ namespace ZEngine::Rendering::Cameras
     glm::mat4 PerspectiveCamera::GetPerspectiveMatrix() const
     {
         /*
-        * Ref : https://johannesugb.github.io/gpu-programming/why-do-opengl-proj-matrices-fail-in-vulkan/
-        * Unlike the article, for our implementation we decided to use have the y-axis Up.
-        * For future Gfx API we may want to revisit/adapt it.
-        */
+         * Ref : https://johannesugb.github.io/gpu-programming/why-do-opengl-proj-matrices-fail-in-vulkan/
+         * Unlike the article, for our implementation we decided to use have the y-axis Up.
+         * For future Gfx API we may want to revisit/adapt it.
+         */
         glm::mat4 I = glm::identity<glm::mat4>();
         I[2][2]     = -1;
 

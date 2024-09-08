@@ -1,10 +1,10 @@
 #pragma once
-#include <vector>
-#include <cmath>
-#include <glm/glm.hpp>
-#include <glm/gtc/constants.hpp>
 #include <Helpers/MemoryOperations.h>
 #include <ZEngineDef.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+#include <cmath>
+#include <vector>
 
 namespace ZEngine::Rendering::Buffers
 {
@@ -147,11 +147,7 @@ namespace ZEngine::Rendering::Buffers
             {
                 const int    ofs  = Channel * (y * Width + x);
                 const float* data = reinterpret_cast<const float*>(Buffer.data());
-                return glm::vec4(
-                    Channel > 0 ? data[ofs + 0] : 0.0f,
-                    Channel > 1 ? data[ofs + 1] : 0.0f,
-                    Channel > 2 ? data[ofs + 2] : 0.0f,
-                    Channel > 3 ? data[ofs + 3] : 0.0f);
+                return glm::vec4(Channel > 0 ? data[ofs + 0] : 0.0f, Channel > 1 ? data[ofs + 1] : 0.0f, Channel > 2 ? data[ofs + 2] : 0.0f, Channel > 3 ? data[ofs + 3] : 0.0f);
             }
 
             return glm::vec4();
@@ -167,7 +163,7 @@ namespace ZEngine::Rendering::Buffers
             {
                 return 4;
             }
-            
+
             return 0;
         }
 

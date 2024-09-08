@@ -26,4 +26,4 @@ namespace ZEngine::Rendering
         DESCRIPTORSET,
         RESOURCE_COUNT
     };
-}
+} // namespace ZEngine::Rendering

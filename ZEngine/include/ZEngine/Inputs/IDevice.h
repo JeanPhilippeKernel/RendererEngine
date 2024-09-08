@@ -1,15 +1,13 @@
 #pragma once
+#include <Inputs/KeyCode.h>
+#include <Window/CoreWindow.h>
+#include <ZEngineDef.h>
+#include <string.h>
+#include <algorithm>
+#include <memory>
 #include <string>
 #include <type_traits>
-#include <memory>
 #include <unordered_map>
-#include <algorithm>
-
-#include <Inputs/KeyCode.h>
-#include <ZEngineDef.h>
-#include <Window/CoreWindow.h>
-
-#include <string.h>
 
 namespace ZEngine::Inputs
 {

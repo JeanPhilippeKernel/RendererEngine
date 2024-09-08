@@ -1,7 +1,7 @@
 #pragma once
+#include <Helpers/ThreadSafeQueue.h>
 #include <atomic>
 #include <thread>
-#include <Helpers/ThreadSafeQueue.h>
 
 namespace ZEngine::Helpers
 {

@@ -1,6 +1,6 @@
 #pragma once
-#include <glm/glm.hpp>
 #include <assimp/matrix4x4.h>
+#include <glm/glm.hpp>
 
 namespace ZEngine::Helpers
 {

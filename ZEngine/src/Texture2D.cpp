@@ -1,9 +1,9 @@
 #include <pch.h>
 #include <Core/Coroutine.h>
-#include <Rendering/Textures/Texture2D.h>
 #include <Hardwares/VulkanDevice.h>
-#include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/Buffers/Bitmap.h>
+#include <Rendering/Primitives/ImageMemoryBarrier.h>
+#include <Rendering/Textures/Texture2D.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__
@@ -13,8 +13,8 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include <stb/stb_image_write.h>
 #include <stb/stb_image_resize.h>
+#include <stb/stb_image_write.h>
 
 namespace ZEngine::Rendering::Textures
 {

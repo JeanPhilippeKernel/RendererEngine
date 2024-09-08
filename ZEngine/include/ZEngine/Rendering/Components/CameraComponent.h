@@ -1,6 +1,6 @@
 #pragma once
-#include <ZEngineDef.h>
 #include <Controllers/ICameraController.h>
+#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Components
 {

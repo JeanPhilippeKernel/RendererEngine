@@ -1,11 +1,11 @@
 #include <pch.h>
-#include <Window/GlfwWindow/VulkanWindow.h>
 #include <Engine.h>
 #include <Inputs/KeyCode.h>
 #include <Logging/LoggerDefinition.h>
+#include <Window/GlfwWindow/VulkanWindow.h>
 
 #ifdef _WIN32
-    #define GLFW_EXPOSE_NATIVE_WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
 #endif
 #include <GLFW/glfw3native.h>
 

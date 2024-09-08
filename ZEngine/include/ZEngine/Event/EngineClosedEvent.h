@@ -2,27 +2,34 @@
 #include <Event/CoreEvent.h>
 #include <fmt/format.h>
 
-namespace ZEngine::Event {
-    class EngineClosedEvent : public CoreEvent {
+namespace ZEngine::Event
+{
+    class EngineClosedEvent : public CoreEvent
+    {
     public:
-        EngineClosedEvent(const char* r) : CoreEvent(), m_reason(r) {
+        EngineClosedEvent(const char* r) : CoreEvent(), m_reason(r)
+        {
             m_name = "EngineClosed";
         }
         ~EngineClosedEvent() = default;
 
-        void SetReason(const char* value) {
+        void SetReason(const char* value)
+        {
             m_reason = value;
         }
 
-        EventType GetType() const override {
+        EventType GetType() const override
+        {
             return GetStaticType();
         }
 
-        int GetCategory() const override {
+        int GetCategory() const override
+        {
             return GetStaticCategory();
         }
 
-        std::string ToString() const override {
+        std::string ToString() const override
+        {
             return fmt::format("EngineClosedEvent");
         }
 

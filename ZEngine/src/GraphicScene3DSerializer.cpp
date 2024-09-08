@@ -1,21 +1,20 @@
 #include <pch.h>
-#include <Serializers/GraphicScene3DSerializer.h>
+#include <Controllers/PerspectiveCameraController.h>
 #include <Core/Coroutine.h>
-#include <Rendering/Components/TransformComponent.h>
-#include <Rendering/Components/NameComponent.h>
+#include <Helpers/MeshHelper.h>
+#include <Managers/TextureManager.h>
+#include <Rendering/Components/CameraComponent.h>
 #include <Rendering/Components/GeometryComponent.h>
-#include <Rendering/Components/MaterialComponent.h>
 #include <Rendering/Components/LightComponent.h>
+#include <Rendering/Components/MaterialComponent.h>
+#include <Rendering/Components/NameComponent.h>
+#include <Rendering/Components/TransformComponent.h>
 #include <Rendering/Components/UUIComponent.h>
 #include <Rendering/Geometries/CubeGeometry.h>
-#include <Rendering/Textures/Texture.h>
-#include <Managers/TextureManager.h>
-#include <Rendering/Materials/StandardMaterial.h>
 #include <Rendering/Materials/BasicMaterial.h>
-#include <Rendering/Components/CameraComponent.h>
-#include <Controllers/PerspectiveCameraController.h>
-
-#include <Helpers/MeshHelper.h>
+#include <Rendering/Materials/StandardMaterial.h>
+#include <Rendering/Textures/Texture.h>
+#include <Serializers/GraphicScene3DSerializer.h>
 
 using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Components;
@@ -23,18 +22,23 @@ using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Rendering::Entities;
 using namespace ZEngine::Core;
 
-namespace YAML {
+namespace YAML
+{
     template <>
-    struct convert<glm::vec3> {
-        static Node encode(const glm::vec3& value) {
+    struct convert<glm::vec3>
+    {
+        static Node encode(const glm::vec3& value)
+        {
             Node node;
             node.push_back(value.x);
             node.push_back(value.y);
             node.push_back(value.z);
         }
 
-        static bool decode(const Node& node, glm::vec3& value) {
-            if (!node.IsSequence() || node.size() != 3) {
+        static bool decode(const Node& node, glm::vec3& value)
+        {
+            if (!node.IsSequence() || node.size() != 3)
+            {
                 return false;
             }
 
@@ -46,8 +50,10 @@ namespace YAML {
     };
 
     template <>
-    struct convert<glm::vec4> {
-        static Node encode(const glm::vec4& value) {
+    struct convert<glm::vec4>
+    {
+        static Node encode(const glm::vec4& value)
+        {
             Node node;
             node.push_back(value.x);
             node.push_back(value.y);
@@ -55,8 +61,10 @@ namespace YAML {
             node.push_back(value.w);
         }
 
-        static bool decode(const Node& node, glm::vec4& value) {
-            if (!node.IsSequence() || node.size() != 4) {
+        static bool decode(const Node& node, glm::vec4& value)
+        {
+            if (!node.IsSequence() || node.size() != 4)
+            {
                 return false;
             }
 
@@ -69,22 +77,24 @@ namespace YAML {
     };
 } // namespace YAML
 
-
-namespace ZEngine::Serializers {
-    GraphicScene3DSerializer::GraphicScene3DSerializer(const Ref<GraphicScene>& scene) : GraphicSceneSerializer() {
+namespace ZEngine::Serializers
+{
+    GraphicScene3DSerializer::GraphicScene3DSerializer(const Ref<GraphicScene>& scene) : GraphicSceneSerializer()
+    {
         m_scene                        = scene;
         auto directory                 = fmt::format("{0}/{1}", std::filesystem::current_path().string(), "Scenes");
         m_default_scene_directory_path = std::filesystem::path(directory);
     }
 
-    SerializeInformation GraphicScene3DSerializer::Serialize(std::string_view filename) {
+    SerializeInformation GraphicScene3DSerializer::Serialize(std::string_view filename)
+    {
         YAML::Emitter        output;
         SerializeInformation serialize_info{};
 
-        //if (auto scene = m_scene.lock()) {
-        //    output << YAML::BeginMap;
-        //    output << YAML::Key << "Scene" << YAML::Value << "Untitled";
-        //    output << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
+        // if (auto scene = m_scene.lock()) {
+        //     output << YAML::BeginMap;
+        //     output << YAML::Key << "Scene" << YAML::Value << "Untitled";
+        //     output << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
 
         //    scene->m_entity_registry->each([&scene, this, &output](entt::entity handle) {
         //        GraphicSceneEntity entity = GraphicSceneEntity::CreateWrapper(scene->GetRegistry(), handle);
@@ -94,15 +104,15 @@ namespace ZEngine::Serializers {
         //    output << YAML::EndMap;
         //}
 
-        //if (!std::filesystem::exists(m_default_scene_directory_path)) {
-        //    std::filesystem::create_directory(m_default_scene_directory_path);
-        //}
+        // if (!std::filesystem::exists(m_default_scene_directory_path)) {
+        //     std::filesystem::create_directory(m_default_scene_directory_path);
+        // }
 
-        //if (!output.good()) {
-        //    serialize_info.IsSuccess    = false;
-        //    serialize_info.ErrorMessage = output.GetLastError();
-        //} else {
-        //    const auto full_scene_file_path = fmt::format("{0}/{1}", m_default_scene_directory_path.string(), filename);
+        // if (!output.good()) {
+        //     serialize_info.IsSuccess    = false;
+        //     serialize_info.ErrorMessage = output.GetLastError();
+        // } else {
+        //     const auto full_scene_file_path = fmt::format("{0}/{1}", m_default_scene_directory_path.string(), filename);
 
         //    std::ofstream file_stream;
         //    file_stream.open(full_scene_file_path, std::ios::trunc | std::ios::ate);
@@ -115,11 +125,13 @@ namespace ZEngine::Serializers {
         return serialize_info;
     }
 
-    SerializeInformation GraphicScene3DSerializer::Deserialize(std::string_view filename) {
+    SerializeInformation GraphicScene3DSerializer::Deserialize(std::string_view filename)
+    {
         std::ifstream file_stream;
         const auto    full_scene_file_path = fmt::format("{0}/{1}", m_default_scene_directory_path.string(), filename);
         file_stream.open(full_scene_file_path, std::ifstream::in);
-        if (!file_stream.is_open()) {
+        if (!file_stream.is_open())
+        {
             return SerializeInformation{false, "Failed to open Scene file"};
         }
         file_stream.seekg(std::ifstream::beg);
@@ -128,16 +140,17 @@ namespace ZEngine::Serializers {
         content_stream << file_stream.rdbuf();
 
         YAML::Node scene_data = YAML::Load(content_stream);
-        if (!scene_data["Scene"]) {
+        if (!scene_data["Scene"])
+        {
             return SerializeInformation{false, "Unable to load the Scene file"};
         }
 
         if (auto scene = m_scene.lock())
         {
             SerializeInformation deserialization_info{};
-            //try
+            // try
             //{
-            //    ZENGINE_CORE_INFO("Deserializing Scene file: {0}", filename)
+            //     ZENGINE_CORE_INFO("Deserializing Scene file: {0}", filename)
 
             //    auto entities = scene_data["Entities"];
             //    if (entities)
@@ -302,7 +315,7 @@ namespace ZEngine::Serializers {
             //        }
             //    }
             //}
-            //catch (const std::exception& e)
+            // catch (const std::exception& e)
             //{
             //    deserialization_info.IsSuccess    = false;
             //    deserialization_info.ErrorMessage = e.what();
@@ -316,11 +329,13 @@ namespace ZEngine::Serializers {
         }
     }
 
-    void GraphicScene3DSerializer::SerializeSceneEntity(YAML::Emitter& emitter, const GraphicSceneEntity& entity) {
+    void GraphicScene3DSerializer::SerializeSceneEntity(YAML::Emitter& emitter, const GraphicSceneEntity& entity)
+    {
         emitter << YAML::BeginMap;
 
-        SerializeSceneEntityComponent<UUIComponent>(
-            emitter, entity, [](YAML::Emitter& emitter, UUIComponent& component) { emitter << YAML::Key << "Entity" << YAML::Value << uuids::to_string(component.Identifier); });
+        SerializeSceneEntityComponent<UUIComponent>(emitter, entity, [](YAML::Emitter& emitter, UUIComponent& component) {
+            emitter << YAML::Key << "Entity" << YAML::Value << uuids::to_string(component.Identifier);
+        });
 
         SerializeSceneEntityComponent<NameComponent>(emitter, entity, [](YAML::Emitter& emitter, NameComponent& component) {
             emitter << YAML::Key << "NameComponent";
@@ -338,18 +353,16 @@ namespace ZEngine::Serializers {
             emitter << YAML::EndMap;
         });
 
-        SerializeSceneEntityComponent<MeshComponent>(emitter, entity,
-            [this](YAML::Emitter& emitter, MeshComponent& component)
+        SerializeSceneEntityComponent<MeshComponent>(emitter, entity, [this](YAML::Emitter& emitter, MeshComponent& component) {
+            if (auto scene = m_scene.lock())
             {
-                if (auto scene = m_scene.lock())
-                {
-                    //const auto& mesh = scene->GetMesh(component.GetMeshID());
-                    //emitter << YAML::Key << "GeometryComponent";
-                    //emitter << YAML::BeginMap;
-                    //emitter << YAML::Key << "GeometryType" << YAML::Value << static_cast<int>(mesh.Type);
-                    //emitter << YAML::EndMap;
-                }
-            });
+                // const auto& mesh = scene->GetMesh(component.GetMeshID());
+                // emitter << YAML::Key << "GeometryComponent";
+                // emitter << YAML::BeginMap;
+                // emitter << YAML::Key << "GeometryType" << YAML::Value << static_cast<int>(mesh.Type);
+                // emitter << YAML::EndMap;
+            }
+        });
 
         SerializeSceneEntityComponent<MaterialComponent>(emitter, entity, [](YAML::Emitter& emitter, MaterialComponent& component) {
             auto material             = component.GetMaterials()[0]; // Todo : need to change to consider the list
@@ -359,7 +372,8 @@ namespace ZEngine::Serializers {
             emitter << YAML::BeginMap;
             emitter << YAML::Key << "MaterialShaderType" << YAML::Value << static_cast<int>(material_shader_type);
 
-            if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::STANDARD) {
+            if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::STANDARD)
+            {
                 auto standard_material   = reinterpret_cast<ZEngine::Rendering::Materials::StandardMaterial*>(material.get());
                 auto shininess           = standard_material->GetShininess();
                 auto tile_factor         = standard_material->GetTileFactor();
@@ -376,48 +390,48 @@ namespace ZEngine::Serializers {
                 {
                     emitter << YAML::Key << "DiffuseMap";
                     emitter << YAML::BeginMap;
-                    //emitter << YAML::Key << "FromFile" << YAML::Value << diffuse_map->IsFromFile();
-                    //if (diffuse_map->IsFromFile()) {
-                    //    emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(diffuse_map->GetFilePath());
-                    //} else {
-                    //    const auto color = diffuse_map->GetData();
-                    //    emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
-                    //}
+                    // emitter << YAML::Key << "FromFile" << YAML::Value << diffuse_map->IsFromFile();
+                    // if (diffuse_map->IsFromFile()) {
+                    //     emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(diffuse_map->GetFilePath());
+                    // } else {
+                    //     const auto color = diffuse_map->GetData();
+                    //     emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
+                    // }
                     emitter << YAML::EndMap;
                 }
 
                 {
                     emitter << YAML::Key << "SpecularMap";
                     emitter << YAML::BeginMap;
-                    //emitter << YAML::Key << "FromFile" << YAML::Value << specular_map->IsFromFile();
-                    //if (specular_map->IsFromFile()) {
-                    //    emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(specular_map->GetFilePath());
-                    //} else {
-                    //    const auto color = specular_map->GetData();
-                    //    emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
-                    //}
+                    // emitter << YAML::Key << "FromFile" << YAML::Value << specular_map->IsFromFile();
+                    // if (specular_map->IsFromFile()) {
+                    //     emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(specular_map->GetFilePath());
+                    // } else {
+                    //     const auto color = specular_map->GetData();
+                    //     emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
+                    // }
                     emitter << YAML::EndMap;
                 }
             }
 
-            if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::BASIC) {
+            if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::BASIC)
+            {
                 auto basic_material = reinterpret_cast<ZEngine::Rendering::Materials::BasicMaterial*>(material.get());
                 auto texture        = basic_material->GetTexture();
                 emitter << YAML::Key << "Texture";
                 emitter << YAML::BeginMap;
-                //emitter << YAML::Key << "FromFile" << YAML::Value << texture->IsFromFile();
-                //if (texture->IsFromFile()) {
-                //    emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(texture->GetFilePath());
-                //} else {
-                //    const auto color = texture->GetData();
-                //    emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
-                //}
+                // emitter << YAML::Key << "FromFile" << YAML::Value << texture->IsFromFile();
+                // if (texture->IsFromFile()) {
+                //     emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(texture->GetFilePath());
+                // } else {
+                //     const auto color = texture->GetData();
+                //     emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
+                // }
                 emitter << YAML::EndMap;
             }
 
             emitter << YAML::EndMap;
         });
-
 
         SerializeSceneEntityComponent<LightComponent>(emitter, entity, [](YAML::Emitter& emitter, LightComponent& component) {
             auto light      = component.GetLight();
@@ -426,7 +440,8 @@ namespace ZEngine::Serializers {
             emitter << YAML::Key << "LightComponent";
             emitter << YAML::BeginMap;
 
-            if (light_type == ZEngine::Rendering::Lights::LightType::DIRECTIONAL) {
+            if (light_type == ZEngine::Rendering::Lights::LightType::DIRECTIONAL)
+            {
                 // auto directional_light = reinterpret_cast<ZEngine::Rendering::Lights::DirectionalLight*>(light.get());
                 // emitter << YAML::Key << "LightType" << YAML::Value << static_cast<int>(light_type);
                 // emitter << YAML::Key << "Direction" << YAML::Value << directional_light->GetDirection();
@@ -439,22 +454,22 @@ namespace ZEngine::Serializers {
         });
 
         SerializeSceneEntityComponent<CameraComponent>(emitter, entity, [](YAML::Emitter& emitter, CameraComponent& component) {
-            //auto const camera_controller = component.GetCameraController();
-            //auto       camera            = component.GetCamera();
-            //auto       is_primary        = component.IsPrimaryCamera;
-            //auto       camera_type       = camera->GetCameraType();
+            // auto const camera_controller = component.GetCameraController();
+            // auto       camera            = component.GetCamera();
+            // auto       is_primary        = component.IsPrimaryCamera;
+            // auto       camera_type       = camera->GetCameraType();
 
-            //emitter << YAML::Key << "CameraComponent";
-            //emitter << YAML::BeginMap;
-            //emitter << YAML::Key << "IsPrimary" << YAML::Value << is_primary;
-            //emitter << YAML::Key << "CameraType" << YAML::Value << static_cast<int>(camera_type);
+            // emitter << YAML::Key << "CameraComponent";
+            // emitter << YAML::BeginMap;
+            // emitter << YAML::Key << "IsPrimary" << YAML::Value << is_primary;
+            // emitter << YAML::Key << "CameraType" << YAML::Value << static_cast<int>(camera_type);
 
-            //if (camera_type == Rendering::Cameras::CameraType::PERSPECTIVE) {
-            //    auto  perspective_controller = reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
-            //    float camera_fov             = ZEngine::Maths::degrees(perspective_controller->GetFieldOfView());
-            //    float camera_near            = perspective_controller->GetNear();
-            //    float camera_far             = perspective_controller->GetFar();
-            //    float aspect_ratio           = perspective_controller->GetAspectRatio();
+            // if (camera_type == Rendering::Cameras::CameraType::PERSPECTIVE) {
+            //     auto  perspective_controller = reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
+            //     float camera_fov             = ZEngine::Maths::degrees(perspective_controller->GetFieldOfView());
+            //     float camera_near            = perspective_controller->GetNear();
+            //     float camera_far             = perspective_controller->GetFar();
+            //     float aspect_ratio           = perspective_controller->GetAspectRatio();
 
             //    emitter << YAML::Key << "AspectRatio" << YAML::Value << aspect_ratio;
             //    emitter << YAML::Key << "FielOfViewDegree" << YAML::Value << camera_fov;

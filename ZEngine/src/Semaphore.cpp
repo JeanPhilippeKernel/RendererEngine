@@ -1,6 +1,6 @@
 #include <pch.h>
-#include <Rendering/Primitives/Semaphore.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Rendering/Primitives/Semaphore.h>
 
 namespace ZEngine::Rendering::Primitives
 {
@@ -8,9 +8,8 @@ namespace ZEngine::Rendering::Primitives
     {
         VkSemaphoreCreateInfo semaphore_create_info = {};
         semaphore_create_info.sType                 = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        ZENGINE_VALIDATE_ASSERT(
-            vkCreateSemaphore(device, &semaphore_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Semaphore")
+        auto device                                 = Hardwares::VulkanDevice::GetNativeDeviceHandle();
+        ZENGINE_VALIDATE_ASSERT(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Semaphore")
     }
 
     Semaphore::~Semaphore()

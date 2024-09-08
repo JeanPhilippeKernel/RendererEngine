@@ -1,15 +1,18 @@
 #pragma once
-#include <map>
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
+
+/*
+ * ^^^^ Headers above are not candidates for sorting by clang-format ^^^^^
+ */
+#include <GLFW/glfw3.h>
 #include <Hardwares/VulkanLayer.h>
-#include <Rendering/Primitives/Semaphore.h>
+#include <Rendering/Pools/CommandPool.h>
 #include <Rendering/Primitives/Fence.h>
 #include <Rendering/Primitives/ImageMemoryBarrier.h>
+#include <Rendering/Primitives/Semaphore.h>
 #include <Rendering/ResourceTypes.h>
-#include <Rendering/Pools/CommandPool.h>
-#include <GLFW/glfw3.h>
-#include <vk_mem_alloc.h>
-
+#include <map>
 
 namespace ZEngine::Window
 {
@@ -113,8 +116,8 @@ namespace ZEngine::Hardwares
             Rendering::Primitives::Semaphore* const render_complete_semaphore,
             Rendering::Primitives::Fence* const     frame_fence);
 
-        static Rendering::Pools::CommandPool*                  CreateCommandPool(Rendering::QueueType queue_type, uint64_t swapchain_id, bool present_on_swapchain);
-        static void                                            DisposeCommandPool(const Rendering::Pools::CommandPool* pool);
+        static Rendering::Pools::CommandPool* CreateCommandPool(Rendering::QueueType queue_type, uint64_t swapchain_id, bool present_on_swapchain);
+        static void                           DisposeCommandPool(const Rendering::Pools::CommandPool* pool);
 
         static Rendering::Pools::CommandPool* GetCommandPool(Rendering::QueueType queue_type);
 
@@ -145,10 +148,10 @@ namespace ZEngine::Hardwares
             uint32_t              layer_count           = 1U,
             VkImageCreateFlags    image_create_flag_bit = 0);
 
-        static VkSampler     CreateImageSampler();
-        static VkFormat      FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
-        static VkFormat      FindDepthFormat();
-        static VkImageView   CreateImageView(
+        static VkSampler   CreateImageSampler();
+        static VkFormat    FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
+        static VkFormat    FindDepthFormat();
+        static VkImageView CreateImageView(
             VkImage               image,
             VkFormat              image_format,
             VkImageViewType       image_view_type,

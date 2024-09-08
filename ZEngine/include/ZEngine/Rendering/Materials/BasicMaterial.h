@@ -1,9 +1,11 @@
 #pragma once
 #include <Rendering/Materials/ShaderMaterial.h>
 
-namespace ZEngine::Rendering::Materials {
+namespace ZEngine::Rendering::Materials
+{
 
-    class BasicMaterial : public ShaderMaterial {
+    class BasicMaterial : public ShaderMaterial
+    {
     public:
         explicit BasicMaterial();
         virtual ~BasicMaterial() = default;

@@ -1,10 +1,10 @@
 #pragma once
-#include <ZEngine/ZEngine.h>
-#include <vulkan/vulkan.h>
-#include <Components/Events/SceneViewportResizedEvent.h>
 #include <Components/Events/SceneViewportFocusedEvent.h>
+#include <Components/Events/SceneViewportResizedEvent.h>
 #include <Components/Events/SceneViewportUnfocusedEvent.h>
 #include <Messengers/Message.h>
+#include <ZEngine/ZEngine.h>
+#include <vulkan/vulkan.h>
 
 namespace Tetragrama::Components
 {

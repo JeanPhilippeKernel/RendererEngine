@@ -1,11 +1,13 @@
 #pragma once
-#include <Rendering/Materials/ShaderMaterial.h>
-#include <Rendering/Lights/Light.h>
 #include <Maths/Math.h>
+#include <Rendering/Lights/Light.h>
+#include <Rendering/Materials/ShaderMaterial.h>
 
-namespace ZEngine::Rendering::Materials {
+namespace ZEngine::Rendering::Materials
+{
 
-    class StandardMaterial : public ShaderMaterial {
+    class StandardMaterial : public ShaderMaterial
+    {
     public:
         explicit StandardMaterial();
         virtual ~StandardMaterial() = default;

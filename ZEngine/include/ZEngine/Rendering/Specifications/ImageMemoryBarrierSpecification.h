@@ -1,6 +1,6 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include <Rendering/Specifications/FormatSpecification.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Specifications
 {
@@ -16,4 +16,4 @@ namespace ZEngine::Rendering::Specifications
         VkPipelineStageFlagBits DestinationStageMask;
         uint32_t                LayerCount = 1;
     };
-}
+} // namespace ZEngine::Rendering::Specifications

@@ -4,7 +4,8 @@
 
 #ifdef ZENGINE_PLATFORM
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
 
     std::unique_ptr<ZEngine::Engine> engine{ZEngine::CreateEngine()};
     engine->Initialize();

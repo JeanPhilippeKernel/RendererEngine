@@ -1,15 +1,15 @@
 #pragma once
-#include <string>
-#include <vector>
-#include <functional>
-#include <map>
-#include <ZEngineDef.h>
 #include <Helpers/IntrusivePtr.h>
 #include <Rendering/Buffers/IndirectBuffer.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
+#include <Rendering/Scenes/GraphicScene.h>
 #include <Rendering/Specifications/TextureSpecification.h>
 #include <Rendering/Textures/Texture.h>
-#include <Rendering/Scenes/GraphicScene.h>
+#include <ZEngineDef.h>
+#include <functional>
+#include <map>
+#include <string>
+#include <vector>
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -68,9 +68,14 @@ namespace ZEngine::Rendering::Renderers
 
     struct IRenderGraphCallbackPass : public Helpers::RefCounted
     {
-        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder)                                                                                          = 0;
-        virtual void Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)                                             = 0;
-        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* const graph) = 0;
+        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder)                                              = 0;
+        virtual void Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) = 0;
+        virtual void Execute(
+            uint32_t                               frame_index,
+            Rendering::Scenes::SceneRawData* const scene_data,
+            RenderPasses::RenderPass*              pass,
+            Buffers::CommandBuffer*                command_buffer,
+            RenderGraph* const                     graph) = 0;
     };
 
     struct RenderGraphNode

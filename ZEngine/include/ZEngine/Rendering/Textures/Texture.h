@@ -1,7 +1,7 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Specifications/TextureSpecification.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Textures
 {

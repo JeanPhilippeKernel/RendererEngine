@@ -1,8 +1,8 @@
 #pragma once
+#include <Controllers/CameraControllerTypeEnums.h>
 #include <Controllers/IController.h>
 #include <Rendering/Cameras/Camera.h>
 #include <Window/CoreWindow.h>
-#include <Controllers/CameraControllerTypeEnums.h>
 
 namespace ZEngine::Controllers
 {

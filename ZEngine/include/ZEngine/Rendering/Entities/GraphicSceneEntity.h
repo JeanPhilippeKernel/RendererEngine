@@ -1,8 +1,8 @@
 #pragma once
-#include <ZEngineDef.h>
-#include <type_traits>
-#include <entt/entt.hpp>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngineDef.h>
+#include <entt/entt.hpp>
+#include <type_traits>
 
 namespace ZEngine::Rendering::Scenes
 {

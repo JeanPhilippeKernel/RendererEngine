@@ -1,8 +1,8 @@
 #pragma once
+#include <Event/CoreEvent.h>
+#include <Window/CoreWindow.h>
 #include <functional>
 #include <string>
-#include <Window/CoreWindow.h>
-#include <Event/CoreEvent.h>
 
 namespace ZEngine::Window
 {

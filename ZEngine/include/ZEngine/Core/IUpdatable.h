@@ -1,9 +1,11 @@
 #pragma once
 #include <Core/TimeStep.h>
 
-namespace ZEngine::Core {
+namespace ZEngine::Core
+{
 
-    struct IUpdatable {
+    struct IUpdatable
+    {
         IUpdatable()          = default;
         virtual ~IUpdatable() = default;
 

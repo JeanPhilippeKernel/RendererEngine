@@ -1,17 +1,15 @@
 #include <pch.h>
 #include <DockspaceUIComponent.h>
-#include <ZEngine/Logging/LoggerDefinition.h>
+#include <Editor.h>
 #include <Event/EventDispatcher.h>
-#include <imgui/src/imgui_internal.h>
+#include <Helpers/UIDispatcher.h>
+#include <Helpers/WindowsHelper.h>
+#include <Importers/AssimpImporter.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
-#include <Helpers/WindowsHelper.h>
-#include <Editor.h>
-#include <Helpers/UIDispatcher.h>
-
-
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <fmt/format.h>
-#include <Importers/AssimpImporter.h>
+#include <imgui/src/imgui_internal.h>
 
 namespace fs = std::filesystem;
 using namespace ZEngine::Components::UI::Event;
@@ -23,7 +21,6 @@ namespace Tetragrama::Components
     char        DockspaceUIComponent::s_save_as_input_buffer[1024]        = {0};
     std::string DockspaceUIComponent::s_asset_importer_report_msg         = "";
     float       DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
-
 
     DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility)
         : UIComponent(name, visibility, false), m_asset_importer(ZEngine::CreateScope<Importers::AssimpImporter>()),
@@ -68,7 +65,7 @@ namespace Tetragrama::Components
 
 #ifdef _WIN32
         std::replace(scene_fullname.begin(), scene_fullname.end(), '/', '\\'); // Todo : Move this replace into an helper function....
-#endif // _WIN32
+#endif                                                                         // _WIN32
 
         m_editor_serializer->Deserialize(scene_fullname);
     }
@@ -384,7 +381,7 @@ namespace Tetragrama::Components
             ImGui::SameLine();
             if (ImGui::Button("Cancel", ImVec2(120, 0)))
             {
-                m_open_exit = false;
+                m_open_exit        = false;
                 m_pending_shutdown = false;
                 ImGui::CloseCurrentPopup();
             }

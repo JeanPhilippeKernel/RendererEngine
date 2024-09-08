@@ -1,15 +1,18 @@
 #pragma once
-#include <ZEngineDef.h>
 #include <Event/CoreEvent.h>
 #include <Inputs/KeyCode.h>
+#include <ZEngineDef.h>
 
-namespace ZEngine::Event {
+namespace ZEngine::Event
+{
 
-    class KeyEvent : public CoreEvent {
+    class KeyEvent : public CoreEvent
+    {
     public:
         KeyEvent(ZENGINE_KEYCODE key) : m_keycode(key) {}
 
-        ZENGINE_KEYCODE GetKeyCode() const {
+        ZENGINE_KEYCODE GetKeyCode() const
+        {
             return m_keycode;
         }
 

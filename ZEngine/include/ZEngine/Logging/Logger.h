@@ -1,10 +1,10 @@
 #pragma once
-#include <mutex>
-#include <map>
-#include <ZEngineDef.h>
-#include <spdlog/spdlog.h>
 #include <Logging/LoggerConfiguration.h>
+#include <ZEngineDef.h>
 #include <spdlog/sinks/base_sink.h>
+#include <spdlog/spdlog.h>
+#include <map>
+#include <mutex>
 
 namespace ZEngine::Logging
 {

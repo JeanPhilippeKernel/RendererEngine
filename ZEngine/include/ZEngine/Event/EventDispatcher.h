@@ -1,10 +1,12 @@
 #pragma once
-#include <functional>
-#include <ZEngineDef.h>
 #include <Event/CoreEvent.h>
+#include <ZEngineDef.h>
+#include <functional>
 
-namespace ZEngine::Event {
-    class EventDispatcher {
+namespace ZEngine::Event
+{
+    class EventDispatcher
+    {
     public:
         template <typename T, typename = std::enable_if_t<std::is_base_of_v<CoreEvent, T>>>
         using EventFn = std::function<bool(T&)>;
@@ -16,9 +18,11 @@ namespace ZEngine::Event {
         EventDispatcher(CoreEvent& event) : m_event(event) {}
 
         template <typename K>
-        bool Dispatch(const EventFn<K>& func) {
+        bool Dispatch(const EventFn<K>& func)
+        {
 
-            if (m_event.GetType() == K::GetStaticType()) {
+            if (m_event.GetType() == K::GetStaticType())
+            {
                 m_event.SetHandled(func(dynamic_cast<K&>(m_event)));
                 return true;
             }
@@ -27,8 +31,10 @@ namespace ZEngine::Event {
         }
 
         template <typename K>
-        void ForwardTo(const ForwardEventFn<K>& func) {
-            if (m_event.GetType() == K::GetStaticType()) {
+        void ForwardTo(const ForwardEventFn<K>& func)
+        {
+            if (m_event.GetType() == K::GetStaticType())
+            {
                 func(dynamic_cast<K&>(m_event));
             }
         }

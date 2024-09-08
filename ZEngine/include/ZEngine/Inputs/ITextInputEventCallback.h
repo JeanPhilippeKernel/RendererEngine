@@ -1,9 +1,11 @@
 #pragma once
 #include <Event/TextInputEvent.h>
 
-namespace ZEngine::Inputs {
+namespace ZEngine::Inputs
+{
 
-    struct ITextInputEventCallback {
+    struct ITextInputEventCallback
+    {
         ITextInputEventCallback()  = default;
         ~ITextInputEventCallback() = default;
 

@@ -1,12 +1,14 @@
 #pragma once
 #include "../Event/WindowClosedEvent.h"
-#include "../Event/WindowResizedEvent.h"
 #include "../Event/WindowMaximizedEvent.h"
 #include "../Event/WindowMinimizedEvent.h"
+#include "../Event/WindowResizedEvent.h"
 #include "../Event/WindowsRestoredEvent.h"
 
-namespace ZEngine::Window {
-    struct ICoreWindowEventCallback {
+namespace ZEngine::Window
+{
+    struct ICoreWindowEventCallback
+    {
         ICoreWindowEventCallback()  = default;
         ~ICoreWindowEventCallback() = default;
 

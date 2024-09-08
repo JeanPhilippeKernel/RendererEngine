@@ -2,9 +2,11 @@
 
 #include <Event/CoreEvent.h>
 
-namespace ZEngine::Core {
+namespace ZEngine::Core
+{
 
-    struct IEventable {
+    struct IEventable
+    {
         IEventable()          = default;
         virtual ~IEventable() = default;
 

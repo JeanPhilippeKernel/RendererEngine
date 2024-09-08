@@ -1,6 +1,6 @@
 #include <pch.h>
-#include <Logging/LoggerDefinition.h>
 #include <Hardwares/VulkanLayer.h>
+#include <Logging/LoggerDefinition.h>
 
 namespace ZEngine::Hardwares
 {

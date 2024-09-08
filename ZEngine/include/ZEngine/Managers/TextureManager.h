@@ -6,9 +6,11 @@
 #include <filesystem>
 #include <future>
 
-namespace ZEngine::Managers {
+namespace ZEngine::Managers
+{
 
-    class CoreTextureManager : public IAssetManager<Rendering::Textures::Texture> {
+    class CoreTextureManager : public IAssetManager<Rendering::Textures::Texture>
+    {
     public:
         CoreTextureManager();
         virtual ~CoreTextureManager() = default;
@@ -41,7 +43,8 @@ namespace ZEngine::Managers {
         Ref<Rendering::Textures::Texture> Load(const char* filename) override;
     };
 
-    struct TextureManager {
+    struct TextureManager
+    {
     public:
         TextureManager()                                 = delete;
         TextureManager(const TextureManager&)            = delete;

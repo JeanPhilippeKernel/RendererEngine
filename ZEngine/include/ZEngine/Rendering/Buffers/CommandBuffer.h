@@ -1,12 +1,12 @@
 #pragma once
+#include <Rendering/Primitives/Fence.h>
+#include <Rendering/Primitives/ImageMemoryBarrier.h>
+#include <Rendering/Primitives/Semaphore.h>
+#include <Rendering/ResourceTypes.h>
+#include <ZEngineDef.h>
+#include <vulkan/vulkan.h>
 #include <array>
 #include <atomic>
-#include <vulkan/vulkan.h>
-#include <ZEngineDef.h>
-#include <Rendering/Primitives/Fence.h>
-#include <Rendering/Primitives/Semaphore.h>
-#include <Rendering/Primitives/ImageMemoryBarrier.h>
-#include <Rendering/ResourceTypes.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
@@ -17,7 +17,7 @@ namespace ZEngine::Hardwares
 {
     struct BufferView;
     struct BufferImage;
-}
+} // namespace ZEngine::Hardwares
 
 namespace ZEngine::Rendering::Buffers
 {
@@ -93,4 +93,4 @@ namespace ZEngine::Rendering::Buffers
         Ref<Primitives::Semaphore>                   m_signal_semaphore;
         WeakRef<Renderers::RenderPasses::RenderPass> m_active_render_pass;
     };
-}
+} // namespace ZEngine::Rendering::Buffers
