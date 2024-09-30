@@ -122,30 +122,45 @@ namespace ZEngine::Rendering::Textures
 
     Ref<Texture2D> Texture2D::Create(uint32_t width, uint32_t height)
     {
-        unsigned char image_data[] = {255, 255, 255, 255, '\0'};
 
         Specifications::TextureSpecification spec = {};
         spec.Width                                = width;
         spec.Height                               = height;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
         spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-        spec.Data                                 = image_data;
+
+        size_t                     data_size = width * height * spec.BytePerPixel;
+        std::vector<unsigned char> image_data(data_size, 255);
+
+        spec.Data = image_data.data();
         return Create(spec);
     }
 
     Ref<Texture2D> Texture2D::Create(uint32_t width, uint32_t height, float r, float g, float b, float a)
     {
-        unsigned char image_data[]                = {0, 0, 0, 0, '\0'};
-        image_data[0]                             = static_cast<unsigned char>(std::clamp(r, .0f, 255.0f));
-        image_data[1]                             = static_cast<unsigned char>(std::clamp(g, .0f, 255.0f));
-        image_data[2]                             = static_cast<unsigned char>(std::clamp(b, .0f, 255.0f));
-        image_data[3]                             = static_cast<unsigned char>(std::clamp(a, .0f, 255.0f));
         Specifications::TextureSpecification spec = {};
         spec.Width                                = width;
         spec.Height                               = height;
         spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
         spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-        spec.Data                                 = image_data;
+
+        size_t                     data_size = width * height * spec.BytePerPixel;
+        std::vector<unsigned char> image_data(data_size);
+
+        unsigned char r_byte = static_cast<unsigned char>(std::clamp(r * 255.0f, 0.0f, 255.0f));
+        unsigned char g_byte = static_cast<unsigned char>(std::clamp(g * 255.0f, 0.0f, 255.0f));
+        unsigned char b_byte = static_cast<unsigned char>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+        unsigned char a_byte = static_cast<unsigned char>(std::clamp(a * 255.0f, 0.0f, 255.0f));
+
+        for (size_t i = 0; i < data_size; i += spec.BytePerPixel)
+        {
+            image_data[i]     = r_byte;
+            image_data[i + 1] = g_byte;
+            image_data[i + 2] = b_byte;
+            image_data[i + 3] = a_byte;
+        }
+
+        spec.Data = image_data.data();
         return Create(spec);
     }
 
