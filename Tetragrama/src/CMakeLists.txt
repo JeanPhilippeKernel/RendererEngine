@@ -1,5 +1,3 @@
-include (${ENLISTMENT_ROOT}/dependencies.cmake)
-
 file (GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
 file (GLOB_RECURSE CPP_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 
@@ -43,9 +41,6 @@ target_compile_definitions(${TARGET_NAME}
         _UNICODE
 )
 
-target_link_libraries(${TARGET_NAME}
-    PRIVATE
-        imported::zEngineLib
-)
+target_link_libraries(${TARGET_NAME} PRIVATE zEngineLib)
 
 set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME "zEngineEditor")

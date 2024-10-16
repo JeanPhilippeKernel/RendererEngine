@@ -4,24 +4,18 @@ file (GLOB_RECURSE HEADER_FILES_LIST CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DI
 file (GLOB_RECURSE CPP_FILES_LIST CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 file (GLOB_RECURSE RESOURCE_FILES_LIST CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/../Resources/Shaders/*.*)
 
-# source_group (TREE ${PROJECT_SOURCE_DIR}/include PREFIX "Header Files" FILES ${HEADER_FILES_LIST})
-# source_group (TREE ${PROJECT_SOURCE_DIR}/src PREFIX "Source Files" FILES ${CPP_FILES_LIST})
-
 source_group (TREE ${PROJECT_SOURCE_DIR}/ZEngine PREFIX "Source Files" FILES ${HEADER_FILES_LIST} ${CPP_FILES_LIST})
 source_group (TREE ${PROJECT_SOURCE_DIR}/../Resources PREFIX "Resources Files" FILES ${RESOURCE_FILES_LIST})
 
 # ZEngine source files
 #
-# list (APPEND Sources ${CPP_FILES_LIST} GlfwWindow/VulkanWindow.cpp)
-
 add_library (zEngineLib
 	STATIC
 		${HEADER_FILES_LIST}
 		${CPP_FILES_LIST}
-		# ${Sources}
+		${RESOURCE_FILES_LIST}
 		${EXTERNAL_DIR}/ImGuizmo/ImGuizmo.h
 		${EXTERNAL_DIR}/ImGuizmo/ImGuizmo.cpp
-		# ${RESOURCE_FILES_LIST}
 )
 
 target_include_directories (zEngineLib
