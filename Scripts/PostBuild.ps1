@@ -60,16 +60,16 @@ $ContentsToProcess = @(
         Contents = @(
             switch ($SystemName) {
                 "Windows" {
-                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
-                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
+                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\$Configurations\Shaders"}
+                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\$Configurations\Settings"}
                 }
                 "Darwin" {
-                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Shaders"}
-                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\$Configurations\Settings"}
+                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\$Configurations\Shaders"}
+                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\$Configurations\Settings"}
                 }
                 "Linux" {
-                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\src\Shaders"}
-                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\src\Settings"}
+                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\Shaders"}
+                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\Settings"}
                 }
                 Default {
                     throw 'This system is not supported'
@@ -83,18 +83,18 @@ $ContentsToProcess = @(
         Contents = @(
             switch ($SystemName) {
                 "Windows" {
-                    @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\Editor"}
-                    @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Editor"}
+                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\Editor"}
+                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Editor"}
                 }
                 "Darwin" {
                     switch ($Architectures) {
                         "osx-x64" {
-                            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\Editor"}
-                            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Editor"}
                         }
                         "osx-arm64" {
-                            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\Editor"}
-                            @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Editor"}
                         }
                         Default {
                             throw 'This architecture is not supported'
@@ -102,7 +102,7 @@ $ContentsToProcess = @(
                     }
                 }
                 "Linux" {
-                    @{ From = "$OuputBuildDirectory\Tetragrama\src\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\Editor"}
+                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\Editor"}
                 }
                 Default {
                     throw 'This system is not supported'
