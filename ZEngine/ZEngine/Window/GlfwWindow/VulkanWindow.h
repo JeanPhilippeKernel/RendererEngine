@@ -32,7 +32,9 @@ namespace ZEngine::Window::GLFWWindow
         virtual void  Update(Core::TimeStep delta_time) override;
         virtual void  Render() override;
 
-        Ref<Rendering::Swapchain> GetSwapchain() const override;
+        virtual bool                     CreateSurface(void* instance, void** out_window_surface) override;
+        virtual std::vector<std::string> GetRequiredExtensionLayers() override;
+        Ref<Rendering::Swapchain>        GetSwapchain() const override;
 
     public:
         bool OnEvent(Event::CoreEvent& event) override;

@@ -119,7 +119,7 @@ namespace ZEngine::Window::GLFWWindow
 
     void VulkanWindow::Initialize()
     {
-        m_swapchain = CreateRef<Rendering::Swapchain>(m_native_window);
+        m_swapchain = CreateRef<Rendering::Swapchain>();
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
@@ -343,6 +343,31 @@ namespace ZEngine::Window::GLFWWindow
         }
 
         m_swapchain->Present();
+    }
+
+    bool VulkanWindow::CreateSurface(void* instance, void** out_window_surface)
+    {
+        if (!instance || !out_window_surface)
+        {
+            return false;
+        }
+        VkInstance    vkInstance = reinterpret_cast<VkInstance>(instance);
+        VkSurfaceKHR* pSurface   = reinterpret_cast<VkSurfaceKHR*>(out_window_surface);
+        VkResult      result     = glfwCreateWindowSurface(vkInstance, m_native_window, nullptr, pSurface);
+        return (result == VK_SUCCESS);
+    }
+
+    std::vector<std::string> VulkanWindow::GetRequiredExtensionLayers()
+    {
+        uint32_t                 count                  = 0;
+        const char**             extensions_layer_names = glfwGetRequiredInstanceExtensions(&count);
+        std::vector<std::string> outputs(count);
+
+        for (unsigned i = 0; i < count; ++i)
+        {
+            outputs[i] = extensions_layer_names[i];
+        }
+        return outputs;
     }
 
     Ref<Rendering::Swapchain> VulkanWindow::GetSwapchain() const

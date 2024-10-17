@@ -19,13 +19,7 @@ namespace ZEngine
 
         m_window.reset(ZEngine::Window::Create(engine_configuration.WindowConfiguration));
 
-        const char** glfw_extensions_layer_name_collection;
-        uint32_t     glfw_extensions_layer_name_count = 0;
-        glfw_extensions_layer_name_collection         = glfwGetRequiredInstanceExtensions(&glfw_extensions_layer_name_count);
-        std::vector<const char*> window_additional_extension_layer_name_collection(
-            glfw_extensions_layer_name_collection, glfw_extensions_layer_name_collection + glfw_extensions_layer_name_count);
-
-        Hardwares::VulkanDevice::Initialize(m_window, window_additional_extension_layer_name_collection);
+        Hardwares::VulkanDevice::Initialize(m_window);
 
         m_window->Initialize();
         GraphicRenderer::SetMainSwapchain(m_window->GetSwapchain());

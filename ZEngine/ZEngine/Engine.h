@@ -44,6 +44,4 @@ namespace ZEngine
         static Core::TimeStep                   m_delta_time;
         static Ref<ZEngine::Window::CoreWindow> m_window;
     };
-
-    Engine* CreateEngine(const EngineConfiguration&);
 } // namespace ZEngine
