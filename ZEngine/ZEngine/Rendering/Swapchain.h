@@ -10,7 +10,7 @@ namespace ZEngine::Rendering
     class Swapchain : public Helpers::RefCounted
     {
     public:
-        Swapchain(void* native_window, bool is_surface_from_device = true);
+        Swapchain();
         ~Swapchain();
 
         void Resize();
@@ -30,10 +30,6 @@ namespace ZEngine::Rendering
         void Create();
         void Dispose();
 
-        void*                                    m_native_window{nullptr};
-        VkSurfaceKHR                             m_surface{VK_NULL_HANDLE};
-        VkSurfaceFormatKHR                       m_surface_format;
-        bool                                     m_is_surface_from_device;
         uint32_t                                 m_current_frame_index{0};
         uint32_t                                 m_last_frame_image_index{0};
         VkSwapchainKHR                           m_handle{VK_NULL_HANDLE};
@@ -41,7 +37,6 @@ namespace ZEngine::Rendering
         uint32_t                                 m_image_height{0};
         uint32_t                                 m_min_image_count{0};
         uint32_t                                 m_image_count{0};
-        VkSurfaceCapabilitiesKHR                 m_capabilities{};
         Ref<Renderers::RenderPasses::Attachment> m_attachment;
         std::vector<uint32_t>                    m_queue_family_index_collection;
         std::vector<VkImage>                     m_image_collection;

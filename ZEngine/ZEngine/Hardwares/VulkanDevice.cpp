@@ -53,7 +53,7 @@ namespace ZEngine::Hardwares
     std::map<Rendering::QueueType, std::map<uint32_t, std::vector<QueueSubmitInfo>>> VulkanDevice::s_queue_submit_info_pool            = {};
     std::deque<DirtyResource>                                                        VulkanDevice::s_dirty_resource_collection         = {};
 
-    void VulkanDevice::Initialize(const Ref<Window::CoreWindow>& window, const std::vector<const char*>& additional_extension_layer_name_collection)
+    void VulkanDevice::Initialize(const Ref<Window::CoreWindow>& window)
     {
         /*Create Vulkan Instance*/
         VkApplicationInfo app_info                = {};
@@ -121,11 +121,12 @@ namespace ZEngine::Hardwares
             }
         }
 
+        auto additional_extension_layer_name_collection = window->GetRequiredExtensionLayers();
         if (!additional_extension_layer_name_collection.empty())
         {
             for (const auto& extension : additional_extension_layer_name_collection)
             {
-                enabled_extension_layer_name_collection.push_back(extension);
+                enabled_extension_layer_name_collection.push_back(extension.c_str());
             }
         }
 
@@ -165,9 +166,7 @@ namespace ZEngine::Hardwares
             __createDebugMessengerPtr(s_vulkan_instance, &messenger_create_info, nullptr, &s_debug_messenger);
         }
 
-        ZENGINE_VALIDATE_ASSERT(
-            glfwCreateWindowSurface(s_vulkan_instance, reinterpret_cast<GLFWwindow*>(window->GetNativeWindow()), nullptr, &s_surface) == VK_SUCCESS,
-            "Failed Window Surface from GLFW")
+        ZENGINE_VALIDATE_ASSERT(window->CreateSurface(s_vulkan_instance, reinterpret_cast<void**>(&s_surface)), "Failed Window Surface from GLFW")
 
         /*Create Vulkan Device*/
         ZENGINE_VALIDATE_ASSERT(s_vulkan_instance != VK_NULL_HANDLE, "A Vulkan Instance must be created first!")

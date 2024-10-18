@@ -2,7 +2,6 @@
 #include <Layers/ImguiLayer.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
-#include <Window/GlfwWindow/VulkanWindow.h>
 #include <ZEngineDef.h>
 #include <fmt/format.h>
 

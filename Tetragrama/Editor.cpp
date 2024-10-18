@@ -6,6 +6,7 @@
 #include <fmt/format.h>
 
 using namespace Tetragrama::Messengers;
+using namespace ZEngine;
 
 namespace Tetragrama
 {
@@ -34,18 +35,21 @@ namespace Tetragrama
             title = fmt::format("{0} - Active Scene : {1}", title, s_editor_scene->GetName());
         }
         m_engine_configuration.WindowConfiguration = {.EnableVsync = true, .Title = title, .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
+
+        m_window.reset(ZEngine::Window::Create(m_engine_configuration.WindowConfiguration));
     }
 
     Editor::~Editor()
     {
         m_ui_layer.reset();
         m_render_layer.reset();
+        m_window.reset();
         ZEngine::Engine::Dispose();
     }
 
     void Editor::Initialize()
     {
-        ZEngine::Engine::Initialize(m_engine_configuration);
+        ZEngine::Engine::Initialize(m_engine_configuration, m_window);
 
         using PairFloat = std::pair<float, float>;
         MESSENGER_REGISTER(
@@ -80,7 +84,7 @@ namespace Tetragrama
 
     void Editor::Run()
     {
-        ZEngine::Engine::Start();
+        ZEngine::Engine::Run();
     }
 
     const EditorConfiguration& Editor::GetCurrentEditorConfiguration()

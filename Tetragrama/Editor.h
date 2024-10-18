@@ -2,6 +2,7 @@
 #include <Layers/RenderLayer.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Layers/ImguiLayer.h>
+#include <ZEngine/Window/CoreWindow.h>
 #include <ZEngine/ZEngineDef.h>
 
 namespace Tetragrama::Serializers
@@ -68,6 +69,9 @@ namespace Tetragrama
         static const EditorConfiguration& GetCurrentEditorConfiguration();
         static ZEngine::Ref<EditorScene>  GetCurrentEditorScene();
         static void                       SetCurrentEditorScene(EditorScene&&);
+
+    private:
+        ZEngine::Ref<ZEngine::Window::CoreWindow> m_window;
 
     private:
         static EditorConfiguration                s_editor_configuration;

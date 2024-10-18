@@ -19,12 +19,6 @@
 #include <Window/ICoreWindowEventCallback.h>
 #include <Window/WindowConfiguration.h>
 #include <Window/WindowProperty.h>
-#include <memory>
-
-namespace ZEngine
-{
-    class Engine;
-}
 
 namespace ZEngine::Layers
 {
@@ -60,18 +54,19 @@ namespace ZEngine::Window
         virtual void             SetTitle(std::string_view title) = 0;
         virtual bool             IsMinimized() const              = 0;
 
-        virtual bool IsVSyncEnable() const                                = 0;
-        virtual void SetVSync(bool value)                                 = 0;
-        virtual void SetCallbackFunction(const EventCallbackFn& callback) = 0;
+        virtual bool                  IsVSyncEnable() const                                = 0;
+        virtual void                  SetVSync(bool value)                                 = 0;
+        virtual void                  SetCallbackFunction(const EventCallbackFn& callback) = 0;
+        virtual const WindowProperty& GetWindowProperty() const                            = 0;
 
-        virtual void* GetNativeWindow() const = 0;
+        virtual bool                      CreateSurface(void* instance, void** out_window_surface) = 0;
+        virtual std::vector<std::string>  GetRequiredExtensionLayers()                             = 0;
+        virtual void*                     GetNativeWindow() const                                  = 0;
+        virtual Ref<Rendering::Swapchain> GetSwapchain() const                                     = 0;
 
-        virtual Ref<Rendering::Swapchain> GetSwapchain() const = 0;
-
-        virtual const WindowProperty& GetWindowProperty() const = 0;
-
-        virtual void  PollEvent() = 0;
-        virtual float GetTime()   = 0;
+        virtual void  PollEvent()    = 0;
+        virtual float GetTime()      = 0;
+        virtual float GetDeltaTime() = 0;
 
         virtual void ForwardEventToLayers(Event::CoreEvent& event);
 
@@ -81,6 +76,7 @@ namespace ZEngine::Window
         virtual void PushLayer(Ref<Layers::Layer>&& layer);
 
     protected:
+        Core::TimeStep                              m_delta_time;
         WindowProperty                              m_property;
         ZEngine::Scope<ZEngine::Layers::LayerStack> m_layer_stack_ptr{nullptr};
     };

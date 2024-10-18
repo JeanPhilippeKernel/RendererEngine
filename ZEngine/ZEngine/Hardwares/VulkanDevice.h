@@ -5,7 +5,6 @@
 /*
  * ^^^^ Headers above are not candidates for sorting by clang-format ^^^^^
  */
-#include <GLFW/glfw3.h>
 #include <Hardwares/VulkanLayer.h>
 #include <Rendering/Pools/CommandPool.h>
 #include <Rendering/Primitives/Fence.h>
@@ -82,7 +81,7 @@ namespace ZEngine::Hardwares
         VulkanDevice(const VulkanDevice&) = delete;
         ~VulkanDevice()                   = delete;
 
-        static void Initialize(const Ref<Window::CoreWindow>& window, const std::vector<const char*>& additional_extension_layer_name_collection);
+        static void Initialize(const Ref<Window::CoreWindow>& window);
         static void Deinitialize();
         static void Dispose();
 

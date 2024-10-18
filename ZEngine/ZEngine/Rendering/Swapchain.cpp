@@ -9,15 +9,12 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering
 {
-    Swapchain::Swapchain(void* native_window, bool is_surface_from_device)
+    Swapchain::Swapchain()
     {
         std::random_device                                rd;
         std::mt19937                                      gen(rd());
         std::uniform_int_distribution<unsigned long long> dis(std::numeric_limits<std::uint64_t>::min(), std::numeric_limits<std::uint64_t>::max());
         m_identifier = dis(gen);
-
-        m_is_surface_from_device = is_surface_from_device;
-        m_native_window          = native_window;
 
         /* Create Attachment */
         Specifications::AttachmentSpecification attachment_specification = {};
@@ -56,13 +53,6 @@ namespace ZEngine::Rendering
 
         m_frame_signal_fence_collection.clear();
         m_frame_signal_fence_collection.shrink_to_fit();
-
-        if (!m_is_surface_from_device)
-        {
-            auto instance = Hardwares::VulkanDevice::GetNativeInstanceHandle();
-            ZENGINE_DESTROY_VULKAN_HANDLE(instance, vkDestroySurfaceKHR, m_surface, nullptr)
-        }
-        m_native_window = nullptr; // we are not responsible of the cleanup
     }
 
     void Swapchain::Resize()
@@ -155,71 +145,29 @@ namespace ZEngine::Rendering
     {
         auto native_device   = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         auto physical_device = Hardwares::VulkanDevice::GetNativePhysicalDeviceHandle();
-
-        if (m_surface == VK_NULL_HANDLE)
-        {
-            if (m_is_surface_from_device)
-            {
-                m_surface        = Hardwares::VulkanDevice::GetSurface();
-                m_surface_format = Hardwares::VulkanDevice::GetSurfaceFormat();
-            }
-            else
-            {
-                auto instance = Hardwares::VulkanDevice::GetNativeInstanceHandle();
-                ZENGINE_VALIDATE_ASSERT(
-                    glfwCreateWindowSurface(instance, reinterpret_cast<GLFWwindow*>(m_native_window), nullptr, &m_surface) == VK_SUCCESS, "Failed Window Surface from GLFW");
-
-                uint32_t                        format_count              = 0;
-                std::vector<VkSurfaceFormatKHR> surface_format_collection = {};
-                vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, m_surface, &format_count, nullptr);
-                if (format_count != 0)
-                {
-                    surface_format_collection.resize(format_count);
-                    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, m_surface, &format_count, surface_format_collection.data());
-                }
-
-                m_surface_format = (surface_format_collection.size() > 0) ? surface_format_collection[0] : VkSurfaceFormatKHR{};
-                for (const VkSurfaceFormatKHR& format_khr : surface_format_collection)
-                {
-                    // default is: VK_FORMAT_B8G8R8A8_SRGB
-                    // but Imgui wants : VK_FORMAT_B8G8R8A8_UNORM ...
-                    if ((format_khr.format == VK_FORMAT_B8G8R8A8_UNORM) && (format_khr.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR))
-                    {
-                        m_surface_format = format_khr;
-                        break;
-                    }
-                }
-            }
-        }
+        auto surface         = Hardwares::VulkanDevice::GetSurface();
+        auto surface_format  = Hardwares::VulkanDevice::GetSurfaceFormat();
 
         // Surface capabilities
-        VkExtent2D extent = {};
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, m_surface, &m_capabilities);
-        if (m_capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+        VkExtent2D               extent = {};
+        VkSurfaceCapabilitiesKHR capabilities{};
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities);
+        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
         {
-            extent = m_capabilities.currentExtent;
-        }
-        else
-        {
-            int width, height;
-            glfwGetFramebufferSize(reinterpret_cast<GLFWwindow*>(m_native_window), &width, &height);
-
-            extent        = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
-            extent.width  = std::clamp(extent.width, m_capabilities.minImageExtent.width, m_capabilities.maxImageExtent.width);
-            extent.height = std::clamp(extent.height, m_capabilities.minImageExtent.height, m_capabilities.maxImageExtent.height);
+            extent = capabilities.currentExtent;
         }
 
-        m_min_image_count = std::clamp(m_min_image_count, m_capabilities.minImageCount + 1, m_capabilities.maxImageCount);
+        m_min_image_count = std::clamp(m_min_image_count, capabilities.minImageCount + 1, capabilities.maxImageCount);
 
         VkSwapchainCreateInfoKHR swapchain_create_info = {};
         swapchain_create_info.sType                    = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-        swapchain_create_info.surface                  = m_surface;
+        swapchain_create_info.surface                  = surface;
         swapchain_create_info.minImageCount            = m_min_image_count;
-        swapchain_create_info.imageFormat              = m_surface_format.format;
-        swapchain_create_info.imageColorSpace          = m_surface_format.colorSpace;
+        swapchain_create_info.imageFormat              = surface_format.format;
+        swapchain_create_info.imageColorSpace          = surface_format.colorSpace;
         swapchain_create_info.imageExtent              = extent;
         swapchain_create_info.imageArrayLayers         = 1;
-        swapchain_create_info.preTransform             = m_capabilities.currentTransform;
+        swapchain_create_info.preTransform             = capabilities.currentTransform;
         swapchain_create_info.presentMode              = Hardwares::VulkanDevice::GetPresentMode();
 
         std::set<uint32_t> device_family_indices = {
@@ -275,7 +223,7 @@ namespace ZEngine::Rendering
 
         for (size_t i = 0; i < m_image_view_collection.size(); ++i)
         {
-            m_image_view_collection[i] = Hardwares::VulkanDevice::CreateImageView(m_image_collection[i], m_surface_format.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+            m_image_view_collection[i] = Hardwares::VulkanDevice::CreateImageView(m_image_collection[i], surface_format.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
         }
 
         /*Swapchain framebuffer*/
