@@ -19,12 +19,6 @@
 #include <Window/ICoreWindowEventCallback.h>
 #include <Window/WindowConfiguration.h>
 #include <Window/WindowProperty.h>
-#include <memory>
-
-namespace ZEngine
-{
-    class Engine;
-}
 
 namespace ZEngine::Layers
 {
@@ -70,8 +64,9 @@ namespace ZEngine::Window
         virtual void*                     GetNativeWindow() const                                  = 0;
         virtual Ref<Rendering::Swapchain> GetSwapchain() const                                     = 0;
 
-        virtual void  PollEvent() = 0;
-        virtual float GetTime()   = 0;
+        virtual void  PollEvent()    = 0;
+        virtual float GetTime()      = 0;
+        virtual float GetDeltaTime() = 0;
 
         virtual void ForwardEventToLayers(Event::CoreEvent& event);
 
@@ -81,6 +76,7 @@ namespace ZEngine::Window
         virtual void PushLayer(Ref<Layers::Layer>&& layer);
 
     protected:
+        Core::TimeStep                              m_delta_time;
         WindowProperty                              m_property;
         ZEngine::Scope<ZEngine::Layers::LayerStack> m_layer_stack_ptr{nullptr};
     };

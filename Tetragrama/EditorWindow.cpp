@@ -1,8 +1,9 @@
 #include <pch.h>
-#include <Engine.h>
-#include <Inputs/KeyCode.h>
-#include <Logging/LoggerDefinition.h>
-#include <Window/GlfwWindow/VulkanWindow.h>
+#include <EditorWindow.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Event/EngineClosedEvent.h>
+#include <ZEngine/Inputs/KeyCode.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -11,10 +12,12 @@
 
 using namespace ZEngine;
 using namespace ZEngine::Event;
+using namespace ZEngine::Window;
+using namespace ZEngine::Rendering;
 
-namespace ZEngine::Window::GLFWWindow
+namespace Tetragrama
 {
-    VulkanWindow::VulkanWindow(const WindowConfiguration& configuration) : CoreWindow()
+    EditorWindow::EditorWindow(const WindowConfiguration& configuration) : CoreWindow()
     {
         m_property.Height = configuration.Height;
         m_property.Width  = configuration.Width;
@@ -63,33 +66,33 @@ namespace ZEngine::Window::GLFWWindow
         ZENGINE_CORE_INFO("Window created, Width = {0}, Height = {1}", m_property.Width, m_property.Height)
     }
 
-    uint32_t VulkanWindow::GetWidth() const
+    uint32_t EditorWindow::GetWidth() const
     {
         return m_property.Width;
     }
 
-    std::string_view VulkanWindow::GetTitle() const
+    std::string_view EditorWindow::GetTitle() const
     {
         return m_property.Title;
     }
 
-    bool VulkanWindow::IsMinimized() const
+    bool EditorWindow::IsMinimized() const
     {
         return m_property.IsMinimized;
     }
 
-    void VulkanWindow::SetTitle(std::string_view title)
+    void EditorWindow::SetTitle(std::string_view title)
     {
         m_property.Title = title;
         glfwSetWindowTitle(m_native_window, m_property.Title.c_str());
     }
 
-    bool VulkanWindow::IsVSyncEnable() const
+    bool EditorWindow::IsVSyncEnable() const
     {
         return m_property.VSync;
     }
 
-    void VulkanWindow::SetVSync(bool value)
+    void EditorWindow::SetVSync(bool value)
     {
         m_property.VSync = value;
         if (value)
@@ -102,45 +105,45 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::SetCallbackFunction(const EventCallbackFn& callback)
+    void EditorWindow::SetCallbackFunction(const EventCallbackFn& callback)
     {
         m_property.CallbackFn = callback;
     }
 
-    void* VulkanWindow::GetNativeWindow() const
+    void* EditorWindow::GetNativeWindow() const
     {
         return reinterpret_cast<void*>(m_native_window);
     }
 
-    const WindowProperty& VulkanWindow::GetWindowProperty() const
+    const WindowProperty& EditorWindow::GetWindowProperty() const
     {
         return m_property;
     }
 
-    void VulkanWindow::Initialize()
+    void EditorWindow::Initialize()
     {
         m_swapchain = CreateRef<Rendering::Swapchain>();
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
-        glfwSetFramebufferSizeCallback(m_native_window, VulkanWindow::__OnGlfwFrameBufferSizeChanged);
+        glfwSetFramebufferSizeCallback(m_native_window, EditorWindow::__OnGlfwFrameBufferSizeChanged);
 
-        glfwSetWindowCloseCallback(m_native_window, VulkanWindow::__OnGlfwWindowClose);
-        glfwSetWindowSizeCallback(m_native_window, VulkanWindow::__OnGlfwWindowResized);
-        glfwSetWindowMaximizeCallback(m_native_window, VulkanWindow::__OnGlfwWindowMaximized);
-        glfwSetWindowIconifyCallback(m_native_window, VulkanWindow::__OnGlfwWindowMinimized);
+        glfwSetWindowCloseCallback(m_native_window, EditorWindow::__OnGlfwWindowClose);
+        glfwSetWindowSizeCallback(m_native_window, EditorWindow::__OnGlfwWindowResized);
+        glfwSetWindowMaximizeCallback(m_native_window, EditorWindow::__OnGlfwWindowMaximized);
+        glfwSetWindowIconifyCallback(m_native_window, EditorWindow::__OnGlfwWindowMinimized);
 
-        glfwSetMouseButtonCallback(m_native_window, VulkanWindow::__OnGlfwMouseButtonRaised);
-        glfwSetScrollCallback(m_native_window, VulkanWindow::__OnGlfwMouseScrollRaised);
-        glfwSetKeyCallback(m_native_window, VulkanWindow::__OnGlfwKeyboardRaised);
+        glfwSetMouseButtonCallback(m_native_window, EditorWindow::__OnGlfwMouseButtonRaised);
+        glfwSetScrollCallback(m_native_window, EditorWindow::__OnGlfwMouseScrollRaised);
+        glfwSetKeyCallback(m_native_window, EditorWindow::__OnGlfwKeyboardRaised);
 
-        glfwSetCursorPosCallback(m_native_window, VulkanWindow::__OnGlfwCursorMoved);
-        glfwSetCharCallback(m_native_window, VulkanWindow::__OnGlfwTextInputRaised);
+        glfwSetCursorPosCallback(m_native_window, EditorWindow::__OnGlfwCursorMoved);
+        glfwSetCharCallback(m_native_window, EditorWindow::__OnGlfwTextInputRaised);
 
         glfwMaximizeWindow(m_native_window);
     }
 
-    void VulkanWindow::InitializeLayer()
+    void EditorWindow::InitializeLayer()
     {
         auto& layer_stack = *m_layer_stack_ptr;
 
@@ -155,7 +158,7 @@ namespace ZEngine::Window::GLFWWindow
         ZENGINE_CORE_INFO("Windows layers initialized")
     }
 
-    void VulkanWindow::Deinitialize()
+    void EditorWindow::Deinitialize()
     {
         auto& layer_stack = *m_layer_stack_ptr;
         for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
@@ -166,17 +169,27 @@ namespace ZEngine::Window::GLFWWindow
         m_swapchain.reset();
     }
 
-    void VulkanWindow::PollEvent()
+    void EditorWindow::PollEvent()
     {
         glfwPollEvents();
     }
 
-    float VulkanWindow::GetTime()
+    float EditorWindow::GetTime()
     {
         return (float) glfwGetTime();
     }
 
-    void VulkanWindow::__OnGlfwFrameBufferSizeChanged(GLFWwindow* window, int width, int height)
+    float EditorWindow::GetDeltaTime()
+    {
+        static float last_frame_time = 0.f;
+
+        float time      = GetTime();
+        m_delta_time    = time - last_frame_time;
+        last_frame_time = time;
+        return m_delta_time;
+    }
+
+    void EditorWindow::__OnGlfwFrameBufferSizeChanged(GLFWwindow* window, int width, int height)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -188,7 +201,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::__OnGlfwWindowClose(GLFWwindow* window)
+    void EditorWindow::__OnGlfwWindowClose(GLFWwindow* window)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -198,7 +211,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::__OnGlfwWindowResized(GLFWwindow* window, int width, int height)
+    void EditorWindow::__OnGlfwWindowResized(GLFWwindow* window, int width, int height)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -208,7 +221,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::__OnGlfwWindowMaximized(GLFWwindow* window, int maximized)
+    void EditorWindow::__OnGlfwWindowMaximized(GLFWwindow* window, int maximized)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -225,7 +238,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::__OnGlfwWindowMinimized(GLFWwindow* window, int minimized)
+    void EditorWindow::__OnGlfwWindowMinimized(GLFWwindow* window, int minimized)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -241,7 +254,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
+    void EditorWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -258,7 +271,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::__OnGlfwMouseScrollRaised(GLFWwindow* window, double xoffset, double yoffset)
+    void EditorWindow::__OnGlfwMouseScrollRaised(GLFWwindow* window, double xoffset, double yoffset)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -268,7 +281,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset)
+    void EditorWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -278,7 +291,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::__OnGlfwTextInputRaised(GLFWwindow* window, unsigned int character)
+    void EditorWindow::__OnGlfwTextInputRaised(GLFWwindow* window, unsigned int character)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -290,7 +303,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
+    void EditorWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -327,7 +340,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::Update(Core::TimeStep delta_time)
+    void EditorWindow::Update(Core::TimeStep delta_time)
     {
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
@@ -335,7 +348,7 @@ namespace ZEngine::Window::GLFWWindow
         }
     }
 
-    void VulkanWindow::Render()
+    void EditorWindow::Render()
     {
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
@@ -345,7 +358,7 @@ namespace ZEngine::Window::GLFWWindow
         m_swapchain->Present();
     }
 
-    bool VulkanWindow::CreateSurface(void* instance, void** out_window_surface)
+    bool EditorWindow::CreateSurface(void* instance, void** out_window_surface)
     {
         if (!instance || !out_window_surface)
         {
@@ -357,7 +370,7 @@ namespace ZEngine::Window::GLFWWindow
         return (result == VK_SUCCESS);
     }
 
-    std::vector<std::string> VulkanWindow::GetRequiredExtensionLayers()
+    std::vector<std::string> EditorWindow::GetRequiredExtensionLayers()
     {
         uint32_t                 count                  = 0;
         const char**             extensions_layer_names = glfwGetRequiredInstanceExtensions(&count);
@@ -370,24 +383,24 @@ namespace ZEngine::Window::GLFWWindow
         return outputs;
     }
 
-    Ref<Rendering::Swapchain> VulkanWindow::GetSwapchain() const
+    Ref<Rendering::Swapchain> EditorWindow::GetSwapchain() const
     {
         return m_swapchain;
     }
 
-    VulkanWindow::~VulkanWindow()
+    EditorWindow::~EditorWindow()
     {
         glfwSetErrorCallback(NULL);
         glfwDestroyWindow(m_native_window);
         glfwTerminate();
     }
 
-    uint32_t VulkanWindow::GetHeight() const
+    uint32_t EditorWindow::GetHeight() const
     {
         return m_property.Height;
     }
 
-    bool VulkanWindow::OnWindowClosed(WindowClosedEvent& event)
+    bool EditorWindow::OnWindowClosed(WindowClosedEvent& event)
     {
         glfwSetWindowShouldClose(m_native_window, GLFW_TRUE);
         ZENGINE_CORE_INFO("Window has been closed")
@@ -398,7 +411,7 @@ namespace ZEngine::Window::GLFWWindow
         return true;
     }
 
-    bool VulkanWindow::OnWindowResized(WindowResizedEvent& event)
+    bool EditorWindow::OnWindowResized(WindowResizedEvent& event)
     {
         if (event.GetWidth() > 0 && event.GetHeight() > 0)
         {
@@ -412,7 +425,7 @@ namespace ZEngine::Window::GLFWWindow
         return false;
     }
 
-    bool VulkanWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event)
+    bool EditorWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been minimized")
 
@@ -422,7 +435,7 @@ namespace ZEngine::Window::GLFWWindow
         return false;
     }
 
-    bool VulkanWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event)
+    bool EditorWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been maximized")
 
@@ -431,7 +444,7 @@ namespace ZEngine::Window::GLFWWindow
         return false;
     }
 
-    bool VulkanWindow::OnWindowRestored(Event::WindowRestoredEvent& event)
+    bool EditorWindow::OnWindowRestored(Event::WindowRestoredEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been restored")
 
@@ -441,75 +454,85 @@ namespace ZEngine::Window::GLFWWindow
         return false;
     }
 
-    bool VulkanWindow::OnEvent(Event::CoreEvent& event)
+    bool EditorWindow::OnEvent(Event::CoreEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&VulkanWindow::OnWindowClosed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&VulkanWindow::OnWindowResized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&EditorWindow::OnWindowClosed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&EditorWindow::OnWindowResized, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&VulkanWindow::OnKeyPressed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&VulkanWindow::OnKeyReleased, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&EditorWindow::OnKeyPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&EditorWindow::OnKeyReleased, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&VulkanWindow::OnMouseButtonPressed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&VulkanWindow::OnMouseButtonReleased, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&VulkanWindow::OnMouseButtonMoved, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&VulkanWindow::OnMouseButtonWheelMoved, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&EditorWindow::OnMouseButtonPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&EditorWindow::OnMouseButtonReleased, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&EditorWindow::OnMouseButtonMoved, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&EditorWindow::OnMouseButtonWheelMoved, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&VulkanWindow::OnTextInputRaised, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&EditorWindow::OnTextInputRaised, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::WindowMinimizedEvent>(std::bind(&VulkanWindow::OnWindowMinimized, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::WindowMaximizedEvent>(std::bind(&VulkanWindow::OnWindowMaximized, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::WindowRestoredEvent>(std::bind(&VulkanWindow::OnWindowRestored, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::WindowMinimizedEvent>(std::bind(&EditorWindow::OnWindowMinimized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::WindowMaximizedEvent>(std::bind(&EditorWindow::OnWindowMaximized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<Event::WindowRestoredEvent>(std::bind(&EditorWindow::OnWindowRestored, this, std::placeholders::_1));
 
         return true;
     }
 
-    bool VulkanWindow::OnKeyPressed(KeyPressedEvent& event)
+    bool EditorWindow::OnKeyPressed(KeyPressedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::KeyPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool VulkanWindow::OnKeyReleased(KeyReleasedEvent& event)
+    bool EditorWindow::OnKeyReleased(KeyReleasedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::KeyReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool VulkanWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event)
+    bool EditorWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool VulkanWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event)
+    bool EditorWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool VulkanWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event)
+    bool EditorWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonMovedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool VulkanWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event)
+    bool EditorWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::MouseButtonWheelEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
-    bool VulkanWindow::OnTextInputRaised(TextInputEvent& event)
+    bool EditorWindow::OnTextInputRaised(TextInputEvent& event)
     {
         Event::EventDispatcher event_dispatcher(event);
         event_dispatcher.ForwardTo<Event::TextInputEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
-} // namespace ZEngine::Window::GLFWWindow
+} // namespace Tetragrama
+
+namespace ZEngine::Window
+{
+    CoreWindow* Create(const WindowConfiguration& configuration)
+    {
+        auto core_window = new Tetragrama::EditorWindow(configuration);
+        core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
+        return core_window;
+    }
+} // namespace ZEngine::Window

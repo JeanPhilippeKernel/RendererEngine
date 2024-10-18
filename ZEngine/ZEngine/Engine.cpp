@@ -8,22 +8,19 @@ using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine
 {
-    bool                             Engine::m_request_terminate{false};
-    float                            Engine::m_last_frame_time{0.0f};
-    Core::TimeStep                   Engine::m_delta_time{0.0f};
-    Ref<ZEngine::Window::CoreWindow> Engine::m_window{nullptr};
+    static bool                        s_request_terminate{false};
+    static WeakRef<Window::CoreWindow> g_current_window = nullptr;
 
-    void Engine::Initialize(const EngineConfiguration& engine_configuration)
+    void Engine::Initialize(const EngineConfiguration& engine_configuration, const Ref<ZEngine::Window::CoreWindow>& window)
     {
+        g_current_window = window;
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
 
-        m_window.reset(ZEngine::Window::Create(engine_configuration.WindowConfiguration));
+        Hardwares::VulkanDevice::Initialize(window);
 
-        Hardwares::VulkanDevice::Initialize(m_window);
-
-        m_window->Initialize();
-        GraphicRenderer::SetMainSwapchain(m_window->GetSwapchain());
-        Rendering::Renderers::GraphicRenderer::Initialize();
+        window->Initialize();
+        GraphicRenderer::SetMainSwapchain(window->GetSwapchain());
+        GraphicRenderer::Initialize();
         /*
          * Renderer Post initialization
          */
@@ -31,32 +28,29 @@ namespace ZEngine
 
         for (const auto& layer : engine_configuration.WindowConfiguration.RenderingLayerCollection)
         {
-            m_window->PushLayer(layer);
+            window->PushLayer(layer);
         }
 
         for (const auto& layer : engine_configuration.WindowConfiguration.OverlayLayerCollection)
         {
-            m_window->PushOverlayLayer(layer);
+            window->PushOverlayLayer(layer);
         }
-        m_window->InitializeLayer();
-    }
-
-    void Engine::ProcessEvent()
-    {
-        m_window->PollEvent();
+        window->InitializeLayer();
     }
 
     void Engine::Deinitialize()
     {
-        m_window->Deinitialize();
-        Rendering::Renderers::GraphicRenderer::Deinitialize();
+        if (auto window = g_current_window.lock())
+        {
+            window->Deinitialize();
+        }
+        GraphicRenderer::Deinitialize();
         Hardwares::VulkanDevice::Deinitialize();
     }
 
     void Engine::Dispose()
     {
-        m_request_terminate = false;
-        m_window.reset();
+        s_request_terminate = false;
 
         Hardwares::VulkanDevice::Dispose();
 
@@ -64,66 +58,47 @@ namespace ZEngine
         Logging::Logger::Dispose();
     }
 
-    void Engine::Update(Core::TimeStep delta_time)
-    {
-        GraphicRenderer::Update();
-        m_window->Update(delta_time);
-    }
-
-    void Engine::Render()
-    {
-        m_window->Render();
-    }
-
     bool Engine::OnEngineClosed(Event::EngineClosedEvent& event)
     {
-        m_request_terminate = true;
+        s_request_terminate = true;
         return true;
-    }
-
-    void Engine::Start()
-    {
-        m_request_terminate = false;
-        Run();
-    }
-
-    Ref<ZEngine::Window::CoreWindow> Engine::GetWindow()
-    {
-        return m_window;
-    }
-
-    Core::TimeStep Engine::GetDeltaTime()
-    {
-        return m_delta_time;
     }
 
     void Engine::Run()
     {
-        while (true)
+        s_request_terminate = false;
+        while (auto window = g_current_window.lock())
         {
-            if (m_request_terminate)
+            if (s_request_terminate)
             {
                 break;
             }
 
-            float time        = m_window->GetTime() / 1000.0f;
-            m_delta_time      = time - m_last_frame_time;
-            m_last_frame_time = (m_delta_time >= 1.0f) ? m_last_frame_time : time + 1.0f; // waiting 1s to update
+            float dt = window->GetDeltaTime();
 
-            ProcessEvent();
+            window->PollEvent();
 
-            if (m_window->IsMinimized())
+            if (window->IsMinimized())
             {
                 continue;
             }
 
-            Update(m_delta_time);
-            Render();
+            /*On Update*/
+            GraphicRenderer::Update();
+            window->Update(dt);
+
+            /*On Render*/
+            window->Render();
         }
 
-        if (m_request_terminate)
+        if (s_request_terminate)
         {
             Deinitialize();
         }
+    }
+
+    Ref<Window::CoreWindow> Engine::GetWindow()
+    {
+        return g_current_window.lock();
     }
 } // namespace ZEngine
