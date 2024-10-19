@@ -1,5 +1,4 @@
 #include <pch.h>
-#include <Controllers/PerspectiveCameraController.h>
 #include <Core/Coroutine.h>
 #include <Helpers/MeshHelper.h>
 #include <Managers/TextureManager.h>
@@ -453,50 +452,50 @@ namespace ZEngine::Serializers
             emitter << YAML::EndMap;
         });
 
-        SerializeSceneEntityComponent<CameraComponent>(emitter, entity, [](YAML::Emitter& emitter, CameraComponent& component) {
-            // auto const camera_controller = component.GetCameraController();
-            // auto       camera            = component.GetCamera();
-            // auto       is_primary        = component.IsPrimaryCamera;
-            // auto       camera_type       = camera->GetCameraType();
+        // SerializeSceneEntityComponent<CameraComponent>(emitter, entity, [](YAML::Emitter& emitter, CameraComponent& component) {
+        //     // auto const camera_controller = component.GetCameraController();
+        //     // auto       camera            = component.GetCamera();
+        //     // auto       is_primary        = component.IsPrimaryCamera;
+        //     // auto       camera_type       = camera->GetCameraType();
 
-            // emitter << YAML::Key << "CameraComponent";
-            // emitter << YAML::BeginMap;
-            // emitter << YAML::Key << "IsPrimary" << YAML::Value << is_primary;
-            // emitter << YAML::Key << "CameraType" << YAML::Value << static_cast<int>(camera_type);
+        //    // emitter << YAML::Key << "CameraComponent";
+        //    // emitter << YAML::BeginMap;
+        //    // emitter << YAML::Key << "IsPrimary" << YAML::Value << is_primary;
+        //    // emitter << YAML::Key << "CameraType" << YAML::Value << static_cast<int>(camera_type);
 
-            // if (camera_type == Rendering::Cameras::CameraType::PERSPECTIVE) {
-            //     auto  perspective_controller = reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
-            //     float camera_fov             = ZEngine::Maths::degrees(perspective_controller->GetFieldOfView());
-            //     float camera_near            = perspective_controller->GetNear();
-            //     float camera_far             = perspective_controller->GetFar();
-            //     float aspect_ratio           = perspective_controller->GetAspectRatio();
+        //    // if (camera_type == Rendering::Cameras::CameraType::PERSPECTIVE) {
+        //    //     auto  perspective_controller = reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
+        //    //     float camera_fov             = ZEngine::Maths::degrees(perspective_controller->GetFieldOfView());
+        //    //     float camera_near            = perspective_controller->GetNear();
+        //    //     float camera_far             = perspective_controller->GetFar();
+        //    //     float aspect_ratio           = perspective_controller->GetAspectRatio();
 
-            //    emitter << YAML::Key << "AspectRatio" << YAML::Value << aspect_ratio;
-            //    emitter << YAML::Key << "FielOfViewDegree" << YAML::Value << camera_fov;
-            //    emitter << YAML::Key << "Near" << YAML::Value << camera_near;
-            //    emitter << YAML::Key << "Far" << YAML::Value << camera_far;
+        //    //    emitter << YAML::Key << "AspectRatio" << YAML::Value << aspect_ratio;
+        //    //    emitter << YAML::Key << "FielOfViewDegree" << YAML::Value << camera_fov;
+        //    //    emitter << YAML::Key << "Near" << YAML::Value << camera_near;
+        //    //    emitter << YAML::Key << "Far" << YAML::Value << camera_far;
 
-            //    auto camera_controller_type = camera_controller->GetControllerType();
-            //    emitter << YAML::Key << "CameraControllerType";
-            //    if (camera_controller_type == ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER) {
-            //        //auto       orbit_controller = reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(perspective_controller);
-            //        //auto const orbit_camera     = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
-            //        //float      radius           = orbit_camera->GetRadius();
-            //        //float      yaw_angle        = orbit_camera->GetYawAngle();
-            //        //float      pitch_angle      = orbit_camera->GetPitchAngle();
-            //        //auto       position         = orbit_camera->GetPosition();
-            //        //emitter << YAML::BeginMap;
-            //        //emitter << YAML::Key << "ControllerType" << YAML::Value << static_cast<int>(camera_controller_type);
-            //        //emitter << YAML::Key << "Radius" << YAML::Value << radius;
-            //        //emitter << YAML::Key << "YawAngleDegree" << YAML::Value << yaw_angle;
-            //        //emitter << YAML::Key << "PitchAngleDegree" << YAML::Value << pitch_angle;
-            //        //emitter << YAML::Key << "Position" << YAML::Value << position;
-            //        //emitter << YAML::EndMap;
-            //    }
-            //}
+        //    //    auto camera_controller_type = camera_controller->GetControllerType();
+        //    //    emitter << YAML::Key << "CameraControllerType";
+        //    //    if (camera_controller_type == ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER) {
+        //    //        //auto       orbit_controller = reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(perspective_controller);
+        //    //        //auto const orbit_camera     = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
+        //    //        //float      radius           = orbit_camera->GetRadius();
+        //    //        //float      yaw_angle        = orbit_camera->GetYawAngle();
+        //    //        //float      pitch_angle      = orbit_camera->GetPitchAngle();
+        //    //        //auto       position         = orbit_camera->GetPosition();
+        //    //        //emitter << YAML::BeginMap;
+        //    //        //emitter << YAML::Key << "ControllerType" << YAML::Value << static_cast<int>(camera_controller_type);
+        //    //        //emitter << YAML::Key << "Radius" << YAML::Value << radius;
+        //    //        //emitter << YAML::Key << "YawAngleDegree" << YAML::Value << yaw_angle;
+        //    //        //emitter << YAML::Key << "PitchAngleDegree" << YAML::Value << pitch_angle;
+        //    //        //emitter << YAML::Key << "Position" << YAML::Value << position;
+        //    //        //emitter << YAML::EndMap;
+        //    //    }
+        //    //}
 
-            emitter << YAML::EndMap;
-        });
+        //    emitter << YAML::EndMap;
+        //});
 
         emitter << YAML::EndMap;
     }

@@ -1,8 +1,6 @@
 #include <pch.h>
 #include <Layers/ImguiLayer.h>
-#include <Logging/LoggerDefinition.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
-#include <ZEngineDef.h>
 #include <fmt/format.h>
 
 using namespace ZEngine::Rendering::Renderers;
@@ -34,7 +32,7 @@ namespace ZEngine::Layers
         event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&ImguiLayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
         event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
+        // event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
 
         return false;
     }
@@ -152,32 +150,32 @@ namespace ZEngine::Layers
         return false;
     }
 
-    bool ImguiLayer::OnWindowClosed(Event::WindowClosedEvent& event)
-    {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::WindowClosedEvent>(std::bind(&ZEngine::Window::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
-        return true;
-    }
+    // bool ImguiLayer::OnWindowClosed(Event::WindowClosedEvent& event)
+    //{
+    //     Event::EventDispatcher event_dispatcher(event);
+    //     event_dispatcher.ForwardTo<Event::WindowClosedEvent>(std::bind(&ZEngine::Window::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
+    //     return true;
+    // }
 
-    bool ImguiLayer::OnWindowResized(Event::WindowResizedEvent&)
-    {
-        return false;
-    }
+    // bool ImguiLayer::OnWindowResized(Event::WindowResizedEvent&)
+    //{
+    //     return false;
+    // }
 
-    bool ImguiLayer::OnWindowMinimized(Event::WindowMinimizedEvent&)
-    {
-        return false;
-    }
+    // bool ImguiLayer::OnWindowMinimized(Event::WindowMinimizedEvent&)
+    //{
+    //     return false;
+    // }
 
-    bool ImguiLayer::OnWindowMaximized(Event::WindowMaximizedEvent&)
-    {
-        return false;
-    }
+    // bool ImguiLayer::OnWindowMaximized(Event::WindowMaximizedEvent&)
+    //{
+    //     return false;
+    // }
 
-    bool ImguiLayer::OnWindowRestored(Event::WindowRestoredEvent&)
-    {
-        return false;
-    }
+    // bool ImguiLayer::OnWindowRestored(Event::WindowRestoredEvent&)
+    //{
+    //     return false;
+    // }
 
     void ImguiLayer::Render()
     {

@@ -2,13 +2,13 @@
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
 #include <RenderLayer.h>
+using namespace Tetragrama::Controllers;
 
 using namespace ZEngine;
 using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Window;
 using namespace ZEngine::Core;
-using namespace ZEngine::Inputs;
 using namespace ZEngine::Event;
 
 namespace Tetragrama::Layers

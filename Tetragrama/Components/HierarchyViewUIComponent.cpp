@@ -1,14 +1,22 @@
 #include <pch.h>
 #include <HierarchyViewUIComponent.h>
 #include <ImGuizmo/ImGuizmo.h>
+#include <Inputs/Keyboard.h>
+#include <Inputs/Mouse.h>
 #include <MessageToken.h>
 #include <Messenger.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Inputs/IDevice.h>
+#include <ZEngine/Inputs/KeyCodeDefinition.h>
+#include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <glm/glm.hpp>
+#include <gtc/type_ptr.hpp>
 
 using namespace ZEngine;
-using namespace ZEngine::Rendering::Components;
-using namespace ZEngine::Rendering::Entities;
 using namespace ZEngine::Inputs;
 using namespace ZEngine::Rendering::Scenes;
+using namespace Tetragrama::Inputs;
+using namespace Tetragrama::Controllers;
 
 namespace Tetragrama::Components
 {
@@ -23,17 +31,17 @@ namespace Tetragrama::Components
     {
         if (auto active_window = Engine::GetWindow())
         {
-            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_T, active_window))
+            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_T, active_window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
             }
 
-            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_R, active_window))
+            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_R, active_window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::ROTATE;
             }
 
-            if (ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, active_window))
+            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, active_window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::SCALE;
             }
@@ -104,14 +112,14 @@ namespace Tetragrama::Components
             auto  initial_transform = global_transform;
             auto& local_transform   = GraphicScene::GetSceneNodeLocalTransform(m_selected_node_identifier);
 
-            if (camera && ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, Engine::GetWindow()))
+            if (camera && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, Engine::GetWindow()))
             {
                 active_editor_camera->SetTarget(glm::vec3(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
             }
 
             // snapping
             float snap_value        = 0.5f;
-            bool  is_snap_operation = ZEngine::Inputs::IDevice::As<ZEngine::Inputs::Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, Engine::GetWindow());
+            bool  is_snap_operation = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, Engine::GetWindow());
             if (is_snap_operation && static_cast<ImGuizmo::OPERATION>(m_gizmo_operation) == ImGuizmo::ROTATE)
             {
                 snap_value = 45.0f;

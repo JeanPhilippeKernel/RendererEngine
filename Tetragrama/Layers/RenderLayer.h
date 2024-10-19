@@ -35,12 +35,12 @@ namespace Tetragrama::Layers
         std::future<void> SceneRequestSelectEntityFromPixelMessageHandlerAsync(Messengers::GenericMessage<std::pair<int, int>>&);
 
     private:
-        ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;
-        ZEngine::Ref<EditorCameraController>                       m_editor_camera_controller;
-        std::queue<std::function<void(void)>>                      m_deferral_operation;
-        std::mutex                                                 m_message_handler_mutex;
-        std::mutex                                                 m_mutex;
-        std::queue<std::pair<float, float>>                        m_viewport_requested_size_collection;
+        ZEngine::Ref<ZEngine::Serializers::GraphicSceneSerializer>    m_scene_serializer;
+        ZEngine::Ref<Tetragrama::Controllers::EditorCameraController> m_editor_camera_controller;
+        std::queue<std::function<void(void)>>                         m_deferral_operation;
+        std::mutex                                                    m_message_handler_mutex;
+        std::mutex                                                    m_mutex;
+        std::queue<std::pair<float, float>>                           m_viewport_requested_size_collection;
 
     private:
         void HandleNewSceneMessage(const Messengers::EmptyMessage&);

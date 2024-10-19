@@ -405,7 +405,7 @@ namespace Tetragrama
         glfwSetWindowShouldClose(m_native_window, GLFW_TRUE);
         ZENGINE_CORE_INFO("Window has been closed")
 
-        Event::EngineClosedEvent e(event.GetName().c_str());
+        Event::EngineClosedEvent e(event.GetName());
         Event::EventDispatcher   event_dispatcher(e);
         event_dispatcher.Dispatch<Event::EngineClosedEvent>(std::bind(&Engine::OnEngineClosed, std::placeholders::_1));
         return true;

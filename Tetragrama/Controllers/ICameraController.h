@@ -1,10 +1,10 @@
 #pragma once
 #include <Controllers/CameraControllerTypeEnums.h>
 #include <Controllers/IController.h>
-#include <Rendering/Cameras/Camera.h>
-#include <Window/CoreWindow.h>
+#include <ZEngine/Rendering/Cameras/Camera.h>
+#include <ZEngine/Window/CoreWindow.h>
 
-namespace ZEngine::Controllers
+namespace Tetragrama::Controllers
 {
 
     struct ICameraController : public IController
@@ -14,10 +14,10 @@ namespace ZEngine::Controllers
 
         virtual ~ICameraController() = default;
 
-        virtual glm::vec3                                      GetPosition() const                    = 0;
-        virtual void                                           SetPosition(const glm::vec3& position) = 0;
-        virtual const ZEngine::Ref<Rendering::Cameras::Camera> GetCamera() const                      = 0;
-        virtual void                                           UpdateProjectionMatrix()               = 0;
+        virtual glm::vec3                                               GetPosition() const                    = 0;
+        virtual void                                                    SetPosition(const glm::vec3& position) = 0;
+        virtual const ZEngine::Ref<ZEngine::Rendering::Cameras::Camera> GetCamera() const                      = 0;
+        virtual void                                                    UpdateProjectionMatrix()               = 0;
 
         float GetRotationAngle() const
         {
@@ -86,4 +86,4 @@ namespace ZEngine::Controllers
         CameraControllerType                          m_controller_type{CameraControllerType::UNDEFINED};
         ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;
     };
-} // namespace ZEngine::Controllers
+} // namespace Tetragrama::Controllers

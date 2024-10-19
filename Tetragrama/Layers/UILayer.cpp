@@ -59,7 +59,7 @@ namespace Tetragrama::Layers
          */
         MESSENGER_REGISTER(
             ZEngine::Components::UI::UIComponent,
-            GenericMessage<ZEngine::Ref<EditorCameraController>>,
+            GenericMessage<ZEngine::Ref<Controllers::EditorCameraController>>,
             EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE,
             m_hierarchy_view_component.get(),
             return m_hierarchy_view_component->EditorCameraAvailableMessageHandlerAsync(*message_ptr))

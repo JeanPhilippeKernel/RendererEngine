@@ -7,13 +7,13 @@ namespace ZEngine::Event
     class EngineClosedEvent : public CoreEvent
     {
     public:
-        EngineClosedEvent(const char* r) : CoreEvent(), m_reason(r)
+        EngineClosedEvent(std::string_view r) : CoreEvent(), m_reason(r)
         {
             m_name = "EngineClosed";
         }
         ~EngineClosedEvent() = default;
 
-        void SetReason(const char* value)
+        void SetReason(std::string_view value)
         {
             m_reason = value;
         }

@@ -1,13 +1,10 @@
 #pragma once
 #include <Components/UIComponent.h>
 #include <Core/TimeStep.h>
-#include <Inputs/IKeyboardEventCallback.h>
-#include <Inputs/IMouseEventCallback.h>
-#include <Inputs/ITextInputEventCallback.h>
+#include <Inputs/IInputEventCallback.h>
 #include <Inputs/KeyCode.h>
 #include <Layers/Layer.h>
 #include <Rendering/Swapchain.h>
-#include <Window/ICoreWindowEventCallback.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <imconfig.h>
 #include <imgui.h>
@@ -22,11 +19,7 @@ namespace ZEngine::Components::UI
 
 namespace ZEngine::Layers
 {
-    class ImguiLayer : public Layer,
-                       public Inputs::IKeyboardEventCallback,
-                       public Inputs::IMouseEventCallback,
-                       public Inputs::ITextInputEventCallback,
-                       public Window::ICoreWindowEventCallback
+    class ImguiLayer : public Layer, public Inputs::IKeyboardEventCallback, public Inputs::IMouseEventCallback, public Inputs::ITextInputEventCallback
     {
 
     public:
@@ -57,11 +50,11 @@ namespace ZEngine::Layers
         bool OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent&) override;
         bool OnTextInputRaised(Event::TextInputEvent&) override;
 
-        bool OnWindowClosed(Event::WindowClosedEvent&) override;
-        bool OnWindowResized(Event::WindowResizedEvent&) override;
-        bool OnWindowMinimized(Event::WindowMinimizedEvent&) override;
-        bool OnWindowMaximized(Event::WindowMaximizedEvent&) override;
-        bool OnWindowRestored(Event::WindowRestoredEvent&) override;
+        // bool OnWindowClosed(Event::WindowClosedEvent&) override;
+        // bool OnWindowResized(Event::WindowResizedEvent&) override;
+        // bool OnWindowMinimized(Event::WindowMinimizedEvent&) override;
+        // bool OnWindowMaximized(Event::WindowMaximizedEvent&) override;
+        // bool OnWindowRestored(Event::WindowRestoredEvent&) override;
 
     private:
         static bool                                   m_initialized;
