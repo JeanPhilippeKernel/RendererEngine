@@ -73,12 +73,12 @@ namespace Tetragrama
         ZEngine::Ref<ZEngine::Window::CoreWindow> m_window;
 
     private:
-        static EditorConfiguration                s_editor_configuration;
-        static ZEngine::Ref<EditorScene>          s_editor_scene;
-        static std::recursive_mutex               s_mutex;
-        ZEngine::EngineConfiguration              m_engine_configuration;
-        ZEngine::Ref<Layers::ImguiLayer> m_ui_layer;
-        ZEngine::Ref<Layers::RenderLayer>         m_render_layer;
+        static EditorConfiguration        s_editor_configuration;
+        static ZEngine::Ref<EditorScene>  s_editor_scene;
+        static std::recursive_mutex       s_mutex;
+        ZEngine::EngineConfiguration      m_engine_configuration;
+        ZEngine::Ref<Layers::ImguiLayer>  m_ui_layer;
+        ZEngine::Ref<Layers::RenderLayer> m_render_layer;
     };
 
 } // namespace Tetragrama
