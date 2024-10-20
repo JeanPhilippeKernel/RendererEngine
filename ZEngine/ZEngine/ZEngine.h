@@ -1,6 +1,4 @@
 #pragma once
-#include "Components/UIComponent.h"
-#include "Components/UIComponentEvent.h"
 #include "Controllers/ICameraController.h"
 #include "Controllers/IController.h"
 #include "Controllers/PerspectiveCameraController.h"

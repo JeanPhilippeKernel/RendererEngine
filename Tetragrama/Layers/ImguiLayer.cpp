@@ -1,11 +1,13 @@
 #include <pch.h>
-#include <Layers/ImguiLayer.h>
+#include <ImguiLayer.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 #include <fmt/format.h>
+#include <imgui.h>
 
+using namespace ZEngine;
 using namespace ZEngine::Rendering::Renderers;
 
-namespace ZEngine::Layers
+namespace Tetragrama::Layers
 {
     bool ImguiLayer::m_initialized = false;
 
@@ -51,7 +53,7 @@ namespace ZEngine::Layers
         }
     }
 
-    void ImguiLayer::AddUIComponent(const Ref<Components::UI::UIComponent>& component)
+    void ImguiLayer::AddUIComponent(const Ref<Components::UIComponent>& component)
     {
         m_ui_components.push_back(component);
 
@@ -62,7 +64,7 @@ namespace ZEngine::Layers
         }
     }
 
-    void ImguiLayer::AddUIComponent(Ref<Components::UI::UIComponent>&& component)
+    void ImguiLayer::AddUIComponent(Ref<Components::UIComponent>&& component)
     {
         if (!component->HasParentLayer())
         {
@@ -71,9 +73,9 @@ namespace ZEngine::Layers
         m_ui_components.push_back(component);
     }
 
-    void ImguiLayer::AddUIComponent(std::vector<Ref<Components::UI::UIComponent>>&& components)
+    void ImguiLayer::AddUIComponent(std::vector<Ref<Components::UIComponent>>&& components)
     {
-        std::for_each(std::begin(components), std::end(components), [this](Ref<Components::UI::UIComponent>& component) {
+        std::for_each(std::begin(components), std::end(components), [this](Ref<Components::UIComponent>& component) {
             if (!component->HasParentLayer())
             {
                 component->SetParentLayer(this);
@@ -199,4 +201,4 @@ namespace ZEngine::Layers
             GraphicRenderer::EndImguiFrame();
         }
     }
-} // namespace ZEngine::Layers
+} // namespace Tetragrama::Layers

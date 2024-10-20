@@ -23,7 +23,7 @@ namespace Tetragrama::Layers
         GraphicScene::Initialize();
 
         m_editor_camera_controller = CreateRef<EditorCameraController>(150.0, 0.f, 45.f);
-        Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<Ref<EditorCameraController>>>(
+        Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::GenericMessage<Ref<EditorCameraController>>>(
             EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE, Messengers::GenericMessage<Ref<EditorCameraController>>{m_editor_camera_controller});
     }
 

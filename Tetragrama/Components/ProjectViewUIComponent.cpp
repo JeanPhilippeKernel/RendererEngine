@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <ProjectViewUIComponent.h>
+#include <imgui.h>
 
 namespace Tetragrama::Components
 {

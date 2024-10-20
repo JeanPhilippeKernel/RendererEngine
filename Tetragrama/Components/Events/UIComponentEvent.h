@@ -1,7 +1,7 @@
 #pragma once
-#include <Event/CoreEvent.h>
+#include <ZEngine/Event/CoreEvent.h>
 
-namespace ZEngine::Components::UI::Event
+namespace Tetragrama::Components::Event
 {
 
     class UIComponentEvent : public ZEngine::Event::CoreEvent
@@ -17,4 +17,4 @@ namespace ZEngine::Components::UI::Event
             return "UIComponentEvent";
         }
     };
-} // namespace ZEngine::Components::UI::Event
+} // namespace Tetragrama::Components::Event

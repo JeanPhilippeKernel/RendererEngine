@@ -1,10 +1,10 @@
 #pragma once
-#include <ZEngine/ZEngine.h>
+#include <UIComponent.h>
 #include <string>
 
 namespace Tetragrama::Components
 {
-    class ProjectViewUIComponent : public ZEngine::Components::UI::UIComponent
+    class ProjectViewUIComponent : public UIComponent
     {
     public:
         ProjectViewUIComponent(std::string_view name = "Project", bool visibility = true);

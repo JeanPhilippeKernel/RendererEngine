@@ -1,12 +1,16 @@
 #pragma once
 #include <Message.h>
-#include <ZEngine/ZEngine.h>
+#include <UIComponent.h>
+#include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/ZEngineDef.h>
+#include <future>
 #include <mutex>
 #include <string>
+#include <imgui.h>
 
 namespace Tetragrama::Components
 {
-    class InspectorViewUIComponent : public ZEngine::Components::UI::UIComponent
+    class InspectorViewUIComponent : public UIComponent
     {
     public:
         InspectorViewUIComponent(std::string_view name = "Inspector", bool visibility = true);

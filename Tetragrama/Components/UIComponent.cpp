@@ -1,7 +1,9 @@
 #include <pch.h>
-#include <Components/UIComponent.h>
+#include <UIComponent.h>
 
-namespace ZEngine::Components::UI
+using namespace ZEngine;
+
+namespace Tetragrama::Components
 {
     UIComponent::UIComponent(std::string_view name, bool visibility, bool can_be_closed) : m_name(name.data()), m_visibility(visibility), m_can_be_closed(can_be_closed) {}
 
@@ -53,4 +55,4 @@ namespace ZEngine::Components::UI
     {
         return m_parent_ui.expired() == false;
     }
-} // namespace ZEngine::Components::UI
+} // namespace Tetragrama::Components

@@ -1,14 +1,15 @@
 #pragma once
 #include <EditorCameraController.h>
 #include <Message.h>
-#include <ZEngine/Components/UIComponent.h>
+#include <UIComponent.h>
 #include <future>
 #include <mutex>
 #include <string>
+#include <imgui.h>
 
 namespace Tetragrama::Components
 {
-    class HierarchyViewUIComponent : public ZEngine::Components::UI::UIComponent
+    class HierarchyViewUIComponent : public UIComponent
     {
     public:
         HierarchyViewUIComponent(std::string_view name = "Hierarchy", bool visibility = true);

@@ -12,7 +12,6 @@
 #include <imgui/src/imgui_internal.h>
 
 namespace fs = std::filesystem;
-using namespace ZEngine::Components::UI::Event;
 
 namespace Tetragrama::Components
 {

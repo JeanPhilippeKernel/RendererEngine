@@ -1,9 +1,10 @@
 #pragma once
-#include <ZEngine/ZEngine.h>
+#include <UIComponent.h>
+#include <imgui.h>
 
 namespace Tetragrama::Components
 {
-    class AboutUIComponent : public ZEngine::Components::UI::UIComponent
+    class AboutUIComponent : public UIComponent
     {
     public:
         AboutUIComponent(std::string_view name = "AboutUIComponent", bool visibility = true) : UIComponent(name, visibility, true) {}

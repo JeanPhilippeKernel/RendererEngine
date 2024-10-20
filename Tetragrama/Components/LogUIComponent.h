@@ -1,10 +1,11 @@
 #pragma once
-#include <ZEngine/ZEngine.h>
+#include <UIComponent.h>
+#include <ZEngine/Logging/Logger.h>
 #include <string>
 
 namespace Tetragrama::Components
 {
-    class LogUIComponent : public ZEngine::Components::UI::UIComponent
+    class LogUIComponent : public UIComponent
     {
     public:
         LogUIComponent(std::string_view name = "Console", bool visibility = true);

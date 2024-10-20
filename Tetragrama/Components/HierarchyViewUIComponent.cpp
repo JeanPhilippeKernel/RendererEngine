@@ -11,6 +11,7 @@
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <glm/glm.hpp>
 #include <gtc/type_ptr.hpp>
+#include <imgui.h>
 
 using namespace ZEngine;
 using namespace ZEngine::Inputs;
@@ -75,8 +76,7 @@ namespace Tetragrama::Components
         if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
         {
             m_selected_node_identifier = -1;
-            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
-                EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, Messengers::EmptyMessage{});
+            Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, Messengers::EmptyMessage{});
         }
 
         RenderGuizmo();
@@ -174,7 +174,7 @@ namespace Tetragrama::Components
             m_selected_node_identifier = node_identifier;
 
             auto entity = GraphicScene::GetSceneNodeEntityWrapper(m_selected_node_identifier);
-            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::GenericMessage<SceneEntity>>(
+            Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::GenericMessage<SceneEntity>>(
                 EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::GenericMessage<SceneEntity>{std::move(entity)});
         }
 
@@ -196,8 +196,7 @@ namespace Tetragrama::Components
                 }
                 if (ImGui::MenuItem("Delete"))
                 {
-                    Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::EmptyMessage>(
-                        EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
+                    Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
                     request_entity_removal = true;
                 }
                 ImGui::EndPopup();

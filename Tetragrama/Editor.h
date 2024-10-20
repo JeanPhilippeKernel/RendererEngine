@@ -1,7 +1,6 @@
 #pragma once
 #include <Layers/RenderLayer.h>
 #include <ZEngine/Engine.h>
-#include <ZEngine/Layers/ImguiLayer.h>
 #include <ZEngine/Window/CoreWindow.h>
 #include <ZEngine/ZEngineDef.h>
 
@@ -78,7 +77,7 @@ namespace Tetragrama
         static ZEngine::Ref<EditorScene>          s_editor_scene;
         static std::recursive_mutex               s_mutex;
         ZEngine::EngineConfiguration              m_engine_configuration;
-        ZEngine::Ref<ZEngine::Layers::ImguiLayer> m_ui_layer;
+        ZEngine::Ref<Layers::ImguiLayer> m_ui_layer;
         ZEngine::Ref<Layers::RenderLayer>         m_render_layer;
     };
 

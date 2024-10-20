@@ -35,6 +35,7 @@ target_include_directories (${TARGET_NAME}
 	PRIVATE
         .
         ./Components
+        ./Components/Events
         ./Controllers
         ./Inputs
         ./Layers
