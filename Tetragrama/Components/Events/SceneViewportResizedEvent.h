@@ -1,10 +1,10 @@
 #pragma once
-#include <ZEngine/ZEngine.h>
+#include <UIComponentEvent.h>
 
 namespace Tetragrama::Components::Event
 {
 
-    class SceneViewportResizedEvent : public ZEngine::Components::UI::Event::UIComponentEvent
+    class SceneViewportResizedEvent : public UIComponentEvent
     {
     public:
         SceneViewportResizedEvent(float width, float heigth) : m_width(width), m_height(heigth) {}

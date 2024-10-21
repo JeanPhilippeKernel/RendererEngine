@@ -1,14 +1,16 @@
 #include <pch.h>
 #include <Controllers/PerspectiveCameraController.h>
-#include <Event/EventDispatcher.h>
 #include <Inputs/IDevice.h>
 #include <Inputs/KeyCodeDefinition.h>
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>
+#include <ZEngine/Event/EventDispatcher.h>
 
+using namespace ZEngine;
 using namespace ZEngine::Inputs;
+using namespace Tetragrama::Inputs;
 
-namespace ZEngine::Controllers
+namespace Tetragrama::Controllers
 {
 
     void PerspectiveCameraController::Initialize()
@@ -130,4 +132,4 @@ namespace ZEngine::Controllers
         return false;
     }
 
-} // namespace ZEngine::Controllers
+} // namespace Tetragrama::Controllers

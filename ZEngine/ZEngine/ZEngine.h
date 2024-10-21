@@ -1,6 +1,4 @@
 #pragma once
-#include "Components/UIComponent.h"
-#include "Components/UIComponentEvent.h"
 #include "Controllers/ICameraController.h"
 #include "Controllers/IController.h"
 #include "Controllers/PerspectiveCameraController.h"
@@ -8,8 +6,6 @@
 #include "Core/TimeStep.h"
 #include "Core/Utility.h"
 #include "Engine.h"
-#include "Event/EventCategory.h"
-#include "Event/EventType.h"
 #include "Inputs/IDevice.h"
 #include "Inputs/KeyCode.h"
 #include "Inputs/KeyCodeDefinition.h"

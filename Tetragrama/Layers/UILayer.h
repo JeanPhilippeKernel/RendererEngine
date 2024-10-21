@@ -6,11 +6,11 @@
 #include <Components/LogUIComponent.h>
 #include <Components/ProjectViewUIComponent.h>
 #include <Components/SceneViewportUIComponent.h>
-#include <ZEngine/ZEngine.h>
+#include <ImguiLayer.h>
 
 namespace Tetragrama::Layers
 {
-    class UILayer : public ZEngine::Layers::ImguiLayer
+    class UILayer : public ImguiLayer
     {
     public:
         UILayer(std::string_view name = "user interface layer") : ImguiLayer(name.data()) {}

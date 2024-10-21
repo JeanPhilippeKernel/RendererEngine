@@ -2,11 +2,12 @@
 #include <Importers/IAssetImporter.h>
 #include <Message.h>
 #include <Serializers/EditorSceneSerializer.h>
-#include <ZEngine/ZEngine.h>
+#include <UIComponent.h>
+#include <imgui.h>
 
 namespace Tetragrama::Components
 {
-    class DockspaceUIComponent : public ZEngine::Components::UI::UIComponent
+    class DockspaceUIComponent : public UIComponent
     {
     public:
         DockspaceUIComponent(std::string_view name = "Dockspace", bool visibility = true);

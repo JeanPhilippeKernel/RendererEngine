@@ -8,7 +8,6 @@
 /**/
 #include <ImGuizmo/ImGuizmo.h>
 
-using namespace ZEngine::Components::UI::Event;
 using namespace Tetragrama::Components::Event;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Hardwares;
@@ -64,7 +63,7 @@ namespace Tetragrama::Components
             auto mouse_bounded_x = static_cast<int>(mouse_position.x);
             auto mouse_bounded_y = static_cast<int>(mouse_position.y);
             auto message_data    = std::array{mouse_bounded_x, mouse_bounded_y};
-            Messengers::IMessenger::SendAsync<ZEngine::Components::UI::UIComponent, Messengers::ArrayValueMessage<int, 2>>(
+            Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::ArrayValueMessage<int, 2>>(
                 EDITOR_COMPONENT_SCENEVIEWPORT_CLICKED, Messengers::ArrayValueMessage<int, 2>{message_data});
         }
     }

@@ -1,14 +1,13 @@
 #include <pch.h>
-#include <Layers/ImguiLayer.h>
-#include <Logging/LoggerDefinition.h>
+#include <ImguiLayer.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
-#include <Window/GlfwWindow/VulkanWindow.h>
-#include <ZEngineDef.h>
 #include <fmt/format.h>
+#include <imgui.h>
 
+using namespace ZEngine;
 using namespace ZEngine::Rendering::Renderers;
 
-namespace ZEngine::Layers
+namespace Tetragrama::Layers
 {
     bool ImguiLayer::m_initialized = false;
 
@@ -35,7 +34,7 @@ namespace ZEngine::Layers
         event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&ImguiLayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
         event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
+        // event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
 
         return false;
     }
@@ -54,7 +53,7 @@ namespace ZEngine::Layers
         }
     }
 
-    void ImguiLayer::AddUIComponent(const Ref<Components::UI::UIComponent>& component)
+    void ImguiLayer::AddUIComponent(const Ref<Components::UIComponent>& component)
     {
         m_ui_components.push_back(component);
 
@@ -65,7 +64,7 @@ namespace ZEngine::Layers
         }
     }
 
-    void ImguiLayer::AddUIComponent(Ref<Components::UI::UIComponent>&& component)
+    void ImguiLayer::AddUIComponent(Ref<Components::UIComponent>&& component)
     {
         if (!component->HasParentLayer())
         {
@@ -74,9 +73,9 @@ namespace ZEngine::Layers
         m_ui_components.push_back(component);
     }
 
-    void ImguiLayer::AddUIComponent(std::vector<Ref<Components::UI::UIComponent>>&& components)
+    void ImguiLayer::AddUIComponent(std::vector<Ref<Components::UIComponent>>&& components)
     {
-        std::for_each(std::begin(components), std::end(components), [this](Ref<Components::UI::UIComponent>& component) {
+        std::for_each(std::begin(components), std::end(components), [this](Ref<Components::UIComponent>& component) {
             if (!component->HasParentLayer())
             {
                 component->SetParentLayer(this);
@@ -153,32 +152,32 @@ namespace ZEngine::Layers
         return false;
     }
 
-    bool ImguiLayer::OnWindowClosed(Event::WindowClosedEvent& event)
-    {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::WindowClosedEvent>(std::bind(&ZEngine::Window::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
-        return true;
-    }
+    // bool ImguiLayer::OnWindowClosed(Event::WindowClosedEvent& event)
+    //{
+    //     Event::EventDispatcher event_dispatcher(event);
+    //     event_dispatcher.ForwardTo<Event::WindowClosedEvent>(std::bind(&ZEngine::Window::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
+    //     return true;
+    // }
 
-    bool ImguiLayer::OnWindowResized(Event::WindowResizedEvent&)
-    {
-        return false;
-    }
+    // bool ImguiLayer::OnWindowResized(Event::WindowResizedEvent&)
+    //{
+    //     return false;
+    // }
 
-    bool ImguiLayer::OnWindowMinimized(Event::WindowMinimizedEvent&)
-    {
-        return false;
-    }
+    // bool ImguiLayer::OnWindowMinimized(Event::WindowMinimizedEvent&)
+    //{
+    //     return false;
+    // }
 
-    bool ImguiLayer::OnWindowMaximized(Event::WindowMaximizedEvent&)
-    {
-        return false;
-    }
+    // bool ImguiLayer::OnWindowMaximized(Event::WindowMaximizedEvent&)
+    //{
+    //     return false;
+    // }
 
-    bool ImguiLayer::OnWindowRestored(Event::WindowRestoredEvent&)
-    {
-        return false;
-    }
+    // bool ImguiLayer::OnWindowRestored(Event::WindowRestoredEvent&)
+    //{
+    //     return false;
+    // }
 
     void ImguiLayer::Render()
     {
@@ -202,4 +201,4 @@ namespace ZEngine::Layers
             GraphicRenderer::EndImguiFrame();
         }
     }
-} // namespace ZEngine::Layers
+} // namespace Tetragrama::Layers

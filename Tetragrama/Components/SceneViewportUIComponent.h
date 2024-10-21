@@ -3,12 +3,13 @@
 #include <Components/Events/SceneViewportResizedEvent.h>
 #include <Components/Events/SceneViewportUnfocusedEvent.h>
 #include <Messengers/Message.h>
-#include <ZEngine/ZEngine.h>
+#include <UIComponent.h>
+#include <imgui.h>
 #include <vulkan/vulkan.h>
 
 namespace Tetragrama::Components
 {
-    class SceneViewportUIComponent : public ZEngine::Components::UI::UIComponent
+    class SceneViewportUIComponent : public UIComponent
     {
     public:
         SceneViewportUIComponent(std::string_view name = "Scene", bool visibility = true);

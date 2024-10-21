@@ -1,10 +1,10 @@
 #pragma once
-#include <ZEngine/ZEngine.h>
+#include <UIComponentEvent.h>
 
 namespace Tetragrama::Components::Event
 {
 
-    class SceneViewportFocusedEvent : public ZEngine::Components::UI::Event::UIComponentEvent
+    class SceneViewportFocusedEvent : public UIComponentEvent
     {
     public:
         SceneViewportFocusedEvent()  = default;

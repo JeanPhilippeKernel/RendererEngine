@@ -9,7 +9,7 @@ namespace ZEngine::Event
     class TextInputEvent : public CoreEvent
     {
     public:
-        TextInputEvent(const char* content) : m_text(content) {}
+        TextInputEvent(std::string_view content) : m_text(content) {}
 
         EVENT_TYPE(TextInput)
         EVENT_CATEGORY(Keyboard | EventCategory::Input)
@@ -29,7 +29,7 @@ namespace ZEngine::Event
             return fmt::format("TextInputEvent : {0}", this->m_text);
         }
 
-        const std::string& GetText() const
+        std::string_view GetText() const
         {
             return m_text;
         }

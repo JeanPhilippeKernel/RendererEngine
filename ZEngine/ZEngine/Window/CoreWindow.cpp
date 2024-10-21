@@ -1,10 +1,6 @@
 #include <pch.h>
-#include <Engine.h>
 #include <Window/CoreWindow.h>
-#include <Window/GlfwWindow/VulkanWindow.h>
-#include <ZEngineDef.h>
 
-using namespace ZEngine;
 using namespace ZEngine::Event;
 using namespace ZEngine::Layers;
 
@@ -47,12 +43,5 @@ namespace ZEngine::Window
             }
             it->get()->OnEvent(event);
         }
-    }
-
-    CoreWindow* Create(const WindowConfiguration& configuration)
-    {
-        auto core_window = new GLFWWindow::VulkanWindow(configuration);
-        core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
-        return core_window;
     }
 } // namespace ZEngine::Window

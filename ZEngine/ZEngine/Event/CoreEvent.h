@@ -1,22 +1,64 @@
 #pragma once
-#include <Event/EventCategory.h>
-#include <Event/EventType.h>
 #include <ZEngineDef.h>
 #include <string>
 
-#define EVENT_TYPE(x)                                \
+#define EVENT_TYPE(value)                            \
     static ZEngine::Event::EventType GetStaticType() \
     {                                                \
-        return ZEngine::Event::EventType::x;         \
+        return ZEngine::Event::EventType::value;     \
     }
-#define EVENT_CATEGORY(x)                        \
-    static int GetStaticCategory()               \
-    {                                            \
-        return ZEngine::Event::EventCategory::x; \
+
+#define EVENT_CATEGORY(value)                                              \
+    static uint8_t GetStaticCategory()                                     \
+    {                                                                      \
+        return static_cast<uint8_t>(ZEngine::Event::EventCategory::value); \
     }
 
 namespace ZEngine::Event
 {
+    enum EventCategory : uint8_t
+    {
+        None                   = 0,
+        Engine                 = BIT(0),
+        Keyboard               = BIT(1),
+        Mouse                  = BIT(2),
+        Input                  = BIT(3),
+        UserInterfaceComponent = BIT(4)
+    };
+
+    enum class EventType : uint8_t
+    {
+        None = 0,
+
+        WindowShown,
+        WindowHidden,
+        WindowMoved,
+        WindowResized,
+        WindowClosed,
+        WindowSizeChanged,
+        WindowMinimized,
+        WindowMaximized,
+        WindowRestored,
+        WindowFocusLost,
+        WindowFocusGained,
+
+        KeyPressed,
+        KeyReleased,
+        MouseButtonPressed,
+        MouseButtonReleased,
+        MouseMoved,
+        MouseWheel,
+
+        EngineClosed,
+
+        TextInput,
+
+        UserInterfaceComponent,
+        SceneViewportResized,
+        SceneViewportFocused,
+        SceneViewportUnfocused,
+        SceneTextureAvailable
+    };
 
     class CoreEvent
     {
@@ -28,18 +70,20 @@ namespace ZEngine::Event
         {
             m_handled = value;
         }
+
         bool IsHandled() const
         {
             return m_handled;
         }
 
-        const std::string& GetName() const
+        std::string_view GetName() const
         {
             return m_name;
         }
-        void SetName(const char* value)
+
+        void SetName(std::string_view value)
         {
-            m_name = std::string(value);
+            m_name = value;
         }
 
         virtual EventType   GetType() const     = 0;

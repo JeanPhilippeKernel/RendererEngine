@@ -1,10 +1,10 @@
 #pragma once
-#include <ZEngine/ZEngine.h>
+#include <UIComponentEvent.h>
 
 namespace Tetragrama::Components::Event
 {
 
-    class SceneTextureAvailableEvent : public ZEngine::Components::UI::Event::UIComponentEvent
+    class SceneTextureAvailableEvent : public UIComponentEvent
     {
     public:
         SceneTextureAvailableEvent(uint32_t texture_identifier) : m_texture_identifier(texture_identifier) {}

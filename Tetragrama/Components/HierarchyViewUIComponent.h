@@ -1,13 +1,15 @@
 #pragma once
 #include <EditorCameraController.h>
 #include <Message.h>
-#include <ZEngine/ZEngine.h>
+#include <UIComponent.h>
+#include <imgui.h>
+#include <future>
 #include <mutex>
 #include <string>
 
 namespace Tetragrama::Components
 {
-    class HierarchyViewUIComponent : public ZEngine::Components::UI::UIComponent
+    class HierarchyViewUIComponent : public UIComponent
     {
     public:
         HierarchyViewUIComponent(std::string_view name = "Hierarchy", bool visibility = true);
@@ -20,14 +22,14 @@ namespace Tetragrama::Components
         void RenderGuizmo();
         void RenderSceneNodeTree(int node_identifier);
 
-        std::future<void> EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<EditorCameraController>>&);
+        std::future<void> EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<Controllers::EditorCameraController>>&);
 
     private:
-        ImGuiTreeNodeFlags                       m_node_flag;
-        bool                                     m_is_node_opened{false};
-        int                                      m_selected_node_identifier{-1};
-        int                                      m_gizmo_operation{-1};
-        std::mutex                               m_mutex;
-        ZEngine::WeakRef<EditorCameraController> m_active_editor_camera;
+        ImGuiTreeNodeFlags                                    m_node_flag;
+        bool                                                  m_is_node_opened{false};
+        int                                                   m_selected_node_identifier{-1};
+        int                                                   m_gizmo_operation{-1};
+        std::mutex                                            m_mutex;
+        ZEngine::WeakRef<Controllers::EditorCameraController> m_active_editor_camera;
     };
 } // namespace Tetragrama::Components

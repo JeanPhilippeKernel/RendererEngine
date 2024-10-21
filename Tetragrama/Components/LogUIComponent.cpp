@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <LogUIComponent.h>
+#include <imgui.h>
 
 using namespace ZEngine::Logging;
 

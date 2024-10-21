@@ -10,7 +10,6 @@
 #define NODE_PARENT_ID  -1
 #define INVALID_NODE_ID -1
 
-using namespace ZEngine::Controllers;
 using namespace ZEngine::Rendering::Components;
 
 namespace ZEngine::Rendering::Scenes
