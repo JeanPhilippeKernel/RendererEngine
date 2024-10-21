@@ -8,10 +8,10 @@ using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine
 {
-    static bool                        s_request_terminate{false};
-    static WeakRef<Window::CoreWindow> g_current_window = nullptr;
+    static bool                         s_request_terminate{false};
+    static WeakRef<Windows::CoreWindow> g_current_window = nullptr;
 
-    void Engine::Initialize(const EngineConfiguration& engine_configuration, const Ref<ZEngine::Window::CoreWindow>& window)
+    void Engine::Initialize(const EngineConfiguration& engine_configuration, const Ref<ZEngine::Windows::CoreWindow>& window)
     {
         g_current_window = window;
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
@@ -97,7 +97,7 @@ namespace ZEngine
         }
     }
 
-    Ref<Window::CoreWindow> Engine::GetWindow()
+    Ref<Windows::CoreWindow> Engine::GetWindow()
     {
         return g_current_window.lock();
     }

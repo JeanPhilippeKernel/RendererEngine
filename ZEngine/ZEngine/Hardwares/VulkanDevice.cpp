@@ -10,7 +10,7 @@
 #include <Hardwares/VulkanDevice.h>
 #include <Helpers/MemoryOperations.h>
 #include <Logging/LoggerDefinition.h>
-#include <Window/CoreWindow.h>
+#include <Windows/CoreWindow.h>
 
 using namespace std::chrono_literals;
 using namespace ZEngine::Rendering::Primitives;
@@ -53,7 +53,7 @@ namespace ZEngine::Hardwares
     std::map<Rendering::QueueType, std::map<uint32_t, std::vector<QueueSubmitInfo>>> VulkanDevice::s_queue_submit_info_pool            = {};
     std::deque<DirtyResource>                                                        VulkanDevice::s_dirty_resource_collection         = {};
 
-    void VulkanDevice::Initialize(const Ref<Window::CoreWindow>& window)
+    void VulkanDevice::Initialize(const Ref<Windows::CoreWindow>& window)
     {
         /*Create Vulkan Instance*/
         VkApplicationInfo app_info                = {};

@@ -1,13 +1,13 @@
 #pragma once
 
-#include <Event/CoreEvent.h>
+#include <Core/CoreEvent.h>
 #include <Inputs/KeyCode.h>
 #include <ZEngineDef.h>
 
-namespace ZEngine::Event
+namespace ZEngine::Windows::Events
 {
 
-    class MouseEvent : public CoreEvent
+    class MouseEvent : public Core::CoreEvent
     {
     public:
         MouseEvent() = default;
@@ -18,7 +18,7 @@ namespace ZEngine::Event
             return m_button;
         }
 
-        EVENT_CATEGORY(Mouse | EventCategory::Input)
+        EVENT_CATEGORY(Mouse | Core::EventCategory::Input)
 
     protected:
         ZENGINE_KEYCODE m_button{0};
@@ -31,7 +31,7 @@ namespace ZEngine::Event
 
         EVENT_TYPE(MouseButtonPressed)
 
-        virtual EventType GetType() const override
+        virtual Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -54,7 +54,7 @@ namespace ZEngine::Event
 
         EVENT_TYPE(MouseButtonReleased)
 
-        virtual EventType GetType() const override
+        virtual Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -87,7 +87,7 @@ namespace ZEngine::Event
 
         EVENT_TYPE(MouseMoved)
 
-        virtual EventType GetType() const override
+        virtual Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -124,7 +124,7 @@ namespace ZEngine::Event
 
         EVENT_TYPE(MouseWheel)
 
-        virtual EventType GetType() const override
+        virtual Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -143,4 +143,4 @@ namespace ZEngine::Event
         double m_offset_x{0};
         double m_offset_y{0};
     };
-} // namespace ZEngine::Event
+} // namespace ZEngine::Windows::Events

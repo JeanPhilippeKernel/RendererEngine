@@ -6,6 +6,7 @@
 
 using namespace ZEngine;
 using namespace ZEngine::Rendering::Renderers;
+using namespace ZEngine::Windows::Events;
 
 namespace Tetragrama::Layers
 {
@@ -21,18 +22,18 @@ namespace Tetragrama::Layers
         m_ui_components.shrink_to_fit();
     }
 
-    bool ImguiLayer::OnEvent(Event::CoreEvent& event)
+    bool ImguiLayer::OnEvent(Core::CoreEvent& event)
     {
-        Event::EventDispatcher event_dispatcher(event);
+        Core::EventDispatcher event_dispatcher(event);
 
-        event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&ImguiLayer::OnKeyPressed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&ImguiLayer::OnKeyReleased, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<KeyPressedEvent>(std::bind(&ImguiLayer::OnKeyPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<KeyReleasedEvent>(std::bind(&ImguiLayer::OnKeyReleased, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&ImguiLayer::OnMouseButtonPressed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&ImguiLayer::OnMouseButtonReleased, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&ImguiLayer::OnMouseButtonMoved, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&ImguiLayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<MouseButtonPressedEvent>(std::bind(&ImguiLayer::OnMouseButtonPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<MouseButtonReleasedEvent>(std::bind(&ImguiLayer::OnMouseButtonReleased, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<MouseButtonMovedEvent>(std::bind(&ImguiLayer::OnMouseButtonMoved, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<MouseButtonWheelEvent>(std::bind(&ImguiLayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
 
         // event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
 
@@ -85,42 +86,42 @@ namespace Tetragrama::Layers
         std::move(std::begin(components), std::end(components), std::back_inserter(m_ui_components));
     }
 
-    bool ImguiLayer::OnKeyPressed(Event::KeyPressedEvent& e)
+    bool ImguiLayer::OnKeyPressed(KeyPressedEvent& e)
     {
         ImGuiIO& io                       = ImGui::GetIO();
         io.KeysDown[(int) e.GetKeyCode()] = true;
         return false;
     }
 
-    bool ImguiLayer::OnKeyReleased(Event::KeyReleasedEvent& e)
+    bool ImguiLayer::OnKeyReleased(KeyReleasedEvent& e)
     {
         ImGuiIO& io                       = ImGui::GetIO();
         io.KeysDown[(int) e.GetKeyCode()] = false;
         return false;
     }
 
-    bool ImguiLayer::OnMouseButtonPressed(Event::MouseButtonPressedEvent& e)
+    bool ImguiLayer::OnMouseButtonPressed(MouseButtonPressedEvent& e)
     {
         ImGuiIO& io                            = ImGui::GetIO();
         io.MouseDown[(uint32_t) e.GetButton()] = true;
         return false;
     }
 
-    bool ImguiLayer::OnMouseButtonReleased(Event::MouseButtonReleasedEvent& e)
+    bool ImguiLayer::OnMouseButtonReleased(MouseButtonReleasedEvent& e)
     {
         ImGuiIO& io                       = ImGui::GetIO();
         io.MouseDown[(int) e.GetButton()] = false;
         return false;
     }
 
-    bool ImguiLayer::OnMouseButtonMoved(Event::MouseButtonMovedEvent& e)
+    bool ImguiLayer::OnMouseButtonMoved(MouseButtonMovedEvent& e)
     {
         ImGuiIO& io = ImGui::GetIO();
         io.MousePos = ImVec2(float(e.GetPosX()), float(e.GetPosY()));
         return false;
     }
 
-    bool ImguiLayer::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e)
+    bool ImguiLayer::OnMouseButtonWheelMoved(MouseButtonWheelEvent& e)
     {
         ImGuiIO& io = ImGui::GetIO();
         if (e.GetOffetX() > 0)
@@ -142,7 +143,7 @@ namespace Tetragrama::Layers
         return false;
     }
 
-    bool ImguiLayer::OnTextInputRaised(Event::TextInputEvent& event)
+    bool ImguiLayer::OnTextInputRaised(TextInputEvent& event)
     {
         ImGuiIO& io = ImGui::GetIO();
         for (unsigned char c : event.GetText())
@@ -155,7 +156,7 @@ namespace Tetragrama::Layers
     // bool ImguiLayer::OnWindowClosed(Event::WindowClosedEvent& event)
     //{
     //     Event::EventDispatcher event_dispatcher(event);
-    //     event_dispatcher.ForwardTo<Event::WindowClosedEvent>(std::bind(&ZEngine::Window::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
+    //     event_dispatcher.ForwardTo<Event::WindowClosedEvent>(std::bind(&ZEngine::Windows::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
     //     return true;
     // }
 

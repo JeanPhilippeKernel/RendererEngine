@@ -3,7 +3,7 @@
 #include <ZEngineDef.h>
 #include <vector>
 
-namespace ZEngine::Layers
+namespace ZEngine::Windows::Layers
 {
     class Layer;
 
@@ -52,4 +52,4 @@ namespace ZEngine::Layers
         std::vector<Ref<Layer>>           m_layers;
         std::vector<Ref<Layer>>::iterator current_it;
     };
-} // namespace ZEngine::Layers
+} // namespace ZEngine::Windows::Layers

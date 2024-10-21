@@ -6,7 +6,7 @@
 #define BIT(x)                 (1 << (x))
 #define ZENGINE_EXIT_FAILURE() exit(EXIT_FAILURE);
 
-#define ZENGINE_KEYCODE ZEngine::Inputs::GlfwKeyCode
+#define ZENGINE_KEYCODE ZEngine::Windows::Inputs::GlfwKeyCode
 
 namespace ZEngine
 {

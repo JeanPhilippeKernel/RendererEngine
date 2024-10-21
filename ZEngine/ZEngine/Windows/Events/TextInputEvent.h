@@ -1,20 +1,20 @@
 #pragma once
 
-#include <Event/CoreEvent.h>
+#include <Core/CoreEvent.h>
 #include <fmt/format.h>
 
-namespace ZEngine::Event
+namespace ZEngine::Windows::Events
 {
 
-    class TextInputEvent : public CoreEvent
+    class TextInputEvent : public Core::CoreEvent
     {
     public:
         TextInputEvent(std::string_view content) : m_text(content) {}
 
         EVENT_TYPE(TextInput)
-        EVENT_CATEGORY(Keyboard | EventCategory::Input)
+        EVENT_CATEGORY(Keyboard | Core::EventCategory::Input)
 
-        virtual EventType GetType() const override
+        virtual Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -37,4 +37,4 @@ namespace ZEngine::Event
     protected:
         std::string m_text;
     };
-} // namespace ZEngine::Event
+} // namespace ZEngine::Windows::Events

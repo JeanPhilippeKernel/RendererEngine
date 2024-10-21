@@ -1,7 +1,7 @@
 #pragma once
 #include <UIComponent.h>
-#include <ZEngine/Inputs/IInputEventCallback.h>
-#include <ZEngine/Layers/Layer.h>
+#include <ZEngine/Windows/Inputs/IInputEventCallback.h>
+#include <ZEngine/Windows/Layers/Layer.h>
 #include <vector>
 
 namespace Tetragrama::Components
@@ -11,10 +11,10 @@ namespace Tetragrama::Components
 
 namespace Tetragrama::Layers
 {
-    class ImguiLayer : public ZEngine::Layers::Layer,
-                       public ZEngine::Inputs::IKeyboardEventCallback,
-                       public ZEngine::Inputs::IMouseEventCallback,
-                       public ZEngine::Inputs::ITextInputEventCallback
+    class ImguiLayer : public ZEngine::Windows::Layers::Layer,
+                       public ZEngine::Windows::Inputs::IKeyboardEventCallback,
+                       public ZEngine::Windows::Inputs::IMouseEventCallback,
+                       public ZEngine::Windows::Inputs::ITextInputEventCallback
     {
 
     public:
@@ -25,7 +25,7 @@ namespace Tetragrama::Layers
         virtual void Initialize() override;
         virtual void Deinitialize() override;
 
-        bool OnEvent(ZEngine::Event::CoreEvent& event) override;
+        bool OnEvent(ZEngine::Core::CoreEvent& event) override;
 
         void Update(ZEngine::Core::TimeStep dt) override;
 
@@ -36,14 +36,14 @@ namespace Tetragrama::Layers
         virtual void AddUIComponent(std::vector<ZEngine::Ref<Components::UIComponent>>&& components);
 
     protected:
-        bool OnKeyPressed(ZEngine::Event::KeyPressedEvent&) override;
-        bool OnKeyReleased(ZEngine::Event::KeyReleasedEvent&) override;
+        bool OnKeyPressed(ZEngine::Windows::Events::KeyPressedEvent&) override;
+        bool OnKeyReleased(ZEngine::Windows::Events::KeyReleasedEvent&) override;
 
-        bool OnMouseButtonPressed(ZEngine::Event::MouseButtonPressedEvent&) override;
-        bool OnMouseButtonReleased(ZEngine::Event::MouseButtonReleasedEvent&) override;
-        bool OnMouseButtonMoved(ZEngine::Event::MouseButtonMovedEvent&) override;
-        bool OnMouseButtonWheelMoved(ZEngine::Event::MouseButtonWheelEvent&) override;
-        bool OnTextInputRaised(ZEngine::Event::TextInputEvent&) override;
+        bool OnMouseButtonPressed(ZEngine::Windows::Events::MouseButtonPressedEvent&) override;
+        bool OnMouseButtonReleased(ZEngine::Windows::Events::MouseButtonReleasedEvent&) override;
+        bool OnMouseButtonMoved(ZEngine::Windows::Events::MouseButtonMovedEvent&) override;
+        bool OnMouseButtonWheelMoved(ZEngine::Windows::Events::MouseButtonWheelEvent&) override;
+        bool OnTextInputRaised(ZEngine::Windows::Events::TextInputEvent&) override;
 
         // bool OnWindowClosed(Event::WindowClosedEvent&) override;
         // bool OnWindowResized(Event::WindowResizedEvent&) override;

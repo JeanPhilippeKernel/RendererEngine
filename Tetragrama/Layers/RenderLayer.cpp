@@ -7,7 +7,7 @@ using namespace Tetragrama::Controllers;
 using namespace ZEngine;
 using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Rendering::Renderers;
-using namespace ZEngine::Window;
+using namespace ZEngine::Windows;
 using namespace ZEngine::Core;
 using namespace ZEngine::Event;
 

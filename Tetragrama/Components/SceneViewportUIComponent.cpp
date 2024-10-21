@@ -1,5 +1,4 @@
 #include <pch.h>
-#include <Event/EventDispatcher.h>
 #include <Layers/UILayer.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
@@ -12,6 +11,7 @@ using namespace Tetragrama::Components::Event;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering;
+using namespace ZEngine;
 
 namespace Tetragrama::Components
 {
@@ -37,7 +37,7 @@ namespace Tetragrama::Components
             GraphicRenderer::SetViewportSize(m_viewport_size.x, m_viewport_size.y);
             m_refresh_texture_handle = true;
 
-            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
+            Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
                 EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
 
             m_request_renderer_resize = false;
@@ -45,12 +45,12 @@ namespace Tetragrama::Components
 
         if (m_is_window_hovered && m_is_window_focused)
         {
-            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(
+            Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(
                 EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, Messengers::GenericMessage<bool>{true});
         }
         else
         {
-            Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(
+            Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(
                 EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{false});
         }
 
@@ -118,13 +118,13 @@ namespace Tetragrama::Components
 
     std::future<void> SceneViewportUIComponent::SceneViewportFocusedMessageHandlerAsync(Messengers::GenericMessage<bool>& e)
     {
-        co_await Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(
+        co_await Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(
             EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, Messengers::GenericMessage<bool>{e});
     }
 
     std::future<void> SceneViewportUIComponent::SceneViewportUnfocusedMessageHandlerAsync(Messengers::GenericMessage<bool>& e)
     {
-        co_await Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<bool>>(
+        co_await Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(
             EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{e});
     }
 } // namespace Tetragrama::Components

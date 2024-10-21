@@ -1,22 +1,21 @@
 #pragma once
-#include <Event/CoreEvent.h>
-#include <Window/CoreWindow.h>
-#include <functional>
+#include <Core/CoreEvent.h>
+#include <Windows/CoreWindow.h>
 #include <string>
 
-namespace ZEngine::Window
+namespace ZEngine::Windows
 {
     struct WindowProperty
     {
     public:
-        unsigned int                           Width{0}, Height{0};
-        std::string                            Title{};
-        bool                                   VSync{true};
-        float                                  AspectRatio{0.0f};
-        bool                                   IsMinimized{false};
-        int                                    Dpi{0};
-        float                                  DpiScale{0};
-        std::function<void(Event::CoreEvent&)> CallbackFn;
+        unsigned int                          Width{0}, Height{0};
+        std::string                           Title{};
+        bool                                  VSync{true};
+        float                                 AspectRatio{0.0f};
+        bool                                  IsMinimized{false};
+        int                                   Dpi{0};
+        float                                 DpiScale{0};
+        std::function<void(Core::CoreEvent&)> CallbackFn;
 
     public:
         WindowProperty(unsigned int width = 1080, unsigned int height = 800, const char* title = "Engine Window") : Width(width), Height(height), Title(title)
@@ -44,4 +43,4 @@ namespace ZEngine::Window
             AspectRatio = (float) Width / (float) Height;
         }
     };
-} // namespace ZEngine::Window
+} // namespace ZEngine::Windows

@@ -2,8 +2,8 @@
 #include <EditorWindow.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
-#include <ZEngine/Inputs/KeyCode.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Windows/Inputs/KeyCode.h>
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -11,8 +11,8 @@
 #include <GLFW/glfw3native.h>
 
 using namespace ZEngine;
-using namespace ZEngine::Event;
-using namespace ZEngine::Window;
+using namespace ZEngine::Windows::Events;
+using namespace ZEngine::Windows;
 using namespace ZEngine::Rendering;
 
 namespace Tetragrama
@@ -216,7 +216,7 @@ namespace Tetragrama
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
-            Event::WindowResizedEvent e{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+            WindowResizedEvent e{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
             property->CallbackFn(e);
         }
     }
@@ -228,12 +228,12 @@ namespace Tetragrama
         {
             if (maximized == GLFW_TRUE)
             {
-                Event::WindowMaximizedEvent e;
+                WindowMaximizedEvent e;
                 property->CallbackFn(e);
                 return;
             }
 
-            Event::WindowRestoredEvent e;
+            WindowRestoredEvent e;
             property->CallbackFn(e);
         }
     }
@@ -245,11 +245,11 @@ namespace Tetragrama
         {
             if (minimized == GLFW_TRUE)
             {
-                Event::WindowMinimizedEvent e;
+                WindowMinimizedEvent e;
                 property->CallbackFn(e);
                 return;
             }
-            Event::WindowRestoredEvent e;
+            WindowRestoredEvent e;
             property->CallbackFn(e);
         }
     }
@@ -261,12 +261,12 @@ namespace Tetragrama
         {
             if (action == GLFW_PRESS)
             {
-                Event::MouseButtonPressedEvent e{static_cast<Inputs::GlfwKeyCode>(button)};
+                MouseButtonPressedEvent e{static_cast<Inputs::GlfwKeyCode>(button)};
                 property->CallbackFn(e);
                 return;
             }
 
-            Event::MouseButtonReleasedEvent e{static_cast<Inputs::GlfwKeyCode>(button)};
+            MouseButtonReleasedEvent e{static_cast<Inputs::GlfwKeyCode>(button)};
             property->CallbackFn(e);
         }
     }
@@ -312,21 +312,21 @@ namespace Tetragrama
             {
                 case GLFW_PRESS:
                 {
-                    Event::KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
+                    KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
                     property->CallbackFn(e);
                     break;
                 }
 
                 case GLFW_RELEASE:
                 {
-                    Event::KeyReleasedEvent e{static_cast<Inputs::GlfwKeyCode>(key)};
+                    KeyReleasedEvent e{static_cast<Inputs::GlfwKeyCode>(key)};
                     property->CallbackFn(e);
                     break;
                 }
 
                 case GLFW_REPEAT:
                 {
-                    Event::KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
+                    KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
                     property->CallbackFn(e);
                     break;
                 }
@@ -406,7 +406,7 @@ namespace Tetragrama
         ZENGINE_CORE_INFO("Window has been closed")
 
         Event::EngineClosedEvent e(event.GetName());
-        Event::EventDispatcher   event_dispatcher(e);
+        Core::EventDispatcher    event_dispatcher(e);
         event_dispatcher.Dispatch<Event::EngineClosedEvent>(std::bind(&Engine::OnEngineClosed, std::placeholders::_1));
         return true;
     }
@@ -420,114 +420,114 @@ namespace Tetragrama
 
         ZENGINE_CORE_INFO("Window has been resized")
 
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::WindowResizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<WindowResizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return false;
     }
 
-    bool EditorWindow::OnWindowMinimized(Event::WindowMinimizedEvent& event)
+    bool EditorWindow::OnWindowMinimized(WindowMinimizedEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been minimized")
 
         m_property.IsMinimized = true;
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::WindowMinimizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<WindowMinimizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return false;
     }
 
-    bool EditorWindow::OnWindowMaximized(Event::WindowMaximizedEvent& event)
+    bool EditorWindow::OnWindowMaximized(WindowMaximizedEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been maximized")
 
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::WindowMaximizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<WindowMaximizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return false;
     }
 
-    bool EditorWindow::OnWindowRestored(Event::WindowRestoredEvent& event)
+    bool EditorWindow::OnWindowRestored(WindowRestoredEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been restored")
 
         m_property.IsMinimized = false;
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::WindowRestoredEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<WindowRestoredEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return false;
     }
 
-    bool EditorWindow::OnEvent(Event::CoreEvent& event)
+    bool EditorWindow::OnEvent(Core::CoreEvent& event)
     {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&EditorWindow::OnWindowClosed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::WindowResizedEvent>(std::bind(&EditorWindow::OnWindowResized, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.Dispatch<WindowClosedEvent>(std::bind(&EditorWindow::OnWindowClosed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowResizedEvent>(std::bind(&EditorWindow::OnWindowResized, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::KeyPressedEvent>(std::bind(&EditorWindow::OnKeyPressed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::KeyReleasedEvent>(std::bind(&EditorWindow::OnKeyReleased, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<KeyPressedEvent>(std::bind(&EditorWindow::OnKeyPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<KeyReleasedEvent>(std::bind(&EditorWindow::OnKeyReleased, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::MouseButtonPressedEvent>(std::bind(&EditorWindow::OnMouseButtonPressed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::MouseButtonReleasedEvent>(std::bind(&EditorWindow::OnMouseButtonReleased, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::MouseButtonMovedEvent>(std::bind(&EditorWindow::OnMouseButtonMoved, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&EditorWindow::OnMouseButtonWheelMoved, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<MouseButtonPressedEvent>(std::bind(&EditorWindow::OnMouseButtonPressed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<MouseButtonReleasedEvent>(std::bind(&EditorWindow::OnMouseButtonReleased, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<MouseButtonMovedEvent>(std::bind(&EditorWindow::OnMouseButtonMoved, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<MouseButtonWheelEvent>(std::bind(&EditorWindow::OnMouseButtonWheelMoved, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::TextInputEvent>(std::bind(&EditorWindow::OnTextInputRaised, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<TextInputEvent>(std::bind(&EditorWindow::OnTextInputRaised, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<Event::WindowMinimizedEvent>(std::bind(&EditorWindow::OnWindowMinimized, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::WindowMaximizedEvent>(std::bind(&EditorWindow::OnWindowMaximized, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<Event::WindowRestoredEvent>(std::bind(&EditorWindow::OnWindowRestored, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowMinimizedEvent>(std::bind(&EditorWindow::OnWindowMinimized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowMaximizedEvent>(std::bind(&EditorWindow::OnWindowMaximized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowRestoredEvent>(std::bind(&EditorWindow::OnWindowRestored, this, std::placeholders::_1));
 
         return true;
     }
 
     bool EditorWindow::OnKeyPressed(KeyPressedEvent& event)
     {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::KeyPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<KeyPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
     bool EditorWindow::OnKeyReleased(KeyReleasedEvent& event)
     {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::KeyReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<KeyReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
     bool EditorWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event)
     {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::MouseButtonPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<MouseButtonPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
     bool EditorWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event)
     {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::MouseButtonReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<MouseButtonReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
     bool EditorWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event)
     {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::MouseButtonMovedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<MouseButtonMovedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
     bool EditorWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event)
     {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::MouseButtonWheelEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<MouseButtonWheelEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 
     bool EditorWindow::OnTextInputRaised(TextInputEvent& event)
     {
-        Event::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<Event::TextInputEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<TextInputEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return true;
     }
 } // namespace Tetragrama
 
-namespace ZEngine::Window
+namespace ZEngine::Windows
 {
     CoreWindow* Create(const WindowConfiguration& configuration)
     {
@@ -535,4 +535,4 @@ namespace ZEngine::Window
         core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
         return core_window;
     }
-} // namespace ZEngine::Window
+} // namespace ZEngine::Windows

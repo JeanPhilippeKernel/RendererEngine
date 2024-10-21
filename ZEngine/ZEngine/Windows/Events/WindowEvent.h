@@ -1,10 +1,10 @@
 #pragma once
-#include <Event/CoreEvent.h>
+#include <Core/CoreEvent.h>
 #include <fmt/format.h>
 
-namespace ZEngine::Event
+namespace ZEngine::Windows::Events
 {
-    class WindowRestoredEvent : public CoreEvent
+    class WindowRestoredEvent : public Core::CoreEvent
     {
     public:
         WindowRestoredEvent()
@@ -13,7 +13,7 @@ namespace ZEngine::Event
         }
         ~WindowRestoredEvent() = default;
 
-        EventType GetType() const override
+        Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -32,7 +32,7 @@ namespace ZEngine::Event
         EVENT_TYPE(WindowRestored)
     };
 
-    class WindowResizedEvent : public CoreEvent
+    class WindowResizedEvent : public Core::CoreEvent
     {
     public:
         WindowResizedEvent(unsigned int width, unsigned int height) : m_width(width), m_height(height)
@@ -61,7 +61,7 @@ namespace ZEngine::Event
             m_height = value;
         }
 
-        EventType GetType() const override
+        Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -84,7 +84,7 @@ namespace ZEngine::Event
         unsigned int m_height{0};
     };
 
-    class WindowMinimizedEvent : public CoreEvent
+    class WindowMinimizedEvent : public Core::CoreEvent
     {
     public:
         WindowMinimizedEvent()
@@ -93,7 +93,7 @@ namespace ZEngine::Event
         }
         ~WindowMinimizedEvent() = default;
 
-        EventType GetType() const override
+        Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -112,7 +112,7 @@ namespace ZEngine::Event
         EVENT_TYPE(WindowMinimized)
     };
 
-    class WindowMaximizedEvent : public CoreEvent
+    class WindowMaximizedEvent : public Core::CoreEvent
     {
     public:
         WindowMaximizedEvent()
@@ -121,7 +121,7 @@ namespace ZEngine::Event
         }
         ~WindowMaximizedEvent() = default;
 
-        EventType GetType() const override
+        Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -140,7 +140,7 @@ namespace ZEngine::Event
         EVENT_TYPE(WindowMaximized)
     };
 
-    class WindowClosedEvent : public CoreEvent
+    class WindowClosedEvent : public Core::CoreEvent
     {
     public:
         WindowClosedEvent()
@@ -149,7 +149,7 @@ namespace ZEngine::Event
         }
         ~WindowClosedEvent() = default;
 
-        EventType GetType() const override
+        Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -167,4 +167,4 @@ namespace ZEngine::Event
         EVENT_CATEGORY(Engine)
         EVENT_TYPE(WindowClosed)
     };
-} // namespace ZEngine::Event
+} // namespace ZEngine::Windows::Events

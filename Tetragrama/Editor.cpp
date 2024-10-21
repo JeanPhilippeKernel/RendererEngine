@@ -36,7 +36,7 @@ namespace Tetragrama
         }
         m_engine_configuration.WindowConfiguration = {.EnableVsync = true, .Title = title, .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
 
-        m_window.reset(ZEngine::Window::Create(m_engine_configuration.WindowConfiguration));
+        m_window.reset(ZEngine::Windows::Create(m_engine_configuration.WindowConfiguration));
     }
 
     Editor::~Editor()
@@ -51,32 +51,30 @@ namespace Tetragrama
     {
         ZEngine::Engine::Initialize(m_engine_configuration, m_window);
 
-        using PairFloat = std::pair<float, float>;
         MESSENGER_REGISTER(
-            ZEngine::Layers::Layer,
-            GenericMessage<PairFloat>,
+            Windows::Layers::Layer,
+            SINGLE_ARG(GenericMessage<std::pair<float, float>>),
             EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE,
             m_render_layer.get(),
             return m_render_layer->SceneRequestResizeMessageHandlerAsync(*message_ptr))
 
         MESSENGER_REGISTER(
-            ZEngine::Layers::Layer,
+            Windows::Layers::Layer,
             GenericMessage<bool>,
             EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS,
             m_render_layer.get(),
             return m_render_layer->SceneRequestFocusMessageHandlerAsync(*message_ptr))
 
         MESSENGER_REGISTER(
-            ZEngine::Layers::Layer,
+            Windows::Layers::Layer,
             GenericMessage<bool>,
             EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS,
             m_render_layer.get(),
             return m_render_layer->SceneRequestUnfocusMessageHandlerAsync(*message_ptr))
 
-        using PairInt = std::pair<int, int>;
         MESSENGER_REGISTER(
-            ZEngine::Layers::Layer,
-            GenericMessage<PairInt>,
+            Windows::Layers::Layer,
+            SINGLE_ARG(GenericMessage<std::pair<int, int>>),
             EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL,
             m_render_layer.get(),
             return m_render_layer->SceneRequestSelectEntityFromPixelMessageHandlerAsync(*message_ptr))

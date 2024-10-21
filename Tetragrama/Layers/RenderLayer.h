@@ -12,7 +12,7 @@
 
 namespace Tetragrama::Layers
 {
-    class RenderLayer : public ZEngine::Layers::Layer
+    class RenderLayer : public ZEngine::Windows::Layers::Layer
     {
     public:
         RenderLayer(std::string_view name = "Rendering layer");
@@ -25,7 +25,7 @@ namespace Tetragrama::Layers
 
         virtual void Render() override;
 
-        virtual bool OnEvent(ZEngine::Event::CoreEvent& e) override;
+        virtual bool OnEvent(ZEngine::Core::CoreEvent& e) override;
 
     public:
         std::future<void> SceneRequestResizeMessageHandlerAsync(Messengers::GenericMessage<std::pair<float, float>>&);

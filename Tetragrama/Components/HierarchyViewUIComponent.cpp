@@ -6,15 +6,15 @@
 #include <MessageToken.h>
 #include <Messenger.h>
 #include <ZEngine/Engine.h>
-#include <ZEngine/Inputs/IDevice.h>
-#include <ZEngine/Inputs/KeyCodeDefinition.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/Windows/Inputs/IDevice.h>
+#include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 #include <glm/glm.hpp>
 #include <gtc/type_ptr.hpp>
 #include <imgui.h>
 
 using namespace ZEngine;
-using namespace ZEngine::Inputs;
+using namespace ZEngine::Windows::Inputs;
 using namespace ZEngine::Rendering::Scenes;
 using namespace Tetragrama::Inputs;
 using namespace Tetragrama::Controllers;

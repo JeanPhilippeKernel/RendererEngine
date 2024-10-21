@@ -1,9 +1,9 @@
 #pragma once
-#include <Event/CoreEvent.h>
+#include <CoreEvent.h>
 #include <ZEngineDef.h>
 #include <functional>
 
-namespace ZEngine::Event
+namespace ZEngine::Core
 {
     class EventDispatcher
     {
@@ -42,4 +42,4 @@ namespace ZEngine::Event
     private:
         CoreEvent& m_event;
     };
-} // namespace ZEngine::Event
+} // namespace ZEngine::Core

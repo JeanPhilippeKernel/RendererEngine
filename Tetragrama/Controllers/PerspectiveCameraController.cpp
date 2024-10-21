@@ -4,10 +4,11 @@
 #include <Inputs/KeyCodeDefinition.h>
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>
-#include <ZEngine/Event/EventDispatcher.h>
+#include <ZEngine/Core/EventDispatcher.h>
 
 using namespace ZEngine;
-using namespace ZEngine::Inputs;
+using namespace ZEngine::Windows::Inputs;
+using namespace ZEngine::Windows::Events;
 using namespace Tetragrama::Inputs;
 
 namespace Tetragrama::Controllers
@@ -113,19 +114,19 @@ namespace Tetragrama::Controllers
 
     void PerspectiveCameraController::UpdateProjectionMatrix() {}
 
-    bool PerspectiveCameraController::OnEvent(Event::CoreEvent& e)
+    bool PerspectiveCameraController::OnEvent(Core::CoreEvent& e)
     {
         if (!m_process_event)
         {
             return false;
         }
 
-        Event::EventDispatcher dispatcher(e);
-        dispatcher.Dispatch<Event::MouseButtonWheelEvent>(std::bind(&PerspectiveCameraController::OnMouseButtonWheelMoved, this, std::placeholders::_1));
+        Core::EventDispatcher dispatcher(e);
+        dispatcher.Dispatch<MouseButtonWheelEvent>(std::bind(&PerspectiveCameraController::OnMouseButtonWheelMoved, this, std::placeholders::_1));
         return false;
     }
 
-    bool PerspectiveCameraController::OnMouseButtonWheelMoved(Event::MouseButtonWheelEvent& e)
+    bool PerspectiveCameraController::OnMouseButtonWheelMoved(MouseButtonWheelEvent& e)
     {
         float delta = e.GetOffetY() * 0.1f;
         m_perspective_camera->Zoom(delta);
