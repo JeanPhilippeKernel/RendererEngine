@@ -35,7 +35,7 @@ namespace Tetragrama::Layers
         event_dispatcher.Dispatch<MouseButtonWheelEvent>(std::bind(&ImguiLayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
         event_dispatcher.Dispatch<TextInputEvent>(std::bind(&ImguiLayer::OnTextInputRaised, this, std::placeholders::_1));
 
-        // event_dispatcher.Dispatch<Event::WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowClosedEvent>(std::bind(&ImguiLayer::OnWindowClosed, this, std::placeholders::_1));
 
         return false;
     }
@@ -153,32 +153,32 @@ namespace Tetragrama::Layers
         return false;
     }
 
-    // bool ImguiLayer::OnWindowClosed(Event::WindowClosedEvent& event)
-    //{
-    //     Event::EventDispatcher event_dispatcher(event);
-    //     event_dispatcher.ForwardTo<Event::WindowClosedEvent>(std::bind(&ZEngine::Windows::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
-    //     return true;
-    // }
+    bool ImguiLayer::OnWindowClosed(WindowClosedEvent& event)
+    {
+        Core::EventDispatcher event_dispatcher(event);
+        event_dispatcher.ForwardTo<WindowClosedEvent>(std::bind(&ZEngine::Windows::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
+        return true;
+    }
 
-    // bool ImguiLayer::OnWindowResized(Event::WindowResizedEvent&)
-    //{
-    //     return false;
-    // }
+    bool ImguiLayer::OnWindowResized(WindowResizedEvent&)
+    {
+        return false;
+    }
 
-    // bool ImguiLayer::OnWindowMinimized(Event::WindowMinimizedEvent&)
-    //{
-    //     return false;
-    // }
+    bool ImguiLayer::OnWindowMinimized(WindowMinimizedEvent&)
+    {
+        return false;
+    }
 
-    // bool ImguiLayer::OnWindowMaximized(Event::WindowMaximizedEvent&)
-    //{
-    //     return false;
-    // }
+    bool ImguiLayer::OnWindowMaximized(WindowMaximizedEvent&)
+    {
+        return false;
+    }
 
-    // bool ImguiLayer::OnWindowRestored(Event::WindowRestoredEvent&)
-    //{
-    //     return false;
-    // }
+    bool ImguiLayer::OnWindowRestored(WindowRestoredEvent&)
+    {
+        return false;
+    }
 
     void ImguiLayer::Render()
     {

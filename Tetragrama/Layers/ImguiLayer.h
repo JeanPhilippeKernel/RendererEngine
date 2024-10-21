@@ -14,7 +14,8 @@ namespace Tetragrama::Layers
     class ImguiLayer : public ZEngine::Windows::Layers::Layer,
                        public ZEngine::Windows::Inputs::IKeyboardEventCallback,
                        public ZEngine::Windows::Inputs::IMouseEventCallback,
-                       public ZEngine::Windows::Inputs::ITextInputEventCallback
+                       public ZEngine::Windows::Inputs::ITextInputEventCallback,
+                       public ZEngine::Windows::Inputs::IWindowEventCallback
     {
 
     public:
@@ -45,11 +46,11 @@ namespace Tetragrama::Layers
         bool OnMouseButtonWheelMoved(ZEngine::Windows::Events::MouseButtonWheelEvent&) override;
         bool OnTextInputRaised(ZEngine::Windows::Events::TextInputEvent&) override;
 
-        // bool OnWindowClosed(Event::WindowClosedEvent&) override;
-        // bool OnWindowResized(Event::WindowResizedEvent&) override;
-        // bool OnWindowMinimized(Event::WindowMinimizedEvent&) override;
-        // bool OnWindowMaximized(Event::WindowMaximizedEvent&) override;
-        // bool OnWindowRestored(Event::WindowRestoredEvent&) override;
+        bool OnWindowClosed(ZEngine::Windows::Events::WindowClosedEvent&) override;
+        bool OnWindowResized(ZEngine::Windows::Events::WindowResizedEvent&) override;
+        bool OnWindowMinimized(ZEngine::Windows::Events::WindowMinimizedEvent&) override;
+        bool OnWindowMaximized(ZEngine::Windows::Events::WindowMaximizedEvent&) override;
+        bool OnWindowRestored(ZEngine::Windows::Events::WindowRestoredEvent&) override;
 
     private:
         static bool                                        m_initialized;

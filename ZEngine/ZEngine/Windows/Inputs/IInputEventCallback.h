@@ -2,6 +2,7 @@
 #include <Events/KeyEvent.h>
 #include <Events/MouseEvent.h>
 #include <Events/TextInputEvent.h>
+#include <Events/WindowEvent.h>
 
 namespace ZEngine::Windows::Inputs
 {
@@ -22,5 +23,14 @@ namespace ZEngine::Windows::Inputs
     struct ITextInputEventCallback
     {
         virtual bool OnTextInputRaised(Events::TextInputEvent&) = 0;
+    };
+
+    struct IWindowEventCallback
+    {
+        virtual bool OnWindowClosed(Events::WindowClosedEvent&)       = 0;
+        virtual bool OnWindowResized(Events::WindowResizedEvent&)     = 0;
+        virtual bool OnWindowMinimized(Events::WindowMinimizedEvent&) = 0;
+        virtual bool OnWindowMaximized(Events::WindowMaximizedEvent&) = 0;
+        virtual bool OnWindowRestored(Events::WindowRestoredEvent&)   = 0;
     };
 } // namespace ZEngine::Windows::Inputs

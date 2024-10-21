@@ -7,8 +7,6 @@
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
 #include <Core/TimeStep.h>
-#include <Events/TextInputEvent.h>
-#include <Events/WindowEvent.h>
 #include <Inputs/IInputEventCallback.h>
 #include <Layers/Layer.h>
 #include <Layers/LayerStack.h>
@@ -24,25 +22,15 @@ namespace ZEngine::Windows::Layers
 
 namespace ZEngine::Windows
 {
-
-    struct ICoreWindowEventCallback
-    {
-        virtual bool OnWindowClosed(Events::WindowClosedEvent&)       = 0;
-        virtual bool OnWindowResized(Events::WindowResizedEvent&)     = 0;
-        virtual bool OnWindowMinimized(Events::WindowMinimizedEvent&) = 0;
-        virtual bool OnWindowMaximized(Events::WindowMaximizedEvent&) = 0;
-        virtual bool OnWindowRestored(Events::WindowRestoredEvent&)   = 0;
-    };
-
     class CoreWindow : public Helpers::RefCounted,
                        public Inputs::IKeyboardEventCallback,
                        public Inputs::IMouseEventCallback,
                        public Inputs::ITextInputEventCallback,
+                       public Inputs::IWindowEventCallback,
                        public Core::IUpdatable,
                        public Core::IRenderable,
                        public Core::IEventable,
-                       public Core::IInitializable,
-                       public ICoreWindowEventCallback
+                       public Core::IInitializable
     {
 
     public:
