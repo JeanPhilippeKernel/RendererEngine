@@ -2,7 +2,7 @@
 #include <Controllers/CameraControllerTypeEnums.h>
 #include <Controllers/IController.h>
 #include <ZEngine/Rendering/Cameras/Camera.h>
-#include <ZEngine/Window/CoreWindow.h>
+#include <ZEngine/Windows/CoreWindow.h>
 
 namespace Tetragrama::Controllers
 {
@@ -76,14 +76,14 @@ namespace Tetragrama::Controllers
         }
 
     protected:
-        glm::vec3                                     m_position{0.0f, 0.0f, 10.0f};
-        float                                         m_rotation_angle{0.0f};
-        float                                         m_zoom_factor{1.0f};
-        float                                         m_move_speed{0.05f};
-        float                                         m_rotation_speed{0.05f};
-        float                                         m_aspect_ratio{0.0f};
-        bool                                          m_can_rotate{false};
-        CameraControllerType                          m_controller_type{CameraControllerType::UNDEFINED};
-        ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;
+        glm::vec3                                      m_position{0.0f, 0.0f, 10.0f};
+        float                                          m_rotation_angle{0.0f};
+        float                                          m_zoom_factor{1.0f};
+        float                                          m_move_speed{0.05f};
+        float                                          m_rotation_speed{0.05f};
+        float                                          m_aspect_ratio{0.0f};
+        bool                                           m_can_rotate{false};
+        CameraControllerType                           m_controller_type{CameraControllerType::UNDEFINED};
+        ZEngine::WeakRef<ZEngine::Windows::CoreWindow> m_window;
     };
 } // namespace Tetragrama::Controllers

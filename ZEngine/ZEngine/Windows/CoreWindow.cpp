@@ -1,10 +1,9 @@
 #include <pch.h>
-#include <Window/CoreWindow.h>
+#include <CoreWindow.h>
 
-using namespace ZEngine::Event;
-using namespace ZEngine::Layers;
+using namespace ZEngine::Windows::Layers;
 
-namespace ZEngine::Window
+namespace ZEngine::Windows
 {
     CoreWindow::CoreWindow()
     {
@@ -33,7 +32,7 @@ namespace ZEngine::Window
         m_layer_stack_ptr->PushLayer(std::move(layer));
     }
 
-    void CoreWindow::ForwardEventToLayers(CoreEvent& event)
+    void CoreWindow::ForwardEventToLayers(Core::CoreEvent& event)
     {
         for (auto it = m_layer_stack_ptr->rbegin(); it != m_layer_stack_ptr->rend(); ++it)
         {
@@ -44,4 +43,4 @@ namespace ZEngine::Window
             it->get()->OnEvent(event);
         }
     }
-} // namespace ZEngine::Window
+} // namespace ZEngine::Windows

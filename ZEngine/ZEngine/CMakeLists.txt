@@ -21,6 +21,33 @@ add_library (zEngineLib
 target_include_directories (zEngineLib
 	PUBLIC
 		.
+		./Core
+		./Hardwares
+		./Helpers
+		./Layers
+		./Logging
+		./Rendering
+		./Rendering/Entities
+		./Rendering/Meshes
+		./Rendering/Buffers
+		./Rendering/Cameras
+		./Rendering/Pools
+		./Rendering/Primitives
+		./Rendering/Renderers
+		./Rendering/Renderers/Pipelines
+		./Rendering/Renderers/RenderPasses
+		./Rendering/Renderers/Storages
+		./Rendering/Scenes
+		./Rendering/Shaders
+		./Rendering/Shaders/Compilers
+		./Rendering/Specifications
+		./Rendering/Textures
+		./Windows
+		./Windows/Events
+		./Windows/Inputs
+		./Windows/Layers
+		./Managers
+		./Serializers
 		${EXTERNAL_DIR}
 		${EXTERNAL_INCLUDE_DIRS}
 )

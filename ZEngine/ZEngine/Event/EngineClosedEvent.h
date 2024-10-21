@@ -1,10 +1,10 @@
 #pragma once
-#include <Event/CoreEvent.h>
+#include <Core/CoreEvent.h>
 #include <fmt/format.h>
 
 namespace ZEngine::Event
 {
-    class EngineClosedEvent : public CoreEvent
+    class EngineClosedEvent : public Core::CoreEvent
     {
     public:
         EngineClosedEvent(std::string_view r) : CoreEvent(), m_reason(r)
@@ -18,7 +18,7 @@ namespace ZEngine::Event
             m_reason = value;
         }
 
-        EventType GetType() const override
+        Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -30,7 +30,7 @@ namespace ZEngine::Event
 
         std::string ToString() const override
         {
-            return fmt::format("EngineClosedEvent");
+            return fmt::format("{}: {}", m_name, m_reason);
         }
 
         EVENT_CATEGORY(Engine)

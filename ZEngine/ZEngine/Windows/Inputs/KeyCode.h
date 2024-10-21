@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-namespace ZEngine::Inputs
+namespace ZEngine::Windows::Inputs
 {
 
     typedef enum class KeyCode : std::int32_t
@@ -377,4 +377,4 @@ namespace ZEngine::Inputs
         MOUSE_BUTTON_8      = 7
 
     } GlfwKey;
-} // namespace ZEngine::Inputs
+} // namespace ZEngine::Windows::Inputs

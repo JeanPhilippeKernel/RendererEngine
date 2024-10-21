@@ -1,6 +1,6 @@
 #pragma once
 #include <Logging/LoggerConfiguration.h>
-#include <Window/WindowConfiguration.h>
+#include <Windows/WindowConfiguration.h>
 
 namespace ZEngine
 {
@@ -8,7 +8,7 @@ namespace ZEngine
     struct EngineConfiguration
     {
         Logging::LoggerConfiguration LoggerConfiguration;
-        Window::WindowConfiguration  WindowConfiguration;
+        Windows::WindowConfiguration WindowConfiguration;
     };
 
 } // namespace ZEngine

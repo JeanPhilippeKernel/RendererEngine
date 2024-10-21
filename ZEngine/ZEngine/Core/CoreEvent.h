@@ -2,19 +2,19 @@
 #include <ZEngineDef.h>
 #include <string>
 
-#define EVENT_TYPE(value)                            \
-    static ZEngine::Event::EventType GetStaticType() \
-    {                                                \
-        return ZEngine::Event::EventType::value;     \
+#define EVENT_TYPE(value)                           \
+    static ZEngine::Core::EventType GetStaticType() \
+    {                                               \
+        return ZEngine::Core::EventType::value;     \
     }
 
-#define EVENT_CATEGORY(value)                                              \
-    static uint8_t GetStaticCategory()                                     \
-    {                                                                      \
-        return static_cast<uint8_t>(ZEngine::Event::EventCategory::value); \
+#define EVENT_CATEGORY(value)                                             \
+    static uint8_t GetStaticCategory()                                    \
+    {                                                                     \
+        return static_cast<uint8_t>(ZEngine::Core::EventCategory::value); \
     }
 
-namespace ZEngine::Event
+namespace ZEngine::Core
 {
     enum EventCategory : uint8_t
     {
@@ -94,4 +94,4 @@ namespace ZEngine::Event
         bool        m_handled{false};
         std::string m_name{};
     };
-} // namespace ZEngine::Event
+} // namespace ZEngine::Core

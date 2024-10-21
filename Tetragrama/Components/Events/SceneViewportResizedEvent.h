@@ -20,7 +20,7 @@ namespace Tetragrama::Components::Event
             return m_height;
         }
 
-        virtual ZEngine::Event::EventType GetType() const override
+        virtual ZEngine::Core::EventType GetType() const override
         {
             return GetStaticType();
         }

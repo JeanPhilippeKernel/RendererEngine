@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Event/CoreEvent.h>
+#include <Core/CoreEvent.h>
 
 namespace ZEngine::Core
 {
@@ -10,6 +10,6 @@ namespace ZEngine::Core
         IEventable()          = default;
         virtual ~IEventable() = default;
 
-        virtual bool OnEvent(Event::CoreEvent&) = 0;
+        virtual bool OnEvent(CoreEvent&) = 0;
     };
 } // namespace ZEngine::Core

@@ -3,21 +3,15 @@
 #include <Core/IInitializable.h>
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
-#include <Core/TimeStep.h>
-#include <Event/CoreEvent.h>
-#include <Window/CoreWindow.h>
-#include <ZEngineDef.h>
-#include <vulkan/vulkan.h>
+#include <Windows/CoreWindow.h>
 #include <string>
-#include <string_view>
-#include <vector>
 
-namespace ZEngine::Window
+namespace ZEngine::Windows
 {
     class CoreWindow;
 }
 
-namespace ZEngine::Layers
+namespace ZEngine::Windows::Layers
 {
 
     class Layer : public Core::IInitializable, public Core::IUpdatable, public Core::IEventable, public Core::IRenderable, public Helpers::RefCounted
@@ -33,12 +27,12 @@ namespace ZEngine::Layers
             return m_name;
         }
 
-        void SetAttachedWindow(const ZEngine::Ref<Window::CoreWindow>& window)
+        void SetAttachedWindow(const ZEngine::Ref<Windows::CoreWindow>& window)
         {
             m_window = window;
         }
 
-        ZEngine::Ref<ZEngine::Window::CoreWindow> GetAttachedWindow() const
+        ZEngine::Ref<ZEngine::Windows::CoreWindow> GetAttachedWindow() const
         {
             if (!m_window.expired())
                 return m_window.lock();
@@ -47,7 +41,7 @@ namespace ZEngine::Layers
         }
 
     protected:
-        std::string                                   m_name;
-        ZEngine::WeakRef<ZEngine::Window::CoreWindow> m_window;
+        std::string                                    m_name;
+        ZEngine::WeakRef<ZEngine::Windows::CoreWindow> m_window;
     };
-} // namespace ZEngine::Layers
+} // namespace ZEngine::Windows::Layers

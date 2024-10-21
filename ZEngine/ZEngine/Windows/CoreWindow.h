@@ -1,52 +1,40 @@
 #pragma once
 
+#include <Core/CoreEvent.h>
+#include <Core/EventDispatcher.h>
 #include <Core/IEventable.h>
 #include <Core/IInitializable.h>
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
 #include <Core/TimeStep.h>
-#include <Event/CoreEvent.h>
-#include <Event/EventDispatcher.h>
-#include <Event/TextInputEvent.h>
-#include <Event/WindowEvent.h>
 #include <Inputs/IInputEventCallback.h>
 #include <Layers/Layer.h>
 #include <Layers/LayerStack.h>
 #include <Rendering/Swapchain.h>
-#include <Window/WindowConfiguration.h>
-#include <Window/WindowProperty.h>
+#include <WindowConfiguration.h>
+#include <WindowProperty.h>
 
-namespace ZEngine::Layers
+namespace ZEngine::Windows::Layers
 {
     class Layer;
     class LayerStack;
-} // namespace ZEngine::Layers
+} // namespace ZEngine::Windows::Layers
 
-namespace ZEngine::Window
+namespace ZEngine::Windows
 {
-
-    struct ICoreWindowEventCallback
-    {
-        virtual bool OnWindowClosed(Event::WindowClosedEvent&)       = 0;
-        virtual bool OnWindowResized(Event::WindowResizedEvent&)     = 0;
-        virtual bool OnWindowMinimized(Event::WindowMinimizedEvent&) = 0;
-        virtual bool OnWindowMaximized(Event::WindowMaximizedEvent&) = 0;
-        virtual bool OnWindowRestored(Event::WindowRestoredEvent&)   = 0;
-    };
-
     class CoreWindow : public Helpers::RefCounted,
                        public Inputs::IKeyboardEventCallback,
                        public Inputs::IMouseEventCallback,
                        public Inputs::ITextInputEventCallback,
+                       public Inputs::IWindowEventCallback,
                        public Core::IUpdatable,
                        public Core::IRenderable,
                        public Core::IEventable,
-                       public Core::IInitializable,
-                       public ICoreWindowEventCallback
+                       public Core::IInitializable
     {
 
     public:
-        using EventCallbackFn = std::function<void(Event::CoreEvent&)>;
+        using EventCallbackFn = std::function<void(Core::CoreEvent&)>;
 
     public:
         CoreWindow();
@@ -73,7 +61,7 @@ namespace ZEngine::Window
         virtual float GetTime()      = 0;
         virtual float GetDeltaTime() = 0;
 
-        virtual void ForwardEventToLayers(Event::CoreEvent& event);
+        virtual void ForwardEventToLayers(Core::CoreEvent& event);
 
         virtual void PushOverlayLayer(const Ref<Layers::Layer>& layer);
         virtual void PushOverlayLayer(Ref<Layers::Layer>&& layer);
@@ -81,10 +69,10 @@ namespace ZEngine::Window
         virtual void PushLayer(Ref<Layers::Layer>&& layer);
 
     protected:
-        Core::TimeStep                              m_delta_time;
-        WindowProperty                              m_property;
-        ZEngine::Scope<ZEngine::Layers::LayerStack> m_layer_stack_ptr{nullptr};
+        Core::TimeStep                     m_delta_time;
+        WindowProperty                     m_property;
+        ZEngine::Scope<Layers::LayerStack> m_layer_stack_ptr{nullptr};
     };
 
     CoreWindow* Create(const WindowConfiguration&);
-} // namespace ZEngine::Window
+} // namespace ZEngine::Windows

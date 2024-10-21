@@ -1,15 +1,14 @@
 #pragma once
-#include <Inputs/KeyCode.h>
-#include <Window/CoreWindow.h>
+#include <CoreWindow.h>
+#include <KeyCode.h>
 #include <ZEngineDef.h>
-#include <string.h>
 #include <algorithm>
 #include <memory>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 
-namespace ZEngine::Inputs
+namespace ZEngine::Windows::Inputs
 {
 
     struct IDevice : public Helpers::RefCounted
@@ -35,8 +34,8 @@ namespace ZEngine::Inputs
             return reinterpret_cast<T*>(pair.first->second.get());
         }
 
-        virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const  = 0;
-        virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Window::CoreWindow>& window) const = 0;
+        virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Windows::CoreWindow>& window) const  = 0;
+        virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Windows::CoreWindow>& window) const = 0;
 
         virtual std::string_view GetName() const
         {
@@ -48,4 +47,4 @@ namespace ZEngine::Inputs
         static std::unordered_map<std::string, Ref<IDevice>> m_devices;
         std::string                                          m_name;
     };
-} // namespace ZEngine::Inputs
+} // namespace ZEngine::Windows::Inputs

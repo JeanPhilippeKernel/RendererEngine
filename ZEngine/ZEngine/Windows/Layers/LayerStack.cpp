@@ -1,7 +1,7 @@
 #include <pch.h>
-#include <Layers/LayerStack.h>
+#include <LayerStack.h>
 
-namespace ZEngine::Layers
+namespace ZEngine::Windows::Layers
 {
 
     LayerStack::~LayerStack()
@@ -125,4 +125,4 @@ namespace ZEngine::Layers
             m_layers.erase(it);
         }
     }
-} // namespace ZEngine::Layers
+} // namespace ZEngine::Windows::Layers

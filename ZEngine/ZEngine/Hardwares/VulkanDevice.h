@@ -13,7 +13,7 @@
 #include <Rendering/ResourceTypes.h>
 #include <map>
 
-namespace ZEngine::Window
+namespace ZEngine::Windows
 {
     class CoreWindow;
 }
@@ -81,7 +81,7 @@ namespace ZEngine::Hardwares
         VulkanDevice(const VulkanDevice&) = delete;
         ~VulkanDevice()                   = delete;
 
-        static void Initialize(const Ref<Window::CoreWindow>& window);
+        static void Initialize(const Ref<Windows::CoreWindow>& window);
         static void Deinitialize();
         static void Dispose();
 

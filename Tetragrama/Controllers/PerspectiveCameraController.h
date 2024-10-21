@@ -1,13 +1,13 @@
 #pragma once
 #include <Controllers/ICameraController.h>
-#include <ZEngine/Inputs/IInputEventCallback.h>
 #include <ZEngine/Rendering/Cameras/PerspectiveCamera.h>
+#include <ZEngine/Windows/Inputs/IInputEventCallback.h>
 #include <mutex>
 
 namespace Tetragrama::Controllers
 {
 
-    class PerspectiveCameraController : public ICameraController, public ZEngine::Inputs::IMouseEventCallback
+    class PerspectiveCameraController : public ICameraController, public ZEngine::Windows::Inputs::IMouseEventCallback
     {
     public:
         explicit PerspectiveCameraController() : m_perspective_camera(new ZEngine::Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far))
@@ -44,7 +44,7 @@ namespace Tetragrama::Controllers
 
         void Initialize() override;
         void Update(ZEngine::Core::TimeStep) override;
-        bool OnEvent(ZEngine::Event::CoreEvent&) override;
+        bool OnEvent(ZEngine::Core::CoreEvent&) override;
 
         const ZEngine::Ref<ZEngine::Rendering::Cameras::Camera> GetCamera() const override;
 
@@ -69,22 +69,22 @@ namespace Tetragrama::Controllers
         virtual void PauseEventProcessing();
 
     public:
-        bool OnMouseButtonPressed(ZEngine::Event::MouseButtonPressedEvent&) override
+        bool OnMouseButtonPressed(ZEngine::Windows::Events::MouseButtonPressedEvent&) override
         {
             return false;
         }
 
-        bool OnMouseButtonReleased(ZEngine::Event::MouseButtonReleasedEvent&) override
+        bool OnMouseButtonReleased(ZEngine::Windows::Events::MouseButtonReleasedEvent&) override
         {
             return false;
         }
 
-        bool OnMouseButtonMoved(ZEngine::Event::MouseButtonMovedEvent&) override
+        bool OnMouseButtonMoved(ZEngine::Windows::Events::MouseButtonMovedEvent&) override
         {
             return false;
         }
 
-        bool OnMouseButtonWheelMoved(ZEngine::Event::MouseButtonWheelEvent&) override;
+        bool OnMouseButtonWheelMoved(ZEngine::Windows::Events::MouseButtonWheelEvent&) override;
 
     protected:
         float                                                        m_camera_fov{90.0f};

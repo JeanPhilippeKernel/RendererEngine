@@ -2,28 +2,28 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <ZEngine/Rendering/Swapchain.h>
-#include <ZEngine/Window/CoreWindow.h>
-#include <ZEngine/Window/WindowConfiguration.h>
+#include <ZEngine/Windows/CoreWindow.h>
+#include <ZEngine/Windows/WindowConfiguration.h>
 #include <ZEngine/ZEngineDef.h>
 
 namespace Tetragrama
 {
-    class EditorWindow : public ZEngine::Window::CoreWindow
+    class EditorWindow : public ZEngine::Windows::CoreWindow
     {
     public:
-        EditorWindow(const ZEngine::Window::WindowConfiguration& configuration);
+        EditorWindow(const ZEngine::Windows::WindowConfiguration& configuration);
         virtual ~EditorWindow();
 
-        uint32_t                                       GetHeight() const override;
-        uint32_t                                       GetWidth() const override;
-        std::string_view                               GetTitle() const override;
-        bool                                           IsMinimized() const override;
-        void                                           SetTitle(std::string_view title) override;
-        bool                                           IsVSyncEnable() const override;
-        void                                           SetVSync(bool value) override;
-        void                                           SetCallbackFunction(const EventCallbackFn& callback) override;
-        void*                                          GetNativeWindow() const override;
-        virtual const ZEngine::Window::WindowProperty& GetWindowProperty() const override;
+        uint32_t                                        GetHeight() const override;
+        uint32_t                                        GetWidth() const override;
+        std::string_view                                GetTitle() const override;
+        bool                                            IsMinimized() const override;
+        void                                            SetTitle(std::string_view title) override;
+        bool                                            IsVSyncEnable() const override;
+        void                                            SetVSync(bool value) override;
+        void                                            SetCallbackFunction(const EventCallbackFn& callback) override;
+        void*                                           GetNativeWindow() const override;
+        virtual const ZEngine::Windows::WindowProperty& GetWindowProperty() const override;
 
         virtual void  Initialize() override;
         virtual void  InitializeLayer() override;
@@ -39,24 +39,24 @@ namespace Tetragrama
         ZEngine::Ref<ZEngine::Rendering::Swapchain> GetSwapchain() const override;
 
     public:
-        bool OnEvent(ZEngine::Event::CoreEvent& event) override;
+        bool OnEvent(ZEngine::Core::CoreEvent& event) override;
 
     protected:
-        virtual bool OnKeyPressed(ZEngine::Event::KeyPressedEvent&) override;
-        virtual bool OnKeyReleased(ZEngine::Event::KeyReleasedEvent&) override;
+        virtual bool OnKeyPressed(ZEngine::Windows::Events::KeyPressedEvent&) override;
+        virtual bool OnKeyReleased(ZEngine::Windows::Events::KeyReleasedEvent&) override;
 
-        virtual bool OnMouseButtonPressed(ZEngine::Event::MouseButtonPressedEvent&) override;
-        virtual bool OnMouseButtonReleased(ZEngine::Event::MouseButtonReleasedEvent&) override;
-        virtual bool OnMouseButtonMoved(ZEngine::Event::MouseButtonMovedEvent&) override;
-        virtual bool OnMouseButtonWheelMoved(ZEngine::Event::MouseButtonWheelEvent&) override;
+        virtual bool OnMouseButtonPressed(ZEngine::Windows::Events::MouseButtonPressedEvent&) override;
+        virtual bool OnMouseButtonReleased(ZEngine::Windows::Events::MouseButtonReleasedEvent&) override;
+        virtual bool OnMouseButtonMoved(ZEngine::Windows::Events::MouseButtonMovedEvent&) override;
+        virtual bool OnMouseButtonWheelMoved(ZEngine::Windows::Events::MouseButtonWheelEvent&) override;
 
-        virtual bool OnTextInputRaised(ZEngine::Event::TextInputEvent&) override;
+        virtual bool OnTextInputRaised(ZEngine::Windows::Events::TextInputEvent&) override;
 
-        virtual bool OnWindowClosed(ZEngine::Event::WindowClosedEvent&) override;
-        virtual bool OnWindowResized(ZEngine::Event::WindowResizedEvent&) override;
-        virtual bool OnWindowMinimized(ZEngine::Event::WindowMinimizedEvent&) override;
-        virtual bool OnWindowMaximized(ZEngine::Event::WindowMaximizedEvent&) override;
-        virtual bool OnWindowRestored(ZEngine::Event::WindowRestoredEvent&) override;
+        virtual bool OnWindowClosed(ZEngine::Windows::Events::WindowClosedEvent&) override;
+        virtual bool OnWindowResized(ZEngine::Windows::Events::WindowResizedEvent&) override;
+        virtual bool OnWindowMinimized(ZEngine::Windows::Events::WindowMinimizedEvent&) override;
+        virtual bool OnWindowMaximized(ZEngine::Windows::Events::WindowMaximizedEvent&) override;
+        virtual bool OnWindowRestored(ZEngine::Windows::Events::WindowRestoredEvent&) override;
 
         static void __OnGlfwWindowClose(GLFWwindow*);
         static void __OnGlfwWindowResized(GLFWwindow*, int width, int height);

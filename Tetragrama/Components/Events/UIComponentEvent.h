@@ -1,10 +1,10 @@
 #pragma once
-#include <ZEngine/Event/CoreEvent.h>
+#include <ZEngine/Core/CoreEvent.h>
 
 namespace Tetragrama::Components::Event
 {
 
-    class UIComponentEvent : public ZEngine::Event::CoreEvent
+    class UIComponentEvent : public ZEngine::Core::CoreEvent
     {
     public:
         UIComponentEvent()          = default;

@@ -12,7 +12,7 @@ namespace Tetragrama::Components::Event
 
         EVENT_TYPE(SceneViewportFocused)
 
-        virtual ZEngine::Event::EventType GetType() const override
+        virtual ZEngine::Core::EventType GetType() const override
         {
             return GetStaticType();
         }

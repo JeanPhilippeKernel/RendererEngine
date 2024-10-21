@@ -16,7 +16,7 @@ namespace Tetragrama::Components::Event
             return m_texture_identifier;
         }
 
-        virtual ZEngine::Event::EventType GetType() const override
+        virtual ZEngine::Core::EventType GetType() const override
         {
             return GetStaticType();
         }

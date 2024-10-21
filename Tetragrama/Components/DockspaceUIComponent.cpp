@@ -1,7 +1,6 @@
 #include <pch.h>
 #include <DockspaceUIComponent.h>
 #include <Editor.h>
-#include <Event/EventDispatcher.h>
 #include <Helpers/UIDispatcher.h>
 #include <Helpers/WindowsHelper.h>
 #include <Importers/AssimpImporter.h>
@@ -579,7 +578,7 @@ namespace Tetragrama::Components
     {
         if (auto layer = m_parent_layer.lock())
         {
-            ZEngine::Event::WindowClosedEvent e{};
+            ZEngine::Windows::Events::WindowClosedEvent e{};
             layer->OnEvent(e);
         }
         ZENGINE_CORE_WARN("Editor stopped")

@@ -1,12 +1,12 @@
 #pragma once
-#include <Event/CoreEvent.h>
+#include <Core/CoreEvent.h>
 #include <Inputs/KeyCode.h>
 #include <ZEngineDef.h>
 
-namespace ZEngine::Event
+namespace ZEngine::Windows::Events
 {
 
-    class KeyEvent : public CoreEvent
+    class KeyEvent : public Core::CoreEvent
     {
     public:
         KeyEvent(ZENGINE_KEYCODE key) : m_keycode(key) {}
@@ -16,7 +16,7 @@ namespace ZEngine::Event
             return m_keycode;
         }
 
-        EVENT_CATEGORY(Keyboard | EventCategory::Input)
+        EVENT_CATEGORY(Keyboard | Core::EventCategory::Input)
 
     protected:
         ZENGINE_KEYCODE m_keycode;
@@ -29,7 +29,7 @@ namespace ZEngine::Event
 
         EVENT_TYPE(KeyPressed)
 
-        virtual EventType GetType() const override
+        virtual Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -55,7 +55,7 @@ namespace ZEngine::Event
 
         EVENT_TYPE(KeyReleased)
 
-        virtual EventType GetType() const override
+        virtual Core::EventType GetType() const override
         {
             return GetStaticType();
         }
@@ -70,4 +70,4 @@ namespace ZEngine::Event
             return fmt::format("KeyReleasedEvent : {0}", m_keycode);
         }
     };
-} // namespace ZEngine::Event
+} // namespace ZEngine::Windows::Events
