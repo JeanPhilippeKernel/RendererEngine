@@ -27,7 +27,7 @@ namespace ZEngine::Windows::Inputs
                 return reinterpret_cast<T*>(it->second.get());
             }
 
-            Helpers::Ref<IDevice> device_ptr = CreateRef<T>();
+            Helpers::Ref<IDevice> device_ptr = Helpers::CreateRef<T>();
 
             auto pair = m_devices.emplace(std::make_pair(std::string(type.name()), std::move(device_ptr)));
             return reinterpret_cast<T*>(pair.first->second.get());

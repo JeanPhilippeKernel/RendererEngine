@@ -92,6 +92,15 @@ namespace ZEngine::Helpers
     class IntrusiveWeakPtr;
 
     template <typename T>
+    using Ref = IntrusivePtr<T>;
+
+    template <typename T>
+    using WeakRef = IntrusiveWeakPtr<T>;
+
+    template <typename T>
+    using Scope = std::unique_ptr<T>;
+
+    template <typename T>
     class IntrusivePtr
     {
     public:
@@ -440,15 +449,6 @@ namespace ZEngine::Helpers
     private:
         T* m_ptr = nullptr;
     };
-
-    template <typename T>
-    using Ref = IntrusivePtr<T>;
-
-    template <typename T>
-    using WeakRef = IntrusiveWeakPtr<T>;
-
-    template <typename T>
-    using Scope = std::unique_ptr<T>;
 
     template <typename T, typename... Args>
     Ref<T> CreateRef(Args&&... args)
