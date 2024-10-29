@@ -73,23 +73,23 @@ namespace ZEngine::Rendering::Textures
     {
         TextureArray(uint32_t count = 0) : m_texture_array(count), m_count(count) {}
 
-        Ref<Texture>& operator[](uint32_t index)
+        Helpers::Ref<Texture>& operator[](uint32_t index)
         {
             assert(index < m_texture_array.size());
             return m_texture_array[index];
         }
 
-        const std::vector<Ref<Texture>>& Data() const
+        const std::vector<Helpers::Ref<Texture>>& Data() const
         {
             return m_texture_array;
         }
 
-        std::vector<Ref<Texture>>& Data()
+        std::vector<Helpers::Ref<Texture>>& Data()
         {
             return m_texture_array;
         }
 
-        int Add(const Ref<Texture>& texture)
+        int Add(const Helpers::Ref<Texture>& texture)
         {
             int output_index = -1;
 
@@ -102,7 +102,7 @@ namespace ZEngine::Rendering::Textures
             return output_index;
         }
 
-        int Add(Ref<Texture>&& texture)
+        int Add(Helpers::Ref<Texture>&& texture)
         {
             int output_index = -1;
 
@@ -134,9 +134,9 @@ namespace ZEngine::Rendering::Textures
         }
 
     private:
-        uint32_t                  m_count{0};
-        uint32_t                  m_free_slot_index{0};
-        std::vector<Ref<Texture>> m_texture_array;
+        uint32_t                           m_count{0};
+        uint32_t                           m_free_slot_index{0};
+        std::vector<Helpers::Ref<Texture>> m_texture_array;
     };
 
     /*

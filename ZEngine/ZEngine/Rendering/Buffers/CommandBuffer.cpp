@@ -8,6 +8,8 @@
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/ResourceTypes.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Rendering::Buffers
 {
     CommandBuffer::CommandBuffer(VkCommandPool command_pool, Rendering::QueueType type, bool one_time)

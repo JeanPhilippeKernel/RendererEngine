@@ -3,6 +3,7 @@
 
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering::Specifications;
+using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {

@@ -32,9 +32,9 @@ namespace Tetragrama::Layers
 
         void Render() override;
 
-        virtual void AddUIComponent(const ZEngine::Ref<Components::UIComponent>& component);
-        virtual void AddUIComponent(ZEngine::Ref<Components::UIComponent>&& component);
-        virtual void AddUIComponent(std::vector<ZEngine::Ref<Components::UIComponent>>&& components);
+        virtual void AddUIComponent(const ZEngine::Helpers::Ref<Components::UIComponent>& component);
+        virtual void AddUIComponent(ZEngine::Helpers::Ref<Components::UIComponent>&& component);
+        virtual void AddUIComponent(std::vector<ZEngine::Helpers::Ref<Components::UIComponent>>&& components);
 
     protected:
         bool OnKeyPressed(ZEngine::Windows::Events::KeyPressedEvent&) override;
@@ -53,7 +53,7 @@ namespace Tetragrama::Layers
         bool OnWindowRestored(ZEngine::Windows::Events::WindowRestoredEvent&) override;
 
     private:
-        static bool                                        m_initialized;
-        std::vector<ZEngine::Ref<Components::UIComponent>> m_ui_components;
+        static bool                                                 m_initialized;
+        std::vector<ZEngine::Helpers::Ref<Components::UIComponent>> m_ui_components;
     };
 } // namespace Tetragrama::Layers

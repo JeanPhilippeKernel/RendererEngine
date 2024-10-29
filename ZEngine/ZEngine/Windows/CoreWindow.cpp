@@ -2,6 +2,7 @@
 #include <CoreWindow.h>
 
 using namespace ZEngine::Windows::Layers;
+using namespace ZEngine::Helpers;
 
 namespace ZEngine::Windows
 {

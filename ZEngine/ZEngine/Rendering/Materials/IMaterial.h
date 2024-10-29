@@ -16,12 +16,12 @@ namespace ZEngine::Rendering::Materials
             m_material_name = typeid(*this).name();
         }
 
-        explicit IMaterial(const Ref<Textures::Texture>& texture)
+        explicit IMaterial(const Helpers::Ref<Textures::Texture>& texture)
         {
             m_material_name = typeid(*this).name();
         }
 
-        explicit IMaterial(Ref<Textures::Texture>&& texture)
+        explicit IMaterial(Helpers::Ref<Textures::Texture>&& texture)
         {
             m_material_name = typeid(*this).name();
         }

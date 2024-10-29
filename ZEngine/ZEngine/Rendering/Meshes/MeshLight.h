@@ -13,8 +13,8 @@ namespace ZEngine::Rendering::Mesh
             m_is_MeshLight_mesh_object = true;
         }
 
-        explicit MeshLight(Ref<Geometries::IGeometry>&& geometry, Ref<Materials::ShaderMaterial>&& material) : Mesh(geometry, material) {}
-        explicit MeshLight(Ref<Geometries::IGeometry>& geometry, Ref<Materials::ShaderMaterial>& material) : Mesh(geometry, material) {}
+        explicit MeshLight(Helpers::Ref<Geometries::IGeometry>&& geometry, Helpers::Ref<Materials::ShaderMaterial>&& material) : Mesh(geometry, material) {}
+        explicit MeshLight(Helpers::Ref<Geometries::IGeometry>& geometry, Helpers::Ref<Materials::ShaderMaterial>& material) : Mesh(geometry, material) {}
         explicit MeshLight(Geometries::IGeometry* const geometry, Materials::ShaderMaterial* const material) : Mesh(geometry, material) {}
 
         virtual ~MeshLight() = default;

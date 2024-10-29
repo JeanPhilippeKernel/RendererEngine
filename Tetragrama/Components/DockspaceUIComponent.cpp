@@ -12,6 +12,8 @@
 
 namespace fs = std::filesystem;
 
+using namespace ZEngine::Helpers;
+
 namespace Tetragrama::Components
 {
     ImVec4      DockspaceUIComponent::s_asset_importer_report_msg_color   = {1, 1, 1, 1};
@@ -21,8 +23,7 @@ namespace Tetragrama::Components
     float       DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
 
     DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility)
-        : UIComponent(name, visibility, false), m_asset_importer(ZEngine::CreateScope<Importers::AssimpImporter>()),
-          m_editor_serializer(ZEngine::CreateScope<Serializers::EditorSceneSerializer>())
+        : UIComponent(name, visibility, false), m_asset_importer(CreateScope<Importers::AssimpImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>())
     {
         m_dockspace_node_flag = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
         m_window_flags        = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |

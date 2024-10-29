@@ -76,7 +76,7 @@ namespace Tetragrama::Serializers
             return m_is_serializing;
         }
 
-        virtual void Serialize(const ZEngine::Ref<TSerializerData>& data) = 0;
-        virtual void Deserialize(std::string_view filename)               = 0;
+        virtual void Serialize(const ZEngine::Helpers::Ref<TSerializerData>& data) = 0;
+        virtual void Deserialize(std::string_view filename)                        = 0;
     };
 } // namespace Tetragrama::Serializers

@@ -1,6 +1,8 @@
 #include <pch.h>
 #include <LayerStack.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Windows::Layers
 {
 

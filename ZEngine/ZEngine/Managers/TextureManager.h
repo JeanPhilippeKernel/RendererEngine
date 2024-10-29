@@ -1,7 +1,7 @@
 #pragma once
+#include <Helpers/IntrusivePtr.h>
 #include <Managers/IAssetManager.h>
 #include <Rendering/Textures/Texture.h>
-#include <ZEngineDef.h>
 #include <assert.h>
 #include <filesystem>
 #include <future>
@@ -22,7 +22,7 @@ namespace ZEngine::Managers
          * @param filename Path to find the texture
          * @return A texture instance
          */
-        Ref<Rendering::Textures::Texture> Add(const char* name, const char* filename) override;
+        Helpers::Ref<Rendering::Textures::Texture> Add(const char* name, const char* filename) override;
 
         /**
          * Add a texture to the Texture manager store
@@ -32,7 +32,7 @@ namespace ZEngine::Managers
          * @param height Texture height
          * @return A texture instance
          */
-        Ref<Rendering::Textures::Texture> Add(const char* name, unsigned int width, unsigned int height);
+        Helpers::Ref<Rendering::Textures::Texture> Add(const char* name, unsigned int width, unsigned int height);
 
         /**
          * Add a texture to the Texture manager store
@@ -40,7 +40,7 @@ namespace ZEngine::Managers
          * @param filename Path to find the texture file in the system
          * @return A texture instance
          */
-        Ref<Rendering::Textures::Texture> Load(const char* filename) override;
+        Helpers::Ref<Rendering::Textures::Texture> Load(const char* filename) override;
     };
 
     struct TextureManager
@@ -59,7 +59,7 @@ namespace ZEngine::Managers
          * @param filename Path to find the texture
          * @return A texture instance
          */
-        static Ref<Rendering::Textures::Texture> Add(std::string_view name, std::string_view filename);
+        static Helpers::Ref<Rendering::Textures::Texture> Add(std::string_view name, std::string_view filename);
 
         /**
          * Add a texture to the Texture manager store
@@ -69,7 +69,7 @@ namespace ZEngine::Managers
          * @param height Texture height
          * @return A texture instance
          */
-        static Ref<Rendering::Textures::Texture> Add(std::string_view name, unsigned int width, unsigned int height);
+        static Helpers::Ref<Rendering::Textures::Texture> Add(std::string_view name, unsigned int width, unsigned int height);
 
         /**
          * Add a texture to the Texture manager store
@@ -77,10 +77,10 @@ namespace ZEngine::Managers
          * @param filename Path to find the texture file in the system
          * @return A texture instance
          */
-        static Ref<Rendering::Textures::Texture> Load(std::string_view filename);
+        static Helpers::Ref<Rendering::Textures::Texture> Load(std::string_view filename);
 
     private:
-        static ZEngine::Scope<ZEngine::Managers::CoreTextureManager> m_texture_manager;
+        static Helpers::Scope<ZEngine::Managers::CoreTextureManager> m_texture_manager;
     };
 
 } // namespace ZEngine::Managers

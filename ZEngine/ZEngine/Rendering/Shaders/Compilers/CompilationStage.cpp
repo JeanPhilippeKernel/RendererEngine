@@ -5,6 +5,8 @@
 #include <Rendering/Shaders/Compilers/CompilationStage.h>
 #include <Rendering/Shaders/Compilers/ValidationStage.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Rendering::Shaders::Compilers
 {
     const TBuiltInResource DefaultTBuiltInResource = {

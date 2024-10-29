@@ -7,26 +7,27 @@
 
 using namespace Tetragrama::Messengers;
 using namespace ZEngine;
+using namespace ZEngine::Helpers;
 
 namespace Tetragrama
 {
-    EditorConfiguration       Editor::s_editor_configuration;
-    ZEngine::Ref<EditorScene> Editor::s_editor_scene{nullptr};
-    std::recursive_mutex      Editor::s_mutex;
+    EditorConfiguration  Editor::s_editor_configuration;
+    Ref<EditorScene>     Editor::s_editor_scene{nullptr};
+    std::recursive_mutex Editor::s_mutex;
 
     Editor::Editor(const EditorConfiguration& config) : m_engine_configuration()
     {
-        m_ui_layer     = ZEngine::CreateRef<Layers::UILayer>();
-        m_render_layer = ZEngine::CreateRef<Layers::RenderLayer>();
+        m_ui_layer     = CreateRef<Layers::UILayer>();
+        m_render_layer = CreateRef<Layers::RenderLayer>();
 
         s_editor_configuration = config;
         if ((!s_editor_scene) && config.ActiveSceneName.empty())
         {
-            s_editor_scene = ZEngine::CreateRef<EditorScene>("Empty_Scene");
+            s_editor_scene = CreateRef<EditorScene>("Empty_Scene");
         }
         else if (!config.ActiveSceneName.empty())
         {
-            s_editor_scene = ZEngine::CreateRef<EditorScene>(config.ActiveSceneName);
+            s_editor_scene = CreateRef<EditorScene>(config.ActiveSceneName);
         }
 
         auto title = config.ProjectName;
@@ -90,7 +91,7 @@ namespace Tetragrama
         return s_editor_configuration;
     }
 
-    ZEngine::Ref<EditorScene> Editor::GetCurrentEditorScene()
+    Ref<EditorScene> Editor::GetCurrentEditorScene()
     {
         {
             std::unique_lock l(s_mutex);

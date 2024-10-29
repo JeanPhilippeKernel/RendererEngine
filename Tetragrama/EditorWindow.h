@@ -34,9 +34,9 @@ namespace Tetragrama
         virtual void  Update(ZEngine::Core::TimeStep delta_time) override;
         virtual void  Render() override;
 
-        virtual bool                                CreateSurface(void* instance, void** out_window_surface) override;
-        virtual std::vector<std::string>            GetRequiredExtensionLayers() override;
-        ZEngine::Ref<ZEngine::Rendering::Swapchain> GetSwapchain() const override;
+        virtual bool                                         CreateSurface(void* instance, void** out_window_surface) override;
+        virtual std::vector<std::string>                     GetRequiredExtensionLayers() override;
+        ZEngine::Helpers::Ref<ZEngine::Rendering::Swapchain> GetSwapchain() const override;
 
     public:
         bool OnEvent(ZEngine::Core::CoreEvent& event) override;
@@ -73,8 +73,8 @@ namespace Tetragrama
         static void __OnGlfwFrameBufferSizeChanged(GLFWwindow*, int width, int height);
 
     private:
-        GLFWwindow*                                 m_native_window{nullptr};
-        ZEngine::Ref<ZEngine::Rendering::Swapchain> m_swapchain;
+        GLFWwindow*                                          m_native_window{nullptr};
+        ZEngine::Helpers::Ref<ZEngine::Rendering::Swapchain> m_swapchain;
     };
 
 } // namespace Tetragrama

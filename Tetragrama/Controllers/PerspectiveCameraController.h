@@ -46,7 +46,7 @@ namespace Tetragrama::Controllers
         void Update(ZEngine::Core::TimeStep) override;
         bool OnEvent(ZEngine::Core::CoreEvent&) override;
 
-        const ZEngine::Ref<ZEngine::Rendering::Cameras::Camera> GetCamera() const override;
+        const ZEngine::Helpers::Ref<ZEngine::Rendering::Cameras::Camera> GetCamera() const override;
 
         void UpdateProjectionMatrix() override;
 
@@ -87,12 +87,12 @@ namespace Tetragrama::Controllers
         bool OnMouseButtonWheelMoved(ZEngine::Windows::Events::MouseButtonWheelEvent&) override;
 
     protected:
-        float                                                        m_camera_fov{90.0f};
-        float                                                        m_camera_near{1.f};
-        float                                                        m_camera_far{1000.0f};
-        std::recursive_mutex                                         m_event_mutex;
-        bool                                                         m_process_event{true};
-        glm::vec3                                                    m_camera_target{0.0f, 0.0f, 0.0f};
-        ZEngine::Ref<ZEngine::Rendering::Cameras::PerspectiveCamera> m_perspective_camera;
+        float                                                                 m_camera_fov{90.0f};
+        float                                                                 m_camera_near{1.f};
+        float                                                                 m_camera_far{1000.0f};
+        std::recursive_mutex                                                  m_event_mutex;
+        bool                                                                  m_process_event{true};
+        glm::vec3                                                             m_camera_target{0.0f, 0.0f, 0.0f};
+        ZEngine::Helpers::Ref<ZEngine::Rendering::Cameras::PerspectiveCamera> m_perspective_camera;
     };
 } // namespace Tetragrama::Controllers

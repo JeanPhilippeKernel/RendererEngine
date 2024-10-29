@@ -81,7 +81,7 @@ namespace ZEngine::Hardwares
         VulkanDevice(const VulkanDevice&) = delete;
         ~VulkanDevice()                   = delete;
 
-        static void Initialize(const Ref<Windows::CoreWindow>& window);
+        static void Initialize(const Helpers::Ref<Windows::CoreWindow>& window);
         static void Deinitialize();
         static void Dispose();
 
@@ -163,12 +163,12 @@ namespace ZEngine::Hardwares
             uint32_t                        height,
             uint32_t                        layer_number = 1);
 
-        static Ref<Rendering::Buffers::CommandBuffer> BeginInstantCommandBuffer(Rendering::QueueType type);
-        static void                                   EndInstantCommandBuffer(Ref<Rendering::Buffers::CommandBuffer>& command);
+        static Helpers::Ref<Rendering::Buffers::CommandBuffer> BeginInstantCommandBuffer(Rendering::QueueType type);
+        static void                                            EndInstantCommandBuffer(Helpers::Ref<Rendering::Buffers::CommandBuffer>& command);
 
         static VmaAllocator GetVmaAllocator();
 
-        static std::vector<Ref<Rendering::Pools::CommandPool>> s_command_pool_collection;
+        static std::vector<Helpers::Ref<Rendering::Pools::CommandPool>> s_command_pool_collection;
 
     private:
         static std::string                                                                      s_application_name;
@@ -201,7 +201,7 @@ namespace ZEngine::Hardwares
         static std::mutex                                                                       s_queue_mutex;
         static std::mutex                                                                       s_command_pool_mutex;
         static std::mutex                                                                       s_deletion_queue_mutex;
-        static std::map<Rendering::QueueType, Ref<Rendering::Pools::CommandPool>>               s_in_device_command_pool_map;
+        static std::map<Rendering::QueueType, Helpers::Ref<Rendering::Pools::CommandPool>>      s_in_device_command_pool_map;
         static std::condition_variable                                                          s_cond;
         static std::atomic_bool                                                                 s_is_executing_instant_command;
         static std::mutex                                                                       s_instant_command_mutex;

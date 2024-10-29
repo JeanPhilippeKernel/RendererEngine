@@ -1,5 +1,5 @@
 #pragma once
-#include <ZEngineDef.h>
+#include <Helpers/IntrusivePtr.h>
 #include <string>
 #include <vector>
 
@@ -16,8 +16,8 @@ namespace ZEngine::Windows
         uint32_t                                                   Height{800};
         bool                                                       EnableVsync{true};
         std::string                                                Title;
-        std::vector<ZEngine::Ref<ZEngine::Windows::Layers::Layer>> RenderingLayerCollection;
-        std::vector<ZEngine::Ref<ZEngine::Windows::Layers::Layer>> OverlayLayerCollection;
+        std::vector<Helpers::Ref<ZEngine::Windows::Layers::Layer>> RenderingLayerCollection;
+        std::vector<Helpers::Ref<ZEngine::Windows::Layers::Layer>> OverlayLayerCollection;
     };
 
 } // namespace ZEngine::Windows

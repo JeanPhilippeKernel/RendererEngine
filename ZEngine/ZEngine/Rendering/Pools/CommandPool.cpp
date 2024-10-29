@@ -3,6 +3,7 @@
 #include <Rendering/Pools/CommandPool.h>
 #include <ZEngineDef.h>
 
+using namespace ZEngine::Helpers;
 namespace ZEngine::Rendering::Pools
 {
     CommandPool::CommandPool(Rendering::QueueType type, uint64_t swapchain_identifier, bool present_on_swapchain)

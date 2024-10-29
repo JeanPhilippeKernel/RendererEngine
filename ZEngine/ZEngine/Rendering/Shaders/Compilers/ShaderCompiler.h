@@ -1,7 +1,7 @@
 #pragma once
 #include <Core/IPipeline.h>
+#include <Helpers/IntrusivePtr.h>
 #include <Rendering/Shaders/ShaderReader.h>
-#include <ZEngineDef.h>
 #include <future>
 #include <mutex>
 
@@ -38,8 +38,8 @@ namespace ZEngine::Rendering::Shaders::Compilers
         std::future<ShaderCompilerResult> CompileAsync();
 
     private:
-        std::string          m_source_file;
-        Scope<ShaderReader>  m_reader{nullptr};
-        std::recursive_mutex m_mutex;
+        std::string                  m_source_file;
+        Helpers::Scope<ShaderReader> m_reader{nullptr};
+        std::recursive_mutex         m_mutex;
     };
 } // namespace ZEngine::Rendering::Shaders::Compilers

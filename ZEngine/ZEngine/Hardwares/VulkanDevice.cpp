@@ -14,6 +14,7 @@
 
 using namespace std::chrono_literals;
 using namespace ZEngine::Rendering::Primitives;
+using namespace ZEngine::Helpers;
 
 namespace ZEngine::Hardwares
 {

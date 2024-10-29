@@ -11,6 +11,7 @@
 #define INVALID_NODE_ID -1
 
 using namespace ZEngine::Rendering::Components;
+using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Scenes
 {

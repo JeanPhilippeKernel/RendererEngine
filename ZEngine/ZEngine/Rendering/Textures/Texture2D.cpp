@@ -16,6 +16,8 @@
 #include <stb/stb_image_resize.h>
 #include <stb/stb_image_write.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Rendering::Textures
 {
 

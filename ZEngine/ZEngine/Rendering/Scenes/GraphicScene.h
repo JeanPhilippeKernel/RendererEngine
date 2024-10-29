@@ -74,7 +74,7 @@ namespace ZEngine::Rendering::Scenes
     struct SceneEntity : public Helpers::RefCounted
     {
         SceneEntity() = default;
-        SceneEntity(int node, WeakRef<Scenes::SceneRawData> scene) : m_node(node), m_weak_scene(scene) {}
+        SceneEntity(int node, Helpers::WeakRef<Scenes::SceneRawData> scene) : m_node(node), m_weak_scene(scene) {}
         ~SceneEntity() = default;
 
         void             SetName(std::string_view name);
@@ -134,8 +134,8 @@ namespace ZEngine::Rendering::Scenes
         }
 
     private:
-        int                           m_node{-1};
-        WeakRef<Scenes::SceneRawData> m_weak_scene;
+        int                                    m_node{-1};
+        Helpers::WeakRef<Scenes::SceneRawData> m_weak_scene;
     };
 
     struct GraphicScene : public Helpers::RefCounted
@@ -175,17 +175,17 @@ namespace ZEngine::Rendering::Scenes
         /*
          * Scene Graph operations
          */
-        static bool              HasSceneNodes();
-        static uint32_t          GetSceneNodeCount() = delete;
-        static std::vector<int>  GetRootSceneNodes();
-        static Ref<SceneRawData> GetRawData();
-        static void              SetRawData(Ref<SceneRawData>&& data);
-        static void              ComputeAllTransforms();
+        static bool                       HasSceneNodes();
+        static uint32_t                   GetSceneNodeCount() = delete;
+        static std::vector<int>           GetRootSceneNodes();
+        static Helpers::Ref<SceneRawData> GetRawData();
+        static void                       SetRawData(Helpers::Ref<SceneRawData>&& data);
+        static void                       ComputeAllTransforms();
 
     private:
-        static Ref<SceneRawData>    s_raw_data;
-        static Ref<entt::registry>  s_entities;
-        static std::recursive_mutex s_scene_node_mutex;
+        static Helpers::Ref<SceneRawData>   s_raw_data;
+        static Helpers::Ref<entt::registry> s_entities;
+        static std::recursive_mutex         s_scene_node_mutex;
         friend class ZEngine::Serializers::GraphicScene3DSerializer;
 
     private:

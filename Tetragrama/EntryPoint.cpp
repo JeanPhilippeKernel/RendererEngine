@@ -127,7 +127,7 @@ int applicationEntryPoint(int argc, char* argv[])
             break;
         }
 
-        auto editor = ZEngine::CreateRef<Tetragrama::Editor>(editor_config);
+        auto editor = ZEngine::Helpers::CreateRef<Tetragrama::Editor>(editor_config);
         editor->Initialize();
         editor->Run();
     }

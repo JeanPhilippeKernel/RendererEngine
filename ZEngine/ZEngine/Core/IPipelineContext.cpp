@@ -1,5 +1,7 @@
 #include <Core/IPipeline.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Core
 {
 

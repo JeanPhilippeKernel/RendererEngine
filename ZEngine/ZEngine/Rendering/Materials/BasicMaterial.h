@@ -10,12 +10,12 @@ namespace ZEngine::Rendering::Materials
         explicit BasicMaterial();
         virtual ~BasicMaterial() = default;
 
-        void                   SetTexture(const Ref<Textures::Texture>&);
-        Ref<Textures::Texture> GetTexture() const;
+        void                            SetTexture(const Helpers::Ref<Textures::Texture>&);
+        Helpers::Ref<Textures::Texture> GetTexture() const;
 
-        void Apply(const Ref<Shaders::Shader>&) override;
+        void Apply(const Helpers::Ref<Shaders::Shader>&) override;
 
     private:
-        Ref<Textures::Texture> m_texture;
+        Helpers::Ref<Textures::Texture> m_texture;
     };
 } // namespace ZEngine::Rendering::Materials

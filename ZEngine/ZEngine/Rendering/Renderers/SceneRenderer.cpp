@@ -4,6 +4,8 @@
 #include <Rendering/Renderers/SceneRenderer.h>
 #include <Rendering/Textures/Texture2D.h>
 
+using namespace ZEngine::Helpers;
+
 #define WRITE_BUFFERS_ONCE(frame_index, body)          \
     if (!m_write_once_control.contains(frame_index))   \
     {                                                  \

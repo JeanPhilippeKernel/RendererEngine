@@ -4,6 +4,7 @@
 #include <Messenger.h>
 #include <UILayer.h>
 
+using namespace ZEngine::Helpers;
 using namespace Tetragrama::Messengers;
 
 namespace Tetragrama::Layers
@@ -14,13 +15,13 @@ namespace Tetragrama::Layers
     {
         ImguiLayer::Initialize();
 
-        m_dockspace_component      = ZEngine::CreateRef<Components::DockspaceUIComponent>();
-        m_scene_component          = ZEngine::CreateRef<Components::SceneViewportUIComponent>();
-        m_editor_log_component     = ZEngine::CreateRef<Components::LogUIComponent>();
-        m_demo_component           = ZEngine::CreateRef<Components::DemoUIComponent>();
-        m_project_view_component   = ZEngine::CreateRef<Components::ProjectViewUIComponent>();
-        m_inspector_view_component = ZEngine::CreateRef<Components::InspectorViewUIComponent>();
-        m_hierarchy_view_component = ZEngine::CreateRef<Components::HierarchyViewUIComponent>();
+        m_dockspace_component      = CreateRef<Components::DockspaceUIComponent>();
+        m_scene_component          = CreateRef<Components::SceneViewportUIComponent>();
+        m_editor_log_component     = CreateRef<Components::LogUIComponent>();
+        m_demo_component           = CreateRef<Components::DemoUIComponent>();
+        m_project_view_component   = CreateRef<Components::ProjectViewUIComponent>();
+        m_inspector_view_component = CreateRef<Components::InspectorViewUIComponent>();
+        m_hierarchy_view_component = CreateRef<Components::HierarchyViewUIComponent>();
 
         AddUIComponent(m_dockspace_component);
         AddUIComponent(m_demo_component);
@@ -60,7 +61,7 @@ namespace Tetragrama::Layers
          */
         MESSENGER_REGISTER(
             Components::UIComponent,
-            GenericMessage<ZEngine::Ref<Controllers::EditorCameraController>>,
+            GenericMessage<Ref<Controllers::EditorCameraController>>,
             EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE,
             m_hierarchy_view_component.get(),
             return m_hierarchy_view_component->EditorCameraAvailableMessageHandlerAsync(*message_ptr))
@@ -97,7 +98,7 @@ namespace Tetragrama::Layers
 
         MESSENGER_REGISTER(
             Components::UIComponent,
-            GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>,
+            GenericMessage<Ref<ZEngine::Rendering::Scenes::GraphicScene>>,
             EDITOR_RENDER_LAYER_SCENE_AVAILABLE,
             m_inspector_view_component.get(),
             return m_inspector_view_component->SceneAvailableMessageHandlerAsync(*message_ptr));

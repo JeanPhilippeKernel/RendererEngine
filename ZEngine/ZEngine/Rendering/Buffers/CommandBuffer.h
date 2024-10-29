@@ -50,15 +50,15 @@ namespace ZEngine::Rendering::Buffers
         void              ResetState();
         void              SetState(const CommanBufferState& state);
 
-        void                   SetSignalFence(const Ref<Primitives::Fence>& semaphore);
-        void                   SetSignalSemaphore(const Ref<Primitives::Semaphore>& semaphore);
+        void                   SetSignalFence(const Helpers::Ref<Primitives::Fence>& semaphore);
+        void                   SetSignalSemaphore(const Helpers::Ref<Primitives::Semaphore>& semaphore);
         Primitives::Semaphore* GetSignalSemaphore() const;
         Primitives::Fence*     GetSignalFence();
 
         void ClearColor(float r, float g, float b, float a);
         void ClearDepth(float depth_color, uint32_t stencil);
 
-        void BeginRenderPass(const Ref<Renderers::RenderPasses::RenderPass>&);
+        void BeginRenderPass(const Helpers::Ref<Renderers::RenderPasses::RenderPass>&);
         void EndRenderPass();
         void BindDescriptorSets(uint32_t frame_index = 0);
         void BindDescriptorSet(const VkDescriptorSet& descriptor);
@@ -83,14 +83,14 @@ namespace ZEngine::Rendering::Buffers
         void PushConstants(VkShaderStageFlags stage_flags, uint32_t offset, uint32_t size, const void* data);
 
     private:
-        bool                                         m_one_time_usage{false};
-        std::atomic_uint8_t                          m_command_buffer_state{CommanBufferState::Idle};
-        VkCommandBuffer                              m_command_buffer{VK_NULL_HANDLE};
-        VkCommandPool                                m_command_pool{VK_NULL_HANDLE};
-        std::array<VkClearValue, 2>                  m_clear_value{};
-        Rendering::QueueType                         m_queue_type;
-        Ref<Primitives::Fence>                       m_signal_fence;
-        Ref<Primitives::Semaphore>                   m_signal_semaphore;
-        WeakRef<Renderers::RenderPasses::RenderPass> m_active_render_pass;
+        bool                                                  m_one_time_usage{false};
+        std::atomic_uint8_t                                   m_command_buffer_state{CommanBufferState::Idle};
+        VkCommandBuffer                                       m_command_buffer{VK_NULL_HANDLE};
+        VkCommandPool                                         m_command_pool{VK_NULL_HANDLE};
+        std::array<VkClearValue, 2>                           m_clear_value{};
+        Rendering::QueueType                                  m_queue_type;
+        Helpers::Ref<Primitives::Fence>                       m_signal_fence;
+        Helpers::Ref<Primitives::Semaphore>                   m_signal_semaphore;
+        Helpers::WeakRef<Renderers::RenderPasses::RenderPass> m_active_render_pass;
     };
 } // namespace ZEngine::Rendering::Buffers

@@ -78,7 +78,7 @@ namespace YAML
 
 namespace ZEngine::Serializers
 {
-    GraphicScene3DSerializer::GraphicScene3DSerializer(const Ref<GraphicScene>& scene) : GraphicSceneSerializer()
+    GraphicScene3DSerializer::GraphicScene3DSerializer(const Helpers::Ref<GraphicScene>& scene) : GraphicSceneSerializer()
     {
         m_scene                        = scene;
         auto directory                 = fmt::format("{0}/{1}", std::filesystem::current_path().string(), "Scenes");

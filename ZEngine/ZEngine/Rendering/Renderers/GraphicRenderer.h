@@ -27,17 +27,17 @@ namespace ZEngine::Rendering::Renderers
         static void                       Initialize();
         static void                       Deinitialize();
         static void                       SetViewportSize(uint32_t width, uint32_t height);
-        static void                       SetMainSwapchain(const Ref<Rendering::Swapchain>& swapchain);
+        static void                       SetMainSwapchain(const Helpers::Ref<Rendering::Swapchain>& swapchain);
         static const RendererInformation& GetRendererInformation();
 
         static void            Update();
-        static void            DrawScene(const Ref<Rendering::Cameras::Camera>& camera, const Ref<Rendering::Scenes::SceneRawData>& data);
+        static void            DrawScene(const Helpers::Ref<Rendering::Cameras::Camera>& camera, const Helpers::Ref<Rendering::Scenes::SceneRawData>& data);
         static void            BeginImguiFrame();
         static void            DrawUIFrame();
         static void            EndImguiFrame();
         static VkDescriptorSet GetImguiFrameOutput();
 
-        static Ref<Textures::TextureArray> GlobalTextures;
+        static Helpers::Ref<Textures::TextureArray> GlobalTextures;
 
         static void BindGlobalTextures(RenderPasses::RenderPass* pass);
 
@@ -47,14 +47,14 @@ namespace ZEngine::Rendering::Renderers
         ~GraphicRenderer()                      = delete;
 
     private:
-        static RendererInformation            s_renderer_information;
-        static WeakRef<Rendering::Swapchain>  s_main_window_swapchain;
-        static Ref<Buffers::UniformBufferSet> s_UBCamera;
-        static Pools::CommandPool*            s_command_pool;
-        static Buffers::CommandBuffer*        s_current_command_buffer;
-        static Buffers::CommandBuffer*        s_current_command_buffer_ui;
-        static Ref<SceneRenderer>             s_scene_renderer;
-        static Ref<ImGUIRenderer>             s_imgui_renderer;
-        static Scope<RenderGraph>             s_render_graph;
+        static RendererInformation                     s_renderer_information;
+        static Helpers::WeakRef<Rendering::Swapchain>  s_main_window_swapchain;
+        static Helpers::Ref<Buffers::UniformBufferSet> s_UBCamera;
+        static Pools::CommandPool*                     s_command_pool;
+        static Buffers::CommandBuffer*                 s_current_command_buffer;
+        static Buffers::CommandBuffer*                 s_current_command_buffer_ui;
+        static Helpers::Ref<SceneRenderer>             s_scene_renderer;
+        static Helpers::Ref<ImGUIRenderer>             s_imgui_renderer;
+        static Helpers::Scope<RenderGraph>             s_render_graph;
     };
 } // namespace ZEngine::Rendering::Renderers

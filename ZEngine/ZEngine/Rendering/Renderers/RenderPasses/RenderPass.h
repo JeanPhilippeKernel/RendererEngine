@@ -1,4 +1,5 @@
 #pragma once
+#include <Helpers/IntrusivePtr.h>
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
 #include <Rendering/Buffers/StorageBuffer.h>
@@ -6,7 +7,6 @@
 #include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <Rendering/Specifications/RenderPassSpecification.h>
 #include <Rendering/Textures/Texture.h>
-#include <ZEngineDef.h>
 #include <vulkan/vulkan.h>
 #include <vector>
 
@@ -44,43 +44,43 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         void Dispose();
 
-        Ref<Pipelines::GraphicPipeline> GetPipeline() const;
-        void                            Bake();
-        bool                            Verify();
-        void                            Update();
-        void                            MarkDirty();
-        void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::UniformBufferSet>& buffer);
-        void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::StorageBufferSet>& buffer);
-        void                            SetInput(std::string_view key_name, const Ref<Textures::TextureArray>& textures);
-        void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::UniformBuffer>& buffer);
-        void                            SetInput(std::string_view key_name, const Ref<Rendering::Buffers::StorageBuffer>& buffer);
-        void                            SetInput(std::string_view key_name, const Ref<Textures::Texture>& buffer);
-        void                            UpdateInputBinding();
-        Ref<Textures::Texture>          GetOutputColor(uint32_t color_index);
-        Ref<Textures::Texture>          GetOutputDepth();
+        Helpers::Ref<Pipelines::GraphicPipeline> GetPipeline() const;
+        void                                     Bake();
+        bool                                     Verify();
+        void                                     Update();
+        void                                     MarkDirty();
+        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::UniformBufferSet>& buffer);
+        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::StorageBufferSet>& buffer);
+        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Textures::TextureArray>& textures);
+        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::UniformBuffer>& buffer);
+        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::StorageBuffer>& buffer);
+        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Textures::Texture>& buffer);
+        void                                     UpdateInputBinding();
+        Helpers::Ref<Textures::Texture>          GetOutputColor(uint32_t color_index);
+        Helpers::Ref<Textures::Texture>          GetOutputDepth();
 
         const Specifications::RenderPassSpecification& GetSpecification() const;
         Specifications::RenderPassSpecification&       GetSpecification();
 
-        Ref<Renderers::RenderPasses::Attachment> GetAttachment() const;
+        Helpers::Ref<Renderers::RenderPasses::Attachment> GetAttachment() const;
 
         void          ResizeFramebuffer();
         VkFramebuffer GetFramebuffer() const;
         uint32_t      GetRenderAreaWidth() const;
         uint32_t      GetRenderAreaHeight() const;
 
-        static Ref<RenderPass> Create(const Specifications::RenderPassSpecification& specification);
+        static Helpers::Ref<RenderPass> Create(const Specifications::RenderPassSpecification& specification);
 
     private:
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
 
     private:
-        bool                                     m_perform_update{false};
-        Specifications::RenderPassSpecification  m_specification;
-        std::vector<PassInput>                   m_input_collection;
-        Ref<Pipelines::GraphicPipeline>          m_pipeline;
-        Ref<Renderers::RenderPasses::Attachment> m_attachment;
-        Ref<Buffers::FramebufferVNext>           m_framebuffer;
+        bool                                              m_perform_update{false};
+        Specifications::RenderPassSpecification           m_specification;
+        std::vector<PassInput>                            m_input_collection;
+        Helpers::Ref<Pipelines::GraphicPipeline>          m_pipeline;
+        Helpers::Ref<Renderers::RenderPasses::Attachment> m_attachment;
+        Helpers::Ref<Buffers::FramebufferVNext>           m_framebuffer;
     };
 
     struct RenderPassBuilder : public Helpers::RefCounted
@@ -104,13 +104,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder& SetOffset(uint32_t input_attribute_index, uint32_t offset);
 
         RenderPassBuilder& UseShader(std::string_view name);
-        RenderPassBuilder& UseRenderTarget(const Ref<Rendering::Textures::Texture>& target);
+        RenderPassBuilder& UseRenderTarget(const Helpers::Ref<Rendering::Textures::Texture>& target);
         RenderPassBuilder& AddRenderTarget(const Specifications::TextureSpecification& target_spec);
-        RenderPassBuilder& AddInputAttachment(const Ref<Rendering::Textures::Texture>& target);
-        RenderPassBuilder& AddInputTexture(std::string_view key, const Ref<Rendering::Textures::Texture>& input);
+        RenderPassBuilder& AddInputAttachment(const Helpers::Ref<Rendering::Textures::Texture>& target);
+        RenderPassBuilder& AddInputTexture(std::string_view key, const Helpers::Ref<Rendering::Textures::Texture>& input);
         RenderPassBuilder& UseSwapchainAsRenderTarget();
 
-        Ref<RenderPass> Create();
+        Helpers::Ref<RenderPass> Create();
 
     private:
         Specifications::RenderPassSpecification m_spec{};

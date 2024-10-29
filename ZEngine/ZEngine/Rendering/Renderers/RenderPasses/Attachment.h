@@ -1,6 +1,6 @@
 #pragma once
+#include <Helpers/IntrusivePtr.h>
 #include <Rendering/Specifications/AttachmentSpecification.h>
-#include <ZEngineDef.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         uint32_t GetColorAttachmentCount() const;
         uint32_t GetDepthAttachmentCount() const;
 
-        static Ref<Attachment> Create(const Specifications::AttachmentSpecification&);
+        static Helpers::Ref<Attachment> Create(const Specifications::AttachmentSpecification&);
 
     private:
         uint32_t                                m_color_attachment_count{0};

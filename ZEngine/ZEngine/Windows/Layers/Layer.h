@@ -27,12 +27,12 @@ namespace ZEngine::Windows::Layers
             return m_name;
         }
 
-        void SetAttachedWindow(const ZEngine::Ref<Windows::CoreWindow>& window)
+        void SetAttachedWindow(const Helpers::Ref<Windows::CoreWindow>& window)
         {
             m_window = window;
         }
 
-        ZEngine::Ref<ZEngine::Windows::CoreWindow> GetAttachedWindow() const
+        Helpers::Ref<ZEngine::Windows::CoreWindow> GetAttachedWindow() const
         {
             if (!m_window.expired())
                 return m_window.lock();
@@ -42,6 +42,6 @@ namespace ZEngine::Windows::Layers
 
     protected:
         std::string                                    m_name;
-        ZEngine::WeakRef<ZEngine::Windows::CoreWindow> m_window;
+        Helpers::WeakRef<ZEngine::Windows::CoreWindow> m_window;
     };
 } // namespace ZEngine::Windows::Layers

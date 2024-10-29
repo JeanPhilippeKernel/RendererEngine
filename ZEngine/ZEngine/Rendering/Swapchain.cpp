@@ -6,6 +6,7 @@
 #include <random>
 
 using namespace ZEngine::Rendering::Specifications;
+using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering
 {

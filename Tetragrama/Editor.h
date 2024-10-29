@@ -1,8 +1,8 @@
 #pragma once
 #include <Layers/RenderLayer.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Windows/CoreWindow.h>
-#include <ZEngine/ZEngineDef.h>
 
 namespace Tetragrama::Serializers
 {
@@ -65,20 +65,20 @@ namespace Tetragrama
         void Initialize() override;
         void Run();
 
-        static const EditorConfiguration& GetCurrentEditorConfiguration();
-        static ZEngine::Ref<EditorScene>  GetCurrentEditorScene();
-        static void                       SetCurrentEditorScene(EditorScene&&);
+        static const EditorConfiguration&         GetCurrentEditorConfiguration();
+        static ZEngine::Helpers::Ref<EditorScene> GetCurrentEditorScene();
+        static void                               SetCurrentEditorScene(EditorScene&&);
 
     private:
-        ZEngine::Ref<ZEngine::Windows::CoreWindow> m_window;
+        ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow> m_window;
 
     private:
-        static EditorConfiguration        s_editor_configuration;
-        static ZEngine::Ref<EditorScene>  s_editor_scene;
-        static std::recursive_mutex       s_mutex;
-        ZEngine::EngineConfiguration      m_engine_configuration;
-        ZEngine::Ref<Layers::ImguiLayer>  m_ui_layer;
-        ZEngine::Ref<Layers::RenderLayer> m_render_layer;
+        static EditorConfiguration                 s_editor_configuration;
+        static ZEngine::Helpers::Ref<EditorScene>  s_editor_scene;
+        static std::recursive_mutex                s_mutex;
+        ZEngine::EngineConfiguration               m_engine_configuration;
+        ZEngine::Helpers::Ref<Layers::ImguiLayer>  m_ui_layer;
+        ZEngine::Helpers::Ref<Layers::RenderLayer> m_render_layer;
     };
 
 } // namespace Tetragrama

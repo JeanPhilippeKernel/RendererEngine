@@ -3,6 +3,8 @@
 #include <Managers/ShaderManager.h>
 #include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
     GraphicPipeline::GraphicPipeline(Specifications::GraphicRendererPipelineSpecification&& spec) : m_pipeline_specification(std::move(spec))

@@ -11,6 +11,7 @@
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering;
 using namespace ZEngine::Rendering::Textures;
+using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {

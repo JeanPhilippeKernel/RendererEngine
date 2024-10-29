@@ -4,6 +4,8 @@
 #include <Rendering/Shaders/Compilers/ShaderFileGenerator.h>
 #include <Rendering/Shaders/Compilers/ValidationStage.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Rendering::Shaders::Compilers
 {
 

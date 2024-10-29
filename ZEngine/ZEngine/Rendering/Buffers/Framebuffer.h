@@ -21,8 +21,8 @@ namespace ZEngine::Rendering::Buffers
         Specifications::FrameBufferSpecificationVNext&       GetSpecification();
         const Specifications::FrameBufferSpecificationVNext& GetSpecification() const;
 
-        static Ref<FramebufferVNext> Create(const Specifications::FrameBufferSpecificationVNext&);
-        static Ref<FramebufferVNext> Create(Specifications::FrameBufferSpecificationVNext&&);
+        static Helpers::Ref<FramebufferVNext> Create(const Specifications::FrameBufferSpecificationVNext&);
+        static Helpers::Ref<FramebufferVNext> Create(Specifications::FrameBufferSpecificationVNext&&);
 
     private:
         VkFramebuffer                                 m_handle{VK_NULL_HANDLE};

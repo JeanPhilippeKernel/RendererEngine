@@ -7,6 +7,7 @@
 
 using namespace ZEngine::Rendering::Buffers;
 using namespace ZEngine::Rendering::Specifications;
+using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {

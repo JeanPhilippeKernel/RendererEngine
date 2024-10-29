@@ -14,10 +14,10 @@ namespace Tetragrama::Controllers
 
         virtual ~ICameraController() = default;
 
-        virtual glm::vec3                                               GetPosition() const                    = 0;
-        virtual void                                                    SetPosition(const glm::vec3& position) = 0;
-        virtual const ZEngine::Ref<ZEngine::Rendering::Cameras::Camera> GetCamera() const                      = 0;
-        virtual void                                                    UpdateProjectionMatrix()               = 0;
+        virtual glm::vec3                                                        GetPosition() const                    = 0;
+        virtual void                                                             SetPosition(const glm::vec3& position) = 0;
+        virtual const ZEngine::Helpers::Ref<ZEngine::Rendering::Cameras::Camera> GetCamera() const                      = 0;
+        virtual void                                                             UpdateProjectionMatrix()               = 0;
 
         float GetRotationAngle() const
         {
@@ -76,14 +76,14 @@ namespace Tetragrama::Controllers
         }
 
     protected:
-        glm::vec3                                      m_position{0.0f, 0.0f, 10.0f};
-        float                                          m_rotation_angle{0.0f};
-        float                                          m_zoom_factor{1.0f};
-        float                                          m_move_speed{0.05f};
-        float                                          m_rotation_speed{0.05f};
-        float                                          m_aspect_ratio{0.0f};
-        bool                                           m_can_rotate{false};
-        CameraControllerType                           m_controller_type{CameraControllerType::UNDEFINED};
-        ZEngine::WeakRef<ZEngine::Windows::CoreWindow> m_window;
+        glm::vec3                                               m_position{0.0f, 0.0f, 10.0f};
+        float                                                   m_rotation_angle{0.0f};
+        float                                                   m_zoom_factor{1.0f};
+        float                                                   m_move_speed{0.05f};
+        float                                                   m_rotation_speed{0.05f};
+        float                                                   m_aspect_ratio{0.0f};
+        bool                                                    m_can_rotate{false};
+        CameraControllerType                                    m_controller_type{CameraControllerType::UNDEFINED};
+        ZEngine::Helpers::WeakRef<ZEngine::Windows::CoreWindow> m_window;
     };
 } // namespace Tetragrama::Controllers

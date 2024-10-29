@@ -11,13 +11,13 @@ namespace Tetragrama::Inputs
         Keyboard(const char* name = "keyboard_device") : ZEngine::Windows::Inputs::IDevice(name) {}
         ~Keyboard() = default;
 
-        virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const ZEngine::Ref<ZEngine::Windows::CoreWindow>& window) const override
+        virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window) const override
         {
             auto state = glfwGetKey(reinterpret_cast<GLFWwindow*>(window->GetNativeWindow()), (int) key);
             return state == GLFW_PRESS;
         }
 
-        virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const ZEngine::Ref<ZEngine::Windows::CoreWindow>& window) const override
+        virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window) const override
         {
             auto state = glfwGetKey(reinterpret_cast<GLFWwindow*>(window->GetNativeWindow()), (int) key);
             return state == GLFW_RELEASE;

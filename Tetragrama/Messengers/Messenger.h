@@ -195,7 +195,7 @@ namespace Tetragrama::Messengers
         }
 
     private:
-        inline static ZEngine::Ref<Messenger> m_messenger = ZEngine::CreateRef<Messenger>();
+        inline static ZEngine::Helpers::Ref<Messenger> m_messenger = ZEngine::Helpers::CreateRef<Messenger>();
     };
 
 #define MESSENGER_REGISTER(TRecipient, TMessage, token, recipient_ptr, function_body)                                   \

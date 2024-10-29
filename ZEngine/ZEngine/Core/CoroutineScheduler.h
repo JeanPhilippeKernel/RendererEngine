@@ -1,4 +1,5 @@
 #pragma once
+#include <Helpers/IntrusivePtr.h>
 #include <Helpers/ThreadSafeQueue.h>
 #include <ZEngineDef.h>
 #include <atomic>
@@ -27,11 +28,11 @@ namespace ZEngine::Core
         static void Schedule(CoroutineAction&& action);
 
     private:
-        static std::atomic_bool                               s_running;
-        static Ref<Helpers::ThreadSafeQueue<CoroutineAction>> s_action_queue;
+        static std::atomic_bool                                        s_running;
+        static Helpers::Ref<Helpers::ThreadSafeQueue<CoroutineAction>> s_action_queue;
 
         static void Start();
-        static void Run(WeakRef<SchedulerQueue> queue);
+        static void Run(Helpers::WeakRef<SchedulerQueue> queue);
     };
 
 } // namespace ZEngine::Core

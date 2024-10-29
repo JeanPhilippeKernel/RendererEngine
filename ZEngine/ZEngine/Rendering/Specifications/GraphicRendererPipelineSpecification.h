@@ -1,9 +1,9 @@
 #pragma once
+#include <Helpers/IntrusivePtr.h>
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
 #include <Rendering/Swapchain.h>
-#include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Specifications
 {
@@ -24,16 +24,16 @@ namespace ZEngine::Rendering::Specifications
 
     struct GraphicRendererPipelineSpecification
     {
-        bool                                           EnableBlending                     = false;
-        bool                                           EnableDepthTest                    = false;
-        bool                                           EnableDepthWrite                   = true;
-        bool                                           EnableStencilTest                  = false;
-        const char*                                    DebugName                          = {};
-        ShaderSpecification                            ShaderSpecification                = {};
-        Ref<Rendering::Buffers::FramebufferVNext>      TargetFrameBuffer                  = {};
-        Ref<Rendering::Swapchain>                      SwapchainRenderTarget              = {};
-        Ref<Renderers::RenderPasses::Attachment>       Attachment                         = {};
-        std::vector<VertexInputBindingSpecification>   VertexInputBindingSpecifications   = {};
-        std::vector<VertexInputAttributeSpecification> VertexInputAttributeSpecifications = {};
+        bool                                               EnableBlending                     = false;
+        bool                                               EnableDepthTest                    = false;
+        bool                                               EnableDepthWrite                   = true;
+        bool                                               EnableStencilTest                  = false;
+        const char*                                        DebugName                          = {};
+        ShaderSpecification                                ShaderSpecification                = {};
+        Helpers::Ref<Rendering::Buffers::FramebufferVNext> TargetFrameBuffer                  = {};
+        Helpers::Ref<Rendering::Swapchain>                 SwapchainRenderTarget              = {};
+        Helpers::Ref<Renderers::RenderPasses::Attachment>  Attachment                         = {};
+        std::vector<VertexInputBindingSpecification>       VertexInputBindingSpecifications   = {};
+        std::vector<VertexInputAttributeSpecification>     VertexInputAttributeSpecifications = {};
     };
 } // namespace ZEngine::Rendering::Specifications

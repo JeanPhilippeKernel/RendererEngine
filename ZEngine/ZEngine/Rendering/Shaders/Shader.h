@@ -26,8 +26,8 @@ namespace ZEngine::Rendering::Shaders
         const std::vector<VkPushConstantRange>&                                            GetPushConstants() const;
         void                                                                               Dispose();
 
-        static Ref<Shader> Create(Specifications::ShaderSpecification&& spec);
-        static Ref<Shader> Create(const Specifications::ShaderSpecification& spec);
+        static Helpers::Ref<Shader> Create(Specifications::ShaderSpecification&& spec);
+        static Helpers::Ref<Shader> Create(const Specifications::ShaderSpecification& spec);
 
     private:
         void CreateModule();

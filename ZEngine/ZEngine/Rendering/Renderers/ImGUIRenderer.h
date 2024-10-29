@@ -22,11 +22,11 @@ namespace ZEngine::Rendering::Renderers
         VkDescriptorSet UpdateFrameOutput(const Hardwares::BufferImage& buffer);
 
     private:
-        VkDescriptorSet               m_frame_output{VK_NULL_HANDLE};
-        VkDescriptorSet               m_font_descriptor_set{VK_NULL_HANDLE};
-        Ref<Buffers::VertexBufferSet> m_vertex_buffer;
-        Ref<Buffers::IndexBufferSet>  m_index_buffer;
-        Ref<RenderPasses::RenderPass> m_ui_pass;
+        VkDescriptorSet                        m_frame_output{VK_NULL_HANDLE};
+        VkDescriptorSet                        m_font_descriptor_set{VK_NULL_HANDLE};
+        Helpers::Ref<Buffers::VertexBufferSet> m_vertex_buffer;
+        Helpers::Ref<Buffers::IndexBufferSet>  m_index_buffer;
+        Helpers::Ref<RenderPasses::RenderPass> m_ui_pass;
     };
 
 } // namespace ZEngine::Rendering::Renderers

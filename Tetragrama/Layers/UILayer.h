@@ -20,13 +20,13 @@ namespace Tetragrama::Layers
         void Initialize() override;
 
     private:
-        ZEngine::Ref<Components::DockspaceUIComponent>     m_dockspace_component;
-        ZEngine::Ref<Components::SceneViewportUIComponent> m_scene_component;
-        ZEngine::Ref<Components::LogUIComponent>           m_editor_log_component;
-        ZEngine::Ref<Components::DemoUIComponent>          m_demo_component;
-        ZEngine::Ref<Components::ProjectViewUIComponent>   m_project_view_component;
-        ZEngine::Ref<Components::InspectorViewUIComponent> m_inspector_view_component;
-        ZEngine::Ref<Components::HierarchyViewUIComponent> m_hierarchy_view_component;
+        ZEngine::Helpers::Ref<Components::DockspaceUIComponent>     m_dockspace_component;
+        ZEngine::Helpers::Ref<Components::SceneViewportUIComponent> m_scene_component;
+        ZEngine::Helpers::Ref<Components::LogUIComponent>           m_editor_log_component;
+        ZEngine::Helpers::Ref<Components::DemoUIComponent>          m_demo_component;
+        ZEngine::Helpers::Ref<Components::ProjectViewUIComponent>   m_project_view_component;
+        ZEngine::Helpers::Ref<Components::InspectorViewUIComponent> m_inspector_view_component;
+        ZEngine::Helpers::Ref<Components::HierarchyViewUIComponent> m_hierarchy_view_component;
     };
 
 } // namespace Tetragrama::Layers

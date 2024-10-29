@@ -1,7 +1,6 @@
 #pragma once
 #include <CoreWindow.h>
 #include <KeyCode.h>
-#include <ZEngineDef.h>
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -28,14 +27,14 @@ namespace ZEngine::Windows::Inputs
                 return reinterpret_cast<T*>(it->second.get());
             }
 
-            Ref<IDevice> device_ptr = CreateRef<T>();
+            Helpers::Ref<IDevice> device_ptr = CreateRef<T>();
 
             auto pair = m_devices.emplace(std::make_pair(std::string(type.name()), std::move(device_ptr)));
             return reinterpret_cast<T*>(pair.first->second.get());
         }
 
-        virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Ref<Windows::CoreWindow>& window) const  = 0;
-        virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Ref<Windows::CoreWindow>& window) const = 0;
+        virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Helpers::Ref<Windows::CoreWindow>& window) const  = 0;
+        virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Helpers::Ref<Windows::CoreWindow>& window) const = 0;
 
         virtual std::string_view GetName() const
         {
@@ -44,7 +43,7 @@ namespace ZEngine::Windows::Inputs
 
     protected:
         IDevice(std::string_view name = "abstract_device") : m_name(name) {}
-        static std::unordered_map<std::string, Ref<IDevice>> m_devices;
-        std::string                                          m_name;
+        static std::unordered_map<std::string, Helpers::Ref<IDevice>> m_devices;
+        std::string                                                   m_name;
     };
 } // namespace ZEngine::Windows::Inputs

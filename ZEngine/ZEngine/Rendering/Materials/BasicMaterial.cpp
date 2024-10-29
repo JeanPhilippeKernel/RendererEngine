@@ -1,6 +1,8 @@
 #include <pch.h>
 #include <Rendering/Materials/BasicMaterial.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Rendering::Materials
 {
 

@@ -12,6 +12,6 @@ namespace ZEngine::Rendering::Materials
 
         virtual ~ShaderMaterial() = default;
 
-        virtual void Apply(const Ref<Shaders::Shader>&);
+        virtual void Apply(const Helpers::Ref<Shaders::Shader>&);
     };
 } // namespace ZEngine::Rendering::Materials

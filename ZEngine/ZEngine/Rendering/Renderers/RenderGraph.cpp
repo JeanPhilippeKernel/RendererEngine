@@ -2,6 +2,8 @@
 #include <Rendering/Renderers/RenderGraph.h>
 #include <Rendering/Textures/Texture2D.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Rendering::Renderers
 {
     RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Ref<Buffers::StorageBufferSet>& buffer)

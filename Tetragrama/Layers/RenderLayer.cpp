@@ -10,6 +10,7 @@ using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Windows;
 using namespace ZEngine::Core;
 using namespace ZEngine::Event;
+using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Layers
 {

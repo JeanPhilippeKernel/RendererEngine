@@ -14,6 +14,7 @@ using namespace ZEngine;
 using namespace ZEngine::Windows::Events;
 using namespace ZEngine::Windows;
 using namespace ZEngine::Rendering;
+using namespace ZEngine::Helpers;
 
 namespace Tetragrama
 {

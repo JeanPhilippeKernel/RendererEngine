@@ -7,6 +7,7 @@
 #include <ZEngine/Core/EventDispatcher.h>
 
 using namespace ZEngine;
+using namespace ZEngine::Helpers;
 using namespace ZEngine::Windows::Inputs;
 using namespace ZEngine::Windows::Events;
 using namespace Tetragrama::Inputs;
@@ -107,7 +108,7 @@ namespace Tetragrama::Controllers
         }
     }
 
-    const ZEngine::Ref<Rendering::Cameras::Camera> PerspectiveCameraController::GetCamera() const
+    const Ref<Rendering::Cameras::Camera> PerspectiveCameraController::GetCamera() const
     {
         return m_perspective_camera;
     }

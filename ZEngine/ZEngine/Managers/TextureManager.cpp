@@ -2,6 +2,8 @@
 #include <Core/Coroutine.h>
 #include <Managers/TextureManager.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Managers
 {
 
@@ -38,7 +40,7 @@ namespace ZEngine::Managers
             return found.second->second;
         }
 
-        ZEngine::Ref<Rendering::Textures::Texture> texture;
+        Ref<Rendering::Textures::Texture> texture;
         texture.reset(Rendering::Textures::CreateTexture(width, height));
         auto result = IManager::Add(key, texture);
 
@@ -53,7 +55,7 @@ namespace ZEngine::Managers
         return Add(reinterpret_cast<const char*>(name.u8string().c_str()), filename);
     }
 
-    ZEngine::Scope<CoreTextureManager> TextureManager::m_texture_manager = CreateScope<CoreTextureManager>();
+    Scope<CoreTextureManager> TextureManager::m_texture_manager = CreateScope<CoreTextureManager>();
 
     Ref<Rendering::Textures::Texture> TextureManager::Add(std::string_view name, std::string_view filename)
     {

@@ -8,6 +8,7 @@
 #include <vulkan/vulkan.h>
 
 using namespace ZEngine::Rendering::Specifications;
+using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Shaders
 {

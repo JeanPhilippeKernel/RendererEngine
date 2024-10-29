@@ -32,7 +32,7 @@ namespace ZEngine::Serializers
     class GraphicScene3DSerializer : public GraphicSceneSerializer
     {
     public:
-        GraphicScene3DSerializer(const Ref<ZEngine::Rendering::Scenes::GraphicScene>& scene);
+        GraphicScene3DSerializer(const Helpers::Ref<ZEngine::Rendering::Scenes::GraphicScene>& scene);
         virtual ~GraphicScene3DSerializer() = default;
 
         Core::SerializeInformation Serialize(std::string_view filename) override;

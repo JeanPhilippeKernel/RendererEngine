@@ -10,6 +10,7 @@ using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Rendering::Textures;
 using namespace ZEngine::Rendering::Lights;
+using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
@@ -23,7 +24,7 @@ namespace Tetragrama::Components
 
     void InspectorViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
-    std::future<void> InspectorViewUIComponent::SceneAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
+    std::future<void> InspectorViewUIComponent::SceneAvailableMessageHandlerAsync(Messengers::GenericMessage<Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
     {
         {
             std::lock_guard lock(m_mutex);
@@ -420,11 +421,11 @@ namespace Tetragrama::Components
 
             if (ImGui::MenuItem("Material"))
             {
-                ZEngine::Ref<StandardMaterial> material = ZEngine::CreateRef<StandardMaterial>();
+                Ref<StandardMaterial> material = CreateRef<StandardMaterial>();
                 material->SetTileFactor(20.f);
                 material->SetShininess(10.0f);
-                material->SetDiffuseMap(ZEngine::Ref<Texture>(CreateTexture(1, 1)));
-                material->SetSpecularMap(ZEngine::Ref<Texture>(CreateTexture(1, 1)));
+                material->SetDiffuseMap(Ref<Texture>(CreateTexture(1, 1)));
+                material->SetSpecularMap(Ref<Texture>(CreateTexture(1, 1)));
 
                 // m_scene_entity->AddComponent<MaterialComponent>(std::move(material));
                 ImGui::CloseCurrentPopup();
@@ -434,19 +435,19 @@ namespace Tetragrama::Components
             {
                 if (ImGui::MenuItem("Directional Light"))
                 {
-                    m_scene_entity.AddComponent<LightComponent>(ZEngine::CreateRef<DirectionalLight>());
+                    m_scene_entity.AddComponent<LightComponent>(CreateRef<DirectionalLight>());
                     ImGui::CloseCurrentPopup();
                 }
 
                 if (ImGui::MenuItem("Point Light"))
                 {
-                    m_scene_entity.AddComponent<LightComponent>(ZEngine::CreateRef<PointLight>());
+                    m_scene_entity.AddComponent<LightComponent>(CreateRef<PointLight>());
                     ImGui::CloseCurrentPopup();
                 }
 
                 if (ImGui::MenuItem("Spot Light"))
                 {
-                    m_scene_entity.AddComponent<LightComponent>(ZEngine::CreateRef<Spotlight>());
+                    m_scene_entity.AddComponent<LightComponent>(CreateRef<Spotlight>());
                     ImGui::CloseCurrentPopup();
                 }
 

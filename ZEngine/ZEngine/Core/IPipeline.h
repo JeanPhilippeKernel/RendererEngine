@@ -1,5 +1,5 @@
 #pragma once
-#include <ZEngineDef.h>
+#include <Helpers/IntrusivePtr.h>
 #include <string>
 
 namespace ZEngine::Core
@@ -60,9 +60,9 @@ namespace ZEngine::Core
         }
 
     protected:
-        StageInformation    m_information{};
-        IPipelineContext*   m_context{nullptr};
-        Ref<IPipelineStage> m_next_stage{nullptr};
+        StageInformation             m_information{};
+        IPipelineContext*            m_context{nullptr};
+        Helpers::Ref<IPipelineStage> m_next_stage{nullptr};
     };
 
     struct IPipelineContext
@@ -74,7 +74,7 @@ namespace ZEngine::Core
          * Update the current compiler stage
          * @param stage Compiler stage
          */
-        virtual void UpdateStage(Ref<IPipelineStage> stage);
+        virtual void UpdateStage(Helpers::Ref<IPipelineStage> stage);
 
         /**
          * Update the current compiler stage
@@ -83,7 +83,7 @@ namespace ZEngine::Core
         virtual void UpdateStage(IPipelineStage* const stage);
 
     protected:
-        bool                m_running_stages{true};
-        Ref<IPipelineStage> m_stage{nullptr};
+        bool                         m_running_stages{true};
+        Helpers::Ref<IPipelineStage> m_stage{nullptr};
     };
 } // namespace ZEngine::Core

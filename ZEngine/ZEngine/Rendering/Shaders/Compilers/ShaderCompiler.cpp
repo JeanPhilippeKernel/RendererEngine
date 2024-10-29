@@ -4,6 +4,8 @@
 #include <Rendering/Shaders/Compilers/CompilationStage.h>
 #include <Rendering/Shaders/Compilers/ShaderCompiler.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Rendering::Shaders::Compilers
 {
 

@@ -1,38 +1,10 @@
 #pragma once
-#include <Helpers/IntrusivePtr.h>
-#include <stdlib.h>
-#include <memory>
+#include <Logging/LoggerDefinition.h>
 
 #define BIT(x)                 (1 << (x))
 #define ZENGINE_EXIT_FAILURE() exit(EXIT_FAILURE);
 
 #define ZENGINE_KEYCODE ZEngine::Windows::Inputs::GlfwKeyCode
-
-namespace ZEngine
-{
-    template <typename T>
-    using Ref = Helpers::IntrusivePtr<T>;
-
-    template <typename T>
-    using WeakRef = Helpers::IntrusiveWeakPtr<T>;
-
-    template <typename T>
-    using Scope = std::unique_ptr<T>;
-
-    template <typename T, typename... Args>
-    Ref<T> CreateRef(Args&&... args)
-    {
-        return Helpers::make_intrusive<T>(std::forward<Args>(args)...);
-    }
-
-    template <typename T, typename... Args>
-    Scope<T> CreateScope(Args&&... args)
-    {
-        return std::make_unique<T>(std::forward<Args>(args)...);
-    }
-} // namespace ZEngine
-
-#include "Logging/LoggerDefinition.h"
 
 #ifdef _MSC_VER
 #define ZENGINE_DEBUG_BREAK() __debugbreak();

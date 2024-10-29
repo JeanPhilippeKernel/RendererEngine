@@ -27,9 +27,9 @@ namespace ZEngine::Rendering::Renderers
         uint32_t GeometryCollectionCount{0};
         uint32_t MaterialCollectionCount{0};
 
-        std::vector<Rendering::Meshes::Mesh>          MeshCollection;
-        std::vector<Ref<Geometries::IGeometry>>       GeometryCollection;
-        std::vector<Ref<Materials::ShaderMaterial>>   MaterialCollection;
-        std::vector<GraphicRendererInformationRecord> RecordCollection;
+        std::vector<Rendering::Meshes::Mesh>                 MeshCollection;
+        std::vector<Helpers::Ref<Geometries::IGeometry>>     GeometryCollection;
+        std::vector<Helpers::Ref<Materials::ShaderMaterial>> MaterialCollection;
+        std::vector<GraphicRendererInformationRecord>        RecordCollection;
     };
 } // namespace ZEngine::Rendering::Renderers

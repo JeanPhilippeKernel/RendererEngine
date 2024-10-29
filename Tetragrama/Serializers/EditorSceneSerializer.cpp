@@ -8,7 +8,7 @@ using namespace ZEngine::Helpers;
 namespace Tetragrama::Serializers
 {
 
-    void EditorSceneSerializer::Serialize(const ZEngine::Ref<EditorScene>& scene)
+    void EditorSceneSerializer::Serialize(const Ref<EditorScene>& scene)
     {
         ThreadPoolHelper::Submit([this, scene] {
             {

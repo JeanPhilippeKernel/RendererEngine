@@ -6,8 +6,8 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Core
 {
-    std::atomic_bool                        CoroutineScheduler::s_running      = false;
-    Ref<CoroutineScheduler::SchedulerQueue> CoroutineScheduler::s_action_queue = CreateRef<CoroutineScheduler::SchedulerQueue>();
+    std::atomic_bool                                 CoroutineScheduler::s_running      = false;
+    Helpers::Ref<CoroutineScheduler::SchedulerQueue> CoroutineScheduler::s_action_queue = Helpers::CreateRef<CoroutineScheduler::SchedulerQueue>();
 
     void CoroutineScheduler::Schedule(CoroutineAction&& action)
     {
@@ -28,7 +28,7 @@ namespace ZEngine::Core
         std::thread(Run, s_action_queue.Weak()).detach();
     }
 
-    void CoroutineScheduler::Run(WeakRef<SchedulerQueue> queue_ref)
+    void CoroutineScheduler::Run(Helpers::WeakRef<SchedulerQueue> queue_ref)
     {
         while (auto queue = queue_ref.lock())
         {

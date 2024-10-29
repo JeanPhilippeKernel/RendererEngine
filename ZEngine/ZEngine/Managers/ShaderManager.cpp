@@ -2,6 +2,8 @@
 #include <Managers/ShaderManager.h>
 #include <uuid.h>
 
+using namespace ZEngine::Helpers;
+
 namespace ZEngine::Managers
 {
     std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>> ShaderManager::s_shader_mappings = {};

@@ -2,6 +2,7 @@
 #include <UIComponent.h>
 
 using namespace ZEngine;
+using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {

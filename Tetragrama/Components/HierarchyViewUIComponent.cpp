@@ -14,6 +14,7 @@
 #include <imgui.h>
 
 using namespace ZEngine;
+using namespace ZEngine::Helpers;
 using namespace ZEngine::Windows::Inputs;
 using namespace ZEngine::Rendering::Scenes;
 using namespace Tetragrama::Inputs;
@@ -49,7 +50,7 @@ namespace Tetragrama::Components
         }
     }
 
-    std::future<void> HierarchyViewUIComponent::EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<EditorCameraController>>& message)
+    std::future<void> HierarchyViewUIComponent::EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<Ref<EditorCameraController>>& message)
     {
         {
             std::unique_lock lock(m_mutex);

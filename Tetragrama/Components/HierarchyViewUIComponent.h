@@ -22,14 +22,14 @@ namespace Tetragrama::Components
         void RenderGuizmo();
         void RenderSceneNodeTree(int node_identifier);
 
-        std::future<void> EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Ref<Controllers::EditorCameraController>>&);
+        std::future<void> EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Helpers::Ref<Controllers::EditorCameraController>>&);
 
     private:
-        ImGuiTreeNodeFlags                                    m_node_flag;
-        bool                                                  m_is_node_opened{false};
-        int                                                   m_selected_node_identifier{-1};
-        int                                                   m_gizmo_operation{-1};
-        std::mutex                                            m_mutex;
-        ZEngine::WeakRef<Controllers::EditorCameraController> m_active_editor_camera;
+        ImGuiTreeNodeFlags                                             m_node_flag;
+        bool                                                           m_is_node_opened{false};
+        int                                                            m_selected_node_identifier{-1};
+        int                                                            m_gizmo_operation{-1};
+        std::mutex                                                     m_mutex;
+        ZEngine::Helpers::WeakRef<Controllers::EditorCameraController> m_active_editor_camera;
     };
 } // namespace Tetragrama::Components

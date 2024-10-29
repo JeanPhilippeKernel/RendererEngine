@@ -4,6 +4,7 @@
 
 using namespace ZEngine::Rendering::Specifications;
 using namespace ZEngine::Rendering::Renderers::Contracts;
+using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {
