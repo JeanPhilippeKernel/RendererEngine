@@ -4,6 +4,8 @@
 #include <Messengers/Messenger.h>
 #include <SceneViewportUIComponent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 /**/
 #include <ImGuizmo/ImGuizmo.h>
 

@@ -1,5 +1,6 @@
 #pragma once
-#include <ZEngine.h>
+#include <ZEngine/Maths/Math.h>
+#include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <imgui/src/imgui_internal.h>
 
 namespace Tetragrama::Helpers

@@ -2,6 +2,8 @@
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
 #include <RenderLayer.h>
+#include <ZEngine/Core/CoreEvent.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 using namespace Tetragrama::Controllers;
 
 using namespace ZEngine;
@@ -9,7 +11,6 @@ using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Windows;
 using namespace ZEngine::Core;
-using namespace ZEngine::Event;
 using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Layers

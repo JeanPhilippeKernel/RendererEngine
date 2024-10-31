@@ -1,15 +1,22 @@
 #include <pch.h>
 #include <InspectorViewUIComponent.h>
 #include <UIComponentDrawerHelper.h>
+#include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Helpers/MeshHelper.h>
+#include <ZEngine/Rendering/Components/GeometryComponent.h>
+#include <ZEngine/Rendering/Components/LightComponent.h>
+#include <ZEngine/Rendering/Components/MaterialComponent.h>
+#include <ZEngine/Rendering/Materials/ShaderMaterial.h>
+#include <ZEngine/Rendering/Materials/StandardMaterial.h>
+#include <ZEngine/Rendering/Textures/Texture2D.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/matrix_decompose.hpp>
 
 using namespace ZEngine::Rendering::Materials;
-using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Rendering::Textures;
 using namespace ZEngine::Rendering::Lights;
+using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components

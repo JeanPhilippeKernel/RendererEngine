@@ -1,4 +1,5 @@
 #pragma once
+#include <Layers/ImguiLayer.h>
 #include <Layers/RenderLayer.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>

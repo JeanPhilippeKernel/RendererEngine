@@ -5,7 +5,7 @@
 #include <Components/Events/SceneViewportUnfocusedEvent.h>
 #include <EditorCameraController.h>
 #include <Messengers/Message.h>
-#include <ZEngine/ZEngine.h>
+#include <ZEngine/Serializers/GraphicSceneSerializer.h>
 #include <mutex>
 #include <queue>
 #include <vector>
