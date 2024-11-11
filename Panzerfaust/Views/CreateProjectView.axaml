@@ -1,0 +1,28 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:views="clr-namespace:Panzerfaust.Views"
+             xmlns:vm="clr-namespace:Panzerfaust.ViewModels;assembly=Panzerfaust"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Panzerfaust.Views.CreateProjectView"
+             x:DataType="vm:ProjectWindowViewModel">
+  <DockPanel Margin="3">
+    <TextBlock Text="Configure your new project" DockPanel.Dock="Top" FontSize="25" />
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Right" Spacing="10">
+      <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+      <Button Content="Finish" Background="Green" Command="{Binding FinishCommand}" />
+    </StackPanel>
+    <ProgressBar DockPanel.Dock="Bottom" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="0, 0, 0, 20" IsIndeterminate="{Binding IsBusy}" Foreground="WhiteSmoke"/>
+    <TextBlock Text="{Binding ProgressReportText}" DockPanel.Dock="Bottom" HorizontalAlignment="Stretch" FontWeight="Light" VerticalAlignment="Center" Margin="0, 0, 0, 8"/>
+    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Stretch" Spacing="15">
+      <TextBlock Text="Project name" />
+      <TextBox Watermark="Enter a project name" CornerRadius="5" HorizontalAlignment="Stretch" Text="{Binding ProjectName, Mode=TwoWay}"/>
+      <TextBlock Text="Location" />
+      <Grid HorizontalAlignment="Stretch">
+        <TextBox Watermark="" CornerRadius="5" HorizontalAlignment="Stretch" Text="{Binding ProjectLocation, Mode=TwoWay}"/>
+        <Button Content="..." FontWeight="Heavy" ZIndex="5" HorizontalAlignment="Right" Command="{Binding DirectoryDialogCommand}"/>
+      </Grid>
+    </StackPanel>
+  </DockPanel>
+</UserControl>

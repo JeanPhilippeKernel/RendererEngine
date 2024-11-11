@@ -13,61 +13,34 @@ namespace Panzerfaust
 {
     public partial class App : Application
     {
+        public IServiceProvider? ServiceProvider { get; private set; }
+        public new static App? Current => Application.Current as App;
+
         public override void Initialize()
         {
             AvaloniaXamlLoader.Load(this);
         }
 
-        public override async void OnFrameworkInitializationCompleted()
+        public override void OnFrameworkInitializationCompleted()
         {
             var locator = new ViewLocator();
             DataTemplates.Add(locator);
 
-            var services = new ServiceCollection();
-            services.AddCommonServices();
 
-            var provider = services.BuildServiceProvider();
+            //services.AddCommonServices();
+            //var provider = services.BuildServiceProvider();
 
-            Ioc.Default.ConfigureServices(provider);
-
-            var vm = Ioc.Default.GetRequiredService<MainViewModel>();
-
+            //Ioc.Default.ConfigureServices(provider);
 
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                var splashScreenVM = new CustomSplashScreenViewModel();
-                var splashScreen = new CustomSplashScreenView
-                {
-                    DataContext = splashScreenVM
-                };
+                desktop.MainWindow = new MainWindow() { DataContext = new MainWindowViewModel() };
 
-                desktop.MainWindow = splashScreen;
+                var services = new ServiceCollection();
+                services.AddSingleton<Service.IStorageProviderService>(x => new Service.StorageProviderService(desktop.MainWindow));
+                ServiceProvider = services.BuildServiceProvider();
 
-                splashScreen.Show();
-
-                try
-                {
-                    splashScreenVM.StartupMessage = "Searching for devices...";
-                    await Task.Delay(1000, splashScreenVM.CancellationToken);
-                    splashScreenVM.StartupMessage = "Connecting to device ...";
-                    await Task.Delay(2000, splashScreenVM.CancellationToken);
-                    splashScreenVM.StartupMessage = "Configuring device...";
-                    await Task.Delay(2000, splashScreenVM.CancellationToken);
-                }
-                catch (TaskCanceledException)
-                {
-                    splashScreen.Close();
-                    return;
-                }
-
-                var mainWin = new MainWindow
-                {
-                    DataContext = new MainViewModel(),
-                };
-                desktop.MainWindow = mainWin;
-                mainWin.Show();
-
-                splashScreen.Close();
+                desktop.MainWindow.Show();
             }
 
             base.OnFrameworkInitializationCompleted();

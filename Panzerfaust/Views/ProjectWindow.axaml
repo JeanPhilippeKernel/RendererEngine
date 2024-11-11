@@ -1,0 +1,27 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        xmlns:views="clr-namespace:Panzerfaust.Views"
+        xmlns:vm="clr-namespace:Panzerfaust.ViewModels;assembly=Panzerfaust"
+        x:Class="Panzerfaust.Views.ProjectWindow"
+        Title="New Project"
+        Width="712" Height="712"
+        MaxHeight="712" MaxWidth="712"
+        MinHeight="712" MinWidth="712"
+        TransparencyLevelHint="AcrylicBlur"
+        Background="Transparent"
+        ExtendClientAreaToDecorationsHint="True" WindowStartupLocation="CenterOwner" CanResize="False">
+  <Panel>
+    <ExperimentalAcrylicBorder IsHitTestVisible="False">
+      <ExperimentalAcrylicBorder.Material>
+        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="Black" TintOpacity="1" MaterialOpacity="0.65"/>
+      </ExperimentalAcrylicBorder.Material>
+    </ExperimentalAcrylicBorder>    
+    
+    <Panel Margin="40">
+      <views:CreateProjectView />
+    </Panel>
+  </Panel>
+</Window>

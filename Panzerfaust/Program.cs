@@ -1,6 +1,6 @@
 ﻿using System;
-
 using Avalonia;
+using Avalonia.ReactiveUI;
 using Avalonia.Controls.Primitives;
 
 namespace Panzerfaust;
@@ -19,5 +19,6 @@ class Program
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
+            .UseReactiveUI()
             .LogToTrace();
 }

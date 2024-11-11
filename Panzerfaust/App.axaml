@@ -3,14 +3,21 @@
              x:Class="Panzerfaust.App"
              xmlns:panzerfaust="clr-namespace:Panzerfaust"
              RequestedThemeVariant="Dark">
-
-  <Application.DataTemplates>
-    <panzerfaust:ViewLocator/>
-  </Application.DataTemplates>
-
+  
   <Application.Styles>
     <FluentTheme />
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
     <StyleInclude Source="/Assets/Icons.axaml" />
-    <StyleInclude Source="/Templates/ContentExample.axaml" />
   </Application.Styles>
-</Application>
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <MergeResourceInclude Source="avares://Panzerfaust/Assets/AppResourceDictionary.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+    
+    
+</Application>  
+

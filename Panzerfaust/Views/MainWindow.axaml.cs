@@ -1,18 +1,27 @@
 using Avalonia.Controls;
+using Avalonia.ReactiveUI;
 using Panzerfaust.ViewModels;
+using ReactiveUI;
 
 namespace Panzerfaust.Views
 {
-    public partial class MainWindow : Window
+    internal partial class MainWindow : ReactiveWindow<MainWindowViewModel>
     {
-        public MainWindow(MainViewModel vm)
-        {
-            DataContext = vm;
+        public MainWindow()
+        {        
             InitializeComponent();
+            this.WhenActivated(action => action(ViewModel!.NewProjectDialog.RegisterHandler(DialogHandler)));
         }
 
-        public MainWindow() : this(new MainViewModel()) { }
+        private async Task DialogHandler(IInteractionContext<ProjectWindowViewModel, ProjectViewModel?> interactionContext)
+        {
+            var dialog = new ProjectWindow
+            {
+                DataContext = interactionContext.Input
+            };
 
-
+            var result = await dialog.ShowDialog<ProjectViewModel?>(this);
+            interactionContext.SetOutput(result);
+        }
     }
 }
