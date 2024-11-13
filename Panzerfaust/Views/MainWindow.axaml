@@ -23,10 +23,11 @@
         </ExperimentalAcrylicBorder.Material>
       </ExperimentalAcrylicBorder>
         
-    <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
-          ShowGridLines="True"
-          ColumnDefinitions="*, 5*">
-      <Grid Grid.Column="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" RowDefinitions="0.5*, 5*, 0.5*" ShowGridLines="True">
+    <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch" ColumnDefinitions="*, 5*">
+      <Grid Grid.Column="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" RowDefinitions="0.5*, 5*, 0.5*" OpacityMask="White">
+        <Grid.Background>
+          <SolidColorBrush Color="Black" Opacity="0.3" />
+        </Grid.Background>
         <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
           <TextBlock Text="Panzerfaust" FontWeight="DemiBold" FontSize="16"/>
         </StackPanel>
@@ -41,7 +42,7 @@
           <TextBlock Text="Downloads"/>
         </StackPanel>
       </Grid>
-      <Grid Grid.Column="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" RowDefinitions="*, 8*" ShowGridLines="True">
+      <Grid Grid.Column="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" RowDefinitions="*, 8*">
         <TextBlock Grid.Row="0" Text="Projects" Margin="30, 30, 0, 0" FontSize="25"/>
         <StackPanel Orientation="Vertical" Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
           <Button Content="New project" HorizontalAlignment="Right" Background="Green" Margin="0, 20, 5, 20" FontSize="15" CornerRadius="6" Command="{Binding CreateProjectCommand}"/>
