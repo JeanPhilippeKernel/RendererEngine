@@ -43,35 +43,6 @@ static void ConfigureWorkingSpace(nlohmann::json& config, std::string_view ws_pa
     }
 }
 
-static void ConfigureDefaultDirectories(const nlohmann::json& config, std::string_view ws_path)
-{
-    std::string texture_path    = fs::path(ws_path).append((config["defaultImportDir"]["textureDir"]).get<std::string>()).string();
-    std::string sound_path      = fs::path(ws_path).append((config["defaultImportDir"]["soundDir"]).get<std::string>()).string();
-    std::string scene_path      = fs::path(ws_path).append(config["sceneDir"].get<std::string>()).string();
-    std::string scene_data_path = fs::path(ws_path).append(config["sceneDataDir"].get<std::string>()).string();
-
-    std::error_code err;
-    if (!fs::exists(texture_path))
-    {
-        fs::create_directories(texture_path, err);
-    }
-
-    if (!fs::exists(sound_path))
-    {
-        fs::create_directories(sound_path, err);
-    }
-
-    if (!fs::exists(scene_path))
-    {
-        fs::create_directories(scene_path, err);
-    }
-
-    if (!fs::exists(scene_data_path))
-    {
-        fs::create_directories(scene_data_path, err);
-    }
-}
-
 int applicationEntryPoint(int argc, char* argv[])
 {
     std::string_view project_config_json;
@@ -103,7 +74,6 @@ int applicationEntryPoint(int argc, char* argv[])
         nlohmann::json config           = nlohmann::json::parse(f);
         std::string    root_project_dir = std::filesystem::path(project_config_json).parent_path().string();
         ConfigureWorkingSpace(config, root_project_dir);
-        ConfigureDefaultDirectories(config, root_project_dir);
 
         Tetragrama::EditorConfiguration editor_config = {};
         editor_config.ProjectName                     = config["projectName"];

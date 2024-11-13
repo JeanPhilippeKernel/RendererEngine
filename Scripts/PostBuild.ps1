@@ -109,41 +109,6 @@ $ContentsToProcess = @(
                 }
             }
         )
-    },
-    @{
-        Name = "Examples"
-        IsDirectory = $true
-        Contents = @(
-            if ($Configurations -eq "Debug") {
-                switch ($SystemName) {
-                    "Windows" {
-                        @{ From = "$RepoRoot\Examples"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\Examples"}
-                        @{ From = "$RepoRoot\Examples"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Examples"}
-                    }
-                    "Darwin" {
-                        switch ($Architectures) {
-                            "osx-x64" {
-                                @{ From = "$RepoRoot\Examples"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Examples"}
-                                @{ From = "$RepoRoot\Examples"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\Examples"}
-                            }
-                            "osx-arm64" {
-                                @{ From = "$RepoRoot\Examples"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\publish\Examples"}
-                                @{ From = "$RepoRoot\Examples"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\$Architectures\Examples"}
-                            }
-                            Default {
-                                throw 'This architecture is not supported'
-                            }
-                        }
-                    }
-                    "Linux" {
-                        @{ From = "$RepoRoot\Examples"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net6.0\Examples"}
-                    }
-                    Default {
-                        throw 'This system is not supported'
-                    }
-                }
-            }
-        )
     }
 )
 
