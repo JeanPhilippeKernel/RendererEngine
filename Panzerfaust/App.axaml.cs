@@ -23,28 +23,23 @@ namespace Panzerfaust
 
         public override void OnFrameworkInitializationCompleted()
         {
-            var locator = new ViewLocator();
-            DataTemplates.Add(locator);
-
-
-            //services.AddCommonServices();
-            //var provider = services.BuildServiceProvider();
-
-            //Ioc.Default.ConfigureServices(provider);
-
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                desktop.MainWindow = new MainWindow() { DataContext = new MainWindowViewModel() };
+                desktop.MainWindow = new MainWindow() { };
 
                 var services = new ServiceCollection();
+                services.AddSingleton<Service.IProjectService>(new Service.ProjectService());
                 services.AddSingleton<Service.IStorageProviderService>(x => new Service.StorageProviderService(desktop.MainWindow));
+                services.AddSingleton<Service.IEngineService>(new Service.EngineService());
                 ServiceProvider = services.BuildServiceProvider();
 
+                MainWindow window = (MainWindow)desktop.MainWindow;
+                window.DataContext = new MainWindowViewModel();
+                 
                 desktop.MainWindow.Show();
             }
 
             base.OnFrameworkInitializationCompleted();
-
         }
     }
 }

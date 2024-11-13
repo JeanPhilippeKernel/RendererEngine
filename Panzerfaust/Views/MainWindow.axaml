@@ -46,7 +46,7 @@
         <StackPanel Orientation="Vertical" Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
           <Button Content="New project" HorizontalAlignment="Right" Background="Green" Margin="0, 20, 5, 20" FontSize="15" CornerRadius="6" Command="{Binding CreateProjectCommand}"/>
           <TextBox Watermark="Search..." BorderBrush="Transparent" BorderThickness="0" Foreground="White" MinWidth="200" Width="210" HorizontalAlignment="Right" Margin="0, 5, 5, 5" CornerRadius="6"/>
-          <ProgressBar Foreground="WhiteSmoke" IsIndeterminate="True" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
+          <ProgressBar Foreground="WhiteSmoke" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
           <DataGrid VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
                     IsReadOnly="True"
                     CanUserReorderColumns="False"
@@ -58,7 +58,21 @@
               <DataGridTextColumn Header="NAME" Width="*" MinWidth="256" Binding="{Binding Name, Mode=OneWay}"/>
               <DataGridTextColumn Header="PATH" Width="*" MinWidth="256" Binding="{Binding Path, Mode=OneWay}"/>
               <DataGridTextColumn Header="MODIFIED" Width="*" MinWidth="120" CanUserSort="True" Binding="{Binding UpdatedDate, Mode=OneWay}"/>
-              <DataGridTextColumn Header="ACTIONS" Width="*" MinWidth="120" />
+              <DataGridTemplateColumn Header="ACTIONS" Width="*" MinWidth="120">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Spacing="10">
+                      <Button Content="Open" HorizontalAlignment="Center" Margin="0, 5, 0, 0" Command="{Binding OpenProjectCommand}"/>
+                      <Button Content="Info" HorizontalAlignment="Center" Margin="0, 5, 0, 0">
+                        <PathIcon Data="{StaticResource info_regular}"/>
+                      </Button>
+                      <Button HorizontalAlignment="Center" Margin="0, 5, 0, 0" Background="Red">
+                        <PathIcon Data="{StaticResource delete_regular}"/>
+                      </Button>
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>
 

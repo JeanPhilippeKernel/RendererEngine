@@ -4,9 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Panzerfaust.Service.AppEnvironment
+namespace Panzerfaust.Service
 {
-    internal interface IAppEnvironmentService
+    public interface IEngineService
     {
+        Task StartAsync(string path);
     }
 }

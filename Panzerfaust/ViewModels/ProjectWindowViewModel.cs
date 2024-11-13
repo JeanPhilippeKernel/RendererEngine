@@ -19,21 +19,24 @@ namespace Panzerfaust.ViewModels
         private string?  _projectName = string.Empty;
         private string? _projectLocation = string.Empty;
         private string? _progressReportText = string.Empty;
+        private string _progressReportTextColor = "White";
 
         public bool IsBusy { get => _isBusy; set => this.RaiseAndSetIfChanged(ref _isBusy, value); }
         public string? ProjectName { get => _projectName; set => this.RaiseAndSetIfChanged(ref _projectName, value); }
         public string? ProjectLocation { get => _projectLocation; set => this.RaiseAndSetIfChanged(ref _projectLocation, value); }
         public string? ProgressReportText { get => _progressReportText; set => this.RaiseAndSetIfChanged(ref _progressReportText, value); }
+        public string ProgressReportTextColor { get => _progressReportTextColor; set => this.RaiseAndSetIfChanged(ref _progressReportTextColor, value); }
 
         public ICommand DirectoryDialogCommand { get; }
         public ReactiveCommand<Unit, ProjectViewModel?> CancelCommand { get; }
-        public ReactiveCommand<Unit, ProjectViewModel?> FinishCommand { get; } 
+        public ReactiveCommand<Unit, ProjectViewModel?> FinishCommand { get; }
 
         public ProjectWindowViewModel()
         {
-            CancelCommand = ReactiveCommand.Create(OnCancelCommandHandler);
-            FinishCommand = ReactiveCommand.CreateFromTask(OnFinishCommandHandler);
             DirectoryDialogCommand = ReactiveCommand.CreateFromTask(OnDirectoryDialogCommandHandler);
+            CancelCommand = ReactiveCommand.Create(OnCancelCommandHandler);
+            FinishCommand = ReactiveCommand.CreateFromTask(OnFinishCommandHandler,
+                this.WhenAnyValue(x => x.ProjectName, x => x.ProjectLocation, (name, location) => !(string.IsNullOrEmpty(name) || string.IsNullOrEmpty(location))));
         }
 
         private async Task OnDirectoryDialogCommandHandler()
@@ -51,51 +54,51 @@ namespace Panzerfaust.ViewModels
         private async Task<ProjectViewModel?> OnFinishCommandHandler()
         {
             IsBusy = true;
+            ProgressReportTextColor = "White";
 
             var (success, result, reportMessage) = await ConfigureAsync();
             IsBusy = false;
             
             if(reportMessage != null) ProgressReportText = reportMessage;
 
-            if (success)
-            {
+            if(!success) ProgressReportTextColor = "Red";
 
-            }
             return result;
         }
 
         private async Task<(bool, ProjectViewModel?, string?)> ConfigureAsync()
         {
-            var storageProvider = App.Current?.ServiceProvider?.GetService<Service.IStorageProviderService>();
-            if (storageProvider == null)
+            var storageService = App.Current?.ServiceProvider?.GetService<Service.IStorageProviderService>();
+
+            if (storageService == null)
             {
                 return (false, null, "Failed to access the Storage Provider");
             }
 
-            string fullpath = Path.Combine(_projectLocation, _projectName);
+            string fullpath = Path.Combine(ProjectLocation, ProjectName);
 
-            bool directoryExist = await storageProvider.IsDirectoryExists(fullpath);
+            bool directoryExist = await storageService.IsDirectoryExists(fullpath);
             if (directoryExist)
             {
                 return (false, null, "The directory already exists");
             }
 
-            // Creating Root directory
-            var rootDirectory = await storageProvider.CreateDirectoryAsync(fullpath);
+            // Creating Root directory...
+            var rootDirectory = await storageService.CreateDirectoryAsync(fullpath);
             if (!rootDirectory.Exists)
             {
                 return (false, null, "Failed to create the directory");
             }
 
-            // Creating projectConfig.json
+            // Creating projectConfig.json...
             Models.ProjectConfigJson content = new()
             {
-                ProjectName = _projectName,
+                ProjectName = ProjectName,
                 DefautImportDirectory = new() { TextureDirectory = "Textures", SoundDirectory = "Sounds" }
             };
 
             ProgressReportText = "Creating config json file...";
-            var (fileCreated, fileStream) = await storageProvider.CreateFileAsync($"{rootDirectory.FullName}/projectConfig.json");
+            var (fileCreated, fileStream) = await storageService.CreateFileAsync($"{rootDirectory.FullName}/projectConfig.json");
             if (!fileCreated)
             {
                 return (false, null, "Failed to create projectConfig.json");
@@ -108,7 +111,7 @@ namespace Panzerfaust.ViewModels
                 await writer.WriteAsync(jsonContent);
             }
 
-            // Creating sub directories            
+            // Creating sub directories...            
             List<string> subDirectories = new()
             {
               content.SceneDataDirectory,
@@ -127,7 +130,19 @@ namespace Panzerfaust.ViewModels
                 }
             }
 
-            Models.Project project = new() { Name = _projectName, CreationDate = rootDirectory.CreationTime, UpdateDate = rootDirectory.LastAccessTime, Fullpath = rootDirectory.FullName };
+            // Creating project...
+            var projectService = App.Current?.ServiceProvider?.GetService<Service.IProjectService>();
+            if (projectService == null)
+            {
+                return (false, null, "Failed to access the Project Service");
+            }
+
+            var project = await projectService.CreateAsync(ProjectName, rootDirectory.FullName, rootDirectory.CreationTime, rootDirectory.LastAccessTime);
+            if (project == null)
+            {
+                return (false, null, "Failed to create project");
+            }
+
             return (true, new ProjectViewModel (project), "Configuration completed!");
         }
     }

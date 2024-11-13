@@ -11,10 +11,10 @@
     <TextBlock Text="Configure your new project" DockPanel.Dock="Top" FontSize="25" />
     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Right" Spacing="10">
       <Button Content="Cancel" Command="{Binding CancelCommand}"/>
-      <Button Content="Finish" Background="Green" Command="{Binding FinishCommand}" />
+      <Button Content="Finish" Background="Green" Command="{Binding FinishCommand}" IsEnabled="{Binding FinishCommand.CanExecute}"/>
     </StackPanel>
-    <ProgressBar DockPanel.Dock="Bottom" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="0, 0, 0, 20" IsIndeterminate="{Binding IsBusy}" Foreground="WhiteSmoke"/>
-    <TextBlock Text="{Binding ProgressReportText}" DockPanel.Dock="Bottom" HorizontalAlignment="Stretch" FontWeight="Light" VerticalAlignment="Center" Margin="0, 0, 0, 8"/>
+    <ProgressBar DockPanel.Dock="Bottom" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="0, 0, 0, 20" IsIndeterminate="{Binding IsBusy}" Foreground="{Binding ProgressReportTextColor}" />
+    <TextBlock Text="{Binding ProgressReportText}" DockPanel.Dock="Bottom" HorizontalAlignment="Stretch" FontWeight="Light" VerticalAlignment="Center" Margin="0, 0, 0, 8" Foreground=""/>
     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Stretch" Spacing="15">
       <TextBlock Text="Project name" />
       <TextBox Watermark="Enter a project name" CornerRadius="5" HorizontalAlignment="Stretch" Text="{Binding ProjectName, Mode=TwoWay}"/>

@@ -1,21 +1,25 @@
-﻿using Panzerfaust.Models;
+﻿using DynamicData;
+using Microsoft.Extensions.DependencyInjection;
+using Panzerfaust.Models;
 using ReactiveUI;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Reactive;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using static SkiaSharp.HarfBuzz.SKShaper;
 
 namespace Panzerfaust.ViewModels
 {
     internal class MainWindowViewModel : ViewModelBase
     {
-        public ICommand CreateProjectCommand { get; }
         public ObservableCollection<ProjectViewModel> Projects { get; set; } = new();
+        public ReactiveCommand<Unit, Unit> CreateProjectCommand { get; }
         public Interaction<ProjectWindowViewModel, ProjectViewModel?> NewProjectDialog { get; } = new();
 
         public MainWindowViewModel()
@@ -37,7 +41,11 @@ namespace Panzerfaust.ViewModels
 
         private async void LoadProjectsAsync()
         {
-            return;
+            var projectService = App.Current?.ServiceProvider?.GetService<Service.IProjectService>();
+            if (projectService == null) return;
+
+            var projects = await projectService.LoadProjectsAsync();
+            Projects.AddRange(projects.Select(project => new ProjectViewModel(project)));
         }
     }
 }

@@ -1,6 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
-using Panzerfaust.Service.Engine;
+using Panzerfaust.Service;
 using Panzerfaust.ViewModels;
 using Panzerfaust.Views;
 
