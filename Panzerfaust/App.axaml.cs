@@ -7,7 +7,6 @@ using Panzerfaust.ViewModels;
 using Panzerfaust.Views;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
-using Panzerfaust.Extensions;
 
 namespace Panzerfaust
 {
