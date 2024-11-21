@@ -10,8 +10,8 @@ namespace Panzerfaust.Service
 {
     internal class ProjectService : IProjectService
     {
-        private string _cachePath = "./Cache";
-        private string _fileExtension = ".pzf";
+        private const string _cachePath = "./Cache";
+        private const string _fileExtension = ".pzf";
 
         private void EnsureCacheDirectoryIsPresent()
         {
@@ -61,5 +61,30 @@ namespace Panzerfaust.Service
             await JsonSerializer.SerializeAsync(fs, p).ConfigureAwait(false);
         }
 
+        public Task<(bool, ErrorMessage?)> DeleteAsync(Project p)
+        {
+            return Task.Run(() =>
+            {
+                (bool, ErrorMessage?) result = (false, null);
+
+                try
+                {
+                    EnsureCacheDirectoryIsPresent();
+
+                    var pzffilepath = Path.Combine(_cachePath, $"{p.GetHash()}{_fileExtension}");
+                    File.Delete(pzffilepath);
+
+                    Directory.Delete(p.Fullpath, true);
+
+                    result = (true, null);
+                }
+                catch (Exception e)
+                {
+                    result = (false, new() { Message = e.Message, Exception = e });
+                }
+
+                return result;
+            });
+        }
     }
 }

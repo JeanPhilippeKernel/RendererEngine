@@ -67,7 +67,7 @@
                       <Button Content="Info" HorizontalAlignment="Center" Margin="0, 5, 0, 0">
                         <PathIcon Data="{StaticResource info_regular}"/>
                       </Button>
-                      <Button HorizontalAlignment="Center" Margin="0, 5, 0, 0" Background="Red">
+                      <Button HorizontalAlignment="Center" Margin="0, 5, 0, 0" Background="Red" Command="{Binding DeleteProjectCommand}">
                         <PathIcon Data="{StaticResource delete_regular}"/>
                       </Button>
                     </StackPanel>

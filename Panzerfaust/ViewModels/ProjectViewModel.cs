@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reactive;
+using System.Reactive.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -13,17 +14,35 @@ namespace Panzerfaust.ViewModels
     internal class ProjectViewModel : ViewModelBase
     {
         private readonly Project _project;
+        private Interaction<Unit, ProjectViewModel?>? _deleteProjectInteraction;
 
         public string Name => _project.Name;
         public string Path => _project.Fullpath;
         public string UpdatedDate => _project.UpdateDate.ToShortDateString();
 
         public ReactiveCommand<Unit, Unit> OpenProjectCommand { get; }
+        public ReactiveCommand<Unit, Unit> DeleteProjectCommand { get; }
 
-        public ProjectViewModel(Project p)
+        public ProjectViewModel(Project p, Interaction<Unit, ProjectViewModel?>? interaction = null)
         {
             _project = p;
+            _deleteProjectInteraction = interaction;
             OpenProjectCommand = ReactiveCommand.Create(OnOpenProjectCommand);
+            DeleteProjectCommand = ReactiveCommand.CreateFromTask(OnDeleteProjectCommand);
+        }
+
+        public void SetRemovalInteraction(Interaction<Unit, ProjectViewModel?> interaction) => _deleteProjectInteraction = interaction;
+
+        private async Task OnDeleteProjectCommand()
+        {
+            if (_deleteProjectInteraction == null) { return; }
+
+            _ = await _deleteProjectInteraction.Handle(Unit.Default);
+            var projectService = App.Current?.ServiceProvider?.GetService<Service.IProjectService>();
+            if (projectService == null) { return; }
+
+            await projectService.DeleteAsync(_project);
+            MessageBus.Current.SendMessage<(string, ProjectViewModel)>((Message.DeleteAction, this));
         }
 
         private async void OnOpenProjectCommand()

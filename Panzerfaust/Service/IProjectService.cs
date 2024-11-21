@@ -12,5 +12,6 @@ namespace Panzerfaust.Service
         Task<IEnumerable<Project>> LoadProjectsAsync();
         Task SaveAsync(Project p);
         Task<Project?> CreateAsync(string name, string path, DateTime creationTime, DateTime updateTime);
+        Task<(bool, ErrorMessage?)> DeleteAsync(Project p);
     }
 }

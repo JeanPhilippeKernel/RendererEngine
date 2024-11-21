@@ -21,20 +21,34 @@ namespace Panzerfaust.ViewModels
         public ObservableCollection<ProjectViewModel> Projects { get; set; } = new();
         public ReactiveCommand<Unit, Unit> CreateProjectCommand { get; }
         public Interaction<ProjectWindowViewModel, ProjectViewModel?> NewProjectDialog { get; } = new();
+        public Interaction<Unit, ProjectViewModel?> DeleteProjectInteraction { get; } = new();
 
         public MainWindowViewModel()
         {
             RxApp.MainThreadScheduler.Schedule(LoadProjectsAsync);
 
             CreateProjectCommand = ReactiveCommand.CreateFromTask(OnCreateProjectCommand);
+
+            MessageBus.Current.Listen<(string, ProjectViewModel)>().Subscribe(OnReceiveMessage);
+        }
+
+        private void OnReceiveMessage((string, ProjectViewModel) message)
+        {
+            var (action, data) = message;
+
+            if (action == Message.DeleteAction)
+            { 
+                Projects.Remove(data);
+            }
         }
 
         private async Task OnCreateProjectCommand()
         {
             var projectViewModel = new ProjectWindowViewModel();
             var result = await NewProjectDialog.Handle(projectViewModel);
-            if (result != null) 
+            if (result != null)
             {
+                result.SetRemovalInteraction(DeleteProjectInteraction);
                 Projects.Add(result);
             }
         }
@@ -45,7 +59,7 @@ namespace Panzerfaust.ViewModels
             if (projectService == null) return;
 
             var projects = await projectService.LoadProjectsAsync();
-            Projects.AddRange(projects.Select(project => new ProjectViewModel(project)));
+            Projects.AddRange(projects.Select(project => new ProjectViewModel(project, DeleteProjectInteraction)));
         }
     }
 }
