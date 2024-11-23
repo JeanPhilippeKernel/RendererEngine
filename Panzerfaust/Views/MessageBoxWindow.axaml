@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Panzerfaust.ViewModels;assembly=Panzerfaust"
+        mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="150"
+        x:Class="Panzerfaust.Views.MessageBoxWindow"
+        x:DataType="vm:MessageBoxWindowViewModel"
+        Title="MessageBoxWindow" CanResize="False"
+        TransparencyLevelHint="AcrylicBlur"
+        Background="Transparent"
+        MinWidth="300"
+        MinHeight="150"
+        MaxWidth="300"
+        MaxHeight="150"
+        Width="300"
+        Height="150"
+        ExtendClientAreaToDecorationsHint="True" WindowStartupLocation="CenterOwner">
+  <Panel>
+    <ExperimentalAcrylicBorder IsHitTestVisible="False">
+      <ExperimentalAcrylicBorder.Material>
+        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="Black" TintOpacity="1" MaterialOpacity="0.65"/>
+      </ExperimentalAcrylicBorder.Material>
+    </ExperimentalAcrylicBorder>
+
+    <Panel Margin="20">
+      <DockPanel Margin="3">
+        <TextBlock Text="Are you sure ?" DockPanel.Dock="Top" FontSize="20" />
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Right" Spacing="10">
+          <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+          <Button Content="Yes, delete it" Background="Red" Command="{Binding OkCommand}"/>
+        </StackPanel>
+        <Separator DockPanel.Dock="Bottom" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="0, 0, 0, -60" />
+      </DockPanel>
+    </Panel>
+  </Panel>
+</Window>

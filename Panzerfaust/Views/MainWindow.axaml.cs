@@ -30,10 +30,11 @@ namespace Panzerfaust.Views
             interactionContext.SetOutput(result);
         }
 
-        private async Task DeleteProjectInteractionHandler(IInteractionContext<Unit, ProjectViewModel?> context)
+        private async Task DeleteProjectInteractionHandler(IInteractionContext<MessageBoxWindowViewModel, bool> context)
         {
-            // Todo : implement the UI dialog like MessageBox to confirm the removal
-            context.SetOutput(null);
+            var dialog = new MessageBoxWindow { DataContext = context.Input};
+            var result = await dialog.ShowDialog<bool>(this);
+            context.SetOutput(result);
         }
     }
 }

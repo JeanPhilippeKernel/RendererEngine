@@ -14,7 +14,7 @@ namespace Panzerfaust.ViewModels
     internal class ProjectViewModel : ViewModelBase
     {
         private readonly Project _project;
-        private Interaction<Unit, ProjectViewModel?>? _deleteProjectInteraction;
+        private Interaction<MessageBoxWindowViewModel, bool>? _deleteProjectInteraction;
 
         public string Name => _project.Name;
         public string Path => _project.Fullpath;
@@ -23,7 +23,7 @@ namespace Panzerfaust.ViewModels
         public ReactiveCommand<Unit, Unit> OpenProjectCommand { get; }
         public ReactiveCommand<Unit, Unit> DeleteProjectCommand { get; }
 
-        public ProjectViewModel(Project p, Interaction<Unit, ProjectViewModel?>? interaction = null)
+        public ProjectViewModel(Project p, Interaction<MessageBoxWindowViewModel, bool>? interaction = null)
         {
             _project = p;
             _deleteProjectInteraction = interaction;
@@ -31,18 +31,21 @@ namespace Panzerfaust.ViewModels
             DeleteProjectCommand = ReactiveCommand.CreateFromTask(OnDeleteProjectCommand);
         }
 
-        public void SetRemovalInteraction(Interaction<Unit, ProjectViewModel?> interaction) => _deleteProjectInteraction = interaction;
+        public void SetRemovalInteraction(Interaction<MessageBoxWindowViewModel, bool> interaction) => _deleteProjectInteraction = interaction;
 
         private async Task OnDeleteProjectCommand()
         {
             if (_deleteProjectInteraction == null) { return; }
 
-            _ = await _deleteProjectInteraction.Handle(Unit.Default);
-            var projectService = App.Current?.ServiceProvider?.GetService<Service.IProjectService>();
-            if (projectService == null) { return; }
+            var result = await _deleteProjectInteraction.Handle(new MessageBoxWindowViewModel());
+            if (result)
+            {
+                var projectService = App.Current?.ServiceProvider?.GetService<Service.IProjectService>();
+                if (projectService == null) { return; }
 
-            await projectService.DeleteAsync(_project);
-            MessageBus.Current.SendMessage<(string, ProjectViewModel)>((Message.DeleteAction, this));
+                await projectService.DeleteAsync(_project);
+                MessageBus.Current.SendMessage<(string, ProjectViewModel)>((Message.DeleteAction, this));
+            }
         }
 
         private async void OnOpenProjectCommand()

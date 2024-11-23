@@ -21,7 +21,7 @@ namespace Panzerfaust.ViewModels
         public ObservableCollection<ProjectViewModel> Projects { get; set; } = new();
         public ReactiveCommand<Unit, Unit> CreateProjectCommand { get; }
         public Interaction<ProjectWindowViewModel, ProjectViewModel?> NewProjectDialog { get; } = new();
-        public Interaction<Unit, ProjectViewModel?> DeleteProjectInteraction { get; } = new();
+        public Interaction<MessageBoxWindowViewModel, bool> DeleteProjectInteraction { get; } = new();
 
         public MainWindowViewModel()
         {
