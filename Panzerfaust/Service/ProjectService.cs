@@ -10,8 +10,8 @@ namespace Panzerfaust.Service
 {
     internal class ProjectService : IProjectService
     {
-        private const string _cachePath = "./Cache";
-        private const string _fileExtension = ".pzf";
+        private readonly string _cachePath = Path.Combine(".", "Cache");
+        private readonly string _fileExtension = ".pzf";
 
         private void EnsureCacheDirectoryIsPresent()
         {
@@ -27,7 +27,7 @@ namespace Panzerfaust.Service
             
             Project p = new() { Name = name, Fullpath = path, CreationDate = creationTime, UpdateDate = updateTime };
 
-            using var fs = File.OpenWrite($"{_cachePath}/{p.GetHash()}{_fileExtension}");
+            using var fs = File.OpenWrite(Path.Combine(_cachePath, $"{p.GetHash()}{_fileExtension}"));
             await JsonSerializer.SerializeAsync(fs, p).ConfigureAwait(false);
             return p;
         }
@@ -57,7 +57,7 @@ namespace Panzerfaust.Service
         {
             EnsureCacheDirectoryIsPresent();
 
-            using var fs = File.OpenWrite($"{_cachePath}/{p.GetHash()}{_fileExtension}");
+            using var fs = File.OpenWrite(Path.Combine(_cachePath, $"{p.GetHash()}{_fileExtension}"));
             await JsonSerializer.SerializeAsync(fs, p).ConfigureAwait(false);
         }
 

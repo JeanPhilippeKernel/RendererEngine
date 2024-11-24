@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ReactiveUI;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
@@ -13,17 +14,35 @@ using System.Windows.Input;
 
 namespace Panzerfaust.ViewModels
 {
-    internal class ProjectWindowViewModel : ViewModelBase
+    internal partial class ProjectWindowViewModel : ViewModelBase
     {
         private bool _isBusy = false;
         private string?  _projectName = string.Empty;
-        private string? _projectLocation = string.Empty;
+        private string? _projectLocation = Directory.GetCurrentDirectory();
         private string? _progressReportText = string.Empty;
         private string _progressReportTextColor = "White";
 
         public bool IsBusy { get => _isBusy; set => this.RaiseAndSetIfChanged(ref _isBusy, value); }
-        public string? ProjectName { get => _projectName; set => this.RaiseAndSetIfChanged(ref _projectName, value); }
-        public string? ProjectLocation { get => _projectLocation; set => this.RaiseAndSetIfChanged(ref _projectLocation, value); }
+        public string? ProjectName
+        { 
+            get => _projectName;
+            set
+            {
+                ValidateProjectName(value);
+                this.RaiseAndSetIfChanged(ref _projectName, value);
+            }  
+        }
+
+        public string? ProjectLocation
+        {
+            get => _projectLocation;
+            set
+            {
+                ValidateProjectLocation(value);
+                this.RaiseAndSetIfChanged(ref _projectLocation, value);
+            }
+        }
+
         public string? ProgressReportText { get => _progressReportText; set => this.RaiseAndSetIfChanged(ref _progressReportText, value); }
         public string ProgressReportTextColor { get => _progressReportTextColor; set => this.RaiseAndSetIfChanged(ref _progressReportTextColor, value); }
 
@@ -36,7 +55,7 @@ namespace Panzerfaust.ViewModels
             DirectoryDialogCommand = ReactiveCommand.CreateFromTask(OnDirectoryDialogCommandHandler);
             CancelCommand = ReactiveCommand.Create(OnCancelCommandHandler);
             FinishCommand = ReactiveCommand.CreateFromTask(OnFinishCommandHandler,
-                this.WhenAnyValue(x => x.ProjectName, x => x.ProjectLocation, (name, location) => !(string.IsNullOrEmpty(name) || string.IsNullOrEmpty(location))));
+                this.WhenAnyValue(x => x.ProjectName, x => x.ProjectLocation, x => x.HasErrors,  (name, location, hasErrors) => !(string.IsNullOrEmpty(name) || string.IsNullOrEmpty(location) || hasErrors)));
         }
 
         private async Task OnDirectoryDialogCommandHandler()
