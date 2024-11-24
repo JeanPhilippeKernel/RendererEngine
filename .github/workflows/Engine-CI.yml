@@ -4,9 +4,6 @@ on:
   pull_request:
     branches: [ master, develop ]
 
-env:
-  TARGET_FRAMEWORK: net8.0
-
 jobs:
   clang-format:
     strategy:
@@ -20,13 +17,10 @@ jobs:
     needs: clang-format
     uses: ./.github/workflows/windows-build.yml
     with:
-      targetFramework: ${{env.TARGET_FRAMEWORK}}
+      targetFramework: net8.0
 
   macOS:
     needs: clang-format
     uses: ./.github/workflows/macOS-build.yml
     with:
-      targetFramework: ${{env.TARGET_FRAMEWORK}}
-
-  # linux:
-  #   uses: ./.github/workflows/linux-build.yml
+      targetFramework: net8.0
