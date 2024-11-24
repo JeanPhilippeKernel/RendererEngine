@@ -40,6 +40,7 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
+$TargetFramework = 'net8.0'
 
 [string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 [string]$OuputBuildDirectory = If($IsWindows) {
@@ -83,18 +84,18 @@ $ContentsToProcess = @(
         Contents = @(
             switch ($SystemName) {
                 "Windows" {
-                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net8.0\Editor"}
-                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net8.0\$Architectures\publish\Editor"}
+                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
+                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
                 }
                 "Darwin" {
                     switch ($Architectures) {
                         "osx-x64" {
-                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net8.0\$Architectures\Editor"}
-                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net8.0\$Architectures\publish\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
                         }
                         "osx-arm64" {
-                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net8.0\$Architectures\Editor"}
-                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net8.0\$Architectures\publish\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\Editor"}
+                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
                         }
                         Default {
                             throw 'This architecture is not supported'
@@ -102,7 +103,7 @@ $ContentsToProcess = @(
                     }
                 }
                 "Linux" {
-                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\net8.0\Editor"}
+                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
                 }
                 Default {
                     throw 'This system is not supported'
