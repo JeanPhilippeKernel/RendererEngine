@@ -30,22 +30,23 @@ namespace Panzerfaust.ViewModels
 
         private void ValidateProjectName(string? name)
         {
-            if (_errors.ContainsKey(nameof(ProjectName)))
+            var key = nameof(ProjectName);
+            if (_errors.ContainsKey(key))
             {
-                _errors[nameof(ProjectName)].Clear();
+                _errors.Remove(key);
             }
 
             if (string.IsNullOrEmpty(name))
             {
-                _errors[nameof(ProjectName)] = new() { "Name can't be empty" };
+                _errors[key] = new() { "Name can't be empty" };
             }            
             else if (string.IsNullOrWhiteSpace(name))
             {
-                _errors[nameof(ProjectName)] = new() { "Name can't contain only whitespaces" };
+                _errors[key] = new() { "Name can't contain only whitespaces" };
             }            
             else if (Regex.IsMatch(name, @"[\s\W]+"))
             {
-                _errors[nameof(ProjectName)] =  new() { "Name can't contain special characters or whitespace." };
+                _errors[key] =  new() { "Name can't contain special characters or whitespace." };
             }
 
             this.RaisePropertyChanged(nameof(HasErrors));
@@ -53,23 +54,24 @@ namespace Panzerfaust.ViewModels
 
         private void ValidateProjectLocation(string? location)
         {
-            if (_errors.ContainsKey(nameof(ProjectLocation)))
+            var key = nameof(ProjectLocation);
+            if (_errors.ContainsKey(key))
             {
-                _errors[nameof(ProjectLocation)].Clear();
+                _errors.Remove(key);
             }
 
             if (string.IsNullOrEmpty(location))
             {
-                _errors[nameof(ProjectLocation)] = new() { "Location can't be empty" };
+                _errors[key] = new() { "Location can't be empty" };
             }
             else if (string.IsNullOrWhiteSpace(location))
             {
-                _errors[nameof(ProjectLocation)] = new() { "Location can't contain only whitespaces" };
+                _errors[key] = new() { "Location can't contain only whitespaces" };
             }
             
             if (!Directory.Exists(location))
             {
-                _errors[nameof(ProjectLocation)] = new() { "This location isn't valid" };
+                _errors[key] = new() { "This location isn't valid" };
             }
 
             this.RaisePropertyChanged(nameof(HasErrors));
