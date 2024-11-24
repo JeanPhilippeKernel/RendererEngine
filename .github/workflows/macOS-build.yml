@@ -1,6 +1,11 @@
 name: ZEngine macOS Build
 
-on: workflow_call
+on:
+  workflow_call:
+    inputs:
+      targetFramework:
+        type: string
+        required: true
 
 jobs:
   cmake-build:
@@ -12,6 +17,7 @@ jobs:
     with:
       configuration: ${{matrix.buildConfiguration}}
       architecture: ${{ matrix.architecture }}
+      targetFramework: ${{inputs.targetFramework}}
 
   test:
     needs: cmake-build
@@ -33,3 +39,4 @@ jobs:
     with:
       configuration: Release
       architecture: ${{ matrix.architecture }}
+      targetFramework: ${{inputs.targetFramework}}

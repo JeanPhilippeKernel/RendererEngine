@@ -1,6 +1,11 @@
 name: ZEngine Window Build
 
-on: workflow_call
+on:
+  workflow_call:
+    inputs:
+      targetFramework:
+        type: string
+        required: true
 
 jobs:
   cmake-build:
@@ -10,6 +15,7 @@ jobs:
     uses: ./.github/workflows/job-cmakebuild-windows.yml
     with:
       configuration: ${{matrix.buildConfiguration}}
+      targetFramework: ${{inputs.targetFramework}}
 
   test:
     needs: cmake-build
@@ -25,3 +31,4 @@ jobs:
     uses: ./.github/workflows/job-deploy-windows.yml
     with:
       configuration: Release
+      targetFramework: ${{inputs.targetFramework}}
