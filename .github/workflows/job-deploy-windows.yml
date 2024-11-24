@@ -23,4 +23,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Windows-x64-${{ inputs.configuration }}
-          path: Result.Windows.x64.MultiConfig/Panzerfaust/${{ inputs.configuration }}/net6.0/win-x64/publish/
+          path: Result.Windows.x64.MultiConfig/Panzerfaust/${{ inputs.configuration }}/net8.0/win-x64/publish/
