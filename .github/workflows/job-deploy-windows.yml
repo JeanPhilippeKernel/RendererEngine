@@ -5,6 +5,9 @@ name: Windows Deploy Workflow
 on:
   workflow_call:
     inputs:
+      targetFramework:
+        type: string
+        required: true
       configuration:
         type: string
         default: 'Release'

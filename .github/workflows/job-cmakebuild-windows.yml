@@ -5,6 +5,9 @@ name: Windows Build Workflow
 on:
   workflow_call:
     inputs:
+      targetFramework:
+        type: string
+        required: true
       configuration:
         type: string
         default: 'Debug'
@@ -26,13 +29,13 @@ jobs:
         with:
           name: Build-Windows-x64-${{inputs.configuration}}
           path: |
-            Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net8.0/win-x64/publish/
+            Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/win-x64/publish/
             Result.Windows.x64.MultiConfig/ZEngine/tests/${{inputs.configuration}}/
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net8.0/**/Microsoft.CodeAnalysis.CSharp.resources.dll
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net8.0/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net8.0/**/Microsoft.CodeAnalysis.resources.dll
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net8.0/**/Microsoft.CodeAnalysis.Scripting.resources.dll
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/net8.0/**/createdump.exe
+            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.CSharp.resources.dll
+            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
+            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.resources.dll
+            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.Scripting.resources.dll
+            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/createdump.exe
 
       - name: Publish Vulkan Build Artifacts
         if: ${{ inputs.configuration == 'Release'}}
