@@ -3,7 +3,7 @@
 #include <Editor.h>
 #include <Helpers/UIDispatcher.h>
 #include <Helpers/WindowsHelper.h>
-#include <Importers/AssimpImporter.h>
+#include <Importers/TInyobjImporter.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -23,7 +23,7 @@ namespace Tetragrama::Components
     float       DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
 
     DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility)
-        : UIComponent(name, visibility, false), m_asset_importer(CreateScope<Importers::AssimpImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>())
+        : UIComponent(name, visibility, false), m_asset_importer(CreateScope<Importers::TInyobjImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>())
     {
         m_dockspace_node_flag = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
         m_window_flags        = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |

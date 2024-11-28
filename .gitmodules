@@ -58,3 +58,9 @@
 [submodule "__externals/Vulkan-Headers"]
 	path = __externals/Vulkan-Headers
 	url = https://github.com/KhronosGroup/Vulkan-Headers
+[submodule "__externals/rapidobj"]
+	path = __externals/rapidobj
+	url = https://github.com/guybrush77/rapidobj
+[submodule "__externals/tinyobjloader"]
+	path = __externals/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader
