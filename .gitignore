@@ -42,6 +42,7 @@ __externals/imgui/src/examples/example_glfw_vulkan/out/
 __externals/SDL2
 __externals/stb
 __externals/spdlog
+__externals/nuget
 
 # Shader cache file folder
 Resources/Shaders/Cache

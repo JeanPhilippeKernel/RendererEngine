@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <EditorWindow.h>
+#include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -7,6 +8,18 @@
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
+
+#include <ShObjIdl.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Storage.Pickers.h>
+#include <winrt/Windows.Storage.h>
+
+using namespace winrt;
+using namespace winrt::Windows::Foundation;
+using namespace winrt::Windows::Storage;
+using namespace winrt::Windows::Storage::Pickers;
+
 #endif
 #include <GLFW/glfw3native.h>
 
@@ -357,6 +370,36 @@ namespace Tetragrama
         }
 
         m_swapchain->Present();
+    }
+
+    std::future<std::string> EditorWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters)
+    {
+        std::string selected_filename;
+#ifdef _WIN32
+
+        auto native_hwnd = glfwGetWin32Window(m_native_window);
+
+        FileOpenPicker file_picker;
+        file_picker.SuggestedStartLocation(PickerLocationId::DocumentsLibrary);
+        file_picker.as<::IInitializeWithWindow>()->Initialize(native_hwnd);
+
+        if (type_filters.empty())
+        {
+            file_picker.FileTypeFilter().Append(L"*.*");
+        }
+        for (std::string_view type : type_filters)
+        {
+            file_picker.FileTypeFilter().Append(winrt::to_hstring(type));
+        }
+
+        IStorageFile file = co_await file_picker.PickSingleFileAsync();
+
+        if (file)
+        {
+            selected_filename = winrt::to_string(file.Path().c_str());
+        }
+#endif
+        co_return selected_filename;
     }
 
     bool EditorWindow::CreateSurface(void* instance, void** out_window_surface)

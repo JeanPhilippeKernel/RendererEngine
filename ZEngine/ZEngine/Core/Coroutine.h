@@ -11,12 +11,11 @@
 #error Compiler support for coroutines missing!
 #endif
 
-#include <Core/CoroutineScheduler.h>
+#include <CoroutineScheduler.h>
 
 #if defined(__cpp_impl_coroutine) || !defined(_MSC_VER)
 namespace ZENGINE_COROUTINE_NAMESPACE
 {
-
     template <typename T, typename... Args>
     struct coroutine_traits<future<T>, Args...>
     {

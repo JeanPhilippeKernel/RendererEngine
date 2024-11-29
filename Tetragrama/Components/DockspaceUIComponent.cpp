@@ -2,7 +2,6 @@
 #include <DockspaceUIComponent.h>
 #include <Editor.h>
 #include <Helpers/UIDispatcher.h>
-#include <Helpers/WindowsHelper.h>
 #include <Importers/AssimpImporter.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
@@ -164,12 +163,18 @@ namespace Tetragrama::Components
 
         if (ImGui::Button("...", ImVec2(50, 0)) && is_import_button_enabled)
         {
-            Helpers::UIDispatcher::RunAsync([]() -> std::future<void> {
-                std::string filename = co_await Helpers::OpenFileDialogAsync();
-                if (!filename.empty())
+            Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
+                if (auto layer = m_parent_layer.lock())
                 {
-                    ZEngine::Helpers::secure_memset(s_asset_importer_input_buffer, 0, IM_ARRAYSIZE(s_asset_importer_input_buffer), IM_ARRAYSIZE(s_asset_importer_input_buffer));
-                    ZEngine::Helpers::secure_memcpy(s_asset_importer_input_buffer, IM_ARRAYSIZE(s_asset_importer_input_buffer), filename.c_str(), filename.size());
+                    auto                          window = layer->GetAttachedWindow();
+                    std::vector<std::string_view> filters{".obj", ".gltf"};
+                    std::string                   filename = co_await window->OpenFileDialogAsync(filters);
+
+                    if (!filename.empty())
+                    {
+                        ZEngine::Helpers::secure_memset(s_asset_importer_input_buffer, 0, IM_ARRAYSIZE(s_asset_importer_input_buffer), IM_ARRAYSIZE(s_asset_importer_input_buffer));
+                        ZEngine::Helpers::secure_memcpy(s_asset_importer_input_buffer, IM_ARRAYSIZE(s_asset_importer_input_buffer), filename.c_str(), filename.size());
+                    }
                 }
             });
         }
@@ -551,11 +556,15 @@ namespace Tetragrama::Components
 
     std::future<void> DockspaceUIComponent::OnOpenSceneAsync()
     {
-        auto scene_filename = co_await Helpers::OpenFileDialogAsync();
-
-        if (!scene_filename.empty())
+        if (auto layer = m_parent_layer.lock())
         {
-            m_editor_serializer->Deserialize(scene_filename);
+            auto        window         = layer->GetAttachedWindow();
+            std::string scene_filename = co_await window->OpenFileDialogAsync();
+
+            if (!scene_filename.empty())
+            {
+                m_editor_serializer->Deserialize(scene_filename);
+            }
         }
         ZENGINE_CORE_WARN("Editor stopped")
         co_return;

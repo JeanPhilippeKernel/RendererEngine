@@ -34,6 +34,8 @@ namespace Tetragrama
         virtual void  Update(ZEngine::Core::TimeStep delta_time) override;
         virtual void  Render() override;
 
+        virtual std::future<std::string> OpenFileDialogAsync(std::span<std::string_view> type_filters = {}) override;
+
         virtual bool                                         CreateSurface(void* instance, void** out_window_surface) override;
         virtual std::vector<std::string>                     GetRequiredExtensionLayers() override;
         ZEngine::Helpers::Ref<ZEngine::Rendering::Swapchain> GetSwapchain() const override;

@@ -109,9 +109,11 @@ int applicationEntryPoint(int argc, char* argv[])
 
 #ifdef _WIN32
 #include <windows.h>
+#include <winrt/Windows.Foundation.h>
 
 int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hInstPrev, PSTR cmdline, int cmdshow)
 {
+    winrt::init_apartment();
     return applicationEntryPoint(__argc, __argv);
 }
 

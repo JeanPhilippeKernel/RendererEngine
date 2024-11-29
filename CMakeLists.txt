@@ -12,9 +12,11 @@ set_property (GLOBAL PROPERTY USE_FOLDERS ON)
 #
 get_filename_component (ENLISTMENT_ROOT "." ABSOLUTE CACHE)
 get_filename_component (EXTERNAL_DIR "${ENLISTMENT_ROOT}/__externals" ABSOLUTE CACHE)
-get_filename_component (EXAMPLE_DIR "${ENLISTMENT_ROOT}/Examples" ABSOLUTE CACHE)
+get_filename_component (EXTERNAL_NUGET_DIR "${ENLISTMENT_ROOT}/__externals/nuget" ABSOLUTE CACHE)
 
 include(${ENLISTMENT_ROOT}/Scripts/CMake/NuGet.cmake)
+include(${ENLISTMENT_ROOT}/Scripts/CMake/CppWinRT.cmake)
+include(${ENLISTMENT_ROOT}/dependencies.cmake)
 
 
 option (COPY_EXAMPLE_PROJECT "Copy example projects that show how to use Launcher" ON)
