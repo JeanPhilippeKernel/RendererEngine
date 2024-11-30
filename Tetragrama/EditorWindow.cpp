@@ -374,32 +374,35 @@ namespace Tetragrama
 
     std::future<std::string> EditorWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters)
     {
-        std::string selected_filename;
+        std::string path{""};
 #ifdef _WIN32
 
         auto native_hwnd = glfwGetWin32Window(m_native_window);
 
         FileOpenPicker file_picker;
-        file_picker.SuggestedStartLocation(PickerLocationId::DocumentsLibrary);
+        file_picker.ViewMode(PickerViewMode::Thumbnail);
+        file_picker.SuggestedStartLocation(PickerLocationId::ComputerFolder);
         file_picker.as<::IInitializeWithWindow>()->Initialize(native_hwnd);
 
-        if (type_filters.empty())
+        if (!type_filters.empty())
         {
-            file_picker.FileTypeFilter().Append(L"*.*");
-        }
-        for (std::string_view type : type_filters)
-        {
-            file_picker.FileTypeFilter().Append(winrt::to_hstring(type));
+            auto filters = file_picker.FileTypeFilter();
+            filters.Clear();
+
+            for (std::string_view type : type_filters)
+            {
+                filters.Append(winrt::to_hstring(type));
+            }
         }
 
         IStorageFile file = co_await file_picker.PickSingleFileAsync();
 
         if (file)
         {
-            selected_filename = winrt::to_string(file.Path().c_str());
+            path = winrt::to_string(file.Path());
         }
 #endif
-        co_return selected_filename;
+        co_return path;
     }
 
     bool EditorWindow::CreateSurface(void* instance, void** out_window_surface)

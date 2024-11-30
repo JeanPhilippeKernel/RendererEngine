@@ -558,15 +558,15 @@ namespace Tetragrama::Components
     {
         if (auto layer = m_parent_layer.lock())
         {
-            auto        window         = layer->GetAttachedWindow();
-            std::string scene_filename = co_await window->OpenFileDialogAsync();
+            auto                          window         = layer->GetAttachedWindow();
+            std::vector<std::string_view> filters        = {"."};
+            std::string                   scene_filename = co_await window->OpenFileDialogAsync(filters);
 
             if (!scene_filename.empty())
             {
                 m_editor_serializer->Deserialize(scene_filename);
             }
         }
-        ZENGINE_CORE_WARN("Editor stopped")
         co_return;
     }
 
