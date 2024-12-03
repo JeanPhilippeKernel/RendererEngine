@@ -75,8 +75,7 @@ namespace Tetragrama
         static void __OnGlfwFrameBufferSizeChanged(GLFWwindow*, int width, int height);
 
     private:
-        GLFWwindow*                                          m_native_window{nullptr};
-        ZEngine::Helpers::Ref<ZEngine::Rendering::Swapchain> m_swapchain;
+        GLFWwindow* m_native_window{nullptr};
     };
 
 } // namespace Tetragrama

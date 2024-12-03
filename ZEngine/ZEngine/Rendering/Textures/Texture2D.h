@@ -10,6 +10,18 @@ namespace ZEngine::Rendering::Textures
     {
     public:
         Texture2D() = default;
+        Texture2D(const Specifications::TextureSpecification& spec, const Helpers::Ref<Buffers::Image2DBuffer>& buffer)
+        {
+            m_image_2d_buffer = buffer;
+            m_specification   = spec;
+        }
+
+        Texture2D(Specifications::TextureSpecification&& spec, Helpers::Ref<Buffers::Image2DBuffer>&& buffer)
+        {
+            m_image_2d_buffer = std::move(buffer);
+            m_specification   = std::move(spec);
+        }
+
         virtual ~Texture2D();
 
         static Helpers::Ref<Texture2D>              Create(const Specifications::TextureSpecification& spec);

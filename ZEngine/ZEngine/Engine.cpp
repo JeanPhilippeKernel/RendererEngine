@@ -1,9 +1,8 @@
 #include <pch.h>
 #include <Engine.h>
-#include <Hardwares/VulkanDevice.h>
 #include <Logging/LoggerDefinition.h>
-#include <Rendering/Renderers/GraphicRenderer.h>
 
+using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering::Renderers;
 
 namespace ZEngine
@@ -16,15 +15,7 @@ namespace ZEngine
         g_current_window = window;
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
 
-        Hardwares::VulkanDevice::Initialize(window);
-
         window->Initialize();
-        GraphicRenderer::SetMainSwapchain(window->GetSwapchain());
-        GraphicRenderer::Initialize();
-        /*
-         * Renderer Post initialization
-         */
-        ZENGINE_CORE_INFO("Engine initialized")
 
         for (const auto& layer : engine_configuration.WindowConfiguration.RenderingLayerCollection)
         {
@@ -36,6 +27,8 @@ namespace ZEngine
             window->PushOverlayLayer(layer);
         }
         window->InitializeLayer();
+
+        ZENGINE_CORE_INFO("Engine initialized")
     }
 
     void Engine::Deinitialize()
@@ -44,18 +37,14 @@ namespace ZEngine
         {
             window->Deinitialize();
         }
-        GraphicRenderer::Deinitialize();
-        Hardwares::VulkanDevice::Deinitialize();
     }
 
     void Engine::Dispose()
     {
         s_request_terminate = false;
 
-        Hardwares::VulkanDevice::Dispose();
-
-        ZENGINE_CORE_INFO("Engine destroyed")
         Logging::Logger::Dispose();
+        ZENGINE_CORE_INFO("Engine destroyed")
     }
 
     bool Engine::OnEngineClosed(Event::EngineClosedEvent& event)
@@ -84,7 +73,6 @@ namespace ZEngine
             }
 
             /*On Update*/
-            GraphicRenderer::Update();
             window->Update(dt);
 
             /*On Render*/

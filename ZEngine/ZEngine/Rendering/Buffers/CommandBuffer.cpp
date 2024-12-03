@@ -84,10 +84,10 @@ namespace ZEngine::Rendering::Buffers
         return m_command_buffer_state == CommanBufferState::Recording;
     }
 
-    void CommandBuffer::Submit(bool as_instant_command)
+    void CommandBuffer::Submit(bool as_instant_command, VkPipelineStageFlags wait_flags)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Executable, "command buffer must be in ended state")
-        Hardwares::VulkanDevice::QueueSubmit(m_queue_type, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, *this, as_instant_command);
+        Hardwares::VulkanDevice::QueueSubmit(m_queue_type, wait_flags, *this, as_instant_command);
     }
 
     CommanBufferState CommandBuffer::GetState() const

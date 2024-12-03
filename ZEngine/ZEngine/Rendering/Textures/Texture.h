@@ -1,4 +1,5 @@
 #pragma once
+#include <Helpers/HandleManager.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Specifications/TextureSpecification.h>
 #include <vulkan/vulkan.h>
@@ -69,75 +70,9 @@ namespace ZEngine::Rendering::Textures
         Specifications::TextureSpecification m_specification{};
     };
 
-    struct TextureArray : public Helpers::RefCounted
-    {
-        TextureArray(uint32_t count = 0) : m_texture_array(count), m_count(count) {}
-
-        Helpers::Ref<Texture>& operator[](uint32_t index)
-        {
-            assert(index < m_texture_array.size());
-            return m_texture_array[index];
-        }
-
-        const std::vector<Helpers::Ref<Texture>>& Data() const
-        {
-            return m_texture_array;
-        }
-
-        std::vector<Helpers::Ref<Texture>>& Data()
-        {
-            return m_texture_array;
-        }
-
-        int Add(const Helpers::Ref<Texture>& texture)
-        {
-            int output_index = -1;
-
-            if (m_free_slot_index < m_count)
-            {
-                output_index                         = m_free_slot_index;
-                m_texture_array[m_free_slot_index++] = texture;
-            }
-
-            return output_index;
-        }
-
-        int Add(Helpers::Ref<Texture>&& texture)
-        {
-            int output_index = -1;
-
-            if (m_free_slot_index < m_count)
-            {
-                output_index                         = m_free_slot_index;
-                m_texture_array[m_free_slot_index++] = std::move(texture);
-            }
-
-            return output_index;
-        }
-
-        size_t Size() const
-        {
-            return m_count;
-        }
-
-        int GetUsedSlotCount() const
-        {
-            return m_free_slot_index;
-        }
-
-        void Dispose()
-        {
-            for (size_t u = 0; u < m_free_slot_index; ++u)
-            {
-                m_texture_array[u]->Dispose();
-            }
-        }
-
-    private:
-        uint32_t                           m_count{0};
-        uint32_t                           m_free_slot_index{0};
-        std::vector<Helpers::Ref<Texture>> m_texture_array;
-    };
+    using TextureRef = Helpers::Ref<Texture>;
+    using TextureHandle = Helpers::Handle<TextureRef>;
+    using TextureHandleManager = Helpers::HandleManager<TextureRef>;
 
     /*
      * To do : Should be deprecated
@@ -146,3 +81,18 @@ namespace ZEngine::Rendering::Textures
     Texture* CreateTexture(unsigned int width, unsigned int height);
     Texture* CreateTexture(unsigned int width, unsigned int height, float r, float g, float b, float a);
 } // namespace ZEngine::Rendering::Textures
+
+namespace ZEngine::Helpers
+{
+    template <>
+    inline void HandleManager<Helpers::Ref<Rendering::Textures::Texture>>::Dispose()
+    {
+        for (size_t i = 0; i < m_count; ++i)
+        {
+            if (m_data[i].Data)
+            {
+                m_data[i].Data->Dispose();
+            }
+        }
+    }
+} // namespace ZEngine::Helpers

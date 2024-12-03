@@ -4,6 +4,7 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Windows/Inputs/KeyCode.h>
 
 #ifdef _WIN32
@@ -28,6 +29,8 @@ using namespace ZEngine::Windows::Events;
 using namespace ZEngine::Windows;
 using namespace ZEngine::Rendering;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Hardwares;
+using namespace ZEngine::Rendering::Renderers;
 
 namespace Tetragrama
 {
@@ -136,7 +139,7 @@ namespace Tetragrama
 
     void EditorWindow::Initialize()
     {
-        m_swapchain = CreateRef<Rendering::Swapchain>();
+        GraphicRenderer::Initialize(this);
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
@@ -179,8 +182,7 @@ namespace Tetragrama
         {
             (*rlayer_it)->Deinitialize();
         }
-
-        m_swapchain.reset();
+        GraphicRenderer::Deinitialize();
     }
 
     void EditorWindow::PollEvent()
@@ -356,6 +358,8 @@ namespace Tetragrama
 
     void EditorWindow::Update(Core::TimeStep delta_time)
     {
+        GraphicRenderer::Update();
+
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
             layer->Update(delta_time);
@@ -369,7 +373,7 @@ namespace Tetragrama
             layer->Render();
         }
 
-        m_swapchain->Present();
+        GraphicRenderer::Present();
     }
 
     std::future<std::string> EditorWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters)
@@ -432,7 +436,7 @@ namespace Tetragrama
 
     Ref<Rendering::Swapchain> EditorWindow::GetSwapchain() const
     {
-        return m_swapchain;
+        return GraphicRenderer::GetSwapchain();
     }
 
     EditorWindow::~EditorWindow()
@@ -462,7 +466,7 @@ namespace Tetragrama
     {
         if (event.GetWidth() > 0 && event.GetHeight() > 0)
         {
-            m_swapchain->Resize();
+            GraphicRenderer::ResizeSwapchain();
         }
 
         ZENGINE_CORE_INFO("Window has been resized")

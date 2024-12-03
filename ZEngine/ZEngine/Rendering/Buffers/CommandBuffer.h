@@ -45,7 +45,7 @@ namespace ZEngine::Rendering::Buffers
         bool              Completed();
         bool              IsExecutable();
         bool              IsRecording();
-        void              Submit(bool as_instant_command = false);
+        void              Submit(bool as_instant_command = false, VkPipelineStageFlags wait_flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
         CommanBufferState GetState() const;
         void              ResetState();
         void              SetState(const CommanBufferState& state);

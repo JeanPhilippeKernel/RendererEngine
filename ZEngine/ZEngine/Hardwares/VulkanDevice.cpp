@@ -451,8 +451,19 @@ namespace ZEngine::Hardwares
             return true;
         }
 
-        Ref<Semaphore> signal_semaphore = CreateRef<Semaphore>();
-        Ref<Fence>     signal_fence     = CreateRef<Fence>();
+        Ref<Semaphore> signal_semaphore;
+        if (!q.Buffer.GetSignalSemaphore())
+        {
+            signal_semaphore = CreateRef<Semaphore>();
+            q.Buffer.SetSignalSemaphore(signal_semaphore);
+        }
+
+        Ref<Fence> signal_fence;
+        if (!q.Buffer.GetSignalFence())
+        {
+            signal_fence = CreateRef<Fence>();
+            q.Buffer.SetSignalFence(signal_fence);
+        }
 
         ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
         ZENGINE_VALIDATE_ASSERT(signal_fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
@@ -471,8 +482,6 @@ namespace ZEngine::Hardwares
         submit_info.pCommandBuffers                            = &buffer_handle;
 
         ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(queue_type).Handle, 1, &submit_info, signal_fence->GetHandle()) == VK_SUCCESS, "Failed to submit queue")
-        q.Buffer.SetSignalFence(signal_fence);
-        q.Buffer.SetSignalSemaphore(signal_semaphore);
         q.Buffer.SetState(Rendering::Buffers::Pending);
 
         signal_fence->SetState(FenceState::Submitted);

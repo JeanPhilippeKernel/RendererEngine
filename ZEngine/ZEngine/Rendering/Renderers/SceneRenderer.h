@@ -57,7 +57,7 @@ namespace ZEngine::Rendering::Renderers
         virtual void Dispose() override
         {
             IndirectRenderingStorage::Dispose();
-            m_environment_map->Dispose();
+            //m_environment_map->Dispose();
         }
 
         virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
