@@ -240,6 +240,13 @@ namespace ZEngine::Hardwares
                         s_graphic_family_index = index;
                     }
                 }
+
+                // Usually Queue family with VK_QUEUE_GRAPHICS_BIT support transfer bit
+                // So we default it for transfer family as well till we find a dedicated queue for transfer is available
+                if (physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_TRANSFER_BIT)
+                {
+                    s_transfer_family_index = index;
+                }
             }
             else if (
                 (physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_TRANSFER_BIT) &&
@@ -250,18 +257,17 @@ namespace ZEngine::Hardwares
             }
         }
 
-        float                                queue_prorities              = 1.0f;
+        const float                          queue_prorities[]            = {1.0f};
         auto                                 family_index_collection      = std::set{s_graphic_family_index, s_transfer_family_index};
         std::vector<VkDeviceQueueCreateInfo> queue_create_info_collection = {};
         for (uint32_t queue_family_index : family_index_collection)
         {
-            VkDeviceQueueCreateInfo queue_create_info = {};
-            queue_create_info.sType                   = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            queue_create_info.pQueuePriorities        = &queue_prorities;
-            queue_create_info.queueFamilyIndex        = queue_family_index;
-            queue_create_info.queueCount              = 1;
-            queue_create_info.pNext                   = nullptr;
-            queue_create_info_collection.emplace_back(queue_create_info);
+            VkDeviceQueueCreateInfo& queue_create_info = queue_create_info_collection.emplace_back();
+            queue_create_info.sType                    = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queue_create_info.pQueuePriorities         = queue_prorities;
+            queue_create_info.queueFamilyIndex         = queue_family_index;
+            queue_create_info.queueCount               = 1;
+            queue_create_info.pNext                    = nullptr;
         }
         /*
          * Enabling some features
