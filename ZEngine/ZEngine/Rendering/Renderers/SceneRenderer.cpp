@@ -202,7 +202,7 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        //m_environment_map                       = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
+        // m_environment_map                       = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
         RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}, {.Name = "lighting_render_target"}}};
         builder->CreateRenderPassNode(pass_node);
     }
@@ -218,7 +218,7 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("IndexSB", m_index_buffer);
         handle->SetInput("DrawDataSB", m_draw_buffer);
         handle->SetInput("TransformSB", m_transform_buffer);
-        //handle->SetInput("CubemapTexture", m_environment_map);
+        // handle->SetInput("CubemapTexture", m_environment_map);
         handle->Verify();
         handle->Bake();
     }

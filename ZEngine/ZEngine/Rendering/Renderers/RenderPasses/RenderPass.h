@@ -51,13 +51,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                                     MarkDirty();
         void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::UniformBufferSet>& buffer);
         void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::StorageBufferSet>& buffer);
-        //void                                     SetInput(std::string_view key_name, const Helpers::Ref<Textures::TextureArray>& textures);
-        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::UniformBuffer>& buffer);
-        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::StorageBuffer>& buffer);
-        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Textures::Texture>& buffer);
-        void                                     UpdateInputBinding();
-        Helpers::Ref<Textures::Texture>          GetOutputColor(uint32_t color_index);
-        Helpers::Ref<Textures::Texture>          GetOutputDepth();
+        // void                                     SetInput(std::string_view key_name, const Helpers::Ref<Textures::TextureArray>& textures);
+        void                            SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::UniformBuffer>& buffer);
+        void                            SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::StorageBuffer>& buffer);
+        void                            SetInput(std::string_view key_name, const Helpers::Ref<Textures::Texture>& buffer);
+        void                            UpdateInputBinding();
+        Helpers::Ref<Textures::Texture> GetOutputColor(uint32_t color_index);
+        Helpers::Ref<Textures::Texture> GetOutputDepth();
 
         const Specifications::RenderPassSpecification& GetSpecification() const;
         Specifications::RenderPassSpecification&       GetSpecification();

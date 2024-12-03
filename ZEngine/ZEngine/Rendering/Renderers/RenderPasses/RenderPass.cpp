@@ -370,15 +370,15 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
     }
 
-    //void RenderPass::SetInput(std::string_view key_name, const Ref<Textures::TextureArray>& textures)
+    // void RenderPass::SetInput(std::string_view key_name, const Ref<Textures::TextureArray>& textures)
     //{
-    //    auto validity_output = ValidateInput(key_name);
-    //    if (validity_output.first)
-    //    {
-    //        const auto& binding_spec = validity_output.second;
-    //        auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-    //            return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-    //        });
+    //     auto validity_output = ValidateInput(key_name);
+    //     if (validity_output.first)
+    //     {
+    //         const auto& binding_spec = validity_output.second;
+    //         auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
+    //             return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
+    //         });
 
     //        if (find_it != std::end(m_input_collection))
     //        {
@@ -386,7 +386,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     //            return;
     //        }
     //        m_input_collection.emplace_back(
-    //            PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE_ARRAY, .Input = textures.get()});
+    //            PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE_ARRAY, .Input =
+    //            textures.get()});
 
     //        m_perform_update = true;
     //    }

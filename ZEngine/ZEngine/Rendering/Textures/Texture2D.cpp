@@ -5,16 +5,16 @@
 #include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/Textures/Texture2D.h>
 
-//#define STB_IMAGE_IMPLEMENTATION
-//#ifdef __GNUC__
-//#define STBI_NO_SIMD
-//#endif
+// #define STB_IMAGE_IMPLEMENTATION
+// #ifdef __GNUC__
+// #define STBI_NO_SIMD
+// #endif
 #include <stb/stb_image.h>
 
-//#define STB_IMAGE_WRITE_IMPLEMENTATION
-//#define STB_IMAGE_RESIZE_IMPLEMENTATION
-//#include <stb/stb_image_resize.h>
-//#include <stb/stb_image_write.h>
+// #define STB_IMAGE_WRITE_IMPLEMENTATION
+// #define STB_IMAGE_RESIZE_IMPLEMENTATION
+// #include <stb/stb_image_resize.h>
+// #include <stb/stb_image_write.h>
 
 using namespace ZEngine::Helpers;
 
@@ -55,7 +55,7 @@ namespace ZEngine::Rendering::Textures
          */
         channel = (channel == STBI_rgb) ? STBI_rgb_alpha : channel;
         std::vector<uint8_t> output_buffer(width * height * channel);
-        //stbir_resize_uint8(image_data, width, height, 0, output_buffer.data(), width, height, 0, channel);
+        // stbir_resize_uint8(image_data, width, height, 0, output_buffer.data(), width, height, 0, channel);
         stbi_image_free(image_data);
 
         Specifications::TextureSpecification spec = {};
@@ -80,7 +80,7 @@ namespace ZEngine::Rendering::Textures
          */
         channel = (channel == STBI_rgb) ? STBI_rgb_alpha : channel;
         std::vector<float> output_buffer(width * height * channel);
-        //stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, channel);
+        // stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, channel);
         stbi_image_free((void*) image_data);
 
         Buffers::Bitmap in             = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};

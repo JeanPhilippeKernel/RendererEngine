@@ -1,12 +1,12 @@
 #pragma once
+#include <Helpers/ThreadSafeQueue.h>
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
 #include <Rendering/Renderers/RenderGraph.h>
 #include <Rendering/Renderers/SceneRenderer.h>
-#include <Helpers/ThreadSafeQueue.h>
 #include <Rendering/Swapchain.h>
-#include <Windows/CoreWindow.h>
 #include <Textures/Texture.h>
+#include <Windows/CoreWindow.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Renderers
@@ -24,7 +24,6 @@ namespace ZEngine::Rendering::Renderers
         uint32_t CurrentFrameIndex{0xFFFFFFFF};
         uint64_t SwapchainIdentifier{0xFFFFFFFF};
     };
-
 
     struct UpdateTextureRequest;
     struct AsyncResourceLoader;
@@ -67,10 +66,9 @@ namespace ZEngine::Rendering::Renderers
         static Helpers::Scope<RenderGraph>                    s_render_graph;
         static Helpers::Ref<AsyncResourceLoader>              s_resource_loader;
         static Helpers::ThreadSafeQueue<UpdateTextureRequest> s_update_texture_request;
-        static Helpers::Ref<Primitives::Fence>                 s_transfer_fence;
-        static Helpers::Ref<Primitives::Semaphore>             s_transfer_semaphore;
+        static Helpers::Ref<Primitives::Fence>                s_transfer_fence;
+        static Helpers::Ref<Primitives::Semaphore>            s_transfer_semaphore;
     };
-
 
     struct UpdateTextureRequest
     {
@@ -80,13 +78,13 @@ namespace ZEngine::Rendering::Renderers
 
     struct TextureFileRequest
     {
-        std::string Filename;
+        std::string             Filename;
         Textures::TextureHandle Handle;
     };
 
     struct TextureUploadRequest
     {
-        Textures::TextureHandle Handle;
+        Textures::TextureHandle              Handle;
         Specifications::TextureSpecification TextureSpec;
     };
 

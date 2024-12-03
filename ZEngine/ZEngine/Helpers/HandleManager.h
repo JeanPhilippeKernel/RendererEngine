@@ -1,7 +1,7 @@
 #pragma once
+#include <IntrusivePtr.h>
 #include <span>
 #include <vector>
-#include <IntrusivePtr.h>
 
 namespace ZEngine::Helpers
 {
@@ -10,7 +10,6 @@ namespace ZEngine::Helpers
 
     template <typename T>
     class HandleManager;
-
 
     template <typename T>
     struct Handle : public Helpers::RefCounted
@@ -122,7 +121,7 @@ namespace ZEngine::Helpers
             return handle;
         }
 
-        void Update(Handle<T>& handle, T& data) 
+        void Update(Handle<T>& handle, T& data)
         {
             if ((handle) && (m_data[handle.Index].Counter == handle.m_counter) && (handle.Index < m_count))
             {
@@ -162,8 +161,6 @@ namespace ZEngine::Helpers
             return m_free_slot_index;
         }
 
-        void Dispose()
-        {
-        }
+        void Dispose() {}
     };
 } // namespace ZEngine::Helpers

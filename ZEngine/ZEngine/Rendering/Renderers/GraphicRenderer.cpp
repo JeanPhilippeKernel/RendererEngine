@@ -1,7 +1,7 @@
 #include <pch.h>
+#include <Helpers/ThreadPool.h>
 #include <Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
-#include <Helpers/ThreadPool.h>
 #include <Textures/Texture2D.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -15,26 +15,23 @@
 #include <stb/stb_image_resize.h>
 #include <stb/stb_image_write.h>
 
-
-
-
 using namespace ZEngine::Rendering::Specifications;
 using namespace ZEngine::Rendering::Renderers::Contracts;
 using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    RendererInformation                 GraphicRenderer::s_renderer_information      = {};
-    Ref<Rendering::Swapchain>           GraphicRenderer::s_swapchain                 = nullptr;
-    Ref<Buffers::UniformBufferSet>      GraphicRenderer::s_UBCamera                  = {};
-    Ref<Textures::TextureHandleManager> GraphicRenderer::GlobalTextures              = {};
-    Pools::CommandPool*                 GraphicRenderer::s_command_pool              = nullptr;
-    Buffers::CommandBuffer*             GraphicRenderer::s_current_command_buffer    = nullptr;
-    Buffers::CommandBuffer*             GraphicRenderer::s_current_command_buffer_ui = nullptr;
-    Ref<SceneRenderer>                  GraphicRenderer::s_scene_renderer            = CreateRef<SceneRenderer>();
-    Ref<ImGUIRenderer>                  GraphicRenderer::s_imgui_renderer            = CreateRef<ImGUIRenderer>();
-    Scope<RenderGraph>                  GraphicRenderer::s_render_graph              = CreateScope<RenderGraph>();
-    Ref<AsyncResourceLoader>            GraphicRenderer::s_resource_loader           = CreateRef<AsyncResourceLoader>();
+    RendererInformation                            GraphicRenderer::s_renderer_information      = {};
+    Ref<Rendering::Swapchain>                      GraphicRenderer::s_swapchain                 = nullptr;
+    Ref<Buffers::UniformBufferSet>                 GraphicRenderer::s_UBCamera                  = {};
+    Ref<Textures::TextureHandleManager>            GraphicRenderer::GlobalTextures              = {};
+    Pools::CommandPool*                            GraphicRenderer::s_command_pool              = nullptr;
+    Buffers::CommandBuffer*                        GraphicRenderer::s_current_command_buffer    = nullptr;
+    Buffers::CommandBuffer*                        GraphicRenderer::s_current_command_buffer_ui = nullptr;
+    Ref<SceneRenderer>                             GraphicRenderer::s_scene_renderer            = CreateRef<SceneRenderer>();
+    Ref<ImGUIRenderer>                             GraphicRenderer::s_imgui_renderer            = CreateRef<ImGUIRenderer>();
+    Scope<RenderGraph>                             GraphicRenderer::s_render_graph              = CreateScope<RenderGraph>();
+    Ref<AsyncResourceLoader>                       GraphicRenderer::s_resource_loader           = CreateRef<AsyncResourceLoader>();
     Helpers::ThreadSafeQueue<UpdateTextureRequest> GraphicRenderer::s_update_texture_request{};
     Helpers::Ref<Primitives::Fence>                GraphicRenderer::s_transfer_fence;
     Helpers::Ref<Primitives::Semaphore>            GraphicRenderer::s_transfer_semaphore;
@@ -66,7 +63,7 @@ namespace ZEngine::Rendering::Renderers
          */
         s_resource_loader->Initialize();
         s_resource_loader->Start();
-        
+
         s_scene_renderer->Initialize(s_render_graph.get());
         s_imgui_renderer->Initialize(s_render_graph.get());
 
@@ -119,10 +116,10 @@ namespace ZEngine::Rendering::Renderers
                 Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
                 barrier_spec_1.ImageHandle                                     = tr.Texture->GetBuffer().Handle;
                 barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-                barrier_spec_1.NewLayout             = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                                                                                                                        : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-                barrier_spec_1.ImageAspectMask       = VkImageAspectFlagBits(image_aspect);
-                barrier_spec_1.SourceAccessMask      = VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier_spec_1.NewLayout        = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                                                                                                                   : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+                barrier_spec_1.ImageAspectMask  = VkImageAspectFlagBits(image_aspect);
+                barrier_spec_1.SourceAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
                 barrier_spec_1.DestinationAccessMask = VK_ACCESS_SHADER_READ_BIT;
                 barrier_spec_1.SourceStageMask       = VK_PIPELINE_STAGE_TRANSFER_BIT;
                 barrier_spec_1.DestinationStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
@@ -232,7 +229,6 @@ namespace ZEngine::Rendering::Renderers
         return s_renderer_information;
     }
 
-
     // AsyncResourceLoader
     //
     void AsyncResourceLoader::Initialize()
@@ -242,7 +238,7 @@ namespace ZEngine::Rendering::Renderers
         m_transfer_semaphore = CreateRef<Primitives::Semaphore>();
     }
 
-    void AsyncResourceLoader::Start() 
+    void AsyncResourceLoader::Start()
     {
         Helpers::ThreadPoolHelper::Submit([this] {
             Run();
@@ -335,7 +331,7 @@ namespace ZEngine::Rendering::Renderers
 
                         UpdateTextureRequest tr = {.Handle = upload_request.Handle, .Texture = CreateRef<Textures::Texture2D>(upload_request.TextureSpec, image_2d_buffer)};
                         GraphicRenderer::AddTextureToUpdate(std::move(tr));
-                         
+
                         /* Cleanup resource */
                         temp_buffer.reset();
                         Hardwares::VulkanDevice::EnqueueBufferForDeletion(staging_buffer);
@@ -363,13 +359,13 @@ namespace ZEngine::Rendering::Renderers
 
                 Specifications::TextureSpecification spec = {
                     .Width = (uint32_t) width, .Height = (uint32_t) height, .Format = Specifications::ImageFormat::R8G8B8A8_SRGB, .Data = temp_buffer.get()};
-                spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
+                spec.BytePerPixel = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
 
                 m_upload_requests.Emplace({.Handle = file_request.Handle, .TextureSpec = std::move(spec)});
             }
         }
     }
-    
+
     void AsyncResourceLoader::Shutdown()
     {
         {

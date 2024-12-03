@@ -1,6 +1,6 @@
 #pragma once
-#include <Helpers/HandleManager.h>
 #include <Hardwares/VulkanDevice.h>
+#include <Helpers/HandleManager.h>
 #include <Rendering/Specifications/TextureSpecification.h>
 #include <vulkan/vulkan.h>
 
@@ -70,8 +70,8 @@ namespace ZEngine::Rendering::Textures
         Specifications::TextureSpecification m_specification{};
     };
 
-    using TextureRef = Helpers::Ref<Texture>;
-    using TextureHandle = Helpers::Handle<TextureRef>;
+    using TextureRef           = Helpers::Ref<Texture>;
+    using TextureHandle        = Helpers::Handle<TextureRef>;
     using TextureHandleManager = Helpers::HandleManager<TextureRef>;
 
     /*
