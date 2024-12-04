@@ -1,5 +1,7 @@
 #pragma once
 #include <IntrusivePtr.h>
+#include <cassert>
+#include <shared_mutex>
 #include <span>
 #include <vector>
 
@@ -40,34 +42,39 @@ namespace ZEngine::Helpers
             T   Data{nullptr};
         };
 
-        int32_t                m_counter{-1};
-        uint32_t               m_count{0};
-        uint32_t               m_free_slot_index{0};
-        std::vector<ArrayData> m_data;
+        int32_t                   m_counter{-1};
+        uint32_t                  m_count{0};
+        uint32_t                  m_free_slot_index{0};
+        std::vector<ArrayData>    m_data;
+        mutable std::shared_mutex m_mutex;
 
     public:
         HandleManager(uint32_t count = 0) : m_data(count), m_count(count) {}
 
         T& operator[](const Handle<T>& handle)
         {
+            std::shared_lock<std::shared_mutex> lock(m_mutex);
             assert(handle.Index < m_count);
             return m_data[handle.Index].Data;
         }
 
         std::span<ArrayData> Data() const
         {
+            std::shared_lock<std::shared_mutex> lock(m_mutex);
             return m_data;
         }
 
         std::vector<ArrayData>& Data()
         {
+            std::shared_lock<std::shared_mutex> lock(m_mutex);
             return m_data;
         }
 
         Handle<T> Create()
         {
-            Handle<T> handle;
-            ArrayData data = {.Counter = ++m_counter};
+            std::unique_lock<std::shared_mutex> lock(m_mutex);
+            Handle<T>                           handle;
+            ArrayData                           data = {.Counter = ++m_counter};
 
             for (int i = 0; i < m_count; ++i)
             {
@@ -85,8 +92,9 @@ namespace ZEngine::Helpers
 
         Handle<T> Add(const T& texture)
         {
-            Handle<T> handle;
-            ArrayData data = {.Counter = ++m_counter, .Data = texture};
+            std::unique_lock<std::shared_mutex> lock(m_mutex);
+            Handle<T>                           handle;
+            ArrayData                           data = {.Counter = ++m_counter, .Data = texture};
 
             for (int i = 0; i < m_count; ++i)
             {
@@ -104,8 +112,9 @@ namespace ZEngine::Helpers
 
         Handle<T> Add(T&& texture)
         {
-            Handle<T> handle;
-            ArrayData data = {.Counter = ++m_counter, .Data = std::move(texture)};
+            std::unique_lock<std::shared_mutex> lock(m_mutex);
+            Handle<T>                           handle;
+            ArrayData                           data = {.Counter = ++m_counter, .Data = std::move(texture)};
 
             for (int i = 0; i < m_count; ++i)
             {
@@ -123,6 +132,7 @@ namespace ZEngine::Helpers
 
         void Update(Handle<T>& handle, T& data)
         {
+            std::unique_lock<std::shared_mutex> lock(m_mutex);
             if ((handle) && (m_data[handle.Index].Counter == handle.m_counter) && (handle.Index < m_count))
             {
                 m_data[handle.Index].Data = data;
@@ -131,6 +141,7 @@ namespace ZEngine::Helpers
 
         void Update(Handle<T>& handle, T&& data)
         {
+            std::unique_lock<std::shared_mutex> lock(m_mutex);
             if ((handle) && (m_data[handle.Index].Counter == handle.m_counter) && (handle.Index < m_count))
             {
                 m_data[handle.Index].Data = std::move(data);
@@ -139,25 +150,28 @@ namespace ZEngine::Helpers
 
         void Remove(Handle<T>& handle)
         {
+            std::unique_lock<std::shared_mutex> lock(m_mutex);
             if (!handle)
             {
                 return;
             }
 
-            if ((handle.Index < m_count) && (m_data[handle].Counter == handle.m_counter))
+            if ((handle.Index < m_count) && (m_data[handle.Index].Counter == handle.m_counter))
             {
-                m_data[handle] = ArrayData{};
-                handle         = Handle<T>{};
+                m_data[handle.Index] = ArrayData{};
+                handle               = Handle<T>{};
             }
         }
 
         size_t Size() const
         {
+            std::shared_lock<std::shared_mutex> lock(m_mutex);
             return m_count;
         }
 
         int GetUsedSlotCount() const
         {
+            std::shared_lock<std::shared_mutex> lock(m_mutex);
             return m_free_slot_index;
         }
 
