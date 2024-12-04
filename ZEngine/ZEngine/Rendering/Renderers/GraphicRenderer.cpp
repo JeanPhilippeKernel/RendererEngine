@@ -226,6 +226,7 @@ namespace ZEngine::Rendering::Renderers
          * Ensure Frame information are up to date
          */
         s_renderer_information.CurrentFrameIndex = s_swapchain->GetCurrentFrameIndex();
+        s_renderer_information.FrameCount        = s_swapchain->GetImageCount();
         return s_renderer_information;
     }
 
