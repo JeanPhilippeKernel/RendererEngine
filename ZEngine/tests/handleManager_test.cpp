@@ -1,5 +1,6 @@
 #include <Helpers/HandleManager.h>
 #include <gtest/gtest.h>
+#include <thread>
 
 class HandleManagerTest : public ::testing::Test
 {
