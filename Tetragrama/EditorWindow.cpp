@@ -368,6 +368,8 @@ namespace Tetragrama
 
     void EditorWindow::Render()
     {
+        GraphicRenderer::GetSwapchain()->NewFrame();
+
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
             layer->Render();

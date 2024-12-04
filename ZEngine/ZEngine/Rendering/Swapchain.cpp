@@ -46,7 +46,7 @@ namespace ZEngine::Rendering
         Dispose();
         m_attachment->Dispose();
 
-        m_acquired_semaphore_collection.clear();
+        m_acquired_semaphore.reset();
 
         m_render_complete_semaphore_collection.clear();
 
@@ -59,61 +59,45 @@ namespace ZEngine::Rendering
         Create();
     }
 
+    void Swapchain::NewFrame()
+    {
+        Primitives::Semaphore* signal_semaphore = m_acquired_semaphore.get();
+        Primitives::Fence*     signal_fence     = m_frame_signal_fence_collection[m_current_frame_index].get();
+        if (!signal_fence->IsSignaled())
+        {
+            signal_fence->Wait(UINT64_MAX);
+        }
+        signal_fence->Reset();
+
+        ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Primitives::SemaphoreState::Submitted, "")
+
+        uint32_t frame_index{UINT32_MAX};
+        VkResult acquire_image_result =
+            vkAcquireNextImageKHR(Hardwares::VulkanDevice::GetNativeDeviceHandle(), m_handle, UINT64_MAX, signal_semaphore->GetHandle(), VK_NULL_HANDLE, &frame_index);
+
+        signal_semaphore->SetState(Primitives::SemaphoreState::Submitted);
+
+        if (acquire_image_result == VK_SUBOPTIMAL_KHR || acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            Resize();
+            return;
+        }
+    }
+
     void Swapchain::Present()
     {
-        if (m_render_complete_semaphore_collection.count(m_current_frame_index) == 0)
-        {
-            m_render_complete_semaphore_collection[m_current_frame_index] = CreateRef<Primitives::Semaphore>();
-        }
-
-        if (m_frame_signal_fence_collection.count(m_current_frame_index) == 0)
-        {
-            m_frame_signal_fence_collection[m_current_frame_index] = CreateRef<Primitives::Fence>(true);
-        }
-
-        Primitives::Semaphore* signal_semaphore          = m_acquired_semaphore_collection[m_current_frame_index].get();
+        Primitives::Semaphore* signal_semaphore          = m_acquired_semaphore.get();
         Primitives::Semaphore* render_complete_semaphore = m_render_complete_semaphore_collection[m_current_frame_index].get();
         Primitives::Fence*     signal_fence              = m_frame_signal_fence_collection[m_current_frame_index].get();
 
-        if (signal_fence->GetState() != Primitives::FenceState::Submitted)
+        if (!Hardwares::VulkanDevice::Present(m_handle, &m_current_frame_index, signal_semaphore, render_complete_semaphore, signal_fence))
         {
-            if (!Hardwares::VulkanDevice::Present(m_handle, &m_current_frame_index, signal_semaphore, render_complete_semaphore, signal_fence))
-            {
-                Resize();
-                return;
-            }
+            Resize();
+            return;
         }
 
-        if (signal_fence->IsSignaled())
-        {
-            signal_fence->Wait(UINT64_MAX);
-            signal_fence->Reset();
-
-            uint32_t                   frame_index{UINT32_MAX};
-            Ref<Primitives::Semaphore> semaphore = nullptr;
-
-            if (m_acquired_semaphore_collection.size() < m_image_count)
-            {
-                semaphore = CreateRef<Primitives::Semaphore>();
-                ZENGINE_VALIDATE_ASSERT(semaphore->GetState() != Primitives::SemaphoreState::Submitted, "")
-            }
-
-            VkResult acquire_image_result =
-                vkAcquireNextImageKHR(Hardwares::VulkanDevice::GetNativeDeviceHandle(), m_handle, UINT64_MAX, semaphore->GetHandle(), VK_NULL_HANDLE, &frame_index);
-
-            semaphore->SetState(Primitives::SemaphoreState::Submitted);
-
-            m_current_frame_index                                  = frame_index;
-            m_acquired_semaphore_collection[m_current_frame_index] = semaphore;
-
-            if (acquire_image_result == VK_SUBOPTIMAL_KHR || acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
-            {
-                Resize();
-                return;
-            }
-
-            Hardwares::VulkanDevice::SetCurrentFrameIndex(m_current_frame_index);
-        }
+        m_current_frame_index = (m_current_frame_index + 1) % m_image_count;
+        Hardwares::VulkanDevice::SetCurrentFrameIndex(m_current_frame_index);
     }
 
     uint32_t Swapchain::GetMinImageCount() const
@@ -253,21 +237,14 @@ namespace ZEngine::Rendering
             m_framebuffer_collection[i] = Hardwares::VulkanDevice::CreateFramebuffer(attachments, m_attachment->GetHandle(), extent.width, extent.height);
         }
 
-        uint32_t                   frame_index{UINT32_MAX};
-        Ref<Primitives::Semaphore> signal_semaphore = nullptr;
-
-        if (m_acquired_semaphore_collection.size() < m_image_count)
+        m_acquired_semaphore = CreateRef<Primitives::Semaphore>();
+        for (int i = 0; i < m_image_count; ++i)
         {
-            signal_semaphore = CreateRef<Primitives::Semaphore>();
-            ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Primitives::SemaphoreState::Submitted, "")
+            m_render_complete_semaphore_collection[i] = CreateRef<Primitives::Semaphore>();
+            m_frame_signal_fence_collection[i]        = CreateRef<Primitives::Fence>(true);
         }
-        VkResult acquire_image_result =
-            vkAcquireNextImageKHR(Hardwares::VulkanDevice::GetNativeDeviceHandle(), m_handle, UINT64_MAX, signal_semaphore->GetHandle(), VK_NULL_HANDLE, &frame_index);
 
-        signal_semaphore->SetState(Primitives::SemaphoreState::Submitted);
-        m_current_frame_index                                  = frame_index;
-        m_acquired_semaphore_collection[m_current_frame_index] = signal_semaphore;
-        Hardwares::VulkanDevice::SetCurrentFrameIndex(m_current_frame_index);
+        m_current_frame_index = 0;
     }
 
     void Swapchain::Dispose()
@@ -296,7 +273,6 @@ namespace ZEngine::Rendering
         m_image_collection.shrink_to_fit();
         m_framebuffer_collection.shrink_to_fit();
 
-        m_acquired_semaphore_collection.clear();
         m_render_complete_semaphore_collection.clear();
         m_frame_signal_fence_collection.clear();
 

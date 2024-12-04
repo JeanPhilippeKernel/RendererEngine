@@ -14,6 +14,7 @@ namespace ZEngine::Rendering
         ~Swapchain();
 
         void Resize();
+        void NewFrame();
         void Present();
 
         uint32_t       GetMinImageCount() const;
@@ -42,7 +43,7 @@ namespace ZEngine::Rendering
         std::vector<VkImage>                               m_image_collection;
         std::vector<VkImageView>                           m_image_view_collection;
         std::vector<VkFramebuffer>                         m_framebuffer_collection;
-        std::map<int, Helpers::Ref<Primitives::Semaphore>> m_acquired_semaphore_collection;
+        Helpers::Ref<Primitives::Semaphore>                m_acquired_semaphore;
         std::map<int, Helpers::Ref<Primitives::Semaphore>> m_render_complete_semaphore_collection;
         std::map<int, Helpers::Ref<Primitives::Fence>>     m_frame_signal_fence_collection;
         std::vector<Primitives::Semaphore*>                m_wait_semaphore_collection;
