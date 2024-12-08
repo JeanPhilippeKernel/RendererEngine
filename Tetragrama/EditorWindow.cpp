@@ -34,7 +34,7 @@ using namespace ZEngine::Rendering::Renderers;
 
 namespace Tetragrama
 {
-    EditorWindow::EditorWindow(const WindowConfiguration& configuration) : CoreWindow()
+    EditorWindow::EditorWindow(const WindowConfiguration& configuration) : CoreWindow(configuration)
     {
         m_property.Height = configuration.Height;
         m_property.Width  = configuration.Width;
@@ -140,6 +140,17 @@ namespace Tetragrama
     void EditorWindow::Initialize()
     {
         GraphicRenderer::Initialize(this);
+
+        for (const auto& layer : m_configuration.RenderingLayerCollection)
+        {
+            PushLayer(layer);
+        }
+
+        for (const auto& layer : m_configuration.OverlayLayerCollection)
+        {
+            PushOverlayLayer(layer);
+        }
+        InitializeLayer();
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
@@ -368,7 +379,7 @@ namespace Tetragrama
 
     void EditorWindow::Render()
     {
-        GraphicRenderer::GetSwapchain()->NewFrame();
+        GraphicRenderer::NewFrame();
 
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {

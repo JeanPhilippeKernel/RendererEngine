@@ -155,7 +155,6 @@ namespace ZEngine::Rendering::Renderers
         s_current_command_buffer = s_command_pool->GetCommmandBuffer();
 
         s_render_graph->Execute(frame_index, s_current_command_buffer, scene_data.get());
-        s_current_command_buffer->Submit();
     }
 
     void GraphicRenderer::BeginImguiFrame()
@@ -172,7 +171,6 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::EndImguiFrame()
     {
         s_imgui_renderer->EndFrame(s_current_command_buffer_ui, s_renderer_information.CurrentFrameIndex);
-        s_current_command_buffer_ui->Submit();
     }
 
     VkDescriptorSet GraphicRenderer::GetImguiFrameOutput()
@@ -193,8 +191,15 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
+    void GraphicRenderer::NewFrame()
+    {
+        s_swapchain->NewFrame();
+    }
+
     void GraphicRenderer::Present()
     {
+        s_current_command_buffer->Submit();
+        s_current_command_buffer_ui->Submit();
         s_swapchain->Present();
     }
 

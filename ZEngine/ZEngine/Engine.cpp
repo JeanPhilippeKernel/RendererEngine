@@ -8,6 +8,7 @@ using namespace ZEngine::Rendering::Renderers;
 namespace ZEngine
 {
     static bool                                  s_request_terminate{false};
+    static std::shared_mutex                     g_mutex;
     static Helpers::WeakRef<Windows::CoreWindow> g_current_window = nullptr;
 
     void Engine::Initialize(const EngineConfiguration& engine_configuration, const Helpers::Ref<ZEngine::Windows::CoreWindow>& window)
@@ -17,22 +18,12 @@ namespace ZEngine
 
         window->Initialize();
 
-        for (const auto& layer : engine_configuration.WindowConfiguration.RenderingLayerCollection)
-        {
-            window->PushLayer(layer);
-        }
-
-        for (const auto& layer : engine_configuration.WindowConfiguration.OverlayLayerCollection)
-        {
-            window->PushOverlayLayer(layer);
-        }
-        window->InitializeLayer();
-
         ZENGINE_CORE_INFO("Engine initialized")
     }
 
     void Engine::Deinitialize()
     {
+        std::unique_lock l(g_mutex);
         if (auto window = g_current_window.lock())
         {
             window->Deinitialize();
@@ -87,6 +78,7 @@ namespace ZEngine
 
     Helpers::Ref<Windows::CoreWindow> Engine::GetWindow()
     {
+        std::shared_lock l(g_mutex);
         return g_current_window.lock();
     }
 } // namespace ZEngine

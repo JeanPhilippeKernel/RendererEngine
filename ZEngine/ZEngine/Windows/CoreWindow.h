@@ -40,6 +40,7 @@ namespace ZEngine::Windows
 
     public:
         CoreWindow();
+        CoreWindow(const WindowConfiguration& cfg);
         virtual ~CoreWindow();
 
         virtual void             InitializeLayer()                = 0;
@@ -75,6 +76,7 @@ namespace ZEngine::Windows
     protected:
         Core::TimeStep                     m_delta_time;
         WindowProperty                     m_property;
+        WindowConfiguration                m_configuration;
         Helpers::Scope<Layers::LayerStack> m_layer_stack_ptr{nullptr};
     };
 

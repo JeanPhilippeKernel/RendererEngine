@@ -42,6 +42,7 @@ namespace ZEngine::Rendering::Renderers
         static void                               EndImguiFrame();
         static VkDescriptorSet                    GetImguiFrameOutput();
         static void                               BindGlobalTextures(RenderPasses::RenderPass* pass);
+        static void                               NewFrame();
         static void                               Present();
         static void                               ResizeSwapchain();
         static Helpers::Ref<Rendering::Swapchain> GetSwapchain();
