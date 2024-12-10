@@ -27,10 +27,10 @@ namespace Tetragrama::Components
 
     void LogUIComponent::Render()
     {
-        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : nullptr), ImGuiWindowFlags_NoCollapse);
 
-        const char* items[]      = {"All", "info", "trace", "warn", "critical", "error"};
-        static int  current_item = 0;
+        static const char* items[]      = {"All", "info", "error", "warn", "critical", "trace"};
+        static int         current_item = 0;
 
         ImGui::SameLine();
         ImGui::SetNextItemWidth(70);
@@ -38,73 +38,57 @@ namespace Tetragrama::Components
         {
             for (int n = 0; n < IM_ARRAYSIZE(items); n++)
             {
-                const bool is_selected = (current_item == n);
-                if (ImGui::Selectable(items[n], is_selected))
+                if (ImGui::Selectable(items[n], current_item == n))
+                {
                     current_item = n;
-                if (is_selected)
                     ImGui::SetItemDefaultFocus();
+                }
             }
             ImGui::EndCombo();
         }
 
         ImGui::SameLine();
-        m_is_clear_button_pressed = ImGui::Button("Clear");
-
-        ImGui::SameLine();
-        m_is_copy_button_pressed = ImGui::Button("Copy");
-        ImGui::SameLine();
-
-        ImGui::InputTextWithHint("##Search", "Search logs...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
-
-        ImGui::Separator();
-
-        if (m_is_copy_button_pressed)
-        {
-            ImGui::LogToClipboard();
-        }
-        if (m_is_clear_button_pressed)
+        if (ImGui::Button("Clear"))
         {
             ClearLog();
             m_search_buffer[0] = '\0';
         }
 
-        std::vector<ZEngine::Logging::LogMessage> filtered_logs;
+        ImGui::SameLine();
+        if (m_is_copy_button_pressed = ImGui::Button("Copy"))
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            ImGui::LogToClipboard();
+        }
 
-            for (const auto& message : m_log_queue)
-            {
-                bool matches_search = true;
-                bool matches_type   = true;
+        ImGui::SameLine();
+        ImGui::InputTextWithHint("##Search", "Search logs...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
+        ImGui::Separator();
 
-                if (std::strlen(m_search_buffer) > 0)
-                {
-                    std::string message_lower = message.Message;
-                    std::string search_term   = m_search_buffer;
-                    std::transform(message_lower.begin(), message_lower.end(), message_lower.begin(), ::tolower);
-                    std::transform(search_term.begin(), search_term.end(), search_term.begin(), ::tolower);
-                    matches_search = (message_lower.find(search_term) != std::string::npos);
-                }
-
-                if (current_item != 0) // 0 is "All"
-                {
-
-                    std::string msg_type = GetMessageType(message);
-                    matches_type         = (msg_type == items[current_item]);
-                }
-
-                if (matches_search && matches_type)
-                {
-                    filtered_logs.push_back(message);
-                }
-            }
+        std::string search_term;
+        if (std::strlen(m_search_buffer) > 0)
+        {
+            search_term = m_search_buffer;
+            std::transform(search_term.begin(), search_term.end(), search_term.begin(), ::tolower);
         }
 
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
         if (ImGui::BeginTable("log_table", 1, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY))
         {
-            for (const auto& message : filtered_logs)
+            std::lock_guard<std::mutex> lock(m_mutex);
+            for (const auto& message : m_log_queue)
             {
+                if (current_item != 0)
+                {
+                    if (GetMessageType(message) != items[current_item])
+                        continue;
+                }
+                if (std::strlen(m_search_buffer) > 0)
+                {
+                    std::string message_lower = message.Message;
+                    std::transform(message_lower.begin(), message_lower.end(), message_lower.begin(), ::tolower);
+                    if (message_lower.find(search_term) == std::string::npos)
+                        continue;
+                }
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::TextColored({message.Color[0], message.Color[1], message.Color[2], message.Color[3]}, message.Message.data());
