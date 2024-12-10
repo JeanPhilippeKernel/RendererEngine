@@ -22,6 +22,7 @@ using namespace winrt::Windows::Storage::Pickers;
 
 #endif
 #include <GLFW/glfw3native.h>
+#include <imgui_impl_glfw.h>
 
 using namespace ZEngine;
 using namespace ZEngine::Windows::Events;
@@ -319,6 +320,8 @@ namespace Tetragrama
 
     void EditorWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
+
+        ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {

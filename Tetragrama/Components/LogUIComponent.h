@@ -18,6 +18,8 @@ namespace Tetragrama::Components
 
         void ClearLog();
 
+        std::string GetMessageType(const ZEngine::Logging::LogMessage& message);
+
     private:
         uint32_t                                  m_maxCount{1024};
         uint32_t                                  m_currentCount{0};
@@ -26,5 +28,6 @@ namespace Tetragrama::Components
         bool                                      m_is_clear_button_pressed{false};
         std::vector<ZEngine::Logging::LogMessage> m_log_queue;
         std::mutex                                m_mutex;
+        char                                      m_search_buffer[256] = "";
     };
 } // namespace Tetragrama::Components
