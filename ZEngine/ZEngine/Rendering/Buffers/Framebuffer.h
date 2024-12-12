@@ -3,13 +3,17 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 
+namespace ZEngine::Hardwares
+{
+    struct VulkanDevice;
+} // namespace ZEngine::Hardwares
+
 namespace ZEngine::Rendering::Buffers
 {
     struct FramebufferVNext : public Helpers::RefCounted
     {
-        FramebufferVNext() = default;
-        FramebufferVNext(const Specifications::FrameBufferSpecificationVNext&);
-        FramebufferVNext(Specifications::FrameBufferSpecificationVNext&&);
+        FramebufferVNext(Hardwares::VulkanDevice* device, const Specifications::FrameBufferSpecificationVNext&);
+        FramebufferVNext(Hardwares::VulkanDevice* device, Specifications::FrameBufferSpecificationVNext&&);
         ~FramebufferVNext();
 
         void                                                 Create();
@@ -21,11 +25,9 @@ namespace ZEngine::Rendering::Buffers
         Specifications::FrameBufferSpecificationVNext&       GetSpecification();
         const Specifications::FrameBufferSpecificationVNext& GetSpecification() const;
 
-        static Helpers::Ref<FramebufferVNext> Create(const Specifications::FrameBufferSpecificationVNext&);
-        static Helpers::Ref<FramebufferVNext> Create(Specifications::FrameBufferSpecificationVNext&&);
-
     private:
         VkFramebuffer                                 m_handle{VK_NULL_HANDLE};
         Specifications::FrameBufferSpecificationVNext m_specification{};
+        Hardwares::VulkanDevice*                      m_device{nullptr};
     };
 } // namespace ZEngine::Rendering::Buffers

@@ -31,7 +31,6 @@ namespace ZEngine::Rendering::Specifications
         const char*                                        DebugName                          = {};
         ShaderSpecification                                ShaderSpecification                = {};
         Helpers::Ref<Rendering::Buffers::FramebufferVNext> TargetFrameBuffer                  = {};
-        Helpers::Ref<Rendering::Swapchain>                 SwapchainRenderTarget              = {};
         Helpers::Ref<Renderers::RenderPasses::Attachment>  Attachment                         = {};
         std::vector<VertexInputBindingSpecification>       VertexInputBindingSpecifications   = {};
         std::vector<VertexInputAttributeSpecification>     VertexInputAttributeSpecifications = {};

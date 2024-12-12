@@ -76,7 +76,7 @@ namespace Tetragrama::Components
         co_return;
     }
 
-    void InspectorViewUIComponent::Render()
+    void InspectorViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
         if (m_recieved_deleted_request || m_recieved_unselected_request)
         {

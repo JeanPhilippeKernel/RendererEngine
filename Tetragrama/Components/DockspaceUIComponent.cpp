@@ -72,7 +72,7 @@ namespace Tetragrama::Components
 
     void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
-    void DockspaceUIComponent::Render()
+    void DockspaceUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->Pos);

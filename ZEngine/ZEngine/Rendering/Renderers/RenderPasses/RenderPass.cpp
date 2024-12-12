@@ -1,8 +1,6 @@
 #include <pch.h>
-#include <Engine.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
-#include <Rendering/Textures/Texture2D.h>
 #include <fmt/format.h>
 
 using namespace ZEngine::Rendering::Buffers;
@@ -11,12 +9,13 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
-    RenderPass::RenderPass(const RenderPassSpecification& specification) : m_specification(specification)
+    RenderPass::RenderPass(Hardwares::VulkanDevice* device, const RenderPassSpecification& specification) : m_device(device), m_specification(specification)
     {
+
         if (m_specification.SwapchainAsRenderTarget)
         {
-            m_specification.PipelineSpecification.Attachment = Engine::GetWindow()->GetSwapchain()->GetAttachment(); // Todo : Can potential Dispose() issue
-            m_pipeline                                       = Pipelines::GraphicPipeline::Create(m_specification.PipelineSpecification);
+            m_specification.PipelineSpecification.Attachment = m_device->SwapchainAttachment; // Todo : Can potential Dispose() issue
+            m_pipeline                                       = CreateRef<Pipelines::GraphicPipeline>(m_device, std::move(m_specification.PipelineSpecification));
         }
         else
         {
@@ -26,12 +25,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             uint32_t color_map_index = 0;
             for (const auto& input : m_specification.Inputs)
             {
-                bool        is_depth_texture = input->IsDepthTexture();
+                bool        is_depth_texture = input->IsDepthTexture;
                 ImageLayout initial_layout   = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
                 ImageLayout final_layout     = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
                 ImageLayout reference_layout = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
 
-                const auto& texture_spec                                            = input->GetSpecification();
+                const auto& texture_spec                                            = input->Specification;
                 attachment_specification.ColorsMap[color_map_index]                 = {};
                 attachment_specification.ColorsMap[color_map_index].Format          = texture_spec.Format;
                 attachment_specification.ColorsMap[color_map_index].Load            = LoadOperation::LOAD;
@@ -45,7 +44,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
             for (const auto& output : m_specification.ExternalOutputs)
             {
-                auto&       output_spec           = output->GetSpecification();
+                auto&       output_spec           = output->Specification;
                 bool        is_depth_image_format = (output_spec.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
                 ImageLayout initial_layout        = (output_spec.LoadOp == LoadOperation::CLEAR) ? ImageLayout::UNDEFINED
                                                     : is_depth_image_format                      ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
@@ -64,10 +63,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            m_attachment = Attachment::Create(attachment_specification);
-
+            m_attachment                                     = CreateRef<Attachment>(m_device, attachment_specification);
             m_specification.PipelineSpecification.Attachment = m_attachment; // Todo : Can potential Dispose() issue
-            m_pipeline                                       = Pipelines::GraphicPipeline::Create(m_specification.PipelineSpecification);
+            m_pipeline                                       = CreateRef<Pipelines::GraphicPipeline>(m_device, std::move(m_specification.PipelineSpecification));
 
             ResizeFramebuffer();
             UpdateInputBinding();
@@ -149,7 +147,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        const uint32_t                    frame_count                     = Engine::GetWindow()->GetSwapchain()->GetImageCount();
+        const uint32_t                    frame_count                     = m_device->SwapchainImageCount;
         const auto&                       shader                          = m_pipeline->GetShader();
         const auto&                       descriptor_set_map              = shader->GetDescriptorSetMap();
         std::vector<VkWriteDescriptorSet> write_descriptor_set_collection = {};
@@ -313,10 +311,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             }
         }
 
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         if (!write_descriptor_set_collection.empty())
         {
-            vkUpdateDescriptorSets(device, write_descriptor_set_collection.size(), write_descriptor_set_collection.data(), 0, nullptr);
+            vkUpdateDescriptorSets(m_device->LogicalDevice, write_descriptor_set_collection.size(), write_descriptor_set_collection.data(), 0, nullptr);
             m_perform_update = false;
         }
     }
@@ -482,7 +479,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         for (auto& texture : m_specification.ExternalOutputs)
         {
-            if (texture->IsDepthTexture())
+            if (texture->IsDepthTexture)
             {
                 depth = texture;
             }
@@ -503,7 +500,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         for (const auto& input : m_specification.Inputs)
         {
-            auto width = input->GetWidth();
+            auto width = input->Width;
             if (framebuffer_width == 0)
             {
                 framebuffer_width = width;
@@ -513,7 +510,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 ZENGINE_VALIDATE_ASSERT(framebuffer_width == width, "Render Target Width is invalid for Framebuffer creation")
             }
 
-            auto height = input->GetHeight();
+            auto height = input->Height;
             if (framebuffer_height == 0)
             {
                 framebuffer_height = height;
@@ -523,12 +520,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 ZENGINE_VALIDATE_ASSERT(framebuffer_height == height, "Render Target Height is invalid for Framebuffer creation")
             }
 
-            render_target_view_collection.emplace_back(input->GetBuffer().ViewHandle);
+            render_target_view_collection.emplace_back(input->ImageBuffer->GetBuffer().ViewHandle);
         }
 
         for (const auto& output : m_specification.ExternalOutputs)
         {
-            auto width = output->GetWidth();
+            auto width = output->Width;
             if (framebuffer_width == 0)
             {
                 framebuffer_width = width;
@@ -538,7 +535,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 ZENGINE_VALIDATE_ASSERT(framebuffer_width == width, "Render Target Width is invalid for Framebuffer creation")
             }
 
-            auto height = output->GetHeight();
+            auto height = output->Height;
             if (framebuffer_height == 0)
             {
                 framebuffer_height = height;
@@ -548,7 +545,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 ZENGINE_VALIDATE_ASSERT(framebuffer_height == height, "Render Target Height is invalid for Framebuffer creation")
             }
 
-            render_target_view_collection.emplace_back(output->GetBuffer().ViewHandle);
+            render_target_view_collection.emplace_back(output->ImageBuffer->GetBuffer().ViewHandle);
         }
 
         Specifications::FrameBufferSpecificationVNext framebuffer_spec = {};
@@ -556,7 +553,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         framebuffer_spec.Height                                        = framebuffer_height;
         framebuffer_spec.RenderTargetViews                             = std::move(render_target_view_collection);
         framebuffer_spec.Attachment                                    = m_attachment;
-        m_framebuffer                                                  = Buffers::FramebufferVNext::Create(framebuffer_spec);
+        m_framebuffer                                                  = CreateRef<Buffers::FramebufferVNext>(m_device, framebuffer_spec);
     }
 
     const Specifications::RenderPassSpecification& RenderPass::GetSpecification() const
@@ -573,7 +570,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         if (m_specification.SwapchainAsRenderTarget)
         {
-            return Engine::GetWindow()->GetSwapchain()->GetAttachment();
+            return m_device->SwapchainAttachment;
         }
         else
         {
@@ -587,7 +584,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         if (m_specification.SwapchainAsRenderTarget)
         {
-            output = Engine::GetWindow()->GetSwapchain()->GetCurrentFramebuffer();
+            output = m_device->SwapchainFramebuffers[m_device->CurrentFrameIndex];
         }
         else
         {
@@ -601,7 +598,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         if (m_specification.SwapchainAsRenderTarget)
         {
-            return Engine::GetWindow()->GetWidth();
+            return m_device->SwapchainImageWidth;
         }
         else
         {
@@ -614,19 +611,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         if (m_specification.SwapchainAsRenderTarget)
         {
-            return Engine::GetWindow()->GetHeight();
+            return m_device->SwapchainImageHeight;
         }
         else
         {
             ZENGINE_VALIDATE_ASSERT(m_framebuffer, "Framebuffer can't be null")
             return m_framebuffer->GetHeight();
         }
-    }
-
-    Ref<RenderPass> RenderPass::Create(const RenderPassSpecification& specification)
-    {
-        Ref<RenderPass> render_pass = CreateRef<RenderPass>(specification);
-        return render_pass;
     }
 
     std::pair<bool, Specifications::LayoutBindingSpecification> RenderPass::ValidateInput(std::string_view key)
@@ -772,10 +763,18 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
+    Specifications::RenderPassSpecification RenderPassBuilder::Detach()
+    {
+        auto spec = m_spec;
+        m_spec    = {};
+        return spec;
+    }
+
     Ref<RenderPass> RenderPassBuilder::Create()
     {
-        auto pass = RenderPass::Create(m_spec);
-        m_spec    = {};
-        return pass;
+        // auto pass = RenderPass::Create(m_spec);
+        // m_spec    = {};
+        // return pass;
+        return nullptr;
     }
 } // namespace ZEngine::Rendering::Renderers::RenderPasses

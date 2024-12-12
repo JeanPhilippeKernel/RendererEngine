@@ -16,7 +16,7 @@ namespace Tetragrama::Components
         virtual ~SceneViewportUIComponent();
 
         void         Update(ZEngine::Core::TimeStep dt) override;
-        virtual void Render() override;
+        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
 
     public:
         std::future<void> SceneViewportClickedMessageHandlerAsync(Messengers::ArrayValueMessage<int, 2>&);

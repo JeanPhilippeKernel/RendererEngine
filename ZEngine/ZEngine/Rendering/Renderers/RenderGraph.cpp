@@ -1,6 +1,7 @@
 #include <pch.h>
+#include <GraphicRenderer.h>
+#include <Rendering/Buffers/CommandBuffer.h>
 #include <Rendering/Renderers/RenderGraph.h>
-#include <Rendering/Textures/Texture2D.h>
 
 using namespace ZEngine::Helpers;
 
@@ -83,13 +84,13 @@ namespace ZEngine::Rendering::Renderers
         switch (type)
         {
             case ZEngine::Rendering::Renderers::INDIRECT:
-                m_graph.m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle = CreateRef<Buffers::IndirectBufferSet>(count);
+                m_graph.m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle = m_graph.Renderer->CreateIndirectBufferSet();
                 break;
             case ZEngine::Rendering::Renderers::UNIFORM:
-                m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = CreateRef<Buffers::UniformBufferSet>(count);
+                m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = m_graph.Renderer->CreateUniformBufferSet();
                 break;
             case ZEngine::Rendering::Renderers::STORAGE:
-                m_graph.m_resource_map[resource_name].ResourceInfo.BufferSetHandle = CreateRef<Buffers::StorageBufferSet>(count);
+                m_graph.m_resource_map[resource_name].ResourceInfo.BufferSetHandle = m_graph.Renderer->CreateStorageBufferSet();
                 break;
         }
         m_graph.m_resource_map[resource_name].ResourceInfo.External = false;
@@ -170,13 +171,11 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Reading sorting graph node in reverse order and Create resource and RenderPass Node
          */
-        RenderPasses::RenderPassBuilder pass_builder = {};
-
         for (std::string_view node_name : m_sorted_nodes)
         {
             auto& node = m_node[node_name.data()];
 
-            pass_builder.SetName(node.Creation.Name);
+            m_render_pass_builder->SetName(node.Creation.Name);
 
             for (auto& output : node.Creation.Outputs)
             {
@@ -184,15 +183,15 @@ namespace ZEngine::Rendering::Renderers
 
                 if (resource.ResourceInfo.External)
                 {
-                    pass_builder.UseRenderTarget(resource.ResourceInfo.TextureHandle);
+                    m_render_pass_builder->UseRenderTarget(resource.ResourceInfo.TextureHandle);
                     continue;
                 }
 
                 if (output.Type == RenderGraphResourceType::ATTACHMENT)
                 {
                     resource.ResourceInfo.TextureSpec.PerformTransition = false;
-                    resource.ResourceInfo.TextureHandle                 = Textures::Texture2D::Create(resource.ResourceInfo.TextureSpec);
-                    pass_builder.UseRenderTarget(resource.ResourceInfo.TextureHandle);
+                    resource.ResourceInfo.TextureHandle                 = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
+                    m_render_pass_builder->UseRenderTarget(resource.ResourceInfo.TextureHandle);
                 }
             }
 
@@ -202,15 +201,15 @@ namespace ZEngine::Rendering::Renderers
 
                 if (input.Type == RenderGraphResourceType::ATTACHMENT)
                 {
-                    pass_builder.AddInputAttachment(resource.ResourceInfo.TextureHandle);
+                    m_render_pass_builder->AddInputAttachment(resource.ResourceInfo.TextureHandle);
                 }
                 else if (input.Type == RenderGraphResourceType::TEXTURE)
                 {
-                    pass_builder.AddInputTexture(input.BindingInputKeyName, resource.ResourceInfo.TextureHandle);
+                    m_render_pass_builder->AddInputTexture(input.BindingInputKeyName, resource.ResourceInfo.TextureHandle);
                 }
             }
 
-            node.CallbackPass->Compile(node.Handle, pass_builder, *this);
+            node.CallbackPass->Compile(node.Handle, *m_render_pass_builder, *this);
         }
     }
 
@@ -236,7 +235,7 @@ namespace ZEngine::Rendering::Renderers
                      */
                     bool is_resource_attachment = resource.Type == RenderGraphResourceType::ATTACHMENT;
 
-                    auto& buffer = resource.ResourceInfo.TextureHandle->GetBuffer();
+                    auto& buffer = resource.ResourceInfo.TextureHandle->ImageBuffer->GetBuffer();
 
                     Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
                     barrier_spec.ImageHandle                                     = buffer.Handle;
@@ -264,10 +263,10 @@ namespace ZEngine::Rendering::Renderers
                 auto& resource = m_resource_map[output.Name];
                 ZENGINE_VALIDATE_ASSERT(resource.Type == RenderGraphResourceType::ATTACHMENT, "RenderPass Output should be an Attachment")
 
-                auto& buffer = resource.ResourceInfo.TextureHandle->GetBuffer();
+                auto& buffer = resource.ResourceInfo.TextureHandle->ImageBuffer->GetBuffer();
 
                 Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
-                if (resource.ResourceInfo.TextureHandle->IsDepthTexture())
+                if (resource.ResourceInfo.TextureHandle->IsDepthTexture)
                 {
                     barrier_spec.ImageHandle           = buffer.Handle;
                     barrier_spec.OldLayout             = Specifications::ImageLayout::UNDEFINED;
@@ -331,7 +330,7 @@ namespace ZEngine::Rendering::Renderers
 
                 resource.ResourceInfo.TextureSpec.Width  = width;
                 resource.ResourceInfo.TextureSpec.Height = height;
-                resource.ResourceInfo.TextureHandle      = Textures::Texture2D::Create(resource.ResourceInfo.TextureSpec);
+                resource.ResourceInfo.TextureHandle      = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
 
                 pass_spec.ExternalOutputs.push_back(resource.ResourceInfo.TextureHandle);
             }
@@ -406,6 +405,11 @@ namespace ZEngine::Rendering::Renderers
     Ref<RenderGraphBuilder> RenderGraph::GetBuilder() const
     {
         return m_builder;
+    }
+
+    Helpers::Ref<RenderPasses::RenderPassBuilder> RenderGraph::GetRenderPassBuilder() const
+    {
+        return m_render_pass_builder;
     }
 
     RenderGraphResource& RenderGraph::GetResource(std::string_view name)

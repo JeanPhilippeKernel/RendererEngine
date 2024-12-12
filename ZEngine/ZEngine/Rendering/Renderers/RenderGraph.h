@@ -86,38 +86,40 @@ namespace ZEngine::Rendering::Renderers
         Helpers::Ref<IRenderGraphCallbackPass> CallbackPass;
     };
 
+    struct GraphicRenderer;
     class RenderGraph : public Helpers::RefCounted
     {
     public:
-        RenderGraph() : m_builder(Helpers::CreateRef<RenderGraphBuilder>(*this)), m_render_pass_builder(new RenderPasses::RenderPassBuilder{}) {}
+        RenderGraph(GraphicRenderer* renderer)
+            : Renderer(renderer), m_builder(Helpers::CreateRef<RenderGraphBuilder>(*this)), m_render_pass_builder(new RenderPasses::RenderPassBuilder{})
+        {
+        }
         ~RenderGraph() = default;
 
-        void Setup();
-        void Compile();
-        void Execute(uint32_t frame_index, Buffers::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data);
+        GraphicRenderer* Renderer{nullptr};
 
-        void Resize(uint32_t width, uint32_t height);
-
-        void Dispose();
-
+        void                                     Setup();
+        void                                     Compile();
+        void                                     Execute(uint32_t frame_index, Buffers::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data);
+        void                                     Resize(uint32_t width, uint32_t height);
+        void                                     Dispose();
         RenderGraphResource&                     GetResource(std::string_view);
         Helpers::Ref<Textures::Texture>          GetRenderTarget(std::string_view);
         Helpers::Ref<Textures::Texture>          GetTexture(std::string_view);
         Helpers::Ref<Buffers::StorageBufferSet>  GetBufferSet(std::string_view);
         Helpers::Ref<Buffers::UniformBufferSet>  GetBufferUniformSet(std::string_view);
         Helpers::Ref<Buffers::IndirectBufferSet> GetIndirectBufferSet(std::string_view);
-
-        Helpers::Ref<RenderGraphBuilder> GetBuilder() const;
-        RenderGraphNode&                 GetNode(std::string_view);
-        void                             AddCallbackPass(std::string_view pass_name, const Helpers::Ref<IRenderGraphCallbackPass>& pass_callback);
+        Helpers::Ref<RenderGraphBuilder>         GetBuilder() const;
+        Helpers::Ref<RenderPasses::RenderPassBuilder> GetRenderPassBuilder() const;
+        RenderGraphNode&                              GetNode(std::string_view);
+        void                                          AddCallbackPass(std::string_view pass_name, const Helpers::Ref<IRenderGraphCallbackPass>& pass_callback);
 
     private:
-        std::map<std::string, RenderGraphNode>        m_node;
         std::vector<std::string>                      m_sorted_nodes;
+        std::map<std::string, RenderGraphNode>        m_node;
         std::map<std::string, RenderGraphResource>    m_resource_map;
         Helpers::Ref<RenderGraphBuilder>              m_builder;
         Helpers::Ref<RenderPasses::RenderPassBuilder> m_render_pass_builder;
-
         friend struct RenderGraphBuilder;
     };
 

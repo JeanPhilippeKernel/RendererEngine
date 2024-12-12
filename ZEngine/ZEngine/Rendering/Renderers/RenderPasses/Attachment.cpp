@@ -1,5 +1,6 @@
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngineDef.h>
 
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering::Specifications;
@@ -7,7 +8,7 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
-    Attachment::Attachment(const Specifications::AttachmentSpecification& spec)
+    Attachment::Attachment(Hardwares::VulkanDevice* device, const Specifications::AttachmentSpecification& spec) : m_device(device), m_specification(spec)
     {
         ZENGINE_VALIDATE_ASSERT(!spec.ColorsMap.empty(), "Color attachments can't be empty")
 
@@ -25,11 +26,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             VkFormat color_format = VK_FORMAT_UNDEFINED;
             if (color.Format == ImageFormat::FORMAT_FROM_DEVICE)
             {
-                color_format = VulkanDevice::GetSurfaceFormat().format;
+                color_format = m_device->SurfaceFormat.format;
             }
             else if (color.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE)
             {
-                color_format = VulkanDevice::FindDepthFormat();
+                color_format = m_device->FindDepthFormat();
             }
             else
             {
@@ -87,8 +88,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         render_pass_create_info.dependencyCount        = subpass_dependency_collection.size();
         render_pass_create_info.pDependencies          = subpass_dependency_collection.data();
 
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        ZENGINE_VALIDATE_ASSERT(vkCreateRenderPass(device, &render_pass_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create render pass")
+        ZENGINE_VALIDATE_ASSERT(vkCreateRenderPass(m_device->LogicalDevice, &render_pass_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create render pass")
     }
 
     Attachment::~Attachment()
@@ -100,7 +100,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         if (m_handle)
         {
-            Hardwares::VulkanDevice::EnqueueForDeletion(DeviceResourceType::RENDERPASS, m_handle);
+            m_device->EnqueueForDeletion(DeviceResourceType::RENDERPASS, m_handle);
             m_handle = VK_NULL_HANDLE;
         }
     }
@@ -123,11 +123,5 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     uint32_t Attachment::GetDepthAttachmentCount() const
     {
         return m_depth_attachment_count;
-    }
-
-    Ref<Attachment> Attachment::Create(const Specifications::AttachmentSpecification& spec)
-    {
-        auto attachment = CreateRef<Attachment>(spec);
-        return attachment;
     }
 } // namespace ZEngine::Rendering::Renderers::RenderPasses

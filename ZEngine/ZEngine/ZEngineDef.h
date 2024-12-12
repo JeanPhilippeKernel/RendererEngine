@@ -32,4 +32,8 @@
         handle = nullptr;                                            \
     }
 
+#define ZENGINE_CLEAR_STD_VECTOR(collection) \
+    collection.clear();                      \
+    collection.shrink_to_fit();
+
 #define SINGLE_ARG(...) __VA_ARGS__

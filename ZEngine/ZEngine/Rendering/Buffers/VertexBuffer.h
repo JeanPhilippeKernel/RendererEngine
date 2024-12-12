@@ -8,7 +8,7 @@ namespace ZEngine::Rendering::Buffers
     class VertexBuffer : public IGraphicBuffer
     {
     public:
-        explicit VertexBuffer() : IGraphicBuffer() {}
+        explicit VertexBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
         void SetData(const void* data, size_t byte_size)
         {
@@ -26,13 +26,13 @@ namespace ZEngine::Rendering::Buffers
 
                 CleanUpMemory();
                 this->m_byte_size = byte_size;
-                m_vertex_buffer   = Hardwares::VulkanDevice::CreateBuffer(
+                m_vertex_buffer   = m_device->CreateBuffer(
                     static_cast<VkDeviceSize>(this->m_byte_size),
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
             }
 
-            auto                  allocator = Hardwares::VulkanDevice::GetVmaAllocator();
+            auto                  allocator = m_device->VmaAllocator;
             VkMemoryPropertyFlags mem_prop_flags;
             vmaGetAllocationMemoryProperties(allocator, m_vertex_buffer.Allocation, &mem_prop_flags);
 
@@ -49,7 +49,7 @@ namespace ZEngine::Rendering::Buffers
             }
             else
             {
-                Hardwares::BufferView staging_buffer = Hardwares::VulkanDevice::CreateBuffer(
+                BufferView staging_buffer = m_device->CreateBuffer(
                     static_cast<VkDeviceSize>(this->m_byte_size),
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
@@ -64,11 +64,11 @@ namespace ZEngine::Rendering::Buffers
                         "Failed to perform memory copy operation")
                     ZENGINE_VALIDATE_ASSERT(
                         vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, static_cast<VkDeviceSize>(this->m_byte_size)) == VK_SUCCESS, "Failed to flush allocation")
-                    Hardwares::VulkanDevice::CopyBuffer(staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
+                    m_device->CopyBuffer(staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
                 }
 
                 /* Cleanup resource */
-                Hardwares::VulkanDevice::EnqueueBufferForDeletion(staging_buffer);
+                m_device->EnqueueBufferForDeletion(staging_buffer);
             }
         }
 
@@ -104,59 +104,32 @@ namespace ZEngine::Rendering::Buffers
         {
             if (m_vertex_buffer)
             {
-                Hardwares::VulkanDevice::EnqueueBufferForDeletion(m_vertex_buffer);
+                m_device->EnqueueBufferForDeletion(m_vertex_buffer);
                 m_vertex_buffer = {};
             }
         }
 
     private:
-        Hardwares::BufferView  m_vertex_buffer;
+        BufferView             m_vertex_buffer;
         VkDescriptorBufferInfo m_buffer_info{};
     };
 
-    struct VertexBufferSet : public Helpers::RefCounted
+    using VertexBufferSet = IBufferSet<VertexBuffer>;
+
+    // template <>
+    // template <typename K>
+    // inline void VertexBufferSet::SetData<K>(uint32_t index, std::span<const K> data)
+    //{
+    //     ZENGINE_VALIDATE_ASSERT(index < m_set.size(), "Index out of range")
+    //     m_set[index].SetData(data);
+    // }
+
+    template <>
+    inline void VertexBufferSet::Dispose()
     {
-        VertexBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
-
-        VertexBuffer& operator[](uint32_t index)
+        for (auto& buffer : m_set)
         {
-            assert(index < m_buffer_set.size());
-            return m_buffer_set[index];
+            buffer.Dispose();
         }
-
-        VertexBuffer& At(uint32_t index)
-        {
-            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
-            return m_buffer_set[index];
-        }
-
-        template <typename T>
-        void SetData(uint32_t index, std::span<const T> data)
-        {
-            ZENGINE_VALIDATE_ASSERT(index < m_buffer_set.size(), "Index out of range")
-
-            m_buffer_set[index].SetData(data);
-        }
-
-        const std::vector<VertexBuffer>& Data() const
-        {
-            return m_buffer_set;
-        }
-
-        std::vector<VertexBuffer>& Data()
-        {
-            return m_buffer_set;
-        }
-
-        void Dispose()
-        {
-            for (auto& buffer : m_buffer_set)
-            {
-                buffer.Dispose();
-            }
-        }
-
-    private:
-        std::vector<VertexBuffer> m_buffer_set;
-    };
+    }
 } // namespace ZEngine::Rendering::Buffers

@@ -10,7 +10,7 @@ namespace Tetragrama::Components
         DemoUIComponent(std::string_view name = "DemoUIComponent", bool visibility = true) : UIComponent(name, visibility, true) {}
         virtual ~DemoUIComponent() = default;
 
-        virtual void Render() override
+        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override
         {
             ImGui::ShowDemoWindow(&m_is_open);
         }

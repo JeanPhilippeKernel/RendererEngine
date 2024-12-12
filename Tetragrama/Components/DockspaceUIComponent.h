@@ -14,7 +14,7 @@ namespace Tetragrama::Components
         virtual ~DockspaceUIComponent();
 
         void         Update(ZEngine::Core::TimeStep dt) override;
-        virtual void Render() override;
+        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
 
         void RenderMenuBar();
         void RenderSaveScene();

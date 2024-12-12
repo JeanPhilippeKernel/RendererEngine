@@ -15,8 +15,9 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    void ImGUIRenderer::Initialize(RenderGraph* const graph)
+    void ImGUIRenderer::Initialize(GraphicRenderer* renderer)
     {
+        m_renderer          = renderer;
         auto current_window = Engine::GetWindow();
 
         IMGUI_CHECKVERSION();
@@ -55,39 +56,37 @@ namespace ZEngine::Rendering::Renderers
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window->GetNativeWindow()), false);
 
-        const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
+        m_vertex_buffer                          = renderer->CreateVertexBufferSet();
+        m_index_buffer                           = renderer->CreateIndexBufferSet();
+        RenderPasses::RenderPassBuilder& builder = *(renderer->RenderGraph->GetRenderPassBuilder());
+        builder.SetName("Imgui Pass")
+            .SetPipelineName("Imgui-Pipeline")
+            .EnablePipelineBlending(true)
+            .SetInputBindingCount(1)
+            .SetStride(0, sizeof(ImDrawVert))
+            .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
 
-        m_vertex_buffer                         = CreateRef<Buffers::VertexBufferSet>(renderer_info.FrameCount);
-        m_index_buffer                          = CreateRef<Buffers::IndexBufferSet>(renderer_info.FrameCount);
-        RenderPasses::RenderPassBuilder builder = {};
-        m_ui_pass                               = builder.SetName("Imgui Pass")
-                        .SetPipelineName("Imgui-Pipeline")
-                        .EnablePipelineBlending(true)
-                        .SetInputBindingCount(1)
-                        .SetStride(0, sizeof(ImDrawVert))
-                        .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
+            .SetInputAttributeCount(3)
+            .SetLocation(0, 0)
+            .SetBinding(0, 0)
+            .SetFormat(0, Specifications::ImageFormat::R32G32_SFLOAT)
+            .SetOffset(0, IM_OFFSETOF(ImDrawVert, pos))
+            .SetLocation(1, 1)
+            .SetBinding(1, 0)
+            .SetFormat(1, Specifications::ImageFormat::R32G32_SFLOAT)
+            .SetOffset(1, IM_OFFSETOF(ImDrawVert, uv))
+            .SetLocation(2, 2)
+            .SetBinding(2, 0)
+            .SetFormat(2, Specifications::ImageFormat::R8G8B8A8_UNORM)
+            .SetOffset(2, IM_OFFSETOF(ImDrawVert, col))
 
-                        .SetInputAttributeCount(3)
-                        .SetLocation(0, 0)
-                        .SetBinding(0, 0)
-                        .SetFormat(0, Specifications::ImageFormat::R32G32_SFLOAT)
-                        .SetOffset(0, IM_OFFSETOF(ImDrawVert, pos))
-                        .SetLocation(1, 1)
-                        .SetBinding(1, 0)
-                        .SetFormat(1, Specifications::ImageFormat::R32G32_SFLOAT)
-                        .SetOffset(1, IM_OFFSETOF(ImDrawVert, uv))
-                        .SetLocation(2, 2)
-                        .SetBinding(2, 0)
-                        .SetFormat(2, Specifications::ImageFormat::R8G8B8A8_UNORM)
-                        .SetOffset(2, IM_OFFSETOF(ImDrawVert, col))
+            .UseShader("imgui")
+            .SetShaderOverloadMaxSet(2000)
+            .SetOverloadPoolSize(2)
 
-                        .UseShader("imgui")
-                        .SetShaderOverloadMaxSet(2000)
-                        .SetOverloadPoolSize(2)
+            .UseSwapchainAsRenderTarget();
 
-                        .UseSwapchainAsRenderTarget()
-                        .Create();
-
+        m_ui_pass = renderer->CreateRenderPass(builder.Detach());
         m_ui_pass->Verify();
         m_ui_pass->Bake();
 
@@ -95,7 +94,6 @@ namespace ZEngine::Rendering::Renderers
         auto shader               = pipeline->GetShader();
         auto descriptor_setlayout = shader->GetDescriptorSetLayout()[0];
 
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         /*
          * Font uploading
          */
@@ -109,23 +107,24 @@ namespace ZEngine::Rendering::Renderers
         font_tex_spec.Height                               = height;
         font_tex_spec.Data                                 = pixels;
         font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
-        Ref<Textures::Texture> font_texture                = Textures::Texture2D::Create(font_tex_spec);
+        Ref<Textures::Texture> font_texture                = renderer->CreateTexture(font_tex_spec);
 
         VkDescriptorSetAllocateInfo font_alloc_info = {};
         font_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         font_alloc_info.descriptorPool              = shader->GetDescriptorPool();
         font_alloc_info.descriptorSetCount          = 1;
         font_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(device, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
+        ZENGINE_VALIDATE_ASSERT(
+            vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
 
-        auto&                font_image_info = font_texture->GetDescriptorImageInfo();
+        auto                 font_image_info = font_texture->GetDescriptorImageInfo();
         VkWriteDescriptorSet write_desc[1]   = {};
         write_desc[0].sType                  = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write_desc[0].dstSet                 = m_font_descriptor_set;
         write_desc[0].descriptorCount        = 1;
         write_desc[0].descriptorType         = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         write_desc[0].pImageInfo             = &font_image_info;
-        vkUpdateDescriptorSets(device, 1, write_desc, 0, nullptr);
+        vkUpdateDescriptorSets(m_renderer->Device->LogicalDevice, 1, write_desc, 0, nullptr);
 
         io.Fonts->SetTexID((ImTextureID) m_font_descriptor_set);
         /*
@@ -136,7 +135,7 @@ namespace ZEngine::Rendering::Renderers
         frame_alloc_info.descriptorPool              = shader->GetDescriptorPool();
         frame_alloc_info.descriptorSetCount          = 1;
         frame_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(device, &frame_alloc_info, &m_frame_output) == VK_SUCCESS, "Failed to create descriptor set")
+        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &frame_alloc_info, &m_frame_output) == VK_SUCCESS, "Failed to create descriptor set")
     }
 
     void ImGUIRenderer::Deinitialize()
@@ -195,8 +194,6 @@ namespace ZEngine::Rendering::Renderers
 
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
-
-        command_buffer->Begin();
     }
 
     void ImGUIRenderer::Draw(Rendering::Buffers::CommandBuffer* const command_buffer, uint32_t frame_index)
@@ -326,7 +323,6 @@ namespace ZEngine::Rendering::Renderers
             }
         }
         command_buffer->EndRenderPass();
-        command_buffer->End();
 
         ImGuiIO& io = ImGui::GetIO();
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
@@ -336,9 +332,8 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Hardwares::BufferImage& buffer)
+    VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Buffers::BufferImage& buffer)
     {
-        auto                  device        = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         VkDescriptorImageInfo desc_image[1] = {};
         desc_image[0].sampler               = buffer.Sampler;
         desc_image[0].imageView             = buffer.ViewHandle;
@@ -349,7 +344,7 @@ namespace ZEngine::Rendering::Renderers
         write_desc[0].descriptorCount       = 1;
         write_desc[0].descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         write_desc[0].pImageInfo            = desc_image;
-        vkUpdateDescriptorSets(device, 1, write_desc, 0, nullptr);
+        vkUpdateDescriptorSets(m_renderer->Device->LogicalDevice, 1, write_desc, 0, nullptr);
 
         return m_frame_output;
     }

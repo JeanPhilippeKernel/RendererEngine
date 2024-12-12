@@ -1,4 +1,5 @@
 #pragma once
+#include <GraphicBuffer.h>
 #include <Rendering/Primitives/Fence.h>
 #include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/Primitives/Semaphore.h>
@@ -8,16 +9,15 @@
 #include <array>
 #include <atomic>
 
+namespace ZEngine::Hardwares
+{
+    struct VulkanDevice;
+}
+
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
     struct RenderPass;
 }
-
-namespace ZEngine::Hardwares
-{
-    struct BufferView;
-    struct BufferImage;
-} // namespace ZEngine::Hardwares
 
 namespace ZEngine::Rendering::Buffers
 {
@@ -36,16 +36,21 @@ namespace ZEngine::Rendering::Buffers
 
     struct CommandBuffer : public Helpers::RefCounted
     {
-        CommandBuffer(VkCommandPool command_pool, Rendering::QueueType type, bool one_time);
+        CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool one_time);
         ~CommandBuffer();
 
-        VkCommandBuffer   GetHandle() const;
-        void              Begin();
-        void              End();
-        bool              Completed();
-        bool              IsExecutable();
-        bool              IsRecording();
-        void              Submit(bool as_instant_command = false, VkPipelineStageFlags wait_flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        Rendering::QueueType     QueueType;
+        Hardwares::VulkanDevice* Device = nullptr;
+
+        void            Create();
+        void            Free();
+        VkCommandBuffer GetHandle() const;
+        void            Begin();
+        void            End();
+        bool            Completed();
+        bool            IsExecutable();
+        bool            IsRecording();
+        // void              Submit(bool as_instant_command = false, VkPipelineStageFlags wait_flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
         CommanBufferState GetState() const;
         void              ResetState();
         void              SetState(const CommanBufferState& state);
@@ -68,13 +73,7 @@ namespace ZEngine::Rendering::Buffers
 
         void TransitionImageLayout(const Primitives::ImageMemoryBarrier& image_barrier);
 
-        void CopyBufferToImage(
-            const Hardwares::BufferView& source,
-            Hardwares::BufferImage&      destination,
-            uint32_t                     width,
-            uint32_t                     height,
-            uint32_t                     layer_count,
-            VkImageLayout                new_layout);
+        void CopyBufferToImage(const BufferView& source, BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout);
 
         void BindVertexBuffer(const Buffers::VertexBuffer& buffer);
         void BindIndexBuffer(const Buffers::IndexBuffer& buffer, VkIndexType type);
@@ -88,7 +87,6 @@ namespace ZEngine::Rendering::Buffers
         VkCommandBuffer                                       m_command_buffer{VK_NULL_HANDLE};
         VkCommandPool                                         m_command_pool{VK_NULL_HANDLE};
         std::array<VkClearValue, 2>                           m_clear_value{};
-        Rendering::QueueType                                  m_queue_type;
         Helpers::Ref<Primitives::Fence>                       m_signal_fence;
         Helpers::Ref<Primitives::Semaphore>                   m_signal_semaphore;
         Helpers::WeakRef<Renderers::RenderPasses::RenderPass> m_active_render_pass;

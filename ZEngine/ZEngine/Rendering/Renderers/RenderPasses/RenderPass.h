@@ -38,8 +38,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     struct RenderPass : public Helpers::RefCounted
     {
-        RenderPass() = default;
-        RenderPass(const Specifications::RenderPassSpecification& specification);
+        RenderPass(Hardwares::VulkanDevice* device, const Specifications::RenderPassSpecification& specification);
         ~RenderPass();
 
         void Dispose();
@@ -69,8 +68,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         uint32_t      GetRenderAreaWidth() const;
         uint32_t      GetRenderAreaHeight() const;
 
-        static Helpers::Ref<RenderPass> Create(const Specifications::RenderPassSpecification& specification);
-
     private:
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
 
@@ -81,6 +78,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Helpers::Ref<Pipelines::GraphicPipeline>          m_pipeline;
         Helpers::Ref<Renderers::RenderPasses::Attachment> m_attachment;
         Helpers::Ref<Buffers::FramebufferVNext>           m_framebuffer;
+        Hardwares::VulkanDevice*                          m_device;
     };
 
     struct RenderPassBuilder : public Helpers::RefCounted
@@ -110,7 +108,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder& AddInputTexture(std::string_view key, const Helpers::Ref<Rendering::Textures::Texture>& input);
         RenderPassBuilder& UseSwapchainAsRenderTarget();
 
-        Helpers::Ref<RenderPass> Create();
+        Specifications::RenderPassSpecification Detach();
+        Helpers::Ref<RenderPass>                Create();
 
     private:
         Specifications::RenderPassSpecification m_spec{};

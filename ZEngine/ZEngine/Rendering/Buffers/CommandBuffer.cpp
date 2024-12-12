@@ -12,32 +12,39 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Buffers
 {
-    CommandBuffer::CommandBuffer(VkCommandPool command_pool, Rendering::QueueType type, bool one_time)
+    CommandBuffer::CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool one_time)
+        : Device(device), QueueType(type), m_command_pool(command_pool), m_one_time_usage(one_time)
     {
-        m_queue_type     = type;
-        m_command_pool   = command_pool;
-        m_one_time_usage = one_time;
+        Create();
+    }
 
+    CommandBuffer::~CommandBuffer()
+    {
+        Free();
+    }
+
+    void CommandBuffer::Create()
+    {
         ZENGINE_VALIDATE_ASSERT(m_command_pool != VK_NULL_HANDLE, "Command Pool cannot be null")
 
-        auto                        device                         = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         VkCommandBufferAllocateInfo command_buffer_allocation_info = {};
         command_buffer_allocation_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         command_buffer_allocation_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         command_buffer_allocation_info.commandBufferCount          = 1;
         command_buffer_allocation_info.commandPool                 = m_command_pool;
 
-        ZENGINE_VALIDATE_ASSERT(vkAllocateCommandBuffers(device, &command_buffer_allocation_info, &m_command_buffer) == VK_SUCCESS, "Failed to allocate command buffer!")
+        ZENGINE_VALIDATE_ASSERT(
+            vkAllocateCommandBuffers(Device->LogicalDevice, &command_buffer_allocation_info, &m_command_buffer) == VK_SUCCESS, "Failed to allocate command buffer!")
         m_command_buffer_state = CommanBufferState::Idle;
     }
 
-    CommandBuffer::~CommandBuffer()
+    void CommandBuffer::Free()
     {
         if (m_command_pool && m_command_buffer)
         {
             VkCommandBuffer buffers[] = {m_command_buffer};
-            auto            device    = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-            vkFreeCommandBuffers(device, m_command_pool, 1, buffers);
+            vkFreeCommandBuffers(Device->LogicalDevice, m_command_pool, 1, buffers);
+            m_command_buffer = VK_NULL_HANDLE;
         }
     }
 
@@ -84,11 +91,10 @@ namespace ZEngine::Rendering::Buffers
         return m_command_buffer_state == CommanBufferState::Recording;
     }
 
-    void CommandBuffer::Submit(bool as_instant_command, VkPipelineStageFlags wait_flags)
-    {
-        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Executable, "command buffer must be in ended state")
-        Hardwares::VulkanDevice::QueueSubmit(m_queue_type, wait_flags, *this, as_instant_command);
-    }
+    // void CommandBuffer::Submit(bool as_instant_command, VkPipelineStageFlags wait_flags){
+    //     ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Executable, "command buffer must be in ended state")
+    //     // Hardwares::VulkanDevice::QueueSubmit(m_queue_type, wait_flags, *this, as_instant_command);
+    // }
 
     CommanBufferState CommandBuffer::GetState() const
     {
@@ -97,13 +103,18 @@ namespace ZEngine::Rendering::Buffers
 
     void CommandBuffer::ResetState()
     {
-        if (!m_one_time_usage)
+        if (m_command_buffer_state == CommanBufferState::Pending || m_command_buffer_state == CommanBufferState::Invalid)
+        {
+            Free();
+            Create();
+        }
+        else
         {
             vkResetCommandBuffer(m_command_buffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
-            m_command_buffer_state = CommanBufferState::Idle;
-            m_signal_fence         = {};
-            m_signal_semaphore     = {};
         }
+        m_command_buffer_state = CommanBufferState::Idle;
+        m_signal_fence         = {};
+        m_signal_semaphore     = {};
     }
 
     void CommandBuffer::SetState(const CommanBufferState& state)
@@ -162,7 +173,7 @@ namespace ZEngine::Rendering::Buffers
             auto& spec = render_pass->GetSpecification();
             for (const auto& render_target : spec.Inputs)
             {
-                if (render_target->IsDepthTexture())
+                if (render_target->IsDepthTexture)
                 {
                     clear_values.push_back(m_clear_value[1]);
                     continue;
@@ -171,7 +182,7 @@ namespace ZEngine::Rendering::Buffers
             }
             for (const auto& render_target : spec.ExternalOutputs)
             {
-                if (render_target->IsDepthTexture())
+                if (render_target->IsDepthTexture)
                 {
                     clear_values.push_back(m_clear_value[1]);
                     continue;
@@ -287,13 +298,7 @@ namespace ZEngine::Rendering::Buffers
         vkCmdPipelineBarrier(m_command_buffer, barrier_spec.SourceStageMask, barrier_spec.DestinationStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier_handle);
     }
 
-    void CommandBuffer::CopyBufferToImage(
-        const Hardwares::BufferView& source,
-        Hardwares::BufferImage&      destination,
-        uint32_t                     width,
-        uint32_t                     height,
-        uint32_t                     layer_count,
-        VkImageLayout                new_layout)
+    void CommandBuffer::CopyBufferToImage(const BufferView& source, BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 

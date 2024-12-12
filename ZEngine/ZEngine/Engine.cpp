@@ -1,15 +1,16 @@
 #include <pch.h>
 #include <Engine.h>
+#include <Hardwares/VulkanDevice.h>
 #include <Logging/LoggerDefinition.h>
-
-using namespace ZEngine::Hardwares;
-using namespace ZEngine::Rendering::Renderers;
+#include <Rendering/Renderers/GraphicRenderer.h>
 
 namespace ZEngine
 {
-    static bool                                  s_request_terminate{false};
-    static std::shared_mutex                     g_mutex;
-    static Helpers::WeakRef<Windows::CoreWindow> g_current_window = nullptr;
+    static bool                                                  s_request_terminate{false};
+    static std::shared_mutex                                     g_mutex;
+    static Helpers::WeakRef<Windows::CoreWindow>                 g_current_window = nullptr;
+    static Helpers::Scope<Rendering::Renderers::GraphicRenderer> g_renderer       = Helpers::CreateScope<Rendering::Renderers::GraphicRenderer>();
+    static Helpers::Scope<Hardwares::VulkanDevice>               g_device         = Helpers::CreateScope<Hardwares::VulkanDevice>();
 
     void Engine::Initialize(const EngineConfiguration& engine_configuration, const Helpers::Ref<ZEngine::Windows::CoreWindow>& window)
     {
@@ -17,6 +18,8 @@ namespace ZEngine
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
 
         window->Initialize();
+        g_device->Initialize(g_current_window);
+        g_renderer->Initialize(g_device.get());
 
         ZENGINE_CORE_INFO("Engine initialized")
     }
@@ -28,6 +31,8 @@ namespace ZEngine
         {
             window->Deinitialize();
         }
+        g_renderer->Deinitialize();
+        g_device->Deinitialize();
     }
 
     void Engine::Dispose()
@@ -35,6 +40,7 @@ namespace ZEngine
         s_request_terminate = false;
 
         Logging::Logger::Dispose();
+        g_device->Dispose();
         ZENGINE_CORE_INFO("Engine destroyed")
     }
 
@@ -64,10 +70,18 @@ namespace ZEngine
             }
 
             /*On Update*/
+            g_renderer->Update();
             window->Update(dt);
 
-            /*On Render*/
-            window->Render();
+            g_device->NewFrame();
+            {
+                auto buffer = g_device->GetCommandBuffer(true);
+
+                /*On Render*/
+                window->Render(g_renderer.get(), buffer);
+                g_device->EnqueueCommandBuffer(buffer);
+            }
+            g_device->Present();
         }
 
         if (s_request_terminate)

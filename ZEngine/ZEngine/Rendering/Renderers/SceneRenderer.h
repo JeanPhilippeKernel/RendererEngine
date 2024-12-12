@@ -1,7 +1,7 @@
 #pragma once
+#include <GraphicRenderer.h>
 #include <Rendering/Buffers/IndirectBuffer.h>
 #include <Rendering/Cameras/Camera.h>
-#include <Rendering/Renderers/RenderGraph.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/Scenes/GraphicScene.h>
 #include <ZEngineDef.h>
@@ -22,7 +22,7 @@ namespace ZEngine::Rendering::Renderers
 
     struct IndirectRenderingStorage
     {
-        virtual void Initialize(uint32_t count);
+        virtual void Initialize(GraphicRenderer* renderer);
         virtual void Dispose();
 
     protected:
@@ -128,7 +128,7 @@ namespace ZEngine::Rendering::Renderers
         SceneRenderer()  = default;
         ~SceneRenderer() = default;
 
-        void Initialize(RenderGraph* const graph);
+        void Initialize(GraphicRenderer* renderer);
         void Deinitialize();
 
     private:
