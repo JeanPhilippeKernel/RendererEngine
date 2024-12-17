@@ -114,8 +114,8 @@ namespace ZEngine::Hardwares
         uint32_t                                                     SwapchainImageCount               = 3;
         uint32_t                                                     SwapchainImageWidth               = std::numeric_limits<uint32_t>::max();
         uint32_t                                                     SwapchainImageHeight              = std::numeric_limits<uint32_t>::max();
-        uint32_t                                                     GraphicFamilyIndex                = 0;
-        uint32_t                                                     TransferFamilyIndex               = 0;
+        uint32_t                                                     GraphicFamilyIndex                = std::numeric_limits<uint32_t>::max();
+        uint32_t                                                     TransferFamilyIndex               = std::numeric_limits<uint32_t>::max();
         uint32_t                                                     EnqueuedCommandbufferIndex        = 0;
         VkInstance                                                   Instance                          = VK_NULL_HANDLE;
         VkSurfaceKHR                                                 Surface                           = VK_NULL_HANDLE;
@@ -191,6 +191,7 @@ namespace ZEngine::Hardwares
         VulkanLayer                                                                      m_layer{};
         CommandBufferManager                                                             m_buffer_manager{};
         std::map<Rendering::QueueType, VkQueue>                                          m_queue_map{};
+        Windows::CoreWindow*                                                             m_window{nullptr};
         VkDebugUtilsMessengerEXT                                                         s_debug_messenger{VK_NULL_HANDLE};
         std::map<uint32_t, std::vector<DirtyResource>>                                   s_deletion_resource_queue{};
         std::deque<DirtyResource>                                                        s_dirty_resource_collection{};

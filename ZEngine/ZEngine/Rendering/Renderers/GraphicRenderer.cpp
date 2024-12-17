@@ -186,7 +186,6 @@ namespace ZEngine::Rendering::Renderers
     {
         auto                buffer_size    = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
         Buffers::BufferView staging_buffer = Device->CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-        staging_buffer.FrameIndex          = Device->CurrentFrameIndex;
         Device->MapAndCopyToMemory(staging_buffer, buffer_size, spec.Data);
 
         uint32_t storage_bit   = spec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;

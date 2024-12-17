@@ -25,6 +25,8 @@ namespace ZEngine::Hardwares
 {
     void VulkanDevice::Initialize(const Ref<Windows::CoreWindow>& window)
     {
+        m_window = window.get();
+
         /*Create Vulkan Instance*/
         VkApplicationInfo app_info = {
             .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -542,6 +544,11 @@ namespace ZEngine::Hardwares
     void VulkanDevice::QueueWait(Rendering::QueueType type)
     {
         std::lock_guard lock(s_queue_mutex);
+
+        if (!HasSeperateTransfertQueueFamily)
+        {
+            type = QueueType::GRAPHIC_QUEUE;
+        }
         ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(m_queue_map[type]) == VK_SUCCESS, "Failed to wait on queue")
     }
 
@@ -945,6 +952,10 @@ namespace ZEngine::Hardwares
     void VulkanDevice::ResizeSwapchain()
     {
         DisposeSwapchain();
+
+        ZENGINE_DESTROY_VULKAN_HANDLE(Instance, vkDestroySurfaceKHR, Surface, nullptr)
+        ZENGINE_VALIDATE_ASSERT(m_window->CreateSurface(Instance, reinterpret_cast<void**>(&Surface)), "Failed Window Surface from GLFW")
+
         CreateSwapchain();
     }
 
@@ -954,7 +965,8 @@ namespace ZEngine::Hardwares
         {
             if (image_view)
             {
-                EnqueueForDeletion(DeviceResourceType::IMAGEVIEW, image_view);
+                vkDestroyImageView(LogicalDevice, image_view, nullptr);
+                // EnqueueForDeletion(DeviceResourceType::IMAGEVIEW, image_view);
             }
         }
 
@@ -962,7 +974,8 @@ namespace ZEngine::Hardwares
         {
             if (framebuffer)
             {
-                EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, framebuffer);
+                vkDestroyFramebuffer(LogicalDevice, framebuffer, nullptr);
+                // EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, framebuffer);
             }
         }
 
@@ -991,7 +1004,7 @@ namespace ZEngine::Hardwares
         VkResult acquire_image_result = vkAcquireNextImageKHR(LogicalDevice, SwapchainHandle, UINT64_MAX, acquired_semaphore->GetHandle(), VK_NULL_HANDLE, &SwapchainImageIndex);
         acquired_semaphore->SetState(Primitives::SemaphoreState::Submitted);
 
-        if (acquire_image_result == VK_SUBOPTIMAL_KHR || acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
+        if (acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
         {
             ResizeSwapchain();
         }
@@ -1159,7 +1172,6 @@ namespace ZEngine::Hardwares
                 it = std::next(it);
             }
         }
-
     }
 
     void VulkanDevice::IncrementFrameImageCount()
