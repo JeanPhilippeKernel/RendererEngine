@@ -135,7 +135,7 @@ namespace ZEngine::Hardwares
         __destroyDebugMessengerPtr = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(Instance, "vkDestroyDebugUtilsMessengerEXT"));
         if (__createDebugMessengerPtr)
         {
-            __createDebugMessengerPtr(Instance, &messenger_create_info, nullptr, &s_debug_messenger);
+            __createDebugMessengerPtr(Instance, &messenger_create_info, nullptr, &m_debug_messenger);
         }
 
         ZENGINE_VALIDATE_ASSERT(window->CreateSurface(Instance, reinterpret_cast<void**>(&Surface)), "Failed Window Surface from GLFW")
@@ -394,22 +394,11 @@ namespace ZEngine::Hardwares
 
         m_buffer_manager.Deinitialize();
 
-        while (!s_dirty_buffer_queue.empty())
-        {
-            __cleanupBufferDirtyResource();
-        }
+        __cleanupBufferDirtyResource();
 
-        while (!s_dirty_buffer_image_queue.empty())
-        {
-            __cleanupBufferImageDirtyResource();
-        }
+        __cleanupBufferImageDirtyResource();
 
-        while (!s_dirty_resource_collection.empty())
-        {
-            __cleanupDirtyResource();
-        }
-
-        s_queue_submit_info_pool.clear();
+        __cleanupDirtyResource();
 
         ZENGINE_DESTROY_VULKAN_HANDLE(Instance, vkDestroySurfaceKHR, Surface, nullptr)
     }
@@ -420,7 +409,7 @@ namespace ZEngine::Hardwares
 
         if (__destroyDebugMessengerPtr)
         {
-            ZENGINE_DESTROY_VULKAN_HANDLE(Instance, __destroyDebugMessengerPtr, s_debug_messenger, nullptr)
+            ZENGINE_DESTROY_VULKAN_HANDLE(Instance, __destroyDebugMessengerPtr, m_debug_messenger, nullptr)
             __destroyDebugMessengerPtr = nullptr;
             __createDebugMessengerPtr  = nullptr;
         }
@@ -478,73 +467,34 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const handle)
     {
+        if (handle)
         {
-            std::lock_guard lock(s_deletion_queue_mutex);
-            if (handle)
-            {
-                auto find_it = std::find_if(s_dirty_resource_collection.begin(), s_dirty_resource_collection.end(), [handle](const DirtyResource& res) {
-                    return res.Handle == handle;
-                });
-
-                if (find_it == std::end(s_dirty_resource_collection))
-                {
-                    s_dirty_resource_collection.push_back(
-                        DirtyResource{.FrameIndex = CurrentFrameIndex, .Handle = handle, .MarkedAsDirtyTime = std::chrono::steady_clock::now(), .Type = resource_type});
-                }
-            }
+            m_dirty_resources.Add({.FrameIndex = CurrentFrameIndex, .Handle = handle, .Type = resource_type});
         }
     }
 
     void VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType resource_type, DirtyResource resource)
     {
+        if (resource.Handle)
         {
-            std::lock_guard lock(s_deletion_queue_mutex);
-            if (resource.Handle)
-            {
-                resource.FrameIndex        = CurrentFrameIndex;
-                resource.Type              = resource_type;
-                resource.MarkedAsDirtyTime = std::chrono::steady_clock::now();
-
-                auto find_it = std::find_if(s_dirty_resource_collection.begin(), s_dirty_resource_collection.end(), [&resource](const DirtyResource& res) {
-                    return res.Handle == resource.Handle;
-                });
-
-                if (find_it == std::end(s_dirty_resource_collection))
-                {
-                    s_dirty_resource_collection.push_back(resource);
-                }
-            }
+            m_dirty_resources.Add(resource);
         }
     }
 
     void VulkanDevice::EnqueueBufferForDeletion(BufferView& buffer)
     {
-        {
-            std::lock_guard lock(s_deletion_queue_mutex);
-
-            // buffer.FrameIndex = CurrentFrameIndex;
-            //  buffer.MarkedAsDirtyTime = std::chrono::steady_clock::now();
-            ZENGINE_VALIDATE_ASSERT(buffer.FrameIndex != std::numeric_limits<uint8_t>::max(), "")
-            s_dirty_buffer_queue.push_back(buffer);
-        }
+        ZENGINE_VALIDATE_ASSERT(buffer.FrameIndex != std::numeric_limits<uint8_t>::max(), "")
+        m_dirty_buffers.Add(buffer);
     }
 
     void VulkanDevice::EnqueueBufferImageForDeletion(BufferImage& buffer)
     {
-        {
-            std::lock_guard lock(s_deletion_queue_mutex);
-
-            // buffer.FrameIndex = CurrentFrameIndex;
-            //  buffer.MarkedAsDirtyTime = std::chrono::steady_clock::now();
-            ZENGINE_VALIDATE_ASSERT(buffer.FrameIndex != std::numeric_limits<uint8_t>::max(), "")
-            s_dirty_buffer_image_queue.push_back(buffer);
-        }
+        ZENGINE_VALIDATE_ASSERT(buffer.FrameIndex != std::numeric_limits<uint8_t>::max(), "")
+        m_dirty_buffer_images.Add(buffer);
     }
 
     void VulkanDevice::QueueWait(Rendering::QueueType type)
     {
-        std::lock_guard lock(s_queue_mutex);
-
         if (!HasSeperateTransfertQueueFamily)
         {
             type = QueueType::GRAPHIC_QUEUE;
@@ -604,74 +554,105 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::__cleanupDirtyResource()
     {
-        auto& resource = s_dirty_resource_collection.front();
-        switch (resource.Type)
+        size_t dirty_resource_count = m_dirty_resources.Size();
+        for (int i = dirty_resource_count - 1; i >= 0; --i)
         {
-            case Rendering::DeviceResourceType::SAMPLER:
-                vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::FRAMEBUFFER:
-                vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::IMAGEVIEW:
-                vkDestroyImageView(LogicalDevice, reinterpret_cast<VkImageView>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::IMAGE:
-                vkDestroyImage(LogicalDevice, reinterpret_cast<VkImage>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::RENDERPASS:
-                vkDestroyRenderPass(LogicalDevice, reinterpret_cast<VkRenderPass>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::BUFFERMEMORY:
-                vkFreeMemory(LogicalDevice, reinterpret_cast<VkDeviceMemory>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::BUFFER:
-                vkDestroyBuffer(LogicalDevice, reinterpret_cast<VkBuffer>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::PIPELINE_LAYOUT:
-                vkDestroyPipelineLayout(LogicalDevice, reinterpret_cast<VkPipelineLayout>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::PIPELINE:
-                vkDestroyPipeline(LogicalDevice, reinterpret_cast<VkPipeline>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
-                vkDestroyDescriptorSetLayout(LogicalDevice, reinterpret_cast<VkDescriptorSetLayout>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::DESCRIPTORPOOL:
-                vkDestroyDescriptorPool(LogicalDevice, reinterpret_cast<VkDescriptorPool>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::SEMAPHORE:
-                vkDestroySemaphore(LogicalDevice, reinterpret_cast<VkSemaphore>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::FENCE:
-                vkDestroyFence(LogicalDevice, reinterpret_cast<VkFence>(resource.Handle), nullptr);
-                break;
-            case Rendering::DeviceResourceType::DESCRIPTORSET:
+            auto handle = m_dirty_resources.ConvertToHandle(i);
+            if (!handle.Valid())
             {
-                auto ds = reinterpret_cast<VkDescriptorSet>(resource.Handle);
-                vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(resource.Data1), 1, &ds);
-                break;
+                continue;
             }
-        }
 
-        s_dirty_resource_collection.pop_front();
+            DirtyResource& res_handle = m_dirty_resources[handle];
+            switch (res_handle.Type)
+            {
+                case Rendering::DeviceResourceType::SAMPLER:
+                    vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::FRAMEBUFFER:
+                    vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::IMAGEVIEW:
+                    vkDestroyImageView(LogicalDevice, reinterpret_cast<VkImageView>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::IMAGE:
+                    vkDestroyImage(LogicalDevice, reinterpret_cast<VkImage>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::RENDERPASS:
+                    vkDestroyRenderPass(LogicalDevice, reinterpret_cast<VkRenderPass>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::BUFFERMEMORY:
+                    vkFreeMemory(LogicalDevice, reinterpret_cast<VkDeviceMemory>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::BUFFER:
+                    vkDestroyBuffer(LogicalDevice, reinterpret_cast<VkBuffer>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::PIPELINE_LAYOUT:
+                    vkDestroyPipelineLayout(LogicalDevice, reinterpret_cast<VkPipelineLayout>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::PIPELINE:
+                    vkDestroyPipeline(LogicalDevice, reinterpret_cast<VkPipeline>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
+                    vkDestroyDescriptorSetLayout(LogicalDevice, reinterpret_cast<VkDescriptorSetLayout>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::DESCRIPTORPOOL:
+                    vkDestroyDescriptorPool(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::SEMAPHORE:
+                    vkDestroySemaphore(LogicalDevice, reinterpret_cast<VkSemaphore>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::FENCE:
+                    vkDestroyFence(LogicalDevice, reinterpret_cast<VkFence>(res_handle.Handle), nullptr);
+                    break;
+                case Rendering::DeviceResourceType::DESCRIPTORSET:
+                {
+                    auto ds = reinterpret_cast<VkDescriptorSet>(res_handle.Handle);
+                    vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Data1), 1, &ds);
+                    break;
+                }
+            }
+
+            m_dirty_resources.Remove(handle);
+        }
     }
 
     void VulkanDevice::__cleanupBufferDirtyResource()
     {
-        auto& resource = s_dirty_buffer_queue.front();
-        vmaDestroyBuffer(VmaAllocator, resource.Handle, resource.Allocation);
-        s_dirty_buffer_queue.pop_front();
+        size_t dirty_buffer_count = m_dirty_buffers.Size();
+        for (int i = dirty_buffer_count - 1; i >= 0; --i)
+        {
+            auto handle = m_dirty_buffers.ConvertToHandle(i);
+            if (!handle.Valid())
+            {
+                continue;
+            }
+
+            BufferView& buffer = m_dirty_buffers[handle];
+            vmaDestroyBuffer(VmaAllocator, buffer.Handle, buffer.Allocation);
+            m_dirty_buffers.Remove(handle);
+        }
     }
 
     void VulkanDevice::__cleanupBufferImageDirtyResource()
     {
-        auto& resource = s_dirty_buffer_image_queue.front();
-        vkDestroyImageView(LogicalDevice, resource.ViewHandle, nullptr);
-        vkDestroySampler(LogicalDevice, resource.Sampler, nullptr);
-        vmaDestroyImage(VmaAllocator, resource.Handle, resource.Allocation);
+        size_t dirty_buffer_image_count = m_dirty_buffer_images.Size();
+        for (int i = dirty_buffer_image_count - 1; i >= 0; --i)
+        {
+            auto handle = m_dirty_buffer_images.ConvertToHandle(i);
+            if (!handle.Valid())
+            {
+                continue;
+            }
 
-        s_dirty_buffer_image_queue.pop_front();
+            BufferImage& buffer = m_dirty_buffer_images[handle];
+
+            vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
+            vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
+            vmaDestroyImage(VmaAllocator, buffer.Handle, buffer.Allocation);
+
+            m_dirty_buffer_images.Remove(handle);
+        }
     }
 
     void VulkanDevice::MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data)
@@ -965,8 +946,7 @@ namespace ZEngine::Hardwares
         {
             if (image_view)
             {
-                vkDestroyImageView(LogicalDevice, image_view, nullptr);
-                // EnqueueForDeletion(DeviceResourceType::IMAGEVIEW, image_view);
+                EnqueueForDeletion(DeviceResourceType::IMAGEVIEW, image_view);
             }
         }
 
@@ -974,8 +954,7 @@ namespace ZEngine::Hardwares
         {
             if (framebuffer)
             {
-                vkDestroyFramebuffer(LogicalDevice, framebuffer, nullptr);
-                // EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, framebuffer);
+                EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, framebuffer);
             }
         }
 
@@ -1083,93 +1062,106 @@ namespace ZEngine::Hardwares
         /*
          * Cleanup current Frame allocated resource
          */
-        for (auto it = s_dirty_resource_collection.begin(); it != s_dirty_resource_collection.end();)
+        size_t dirty_resource_count = m_dirty_resources.Size();
+        for (int i = dirty_resource_count - 1; i >= 0; --i)
         {
-            if (it->FrameIndex == CurrentFrameIndex)
+            auto handle = m_dirty_resources.ConvertToHandle(i);
+            if (!handle.Valid())
             {
-                switch (it->Type)
+                continue;
+            }
+
+            DirtyResource& res_handle = m_dirty_resources[handle];
+            if (res_handle.FrameIndex == CurrentFrameIndex)
+            {
+                switch (res_handle.Type)
                 {
                     case Rendering::DeviceResourceType::SAMPLER:
-                        vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(it->Handle), nullptr);
+                        vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::FRAMEBUFFER:
-                        vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(it->Handle), nullptr);
+                        vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::IMAGEVIEW:
-                        vkDestroyImageView(LogicalDevice, reinterpret_cast<VkImageView>(it->Handle), nullptr);
+                        vkDestroyImageView(LogicalDevice, reinterpret_cast<VkImageView>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::IMAGE:
-                        vkDestroyImage(LogicalDevice, reinterpret_cast<VkImage>(it->Handle), nullptr);
+                        vkDestroyImage(LogicalDevice, reinterpret_cast<VkImage>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::RENDERPASS:
-                        vkDestroyRenderPass(LogicalDevice, reinterpret_cast<VkRenderPass>(it->Handle), nullptr);
+                        vkDestroyRenderPass(LogicalDevice, reinterpret_cast<VkRenderPass>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::BUFFERMEMORY:
-                        vkFreeMemory(LogicalDevice, reinterpret_cast<VkDeviceMemory>(it->Handle), nullptr);
+                        vkFreeMemory(LogicalDevice, reinterpret_cast<VkDeviceMemory>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::BUFFER:
-                        vkDestroyBuffer(LogicalDevice, reinterpret_cast<VkBuffer>(it->Handle), nullptr);
+                        vkDestroyBuffer(LogicalDevice, reinterpret_cast<VkBuffer>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::PIPELINE_LAYOUT:
-                        vkDestroyPipelineLayout(LogicalDevice, reinterpret_cast<VkPipelineLayout>(it->Handle), nullptr);
+                        vkDestroyPipelineLayout(LogicalDevice, reinterpret_cast<VkPipelineLayout>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::PIPELINE:
-                        vkDestroyPipeline(LogicalDevice, reinterpret_cast<VkPipeline>(it->Handle), nullptr);
+                        vkDestroyPipeline(LogicalDevice, reinterpret_cast<VkPipeline>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
-                        vkDestroyDescriptorSetLayout(LogicalDevice, reinterpret_cast<VkDescriptorSetLayout>(it->Handle), nullptr);
+                        vkDestroyDescriptorSetLayout(LogicalDevice, reinterpret_cast<VkDescriptorSetLayout>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::DESCRIPTORPOOL:
-                        vkDestroyDescriptorPool(LogicalDevice, reinterpret_cast<VkDescriptorPool>(it->Handle), nullptr);
+                        vkDestroyDescriptorPool(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::SEMAPHORE:
-                        vkDestroySemaphore(LogicalDevice, reinterpret_cast<VkSemaphore>(it->Handle), nullptr);
+                        vkDestroySemaphore(LogicalDevice, reinterpret_cast<VkSemaphore>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::FENCE:
-                        vkDestroyFence(LogicalDevice, reinterpret_cast<VkFence>(it->Handle), nullptr);
+                        vkDestroyFence(LogicalDevice, reinterpret_cast<VkFence>(res_handle.Handle), nullptr);
                         break;
                     case Rendering::DeviceResourceType::DESCRIPTORSET:
                     {
-                        auto ds = reinterpret_cast<VkDescriptorSet>(it->Handle);
-                        vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(it->Data1), 1, &ds);
+                        auto ds = reinterpret_cast<VkDescriptorSet>(res_handle.Handle);
+                        vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Data1), 1, &ds);
                         break;
                     }
                 }
 
-                it = s_dirty_resource_collection.erase(it);
-            }
-            else
-            {
-                it = std::next(it);
+                m_dirty_resources.Remove(handle);
             }
         }
 
-        for (auto it = s_dirty_buffer_queue.begin(); it != s_dirty_buffer_queue.end();)
+        size_t dirty_buffer_count = m_dirty_buffers.Size();
+        for (int i = dirty_buffer_count - 1; i >= 0; --i)
         {
-            if (it->FrameIndex == CurrentFrameIndex)
+            auto handle = m_dirty_buffers.ConvertToHandle(i);
+            if (!handle.Valid())
             {
-                vmaDestroyBuffer(VmaAllocator, it->Handle, it->Allocation);
-                it = s_dirty_buffer_queue.erase(it);
+                continue;
             }
-            else
+
+            BufferView& buffer = m_dirty_buffers[handle];
+            if (buffer.FrameIndex == CurrentFrameIndex)
             {
-                it = std::next(it);
+                vmaDestroyBuffer(VmaAllocator, buffer.Handle, buffer.Allocation);
+                m_dirty_buffers.Remove(handle);
             }
         }
 
-        for (auto it = s_dirty_buffer_image_queue.begin(); it != s_dirty_buffer_image_queue.end();)
+        size_t dirty_buffer_image_count = m_dirty_buffer_images.Size();
+        for (int i = dirty_buffer_image_count - 1; i >= 0; --i)
         {
-
-            if (it->FrameIndex == CurrentFrameIndex)
+            auto handle = m_dirty_buffer_images.ConvertToHandle(i);
+            if (!handle.Valid())
             {
-                vkDestroyImageView(LogicalDevice, it->ViewHandle, nullptr);
-                vkDestroySampler(LogicalDevice, it->Sampler, nullptr);
-                vmaDestroyImage(VmaAllocator, it->Handle, it->Allocation);
-                it = s_dirty_buffer_image_queue.erase(it);
+                continue;
             }
-            else
+
+            BufferImage& buffer = m_dirty_buffer_images[handle];
+
+            if (buffer.FrameIndex == CurrentFrameIndex)
             {
-                it = std::next(it);
+                vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
+                vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
+                vmaDestroyImage(VmaAllocator, buffer.Handle, buffer.Allocation);
+
+                m_dirty_buffer_images.Remove(handle);
             }
         }
     }

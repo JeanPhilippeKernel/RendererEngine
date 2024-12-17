@@ -6,6 +6,7 @@
  * ^^^^ Headers above are not candidates for sorting by clang-format ^^^^^
  */
 #include <Hardwares/VulkanLayer.h>
+#include <Helpers/HandleManager.h>
 #include <Primitives/Fence.h>
 #include <Primitives/Semaphore.h>
 #include <Rendering/Buffers/CommandBuffer.h>
@@ -43,11 +44,10 @@ namespace ZEngine::Hardwares
 
     struct DirtyResource
     {
-        uint32_t                              FrameIndex = UINT32_MAX;
-        void*                                 Handle     = nullptr;
-        void*                                 Data1      = nullptr;
-        std::chrono::steady_clock::time_point MarkedAsDirtyTime;
-        Rendering::DeviceResourceType         Type;
+        uint32_t                      FrameIndex = UINT32_MAX;
+        void*                         Handle     = nullptr;
+        void*                         Data1      = nullptr;
+        Rendering::DeviceResourceType Type;
     };
 
     struct QueueView
@@ -181,34 +181,29 @@ namespace ZEngine::Hardwares
         void          NewFrame();
         void          Present();
         void          IncrementFrameImageCount();
-
         Rendering::Buffers::CommandBuffer* GetCommandBuffer(bool begin = true);
         Rendering::Buffers::CommandBuffer* GetInstantCommandBuffer(Rendering::QueueType type, bool begin = true);
         void                               EnqueueInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer, int wait_flag = 0);
         void                               EnqueueCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer);
 
     private:
-        VulkanLayer                                                                      m_layer{};
-        CommandBufferManager                                                             m_buffer_manager{};
-        std::map<Rendering::QueueType, VkQueue>                                          m_queue_map{};
-        Windows::CoreWindow*                                                             m_window{nullptr};
-        VkDebugUtilsMessengerEXT                                                         s_debug_messenger{VK_NULL_HANDLE};
-        std::map<uint32_t, std::vector<DirtyResource>>                                   s_deletion_resource_queue{};
-        std::deque<DirtyResource>                                                        s_dirty_resource_collection{};
-        std::deque<Rendering::Buffers::BufferView>                                       s_dirty_buffer_queue{};
-        std::deque<Rendering::Buffers::BufferImage>                                      s_dirty_buffer_image_queue{};
-        PFN_vkCreateDebugUtilsMessengerEXT                                               __createDebugMessengerPtr{VK_NULL_HANDLE};
-        PFN_vkDestroyDebugUtilsMessengerEXT                                              __destroyDebugMessengerPtr{VK_NULL_HANDLE};
-        std::mutex                                                                       s_queue_mutex;
-        std::mutex                                                                       s_deletion_queue_mutex;
-        std::map<Rendering::QueueType, std::map<uint32_t, std::vector<QueueSubmitInfo>>> s_queue_submit_info_pool;
-        void                                                                             __cleanupDirtyResource();
-        void                                                                             __cleanupBufferDirtyResource();
-        void                                                                             __cleanupBufferImageDirtyResource();
-        static VKAPI_ATTR VkBool32 VKAPI_CALL                                            __debugCallback(
-                                                       VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-                                                       VkDebugUtilsMessageTypeFlagsEXT             messageType,
-                                                       const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                                       void*                                       pUserData);
+        Windows::CoreWindow*                                    m_window{nullptr};
+        VulkanLayer                                             m_layer{};
+        CommandBufferManager                                    m_buffer_manager{};
+        std::map<Rendering::QueueType, VkQueue>                 m_queue_map{};
+        Helpers::HandleManager<DirtyResource>                   m_dirty_resources{30};
+        Helpers::HandleManager<Rendering::Buffers::BufferView>  m_dirty_buffers{30};
+        Helpers::HandleManager<Rendering::Buffers::BufferImage> m_dirty_buffer_images{30};
+        VkDebugUtilsMessengerEXT                                m_debug_messenger{VK_NULL_HANDLE};
+        PFN_vkCreateDebugUtilsMessengerEXT                      __createDebugMessengerPtr{VK_NULL_HANDLE};
+        PFN_vkDestroyDebugUtilsMessengerEXT                     __destroyDebugMessengerPtr{VK_NULL_HANDLE};
+        void                                                    __cleanupDirtyResource();
+        void                                                    __cleanupBufferDirtyResource();
+        void                                                    __cleanupBufferImageDirtyResource();
+        static VKAPI_ATTR VkBool32 VKAPI_CALL                   __debugCallback(
+                              VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
+                              VkDebugUtilsMessageTypeFlagsEXT             messageType,
+                              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                              void*                                       pUserData);
     };
 } // namespace ZEngine::Hardwares

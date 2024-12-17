@@ -39,7 +39,7 @@ namespace ZEngine::Helpers
         struct ArrayData
         {
             int Counter{-1};
-            T   Data{nullptr};
+            T   Data;
         };
 
         int32_t                   m_counter{-1};
@@ -127,6 +127,18 @@ namespace ZEngine::Helpers
                 }
             }
 
+            return handle;
+        }
+
+        Handle<T> ConvertToHandle(uint32_t index)
+        {
+            std::shared_lock<std::shared_mutex> lock(m_mutex);
+            Handle<T>                           handle{};
+            assert(index < m_count);
+
+            ArrayData data   = m_data[index];
+            handle.Index     = index;
+            handle.m_counter = data.Counter;
             return handle;
         }
 
