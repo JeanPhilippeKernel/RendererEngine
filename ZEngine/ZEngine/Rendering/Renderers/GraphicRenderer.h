@@ -108,7 +108,6 @@ namespace ZEngine::Rendering::Renderers
         std::mutex                                     m_mut;
         Helpers::Ref<Primitives::Fence>                m_transfer_fence;
         Helpers::Ref<Primitives::Semaphore>            m_transfer_semaphore;
-        Helpers::Ref<Pools::CommandPool>               m_command_pool;
         Helpers::ThreadSafeQueue<TextureFileRequest>   m_file_requests;
         Helpers::ThreadSafeQueue<TextureUploadRequest> m_upload_requests;
     };

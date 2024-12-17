@@ -77,13 +77,13 @@ namespace ZEngine::Hardwares
     struct CommandBufferManager
     {
         void                               Initialize(VulkanDevice* device, uint8_t swapchain_image_count = 3, int thread_count = 1);
+        void                               Deinitialize();
         Rendering::Buffers::CommandBuffer* GetCommandBuffer(uint8_t frame_index, bool begin = true);
         Rendering::Buffers::CommandBuffer* GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin = true);
         void                               EndInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer, VulkanDevice* const device, int wait_flag = 0);
         Rendering::Pools::CommandPool*     GetCommandPool(Rendering::QueueType type, uint8_t frame_index);
         int                                GetPoolFromIndex(Rendering::QueueType type, uint8_t index);
-
-        void ResetPool(int frame_index);
+        void                               ResetPool(int frame_index);
 
         VulkanDevice*                                                Device                  = nullptr;
         const int                                                    MaxBufferPerPool        = 4;
@@ -91,7 +91,7 @@ namespace ZEngine::Hardwares
         std::vector<Helpers::Ref<Rendering::Pools::CommandPool>>     TransferCommandPools    = {};
         std::vector<Helpers::Ref<Rendering::Buffers::CommandBuffer>> CommandBuffers          = {};
         std::vector<Helpers::Ref<Rendering::Buffers::CommandBuffer>> TransferCommandBuffers  = {};
-        int                                                          TotalCommandBufferCount = {0};
+        int                                                          TotalCommandBufferCount = 0;
 
     private:
         int                                            m_total_pool_count{0};
@@ -110,6 +110,7 @@ namespace ZEngine::Hardwares
         bool                                                         HasSeperateTransfertQueueFamily   = false;
         uint32_t                                                     SwapchainImageIndex               = std::numeric_limits<uint8_t>::max();
         uint32_t                                                     CurrentFrameIndex                 = std::numeric_limits<uint8_t>::max();
+        uint32_t                                                     PreviousFrameIndex                = std::numeric_limits<uint8_t>::max();
         uint32_t                                                     SwapchainImageCount               = 3;
         uint32_t                                                     SwapchainImageWidth               = std::numeric_limits<uint32_t>::max();
         uint32_t                                                     SwapchainImageHeight              = std::numeric_limits<uint32_t>::max();
@@ -131,7 +132,7 @@ namespace ZEngine::Hardwares
         std::vector<VkImage>                                         SwapchainImages                   = {};
         std::vector<VkImageView>                                     SwapchainImageViews               = {};
         std::vector<VkFramebuffer>                                   SwapchainFramebuffers             = {};
-        Helpers::Ref<Rendering::Primitives::Semaphore>               SwapchainAcquiredSemaphore       = {};
+        std::vector<Helpers::Ref<Rendering::Primitives::Semaphore>>  SwapchainAcquiredSemaphores       = {};
         std::vector<Helpers::Ref<Rendering::Primitives::Semaphore>>  SwapchainRenderCompleteSemaphores = {};
         std::vector<Helpers::Ref<Rendering::Primitives::Fence>>      SwapchainSignalFences             = {};
         std::vector<Rendering::Buffers::CommandBuffer*>              EnqueuedCommandbuffers            = {};

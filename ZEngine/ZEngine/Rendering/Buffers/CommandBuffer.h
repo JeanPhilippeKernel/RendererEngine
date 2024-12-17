@@ -42,43 +42,35 @@ namespace ZEngine::Rendering::Buffers
         Rendering::QueueType     QueueType;
         Hardwares::VulkanDevice* Device = nullptr;
 
-        void            Create();
-        void            Free();
-        VkCommandBuffer GetHandle() const;
-        void            Begin();
-        void            End();
-        bool            Completed();
-        bool            IsExecutable();
-        bool            IsRecording();
-        // void              Submit(bool as_instant_command = false, VkPipelineStageFlags wait_flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-        CommanBufferState GetState() const;
-        void              ResetState();
-        void              SetState(const CommanBufferState& state);
-
+        void                   Create();
+        void                   Free();
+        VkCommandBuffer        GetHandle() const;
+        void                   Begin();
+        void                   End();
+        bool                   Completed();
+        bool                   IsExecutable();
+        bool                   IsRecording();
+        CommanBufferState      GetState() const;
+        void                   ResetState();
+        void                   SetState(const CommanBufferState& state);
         void                   SetSignalFence(const Helpers::Ref<Primitives::Fence>& semaphore);
         void                   SetSignalSemaphore(const Helpers::Ref<Primitives::Semaphore>& semaphore);
         Primitives::Semaphore* GetSignalSemaphore() const;
         Primitives::Fence*     GetSignalFence();
-
-        void ClearColor(float r, float g, float b, float a);
-        void ClearDepth(float depth_color, uint32_t stencil);
-
-        void BeginRenderPass(const Helpers::Ref<Renderers::RenderPasses::RenderPass>&);
-        void EndRenderPass();
-        void BindDescriptorSets(uint32_t frame_index = 0);
-        void BindDescriptorSet(const VkDescriptorSet& descriptor);
-        void DrawIndirect(const Buffers::IndirectBuffer& buffer);
-        void DrawIndexedIndirect(const Buffers::IndirectBuffer& buffer, uint32_t count);
-        void DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
-
-        void TransitionImageLayout(const Primitives::ImageMemoryBarrier& image_barrier);
-
+        void                   ClearColor(float r, float g, float b, float a);
+        void                   ClearDepth(float depth_color, uint32_t stencil);
+        void                   BeginRenderPass(const Helpers::Ref<Renderers::RenderPasses::RenderPass>&);
+        void                   EndRenderPass();
+        void                   BindDescriptorSets(uint32_t frame_index = 0);
+        void                   BindDescriptorSet(const VkDescriptorSet& descriptor);
+        void                   DrawIndirect(const Buffers::IndirectBuffer& buffer);
+        void                   DrawIndexedIndirect(const Buffers::IndirectBuffer& buffer, uint32_t count);
+        void                   DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
+        void                   TransitionImageLayout(const Primitives::ImageMemoryBarrier& image_barrier);
         void CopyBufferToImage(const BufferView& source, BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout);
-
         void BindVertexBuffer(const Buffers::VertexBuffer& buffer);
         void BindIndexBuffer(const Buffers::IndexBuffer& buffer, VkIndexType type);
         void SetScissor(const VkRect2D& scissor);
-
         void PushConstants(VkShaderStageFlags stage_flags, uint32_t offset, uint32_t size, const void* data);
 
     private:

@@ -7,7 +7,6 @@ namespace ZEngine::Rendering::Buffers
 {
     struct Image2DBuffer : public Helpers::RefCounted
     {
-        Image2DBuffer() = default;
         Image2DBuffer(Hardwares::VulkanDevice* device, const Specifications::Image2DBufferSpecification& spec);
         ~Image2DBuffer();
 

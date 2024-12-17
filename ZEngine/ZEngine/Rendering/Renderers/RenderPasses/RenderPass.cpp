@@ -765,16 +765,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     Specifications::RenderPassSpecification RenderPassBuilder::Detach()
     {
-        auto spec = m_spec;
-        m_spec    = {};
+        RenderPassSpecification spec{};
+        std::swap(spec, m_spec);
         return spec;
-    }
-
-    Ref<RenderPass> RenderPassBuilder::Create()
-    {
-        // auto pass = RenderPass::Create(m_spec);
-        // m_spec    = {};
-        // return pass;
-        return nullptr;
     }
 } // namespace ZEngine::Rendering::Renderers::RenderPasses

@@ -184,24 +184,14 @@ namespace Tetragrama::Layers
 
     void ImguiLayer::Render(Rendering::Renderers::GraphicRenderer* const renderer, Rendering::Buffers::CommandBuffer* const command_buffer)
     {
-        if (auto window_ptr = m_window.lock())
+        renderer->ImguiRenderer->BeginFrame();
+        for (const auto& component : m_ui_components)
         {
-            if (window_ptr->IsMinimized())
+            if (component->GetVisibility() == true)
             {
-                return;
+                component->Render(renderer, command_buffer);
             }
-
-            renderer->ImguiRenderer->BeginFrame(command_buffer);
-
-            for (const auto& component : m_ui_components)
-            {
-                if (component->GetVisibility() == true)
-                {
-                    component->Render(renderer, command_buffer);
-                }
-            }
-            renderer->ImguiRenderer->Draw(command_buffer, renderer->Device->CurrentFrameIndex);
-            renderer->ImguiRenderer->EndFrame(command_buffer, renderer->Device->CurrentFrameIndex);
         }
+        renderer->ImguiRenderer->EndFrame(command_buffer, renderer->Device->CurrentFrameIndex);
     }
 } // namespace Tetragrama::Layers

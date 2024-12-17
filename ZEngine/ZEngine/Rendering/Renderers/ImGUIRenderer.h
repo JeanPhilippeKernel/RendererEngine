@@ -3,7 +3,6 @@
 #include <Rendering/Buffers/IndexBuffer.h>
 #include <Rendering/Buffers/VertexBuffer.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
-#include <Rendering/Swapchain.h>
 #include <ZEngineDef.h>
 
 namespace ZEngine::Rendering::Renderers
@@ -15,8 +14,7 @@ namespace ZEngine::Rendering::Renderers
 
         void StyleDarkTheme();
 
-        void BeginFrame(Rendering::Buffers::CommandBuffer* const command_buffer);
-        void Draw(Rendering::Buffers::CommandBuffer* const commandbuffer, uint32_t frame_index);
+        void BeginFrame();
         void EndFrame(Rendering::Buffers::CommandBuffer* const command_buffer, uint32_t frame_index);
 
         VkDescriptorSet UpdateFrameOutput(const Buffers::BufferImage& buffer);
@@ -28,6 +26,7 @@ namespace ZEngine::Rendering::Renderers
         Helpers::Ref<Buffers::VertexBufferSet> m_vertex_buffer;
         Helpers::Ref<Buffers::IndexBufferSet>  m_index_buffer;
         Helpers::Ref<RenderPasses::RenderPass> m_ui_pass;
+        Helpers::Ref<Textures::Texture>        m_font_texture;
     };
 
 } // namespace ZEngine::Rendering::Renderers

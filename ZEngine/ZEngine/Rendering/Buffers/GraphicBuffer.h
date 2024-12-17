@@ -3,6 +3,7 @@
 #include <ZEngineDef.h>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
+#include <limits>
 #include <span>
 #include <type_traits>
 #include <vector>
@@ -16,7 +17,7 @@ namespace ZEngine::Rendering::Buffers
 {
     struct BufferView
     {
-        uint8_t       FrameIndex;
+        uint8_t       FrameIndex{std::numeric_limits<uint8_t>::max()};
         VkBuffer      Handle{VK_NULL_HANDLE};
         VmaAllocation Allocation{nullptr};
 
@@ -28,7 +29,7 @@ namespace ZEngine::Rendering::Buffers
 
     struct BufferImage
     {
-        uint8_t       FrameIndex;
+        uint8_t       FrameIndex{std::numeric_limits<uint8_t>::max()};
         VkImage       Handle{VK_NULL_HANDLE};
         VkImageView   ViewHandle{VK_NULL_HANDLE};
         VkSampler     Sampler{VK_NULL_HANDLE};
@@ -83,7 +84,7 @@ namespace ZEngine::Rendering::Buffers
         {
             for (int i = 0; i < count; ++i)
             {
-                m_set.emplace_back(T(device));
+                m_set.emplace_back(device);
             }
         }
 

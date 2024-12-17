@@ -219,7 +219,6 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->ClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         command_buffer->ClearDepth(1.0f, 0);
 
-        command_buffer->Begin();
         for (auto& node_name : m_sorted_nodes)
         {
             auto& node = m_node[node_name];
@@ -299,7 +298,6 @@ namespace ZEngine::Rendering::Renderers
             }
             node.CallbackPass->Execute(frame_index, scene_data, node.Handle.get(), command_buffer, this);
         }
-        command_buffer->End();
     }
 
     void RenderGraph::Resize(uint32_t width, uint32_t height)

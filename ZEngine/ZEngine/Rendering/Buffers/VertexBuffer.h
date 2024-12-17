@@ -32,14 +32,13 @@ namespace ZEngine::Rendering::Buffers
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
             }
 
-            auto                  allocator = m_device->VmaAllocator;
             VkMemoryPropertyFlags mem_prop_flags;
-            vmaGetAllocationMemoryProperties(allocator, m_vertex_buffer.Allocation, &mem_prop_flags);
+            vmaGetAllocationMemoryProperties(m_device->VmaAllocator, m_vertex_buffer.Allocation, &mem_prop_flags);
 
             if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
             {
                 VmaAllocationInfo allocation_info = {};
-                vmaGetAllocationInfo(allocator, m_vertex_buffer.Allocation, &allocation_info);
+                vmaGetAllocationInfo(m_device->VmaAllocator, m_vertex_buffer.Allocation, &allocation_info);
                 if (data && allocation_info.pMappedData)
                 {
                     ZENGINE_VALIDATE_ASSERT(
@@ -55,7 +54,7 @@ namespace ZEngine::Rendering::Buffers
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
                 VmaAllocationInfo allocation_info = {};
-                vmaGetAllocationInfo(allocator, staging_buffer.Allocation, &allocation_info);
+                vmaGetAllocationInfo(m_device->VmaAllocator, staging_buffer.Allocation, &allocation_info);
 
                 if (data && allocation_info.pMappedData)
                 {
@@ -63,7 +62,8 @@ namespace ZEngine::Rendering::Buffers
                         Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS,
                         "Failed to perform memory copy operation")
                     ZENGINE_VALIDATE_ASSERT(
-                        vmaFlushAllocation(allocator, staging_buffer.Allocation, 0, static_cast<VkDeviceSize>(this->m_byte_size)) == VK_SUCCESS, "Failed to flush allocation")
+                        vmaFlushAllocation(m_device->VmaAllocator, staging_buffer.Allocation, 0, static_cast<VkDeviceSize>(this->m_byte_size)) == VK_SUCCESS,
+                        "Failed to flush allocation")
                     m_device->CopyBuffer(staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
                 }
 
@@ -115,14 +115,6 @@ namespace ZEngine::Rendering::Buffers
     };
 
     using VertexBufferSet = IBufferSet<VertexBuffer>;
-
-    // template <>
-    // template <typename K>
-    // inline void VertexBufferSet::SetData<K>(uint32_t index, std::span<const K> data)
-    //{
-    //     ZENGINE_VALIDATE_ASSERT(index < m_set.size(), "Index out of range")
-    //     m_set[index].SetData(data);
-    // }
 
     template <>
     inline void VertexBufferSet::Dispose()

@@ -109,7 +109,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder& UseSwapchainAsRenderTarget();
 
         Specifications::RenderPassSpecification Detach();
-        Helpers::Ref<RenderPass>                Create();
 
     private:
         Specifications::RenderPassSpecification m_spec{};

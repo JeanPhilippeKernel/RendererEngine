@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Buffers
             image_create_flag = Specifications::ImageCreateFlag::CUBE_COMPATIBLE_BIT;
         }
 
-        m_buffer_image = m_device->VulkanDevice::CreateImage(
+        m_buffer_image = m_device->CreateImage(
             m_width,
             m_height,
             VK_IMAGE_TYPE_2D,
@@ -34,6 +34,7 @@ namespace ZEngine::Rendering::Buffers
             spec.ImageAspectFlag,
             spec.LayerCount,
             Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)]);
+        m_buffer_image.FrameIndex = m_device->CurrentFrameIndex;
     }
 
     Image2DBuffer::~Image2DBuffer()

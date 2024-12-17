@@ -84,7 +84,10 @@ namespace ZEngine::Hardwares
         {
             for (const auto& extension : layer.ExtensionCollection)
             {
-                enabled_extension_layer_name_collection.push_back(extension.extensionName);
+                if (std::string_view(extension.extensionName) == "VK_EXT_validation_features" || std::string_view(extension.extensionName) == "VK_EXT_layer_settings")
+                    continue;
+                else
+                    enabled_extension_layer_name_collection.push_back(extension.extensionName);
             }
         }
 
@@ -356,21 +359,16 @@ namespace ZEngine::Hardwares
         attachment_specification.ColorsMap[0].Initial                    = ImageLayout::UNDEFINED;
         attachment_specification.ColorsMap[0].Final                      = ImageLayout::PRESENT_SRC;
         attachment_specification.ColorsMap[0].ReferenceLayout            = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-        attachment_specification.DependenciesMap[0]                      = {};
-        attachment_specification.DependenciesMap[0].srcSubpass           = VK_SUBPASS_EXTERNAL;
-        attachment_specification.DependenciesMap[0].dstSubpass           = 0;
-        attachment_specification.DependenciesMap[0].srcStageMask         = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        attachment_specification.DependenciesMap[0].dstStageMask         = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        attachment_specification.DependenciesMap[0].srcAccessMask        = 0;
-        attachment_specification.DependenciesMap[0].dstAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         SwapchainAttachment                                              = CreateRef<Rendering::Renderers::RenderPasses::Attachment>(this, attachment_specification);
+        PreviousFrameIndex                                               = 0;
         CurrentFrameIndex                                                = 0;
-        SwapchainAcquiredSemaphore                                       = CreateRef<Primitives::Semaphore>(this);
 
         SwapchainRenderCompleteSemaphores.resize(SwapchainImageCount);
+        SwapchainAcquiredSemaphores.resize(SwapchainImageCount);
         SwapchainSignalFences.resize(SwapchainImageCount);
         for (int i = 0; i < SwapchainImageCount; ++i)
         {
+            SwapchainAcquiredSemaphores[i]       = CreateRef<Primitives::Semaphore>(this);
             SwapchainRenderCompleteSemaphores[i] = CreateRef<Primitives::Semaphore>(this);
             SwapchainSignalFences[i]             = CreateRef<Primitives::Fence>(this, true);
         }
@@ -380,6 +378,19 @@ namespace ZEngine::Hardwares
     void VulkanDevice::Deinitialize()
     {
         QueueWaitAll();
+
+        ZENGINE_CLEAR_STD_VECTOR(EnqueuedCommandbuffers)
+        ZENGINE_CLEAR_STD_VECTOR(SwapchainSignalFences)
+        ZENGINE_CLEAR_STD_VECTOR(SwapchainAcquiredSemaphores)
+        ZENGINE_CLEAR_STD_VECTOR(SwapchainRenderCompleteSemaphores)
+
+        DisposeSwapchain();
+        SwapchainAttachment->Dispose();
+        ZENGINE_CLEAR_STD_VECTOR(SwapchainImageViews)
+        ZENGINE_CLEAR_STD_VECTOR(SwapchainFramebuffers)
+        ZENGINE_CLEAR_STD_VECTOR(SwapchainImages)
+
+        m_buffer_manager.Deinitialize();
 
         while (!s_dirty_buffer_queue.empty())
         {
@@ -397,6 +408,7 @@ namespace ZEngine::Hardwares
         }
 
         s_queue_submit_info_pool.clear();
+
         ZENGINE_DESTROY_VULKAN_HANDLE(Instance, vkDestroySurfaceKHR, Surface, nullptr)
     }
 
@@ -423,21 +435,24 @@ namespace ZEngine::Hardwares
         Rendering::Primitives::Semaphore* const signal_semaphore,
         Rendering::Primitives::Fence* const     fence)
     {
-        ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
         ZENGINE_VALIDATE_ASSERT(fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
 
-        VkSemaphore     semaphores[] = {signal_semaphore->GetHandle()};
-        VkCommandBuffer buffers[]    = {command_buffer->GetHandle()};
-        VkSubmitInfo    submit_info  = {
-                .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                .pNext                = nullptr,
-                .waitSemaphoreCount   = 0,
-                .pWaitSemaphores      = nullptr,
-                .pWaitDstStageMask    = &wait_stage_flag,
-                .commandBufferCount   = 1,
-                .pCommandBuffers      = buffers,
-                .signalSemaphoreCount = 1,
-                .pSignalSemaphores    = semaphores,
+        // Todo : Think of a way to signal/wait the same  semaphore signal_semaphore
+        ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
+
+        VkPipelineStageFlags flags[] = {command_buffer->QueueType == QueueType::GRAPHIC_QUEUE ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT};
+        VkSemaphore          semaphores[] = {signal_semaphore->GetHandle()};
+        VkCommandBuffer      buffers[]    = {command_buffer->GetHandle()};
+        VkSubmitInfo         submit_info  = {
+                     .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                     .pNext                = nullptr,
+                     .waitSemaphoreCount   = 0,
+                     .pWaitSemaphores      = nullptr,
+                     .pWaitDstStageMask    = flags,
+                     .commandBufferCount   = 1,
+                     .pCommandBuffers      = buffers,
+                     .signalSemaphoreCount = 0,
+                     .pSignalSemaphores    = 0,
         };
 
         ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, fence->GetHandle()) == VK_SUCCESS, "Failed to submit queue")
@@ -505,8 +520,9 @@ namespace ZEngine::Hardwares
         {
             std::lock_guard lock(s_deletion_queue_mutex);
 
-            buffer.FrameIndex = CurrentFrameIndex;
-            // buffer.MarkedAsDirtyTime = std::chrono::steady_clock::now();
+            // buffer.FrameIndex = CurrentFrameIndex;
+            //  buffer.MarkedAsDirtyTime = std::chrono::steady_clock::now();
+            ZENGINE_VALIDATE_ASSERT(buffer.FrameIndex != std::numeric_limits<uint8_t>::max(), "")
             s_dirty_buffer_queue.push_back(buffer);
         }
     }
@@ -516,8 +532,9 @@ namespace ZEngine::Hardwares
         {
             std::lock_guard lock(s_deletion_queue_mutex);
 
-            buffer.FrameIndex = CurrentFrameIndex;
-            // buffer.MarkedAsDirtyTime = std::chrono::steady_clock::now();
+            // buffer.FrameIndex = CurrentFrameIndex;
+            //  buffer.MarkedAsDirtyTime = std::chrono::steady_clock::now();
+            ZENGINE_VALIDATE_ASSERT(buffer.FrameIndex != std::numeric_limits<uint8_t>::max(), "")
             s_dirty_buffer_image_queue.push_back(buffer);
         }
     }
@@ -677,6 +694,10 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(
             vmaCreateBuffer(VmaAllocator, &buffer_create_info, &allocation_create_info, &(buffer_view.Handle), &(buffer_view.Allocation), nullptr) == VK_SUCCESS,
             "Failed to create buffer");
+
+        // Metadata info
+        buffer_view.FrameIndex = CurrentFrameIndex;
+
         return buffer_view;
     }
 
@@ -737,6 +758,10 @@ namespace ZEngine::Hardwares
 
         buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_view_type, image_aspect_flag, layer_count);
         buffer_image.Sampler    = CreateImageSampler();
+
+        // Metadata info
+        buffer_image.FrameIndex = CurrentFrameIndex;
+
         return buffer_image;
     }
 
@@ -842,8 +867,6 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::CreateSwapchain()
     {
-        QueueWait(QueueType::GRAPHIC_QUEUE);
-
         VkSurfaceCapabilitiesKHR capabilities{};
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(PhysicalDevice, Surface, &capabilities);
         if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
@@ -907,18 +930,16 @@ namespace ZEngine::Hardwares
                 command_buffer->TransitionImageLayout(barrier);
             }
         }
-        EnqueueInstantCommandBuffer(command_buffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        EnqueueInstantCommandBuffer(command_buffer);
 
         SwapchainImageViews.resize(SwapchainImageCount);
         SwapchainFramebuffers.resize(SwapchainImageCount);
 
         for (int i = 0; i < SwapchainImageCount; ++i)
         {
-            SwapchainImageViews[i]               = CreateImageView(SwapchainImages[i], SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
-            SwapchainFramebuffers[i]             = CreateFramebuffer({SwapchainImageViews[i]}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
+            SwapchainImageViews[i]   = CreateImageView(SwapchainImages[i], SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+            SwapchainFramebuffers[i] = CreateFramebuffer({SwapchainImageViews[i]}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
         }
-
-        QueueWait(QueueType::GRAPHIC_QUEUE);
     }
 
     void VulkanDevice::ResizeSwapchain()
@@ -949,19 +970,22 @@ namespace ZEngine::Hardwares
         ZENGINE_CLEAR_STD_VECTOR(SwapchainFramebuffers)
         ZENGINE_CLEAR_STD_VECTOR(SwapchainImages)
 
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainRenderCompleteSemaphores)
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainSignalFences)
-
         ZENGINE_DESTROY_VULKAN_HANDLE(LogicalDevice, vkDestroySwapchainKHR, SwapchainHandle, nullptr)
     }
 
     void VulkanDevice::NewFrame()
     {
-        Primitives::Fence*     signal_fence       = SwapchainSignalFences[CurrentFrameIndex].get();
-        signal_fence->Wait(UINT64_MAX);
-        signal_fence->Reset();
+        Primitives::Fence* signal_fence = SwapchainSignalFences[CurrentFrameIndex].get();
+        if (!signal_fence->IsSignaled())
+        {
+            if (!signal_fence->Wait(UINT64_MAX))
+            {
+                return;
+            }
+        }
 
-        Primitives::Semaphore* acquired_semaphore = SwapchainAcquiredSemaphore.get();
+        signal_fence->Reset();
+        Primitives::Semaphore* acquired_semaphore = SwapchainAcquiredSemaphores[CurrentFrameIndex].get();
         ZENGINE_VALIDATE_ASSERT(acquired_semaphore->GetState() != Primitives::SemaphoreState::Submitted, "")
 
         VkResult acquire_image_result = vkAcquireNextImageKHR(LogicalDevice, SwapchainHandle, UINT64_MAX, acquired_semaphore->GetHandle(), VK_NULL_HANDLE, &SwapchainImageIndex);
@@ -977,7 +1001,7 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::Present()
     {
-        Primitives::Semaphore* acquired_semaphore        = SwapchainAcquiredSemaphore.get();
+        Primitives::Semaphore* acquired_semaphore        = SwapchainAcquiredSemaphores[CurrentFrameIndex].get();
         Primitives::Semaphore* render_complete_semaphore = SwapchainRenderCompleteSemaphores[CurrentFrameIndex].get();
         Primitives::Fence*     signal_fence              = SwapchainSignalFences[CurrentFrameIndex].get();
 
@@ -1006,8 +1030,8 @@ namespace ZEngine::Hardwares
                             .signalSemaphoreCount = 1,
                             .pSignalSemaphores    = signal_semaphores};
 
-        vkQueueSubmit(queue, 1, &(submit_info), signal_fence->GetHandle());
-        //ZENGINE_VALIDATE_ASSERT( == VK_SUCCESS, "Failed to submit queue")
+        auto submit = vkQueueSubmit(queue, 1, &(submit_info), signal_fence->GetHandle());
+        ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
 
         for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
         {
@@ -1030,22 +1054,19 @@ namespace ZEngine::Hardwares
 
         VkResult present_result    = vkQueuePresentKHR(queue, &present_info);
         EnqueuedCommandbufferIndex = 0;
+        acquired_semaphore->SetState(SemaphoreState::Idle);
+        render_complete_semaphore->SetState(SemaphoreState::Idle);
 
         if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
         {
             ResizeSwapchain();
             IncrementFrameImageCount();
-
-            acquired_semaphore->SetState(SemaphoreState::Idle);
-            render_complete_semaphore->SetState(SemaphoreState::Idle);
             return;
         }
 
         ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS, "Failed to present current frame on Window")
 
-        acquired_semaphore->SetState(SemaphoreState::Idle);
-        render_complete_semaphore->SetState(SemaphoreState::Idle);
-
+        IncrementFrameImageCount();
         /*
          * Cleanup current Frame allocated resource
          */
@@ -1125,6 +1146,7 @@ namespace ZEngine::Hardwares
 
         for (auto it = s_dirty_buffer_image_queue.begin(); it != s_dirty_buffer_image_queue.end();)
         {
+
             if (it->FrameIndex == CurrentFrameIndex)
             {
                 vkDestroyImageView(LogicalDevice, it->ViewHandle, nullptr);
@@ -1138,12 +1160,12 @@ namespace ZEngine::Hardwares
             }
         }
 
-        IncrementFrameImageCount();
     }
 
     void VulkanDevice::IncrementFrameImageCount()
     {
-        CurrentFrameIndex = (CurrentFrameIndex + 1) % SwapchainImageCount;
+        PreviousFrameIndex = CurrentFrameIndex;
+        CurrentFrameIndex  = (CurrentFrameIndex + 1) % SwapchainImageCount;
     }
 
     Rendering::Buffers::CommandBuffer* VulkanDevice::GetCommandBuffer(bool begin)
@@ -1174,7 +1196,7 @@ namespace ZEngine::Hardwares
         Device                  = device;
         m_total_pool_count      = swapchain_image_count * thread_count;
         TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
-        m_instant_fence         = CreateRef<Primitives::Fence>(device, true);
+        m_instant_fence         = CreateRef<Primitives::Fence>(device);
         m_instant_semaphore     = CreateRef<Primitives::Semaphore>(device);
 
         CommandPools.resize(m_total_pool_count, nullptr);
@@ -1188,7 +1210,7 @@ namespace ZEngine::Hardwares
         {
             int   pool_index  = GetPoolFromIndex(Rendering::QueueType::GRAPHIC_QUEUE, i);
             auto& pool        = CommandPools.at(pool_index);
-            CommandBuffers[i] = CreateRef<Rendering::Buffers::CommandBuffer>(device, pool->Handle, pool->QueueType, false);
+            CommandBuffers[i] = CreateRef<Rendering::Buffers::CommandBuffer>(device, pool->Handle, pool->QueueType, /*(i % MaxBufferPerPool) == 0 ? false : true */ false);
         }
 
         if (Device->HasSeperateTransfertQueueFamily)
@@ -1204,16 +1226,25 @@ namespace ZEngine::Hardwares
             {
                 int   pool_index          = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
                 auto& pool                = TransferCommandPools.at(pool_index);
-                TransferCommandBuffers[i] = CreateRef<Rendering::Buffers::CommandBuffer>(device, pool->Handle, pool->QueueType, false);
+                TransferCommandBuffers[i] = CreateRef<Rendering::Buffers::CommandBuffer>(device, pool->Handle, pool->QueueType, true);
             }
         }
     }
 
+    void CommandBufferManager::Deinitialize()
+    {
+        m_instant_semaphore.reset();
+        m_instant_fence.reset();
+        ZENGINE_CLEAR_STD_VECTOR(CommandBuffers)
+        ZENGINE_CLEAR_STD_VECTOR(TransferCommandBuffers)
+
+        ZENGINE_CLEAR_STD_VECTOR(CommandPools)
+        ZENGINE_CLEAR_STD_VECTOR(TransferCommandPools)
+    }
+
     Rendering::Buffers::CommandBuffer* CommandBufferManager::GetCommandBuffer(uint8_t frame_index, bool begin)
     {
-        CommandBuffer* buffer       = nullptr;
-        int            buffer_index = frame_index * MaxBufferPerPool;
-        buffer                      = CommandBuffers[buffer_index].get();
+        CommandBuffer* buffer = CommandBuffers[frame_index * MaxBufferPerPool].get();
 
         if (begin)
         {
@@ -1225,20 +1256,7 @@ namespace ZEngine::Hardwares
 
     Rendering::Buffers::CommandBuffer* CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin)
     {
-        int            buffer_index = (type == QueueType::GRAPHIC_QUEUE) ? (frame_index * MaxBufferPerPool) + 1 : (frame_index * MaxBufferPerPool);
-        CommandBuffer* buffer       = (type == QueueType::GRAPHIC_QUEUE) ? CommandBuffers[buffer_index].detach() : TransferCommandBuffers[buffer_index].detach();
-
-        int pool_index = GetPoolFromIndex(type, frame_index);
-        if (type == QueueType::GRAPHIC_QUEUE)
-        {
-            auto& pool                   = CommandPools.at(pool_index);
-            CommandBuffers[buffer_index] = new CommandBuffer(Device, pool->Handle, pool->QueueType, false);
-        }
-        else
-        {
-            auto& pool                           = TransferCommandPools.at(pool_index);
-            TransferCommandBuffers[buffer_index] = new CommandBuffer(Device, pool->Handle, pool->QueueType, false);
-        }
+        CommandBuffer* buffer = (type == QueueType::TRANSFER_QUEUE) ? TransferCommandBuffers[frame_index].get() : CommandBuffers[(frame_index * MaxBufferPerPool) + 1].get();
 
         std::unique_lock l(m_instant_command_mutex);
         m_cond.wait(l, [this] {
@@ -1261,8 +1279,6 @@ namespace ZEngine::Hardwares
         {
             std::unique_lock l(m_instant_command_mutex);
             m_executing_instant_command = false;
-            Ref<Buffers::CommandBuffer> buf;
-            buf.attach(buffer);
         }
 
         m_cond.notify_one();

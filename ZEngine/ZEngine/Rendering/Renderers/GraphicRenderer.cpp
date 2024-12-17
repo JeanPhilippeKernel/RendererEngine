@@ -48,7 +48,7 @@ namespace ZEngine::Rendering::Renderers
          * Sub Renderer Initialization
          */
         m_resource_loader->Initialize(this);
-        m_resource_loader->Start();
+        // m_resource_loader->Start();
 
         SceneRenderer->Initialize(this);
         ImguiRenderer->Initialize(this);
@@ -186,6 +186,7 @@ namespace ZEngine::Rendering::Renderers
     {
         auto                buffer_size    = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
         Buffers::BufferView staging_buffer = Device->CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        staging_buffer.FrameIndex          = Device->CurrentFrameIndex;
         Device->MapAndCopyToMemory(staging_buffer, buffer_size, spec.Data);
 
         uint32_t storage_bit   = spec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;
@@ -244,7 +245,7 @@ namespace ZEngine::Rendering::Renderers
                 Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
                 command_buffer->TransitionImageLayout(barrier_1);
             }
-            Device->EnqueueInstantCommandBuffer(command_buffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+            Device->EnqueueInstantCommandBuffer(command_buffer);
         }
 
         Device->EnqueueBufferForDeletion(staging_buffer);
@@ -300,8 +301,8 @@ namespace ZEngine::Rendering::Renderers
     //
     void AsyncResourceLoader::Initialize(GraphicRenderer* renderer)
     {
-        Renderer             = renderer;
-        m_command_pool       = CreateRef<Pools::CommandPool>(renderer->Device, QueueType::TRANSFER_QUEUE);
+        Renderer = renderer;
+        // m_command_pool       = CreateRef<Pools::CommandPool>(renderer->Device, QueueType::TRANSFER_QUEUE);
         m_transfer_fence     = CreateRef<Primitives::Fence>(renderer->Device, true);
         m_transfer_semaphore = CreateRef<Primitives::Semaphore>(renderer->Device);
     }
@@ -438,6 +439,9 @@ namespace ZEngine::Rendering::Renderers
             std::lock_guard lock(m_mut);
             m_running = false;
         }
+        m_transfer_fence.reset();
+        m_transfer_semaphore.reset();
+        // m_command_pool.reset();
     }
 
     void AsyncResourceLoader::CreateTextureFileRequest(std::string_view file, const Textures::TextureHandle& handle)

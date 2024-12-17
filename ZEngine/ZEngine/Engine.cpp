@@ -32,6 +32,8 @@ namespace ZEngine
             window->Deinitialize();
         }
         g_renderer->Deinitialize();
+        g_renderer.reset();
+
         g_device->Deinitialize();
     }
 
@@ -41,6 +43,7 @@ namespace ZEngine
 
         Logging::Logger::Dispose();
         g_device->Dispose();
+        g_device.reset();
         ZENGINE_CORE_INFO("Engine destroyed")
     }
 
