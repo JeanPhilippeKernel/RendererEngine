@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Renderers
         void BeginFrame();
         void EndFrame(Rendering::Buffers::CommandBuffer* const command_buffer, uint32_t frame_index);
 
-        VkDescriptorSet UpdateFrameOutput(const Buffers::BufferImage& buffer);
+        VkDescriptorSet UpdateFrameOutput(const Textures::TextureHandle& handle);
 
     private:
         VkDescriptorSet                        m_frame_output{VK_NULL_HANDLE};

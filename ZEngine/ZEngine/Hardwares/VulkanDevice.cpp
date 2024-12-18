@@ -438,7 +438,7 @@ namespace ZEngine::Hardwares
                      .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                      .pNext                = nullptr,
                      .waitSemaphoreCount   = 0,
-                     .pWaitSemaphores      = nullptr,
+                     .pWaitSemaphores      = 0,
                      .pWaitDstStageMask    = flags,
                      .commandBufferCount   = 1,
                      .pCommandBuffers      = buffers,

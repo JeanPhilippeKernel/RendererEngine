@@ -324,8 +324,11 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Buffers::BufferImage& buffer)
+    VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Textures::TextureHandle& handle)
     {
+        auto& global_textures = *(m_renderer->GlobalTextures);
+        auto  buffer          = global_textures[handle]->ImageBuffer->GetBuffer();
+
         VkDescriptorImageInfo desc_image[1] = {};
         desc_image[0].sampler               = buffer.Sampler;
         desc_image[0].imageView             = buffer.ViewHandle;

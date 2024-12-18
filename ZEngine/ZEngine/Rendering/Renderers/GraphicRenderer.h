@@ -79,15 +79,11 @@ namespace ZEngine::Rendering::Renderers
         Helpers::Ref<Textures::Texture>        CreateTexture(const Specifications::TextureSpecification& spec);
         Helpers::Ref<Textures::Texture>        CreateTexture(uint32_t width, uint32_t height);
         Helpers::Ref<Textures::Texture>        CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a);
-        Textures::TextureHandle                AddTexture(std::string_view filename);
-        void                                   AddTextureToUpdate(UpdateTextureRequest&& req);
+        Textures::TextureHandle                LoadTextureFile(std::string_view filename);
 
     private:
-        Helpers::Ref<Buffers::UniformBufferSet>        m_UBCamera;
-        Helpers::Ref<AsyncResourceLoader>              m_resource_loader;
-        Helpers::ThreadSafeQueue<UpdateTextureRequest> m_update_texture_request;
-        Helpers::Ref<Primitives::Fence>                m_transfer_fence;
-        Helpers::Ref<Primitives::Semaphore>            m_transfer_semaphore;
+        Helpers::Ref<Buffers::UniformBufferSet> m_UBCamera;
+        Helpers::Ref<AsyncResourceLoader>       m_resource_loader;
     };
 
     struct AsyncResourceLoader : public Helpers::RefCounted
@@ -98,16 +94,14 @@ namespace ZEngine::Rendering::Renderers
         void Shutdown();
         void Start();
 
-        void CreateTextureFileRequest(std::string_view file, const Textures::TextureHandle& handle);
+        void EnqueueTextureRequest(std::string_view file, const Textures::TextureHandle& handle);
 
     private:
         void Run();
 
     private:
-        std::atomic_bool                               m_running{true};
-        std::mutex                                     m_mut;
-        Helpers::Ref<Primitives::Fence>                m_transfer_fence;
-        Helpers::Ref<Primitives::Semaphore>            m_transfer_semaphore;
+        std::atomic_bool                               m_cancellation_token{false};
+        Helpers::ThreadSafeQueue<UpdateTextureRequest> m_update_texture_request;
         Helpers::ThreadSafeQueue<TextureFileRequest>   m_file_requests;
         Helpers::ThreadSafeQueue<TextureUploadRequest> m_upload_requests;
     };

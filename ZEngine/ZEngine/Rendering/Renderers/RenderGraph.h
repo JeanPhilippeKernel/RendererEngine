@@ -34,7 +34,7 @@ namespace ZEngine::Rendering::Renderers
     {
         bool                                     External = false;
         Specifications::TextureSpecification     TextureSpec;
-        Helpers::Ref<Textures::Texture>          TextureHandle;
+        Textures::TextureHandle                  TextureHandle;
         Helpers::Ref<Buffers::UniformBufferSet>  UniformBufferSetHandle;
         Helpers::Ref<Buffers::StorageBufferSet>  BufferSetHandle;
         Helpers::Ref<Buffers::IndirectBufferSet> IndirectBufferSetHandle;
@@ -131,7 +131,7 @@ namespace ZEngine::Rendering::Renderers
         RenderGraphResource& CreateRenderTarget(std::string_view name, const Specifications::TextureSpecification& spec);
         RenderGraphResource& AttachBuffer(std::string_view name, const Helpers::Ref<Buffers::StorageBufferSet>& buffer);
         RenderGraphResource& AttachBuffer(std::string_view name, const Helpers::Ref<Buffers::UniformBufferSet>& buffer);
-        RenderGraphResource& AttachTexture(std::string_view name, const Helpers::Ref<Textures::Texture>& texture);
+        RenderGraphResource& AttachTexture(std::string_view name, const Helpers::Handle<Textures::TextureRef>& texture);
         void                 CreateRenderPassNode(const RenderGraphRenderPassCreation&);
 
         RenderGraphResource& CreateBuffer(std::string_view name) = delete;
