@@ -107,7 +107,8 @@ namespace ZEngine::Rendering::Renderers
         font_tex_spec.Height                               = height;
         font_tex_spec.Data                                 = pixels;
         font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
-        m_font_texture                                     = renderer->CreateTexture(font_tex_spec);
+        auto font_texture                                  = renderer->CreateTexture(font_tex_spec);
+        renderer->GlobalTextures->Add(font_texture);
 
         VkDescriptorSetAllocateInfo font_alloc_info = {};
         font_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -117,7 +118,7 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(
             vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
 
-        auto                 font_image_info = m_font_texture->GetDescriptorImageInfo();
+        auto                 font_image_info = font_texture->GetDescriptorImageInfo();
         VkWriteDescriptorSet write_desc[1]   = {};
         write_desc[0].sType                  = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write_desc[0].dstSet                 = m_font_descriptor_set;
@@ -135,7 +136,7 @@ namespace ZEngine::Rendering::Renderers
         frame_alloc_info.descriptorPool              = shader->GetDescriptorPool();
         frame_alloc_info.descriptorSetCount          = 1;
         frame_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &frame_alloc_info, &m_frame_output) == VK_SUCCESS, "Failed to create descriptor set")
+        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &frame_alloc_info, &m_frame_output) == VK_SUCCESS, "Failed to create descriptor set")        
     }
 
     void ImGUIRenderer::Deinitialize()
@@ -143,7 +144,6 @@ namespace ZEngine::Rendering::Renderers
         m_ui_pass->Dispose();
         m_vertex_buffer->Dispose();
         m_index_buffer->Dispose();
-        m_font_texture->Dispose();
 
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();

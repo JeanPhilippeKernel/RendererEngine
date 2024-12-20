@@ -26,7 +26,6 @@ namespace ZEngine::Rendering::Renderers
         Helpers::Ref<Buffers::VertexBufferSet> m_vertex_buffer;
         Helpers::Ref<Buffers::IndexBufferSet>  m_index_buffer;
         Helpers::Ref<RenderPasses::RenderPass> m_ui_pass;
-        Helpers::Ref<Textures::Texture>        m_font_texture;
     };
 
 } // namespace ZEngine::Rendering::Renderers

@@ -28,8 +28,7 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Initialize(Hardwares::VulkanDevice* device)
     {
-        Device = device;
-        // GlobalTextures = CreateRef<Textures::TextureHandleManager>(Device->PhysicalDeviceProperties.limits.maxDescriptorSetSampledImages);
+        Device         = device;
         GlobalTextures = CreateRef<Textures::TextureHandleManager>(600);
 
         RenderGraph       = CreateScope<Renderers::RenderGraph>(this);

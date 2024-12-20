@@ -34,7 +34,6 @@ namespace ZEngine::Rendering::Buffers
             spec.ImageAspectFlag,
             spec.LayerCount,
             Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)]);
-        m_buffer_image.FrameIndex = m_device->CurrentFrameIndex;
     }
 
     Image2DBuffer::~Image2DBuffer()

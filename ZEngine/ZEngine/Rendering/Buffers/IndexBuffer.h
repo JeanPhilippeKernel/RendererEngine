@@ -33,7 +33,6 @@ namespace ZEngine::Rendering::Buffers
                     static_cast<VkDeviceSize>(this->m_byte_size),
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-                m_index_buffer.FrameIndex = m_device->CurrentFrameIndex;
             }
 
             VkMemoryPropertyFlags mem_prop_flags;
