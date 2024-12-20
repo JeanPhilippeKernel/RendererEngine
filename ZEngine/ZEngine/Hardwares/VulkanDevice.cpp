@@ -1266,7 +1266,7 @@ namespace ZEngine::Hardwares
 
     Rendering::Buffers::CommandBuffer* CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin)
     {
-        CommandBuffer* buffer = (type == QueueType::TRANSFER_QUEUE) ? TransferCommandBuffers[frame_index].get() : CommandBuffers[(frame_index * MaxBufferPerPool) + 1].get();
+        CommandBuffer* buffer = (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[frame_index].get() : CommandBuffers[(frame_index * MaxBufferPerPool) + 1].get();
 
         std::unique_lock l(m_instant_command_mutex);
         m_cond.wait(l, [this] {
@@ -1296,7 +1296,7 @@ namespace ZEngine::Hardwares
 
     Rendering::Pools::CommandPool* CommandBufferManager::GetCommandPool(Rendering::QueueType type, uint8_t frame_index)
     {
-        return (type == QueueType::GRAPHIC_QUEUE) ? CommandPools[frame_index].get() : TransferCommandPools[frame_index].get();
+        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandPools[frame_index].get() : CommandPools[frame_index].get();
     }
 
     int CommandBufferManager::GetPoolFromIndex(Rendering::QueueType type, uint8_t index)
