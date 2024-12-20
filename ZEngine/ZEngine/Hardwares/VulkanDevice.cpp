@@ -784,16 +784,24 @@ namespace ZEngine::Hardwares
         VkFormat supported_format = VK_FORMAT_UNDEFINED;
         for (uint32_t i = 0; i < format_collection.size(); ++i)
         {
+            bool               found = false;
             VkFormatProperties format_properties;
             vkGetPhysicalDeviceFormatProperties(PhysicalDevice, format_collection[i], &format_properties);
 
             if (image_tiling == VK_IMAGE_TILING_LINEAR && (format_properties.linearTilingFeatures & feature_flags) == feature_flags)
             {
                 supported_format = format_collection[i];
+                found            = true;
             }
             else if (image_tiling == VK_IMAGE_TILING_OPTIMAL && (format_properties.optimalTilingFeatures & feature_flags) == feature_flags)
             {
                 supported_format = format_collection[i];
+                found            = true;
+            }
+
+            if (found)
+            {
+                break;
             }
         }
 
