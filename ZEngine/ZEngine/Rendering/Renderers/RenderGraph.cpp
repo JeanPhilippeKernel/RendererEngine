@@ -50,6 +50,16 @@ namespace ZEngine::Rendering::Renderers
         return m_graph.m_resource_map[resource_name];
     }
 
+    RenderGraphResource& RenderGraphBuilder::CreateTexture(std::string_view name, std::string_view filename)
+    {
+        std::string resource_name(name);
+
+        m_graph.m_resource_map[resource_name].Name                       = name.data();
+        m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::TEXTURE;
+        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = m_graph.Renderer->LoadTextureFile(filename);
+        return m_graph.m_resource_map[resource_name];
+    }
+
     RenderGraphResource& RenderGraphBuilder::CreateRenderTarget(std::string_view name, const Specifications::TextureSpecification& spec)
     {
         std::string resource_name(name);

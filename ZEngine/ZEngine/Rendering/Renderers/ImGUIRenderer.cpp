@@ -136,7 +136,7 @@ namespace ZEngine::Rendering::Renderers
         frame_alloc_info.descriptorPool              = shader->GetDescriptorPool();
         frame_alloc_info.descriptorSetCount          = 1;
         frame_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &frame_alloc_info, &m_frame_output) == VK_SUCCESS, "Failed to create descriptor set")        
+        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &frame_alloc_info, &m_frame_output) == VK_SUCCESS, "Failed to create descriptor set")
     }
 
     void ImGUIRenderer::Deinitialize()

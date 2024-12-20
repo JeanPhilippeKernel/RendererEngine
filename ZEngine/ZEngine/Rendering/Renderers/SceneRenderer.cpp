@@ -202,6 +202,7 @@ namespace ZEngine::Rendering::Renderers
     void SkyboxPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
         // m_environment_map                       = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
+        builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
         RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}, {.Name = "lighting_render_target"}}};
         builder->CreateRenderPassNode(pass_node);
     }
@@ -209,8 +210,9 @@ namespace ZEngine::Rendering::Renderers
     void SkyboxPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
     {
 
-        auto pass_spec     = builder.SetPipelineName("Skybox-Pipeline").EnablePipelineDepthTest(true).EnablePipelineDepthWrite(false).UseShader("skybox").Detach();
-        auto camera_buffer = graph.GetBufferUniformSet("scene_camera");
+        auto pass_spec      = builder.SetPipelineName("Skybox-Pipeline").EnablePipelineDepthTest(true).EnablePipelineDepthWrite(false).UseShader("skybox").Detach();
+        auto camera_buffer  = graph.GetBufferUniformSet("scene_camera");
+        auto skybox_env_map = graph.GetTexture("skybox_env_map");
 
         handle = graph.Renderer->CreateRenderPass(pass_spec);
         handle->SetInput("UBCamera", camera_buffer);
@@ -218,7 +220,7 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("IndexSB", m_index_buffer);
         handle->SetInput("DrawDataSB", m_draw_buffer);
         handle->SetInput("TransformSB", m_transform_buffer);
-        // handle->SetInput("CubemapTexture", m_environment_map);
+        handle->SetInput("CubemapTexture", skybox_env_map);
         handle->Verify();
         handle->Bake();
     }
@@ -236,7 +238,6 @@ namespace ZEngine::Rendering::Renderers
             m_draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
             m_transform_buffer->SetData<glm::mat4>(frame_index, std::vector<glm::mat4>{glm::identity<glm::mat4>()});
             m_indirect_buffer->SetData<VkDrawIndirectCommand>(frame_index, m_indirect_commmand);
-
             pass->MarkDirty();
         })
         command_buffer->BeginRenderPass(pass);

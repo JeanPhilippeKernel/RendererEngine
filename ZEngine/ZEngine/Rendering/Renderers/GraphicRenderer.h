@@ -42,6 +42,7 @@ namespace ZEngine::Rendering::Renderers
 
     struct TextureUploadRequest
     {
+        size_t                               BufferSize;
         Textures::TextureHandle              Handle;
         Specifications::TextureSpecification TextureSpec;
     };
@@ -101,6 +102,9 @@ namespace ZEngine::Rendering::Renderers
 
     private:
         std::atomic_bool                               m_cancellation_token{false};
+        std::mutex                                     m_mutex;
+        std::condition_variable                        m_cond;
+        std::vector<uint8_t>                           m_temp_buffer{};
         Helpers::ThreadSafeQueue<UpdateTextureRequest> m_update_texture_request;
         Helpers::ThreadSafeQueue<TextureFileRequest>   m_file_requests;
         Helpers::ThreadSafeQueue<TextureUploadRequest> m_upload_requests;

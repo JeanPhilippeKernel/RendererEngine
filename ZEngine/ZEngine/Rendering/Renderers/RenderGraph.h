@@ -128,6 +128,7 @@ namespace ZEngine::Rendering::Renderers
         RenderGraphBuilder(RenderGraph& graph) : m_graph(graph) {}
 
         RenderGraphResource& CreateTexture(std::string_view name, const Specifications::TextureSpecification& spec);
+        RenderGraphResource& CreateTexture(std::string_view name, std::string_view filename);
         RenderGraphResource& CreateRenderTarget(std::string_view name, const Specifications::TextureSpecification& spec);
         RenderGraphResource& AttachBuffer(std::string_view name, const Helpers::Ref<Buffers::StorageBufferSet>& buffer);
         RenderGraphResource& AttachBuffer(std::string_view name, const Helpers::Ref<Buffers::UniformBufferSet>& buffer);

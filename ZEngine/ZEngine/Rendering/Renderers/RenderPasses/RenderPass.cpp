@@ -253,7 +253,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                     auto buffer = reinterpret_cast<Textures::Texture*>(input.Input.Data);
                     for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
                     {
-                        const auto& image_info = buffer->GetDescriptorImageInfo();
+                        if (!buffer)
+                        {
+                            continue;
+                        }
+                        const auto image_info = buffer->GetDescriptorImageInfo();
                         write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
                             .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                             .pNext            = nullptr,

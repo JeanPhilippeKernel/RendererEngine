@@ -44,7 +44,6 @@ namespace ZEngine::Helpers
 
         int32_t                   m_counter{-1};
         uint32_t                  m_count{0};
-        uint32_t                  m_free_slot_index{0};
         std::vector<ArrayData>    m_data;
         mutable std::shared_mutex m_mutex;
 
@@ -90,11 +89,11 @@ namespace ZEngine::Helpers
             return handle;
         }
 
-        Handle<T> Add(const T& texture)
+        Handle<T> Add(const T& value)
         {
             std::unique_lock<std::shared_mutex> lock(m_mutex);
             Handle<T>                           handle;
-            ArrayData                           data = {.Counter = ++m_counter, .Data = texture};
+            ArrayData                           data = {.Counter = ++m_counter, .Data = value};
 
             for (int i = 0; i < m_count; ++i)
             {
@@ -110,11 +109,11 @@ namespace ZEngine::Helpers
             return handle;
         }
 
-        Handle<T> Add(T&& texture)
+        Handle<T> Add(T&& value)
         {
             std::unique_lock<std::shared_mutex> lock(m_mutex);
             Handle<T>                           handle;
-            ArrayData                           data = {.Counter = ++m_counter, .Data = std::move(texture)};
+            ArrayData                           data = {.Counter = ++m_counter, .Data = std::move(value)};
 
             for (int i = 0; i < m_count; ++i)
             {
@@ -179,12 +178,6 @@ namespace ZEngine::Helpers
         {
             std::shared_lock<std::shared_mutex> lock(m_mutex);
             return m_count;
-        }
-
-        int GetUsedSlotCount() const
-        {
-            std::shared_lock<std::shared_mutex> lock(m_mutex);
-            return m_free_slot_index;
         }
 
         void Dispose() {}

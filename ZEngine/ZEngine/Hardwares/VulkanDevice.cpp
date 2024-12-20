@@ -483,13 +483,11 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::EnqueueBufferForDeletion(BufferView& buffer)
     {
-        ZENGINE_VALIDATE_ASSERT(buffer.FrameIndex != std::numeric_limits<uint8_t>::max(), "")
         m_dirty_buffers.Add(buffer);
     }
 
     void VulkanDevice::EnqueueBufferImageForDeletion(BufferImage& buffer)
     {
-        ZENGINE_VALIDATE_ASSERT(buffer.FrameIndex != std::numeric_limits<uint8_t>::max(), "")
         m_dirty_buffer_images.Add(buffer);
     }
 
@@ -555,7 +553,7 @@ namespace ZEngine::Hardwares
     void VulkanDevice::__cleanupDirtyResource()
     {
         size_t dirty_resource_count = m_dirty_resources.Size();
-        for (int i = dirty_resource_count - 1; i >= 0; --i)
+        for (size_t i = 0; i < dirty_resource_count; ++i)
         {
             auto handle = m_dirty_resources.ConvertToHandle(i);
             if (!handle.Valid())
@@ -620,7 +618,7 @@ namespace ZEngine::Hardwares
     void VulkanDevice::__cleanupBufferDirtyResource()
     {
         size_t dirty_buffer_count = m_dirty_buffers.Size();
-        for (int i = dirty_buffer_count - 1; i >= 0; --i)
+        for (size_t i = 0; i < dirty_buffer_count; ++i)
         {
             auto handle = m_dirty_buffers.ConvertToHandle(i);
             if (!handle.Valid())
@@ -637,7 +635,7 @@ namespace ZEngine::Hardwares
     void VulkanDevice::__cleanupBufferImageDirtyResource()
     {
         size_t dirty_buffer_image_count = m_dirty_buffer_images.Size();
-        for (int i = dirty_buffer_image_count - 1; i >= 0; --i)
+        for (size_t i = 0; i < dirty_buffer_image_count; ++i)
         {
             auto handle = m_dirty_buffer_images.ConvertToHandle(i);
             if (!handle.Valid())
@@ -1071,7 +1069,7 @@ namespace ZEngine::Hardwares
          * Cleanup current Frame allocated resource
          */
         size_t dirty_resource_count = m_dirty_resources.Size();
-        for (int i = dirty_resource_count - 1; i >= 0; --i)
+        for (size_t i = 0; i < dirty_resource_count; ++i)
         {
             auto handle = m_dirty_resources.ConvertToHandle(i);
             if (!handle.Valid())
@@ -1136,7 +1134,7 @@ namespace ZEngine::Hardwares
         }
 
         size_t dirty_buffer_count = m_dirty_buffers.Size();
-        for (int i = dirty_buffer_count - 1; i >= 0; --i)
+        for (size_t i = 0; i < dirty_buffer_count; ++i)
         {
             auto handle = m_dirty_buffers.ConvertToHandle(i);
             if (!handle.Valid())
@@ -1153,7 +1151,7 @@ namespace ZEngine::Hardwares
         }
 
         size_t dirty_buffer_image_count = m_dirty_buffer_images.Size();
-        for (int i = dirty_buffer_image_count - 1; i >= 0; --i)
+        for (size_t i = 0; i < dirty_buffer_image_count; ++i)
         {
             auto handle = m_dirty_buffer_images.ConvertToHandle(i);
             if (!handle.Valid())
