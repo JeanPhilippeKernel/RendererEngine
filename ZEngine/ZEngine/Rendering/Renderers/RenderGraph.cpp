@@ -225,8 +225,9 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(command_buffer, "Command Buffer can't be null")
 
         auto& global_textures = *(Renderer->GlobalTextures);
+
         command_buffer->ClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        command_buffer->ClearDepth(1.0f, 0);
+        command_buffer->ClearDepth(.9999999f, 0); // Todo : setting value at 1.0f crash on intel Integrated GPU, floating precision issue ??
 
         for (auto& node_name : m_sorted_nodes)
         {
@@ -278,10 +279,12 @@ namespace ZEngine::Rendering::Renderers
                 Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
                 if (texture->IsDepthTexture)
                 {
-                    barrier_spec.ImageHandle           = buffer.Handle;
-                    barrier_spec.OldLayout             = Specifications::ImageLayout::UNDEFINED;
-                    barrier_spec.NewLayout             = Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    barrier_spec.ImageAspectMask       = VkImageAspectFlagBits(VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+                    barrier_spec.ImageHandle = buffer.Handle;
+                    barrier_spec.OldLayout   = Specifications::ImageLayout::UNDEFINED;
+                    barrier_spec.NewLayout   = Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                    barrier_spec.ImageAspectMask =
+                        VkImageAspectFlagBits(VK_IMAGE_ASPECT_DEPTH_BIT /*| VK_IMAGE_ASPECT_STENCIL_BIT*/); // Todo : To consider Stencil buffer, we want to extend Texture spec to
+                                                                                                            // introduce HasStencil bit
                     barrier_spec.SourceAccessMask      = 0;
                     barrier_spec.DestinationAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
                     barrier_spec.SourceStageMask       = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -337,7 +340,7 @@ namespace ZEngine::Rendering::Renderers
                     continue;
                 }
 
-                //global_textures.Remove(resource.ResourceInfo.TextureHandle);
+                global_textures.Remove(resource.ResourceInfo.TextureHandle);
 
                 resource.ResourceInfo.TextureSpec.Width  = width;
                 resource.ResourceInfo.TextureSpec.Height = height;
@@ -392,7 +395,7 @@ namespace ZEngine::Rendering::Renderers
             {
                 if (value.ResourceInfo.TextureHandle)
                 {
-                    //Renderer->GlobalTextures->Remove(value.ResourceInfo.TextureHandle);
+                    Renderer->GlobalTextures->Remove(value.ResourceInfo.TextureHandle);
                     value.ResourceInfo.TextureHandle = {};
                 }
             }
