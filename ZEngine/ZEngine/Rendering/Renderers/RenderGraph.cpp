@@ -237,7 +237,7 @@ namespace ZEngine::Rendering::Renderers
         auto& global_textures = *(Renderer->Device->GlobalTextures);
 
         command_buffer->ClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        command_buffer->ClearDepth(.9999999f, 0); // Todo : setting value at 1.0f crash on Integrated GPU, floating precision issue or Hardware issue ??
+        command_buffer->ClearDepth(1.0f, 0); // Todo : setting value at 1.0f crash on Integrated GPU, floating precision issue or Hardware issue ??
 
         for (auto& node_name : m_sorted_nodes)
         {
