@@ -57,7 +57,6 @@ namespace ZEngine::Rendering::Renderers
         virtual void Dispose() override
         {
             IndirectRenderingStorage::Dispose();
-            // m_environment_map->Dispose();
         }
 
         virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
@@ -77,7 +76,6 @@ namespace ZEngine::Rendering::Renderers
         const std::vector<uint32_t>              m_index_data        = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 7, 6, 5, 5, 4, 7, 4, 0, 3, 3, 7, 4, 4, 5, 1, 1, 0, 4, 3, 2, 6, 6, 7, 3};
         const std::vector<DrawData>              m_draw_data         = {DrawData{.VertexOffset = 0, .IndexOffset = 0, .VertexCount = 8, .IndexCount = 36}};
         const std::vector<VkDrawIndirectCommand> m_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 36, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
-        Helpers::Ref<Textures::Texture>          m_environment_map;
     };
 
     struct GridPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage

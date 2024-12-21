@@ -201,7 +201,6 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        // m_environment_map                       = Textures::Texture2D::ReadCubemap("Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
         builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
         RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}, {.Name = "lighting_render_target"}}};
         builder->CreateRenderPassNode(pass_node);
@@ -232,14 +231,14 @@ namespace ZEngine::Rendering::Renderers
         Buffers::CommandBuffer*                command_buffer,
         RenderGraph* const                     graph)
     {
-        WRITE_BUFFERS_ONCE(frame_index, {
-            m_vertex_buffer->SetData<float>(frame_index, m_vertex_data);
-            m_index_buffer->SetData<uint32_t>(frame_index, m_index_data);
-            m_draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
-            m_transform_buffer->SetData<glm::mat4>(frame_index, std::vector<glm::mat4>{glm::identity<glm::mat4>()});
-            m_indirect_buffer->SetData<VkDrawIndirectCommand>(frame_index, m_indirect_commmand);
-            pass->MarkDirty();
-        })
+        /*WRITE_BUFFERS_ONCE(frame_index, {*/
+        m_vertex_buffer->SetData<float>(frame_index, m_vertex_data);
+        m_index_buffer->SetData<uint32_t>(frame_index, m_index_data);
+        m_draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
+        m_transform_buffer->SetData<glm::mat4>(frame_index, std::vector<glm::mat4>{glm::identity<glm::mat4>()});
+        m_indirect_buffer->SetData<VkDrawIndirectCommand>(frame_index, m_indirect_commmand);
+        /* })*/
+        pass->MarkDirty();
         command_buffer->BeginRenderPass(pass);
         command_buffer->BindDescriptorSets(frame_index);
         command_buffer->DrawIndirect(m_indirect_buffer->At(frame_index));

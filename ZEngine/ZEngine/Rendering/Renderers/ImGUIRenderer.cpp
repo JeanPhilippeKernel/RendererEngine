@@ -108,7 +108,7 @@ namespace ZEngine::Rendering::Renderers
         font_tex_spec.Data                                 = pixels;
         font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
         auto font_texture                                  = renderer->CreateTexture(font_tex_spec);
-        renderer->GlobalTextures->Add(font_texture);
+        renderer->Device->GlobalTextures->Add(font_texture);
 
         VkDescriptorSetAllocateInfo font_alloc_info = {};
         font_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -326,7 +326,7 @@ namespace ZEngine::Rendering::Renderers
 
     VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Textures::TextureHandle& handle)
     {
-        auto& global_textures = *(m_renderer->GlobalTextures);
+        auto& global_textures = *(m_renderer->Device->GlobalTextures);
         auto  buffer          = global_textures[handle]->ImageBuffer->GetBuffer();
 
         VkDescriptorImageInfo desc_image[1] = {};

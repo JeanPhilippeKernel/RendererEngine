@@ -105,7 +105,7 @@ namespace ZEngine::Rendering::Renderers
         void                                     Dispose();
         RenderGraphResource&                     GetResource(std::string_view);
         Helpers::Ref<Textures::Texture>          GetRenderTarget(std::string_view);
-        Helpers::Ref<Textures::Texture>          GetTexture(std::string_view);
+        Textures::TextureHandle                  GetTexture(std::string_view);
         Helpers::Ref<Buffers::StorageBufferSet>  GetBufferSet(std::string_view);
         Helpers::Ref<Buffers::UniformBufferSet>  GetBufferUniformSet(std::string_view);
         Helpers::Ref<Buffers::IndirectBufferSet> GetIndirectBufferSet(std::string_view);

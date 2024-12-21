@@ -56,11 +56,11 @@ namespace ZEngine::Rendering::Renderers
         GraphicRenderer();
         ~GraphicRenderer();
 
-        Hardwares::VulkanDevice*                     Device         = nullptr;
-        Helpers::Ref<Textures::TextureHandleManager> GlobalTextures = nullptr;
-        Helpers::Ref<SceneRenderer>                  SceneRenderer  = nullptr;
-        Helpers::Ref<ImGUIRenderer>                  ImguiRenderer  = nullptr;
-        Helpers::Scope<RenderGraph>                  RenderGraph    = nullptr;
+        Hardwares::VulkanDevice* Device = nullptr;
+
+        Helpers::Ref<SceneRenderer> SceneRenderer = nullptr;
+        Helpers::Ref<ImGUIRenderer> ImguiRenderer = nullptr;
+        Helpers::Scope<RenderGraph> RenderGraph   = nullptr;
 
         void            Initialize(Hardwares::VulkanDevice* device);
         void            Deinitialize();

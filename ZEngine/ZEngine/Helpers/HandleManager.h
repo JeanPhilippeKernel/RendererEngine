@@ -20,7 +20,7 @@ namespace ZEngine::Helpers
 
         bool Valid() const
         {
-            return Index != -1 && m_counter != -1;
+            return Index > -1 && m_counter > -1;
         }
 
         operator bool() const

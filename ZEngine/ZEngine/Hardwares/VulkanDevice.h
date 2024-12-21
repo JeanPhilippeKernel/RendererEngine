@@ -136,6 +136,7 @@ namespace ZEngine::Hardwares
         std::vector<Helpers::Ref<Rendering::Primitives::Semaphore>>  SwapchainRenderCompleteSemaphores = {};
         std::vector<Helpers::Ref<Rendering::Primitives::Fence>>      SwapchainSignalFences             = {};
         std::vector<Rendering::Buffers::CommandBuffer*>              EnqueuedCommandbuffers            = {};
+        Helpers::Ref<Rendering::Textures::TextureHandleManager>      GlobalTextures                    = Helpers::CreateRef<Rendering::Textures::TextureHandleManager>(600);
 
         void Initialize(const Helpers::Ref<Windows::CoreWindow>& window);
         void Deinitialize();

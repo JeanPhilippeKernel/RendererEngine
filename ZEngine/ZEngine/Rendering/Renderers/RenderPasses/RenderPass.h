@@ -22,9 +22,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         TEXTURE
     };
 
-    union InputData
+    struct InputData
     {
-        void* Data{nullptr};
+        void*                   Data{nullptr};
+        Textures::TextureHandle Handle;
     };
 
     struct PassInput
@@ -53,7 +54,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         // void                                     SetInput(std::string_view key_name, const Helpers::Ref<Textures::TextureArray>& textures);
         void                            SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::UniformBuffer>& buffer);
         void                            SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::StorageBuffer>& buffer);
-        void                            SetInput(std::string_view key_name, const Helpers::Ref<Textures::Texture>& buffer);
+        void                            SetInput(std::string_view key_name, const Textures::TextureHandle& texture_handle);
         void                            UpdateInputBinding();
         Helpers::Ref<Textures::Texture> GetOutputColor(uint32_t color_index);
         Helpers::Ref<Textures::Texture> GetOutputDepth();
@@ -105,7 +106,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder& UseRenderTarget(const Helpers::Ref<Rendering::Textures::Texture>& target);
         RenderPassBuilder& AddRenderTarget(const Specifications::TextureSpecification& target_spec);
         RenderPassBuilder& AddInputAttachment(const Helpers::Ref<Rendering::Textures::Texture>& target);
-        RenderPassBuilder& AddInputTexture(std::string_view key, const Helpers::Ref<Rendering::Textures::Texture>& input);
+        RenderPassBuilder& AddInputTexture(std::string_view key, const Rendering::Textures::TextureHandle& input);
         RenderPassBuilder& UseSwapchainAsRenderTarget();
 
         Specifications::RenderPassSpecification Detach();

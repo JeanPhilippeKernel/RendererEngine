@@ -150,6 +150,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const uint32_t                    frame_count                     = m_device->SwapchainImageCount;
         const auto&                       shader                          = m_pipeline->GetShader();
         const auto&                       descriptor_set_map              = shader->GetDescriptorSetMap();
+        auto&                             global_textures                 = *(m_device->GlobalTextures);
         std::vector<VkWriteDescriptorSet> write_descriptor_set_collection = {};
         for (const auto& input : m_input_collection)
         {
@@ -250,14 +251,22 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 break;
                 case TEXTURE:
                 {
-                    auto buffer = reinterpret_cast<Textures::Texture*>(input.Input.Data);
+                    auto& buffer = input.Input.Handle;
                     for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
                     {
-                        if (!buffer)
+                        if (!buffer || !buffer.Valid())
                         {
                             continue;
                         }
-                        const auto image_info = buffer->GetDescriptorImageInfo();
+
+                        auto& texture = global_textures[buffer];
+
+                        if (!texture)
+                        {
+                            continue;
+                        }
+
+                        const auto image_info = texture->GetDescriptorImageInfo();
                         write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
                             .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                             .pNext            = nullptr,
@@ -438,7 +447,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Ref<Textures::Texture>& buffer)
+    void RenderPass::SetInput(std::string_view key_name, const Textures::TextureHandle& texture_handle)
     {
         auto validity_output = ValidateInput(key_name);
         if (validity_output.first)
@@ -450,14 +459,19 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
             if (find_it != std::end(m_input_collection))
             {
-                find_it->Input.Data = buffer.get();
+                find_it->Input.Handle = texture_handle;
                 return;
             }
-            m_input_collection.emplace_back(
-                PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE, .Input = buffer.get()});
 
-            m_perform_update = true;
+            auto& pass_input        = m_input_collection.emplace_back();
+            pass_input.Input.Handle = texture_handle;
+            pass_input.Set          = binding_spec.Set;
+            pass_input.Binding      = binding_spec.Binding;
+            pass_input.DebugName    = binding_spec.Name;
+            pass_input.Type         = PassInputType::TEXTURE;
         }
+
+        m_perform_update = true;
     }
 
     void RenderPass::UpdateInputBinding()
@@ -755,7 +769,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
-    RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Ref<Rendering::Textures::Texture>& input)
+    RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Textures::TextureHandle& input)
     {
         m_spec.InputTextures[key.data()] = input;
         return *this;

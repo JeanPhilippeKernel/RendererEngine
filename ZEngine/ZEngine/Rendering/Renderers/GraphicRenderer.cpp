@@ -29,9 +29,7 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Initialize(Hardwares::VulkanDevice* device)
     {
-        Device         = device;
-        GlobalTextures = CreateRef<Textures::TextureHandleManager>(600);
-
+        Device            = device;
         RenderGraph       = CreateScope<Renderers::RenderGraph>(this);
         m_resource_loader = CreateRef<AsyncResourceLoader>();
         SceneRenderer     = CreateRef<Renderers::SceneRenderer>();
@@ -64,7 +62,6 @@ namespace ZEngine::Rendering::Renderers
         ImguiRenderer->Deinitialize();
 
         m_UBCamera->Dispose();
-        GlobalTextures->Dispose();
 
         m_resource_loader->Shutdown();
         m_resource_loader.reset();
@@ -242,7 +239,7 @@ namespace ZEngine::Rendering::Renderers
 
     Textures::TextureHandle GraphicRenderer::LoadTextureFile(std::string_view filename)
     {
-        Textures::TextureHandle handle = GlobalTextures->Create();
+        Textures::TextureHandle handle = Device->GlobalTextures->Create();
         m_resource_loader->EnqueueTextureRequest(filename, handle);
         return handle;
     }
@@ -305,7 +302,7 @@ namespace ZEngine::Rendering::Renderers
                     }
                     Renderer->Device->EnqueueInstantCommandBuffer(command_buffer);
 
-                    Renderer->GlobalTextures->Update(tr.Handle, std::move(tr.Texture));
+                    Renderer->Device->GlobalTextures->Update(tr.Handle, std::move(tr.Texture));
                 }
             }
 

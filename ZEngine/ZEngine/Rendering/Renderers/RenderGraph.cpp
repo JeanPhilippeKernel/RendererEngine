@@ -181,7 +181,7 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Reading sorting graph node in reverse order and Create resource and RenderPass Node
          */
-        auto& global_textures = *(Renderer->GlobalTextures);
+        auto& global_textures = *(Renderer->Device->GlobalTextures);
         for (std::string_view node_name : m_sorted_nodes)
         {
             auto& node = m_node[node_name.data()];
@@ -222,7 +222,7 @@ namespace ZEngine::Rendering::Renderers
                 }
                 else if (input.Type == RenderGraphResourceType::TEXTURE)
                 {
-                    m_render_pass_builder->AddInputTexture(input.BindingInputKeyName, texture);
+                    m_render_pass_builder->AddInputTexture(input.BindingInputKeyName, resource.ResourceInfo.TextureHandle);
                 }
             }
 
@@ -234,10 +234,10 @@ namespace ZEngine::Rendering::Renderers
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer, "Command Buffer can't be null")
 
-        auto& global_textures = *(Renderer->GlobalTextures);
+        auto& global_textures = *(Renderer->Device->GlobalTextures);
 
         command_buffer->ClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        command_buffer->ClearDepth(.9999999f, 0); // Todo : setting value at 1.0f crash on intel Integrated GPU, floating precision issue ??
+        command_buffer->ClearDepth(.9999999f, 0); // Todo : setting value at 1.0f crash on Integrated GPU, floating precision issue or Hardware issue ??
 
         for (auto& node_name : m_sorted_nodes)
         {
@@ -326,7 +326,7 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::Resize(uint32_t width, uint32_t height)
     {
-        auto& global_textures = *(Renderer->GlobalTextures);
+        auto& global_textures = *(Renderer->Device->GlobalTextures);
 
         for (auto& node_name : m_sorted_nodes)
         {
@@ -375,8 +375,8 @@ namespace ZEngine::Rendering::Renderers
                  */
                 else if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::TEXTURE)
                 {
-                    auto texture                                       = global_textures[resource.ResourceInfo.TextureHandle];
-                    pass_spec.InputTextures[input.BindingInputKeyName] = texture;
+                    // auto texture                                       = global_textures[resource.ResourceInfo.TextureHandle];
+                    pass_spec.InputTextures[input.BindingInputKeyName] = resource.ResourceInfo.TextureHandle;
                 }
             }
 
@@ -405,7 +405,7 @@ namespace ZEngine::Rendering::Renderers
             {
                 if (value.ResourceInfo.TextureHandle)
                 {
-                    Renderer->GlobalTextures->Remove(value.ResourceInfo.TextureHandle);
+                    Renderer->Device->GlobalTextures->Remove(value.ResourceInfo.TextureHandle);
                     value.ResourceInfo.TextureHandle = {};
                 }
             }
@@ -466,15 +466,15 @@ namespace ZEngine::Rendering::Renderers
         auto handle = m_resource_map[resource_name].ResourceInfo.TextureHandle;
         if (handle.Valid())
         {
-            auto& textures = *(Renderer->GlobalTextures);
+            auto& textures = *(Renderer->Device->GlobalTextures);
             output         = textures[handle];
         }
         return output;
     }
 
-    Ref<Textures::Texture> RenderGraph::GetTexture(std::string_view name)
+    Textures::TextureHandle RenderGraph::GetTexture(std::string_view name)
     {
-        Ref<Textures::Texture> output = nullptr;
+        Textures::TextureHandle output = {};
 
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
@@ -489,8 +489,7 @@ namespace ZEngine::Rendering::Renderers
         auto handle = m_resource_map[resource_name].ResourceInfo.TextureHandle;
         if (handle.Valid())
         {
-            auto& textures = *(Renderer->GlobalTextures);
-            output         = textures[handle];
+            output = handle;
         }
         return output;
     }
