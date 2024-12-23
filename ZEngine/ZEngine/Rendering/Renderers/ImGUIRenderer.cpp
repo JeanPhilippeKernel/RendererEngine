@@ -56,8 +56,8 @@ namespace ZEngine::Rendering::Renderers
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window->GetNativeWindow()), false);
 
-        m_vertex_buffer                          = renderer->CreateVertexBufferSet();
-        m_index_buffer                           = renderer->CreateIndexBufferSet();
+        m_vertex_buffer_handle                   = renderer->CreateVertexBufferSet();
+        m_index_buffer_handle                    = renderer->CreateIndexBufferSet();
         RenderPasses::RenderPassBuilder& builder = *(renderer->RenderGraph->GetRenderPassBuilder());
         builder.SetName("Imgui Pass")
             .SetPipelineName("Imgui-Pipeline")
@@ -118,7 +118,7 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(
             vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
 
-        auto                 font_image_info = font_texture->GetDescriptorImageInfo();
+        auto                 font_image_info = font_texture->ImageBuffer->GetDescriptorImageInfo();
         VkWriteDescriptorSet write_desc[1]   = {};
         write_desc[0].sType                  = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write_desc[0].dstSet                 = m_font_descriptor_set;
@@ -142,8 +142,6 @@ namespace ZEngine::Rendering::Renderers
     void ImGUIRenderer::Deinitialize()
     {
         m_ui_pass->Dispose();
-        m_vertex_buffer->Dispose();
-        m_index_buffer->Dispose();
 
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
@@ -242,12 +240,15 @@ namespace ZEngine::Rendering::Renderers
             index_data_ptr += cmd_list->IdxBuffer.Size;
         }
 
-        m_vertex_buffer->SetData<ImDrawVert>(frame_index, vertex_data);
-        m_index_buffer->SetData<ImDrawIdx>(frame_index, index_data);
+        auto& vertex_buffer = m_renderer->VertexBufferSetManager.Access(m_vertex_buffer_handle);
+        auto& index_buffer  = m_renderer->IndexBufferSetManager.Access(m_index_buffer_handle);
+
+        vertex_buffer->SetData<ImDrawVert>(frame_index, vertex_data);
+        index_buffer->SetData<ImDrawIdx>(frame_index, index_data);
 
         command_buffer->BeginRenderPass(m_ui_pass);
-        command_buffer->BindVertexBuffer(m_vertex_buffer->At(frame_index));
-        command_buffer->BindIndexBuffer(m_index_buffer->At(frame_index), sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+        command_buffer->BindVertexBuffer(vertex_buffer->At(frame_index));
+        command_buffer->BindIndexBuffer(index_buffer->At(frame_index), sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 
         // Setup scale and translation:
         // Our visible imgui space lies from draw_data->DisplayPps (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single
@@ -326,8 +327,8 @@ namespace ZEngine::Rendering::Renderers
 
     VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Textures::TextureHandle& handle)
     {
-        auto& global_textures = *(m_renderer->Device->GlobalTextures);
-        auto  buffer          = global_textures[handle]->ImageBuffer->GetBuffer();
+        auto& texture = m_renderer->Device->GlobalTextures->Access(handle);
+        auto& buffer  = texture->ImageBuffer->GetBuffer();
 
         VkDescriptorImageInfo desc_image[1] = {};
         desc_image[0].sampler               = buffer.Sampler;

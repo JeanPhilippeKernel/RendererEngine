@@ -5,6 +5,8 @@
 #include <span>
 #include <vector>
 
+#define INVALID_HANDLE_INDEX -1
+
 namespace ZEngine::Helpers
 {
     template <typename T>
@@ -16,11 +18,11 @@ namespace ZEngine::Helpers
     template <typename T>
     struct Handle : public Helpers::RefCounted
     {
-        int Index = -1;
+        int Index = INVALID_HANDLE_INDEX;
 
         bool Valid() const
         {
-            return Index > -1 && m_counter > -1;
+            return Index > INVALID_HANDLE_INDEX && m_counter > INVALID_HANDLE_INDEX;
         }
 
         operator bool() const
@@ -29,7 +31,7 @@ namespace ZEngine::Helpers
         }
 
     private:
-        int m_counter = -1;
+        int m_counter = INVALID_HANDLE_INDEX;
         friend class HandleManager<T>;
     };
 
@@ -38,11 +40,11 @@ namespace ZEngine::Helpers
     {
         struct ArrayData
         {
-            int Counter{-1};
+            int Counter{INVALID_HANDLE_INDEX};
             T   Data;
         };
 
-        int32_t                   m_counter{-1};
+        int32_t                   m_counter{INVALID_HANDLE_INDEX};
         uint32_t                  m_count{0};
         std::vector<ArrayData>    m_data;
         mutable std::shared_mutex m_mutex;
@@ -52,9 +54,7 @@ namespace ZEngine::Helpers
 
         T& operator[](const Handle<T>& handle)
         {
-            std::shared_lock<std::shared_mutex> lock(m_mutex);
-            assert(handle.Index < m_count);
-            return m_data[handle.Index].Data;
+            return Access(handle);
         }
 
         std::span<ArrayData> Data() const
@@ -77,7 +77,7 @@ namespace ZEngine::Helpers
 
             for (int i = 0; i < m_count; ++i)
             {
-                if (m_data[i].Counter == -1)
+                if (m_data[i].Counter == INVALID_HANDLE_INDEX)
                 {
                     m_data[i]        = data;
                     handle.Index     = i;
@@ -89,6 +89,13 @@ namespace ZEngine::Helpers
             return handle;
         }
 
+        T& Access(const Handle<T>& handle)
+        {
+            std::shared_lock<std::shared_mutex> lock(m_mutex);
+            assert(handle.Index < m_count);
+            return m_data[handle.Index].Data;
+        }
+
         Handle<T> Add(const T& value)
         {
             std::unique_lock<std::shared_mutex> lock(m_mutex);
@@ -97,7 +104,7 @@ namespace ZEngine::Helpers
 
             for (int i = 0; i < m_count; ++i)
             {
-                if (m_data[i].Counter == -1)
+                if (m_data[i].Counter == INVALID_HANDLE_INDEX)
                 {
                     m_data[i]        = data;
                     handle.Index     = i;
@@ -117,7 +124,7 @@ namespace ZEngine::Helpers
 
             for (int i = 0; i < m_count; ++i)
             {
-                if (m_data[i].Counter == -1)
+                if (m_data[i].Counter == INVALID_HANDLE_INDEX)
                 {
                     m_data[i]        = data;
                     handle.Index     = i;
@@ -129,7 +136,7 @@ namespace ZEngine::Helpers
             return handle;
         }
 
-        Handle<T> ConvertToHandle(uint32_t index)
+        Handle<T> ToHandle(uint32_t index)
         {
             std::shared_lock<std::shared_mutex> lock(m_mutex);
             Handle<T>                           handle{};

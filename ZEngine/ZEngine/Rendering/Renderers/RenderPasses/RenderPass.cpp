@@ -111,20 +111,14 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         const auto& m_layout_bindings = m_pipeline->GetShader()->GetLayoutBindingSpecificationCollection();
 
-        if (m_input_collection.size() != m_layout_bindings.size())
+        if (Inputs.size() != m_layout_bindings.size())
         {
-            std::unordered_set<std::string> input_names;
-            for (const auto& input : m_input_collection)
-            {
-                input_names.insert(input.DebugName);
-            }
-
             std::vector<std::string> missing_names;
             for (const auto& binding : m_layout_bindings)
             {
-                if (input_names.find(binding.Name) == input_names.end())
+                if (!Inputs.contains(binding.Name))
                 {
-                    missing_names.push_back(binding.Name);
+                    missing_names.emplace_back(binding.Name);
                 }
             }
             auto        start        = missing_names.begin();
@@ -140,81 +134,54 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return true;
     }
 
-    void RenderPass::Update()
+    void RenderPass::Update(uint32_t frame_index)
     {
-        if (!m_perform_update)
+        if (EnqueuedUpdateInputs.empty())
         {
             return;
         }
 
-        const uint32_t                    frame_count                     = m_device->SwapchainImageCount;
-        const auto&                       shader                          = m_pipeline->GetShader();
-        const auto&                       descriptor_set_map              = shader->GetDescriptorSetMap();
-        auto&                             global_textures                 = *(m_device->GlobalTextures);
-        std::vector<VkWriteDescriptorSet> write_descriptor_set_collection = {};
-        for (const auto& input : m_input_collection)
+        const auto& shader             = m_pipeline->GetShader();
+        const auto& descriptor_set_map = shader->GetDescriptorSetMap();
+
+        for (std::string_view name : EnqueuedUpdateInputs)
         {
+            auto& input = Inputs[name.data()];
+
             switch (input.Type)
             {
                 case UNIFORM_BUFFER_SET:
                 {
-                    auto  buffer                    = reinterpret_cast<UniformBufferSet*>(input.Input.Data);
-                    auto& uniform_buffer_collection = buffer->Data();
-
-                    uint32_t index{0};
-                    for (auto& uniform_buffer : uniform_buffer_collection)
+                    if (!input.UniformBufferSetHandle)
                     {
-                        const auto& buffer_info = uniform_buffer.GetDescriptorBufferInfo();
-
-                        if (buffer_info.buffer == nullptr)
-                        {
-                            // invalid input
-                            continue;
-                        }
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[index],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                            .pImageInfo       = nullptr,
-                            .pBufferInfo      = &(buffer_info),
-                            .pTexelBufferView = nullptr});
-                        index++;
+                        continue;
                     }
+
+                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
+                        .Handle          = input.UniformBufferSetHandle.Index,
+                        .FrameIndex      = frame_index,
+                        .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
+                        .Binding         = input.Binding,
+                        .DstArrayElement = 0,
+                        .DescriptorCount = 1,
+                        .DescriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER});
                 }
                 break;
                 case STORAGE_BUFFER_SET:
                 {
-                    auto  buffer                    = reinterpret_cast<StorageBufferSet*>(input.Input.Data);
-                    auto& storage_buffer_collection = buffer->Data();
-
-                    uint32_t index{0};
-                    for (auto& storage_buffer : storage_buffer_collection)
+                    if (!input.BufferSetHandle)
                     {
-                        const auto& buffer_info = storage_buffer.GetDescriptorBufferInfo();
-
-                        if (buffer_info.buffer == nullptr)
-                        {
-                            // invalid input
-                            continue;
-                        }
-
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[index],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                            .pImageInfo       = nullptr,
-                            .pBufferInfo      = &(buffer_info),
-                            .pTexelBufferView = nullptr});
-                        index++;
+                        continue;
                     }
+
+                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
+                        .Handle          = input.BufferSetHandle.Index,
+                        .FrameIndex      = frame_index,
+                        .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
+                        .Binding         = input.Binding,
+                        .DstArrayElement = 0,
+                        .DescriptorCount = 1,
+                        .DescriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER});
                 }
                 break;
                 case TEXTURE_ARRAY:
@@ -251,227 +218,120 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 break;
                 case TEXTURE:
                 {
-                    auto& buffer = input.Input.Handle;
-                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    if (!input.TextureHandle)
                     {
-                        if (!buffer || !buffer.Valid())
-                        {
-                            continue;
-                        }
-
-                        auto& texture = global_textures[buffer];
-
-                        if (!texture)
-                        {
-                            continue;
-                        }
-
-                        const auto image_info = texture->GetDescriptorImageInfo();
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[frame_index],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                            .pImageInfo       = &(image_info),
-                            .pBufferInfo      = nullptr,
-                            .pTexelBufferView = nullptr});
+                        continue;
                     }
+
+                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
+                        .Handle          = input.TextureHandle.Index,
+                        .FrameIndex      = frame_index,
+                        .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
+                        .Binding         = input.Binding,
+                        .DstArrayElement = 0,
+                        .DescriptorCount = 1,
+                        .DescriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
                 }
                 break;
                 case UNIFORM_BUFFER:
                 {
-                    auto buffer = reinterpret_cast<UniformBuffer*>(input.Input.Data);
-                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
-                    {
-                        const auto& buffer_info = buffer->GetDescriptorBufferInfo();
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                            .pImageInfo       = nullptr,
-                            .pBufferInfo      = &(buffer_info),
-                            .pTexelBufferView = nullptr});
-                    }
+                    // auto buffer = reinterpret_cast<UniformBuffer*>(input.Input.Data);
+                    // for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    //{
+                    //     const auto& buffer_info = buffer->GetDescriptorBufferInfo();
+                    //     write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                    //         .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    //         .pNext            = nullptr,
+                    //         .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
+                    //         .dstBinding       = input.Binding,
+                    //         .dstArrayElement  = 0,
+                    //         .descriptorCount  = 1,
+                    //         .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    //         .pImageInfo       = nullptr,
+                    //         .pBufferInfo      = &(buffer_info),
+                    //         .pTexelBufferView = nullptr});
+                    // }
                 }
                 break;
                 case STORAGE_BUFFER:
                 {
-                    auto buffer = reinterpret_cast<StorageBuffer*>(input.Input.Data);
-                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
-                    {
-                        const auto& buffer_info = buffer->GetDescriptorBufferInfo();
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                            .pImageInfo       = nullptr,
-                            .pBufferInfo      = &(buffer_info),
-                            .pTexelBufferView = nullptr});
-                    }
+                    // auto buffer = reinterpret_cast<StorageBuffer*>(input.Input.Data);
+                    // for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    //{
+                    //     const auto& buffer_info = buffer->GetDescriptorBufferInfo();
+                    //     write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                    //         .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    //         .pNext            = nullptr,
+                    //         .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
+                    //         .dstBinding       = input.Binding,
+                    //         .dstArrayElement  = 0,
+                    //         .descriptorCount  = 1,
+                    //         .descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    //         .pImageInfo       = nullptr,
+                    //         .pBufferInfo      = &(buffer_info),
+                    //         .pTexelBufferView = nullptr});
+                    // }
                 }
                 break;
             }
         }
 
-        if (!write_descriptor_set_collection.empty())
-        {
-            vkUpdateDescriptorSets(m_device->LogicalDevice, write_descriptor_set_collection.size(), write_descriptor_set_collection.data(), 0, nullptr);
-            m_perform_update = false;
-        }
+        EnqueuedUpdateInputs.clear();
     }
 
     void RenderPass::MarkDirty()
     {
-        m_perform_update = true;
-    }
-
-    void RenderPass::SetInput(std::string_view key_name, const Ref<UniformBufferSet>& buffer)
-    {
-        auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
+        for (const auto& [name, _] : Inputs)
         {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = buffer.get();
-                return;
-            }
-            m_input_collection.emplace_back(PassInput{
-                .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER_SET, .Input = buffer.get()});
-
-            m_perform_update = true;
+            EnqueuedUpdateInputs.insert(name);
         }
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Ref<StorageBufferSet>& buffer)
+    void RenderPass::SetInput(std::string_view key_name, const Rendering::Buffers::UniformBufferSetHandle& buffer)
     {
         auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
+        if (!validity_output.first)
         {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = buffer.get();
-                return;
-            }
-            m_input_collection.emplace_back(PassInput{
-                .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER_SET, .Input = buffer.get()});
-
-            m_perform_update = true;
+            return;
         }
+        bool        found        = false;
+        const auto& binding_spec = validity_output.second;
+
+        Inputs[key_name.data()] = PassInput{
+            .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER_SET, .UniformBufferSetHandle = buffer};
+        EnqueuedUpdateInputs.insert(key_name.data());
     }
 
-    // void RenderPass::SetInput(std::string_view key_name, const Ref<Textures::TextureArray>& textures)
-    //{
-    //     auto validity_output = ValidateInput(key_name);
-    //     if (validity_output.first)
-    //     {
-    //         const auto& binding_spec = validity_output.second;
-    //         auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-    //             return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-    //         });
-
-    //        if (find_it != std::end(m_input_collection))
-    //        {
-    //            find_it->Input.Data = textures.get();
-    //            return;
-    //        }
-    //        m_input_collection.emplace_back(
-    //            PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE_ARRAY, .Input =
-    //            textures.get()});
-
-    //        m_perform_update = true;
-    //    }
-    //}
-
-    void RenderPass::SetInput(std::string_view key_name, const Ref<UniformBuffer>& buffer)
+    void RenderPass::SetInput(std::string_view key_name, const Rendering::Buffers::StorageBufferSetHandle& buffer)
     {
         auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
+        if (!validity_output.first)
         {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = buffer.get();
-                return;
-            }
-            m_input_collection.emplace_back(
-                PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER, .Input = buffer.get()});
-
-            m_perform_update = true;
+            return;
         }
+        bool        found        = false;
+        const auto& binding_spec = validity_output.second;
+
+        Inputs[key_name.data()] = PassInput{
+            .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER_SET, .BufferSetHandle = buffer};
+
+        EnqueuedUpdateInputs.insert(key_name.data());
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Ref<StorageBuffer>& buffer)
+    void RenderPass::SetInput(std::string_view key_name, const Textures::TextureHandle& texture)
     {
         auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
+        if (!validity_output.first)
         {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = buffer.get();
-                return;
-            }
-            m_input_collection.emplace_back(
-                PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER, .Input = buffer.get()});
-
-            m_perform_update = true;
+            return;
         }
-    }
+        bool        found        = false;
+        const auto& binding_spec = validity_output.second;
 
-    void RenderPass::SetInput(std::string_view key_name, const Textures::TextureHandle& texture_handle)
-    {
-        auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
-        {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
+        Inputs[key_name.data()] =
+            PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE, .TextureHandle = texture};
 
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Handle = texture_handle;
-                return;
-            }
-
-            auto& pass_input        = m_input_collection.emplace_back();
-            pass_input.Input.Handle = texture_handle;
-            pass_input.Set          = binding_spec.Set;
-            pass_input.Binding      = binding_spec.Binding;
-            pass_input.DebugName    = binding_spec.Name;
-            pass_input.Type         = PassInputType::TEXTURE;
-        }
-
-        m_perform_update = true;
+        EnqueuedUpdateInputs.insert(key_name.data());
     }
 
     void RenderPass::UpdateInputBinding()

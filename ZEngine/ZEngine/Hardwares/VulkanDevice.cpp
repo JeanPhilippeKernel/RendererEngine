@@ -557,7 +557,7 @@ namespace ZEngine::Hardwares
         size_t dirty_resource_count = m_dirty_resources.Size();
         for (size_t i = 0; i < dirty_resource_count; ++i)
         {
-            auto handle = m_dirty_resources.ConvertToHandle(i);
+            auto handle = m_dirty_resources.ToHandle(i);
             if (!handle.Valid())
             {
                 continue;
@@ -622,7 +622,7 @@ namespace ZEngine::Hardwares
         size_t dirty_buffer_count = m_dirty_buffers.Size();
         for (size_t i = 0; i < dirty_buffer_count; ++i)
         {
-            auto handle = m_dirty_buffers.ConvertToHandle(i);
+            auto handle = m_dirty_buffers.ToHandle(i);
             if (!handle.Valid())
             {
                 continue;
@@ -639,7 +639,7 @@ namespace ZEngine::Hardwares
         size_t dirty_buffer_image_count = m_dirty_buffer_images.Size();
         for (size_t i = 0; i < dirty_buffer_image_count; ++i)
         {
-            auto handle = m_dirty_buffer_images.ConvertToHandle(i);
+            auto handle = m_dirty_buffer_images.ToHandle(i);
             if (!handle.Valid())
             {
                 continue;
@@ -1073,7 +1073,7 @@ namespace ZEngine::Hardwares
         size_t dirty_resource_count = m_dirty_resources.Size();
         for (size_t i = 0; i < dirty_resource_count; ++i)
         {
-            auto handle = m_dirty_resources.ConvertToHandle(i);
+            auto handle = m_dirty_resources.ToHandle(i);
             if (!handle.Valid())
             {
                 continue;
@@ -1138,7 +1138,7 @@ namespace ZEngine::Hardwares
         size_t dirty_buffer_count = m_dirty_buffers.Size();
         for (size_t i = 0; i < dirty_buffer_count; ++i)
         {
-            auto handle = m_dirty_buffers.ConvertToHandle(i);
+            auto handle = m_dirty_buffers.ToHandle(i);
             if (!handle.Valid())
             {
                 continue;
@@ -1155,7 +1155,7 @@ namespace ZEngine::Hardwares
         size_t dirty_buffer_image_count = m_dirty_buffer_images.Size();
         for (size_t i = 0; i < dirty_buffer_image_count; ++i)
         {
-            auto handle = m_dirty_buffer_images.ConvertToHandle(i);
+            auto handle = m_dirty_buffer_images.ToHandle(i);
             if (!handle.Valid())
             {
                 continue;

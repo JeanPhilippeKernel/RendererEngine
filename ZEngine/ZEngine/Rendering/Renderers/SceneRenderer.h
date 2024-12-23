@@ -23,17 +23,16 @@ namespace ZEngine::Rendering::Renderers
     struct IndirectRenderingStorage
     {
         virtual void Initialize(GraphicRenderer* renderer);
-        virtual void Dispose();
 
     protected:
-        std::map<uint32_t, bool>                 m_write_once_control;
-        std::map<uint32_t, uint32_t>             m_cached_vertices_count;
-        std::map<uint32_t, uint32_t>             m_cached_indices_count;
-        Helpers::Ref<Buffers::StorageBufferSet>  m_vertex_buffer;
-        Helpers::Ref<Buffers::StorageBufferSet>  m_index_buffer;
-        Helpers::Ref<Buffers::StorageBufferSet>  m_draw_buffer;
-        Helpers::Ref<Buffers::StorageBufferSet>  m_transform_buffer;
-        Helpers::Ref<Buffers::IndirectBufferSet> m_indirect_buffer;
+        std::map<uint32_t, bool>         m_write_once_control;
+        std::map<uint32_t, uint32_t>     m_cached_vertices_count;
+        std::map<uint32_t, uint32_t>     m_cached_indices_count;
+        Buffers::StorageBufferSetHandle  m_vertex_buffer_handle;
+        Buffers::StorageBufferSetHandle  m_index_buffer_handle;
+        Buffers::StorageBufferSetHandle  m_draw_buffer_handle;
+        Buffers::StorageBufferSetHandle  m_transform_buffer_handle;
+        Buffers::IndirectBufferSetHandle m_indirect_buffer_handle;
     };
 
     /*
@@ -49,16 +48,11 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
     };
 
     struct SkyboxPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
     {
-
-        virtual void Dispose() override
-        {
-            IndirectRenderingStorage::Dispose();
-        }
-
         virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
         virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
         virtual void Execute(
@@ -67,6 +61,7 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
 
     private:
         const std::vector<float> m_vertex_data = {
@@ -88,6 +83,7 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
 
     private:
         const std::vector<float>                 m_vertex_data       = {-1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,  0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -107,6 +103,7 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
     };
 
     struct LightingPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
@@ -119,6 +116,7 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
     };
 
     struct SceneRenderer : public Helpers::RefCounted

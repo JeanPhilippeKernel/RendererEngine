@@ -1,5 +1,6 @@
 #pragma once
 #include <Hardwares/VulkanDevice.h>
+#include <Helpers/HandleManager.h>
 #include <Helpers/MemoryOperations.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
 #include <ZEngineDef.h>
@@ -117,7 +118,9 @@ namespace ZEngine::Rendering::Buffers
         BufferView m_indirect_buffer;
     };
 
-    using IndirectBufferSet = IBufferSet<IndirectBuffer>;
+    using IndirectBufferSet       = IBufferSet<IndirectBuffer>;
+    using IndirectBufferSetRef    = Helpers::Ref<IndirectBufferSet>;
+    using IndirectBufferSetHandle = Helpers::Handle<IndirectBufferSetRef>;
 
     template <>
     template <>

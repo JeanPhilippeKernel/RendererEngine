@@ -11,6 +11,7 @@
 #include <Rendering/Renderers/RenderGraph.h>
 #include <Textures/Texture.h>
 #include <vulkan/vulkan.h>
+#include <span>
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -56,25 +57,30 @@ namespace ZEngine::Rendering::Renderers
         GraphicRenderer();
         ~GraphicRenderer();
 
-        Hardwares::VulkanDevice* Device = nullptr;
-
-        Helpers::Ref<SceneRenderer> SceneRenderer = nullptr;
-        Helpers::Ref<ImGUIRenderer> ImguiRenderer = nullptr;
-        Helpers::Scope<RenderGraph> RenderGraph   = nullptr;
+        Hardwares::VulkanDevice*                              Device                   = nullptr;
+        Helpers::Ref<SceneRenderer>                           SceneRenderer            = nullptr;
+        Helpers::Ref<ImGUIRenderer>                           ImguiRenderer            = nullptr;
+        Helpers::Scope<RenderGraph>                           RenderGraph              = nullptr;
+        Helpers::HandleManager<Buffers::VertexBufferSetRef>   VertexBufferSetManager   = {300};
+        Helpers::HandleManager<Buffers::StorageBufferSetRef>  StorageBufferSetManager  = {300};
+        Helpers::HandleManager<Buffers::IndirectBufferSetRef> IndirectBufferSetManager = {300};
+        Helpers::HandleManager<Buffers::IndexBufferSetRef>    IndexBufferSetManager    = {300};
+        Helpers::HandleManager<Buffers::UniformBufferSetRef>  UniformBufferSetManager  = {300};
 
         void            Initialize(Hardwares::VulkanDevice* device);
         void            Deinitialize();
         void            SetViewportSize(uint32_t width, uint32_t height);
         void            Update();
         void            DrawScene(Buffers::CommandBuffer* const command_buffer, const Helpers::Ref<Cameras::Camera>& camera, const Helpers::Ref<Scenes::SceneRawData>& data);
+        void            WriteDescriptorSets(std::span<Hardwares::WriteDescriptorSetRequest> requests);
         VkDescriptorSet GetImguiFrameOutput();
         void            BindGlobalTextures(RenderPasses::RenderPass* pass);
 
-        Helpers::Ref<Buffers::VertexBufferSet>   CreateVertexBufferSet();
-        Helpers::Ref<Buffers::StorageBufferSet>  CreateStorageBufferSet();
-        Helpers::Ref<Buffers::IndirectBufferSet> CreateIndirectBufferSet();
-        Helpers::Ref<Buffers::IndexBufferSet>    CreateIndexBufferSet();
-        Helpers::Ref<Buffers::UniformBufferSet>  CreateUniformBufferSet();
+        Buffers::VertexBufferSetHandle   CreateVertexBufferSet();
+        Buffers::StorageBufferSetHandle  CreateStorageBufferSet();
+        Buffers::IndirectBufferSetHandle CreateIndirectBufferSet();
+        Buffers::IndexBufferSetHandle    CreateIndexBufferSet();
+        Buffers::UniformBufferSetHandle  CreateUniformBufferSet();
 
         Helpers::Ref<RenderPasses::RenderPass> CreateRenderPass(const Specifications::RenderPassSpecification& spec);
         Helpers::Ref<Textures::Texture>        CreateTexture(const Specifications::TextureSpecification& spec);
@@ -83,8 +89,8 @@ namespace ZEngine::Rendering::Renderers
         Textures::TextureHandle                LoadTextureFile(std::string_view filename);
 
     private:
-        Helpers::Ref<Buffers::UniformBufferSet> m_UBCamera;
-        Helpers::Ref<AsyncResourceLoader>       m_resource_loader;
+        Buffers::UniformBufferSetHandle   m_scene_camera_buffer_handle;
+        Helpers::Ref<AsyncResourceLoader> m_resource_loader;
     };
 
     struct AsyncResourceLoader : public Helpers::RefCounted

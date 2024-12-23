@@ -1,5 +1,6 @@
 #pragma once
 #include <Hardwares/VulkanDevice.h>
+#include <Helpers/HandleManager.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
 
 namespace ZEngine::Rendering::Buffers
@@ -166,7 +167,9 @@ namespace ZEngine::Rendering::Buffers
         VkDescriptorBufferInfo m_buffer_info{};
     };
 
-    using UniformBufferSet = IBufferSet<UniformBuffer>;
+    using UniformBufferSet       = IBufferSet<UniformBuffer>;
+    using UniformBufferSetRef    = Helpers::Ref<UniformBufferSet>;
+    using UniformBufferSetHandle = Helpers::Handle<UniformBufferSetRef>;
 
     template <>
     inline void UniformBufferSet::Dispose()

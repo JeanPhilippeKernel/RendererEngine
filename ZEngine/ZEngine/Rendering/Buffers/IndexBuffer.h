@@ -118,7 +118,9 @@ namespace ZEngine::Rendering::Buffers
         VkDescriptorBufferInfo m_buffer_info{};
     };
 
-    using IndexBufferSet = IBufferSet<IndexBuffer>;
+    using IndexBufferSet       = IBufferSet<IndexBuffer>;
+    using IndexBufferSetRef    = Helpers::Ref<IndexBufferSet>;
+    using IndexBufferSetHandle = Helpers::Handle<IndexBufferSetRef>;
 
     template <>
     inline void IndexBufferSet::Dispose()

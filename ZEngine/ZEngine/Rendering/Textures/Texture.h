@@ -47,12 +47,6 @@ namespace ZEngine::Rendering::Textures
                 ImageBuffer->Dispose();
             }
         }
-
-        VkDescriptorImageInfo GetDescriptorImageInfo()
-        {
-            const auto& buffer_image = ImageBuffer->GetBuffer();
-            return VkDescriptorImageInfo{.sampler = buffer_image.Sampler, .imageView = buffer_image.ViewHandle, .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        }
     };
 
     using TextureRef           = Helpers::Ref<Texture>;

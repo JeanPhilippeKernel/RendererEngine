@@ -24,9 +24,7 @@ using namespace ZEngine::Helpers;
 namespace ZEngine::Rendering::Renderers
 {
     GraphicRenderer::GraphicRenderer() {}
-
     GraphicRenderer::~GraphicRenderer() {}
-
     void GraphicRenderer::Initialize(Hardwares::VulkanDevice* device)
     {
         Device            = device;
@@ -37,10 +35,10 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Shared Buffers
          */
-        m_UBCamera = CreateUniformBufferSet();
+        m_scene_camera_buffer_handle = CreateUniformBufferSet();
 
         auto builder = RenderGraph->GetBuilder();
-        builder->AttachBuffer("scene_camera", m_UBCamera);
+        builder->AttachBuffer("scene_camera", m_scene_camera_buffer_handle);
         /*
          * Sub Renderer Initialization
          */
@@ -61,7 +59,11 @@ namespace ZEngine::Rendering::Renderers
         SceneRenderer->Deinitialize();
         ImguiRenderer->Deinitialize();
 
-        m_UBCamera->Dispose();
+        VertexBufferSetManager.Dispose();
+        StorageBufferSetManager.Dispose();
+        IndirectBufferSetManager.Dispose();
+        IndexBufferSetManager.Dispose();
+        UniformBufferSetManager.Dispose();
 
         m_resource_loader->Shutdown();
         m_resource_loader.reset();
@@ -81,16 +83,94 @@ namespace ZEngine::Rendering::Renderers
     {
         uint32_t frame_index = Device->CurrentFrameIndex;
 
-        auto& scene_camera    = *m_UBCamera;
+        auto& scene_camera    = UniformBufferSetManager.Access(m_scene_camera_buffer_handle);
         auto  ubo_camera_data = UBOCameraLayout{
              .View         = camera->GetViewMatrix(),
              .RotScaleView = glm::mat4(glm::mat3(camera->GetViewMatrix())),
              .Projection   = camera->GetPerspectiveMatrix(),
              .Position     = glm::vec4(camera->GetPosition(), 1.0f)};
 
-        scene_camera[frame_index].SetData(&ubo_camera_data, sizeof(UBOCameraLayout));
+        scene_camera->At(frame_index).SetData(&ubo_camera_data, sizeof(UBOCameraLayout));
 
         RenderGraph->Execute(frame_index, command_buffer, scene_data.get());
+    }
+
+    void GraphicRenderer::WriteDescriptorSets(std::span<Hardwares::WriteDescriptorSetRequest> requests)
+    {
+        std::vector<VkWriteDescriptorSet> write_descriptor_set_collection = {};
+        for (int i = 0; i < requests.size(); ++i)
+        {
+            auto& request = requests[i];
+
+            if (request.DescriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+            {
+                auto        handle      = UniformBufferSetManager.ToHandle(request.Handle);
+                auto&       buffer_set  = UniformBufferSetManager.Access(handle);
+                const auto& buffer_info = buffer_set->At(request.FrameIndex).GetDescriptorBufferInfo();
+
+                if (!buffer_info.buffer)
+                {
+                    continue;
+                }
+                write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                    .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .pNext            = nullptr,
+                    .dstSet           = request.DstSet,
+                    .dstBinding       = request.Binding,
+                    .dstArrayElement  = request.DstArrayElement,
+                    .descriptorCount  = request.DescriptorCount,
+                    .descriptorType   = request.DescriptorType,
+                    .pImageInfo       = nullptr,
+                    .pBufferInfo      = &(buffer_info),
+                    .pTexelBufferView = nullptr});
+            }
+
+            else if (request.DescriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+            {
+                auto        handle      = StorageBufferSetManager.ToHandle(request.Handle);
+                auto&       buffer_set  = StorageBufferSetManager.Access(handle);
+                const auto& buffer_info = buffer_set->At(request.FrameIndex).GetDescriptorBufferInfo();
+
+                if (!buffer_info.buffer)
+                {
+                    continue;
+                }
+                write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                    .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .pNext            = nullptr,
+                    .dstSet           = request.DstSet,
+                    .dstBinding       = request.Binding,
+                    .dstArrayElement  = request.DstArrayElement,
+                    .descriptorCount  = request.DescriptorCount,
+                    .descriptorType   = request.DescriptorType,
+                    .pImageInfo       = nullptr,
+                    .pBufferInfo      = &(buffer_info),
+                    .pTexelBufferView = nullptr});
+            }
+            else if (request.DescriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+            {
+                auto  handle  = Device->GlobalTextures->ToHandle(request.Handle);
+                auto& texture = Device->GlobalTextures->Access(handle);
+
+                if (!texture)
+                {
+                    continue;
+                }
+                const auto& image_info = texture->ImageBuffer->GetDescriptorImageInfo();
+                write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                    .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .pNext            = nullptr,
+                    .dstSet           = request.DstSet,
+                    .dstBinding       = request.Binding,
+                    .dstArrayElement  = request.DstArrayElement,
+                    .descriptorCount  = request.DescriptorCount,
+                    .descriptorType   = request.DescriptorType,
+                    .pImageInfo       = &(image_info),
+                    .pBufferInfo      = nullptr,
+                    .pTexelBufferView = nullptr});
+            }
+        }
+        vkUpdateDescriptorSets(Device->LogicalDevice, write_descriptor_set_collection.size(), write_descriptor_set_collection.data(), 0, nullptr);
     }
 
     VkDescriptorSet GraphicRenderer::GetImguiFrameOutput()
@@ -105,29 +185,60 @@ namespace ZEngine::Rendering::Renderers
         // pass->MarkDirty();
     }
 
-    Helpers::Ref<Buffers::VertexBufferSet> GraphicRenderer::CreateVertexBufferSet()
+    Buffers::VertexBufferSetHandle GraphicRenderer::CreateVertexBufferSet()
     {
-        return CreateRef<Buffers::VertexBufferSet>(Device, Device->SwapchainImageCount);
+        auto handle = VertexBufferSetManager.Create();
+        if (handle)
+        {
+            auto& buffer = VertexBufferSetManager.Access(handle);
+            buffer       = CreateRef<Buffers::VertexBufferSet>(Device, Device->SwapchainImageCount);
+        }
+
+        return handle;
     }
 
-    Helpers::Ref<Buffers::StorageBufferSet> GraphicRenderer::CreateStorageBufferSet()
+    Buffers::StorageBufferSetHandle GraphicRenderer::CreateStorageBufferSet()
     {
-        return CreateRef<Buffers::StorageBufferSet>(Device, Device->SwapchainImageCount);
+        auto handle = StorageBufferSetManager.Create();
+        if (handle)
+        {
+            auto& buffer = StorageBufferSetManager.Access(handle);
+            buffer       = CreateRef<Buffers::StorageBufferSet>(Device, Device->SwapchainImageCount);
+        }
+        return handle;
     }
 
-    Helpers::Ref<Buffers::IndirectBufferSet> GraphicRenderer::CreateIndirectBufferSet()
+    Buffers::IndirectBufferSetHandle GraphicRenderer::CreateIndirectBufferSet()
     {
-        return CreateRef<Buffers::IndirectBufferSet>(Device, Device->SwapchainImageCount);
+        auto handle = IndirectBufferSetManager.Create();
+        if (handle)
+        {
+            auto& buffer = IndirectBufferSetManager.Access(handle);
+            buffer       = CreateRef<Buffers::IndirectBufferSet>(Device, Device->SwapchainImageCount);
+        }
+        return handle;
     }
 
-    Helpers::Ref<Buffers::IndexBufferSet> GraphicRenderer::CreateIndexBufferSet()
+    Buffers::IndexBufferSetHandle GraphicRenderer::CreateIndexBufferSet()
     {
-        return CreateRef<Buffers::IndexBufferSet>(Device, Device->SwapchainImageCount);
+        auto handle = IndexBufferSetManager.Create();
+        if (handle)
+        {
+            auto& buffer = IndexBufferSetManager.Access(handle);
+            buffer       = CreateRef<Buffers::IndexBufferSet>(Device, Device->SwapchainImageCount);
+        }
+        return handle;
     }
 
-    Helpers::Ref<Buffers::UniformBufferSet> GraphicRenderer::CreateUniformBufferSet()
+    Buffers::UniformBufferSetHandle GraphicRenderer::CreateUniformBufferSet()
     {
-        return CreateRef<Buffers::UniformBufferSet>(Device, Device->SwapchainImageCount);
+        auto handle = UniformBufferSetManager.Create();
+        if (handle)
+        {
+            auto& buffer = UniformBufferSetManager.Access(handle);
+            buffer       = CreateRef<Buffers::UniformBufferSet>(Device, Device->SwapchainImageCount);
+        }
+        return handle;
     }
 
     Helpers::Ref<RenderPasses::RenderPass> GraphicRenderer::CreateRenderPass(const Specifications::RenderPassSpecification& spec)

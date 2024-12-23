@@ -1,5 +1,6 @@
 #pragma once
 #include <Hardwares/VulkanDevice.h>
+#include <Helpers/HandleManager.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
 
 namespace ZEngine::Rendering::Buffers
@@ -114,7 +115,9 @@ namespace ZEngine::Rendering::Buffers
         VkDescriptorBufferInfo m_buffer_info{};
     };
 
-    using VertexBufferSet = IBufferSet<VertexBuffer>;
+    using VertexBufferSet       = IBufferSet<VertexBuffer>;
+    using VertexBufferSetRef    = Helpers::Ref<VertexBufferSet>;
+    using VertexBufferSetHandle = Helpers::Handle<VertexBufferSetRef>;
 
     template <>
     inline void VertexBufferSet::Dispose()

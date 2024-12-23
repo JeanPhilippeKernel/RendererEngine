@@ -7,7 +7,7 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Ref<Buffers::StorageBufferSet>& buffer)
+    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Buffers::StorageBufferSetHandle& buffer)
     {
         std::string resource_name(name);
 
@@ -18,7 +18,7 @@ namespace ZEngine::Rendering::Renderers
         return m_graph.m_resource_map[resource_name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Ref<Buffers::UniformBufferSet>& buffer)
+    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Buffers::UniformBufferSetHandle& buffer)
     {
         std::string resource_name(name);
 
@@ -29,7 +29,7 @@ namespace ZEngine::Rendering::Renderers
         return m_graph.m_resource_map[resource_name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::AttachTexture(std::string_view name, const Handle<Textures::TextureRef>& texture)
+    RenderGraphResource& RenderGraphBuilder::AttachTexture(std::string_view name, const Textures::TextureHandle& texture)
     {
         std::string resource_name(name);
 
@@ -85,7 +85,7 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    RenderGraphResource& RenderGraphBuilder::CreateBufferSet(std::string_view name, uint32_t count, BufferSetCreationType type)
+    RenderGraphResource& RenderGraphBuilder::CreateBufferSet(std::string_view name, BufferSetCreationType type)
     {
         std::string resource_name(name);
 
@@ -320,7 +320,9 @@ namespace ZEngine::Rendering::Renderers
                     command_buffer->TransitionImageLayout(barrier);
                 }
             }
+
             node.CallbackPass->Execute(frame_index, scene_data, node.Handle.get(), command_buffer, this);
+            node.CallbackPass->Render(frame_index, node.Handle.get(), command_buffer, this);
         }
     }
 
@@ -413,18 +415,18 @@ namespace ZEngine::Rendering::Renderers
             {
                 if (value.ResourceInfo.BufferSetHandle)
                 {
-                    value.ResourceInfo.BufferSetHandle->Dispose();
-                    value.ResourceInfo.BufferSetHandle = nullptr;
+                    Renderer->StorageBufferSetManager.Remove(value.ResourceInfo.BufferSetHandle);
+                    value.ResourceInfo.BufferSetHandle = {};
                 }
                 else if (value.ResourceInfo.UniformBufferSetHandle)
                 {
-                    value.ResourceInfo.UniformBufferSetHandle->Dispose();
-                    value.ResourceInfo.UniformBufferSetHandle = nullptr;
+                    Renderer->UniformBufferSetManager.Remove(value.ResourceInfo.UniformBufferSetHandle);
+                    value.ResourceInfo.UniformBufferSetHandle = {};
                 }
                 else if (value.ResourceInfo.IndirectBufferSetHandle)
                 {
-                    value.ResourceInfo.IndirectBufferSetHandle->Dispose();
-                    value.ResourceInfo.IndirectBufferSetHandle = nullptr;
+                    Renderer->IndirectBufferSetManager.Remove(value.ResourceInfo.IndirectBufferSetHandle);
+                    value.ResourceInfo.IndirectBufferSetHandle = {};
                 }
             }
         }
@@ -494,7 +496,7 @@ namespace ZEngine::Rendering::Renderers
         return output;
     }
 
-    Ref<Buffers::StorageBufferSet> RenderGraph::GetBufferSet(std::string_view name)
+    Buffers::StorageBufferSetHandle RenderGraph::GetBufferSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
@@ -504,7 +506,7 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name].ResourceInfo.BufferSetHandle;
     }
 
-    Ref<Buffers::UniformBufferSet> RenderGraph::GetBufferUniformSet(std::string_view name)
+    Buffers::UniformBufferSetHandle RenderGraph::GetBufferUniformSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
@@ -514,7 +516,7 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle;
     }
 
-    Ref<Buffers::IndirectBufferSet> RenderGraph::GetIndirectBufferSet(std::string_view name)
+    Buffers::IndirectBufferSetHandle RenderGraph::GetIndirectBufferSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))

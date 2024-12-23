@@ -70,6 +70,14 @@ namespace ZEngine::Rendering::Buffers
         }
     }
 
+    VkDescriptorImageInfo& Image2DBuffer::GetDescriptorImageInfo()
+    {
+        m_image_info.sampler     = m_buffer_image.Sampler;
+        m_image_info.imageView   = m_buffer_image.ViewHandle;
+        m_image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        return m_image_info;
+    }
+
     VkImageView Image2DBuffer::GetImageViewHandle() const
     {
         return m_buffer_image.ViewHandle;

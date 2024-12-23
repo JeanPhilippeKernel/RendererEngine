@@ -229,7 +229,6 @@ namespace ZEngine::Rendering::Buffers
     {
         if (auto render_pass = m_active_render_pass.lock())
         {
-            render_pass->Update();
             auto        render_pass_pipeline = render_pass->GetPipeline();
             auto        pipeline_layout      = render_pass_pipeline->GetPipelineLayout();
             const auto& descriptor_set_map   = render_pass_pipeline->GetShader()->GetDescriptorSetMap();

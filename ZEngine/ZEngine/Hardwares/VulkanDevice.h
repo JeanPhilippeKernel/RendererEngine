@@ -71,6 +71,7 @@ namespace ZEngine::Hardwares
         VkSubmitInfo                      Submit;
     };
 
+    struct WriteDescriptorSetRequest;
     struct CommandBufferManager;
     struct VulkanDevice;
 
@@ -102,9 +103,19 @@ namespace ZEngine::Hardwares
         Helpers::Ref<Rendering::Primitives::Fence>     m_instant_fence;
     };
 
+    struct WriteDescriptorSetRequest
+    {
+        int              Handle;
+        uint32_t         FrameIndex;
+        VkDescriptorSet  DstSet;
+        uint32_t         Binding;
+        uint32_t         DstArrayElement;
+        uint32_t         DescriptorCount;
+        VkDescriptorType DescriptorType;
+    };
+
     struct VulkanDevice
     {
-
         const std::string_view                                       ApplicationName                   = "Tetragrama";
         const std::string_view                                       EngineName                        = "ZEngine";
         bool                                                         HasSeperateTransfertQueueFamily   = false;

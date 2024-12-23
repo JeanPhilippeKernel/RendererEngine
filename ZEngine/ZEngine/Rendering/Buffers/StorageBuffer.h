@@ -1,4 +1,5 @@
 #pragma once
+#include <Helpers/HandleManager.h>
 #include <Helpers/MemoryOperations.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
 #include <vk_mem_alloc.h>
@@ -116,7 +117,9 @@ namespace ZEngine::Rendering::Buffers
         VkDescriptorBufferInfo m_buffer_info{};
     };
 
-    using StorageBufferSet = IBufferSet<StorageBuffer>;
+    using StorageBufferSet       = IBufferSet<StorageBuffer>;
+    using StorageBufferSetRef    = Helpers::Ref<StorageBufferSet>;
+    using StorageBufferSetHandle = Helpers::Handle<StorageBufferSetRef>;
 
     template <>
     inline void StorageBufferSet::Dispose()

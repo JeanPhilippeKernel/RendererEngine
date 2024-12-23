@@ -23,8 +23,8 @@ namespace ZEngine::Rendering::Renderers
         VkDescriptorSet                        m_frame_output{VK_NULL_HANDLE};
         VkDescriptorSet                        m_font_descriptor_set{VK_NULL_HANDLE};
         GraphicRenderer*                       m_renderer;
-        Helpers::Ref<Buffers::VertexBufferSet> m_vertex_buffer;
-        Helpers::Ref<Buffers::IndexBufferSet>  m_index_buffer;
+        Buffers::VertexBufferSetHandle         m_vertex_buffer_handle;
+        Buffers::IndexBufferSetHandle          m_index_buffer_handle;
         Helpers::Ref<RenderPasses::RenderPass> m_ui_pass;
     };
 
