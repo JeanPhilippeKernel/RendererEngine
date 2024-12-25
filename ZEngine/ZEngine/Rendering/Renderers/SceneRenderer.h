@@ -1,5 +1,5 @@
 #pragma once
-#include <GraphicRenderer.h>
+#include <RenderGraph.h>
 #include <Rendering/Buffers/IndirectBuffer.h>
 #include <Rendering/Cameras/Camera.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
@@ -119,6 +119,7 @@ namespace ZEngine::Rendering::Renderers
         virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
     };
 
+    struct GraphicRenderer;
     struct SceneRenderer : public Helpers::RefCounted
     {
         SceneRenderer()  = default;

@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <GraphicRenderer.h>
 #include <Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <Rendering/Renderers/SceneRenderer.h>
 

@@ -1,5 +1,5 @@
 #pragma once
-#include <GraphicRenderer.h>
+#include <RenderGraph.h>
 #include <Rendering/Buffers/IndexBuffer.h>
 #include <Rendering/Buffers/VertexBuffer.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
@@ -7,6 +7,7 @@
 
 namespace ZEngine::Rendering::Renderers
 {
+    struct GraphicRenderer;
     struct ImGUIRenderer : public Helpers::RefCounted
     {
         void Initialize(GraphicRenderer* renderer);

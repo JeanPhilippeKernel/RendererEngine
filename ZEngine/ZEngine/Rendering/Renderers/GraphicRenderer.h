@@ -4,11 +4,13 @@
 #include <Camera.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Helpers/ThreadSafeQueue.h>
+#include <ImGUIRenderer.h>
 #include <Primitives/Fence.h>
 #include <Primitives/Semaphore.h>
 #include <RenderPasses/RenderPass.h>
 #include <Rendering/Buffers/CommandBuffer.h>
 #include <Rendering/Renderers/RenderGraph.h>
+#include <SceneRenderer.h>
 #include <Textures/Texture.h>
 #include <vulkan/vulkan.h>
 #include <span>
@@ -50,8 +52,6 @@ namespace ZEngine::Rendering::Renderers
 
     struct BufferSet;
     struct AsyncResourceLoader;
-    struct ImGUIRenderer;
-    struct SceneRenderer;
     struct GraphicRenderer
     {
         GraphicRenderer();
