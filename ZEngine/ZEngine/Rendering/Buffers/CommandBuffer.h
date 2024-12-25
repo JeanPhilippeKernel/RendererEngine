@@ -74,7 +74,6 @@ namespace ZEngine::Rendering::Buffers
         void PushConstants(VkShaderStageFlags stage_flags, uint32_t offset, uint32_t size, const void* data);
 
     private:
-        bool                                                  m_one_time_usage{false};
         std::atomic_uint8_t                                   m_command_buffer_state{CommanBufferState::Idle};
         VkCommandBuffer                                       m_command_buffer{VK_NULL_HANDLE};
         VkCommandPool                                         m_command_pool{VK_NULL_HANDLE};

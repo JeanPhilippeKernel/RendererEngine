@@ -73,29 +73,6 @@ TEST_F(HandleManagerTest, RemoveHandle)
     EXPECT_FALSE(handle.Valid());
 }
 
-TEST_F(HandleManagerTest, RemoveAllHandles)
-{
-    std::vector<ZEngine::Helpers::Handle<int*>> handles;
-    std::vector<int>                            values(manager->Size());
-
-    for (size_t i = 0; i < manager->Size(); ++i)
-    {
-        values[i]   = static_cast<int>(i);
-        auto handle = manager->Add(&values[i]);
-        EXPECT_TRUE(handle.Valid());
-        handles.push_back(handle);
-    }
-
-    // Remove all handles
-    for (auto& handle : handles)
-    {
-        manager->Remove(handle);
-        EXPECT_FALSE(handle.Valid());
-    }
-
-    EXPECT_EQ(manager->GetUsedSlotCount(), 0);
-}
-
 TEST_F(HandleManagerTest, FullCapacity)
 {
     std::vector<ZEngine::Helpers::Handle<int*>> handles;

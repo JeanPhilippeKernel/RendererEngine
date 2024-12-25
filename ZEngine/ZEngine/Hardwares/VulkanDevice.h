@@ -140,7 +140,6 @@ namespace ZEngine::Hardwares
         VkSwapchainKHR                                               SwapchainHandle                   = VK_NULL_HANDLE;
         VmaAllocator                                                 VmaAllocator                      = nullptr;
         Helpers::Ref<Rendering::Renderers::RenderPasses::Attachment> SwapchainAttachment               = {};
-        std::vector<VkImage>                                         SwapchainImages                   = {};
         std::vector<VkImageView>                                     SwapchainImageViews               = {};
         std::vector<VkFramebuffer>                                   SwapchainFramebuffers             = {};
         std::vector<Helpers::Ref<Rendering::Primitives::Semaphore>>  SwapchainAcquiredSemaphores       = {};
@@ -205,7 +204,7 @@ namespace ZEngine::Hardwares
         std::map<Rendering::QueueType, VkQueue>                 m_queue_map{};
         Helpers::HandleManager<DirtyResource>                   m_dirty_resources{300};
         Helpers::HandleManager<Rendering::Buffers::BufferView>  m_dirty_buffers{300};
-        Helpers::HandleManager<Rendering::Buffers::BufferImage> m_dirty_buffer_images{50};
+        Helpers::HandleManager<Rendering::Buffers::BufferImage> m_dirty_buffer_images{300};
         VkDebugUtilsMessengerEXT                                m_debug_messenger{VK_NULL_HANDLE};
         PFN_vkCreateDebugUtilsMessengerEXT                      __createDebugMessengerPtr{VK_NULL_HANDLE};
         PFN_vkDestroyDebugUtilsMessengerEXT                     __destroyDebugMessengerPtr{VK_NULL_HANDLE};

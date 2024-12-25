@@ -365,7 +365,6 @@ namespace Tetragrama
 
     void EditorWindow::Update(Core::TimeStep delta_time)
     {
-
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
             layer->Update(delta_time);
@@ -438,8 +437,6 @@ namespace Tetragrama
         return outputs;
     }
 
-    // Ref<Rendering::Swapchain> EditorWindow::GetSwapchain() const {}
-
     EditorWindow::~EditorWindow()
     {
         glfwSetErrorCallback(NULL);
@@ -465,11 +462,6 @@ namespace Tetragrama
 
     bool EditorWindow::OnWindowResized(WindowResizedEvent& event)
     {
-        if (event.GetWidth() > 0 && event.GetHeight() > 0)
-        {
-            // m_renderer->Device->ResizeSwapchain();
-        }
-
         ZENGINE_CORE_INFO("Window has been resized")
 
         Core::EventDispatcher event_dispatcher(event);

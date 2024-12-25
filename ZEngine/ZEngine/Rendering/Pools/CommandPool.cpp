@@ -25,33 +25,4 @@ namespace ZEngine::Rendering::Pools
 
         ZENGINE_DESTROY_VULKAN_HANDLE(Device->LogicalDevice, vkDestroyCommandPool, Handle, nullptr)
     }
-
-    // Buffers::CommandBuffer* CommandPool::GetCommmandBuffer()
-    //{
-    //     Buffers::CommandBuffer* m_available_command_buffer{nullptr};
-
-    //    bool found = false;
-    //    for (int i = 0; i < m_allocated_command_buffers.size(); ++i)
-    //    {
-    //        if (m_allocated_command_buffers[i]->Completed())
-    //        {
-    //            m_allocated_command_buffers[i]->ResetState();
-    //            m_available_command_buffer = m_allocated_command_buffers[i].get();
-    //            found                      = true;
-    //            break;
-    //        }
-    //    }
-
-    //    if (!found)
-    //    {
-    //        m_allocated_command_buffers.push_back(CreateRef<Buffers::CommandBuffer>(m_handle, m_queue_type, false));
-    //        m_available_command_buffer = m_allocated_command_buffers.back().get();
-    //    }
-    //    return m_available_command_buffer;
-    //}
-
-    // Ref<Buffers::CommandBuffer> CommandPool::GetOneTimeCommmandBuffer()
-    //{
-    //     return CreateRef<Buffers::CommandBuffer>(m_handle, m_queue_type, true);
-    // }
 } // namespace ZEngine::Rendering::Pools

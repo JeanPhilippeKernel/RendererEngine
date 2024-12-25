@@ -73,7 +73,6 @@ namespace ZEngine
             }
 
             /*On Update*/
-            g_renderer->Update();
             window->Update(dt);
 
             g_device->NewFrame();

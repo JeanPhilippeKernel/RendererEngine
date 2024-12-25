@@ -392,7 +392,6 @@ namespace ZEngine::Hardwares
         SwapchainAttachment->Dispose();
         ZENGINE_CLEAR_STD_VECTOR(SwapchainImageViews)
         ZENGINE_CLEAR_STD_VECTOR(SwapchainFramebuffers)
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainImages)
 
         m_buffer_manager.Deinitialize();
 
@@ -902,6 +901,7 @@ namespace ZEngine::Hardwares
 
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &SwapchainImageCount, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
 
+        std::vector<VkImage> SwapchainImages = {};
         SwapchainImages.resize(SwapchainImageCount);
         ZENGINE_VALIDATE_ASSERT(
             vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &SwapchainImageCount, SwapchainImages.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
@@ -968,7 +968,6 @@ namespace ZEngine::Hardwares
 
         ZENGINE_CLEAR_STD_VECTOR(SwapchainImageViews)
         ZENGINE_CLEAR_STD_VECTOR(SwapchainFramebuffers)
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainImages)
 
         ZENGINE_DESTROY_VULKAN_HANDLE(LogicalDevice, vkDestroySwapchainKHR, SwapchainHandle, nullptr)
     }

@@ -13,7 +13,7 @@ using namespace ZEngine::Helpers;
 namespace ZEngine::Rendering::Buffers
 {
     CommandBuffer::CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool one_time_usage)
-        : Device(device), QueueType(type), m_command_pool(command_pool), m_one_time_usage(one_time_usage)
+        : Device(device), QueueType(type), m_command_pool(command_pool)
     {
         Create();
     }
@@ -59,8 +59,7 @@ namespace ZEngine::Rendering::Buffers
 
         VkCommandBufferBeginInfo command_buffer_begin_info = {};
         command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        // command_buffer_begin_info.flags                    = m_one_time_usage ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-        command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        command_buffer_begin_info.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(m_command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin the Command Buffer")
 
         m_command_buffer_state = CommanBufferState::Recording;
@@ -96,15 +95,6 @@ namespace ZEngine::Rendering::Buffers
 
     void CommandBuffer::ResetState()
     {
-        // if (!m_one_time_usage && (m_command_buffer_state != CommanBufferState::Idle))
-        //{
-        //     vkResetCommandBuffer(m_command_buffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
-        // }
-        // else if (m_one_time_usage && (m_command_buffer_state != CommanBufferState::Idle))
-        //{
-        //     Free();
-        //     Create();
-        // }
         m_command_buffer_state = CommanBufferState::Idle;
         m_signal_fence         = {};
         m_signal_semaphore     = {};

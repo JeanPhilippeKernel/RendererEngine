@@ -203,7 +203,7 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/piazza_bologni_4k.hdr");
+        builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
         RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}, {.Name = "lighting_render_target"}}};
         builder->CreateRenderPassNode(pass_node);
     }

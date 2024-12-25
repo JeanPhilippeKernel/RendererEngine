@@ -367,11 +367,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     void RenderPass::ResizeFramebuffer()
     {
-        if (m_framebuffer)
-        {
-            m_framebuffer->Dispose();
-        }
-
         uint32_t                 framebuffer_width             = 0;
         uint32_t                 framebuffer_height            = 0;
         std::vector<VkImageView> render_target_view_collection = {};

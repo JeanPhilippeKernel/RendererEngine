@@ -38,7 +38,6 @@ namespace Tetragrama
 
         virtual bool                     CreateSurface(void* instance, void** out_window_surface) override;
         virtual std::vector<std::string> GetRequiredExtensionLayers() override;
-        // ZEngine::Helpers::Ref<ZEngine::Rendering::Swapchain> GetSwapchain() const override;
 
     public:
         bool OnEvent(ZEngine::Core::CoreEvent& event) override;
