@@ -10,7 +10,6 @@
 #include <Inputs/IInputEventCallback.h>
 #include <Layers/Layer.h>
 #include <Layers/LayerStack.h>
-#include <Rendering/Swapchain.h>
 #include <WindowConfiguration.h>
 #include <WindowProperty.h>
 #include <future>

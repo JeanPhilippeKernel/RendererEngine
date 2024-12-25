@@ -3,7 +3,6 @@
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
-#include <Rendering/Swapchain.h>
 
 namespace ZEngine::Rendering::Specifications
 {
