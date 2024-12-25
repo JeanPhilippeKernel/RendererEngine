@@ -112,7 +112,7 @@ namespace ZEngine::Rendering::Buffers
 
             if (std::is_same_v<T, IndexBuffer> || std::is_same_v<T, VertexBuffer> || std::is_same_v<T, StorageBuffer>)
             {
-                m_set[index].SetData<K>(data);
+                m_set[index].template SetData<K>(data);
             }
         }
 
