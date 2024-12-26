@@ -4,7 +4,6 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
-#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Windows/Inputs/KeyCode.h>
 
 #ifdef _WIN32
@@ -139,8 +138,6 @@ namespace Tetragrama
 
     void EditorWindow::Initialize()
     {
-        GraphicRenderer::Initialize(this);
-
         for (const auto& layer : m_configuration.RenderingLayerCollection)
         {
             PushLayer(layer);
@@ -193,7 +190,6 @@ namespace Tetragrama
         {
             (*rlayer_it)->Deinitialize();
         }
-        GraphicRenderer::Deinitialize();
     }
 
     void EditorWindow::PollEvent()
@@ -369,24 +365,18 @@ namespace Tetragrama
 
     void EditorWindow::Update(Core::TimeStep delta_time)
     {
-        GraphicRenderer::Update();
-
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
             layer->Update(delta_time);
         }
     }
 
-    void EditorWindow::Render()
+    void EditorWindow::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
-        GraphicRenderer::NewFrame();
-
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
-            layer->Render();
+            layer->Render(renderer, command_buffer);
         }
-
-        GraphicRenderer::Present();
     }
 
     std::future<std::string> EditorWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters)
@@ -447,11 +437,6 @@ namespace Tetragrama
         return outputs;
     }
 
-    Ref<Rendering::Swapchain> EditorWindow::GetSwapchain() const
-    {
-        return GraphicRenderer::GetSwapchain();
-    }
-
     EditorWindow::~EditorWindow()
     {
         glfwSetErrorCallback(NULL);
@@ -477,11 +462,6 @@ namespace Tetragrama
 
     bool EditorWindow::OnWindowResized(WindowResizedEvent& event)
     {
-        if (event.GetWidth() > 0 && event.GetHeight() > 0)
-        {
-            GraphicRenderer::ResizeSwapchain();
-        }
-
         ZENGINE_CORE_INFO("Window has been resized")
 
         Core::EventDispatcher event_dispatcher(event);

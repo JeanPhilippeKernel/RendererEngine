@@ -1,13 +1,19 @@
 #pragma once
+#include <Buffers/IndexBuffer.h>
+#include <Buffers/VertexBuffer.h>
+#include <Camera.h>
+#include <Hardwares/VulkanDevice.h>
 #include <Helpers/ThreadSafeQueue.h>
-#include <Rendering/Buffers/Framebuffer.h>
-#include <Rendering/Renderers/ImGUIRenderer.h>
+#include <ImGUIRenderer.h>
+#include <Primitives/Fence.h>
+#include <Primitives/Semaphore.h>
+#include <RenderPasses/RenderPass.h>
+#include <Rendering/Buffers/CommandBuffer.h>
 #include <Rendering/Renderers/RenderGraph.h>
-#include <Rendering/Renderers/SceneRenderer.h>
-#include <Rendering/Swapchain.h>
+#include <SceneRenderer.h>
 #include <Textures/Texture.h>
-#include <Windows/CoreWindow.h>
 #include <vulkan/vulkan.h>
+#include <span>
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -18,57 +24,10 @@ namespace ZEngine::Rendering::Renderers
         COUNT
     };
 
-    struct RendererInformation
+    struct ResizeRequest
     {
-        uint32_t FrameCount{0xFFFFFFFF};
-        uint32_t CurrentFrameIndex{0xFFFFFFFF};
-        uint64_t SwapchainIdentifier{0xFFFFFFFF};
-    };
-
-    struct UpdateTextureRequest;
-    struct AsyncResourceLoader;
-    struct GraphicRenderer
-    {
-        static Helpers::Ref<Textures::TextureHandleManager> GlobalTextures;
-
-        static void                               Initialize(const Helpers::Ref<Windows::CoreWindow>& window);
-        static void                               Deinitialize();
-        static void                               SetViewportSize(uint32_t width, uint32_t height);
-        static const RendererInformation&         GetRendererInformation();
-        static void                               Update();
-        static void                               DrawScene(const Helpers::Ref<Rendering::Cameras::Camera>& camera, const Helpers::Ref<Rendering::Scenes::SceneRawData>& data);
-        static void                               BeginImguiFrame();
-        static void                               DrawUIFrame();
-        static void                               EndImguiFrame();
-        static VkDescriptorSet                    GetImguiFrameOutput();
-        static void                               BindGlobalTextures(RenderPasses::RenderPass* pass);
-        static void                               NewFrame();
-        static void                               Present();
-        static void                               ResizeSwapchain();
-        static Helpers::Ref<Rendering::Swapchain> GetSwapchain();
-
-        static Textures::TextureHandle AddTexture(std::string_view filename);
-        static void                    AddTextureToUpdate(UpdateTextureRequest&& req);
-
-    private:
-        GraphicRenderer()                       = delete;
-        GraphicRenderer(const GraphicRenderer&) = delete;
-        ~GraphicRenderer()                      = delete;
-
-    private:
-        static RendererInformation                            s_renderer_information;
-        static Helpers::Ref<Rendering::Swapchain>             s_swapchain;
-        static Helpers::Ref<Buffers::UniformBufferSet>        s_UBCamera;
-        static Pools::CommandPool*                            s_command_pool;
-        static Buffers::CommandBuffer*                        s_current_command_buffer;
-        static Buffers::CommandBuffer*                        s_current_command_buffer_ui;
-        static Helpers::Ref<SceneRenderer>                    s_scene_renderer;
-        static Helpers::Ref<ImGUIRenderer>                    s_imgui_renderer;
-        static Helpers::Scope<RenderGraph>                    s_render_graph;
-        static Helpers::Ref<AsyncResourceLoader>              s_resource_loader;
-        static Helpers::ThreadSafeQueue<UpdateTextureRequest> s_update_texture_request;
-        static Helpers::Ref<Primitives::Fence>                s_transfer_fence;
-        static Helpers::Ref<Primitives::Semaphore>            s_transfer_semaphore;
+        uint32_t Width;
+        uint32_t Height;
     };
 
     struct UpdateTextureRequest
@@ -85,27 +44,71 @@ namespace ZEngine::Rendering::Renderers
 
     struct TextureUploadRequest
     {
+        size_t                               BufferSize;
         Textures::TextureHandle              Handle;
         Specifications::TextureSpecification TextureSpec;
     };
 
+    struct BufferSet;
+    struct AsyncResourceLoader;
+    struct GraphicRenderer
+    {
+        GraphicRenderer();
+        ~GraphicRenderer();
+
+        Hardwares::VulkanDevice*                              Device                   = nullptr;
+        Helpers::Ref<SceneRenderer>                           SceneRenderer            = nullptr;
+        Helpers::Ref<ImGUIRenderer>                           ImguiRenderer            = nullptr;
+        Helpers::Scope<RenderGraph>                           RenderGraph              = nullptr;
+        Helpers::HandleManager<Buffers::VertexBufferSetRef>   VertexBufferSetManager   = {300};
+        Helpers::HandleManager<Buffers::StorageBufferSetRef>  StorageBufferSetManager  = {300};
+        Helpers::HandleManager<Buffers::IndirectBufferSetRef> IndirectBufferSetManager = {300};
+        Helpers::HandleManager<Buffers::IndexBufferSetRef>    IndexBufferSetManager    = {300};
+        Helpers::HandleManager<Buffers::UniformBufferSetRef>  UniformBufferSetManager  = {300};
+        Helpers::ThreadSafeQueue<ResizeRequest>               EnqueuedResizeRequests   = {};
+
+        void            Initialize(Hardwares::VulkanDevice* device);
+        void            Deinitialize();
+        void            Update();
+        void            DrawScene(Buffers::CommandBuffer* const command_buffer, const Helpers::Ref<Cameras::Camera>& camera, const Helpers::Ref<Scenes::SceneRawData>& data);
+        void            WriteDescriptorSets(std::span<Hardwares::WriteDescriptorSetRequest> requests);
+        VkDescriptorSet GetImguiFrameOutput();
+        void            BindGlobalTextures(RenderPasses::RenderPass* pass);
+
+        Buffers::VertexBufferSetHandle   CreateVertexBufferSet();
+        Buffers::StorageBufferSetHandle  CreateStorageBufferSet();
+        Buffers::IndirectBufferSetHandle CreateIndirectBufferSet();
+        Buffers::IndexBufferSetHandle    CreateIndexBufferSet();
+        Buffers::UniformBufferSetHandle  CreateUniformBufferSet();
+
+        Helpers::Ref<RenderPasses::RenderPass> CreateRenderPass(const Specifications::RenderPassSpecification& spec);
+        Helpers::Ref<Textures::Texture>        CreateTexture(const Specifications::TextureSpecification& spec);
+        Helpers::Ref<Textures::Texture>        CreateTexture(uint32_t width, uint32_t height);
+        Helpers::Ref<Textures::Texture>        CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a);
+        Textures::TextureHandle                LoadTextureFile(std::string_view filename);
+
+    private:
+        Buffers::UniformBufferSetHandle   m_scene_camera_buffer_handle;
+        Helpers::Ref<AsyncResourceLoader> m_resource_loader;
+    };
+
     struct AsyncResourceLoader : public Helpers::RefCounted
     {
-        void Initialize();
-        void Shutdown();
-        void Start();
+        GraphicRenderer* Renderer = nullptr;
 
-        void CreateTextureFileRequest(std::string_view file, const Textures::TextureHandle& handle);
-
-    private:
+        void Initialize(GraphicRenderer* renderer);
         void Run();
+        void Shutdown();
+
+        void EnqueueTextureRequest(std::string_view file, const Textures::TextureHandle& handle);
 
     private:
-        std::atomic_bool                               m_running{true};
-        std::mutex                                     m_mut;
-        Helpers::Ref<Primitives::Fence>                m_transfer_fence;
-        Helpers::Ref<Primitives::Semaphore>            m_transfer_semaphore;
-        Helpers::Ref<Pools::CommandPool>               m_command_pool;
+        std::atomic_bool                               m_cancellation_token{false};
+        std::mutex                                     m_mutex;
+        std::condition_variable                        m_cond;
+        std::vector<uint8_t>                           m_temp_buffer{};
+        Hardwares::CommandBufferManager                m_buffer_manager{};
+        Helpers::ThreadSafeQueue<UpdateTextureRequest> m_update_texture_request;
         Helpers::ThreadSafeQueue<TextureFileRequest>   m_file_requests;
         Helpers::ThreadSafeQueue<TextureUploadRequest> m_upload_requests;
     };

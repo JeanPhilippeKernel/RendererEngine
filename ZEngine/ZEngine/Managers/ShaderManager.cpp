@@ -8,14 +8,14 @@ namespace ZEngine::Managers
 {
     std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>> ShaderManager::s_shader_mappings = {};
 
-    Ref<Rendering::Shaders::Shader> ShaderManager::Get(ZEngine::Rendering::Specifications::ShaderSpecification& spec)
+    Ref<Rendering::Shaders::Shader> ShaderManager::Get(Hardwares::VulkanDevice* device, ZEngine::Rendering::Specifications::ShaderSpecification& spec)
     {
         auto& shader = s_shader_mappings[spec.Name];
         if (!shader)
         {
             spec.VertexFilename          = GetVertexFilename(spec.Name);
             spec.FragmentFilename        = GetFragmentFilename(spec.Name);
-            shader                       = ZEngine::Rendering::Shaders::Shader::Create(spec);
+            shader                       = CreateRef<Rendering::Shaders::Shader>(device, spec);
             s_shader_mappings[spec.Name] = shader;
         }
         return shader;

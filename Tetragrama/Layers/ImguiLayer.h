@@ -30,7 +30,7 @@ namespace Tetragrama::Layers
 
         void Update(ZEngine::Core::TimeStep dt) override;
 
-        void Render() override;
+        void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
 
         virtual void AddUIComponent(const ZEngine::Helpers::Ref<Components::UIComponent>& component);
         virtual void AddUIComponent(ZEngine::Helpers::Ref<Components::UIComponent>&& component);

@@ -1,4 +1,6 @@
 #pragma once
+#include <Rendering/Buffers/CommandBuffer.h>
+#include <Rendering/Renderers/GraphicRenderer.h>
 
 namespace ZEngine::Core
 {
@@ -8,6 +10,6 @@ namespace ZEngine::Core
         IRenderable()          = default;
         virtual ~IRenderable() = default;
 
-        virtual void Render() = 0;
+        virtual void Render(Rendering::Renderers::GraphicRenderer* const renderer = nullptr, Rendering::Buffers::CommandBuffer* const command_buffer = nullptr) = 0;
     };
 } // namespace ZEngine::Core

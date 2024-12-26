@@ -1,4 +1,5 @@
 #pragma once
+#include <Hardwares/VulkanDevice.h>
 #include <Rendering/Shaders/Shader.h>
 #include <Rendering/Specifications/GraphicRendererPipelineSpecification.h>
 #include <ZEngineDef.h>
@@ -9,8 +10,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     struct GraphicPipeline : public Helpers::RefCounted
     {
     public:
-        GraphicPipeline() = default;
-        GraphicPipeline(Specifications::GraphicRendererPipelineSpecification&& spec);
+        GraphicPipeline(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec);
         ~GraphicPipeline() = default;
 
         Specifications::GraphicRendererPipelineSpecification& GetSpecification();
@@ -21,13 +21,11 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         VkPipelineLayout                                      GetPipelineLayout() const;
         Helpers::Ref<Shaders::Shader>                         GetShader() const;
 
-    public:
-        static Helpers::Ref<GraphicPipeline> Create(Specifications::GraphicRendererPipelineSpecification& spec);
-
     protected:
         VkPipeline                                           m_pipeline_handle{VK_NULL_HANDLE};
         VkPipelineLayout                                     m_pipeline_layout{VK_NULL_HANDLE};
         Specifications::GraphicRendererPipelineSpecification m_pipeline_specification;
         Helpers::Ref<Shaders::Shader>                        m_shader;
+        Hardwares::VulkanDevice*                             m_device{nullptr};
     };
 } // namespace ZEngine::Rendering::Renderers::Pipelines

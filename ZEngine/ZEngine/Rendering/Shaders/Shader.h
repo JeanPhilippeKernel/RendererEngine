@@ -1,4 +1,5 @@
 #pragma once
+#include <Hardwares/VulkanDevice.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
 #include <ZEngineDef.h>
 #include <map>
@@ -9,7 +10,7 @@ namespace ZEngine::Rendering::Shaders
     class Shader : public Helpers::RefCounted
     {
     public:
-        Shader(const Specifications::ShaderSpecification& spec);
+        Shader(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec);
         ~Shader();
 
         const std::vector<VkPipelineShaderStageCreateInfo>&                                GetStageCreateInfoCollection() const;
@@ -25,9 +26,6 @@ namespace ZEngine::Rendering::Shaders
         VkDescriptorPool                                                                   GetDescriptorPool() const;
         const std::vector<VkPushConstantRange>&                                            GetPushConstants() const;
         void                                                                               Dispose();
-
-        static Helpers::Ref<Shader> Create(Specifications::ShaderSpecification&& spec);
-        static Helpers::Ref<Shader> Create(const Specifications::ShaderSpecification& spec);
 
     private:
         void CreateModule();
@@ -45,6 +43,7 @@ namespace ZEngine::Rendering::Shaders
         std::vector<Specifications::PushConstantSpecification>                      m_push_constant_specification_collection;
         std::vector<VkPushConstantRange>                                            m_push_constant_collection;
         VkDescriptorPool                                                            m_descriptor_pool{VK_NULL_HANDLE};
+        Hardwares::VulkanDevice*                                                    m_device{nullptr};
     };
 
     Shader* CreateShader(const char* filename, bool defer_program_creation = false);

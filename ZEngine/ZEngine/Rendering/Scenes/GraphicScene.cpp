@@ -185,8 +185,8 @@ namespace ZEngine::Rendering::Scenes
             {
                 for (std::string_view file : s_raw_data->Files)
                 {
-                    auto handle = Renderers::GraphicRenderer::AddTexture(file);
-                    s_raw_data->TextureCollection.emplace(handle);
+                    // auto handle = Renderers::GraphicRenderer::AddTexture(file);
+                    // s_raw_data->TextureCollection.emplace(handle);
                 }
             }
         }
@@ -576,8 +576,8 @@ namespace ZEngine::Rendering::Scenes
             s_raw_data = data;
             for (std::string_view file : data->Files)
             {
-                auto index = Renderers::GraphicRenderer::AddTexture(file);
-                // s_raw_data->TextureCollection.emplace(index);
+                // auto index = Renderers::GraphicRenderer::AddTexture(file);
+                //  s_raw_data->TextureCollection.emplace(index);
             }
         }
     }

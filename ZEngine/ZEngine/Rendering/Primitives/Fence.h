@@ -2,6 +2,11 @@
 #include <Helpers/IntrusivePtr.h>
 #include <vulkan/vulkan.h>
 
+namespace ZEngine::Hardwares
+{
+    struct VulkanDevice;
+}
+
 namespace ZEngine::Rendering::Primitives
 {
     enum class FenceState
@@ -13,7 +18,9 @@ namespace ZEngine::Rendering::Primitives
 
     struct Fence : public Helpers::RefCounted
     {
-        Fence(bool as_signaled = false);
+        Hardwares::VulkanDevice* Device = nullptr;
+
+        Fence(Hardwares::VulkanDevice* const device, bool as_signaled = false);
         ~Fence();
         bool IsSignaled();
 

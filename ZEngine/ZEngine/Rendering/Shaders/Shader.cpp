@@ -22,7 +22,7 @@ namespace ZEngine::Rendering::Shaders
 namespace ZEngine::Rendering::Shaders
 {
 
-    Shader::Shader(const Specifications::ShaderSpecification& spec) : m_specification(spec)
+    Shader::Shader(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec) : m_device(device), m_specification(spec)
     {
         CreateModule();
         CreateDescriptorSetLayouts();
@@ -31,10 +31,9 @@ namespace ZEngine::Rendering::Shaders
 
     Shader::~Shader()
     {
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         for (auto& shader_module : m_shader_module_collection)
         {
-            vkDestroyShaderModule(device, shader_module, nullptr);
+            vkDestroyShaderModule(m_device->LogicalDevice, shader_module, nullptr);
         }
         m_shader_module_collection.clear();
         m_shader_module_collection.shrink_to_fit();
@@ -42,7 +41,6 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::CreateModule()
     {
-        auto                         device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         Scope<spirv_cross::Compiler> spirv_compiler;
         /*
          * Vertex Shader processing
@@ -56,7 +54,8 @@ namespace ZEngine::Rendering::Shaders
             vertex_shader_create_info.sType                        = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             vertex_shader_create_info.codeSize                     = vertex_shader_binary_code.size() * sizeof(uint32_t);
             vertex_shader_create_info.pCode                        = vertex_shader_binary_code.data();
-            ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(device, &vertex_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateShaderModule(m_device->LogicalDevice, &vertex_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
             shader_create_info_collection.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             shader_create_info_collection.stage  = VK_SHADER_STAGE_VERTEX_BIT;
             shader_create_info_collection.module = shader_module;
@@ -118,7 +117,8 @@ namespace ZEngine::Rendering::Shaders
             fragment_shader_create_info.sType                      = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             fragment_shader_create_info.codeSize                   = fragment_shader_binary_code.size() * sizeof(uint32_t);
             fragment_shader_create_info.pCode                      = fragment_shader_binary_code.data();
-            ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(device, &fragment_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
+            ZENGINE_VALIDATE_ASSERT(
+                vkCreateShaderModule(m_device->LogicalDevice, &fragment_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
             shader_create_info_collection.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             shader_create_info_collection.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
             shader_create_info_collection.module = shader_module;
@@ -180,8 +180,7 @@ namespace ZEngine::Rendering::Shaders
                     count = type.array[0];
                     if (count == 0) // Unsized arrays
                     {
-                        const auto& device_property = Hardwares::VulkanDevice::GetPhysicalDeviceProperties();
-                        count                       = device_property.limits.maxDescriptorSetSampledImages - 1;
+                        count = m_device->PhysicalDeviceProperties.limits.maxDescriptorSetSampledImages - 1;
                     }
                 }
 
@@ -271,29 +270,25 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::Dispose()
     {
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         for (auto& shader_module : m_shader_module_collection)
         {
-            vkDestroyShaderModule(device, shader_module, nullptr);
+            vkDestroyShaderModule(m_device->LogicalDevice, shader_module, nullptr);
         }
         m_shader_module_collection.clear();
         m_shader_module_collection.shrink_to_fit();
 
         for (auto& set_layout : m_descriptor_set_layout_map)
         {
-            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
+            m_device->EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
         }
         m_descriptor_set_layout_map.clear();
 
-        Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, m_descriptor_pool);
+        m_device->EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, m_descriptor_pool);
         m_descriptor_pool = VK_NULL_HANDLE;
     }
 
     void Shader::CreateDescriptorSetLayouts()
     {
-        auto        device        = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        const auto& renderer_info = Renderers::GraphicRenderer::GetRendererInformation();
-
         std::vector<VkDescriptorPoolSize> pool_size_collection = {};
 
         for (const auto& layout_binding_set : m_layout_binding_specification_map)
@@ -342,7 +337,8 @@ namespace ZEngine::Rendering::Shaders
 
             VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
             ZENGINE_VALIDATE_ASSERT(
-                vkCreateDescriptorSetLayout(device, &descriptor_set_layout_create_info, nullptr, &descriptor_set_layout) == VK_SUCCESS, "Failed to create DescriptorSetLayout")
+                vkCreateDescriptorSetLayout(m_device->LogicalDevice, &descriptor_set_layout_create_info, nullptr, &descriptor_set_layout) == VK_SUCCESS,
+                "Failed to create DescriptorSetLayout")
 
             m_descriptor_set_layout_map[binding_set] = std::move(descriptor_set_layout);
             /*
@@ -369,7 +365,7 @@ namespace ZEngine::Rendering::Shaders
              */
             for (auto& pool_size : pool_size_collection)
             {
-                pool_size.descriptorCount *= renderer_info.FrameCount;
+                pool_size.descriptorCount *= m_device->SwapchainImageCount;
                 pool_size.descriptorCount += m_specification.OverloadPoolSize;
             }
         }
@@ -381,21 +377,21 @@ namespace ZEngine::Rendering::Shaders
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags                      = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
-        pool_info.maxSets                    = renderer_info.FrameCount * pool_size_collection.size() * m_specification.OverloadMaxSet;
+        pool_info.maxSets                    = m_device->SwapchainImageCount * pool_size_collection.size() * m_specification.OverloadMaxSet;
         pool_info.poolSizeCount              = pool_size_collection.size();
         pool_info.pPoolSizes                 = pool_size_collection.data();
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(device, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool")
+        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(m_device->LogicalDevice, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "Failed to create DescriptorPool")
         /*
          * Create DescriptorSet
          */
         for (const auto& layout : m_descriptor_set_layout_map)
         {
-            m_descriptor_set_map[layout.first].resize(renderer_info.FrameCount);
+            m_descriptor_set_map[layout.first].resize(m_device->SwapchainImageCount);
 
             std::vector<VkDescriptorSetLayout> layout_set = {};
-            layout_set.resize(renderer_info.FrameCount);
-            for (uint32_t i = 0; i < renderer_info.FrameCount; ++i)
+            layout_set.resize(m_device->SwapchainImageCount);
+            for (uint32_t i = 0; i < m_device->SwapchainImageCount; ++i)
             {
                 layout_set[i] = layout.second;
             }
@@ -403,10 +399,11 @@ namespace ZEngine::Rendering::Shaders
             VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
             descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
             descriptor_set_allocate_info.descriptorPool              = m_descriptor_pool;
-            descriptor_set_allocate_info.descriptorSetCount          = renderer_info.FrameCount;
+            descriptor_set_allocate_info.descriptorSetCount          = m_device->SwapchainImageCount;
             descriptor_set_allocate_info.pSetLayouts                 = layout_set.data();
             ZENGINE_VALIDATE_ASSERT(
-                vkAllocateDescriptorSets(device, &descriptor_set_allocate_info, m_descriptor_set_map[layout.first].data()) == VK_SUCCESS, "Failed to create DescriptorSet")
+                vkAllocateDescriptorSets(m_device->LogicalDevice, &descriptor_set_allocate_info, m_descriptor_set_map[layout.first].data()) == VK_SUCCESS,
+                "Failed to create DescriptorSet")
         }
     }
 
@@ -419,15 +416,5 @@ namespace ZEngine::Rendering::Shaders
         }
         m_push_constant_specification_collection.clear();
         m_push_constant_specification_collection.shrink_to_fit();
-    }
-
-    Ref<Shader> Shader::Create(Specifications::ShaderSpecification&& spec)
-    {
-        return CreateRef<Shader>(std::move(spec));
-    }
-
-    Ref<Shader> Shader::Create(const Specifications::ShaderSpecification& spec)
-    {
-        return CreateRef<Shader>(spec);
     }
 } // namespace ZEngine::Rendering::Shaders

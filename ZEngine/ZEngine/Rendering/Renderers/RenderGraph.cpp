@@ -1,12 +1,13 @@
 #include <pch.h>
+#include <GraphicRenderer.h>
+#include <Rendering/Buffers/CommandBuffer.h>
 #include <Rendering/Renderers/RenderGraph.h>
-#include <Rendering/Textures/Texture2D.h>
 
 using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Ref<Buffers::StorageBufferSet>& buffer)
+    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Buffers::StorageBufferSetHandle& buffer)
     {
         std::string resource_name(name);
 
@@ -17,7 +18,7 @@ namespace ZEngine::Rendering::Renderers
         return m_graph.m_resource_map[resource_name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Ref<Buffers::UniformBufferSet>& buffer)
+    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Buffers::UniformBufferSetHandle& buffer)
     {
         std::string resource_name(name);
 
@@ -28,7 +29,7 @@ namespace ZEngine::Rendering::Renderers
         return m_graph.m_resource_map[resource_name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::AttachTexture(std::string_view name, const Ref<Textures::Texture>& texture)
+    RenderGraphResource& RenderGraphBuilder::AttachTexture(std::string_view name, const Textures::TextureHandle& texture)
     {
         std::string resource_name(name);
 
@@ -46,6 +47,16 @@ namespace ZEngine::Rendering::Renderers
         m_graph.m_resource_map[resource_name].Name                     = name.data();
         m_graph.m_resource_map[resource_name].Type                     = RenderGraphResourceType::TEXTURE;
         m_graph.m_resource_map[resource_name].ResourceInfo.TextureSpec = spec;
+        return m_graph.m_resource_map[resource_name];
+    }
+
+    RenderGraphResource& RenderGraphBuilder::CreateTexture(std::string_view name, std::string_view filename)
+    {
+        std::string resource_name(name);
+
+        m_graph.m_resource_map[resource_name].Name                       = name.data();
+        m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::TEXTURE;
+        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = m_graph.Renderer->LoadTextureFile(filename);
         return m_graph.m_resource_map[resource_name];
     }
 
@@ -74,7 +85,7 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    RenderGraphResource& RenderGraphBuilder::CreateBufferSet(std::string_view name, uint32_t count, BufferSetCreationType type)
+    RenderGraphResource& RenderGraphBuilder::CreateBufferSet(std::string_view name, BufferSetCreationType type)
     {
         std::string resource_name(name);
 
@@ -83,13 +94,13 @@ namespace ZEngine::Rendering::Renderers
         switch (type)
         {
             case ZEngine::Rendering::Renderers::INDIRECT:
-                m_graph.m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle = CreateRef<Buffers::IndirectBufferSet>(count);
+                m_graph.m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle = m_graph.Renderer->CreateIndirectBufferSet();
                 break;
             case ZEngine::Rendering::Renderers::UNIFORM:
-                m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = CreateRef<Buffers::UniformBufferSet>(count);
+                m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = m_graph.Renderer->CreateUniformBufferSet();
                 break;
             case ZEngine::Rendering::Renderers::STORAGE:
-                m_graph.m_resource_map[resource_name].ResourceInfo.BufferSetHandle = CreateRef<Buffers::StorageBufferSet>(count);
+                m_graph.m_resource_map[resource_name].ResourceInfo.BufferSetHandle = m_graph.Renderer->CreateStorageBufferSet();
                 break;
         }
         m_graph.m_resource_map[resource_name].ResourceInfo.External = false;
@@ -170,13 +181,12 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Reading sorting graph node in reverse order and Create resource and RenderPass Node
          */
-        RenderPasses::RenderPassBuilder pass_builder = {};
-
+        auto& global_textures = *(Renderer->Device->GlobalTextures);
         for (std::string_view node_name : m_sorted_nodes)
         {
             auto& node = m_node[node_name.data()];
 
-            pass_builder.SetName(node.Creation.Name);
+            m_render_pass_builder->SetName(node.Creation.Name);
 
             for (auto& output : node.Creation.Outputs)
             {
@@ -184,15 +194,20 @@ namespace ZEngine::Rendering::Renderers
 
                 if (resource.ResourceInfo.External)
                 {
-                    pass_builder.UseRenderTarget(resource.ResourceInfo.TextureHandle);
+                    auto render_target = global_textures[resource.ResourceInfo.TextureHandle];
+                    m_render_pass_builder->UseRenderTarget(render_target);
                     continue;
                 }
 
                 if (output.Type == RenderGraphResourceType::ATTACHMENT)
                 {
                     resource.ResourceInfo.TextureSpec.PerformTransition = false;
-                    resource.ResourceInfo.TextureHandle                 = Textures::Texture2D::Create(resource.ResourceInfo.TextureSpec);
-                    pass_builder.UseRenderTarget(resource.ResourceInfo.TextureHandle);
+                    auto texture                                        = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
+
+                    resource.ResourceInfo.TextureHandle = global_textures.Add(texture);
+
+                    auto render_target = global_textures[resource.ResourceInfo.TextureHandle];
+                    m_render_pass_builder->UseRenderTarget(render_target);
                 }
             }
 
@@ -200,27 +215,41 @@ namespace ZEngine::Rendering::Renderers
             {
                 auto& resource = m_resource_map[input.Name];
 
+                auto texture = global_textures[resource.ResourceInfo.TextureHandle];
                 if (input.Type == RenderGraphResourceType::ATTACHMENT)
                 {
-                    pass_builder.AddInputAttachment(resource.ResourceInfo.TextureHandle);
+                    m_render_pass_builder->AddInputAttachment(texture);
                 }
                 else if (input.Type == RenderGraphResourceType::TEXTURE)
                 {
-                    pass_builder.AddInputTexture(input.BindingInputKeyName, resource.ResourceInfo.TextureHandle);
+                    m_render_pass_builder->AddInputTexture(input.BindingInputKeyName, resource.ResourceInfo.TextureHandle);
                 }
             }
 
-            node.CallbackPass->Compile(node.Handle, pass_builder, *this);
+            node.CallbackPass->Compile(node.Handle, *m_render_pass_builder, *this);
+        }
+
+        for (std::string_view name : m_sorted_nodes)
+        {
+            auto&                                         node             = m_node[name.data()];
+            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {
+                .Width             = node.Handle->RenderAreaWidth,
+                .Height            = node.Handle->RenderAreaHeight,
+                .RenderTargetViews = node.Handle->RenderTargets,
+                .Attachment        = node.Handle->Attachment};
+            node.Framebuffer = CreateRef<Buffers::FramebufferVNext>(Renderer->Device, framebuffer_spec);
         }
     }
 
     void RenderGraph::Execute(uint32_t frame_index, Buffers::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer, "Command Buffer can't be null")
-        command_buffer->ClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        command_buffer->ClearDepth(1.0f, 0);
 
-        command_buffer->Begin();
+        auto& global_textures = *(Renderer->Device->GlobalTextures);
+
+        command_buffer->ClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        command_buffer->ClearDepth(1.0f, 0); // Todo : setting value at 1.0f crash on Integrated GPU, floating precision issue or Hardware issue ??
+
         for (auto& node_name : m_sorted_nodes)
         {
             auto& node = m_node[node_name];
@@ -236,7 +265,8 @@ namespace ZEngine::Rendering::Renderers
                      */
                     bool is_resource_attachment = resource.Type == RenderGraphResourceType::ATTACHMENT;
 
-                    auto& buffer = resource.ResourceInfo.TextureHandle->GetBuffer();
+                    auto  texture = global_textures[resource.ResourceInfo.TextureHandle];
+                    auto& buffer  = texture->ImageBuffer->GetBuffer();
 
                     Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
                     barrier_spec.ImageHandle                                     = buffer.Handle;
@@ -264,15 +294,18 @@ namespace ZEngine::Rendering::Renderers
                 auto& resource = m_resource_map[output.Name];
                 ZENGINE_VALIDATE_ASSERT(resource.Type == RenderGraphResourceType::ATTACHMENT, "RenderPass Output should be an Attachment")
 
-                auto& buffer = resource.ResourceInfo.TextureHandle->GetBuffer();
+                auto  texture = global_textures[resource.ResourceInfo.TextureHandle];
+                auto& buffer  = texture->ImageBuffer->GetBuffer();
 
                 Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
-                if (resource.ResourceInfo.TextureHandle->IsDepthTexture())
+                if (texture->IsDepthTexture)
                 {
-                    barrier_spec.ImageHandle           = buffer.Handle;
-                    barrier_spec.OldLayout             = Specifications::ImageLayout::UNDEFINED;
-                    barrier_spec.NewLayout             = Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    barrier_spec.ImageAspectMask       = VkImageAspectFlagBits(VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+                    barrier_spec.ImageHandle = buffer.Handle;
+                    barrier_spec.OldLayout   = Specifications::ImageLayout::UNDEFINED;
+                    barrier_spec.NewLayout   = Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                    barrier_spec.ImageAspectMask =
+                        VkImageAspectFlagBits(VK_IMAGE_ASPECT_DEPTH_BIT /*| VK_IMAGE_ASPECT_STENCIL_BIT*/); // Todo : To consider Stencil buffer, we want to extend Texture spec to
+                                                                                                            // introduce HasStencil bit
                     barrier_spec.SourceAccessMask      = 0;
                     barrier_spec.DestinationAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
                     barrier_spec.SourceStageMask       = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -298,24 +331,24 @@ namespace ZEngine::Rendering::Renderers
                     command_buffer->TransitionImageLayout(barrier);
                 }
             }
+
             node.CallbackPass->Execute(frame_index, scene_data, node.Handle.get(), command_buffer, this);
+            node.CallbackPass->Render(frame_index, node.Handle.get(), node.Framebuffer.get(), command_buffer, this);
         }
-        command_buffer->End();
     }
 
     void RenderGraph::Resize(uint32_t width, uint32_t height)
     {
+        std::vector<Textures::TextureHandle> handles_to_invalidate = {};
+
         for (auto& node_name : m_sorted_nodes)
         {
             auto& node = m_node[node_name];
 
-            auto& pass_spec = node.Handle->GetSpecification();
+            auto& pass_spec = node.Handle->Specification;
+
             pass_spec.ExternalOutputs.clear();
-            pass_spec.ExternalOutputs.shrink_to_fit();
-
             pass_spec.Inputs.clear();
-            pass_spec.Inputs.shrink_to_fit();
-
             pass_spec.InputTextures.clear();
 
             for (auto& output : node.Creation.Outputs)
@@ -327,13 +360,14 @@ namespace ZEngine::Rendering::Renderers
                     continue;
                 }
 
-                resource.ResourceInfo.TextureHandle->Dispose();
-
+                handles_to_invalidate.emplace_back(resource.ResourceInfo.TextureHandle);
                 resource.ResourceInfo.TextureSpec.Width  = width;
                 resource.ResourceInfo.TextureSpec.Height = height;
-                resource.ResourceInfo.TextureHandle      = Textures::Texture2D::Create(resource.ResourceInfo.TextureSpec);
+                auto texture                             = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
 
-                pass_spec.ExternalOutputs.push_back(resource.ResourceInfo.TextureHandle);
+                resource.ResourceInfo.TextureHandle = Renderer->Device->GlobalTextures->Add(texture);
+
+                pass_spec.ExternalOutputs.push_back(texture);
             }
 
             for (auto& input : node.Creation.Inputs)
@@ -342,19 +376,33 @@ namespace ZEngine::Rendering::Renderers
 
                 if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::ATTACHMENT)
                 {
-                    pass_spec.Inputs.push_back(resource.ResourceInfo.TextureHandle);
+                    auto texture = Renderer->Device->GlobalTextures->Access(resource.ResourceInfo.TextureHandle);
+                    pass_spec.Inputs.push_back(texture);
                 }
                 /*
                  * The resource is an attachment from a RenderPass output, but the current node consumes it as Image for sampling operation
                  */
                 else if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::TEXTURE)
                 {
+                    // auto texture                                       = global_textures[resource.ResourceInfo.TextureHandle];
                     pass_spec.InputTextures[input.BindingInputKeyName] = resource.ResourceInfo.TextureHandle;
                 }
             }
 
-            node.Handle->ResizeFramebuffer();
+            node.Handle->UpdateRenderTargets();
             node.Handle->UpdateInputBinding();
+
+            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {
+                .Width             = node.Handle->RenderAreaWidth,
+                .Height            = node.Handle->RenderAreaHeight,
+                .RenderTargetViews = node.Handle->RenderTargets,
+                .Attachment        = node.Handle->Attachment};
+            node.Framebuffer = CreateRef<Buffers::FramebufferVNext>(Renderer->Device, framebuffer_spec);
+        }
+
+        for (auto& handle : handles_to_invalidate)
+        {
+            Renderer->Device->GlobalTextures->Invalidate(handle);
         }
     }
 
@@ -364,6 +412,7 @@ namespace ZEngine::Rendering::Renderers
         {
             auto& node = m_node[node_name];
             node.Handle->Dispose();
+            node.Framebuffer->Dispose();
         }
 
         for (auto& resource : m_resource_map)
@@ -378,26 +427,26 @@ namespace ZEngine::Rendering::Renderers
             {
                 if (value.ResourceInfo.TextureHandle)
                 {
-                    value.ResourceInfo.TextureHandle->Dispose();
-                    value.ResourceInfo.TextureHandle = nullptr;
+                    Renderer->Device->GlobalTextures->Remove(value.ResourceInfo.TextureHandle);
+                    value.ResourceInfo.TextureHandle = {};
                 }
             }
             else if (value.Type == RenderGraphResourceType::BUFFER_SET)
             {
                 if (value.ResourceInfo.BufferSetHandle)
                 {
-                    value.ResourceInfo.BufferSetHandle->Dispose();
-                    value.ResourceInfo.BufferSetHandle = nullptr;
+                    Renderer->StorageBufferSetManager.Remove(value.ResourceInfo.BufferSetHandle);
+                    value.ResourceInfo.BufferSetHandle = {};
                 }
                 else if (value.ResourceInfo.UniformBufferSetHandle)
                 {
-                    value.ResourceInfo.UniformBufferSetHandle->Dispose();
-                    value.ResourceInfo.UniformBufferSetHandle = nullptr;
+                    Renderer->UniformBufferSetManager.Remove(value.ResourceInfo.UniformBufferSetHandle);
+                    value.ResourceInfo.UniformBufferSetHandle = {};
                 }
                 else if (value.ResourceInfo.IndirectBufferSetHandle)
                 {
-                    value.ResourceInfo.IndirectBufferSetHandle->Dispose();
-                    value.ResourceInfo.IndirectBufferSetHandle = nullptr;
+                    Renderer->IndirectBufferSetManager.Remove(value.ResourceInfo.IndirectBufferSetHandle);
+                    value.ResourceInfo.IndirectBufferSetHandle = {};
                 }
             }
         }
@@ -406,6 +455,11 @@ namespace ZEngine::Rendering::Renderers
     Ref<RenderGraphBuilder> RenderGraph::GetBuilder() const
     {
         return m_builder;
+    }
+
+    Helpers::Ref<RenderPasses::RenderPassBuilder> RenderGraph::GetRenderPassBuilder() const
+    {
+        return m_render_pass_builder;
     }
 
     RenderGraphResource& RenderGraph::GetResource(std::string_view name)
@@ -420,7 +474,8 @@ namespace ZEngine::Rendering::Renderers
 
     Ref<Textures::Texture> RenderGraph::GetRenderTarget(std::string_view name)
     {
-        std::string resource_name(name);
+        Ref<Textures::Texture> output = nullptr;
+        std::string            resource_name(name);
         if (!m_resource_map.contains(resource_name))
         {
             m_resource_map[resource_name].Name = name.data();
@@ -429,11 +484,20 @@ namespace ZEngine::Rendering::Renderers
         {
             ZENGINE_CORE_WARN("{} isn't a valid Attachement Resource", name.data())
         }
-        return m_resource_map[resource_name].ResourceInfo.TextureHandle;
+
+        auto handle = m_resource_map[resource_name].ResourceInfo.TextureHandle;
+        if (handle.Valid())
+        {
+            auto& textures = *(Renderer->Device->GlobalTextures);
+            output         = textures[handle];
+        }
+        return output;
     }
 
-    Ref<Textures::Texture> RenderGraph::GetTexture(std::string_view name)
+    Textures::TextureHandle RenderGraph::GetTexture(std::string_view name)
     {
+        Textures::TextureHandle output = {};
+
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
         {
@@ -443,10 +507,16 @@ namespace ZEngine::Rendering::Renderers
         {
             ZENGINE_CORE_WARN("{} isn't a valid Texture Resource", name.data())
         }
-        return m_resource_map[resource_name].ResourceInfo.TextureHandle;
+
+        auto handle = m_resource_map[resource_name].ResourceInfo.TextureHandle;
+        if (handle.Valid())
+        {
+            output = handle;
+        }
+        return output;
     }
 
-    Ref<Buffers::StorageBufferSet> RenderGraph::GetBufferSet(std::string_view name)
+    Buffers::StorageBufferSetHandle RenderGraph::GetBufferSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
@@ -456,7 +526,7 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name].ResourceInfo.BufferSetHandle;
     }
 
-    Ref<Buffers::UniformBufferSet> RenderGraph::GetBufferUniformSet(std::string_view name)
+    Buffers::UniformBufferSetHandle RenderGraph::GetBufferUniformSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
@@ -466,7 +536,7 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle;
     }
 
-    Ref<Buffers::IndirectBufferSet> RenderGraph::GetIndirectBufferSet(std::string_view name)
+    Buffers::IndirectBufferSetHandle RenderGraph::GetIndirectBufferSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))

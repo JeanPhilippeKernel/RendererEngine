@@ -1,9 +1,11 @@
 #include <pch.h>
+#include <Hardwares/VulkanDevice.h>
 #include <Rendering/Buffers/Image2DBuffer.h>
 
 namespace ZEngine::Rendering::Buffers
 {
-    Image2DBuffer::Image2DBuffer(const Specifications::Image2DBufferSpecification& spec) : m_width(spec.Width), m_height(spec.Height)
+    Image2DBuffer::Image2DBuffer(Hardwares::VulkanDevice* device, const Specifications::Image2DBufferSpecification& spec)
+        : m_device(device), m_width(spec.Width), m_height(spec.Height)
     {
         ZENGINE_VALIDATE_ASSERT(m_width > 0, "Image width must be greater then zero")
         ZENGINE_VALIDATE_ASSERT(m_height > 0, "Image height must be greater then zero")
@@ -17,7 +19,7 @@ namespace ZEngine::Rendering::Buffers
             image_create_flag = Specifications::ImageCreateFlag::CUBE_COMPATIBLE_BIT;
         }
 
-        m_buffer_image = Hardwares::VulkanDevice::CreateImage(
+        m_buffer_image = m_device->CreateImage(
             m_width,
             m_height,
             VK_IMAGE_TYPE_2D,
@@ -39,12 +41,12 @@ namespace ZEngine::Rendering::Buffers
         Dispose();
     }
 
-    Hardwares::BufferImage& Image2DBuffer::GetBuffer()
+    BufferImage& Image2DBuffer::GetBuffer()
     {
         return m_buffer_image;
     }
 
-    const Hardwares::BufferImage& Image2DBuffer::GetBuffer() const
+    const BufferImage& Image2DBuffer::GetBuffer() const
     {
         return m_buffer_image;
     }
@@ -63,9 +65,17 @@ namespace ZEngine::Rendering::Buffers
     {
         if (this && m_buffer_image)
         {
-            Hardwares::VulkanDevice::EnqueueBufferImageForDeletion(m_buffer_image);
+            m_device->EnqueueBufferImageForDeletion(m_buffer_image);
             m_buffer_image = {};
         }
+    }
+
+    VkDescriptorImageInfo& Image2DBuffer::GetDescriptorImageInfo()
+    {
+        m_image_info.sampler     = m_buffer_image.Sampler;
+        m_image_info.imageView   = m_buffer_image.ViewHandle;
+        m_image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        return m_image_info;
     }
 
     VkImageView Image2DBuffer::GetImageViewHandle() const

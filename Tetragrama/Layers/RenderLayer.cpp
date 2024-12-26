@@ -46,10 +46,10 @@ namespace Tetragrama::Layers
         return false;
     }
 
-    void RenderLayer::Render()
+    void RenderLayer::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
         auto camera = m_editor_camera_controller->GetCamera();
-        GraphicRenderer::DrawScene(camera, GraphicScene::GetRawData());
+        renderer->DrawScene(command_buffer, camera, GraphicScene::GetRawData());
     }
 
     std::future<void> RenderLayer::SceneRequestResizeMessageHandlerAsync(Messengers::GenericMessage<std::pair<float, float>>& message)

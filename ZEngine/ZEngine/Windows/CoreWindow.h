@@ -10,7 +10,6 @@
 #include <Inputs/IInputEventCallback.h>
 #include <Layers/Layer.h>
 #include <Layers/LayerStack.h>
-#include <Rendering/Swapchain.h>
 #include <WindowConfiguration.h>
 #include <WindowProperty.h>
 #include <future>
@@ -55,10 +54,9 @@ namespace ZEngine::Windows
         virtual void                  SetCallbackFunction(const EventCallbackFn& callback) = 0;
         virtual const WindowProperty& GetWindowProperty() const                            = 0;
 
-        virtual bool                               CreateSurface(void* instance, void** out_window_surface) = 0;
-        virtual std::vector<std::string>           GetRequiredExtensionLayers()                             = 0;
-        virtual void*                              GetNativeWindow() const                                  = 0;
-        virtual Helpers::Ref<Rendering::Swapchain> GetSwapchain() const                                     = 0;
+        virtual bool                     CreateSurface(void* instance, void** out_window_surface) = 0;
+        virtual std::vector<std::string> GetRequiredExtensionLayers()                             = 0;
+        virtual void*                    GetNativeWindow() const                                  = 0;
 
         virtual std::future<std::string> OpenFileDialogAsync(std::span<std::string_view> type_filters = {}) = 0;
 

@@ -3,7 +3,6 @@
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
-#include <Rendering/Swapchain.h>
 
 namespace ZEngine::Rendering::Specifications
 {
@@ -31,7 +30,6 @@ namespace ZEngine::Rendering::Specifications
         const char*                                        DebugName                          = {};
         ShaderSpecification                                ShaderSpecification                = {};
         Helpers::Ref<Rendering::Buffers::FramebufferVNext> TargetFrameBuffer                  = {};
-        Helpers::Ref<Rendering::Swapchain>                 SwapchainRenderTarget              = {};
         Helpers::Ref<Renderers::RenderPasses::Attachment>  Attachment                         = {};
         std::vector<VertexInputBindingSpecification>       VertexInputBindingSpecifications   = {};
         std::vector<VertexInputAttributeSpecification>     VertexInputAttributeSpecifications = {};
