@@ -41,11 +41,16 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPass(Hardwares::VulkanDevice* device, const Specifications::RenderPassSpecification& specification);
         ~RenderPass();
 
+        uint32_t                                          RenderAreaWidth                    = 0;
+        uint32_t                                          RenderAreaHeight                   = 0;
+        Specifications::RenderPassSpecification           Specification                      = {};
         std::map<std::string, PassInput>                  Inputs                             = {};
         std::unordered_set<std::string>                   EnqueuedUpdateInputs               = {};
         std::vector<Hardwares::WriteDescriptorSetRequest> EnqueuedWriteDescriptorSetRequests = {};
+        std::vector<VkImageView>                          RenderTargets                      = {};
+        Helpers::Ref<Renderers::RenderPasses::Attachment> Attachment                         = {nullptr};
+        Helpers::Ref<Pipelines::GraphicPipeline>          Pipeline                           = {nullptr};
         void                                              Dispose();
-        Helpers::Ref<Pipelines::GraphicPipeline>          GetPipeline() const;
         void                                              Bake();
         bool                                              Verify();
         void                                              Update(uint32_t frame_index);
@@ -56,11 +61,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                                              UpdateInputBinding();
         Helpers::Ref<Textures::Texture>                   GetOutputColor(uint32_t color_index);
         Helpers::Ref<Textures::Texture>                   GetOutputDepth();
-        const Specifications::RenderPassSpecification&    GetSpecification() const;
-        Specifications::RenderPassSpecification&          GetSpecification();
         Helpers::Ref<Renderers::RenderPasses::Attachment> GetAttachment() const;
-        void                                              ResizeFramebuffer();
-        VkFramebuffer                                     GetFramebuffer() const;
+        void                                              UpdateRenderTargets();
         uint32_t                                          GetRenderAreaWidth() const;
         uint32_t                                          GetRenderAreaHeight() const;
 
@@ -68,12 +70,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
 
     private:
-        bool                                              m_perform_update{false};
-        Specifications::RenderPassSpecification           m_specification;
-        Helpers::Ref<Pipelines::GraphicPipeline>          m_pipeline;
-        Helpers::Ref<Renderers::RenderPasses::Attachment> m_attachment;
-        Helpers::Ref<Buffers::FramebufferVNext>           m_framebuffer;
-        Hardwares::VulkanDevice*                          m_device;
+        bool                     m_perform_update{false};
+        Hardwares::VulkanDevice* m_device;
     };
 
     struct RenderPassBuilder : public Helpers::RefCounted

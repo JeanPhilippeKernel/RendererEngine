@@ -59,7 +59,7 @@ namespace ZEngine::Rendering::Buffers
         Primitives::Fence*     GetSignalFence();
         void                   ClearColor(float r, float g, float b, float a);
         void                   ClearDepth(float depth_color, uint32_t stencil);
-        void                   BeginRenderPass(const Helpers::Ref<Renderers::RenderPasses::RenderPass>&);
+        void                   BeginRenderPass(const Helpers::Ref<Renderers::RenderPasses::RenderPass>&, VkFramebuffer framebuffer);
         void                   EndRenderPass();
         void                   BindDescriptorSets(uint32_t frame_index = 0);
         void                   BindDescriptorSet(const VkDescriptorSet& descriptor);

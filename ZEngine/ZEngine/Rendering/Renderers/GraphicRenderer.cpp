@@ -43,7 +43,6 @@ namespace ZEngine::Rendering::Renderers
          * Sub Renderer Initialization
          */
         m_resource_loader->Initialize(this);
-        m_resource_loader->Start();
 
         SceneRenderer->Initialize(this);
         ImguiRenderer->Initialize(this);
@@ -67,11 +66,6 @@ namespace ZEngine::Rendering::Renderers
 
         m_resource_loader->Shutdown();
         m_resource_loader.reset();
-    }
-
-    void GraphicRenderer::SetViewportSize(uint32_t width, uint32_t height)
-    {
-        RenderGraph->Resize(width, height);
     }
 
     void GraphicRenderer::Update() {}
@@ -360,10 +354,7 @@ namespace ZEngine::Rendering::Renderers
     void AsyncResourceLoader::Initialize(GraphicRenderer* renderer)
     {
         Renderer = renderer;
-    }
-
-    void AsyncResourceLoader::Start()
-    {
+        m_buffer_manager.Initialize(Renderer->Device);
         Helpers::ThreadPoolHelper::Submit([this] {
             Run();
         });
@@ -407,11 +398,11 @@ namespace ZEngine::Rendering::Renderers
                     barrier_spec.DestinationQueueFamily = Renderer->Device->GraphicFamilyIndex;
                     Primitives::ImageMemoryBarrier barrier{barrier_spec};
 
-                    auto command_buffer = Renderer->Device->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE);
+                    auto command_buffer = m_buffer_manager.GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, Renderer->Device->CurrentFrameIndex);
                     {
                         command_buffer->TransitionImageLayout(barrier);
                     }
-                    Renderer->Device->EnqueueInstantCommandBuffer(command_buffer);
+                    m_buffer_manager.EndInstantCommandBuffer(command_buffer, Renderer->Device);
 
                     Renderer->Device->GlobalTextures->Update(tr.Handle, std::move(tr.Texture));
                 }
@@ -452,7 +443,7 @@ namespace ZEngine::Rendering::Renderers
 
                     Ref<Buffers::Image2DBuffer> image_2d_buffer = CreateRef<Buffers::Image2DBuffer>(Renderer->Device, std::move(buffer_spec));
 
-                    auto command_buffer = Renderer->Device->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE);
+                    auto command_buffer = m_buffer_manager.GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Renderer->Device->CurrentFrameIndex);
                     {
                         auto                                            image_handle   = image_2d_buffer->GetHandle();
                         auto&                                           image_buffer   = image_2d_buffer->GetBuffer();
@@ -479,7 +470,7 @@ namespace ZEngine::Rendering::Renderers
                             upload_request.TextureSpec.LayerCount,
                             barrier_0.GetHandle().newLayout);
                     }
-                    Renderer->Device->EnqueueInstantCommandBuffer(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                    m_buffer_manager.EndInstantCommandBuffer(command_buffer, Renderer->Device, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
                     UpdateTextureRequest tr = {
                         .Handle = upload_request.Handle, .Texture = CreateRef<Textures::Texture>(std::move(upload_request.TextureSpec), std::move(image_2d_buffer))};
@@ -569,6 +560,8 @@ namespace ZEngine::Rendering::Renderers
             m_cancellation_token = true;
         }
         m_cond.notify_one();
+
+        m_buffer_manager.Deinitialize();
     }
 
     void AsyncResourceLoader::EnqueueTextureRequest(std::string_view file, const Textures::TextureHandle& handle)

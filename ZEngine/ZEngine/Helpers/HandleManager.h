@@ -181,6 +181,22 @@ namespace ZEngine::Helpers
             }
         }
 
+        void Invalidate(Handle<T>& handle)
+        {
+            std::unique_lock<std::shared_mutex> lock(m_mutex);
+            if (!handle)
+            {
+                return;
+            }
+
+            if ((handle.Index < m_count) && (m_data[handle.Index].Counter == handle.m_counter))
+            {
+                m_data[handle.Index].Counter = INVALID_HANDLE_INDEX;
+                handle.Index                 = INVALID_HANDLE_INDEX;
+                handle.m_counter             = INVALID_HANDLE_INDEX;
+            }
+        }
+
         size_t Size() const
         {
             std::shared_lock<std::shared_mutex> lock(m_mutex);

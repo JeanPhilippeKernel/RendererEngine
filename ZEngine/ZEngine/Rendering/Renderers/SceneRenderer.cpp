@@ -185,7 +185,12 @@ namespace ZEngine::Rendering::Renderers
         pass->MarkDirty();
     }
 
-    void SceneDepthPrePass::Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph)
+    void SceneDepthPrePass::Render(
+        uint32_t                   frame_index,
+        RenderPasses::RenderPass*  pass,
+        Buffers::FramebufferVNext* framebuffer,
+        Buffers::CommandBuffer*    command_buffer,
+        RenderGraph*               graph)
     {
         auto renderer = graph->Renderer;
 
@@ -194,7 +199,7 @@ namespace ZEngine::Rendering::Renderers
 
         auto  indirect_buffer_handle = graph->GetIndirectBufferSet("g_scene_indirect_buffer");
         auto& indirect_buffer        = renderer->IndirectBufferSetManager.Access(indirect_buffer_handle);
-        command_buffer->BeginRenderPass(pass);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
         command_buffer->BindDescriptorSets(frame_index);
         command_buffer->DrawIndirect(indirect_buffer->At(frame_index));
         command_buffer->EndRenderPass();
@@ -250,7 +255,12 @@ namespace ZEngine::Rendering::Renderers
         pass->MarkDirty();
     }
 
-    void SkyboxPass::Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph)
+    void SkyboxPass::Render(
+        uint32_t                   frame_index,
+        RenderPasses::RenderPass*  pass,
+        Buffers::FramebufferVNext* framebuffer,
+        Buffers::CommandBuffer*    command_buffer,
+        RenderGraph*               graph)
     {
         auto renderer = graph->Renderer;
 
@@ -258,7 +268,7 @@ namespace ZEngine::Rendering::Renderers
         renderer->WriteDescriptorSets(pass->EnqueuedWriteDescriptorSetRequests);
         auto indirect_buffer = renderer->IndirectBufferSetManager.Access(m_indirect_buffer_handle);
 
-        command_buffer->BeginRenderPass(pass);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
         command_buffer->BindDescriptorSets(frame_index);
         command_buffer->DrawIndirect(indirect_buffer->At(frame_index));
         command_buffer->EndRenderPass();
@@ -313,7 +323,7 @@ namespace ZEngine::Rendering::Renderers
         })
     }
 
-    void GridPass::Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph)
+    void GridPass::Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Buffers::CommandBuffer* command_buffer, RenderGraph* graph)
     {
         auto renderer = graph->Renderer;
         pass->Update(frame_index);
@@ -321,7 +331,7 @@ namespace ZEngine::Rendering::Renderers
 
         auto indirect_buffer = renderer->IndirectBufferSetManager.Access(m_indirect_buffer_handle);
 
-        command_buffer->BeginRenderPass(pass);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
         command_buffer->BindDescriptorSets(frame_index);
         command_buffer->DrawIndirect(indirect_buffer->At(frame_index));
         command_buffer->EndRenderPass();
@@ -390,7 +400,12 @@ namespace ZEngine::Rendering::Renderers
         // GraphicRenderer::BindGlobalTextures(pass);
     }
 
-    void GbufferPass::Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph)
+    void GbufferPass::Render(
+        uint32_t                   frame_index,
+        RenderPasses::RenderPass*  pass,
+        Buffers::FramebufferVNext* framebuffer,
+        Buffers::CommandBuffer*    command_buffer,
+        RenderGraph*               graph)
     {
         auto renderer = graph->Renderer;
         pass->Update(frame_index);
@@ -398,7 +413,7 @@ namespace ZEngine::Rendering::Renderers
 
         auto indirect_buffer_handle = graph->GetIndirectBufferSet("g_scene_indirect_buffer");
         auto indirect_buffer        = renderer->IndirectBufferSetManager.Access(indirect_buffer_handle);
-        command_buffer->BeginRenderPass(pass);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
         command_buffer->BindDescriptorSets(frame_index);
         command_buffer->DrawIndirect(indirect_buffer->At(frame_index));
         command_buffer->EndRenderPass();
@@ -479,7 +494,12 @@ namespace ZEngine::Rendering::Renderers
         pass->MarkDirty();
     }
 
-    void LightingPass::Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph)
+    void LightingPass::Render(
+        uint32_t                   frame_index,
+        RenderPasses::RenderPass*  pass,
+        Buffers::FramebufferVNext* framebuffer,
+        Buffers::CommandBuffer*    command_buffer,
+        RenderGraph*               graph)
     {
         auto renderer = graph->Renderer;
         pass->Update(frame_index);
@@ -488,7 +508,7 @@ namespace ZEngine::Rendering::Renderers
         auto indirect_buffer_handle = graph->GetIndirectBufferSet("g_scene_indirect_buffer");
         auto indirect_buffer        = renderer->IndirectBufferSetManager.Access(indirect_buffer_handle);
 
-        command_buffer->BeginRenderPass(pass);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
         command_buffer->BindDescriptorSets(frame_index);
         command_buffer->DrawIndirect(indirect_buffer->At(frame_index));
         command_buffer->EndRenderPass();

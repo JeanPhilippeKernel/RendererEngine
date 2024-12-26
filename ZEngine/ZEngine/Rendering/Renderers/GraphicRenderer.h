@@ -24,11 +24,10 @@ namespace ZEngine::Rendering::Renderers
         COUNT
     };
 
-    struct RendererInformation
+    struct ResizeRequest
     {
-        uint32_t FrameCount{0xFFFFFFFF};
-        uint32_t CurrentFrameIndex{0xFFFFFFFF};
-        uint64_t SwapchainIdentifier{0xFFFFFFFF};
+        uint32_t Width;
+        uint32_t Height;
     };
 
     struct UpdateTextureRequest
@@ -66,10 +65,10 @@ namespace ZEngine::Rendering::Renderers
         Helpers::HandleManager<Buffers::IndirectBufferSetRef> IndirectBufferSetManager = {300};
         Helpers::HandleManager<Buffers::IndexBufferSetRef>    IndexBufferSetManager    = {300};
         Helpers::HandleManager<Buffers::UniformBufferSetRef>  UniformBufferSetManager  = {300};
+        Helpers::ThreadSafeQueue<ResizeRequest>               EnqueuedResizeRequests   = {};
 
         void            Initialize(Hardwares::VulkanDevice* device);
         void            Deinitialize();
-        void            SetViewportSize(uint32_t width, uint32_t height);
         void            Update();
         void            DrawScene(Buffers::CommandBuffer* const command_buffer, const Helpers::Ref<Cameras::Camera>& camera, const Helpers::Ref<Scenes::SceneRawData>& data);
         void            WriteDescriptorSets(std::span<Hardwares::WriteDescriptorSetRequest> requests);
@@ -98,19 +97,17 @@ namespace ZEngine::Rendering::Renderers
         GraphicRenderer* Renderer = nullptr;
 
         void Initialize(GraphicRenderer* renderer);
+        void Run();
         void Shutdown();
-        void Start();
 
         void EnqueueTextureRequest(std::string_view file, const Textures::TextureHandle& handle);
-
-    private:
-        void Run();
 
     private:
         std::atomic_bool                               m_cancellation_token{false};
         std::mutex                                     m_mutex;
         std::condition_variable                        m_cond;
         std::vector<uint8_t>                           m_temp_buffer{};
+        Hardwares::CommandBufferManager                m_buffer_manager{};
         Helpers::ThreadSafeQueue<UpdateTextureRequest> m_update_texture_request;
         Helpers::ThreadSafeQueue<TextureFileRequest>   m_file_requests;
         Helpers::ThreadSafeQueue<TextureUploadRequest> m_upload_requests;

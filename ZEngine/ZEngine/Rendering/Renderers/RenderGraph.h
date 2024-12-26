@@ -1,4 +1,5 @@
 #pragma once
+#include <Buffers/Framebuffer.h>
 #include <Helpers/IntrusivePtr.h>
 #include <Rendering/Buffers/IndirectBuffer.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
@@ -69,9 +70,14 @@ namespace ZEngine::Rendering::Renderers
 
     struct IRenderGraphCallbackPass : public Helpers::RefCounted
     {
-        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder)                                                          = 0;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)    = 0;
-        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) = 0;
+        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder)                                                       = 0;
+        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) = 0;
+        virtual void Render(
+            uint32_t                   frame_index,
+            RenderPasses::RenderPass*  pass,
+            Buffers::FramebufferVNext* framebuffer,
+            Buffers::CommandBuffer*    command_buffer,
+            RenderGraph*               graph) = 0;
         virtual void Execute(
             uint32_t                               frame_index,
             Rendering::Scenes::SceneRawData* const scene_data,
@@ -82,10 +88,11 @@ namespace ZEngine::Rendering::Renderers
 
     struct RenderGraphNode
     {
-        RenderGraphRenderPassCreation          Creation;
-        std::unordered_set<std::string>        EdgeNodes;
-        Helpers::Ref<RenderPasses::RenderPass> Handle;
-        Helpers::Ref<IRenderGraphCallbackPass> CallbackPass;
+        RenderGraphRenderPassCreation           Creation;
+        std::unordered_set<std::string>         EdgeNodes;
+        Helpers::Ref<RenderPasses::RenderPass>  Handle;
+        Helpers::Ref<Buffers::FramebufferVNext> Framebuffer;
+        Helpers::Ref<IRenderGraphCallbackPass>  CallbackPass;
     };
 
     class RenderGraph : public Helpers::RefCounted

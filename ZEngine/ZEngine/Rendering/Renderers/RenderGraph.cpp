@@ -228,6 +228,17 @@ namespace ZEngine::Rendering::Renderers
 
             node.CallbackPass->Compile(node.Handle, *m_render_pass_builder, *this);
         }
+
+        for (std::string_view name : m_sorted_nodes)
+        {
+            auto&                                         node             = m_node[name.data()];
+            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {
+                .Width             = node.Handle->RenderAreaWidth,
+                .Height            = node.Handle->RenderAreaHeight,
+                .RenderTargetViews = node.Handle->RenderTargets,
+                .Attachment        = node.Handle->Attachment};
+            node.Framebuffer = CreateRef<Buffers::FramebufferVNext>(Renderer->Device, framebuffer_spec);
+        }
     }
 
     void RenderGraph::Execute(uint32_t frame_index, Buffers::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data)
@@ -322,25 +333,22 @@ namespace ZEngine::Rendering::Renderers
             }
 
             node.CallbackPass->Execute(frame_index, scene_data, node.Handle.get(), command_buffer, this);
-            node.CallbackPass->Render(frame_index, node.Handle.get(), command_buffer, this);
+            node.CallbackPass->Render(frame_index, node.Handle.get(), node.Framebuffer.get(), command_buffer, this);
         }
     }
 
     void RenderGraph::Resize(uint32_t width, uint32_t height)
     {
-        auto& global_textures = *(Renderer->Device->GlobalTextures);
+        std::vector<Textures::TextureHandle> handles_to_invalidate = {};
 
         for (auto& node_name : m_sorted_nodes)
         {
             auto& node = m_node[node_name];
 
-            auto& pass_spec = node.Handle->GetSpecification();
+            auto& pass_spec = node.Handle->Specification;
+
             pass_spec.ExternalOutputs.clear();
-            pass_spec.ExternalOutputs.shrink_to_fit();
-
             pass_spec.Inputs.clear();
-            pass_spec.Inputs.shrink_to_fit();
-
             pass_spec.InputTextures.clear();
 
             for (auto& output : node.Creation.Outputs)
@@ -352,13 +360,12 @@ namespace ZEngine::Rendering::Renderers
                     continue;
                 }
 
-                global_textures.Remove(resource.ResourceInfo.TextureHandle);
-
+                handles_to_invalidate.emplace_back(resource.ResourceInfo.TextureHandle);
                 resource.ResourceInfo.TextureSpec.Width  = width;
                 resource.ResourceInfo.TextureSpec.Height = height;
                 auto texture                             = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
 
-                resource.ResourceInfo.TextureHandle = global_textures.Add(texture);
+                resource.ResourceInfo.TextureHandle = Renderer->Device->GlobalTextures->Add(texture);
 
                 pass_spec.ExternalOutputs.push_back(texture);
             }
@@ -369,7 +376,7 @@ namespace ZEngine::Rendering::Renderers
 
                 if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::ATTACHMENT)
                 {
-                    auto texture = global_textures[resource.ResourceInfo.TextureHandle];
+                    auto texture = Renderer->Device->GlobalTextures->Access(resource.ResourceInfo.TextureHandle);
                     pass_spec.Inputs.push_back(texture);
                 }
                 /*
@@ -382,8 +389,20 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            node.Handle->ResizeFramebuffer();
+            node.Handle->UpdateRenderTargets();
             node.Handle->UpdateInputBinding();
+
+            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {
+                .Width             = node.Handle->RenderAreaWidth,
+                .Height            = node.Handle->RenderAreaHeight,
+                .RenderTargetViews = node.Handle->RenderTargets,
+                .Attachment        = node.Handle->Attachment};
+            node.Framebuffer = CreateRef<Buffers::FramebufferVNext>(Renderer->Device, framebuffer_spec);
+        }
+
+        for (auto& handle : handles_to_invalidate)
+        {
+            Renderer->Device->GlobalTextures->Invalidate(handle);
         }
     }
 
@@ -393,6 +412,7 @@ namespace ZEngine::Rendering::Renderers
         {
             auto& node = m_node[node_name];
             node.Handle->Dispose();
+            node.Framebuffer->Dispose();
         }
 
         for (auto& resource : m_resource_map)

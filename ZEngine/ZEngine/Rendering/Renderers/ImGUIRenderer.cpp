@@ -90,8 +90,7 @@ namespace ZEngine::Rendering::Renderers
         m_ui_pass->Verify();
         m_ui_pass->Bake();
 
-        auto pipeline             = m_ui_pass->GetPipeline();
-        auto shader               = pipeline->GetShader();
+        auto shader               = m_ui_pass->Pipeline->GetShader();
         auto descriptor_setlayout = shader->GetDescriptorSetLayout()[0];
 
         /*
@@ -246,7 +245,10 @@ namespace ZEngine::Rendering::Renderers
         vertex_buffer->SetData<ImDrawVert>(frame_index, vertex_data);
         index_buffer->SetData<ImDrawIdx>(frame_index, index_data);
 
-        command_buffer->BeginRenderPass(m_ui_pass);
+        auto device              = m_renderer->Device;
+        auto current_framebuffer = device->SwapchainFramebuffers[device->CurrentFrameIndex];
+
+        command_buffer->BeginRenderPass(m_ui_pass, current_framebuffer);
         command_buffer->BindVertexBuffer(vertex_buffer->At(frame_index));
         command_buffer->BindIndexBuffer(index_buffer->At(frame_index), sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 

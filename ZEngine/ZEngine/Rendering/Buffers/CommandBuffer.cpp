@@ -136,14 +136,13 @@ namespace ZEngine::Rendering::Buffers
         m_clear_value[1].depthStencil.stencil = stencil;
     }
 
-    void CommandBuffer::BeginRenderPass(const Ref<Renderers::RenderPasses::RenderPass>& render_pass)
+    void CommandBuffer::BeginRenderPass(const Ref<Renderers::RenderPasses::RenderPass>& render_pass, VkFramebuffer framebuffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        const auto&    render_pass_spec     = render_pass->GetSpecification();
-        auto           render_pass_pipeline = render_pass->GetPipeline();
-        const uint32_t width                = render_pass->GetRenderAreaWidth();
-        const uint32_t height               = render_pass->GetRenderAreaHeight();
+        const auto&    render_pass_spec = render_pass->Specification;
+        const uint32_t width            = render_pass->GetRenderAreaWidth();
+        const uint32_t height           = render_pass->GetRenderAreaHeight();
 
         std::vector<VkClearValue> clear_values = {};
 
@@ -153,7 +152,7 @@ namespace ZEngine::Rendering::Buffers
         }
         else
         {
-            auto& spec = render_pass->GetSpecification();
+            auto& spec = render_pass->Specification;
             for (const auto& render_target : spec.Inputs)
             {
                 if (render_target->IsDepthTexture)
@@ -177,7 +176,7 @@ namespace ZEngine::Rendering::Buffers
         VkRenderPassBeginInfo render_pass_begin_info = {};
         render_pass_begin_info.sType                 = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         render_pass_begin_info.renderPass            = render_pass->GetAttachment()->GetHandle();
-        render_pass_begin_info.framebuffer           = render_pass->GetFramebuffer();
+        render_pass_begin_info.framebuffer           = framebuffer;
         render_pass_begin_info.renderArea.offset     = {0, 0};
         render_pass_begin_info.renderArea.extent     = VkExtent2D{width, height};
         render_pass_begin_info.clearValueCount       = clear_values.size();
@@ -200,7 +199,7 @@ namespace ZEngine::Rendering::Buffers
         scissor.extent   = {width, height};
         vkCmdSetScissor(m_command_buffer, 0, 1, &scissor);
 
-        vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass_pipeline->GetHandle());
+        vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass->Pipeline->GetHandle());
 
         m_active_render_pass = render_pass;
     }
@@ -219,9 +218,8 @@ namespace ZEngine::Rendering::Buffers
     {
         if (auto render_pass = m_active_render_pass.lock())
         {
-            auto        render_pass_pipeline = render_pass->GetPipeline();
-            auto        pipeline_layout      = render_pass_pipeline->GetPipelineLayout();
-            const auto& descriptor_set_map   = render_pass_pipeline->GetShader()->GetDescriptorSetMap();
+            auto        pipeline_layout    = render_pass->Pipeline->GetPipelineLayout();
+            const auto& descriptor_set_map = render_pass->Pipeline->GetShader()->GetDescriptorSetMap();
 
             std::vector<VkDescriptorSet> frame_set_collection = {};
             for (auto& descriptor_set : descriptor_set_map)
@@ -238,9 +236,8 @@ namespace ZEngine::Rendering::Buffers
         ZENGINE_VALIDATE_ASSERT(descriptor != nullptr, "DescriptorSet can't be null")
         if (auto render_pass = m_active_render_pass.lock())
         {
-            auto            render_pass_pipeline = render_pass->GetPipeline();
-            auto            pipeline_layout      = render_pass_pipeline->GetPipelineLayout();
-            VkDescriptorSet desc_set[1]          = {descriptor};
+            auto            pipeline_layout = render_pass->Pipeline->GetPipelineLayout();
+            VkDescriptorSet desc_set[1]     = {descriptor};
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, desc_set, 0, nullptr);
         }
     }
@@ -331,8 +328,7 @@ namespace ZEngine::Rendering::Buffers
 
         if (auto render_pass = m_active_render_pass.lock())
         {
-            auto render_pass_pipeline = render_pass->GetPipeline();
-            auto pipeline_layout      = render_pass_pipeline->GetPipelineLayout();
+            auto pipeline_layout = render_pass->Pipeline->GetPipelineLayout();
             vkCmdPushConstants(m_command_buffer, pipeline_layout, stage_flags, offset, size, data);
         }
     }

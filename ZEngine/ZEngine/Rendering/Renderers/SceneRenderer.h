@@ -48,7 +48,12 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
-        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
+        virtual void Render(
+            uint32_t                   frame_index,
+            RenderPasses::RenderPass*  pass,
+            Buffers::FramebufferVNext* framebuffer,
+            Buffers::CommandBuffer*    command_buffer,
+            RenderGraph*               graph) override;
     };
 
     struct SkyboxPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
@@ -61,7 +66,12 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
-        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
+        virtual void Render(
+            uint32_t                   frame_index,
+            RenderPasses::RenderPass*  pass,
+            Buffers::FramebufferVNext* framebuffer,
+            Buffers::CommandBuffer*    command_buffer,
+            RenderGraph*               graph) override;
 
     private:
         const std::vector<float> m_vertex_data = {
@@ -83,7 +93,12 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
-        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
+        virtual void Render(
+            uint32_t                   frame_index,
+            RenderPasses::RenderPass*  pass,
+            Buffers::FramebufferVNext* framebuffer,
+            Buffers::CommandBuffer*    command_buffer,
+            RenderGraph*               graph) override;
 
     private:
         const std::vector<float>                 m_vertex_data       = {-1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,  0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -103,7 +118,12 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
-        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
+        virtual void Render(
+            uint32_t                   frame_index,
+            RenderPasses::RenderPass*  pass,
+            Buffers::FramebufferVNext* framebuffer,
+            Buffers::CommandBuffer*    command_buffer,
+            RenderGraph*               graph) override;
     };
 
     struct LightingPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
@@ -116,7 +136,12 @@ namespace ZEngine::Rendering::Renderers
             RenderPasses::RenderPass*              pass,
             Buffers::CommandBuffer*                command_buffer,
             RenderGraph* const                     graph) override;
-        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::CommandBuffer* command_buffer, RenderGraph* graph) override;
+        virtual void Render(
+            uint32_t                   frame_index,
+            RenderPasses::RenderPass*  pass,
+            Buffers::FramebufferVNext* framebuffer,
+            Buffers::CommandBuffer*    command_buffer,
+            RenderGraph*               graph) override;
     };
 
     struct GraphicRenderer;
