@@ -1,12 +1,16 @@
 #pragma once
 #include <RenderGraph.h>
 #include <Rendering/Buffers/IndirectBuffer.h>
-#include <Rendering/Cameras/Camera.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/Scenes/GraphicScene.h>
 #include <ZEngineDef.h>
-#include <glm/glm.hpp>
 #include <vector>
+
+#define WRITE_BUFFERS_ONCE(frame_index, body)          \
+    if (!m_write_once_control.contains(frame_index))   \
+    {                                                  \
+        body m_write_once_control[frame_index] = true; \
+    }
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -35,9 +39,6 @@ namespace ZEngine::Rendering::Renderers
         Buffers::IndirectBufferSetHandle m_indirect_buffer_handle;
     };
 
-    /*
-     * Passes definition
-     */
     struct SceneDepthPrePass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
     {
         virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
@@ -144,20 +145,4 @@ namespace ZEngine::Rendering::Renderers
             RenderGraph*               graph) override;
     };
 
-    struct GraphicRenderer;
-    struct SceneRenderer : public Helpers::RefCounted
-    {
-        SceneRenderer()  = default;
-        ~SceneRenderer() = default;
-
-        void Initialize(GraphicRenderer* renderer);
-        void Deinitialize();
-
-    private:
-        Helpers::Ref<SceneDepthPrePass> m_scene_depth_prepass;
-        Helpers::Ref<SkyboxPass>        m_skybox_pass;
-        Helpers::Ref<GridPass>          m_grid_pass;
-        Helpers::Ref<GbufferPass>       m_gbuffer_pass;
-        Helpers::Ref<LightingPass>      m_lighting_pass;
-    };
 } // namespace ZEngine::Rendering::Renderers
