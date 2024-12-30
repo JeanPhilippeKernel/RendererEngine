@@ -23,16 +23,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
 
             uint32_t color_map_index = 0;
-            for (const auto& input : Specification.Inputs)
+            for (const auto& handle : Specification.Inputs)
             {
-                bool        is_depth_texture = input->IsDepthTexture;
+                const auto& texture = device->GlobalTextures->Access(handle);
+
+                bool        is_depth_texture = texture->IsDepthTexture;
                 ImageLayout initial_layout   = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
                 ImageLayout final_layout     = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
                 ImageLayout reference_layout = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
 
-                const auto& texture_spec                                            = input->Specification;
                 attachment_specification.ColorsMap[color_map_index]                 = {};
-                attachment_specification.ColorsMap[color_map_index].Format          = texture_spec.Format;
+                attachment_specification.ColorsMap[color_map_index].Format          = texture->Specification.Format;
                 attachment_specification.ColorsMap[color_map_index].Load            = LoadOperation::LOAD;
                 attachment_specification.ColorsMap[color_map_index].Store           = StoreOperation::STORE;
                 attachment_specification.ColorsMap[color_map_index].Initial         = initial_layout;
@@ -42,9 +43,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            for (const auto& output : Specification.ExternalOutputs)
+            for (const auto& handle : Specification.ExternalOutputs)
             {
-                auto&       output_spec           = output->Specification;
+                const auto& texture               = device->GlobalTextures->Access(handle);
+                auto&       output_spec           = texture->Specification;
                 bool        is_depth_image_format = (output_spec.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
                 ImageLayout initial_layout        = (output_spec.LoadOp == LoadOperation::CLEAR) ? ImageLayout::UNDEFINED
                                                     : is_depth_image_format                      ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
@@ -79,9 +81,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     void RenderPass::Dispose()
     {
-        for (Ref<Textures::Texture>& buffer : Specification.ExternalOutputs)
+        for (auto& handle : Specification.ExternalOutputs)
         {
-            buffer->Dispose();
+            m_device->GlobalTextures->Remove(handle);
         }
 
         Pipeline->Dispose();
@@ -332,87 +334,64 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
     }
 
-    Ref<Textures::Texture> RenderPass::GetOutputColor(uint32_t color_index)
-    {
-        if (Specification.ExternalOutputs.empty())
-        {
-            return nullptr;
-        }
-        return Specification.ExternalOutputs.at(color_index);
-    }
-
-    Ref<Textures::Texture> RenderPass::GetOutputDepth()
-    {
-        Ref<Textures::Texture> depth = {};
-
-        for (auto& texture : Specification.ExternalOutputs)
-        {
-            if (texture->IsDepthTexture)
-            {
-                depth = texture;
-            }
-        }
-        return depth;
-    }
-
     void RenderPass::UpdateRenderTargets()
     {
         RenderTargets.clear();
 
-        uint32_t framebuffer_width  = 0;
-        uint32_t framebuffer_height = 0;
+        uint32_t width  = 0;
+        uint32_t height = 0;
         for (const auto& input : Specification.Inputs)
         {
-            auto width = input->Width;
-            if (framebuffer_width == 0)
+            auto texture = m_device->GlobalTextures->Access(input);
+
+            if (width == 0)
             {
-                framebuffer_width = width;
+                width = texture->Width;
             }
             else
             {
-                ZENGINE_VALIDATE_ASSERT(framebuffer_width == width, "Render Target Width is invalid for Framebuffer creation")
+                ZENGINE_VALIDATE_ASSERT(width == texture->Width, "Render Target Width is invalid for Framebuffer creation")
             }
 
-            auto height = input->Height;
-            if (framebuffer_height == 0)
+            if (height == 0)
             {
-                framebuffer_height = height;
+                height = texture->Height;
             }
             else
             {
-                ZENGINE_VALIDATE_ASSERT(framebuffer_height == height, "Render Target Height is invalid for Framebuffer creation")
+                ZENGINE_VALIDATE_ASSERT(height == texture->Height, "Render Target Height is invalid for Framebuffer creation")
             }
 
-            RenderTargets.emplace_back(input->ImageBuffer->GetBuffer().ViewHandle);
+            RenderTargets.emplace_back(input.Index);
         }
 
         for (const auto& output : Specification.ExternalOutputs)
         {
-            auto width = output->Width;
-            if (framebuffer_width == 0)
+            auto texture = m_device->GlobalTextures->Access(output);
+
+            if (width == 0)
             {
-                framebuffer_width = width;
+                width = texture->Width;
             }
             else
             {
-                ZENGINE_VALIDATE_ASSERT(framebuffer_width == width, "Render Target Width is invalid for Framebuffer creation")
+                ZENGINE_VALIDATE_ASSERT(width == texture->Width, "Render Target Width is invalid for Framebuffer creation")
             }
 
-            auto height = output->Height;
-            if (framebuffer_height == 0)
+            if (height == 0)
             {
-                framebuffer_height = height;
+                height = texture->Height;
             }
             else
             {
-                ZENGINE_VALIDATE_ASSERT(framebuffer_height == height, "Render Target Height is invalid for Framebuffer creation")
+                ZENGINE_VALIDATE_ASSERT(height == texture->Height, "Render Target Height is invalid for Framebuffer creation")
             }
 
-            RenderTargets.emplace_back(output->ImageBuffer->GetBuffer().ViewHandle);
+            RenderTargets.emplace_back(output.Index);
         }
 
-        RenderAreaWidth  = framebuffer_width;
-        RenderAreaHeight = framebuffer_height;
+        RenderAreaWidth  = width;
+        RenderAreaHeight = height;
     }
 
     Ref<Renderers::RenderPasses::Attachment> RenderPass::GetAttachment() const
@@ -543,7 +522,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
-    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Ref<Rendering::Textures::Texture>& target)
+    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Textures::TextureHandle& target)
     {
         m_spec.ExternalOutputs.push_back(target);
         return *this;
@@ -555,7 +534,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
-    RenderPassBuilder& RenderPassBuilder::AddInputAttachment(const Ref<Rendering::Textures::Texture>& input)
+    RenderPassBuilder& RenderPassBuilder::AddInputAttachment(const Textures::TextureHandle& input)
     {
         m_spec.Inputs.push_back(input);
         return *this;

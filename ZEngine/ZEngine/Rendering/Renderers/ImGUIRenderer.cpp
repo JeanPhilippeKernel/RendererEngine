@@ -286,12 +286,12 @@ namespace ZEngine::Rendering::Renderers
                 {
                     // Project scissor/clipping rectangles into framebuffer space
                     ImVec4 clip_rect;
-                    clip_rect.x = (pcmd->ClipRect.x - clip_off.x) * clip_scale.x;
-                    clip_rect.y = (pcmd->ClipRect.y - clip_off.y) * clip_scale.y;
-                    clip_rect.z = (pcmd->ClipRect.z - clip_off.x) * clip_scale.x;
-                    clip_rect.w = (pcmd->ClipRect.w - clip_off.y) * clip_scale.y;
+                    clip_rect.x = std::max(0.f, (pcmd->ClipRect.x - clip_off.x) * clip_scale.x);
+                    clip_rect.y = std::max(0.f, (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
+                    clip_rect.z = std::max(0.f, (pcmd->ClipRect.z - clip_off.x) * clip_scale.x);
+                    clip_rect.w = std::max(0.f, (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
 
-                    if (clip_rect.x < fb_width && clip_rect.y < fb_height && clip_rect.z >= 0.0f && clip_rect.w >= 0.0f)
+                    if (clip_rect.x >= 0 && clip_rect.x < fb_width && clip_rect.y >= 0 && clip_rect.y < fb_height && clip_rect.z >= 0.0f && clip_rect.w >= 0.0f)
                     {
                         // Apply scissor/clipping rectangle
                         VkRect2D scissor;
