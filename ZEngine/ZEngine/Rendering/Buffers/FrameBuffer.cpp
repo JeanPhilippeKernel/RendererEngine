@@ -46,8 +46,16 @@ namespace ZEngine::Rendering::Buffers
 
     void FramebufferVNext::Create()
     {
-        Handle = m_device->CreateFramebuffer(
-            m_specification.RenderTargetViews, m_specification.Attachment->GetHandle(), m_specification.Width, m_specification.Height, m_specification.Layers);
+        std::vector<VkImageView> views = {};
+        views.resize(m_specification.RenderTargets.size());
+
+        for (int i = 0; i < views.size(); ++i)
+        {
+            auto index  = m_specification.RenderTargets[i];
+            auto handle = m_device->GlobalTextures->ToHandle(index);
+            views[i]    = m_device->GlobalTextures->Access(handle)->ImageBuffer->GetImageViewHandle();
+        }
+        Handle = m_device->CreateFramebuffer(views, m_specification.Attachment->GetHandle(), m_specification.Width, m_specification.Height, m_specification.Layers);
     }
 
     void FramebufferVNext::Resize(uint32_t width, uint32_t height)

@@ -45,6 +45,7 @@ namespace ZEngine::Rendering::Textures
             if (ImageBuffer)
             {
                 ImageBuffer->Dispose();
+                ImageBuffer = nullptr;
             }
         }
     };

@@ -104,7 +104,7 @@ namespace ZEngine::Rendering::Renderers
         }
         ~RenderGraph() = default;
 
-        GraphicRenderer* Renderer{nullptr};
+        GraphicRenderer* Renderer = {nullptr};
 
         void                             Setup();
         void                             Compile();

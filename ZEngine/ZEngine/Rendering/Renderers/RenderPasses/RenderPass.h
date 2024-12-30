@@ -47,7 +47,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         std::map<std::string, PassInput>                  Inputs                             = {};
         std::unordered_set<std::string>                   EnqueuedUpdateInputs               = {};
         std::vector<Hardwares::WriteDescriptorSetRequest> EnqueuedWriteDescriptorSetRequests = {};
-        std::vector<VkImageView>                          RenderTargets                      = {};
+        std::vector<uint32_t>                             RenderTargets                      = {};
         Helpers::Ref<Renderers::RenderPasses::Attachment> Attachment                         = {nullptr};
         Helpers::Ref<Pipelines::GraphicPipeline>          Pipeline                           = {nullptr};
         void                                              Dispose();
@@ -59,8 +59,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                                              SetInput(std::string_view key_name, const Rendering::Buffers::StorageBufferSetHandle& buffer);
         void                                              SetInput(std::string_view key_name, const Textures::TextureHandle& texture);
         void                                              UpdateInputBinding();
-        Helpers::Ref<Textures::Texture>                   GetOutputColor(uint32_t color_index);
-        Helpers::Ref<Textures::Texture>                   GetOutputDepth();
         Helpers::Ref<Renderers::RenderPasses::Attachment> GetAttachment() const;
         void                                              UpdateRenderTargets();
         uint32_t                                          GetRenderAreaWidth() const;
@@ -95,9 +93,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder& SetOffset(uint32_t input_attribute_index, uint32_t offset);
 
         RenderPassBuilder& UseShader(std::string_view name);
-        RenderPassBuilder& UseRenderTarget(const Helpers::Ref<Rendering::Textures::Texture>& target);
+        RenderPassBuilder& UseRenderTarget(const Textures::TextureHandle& target);
         RenderPassBuilder& AddRenderTarget(const Specifications::TextureSpecification& target_spec);
-        RenderPassBuilder& AddInputAttachment(const Helpers::Ref<Rendering::Textures::Texture>& target);
+        RenderPassBuilder& AddInputAttachment(const Textures::TextureHandle& target);
         RenderPassBuilder& AddInputTexture(std::string_view key, const Rendering::Textures::TextureHandle& input);
         RenderPassBuilder& UseSwapchainAsRenderTarget();
 

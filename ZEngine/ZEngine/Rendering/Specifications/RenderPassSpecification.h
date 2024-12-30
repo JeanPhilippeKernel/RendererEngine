@@ -13,9 +13,9 @@ namespace ZEngine::Rendering::Specifications
         const char*                                              DebugName               = {};
         bool                                                     SwapchainAsRenderTarget = false;
         Specifications::GraphicRendererPipelineSpecification     PipelineSpecification   = {};
-        std::vector<Helpers::Ref<Textures::Texture>>             Inputs                  = {};
+        std::vector<Textures::TextureHandle>                     Inputs                  = {};
         std::unordered_map<std::string, Textures::TextureHandle> InputTextures           = {};
         std::vector<Specifications::TextureSpecification>        Outputs                 = {};
-        std::vector<Helpers::Ref<Textures::Texture>>             ExternalOutputs         = {};
+        std::vector<Textures::TextureHandle>                     ExternalOutputs         = {};
     };
 } // namespace ZEngine::Rendering::Specifications

@@ -147,6 +147,9 @@ namespace ZEngine::Hardwares
         std::vector<Helpers::Ref<Rendering::Primitives::Fence>>      SwapchainSignalFences             = {};
         std::vector<Rendering::Buffers::CommandBuffer*>              EnqueuedCommandbuffers            = {};
         Helpers::Ref<Rendering::Textures::TextureHandleManager>      GlobalTextures                    = Helpers::CreateRef<Rendering::Textures::TextureHandleManager>(600);
+        std::atomic_bool                                             RunningDirtyCollector             = true;
+        std::condition_variable                                      DirtyCollectorCond                = {};
+        std::mutex                                                   DirtyMutex                        = {};
 
         void Initialize(const Helpers::Ref<Windows::CoreWindow>& window);
         void Deinitialize();
@@ -196,6 +199,8 @@ namespace ZEngine::Hardwares
         Rendering::Buffers::CommandBuffer* GetInstantCommandBuffer(Rendering::QueueType type, bool begin = true);
         void                               EnqueueInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer, int wait_flag = 0);
         void                               EnqueueCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer);
+
+        void DirtyCollector();
 
     private:
         Windows::CoreWindow*                                    m_window{nullptr};

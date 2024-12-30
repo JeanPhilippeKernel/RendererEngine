@@ -153,18 +153,22 @@ namespace ZEngine::Rendering::Buffers
         else
         {
             auto& spec = render_pass->Specification;
-            for (const auto& render_target : spec.Inputs)
+            for (const auto& handle : spec.Inputs)
             {
-                if (render_target->IsDepthTexture)
+                auto texture = Device->GlobalTextures->Access(handle);
+                if (texture->IsDepthTexture)
                 {
                     clear_values.push_back(m_clear_value[1]);
                     continue;
                 }
                 clear_values.push_back(m_clear_value[0]);
             }
-            for (const auto& render_target : spec.ExternalOutputs)
+
+            for (const auto& handle : spec.ExternalOutputs)
             {
-                if (render_target->IsDepthTexture)
+                auto texture = Device->GlobalTextures->Access(handle);
+
+                if (texture->IsDepthTexture)
                 {
                     clear_values.push_back(m_clear_value[1]);
                     continue;

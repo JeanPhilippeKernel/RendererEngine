@@ -1,6 +1,7 @@
 #pragma once
 #include <IntrusivePtr.h>
-#include <cassert>
+#include <ZEngineDef.h>
+#include <set>
 #include <shared_mutex>
 #include <span>
 #include <vector>
@@ -46,7 +47,9 @@ namespace ZEngine::Helpers
 
         int32_t                   m_counter{INVALID_HANDLE_INDEX};
         uint32_t                  m_count{0};
+        uint32_t                  m_free_indice_head{0};
         std::vector<ArrayData>    m_data;
+        std::set<uint32_t>        m_free_indices;
         mutable std::shared_mutex m_mutex;
 
     public:
@@ -72,19 +75,31 @@ namespace ZEngine::Helpers
         Handle<T> Create()
         {
             std::unique_lock<std::shared_mutex> lock(m_mutex);
-            Handle<T>                           handle;
-            ArrayData                           data = {.Counter = ++m_counter};
+            Handle<T>                           handle = {};
 
-            for (int i = 0; i < m_count; ++i)
+            if (m_free_indice_head >= m_count)
             {
-                if (m_data[i].Counter == INVALID_HANDLE_INDEX)
-                {
-                    m_data[i]        = data;
-                    handle.Index     = i;
-                    handle.m_counter = data.Counter;
-                    break;
-                }
+                return handle;
             }
+
+            uint32_t index = INVALID_HANDLE_INDEX;
+            if (!m_free_indices.empty())
+            {
+                auto begin = m_free_indices.begin();
+                index      = *begin;
+                m_free_indices.erase(index);
+                ZENGINE_VALIDATE_ASSERT(m_data[index].Counter == INVALID_HANDLE_INDEX, "Counter shouldn't be valid")
+            }
+            else
+            {
+                ZENGINE_VALIDATE_ASSERT(m_data[m_free_indice_head].Counter == INVALID_HANDLE_INDEX, "Counter shouldn't be valid")
+                index = m_free_indice_head++;
+            }
+
+            auto& data       = m_data[index];
+            data.Counter     = ++m_counter;
+            handle.Index     = index;
+            handle.m_counter = data.Counter;
 
             return handle;
         }
@@ -92,25 +107,17 @@ namespace ZEngine::Helpers
         T& Access(const Handle<T>& handle)
         {
             std::shared_lock<std::shared_mutex> lock(m_mutex);
-            assert(handle.Index < m_count);
+            ZENGINE_VALIDATE_ASSERT(handle.Index < m_free_indice_head, "Handle Index is beyond the head")
             return m_data[handle.Index].Data;
         }
 
         Handle<T> Add(const T& value)
         {
-            std::unique_lock<std::shared_mutex> lock(m_mutex);
-            Handle<T>                           handle;
-            ArrayData                           data = {.Counter = ++m_counter, .Data = value};
+            Handle<T> handle = Create();
 
-            for (int i = 0; i < m_count; ++i)
+            if (handle)
             {
-                if (m_data[i].Counter == INVALID_HANDLE_INDEX)
-                {
-                    m_data[i]        = data;
-                    handle.Index     = i;
-                    handle.m_counter = data.Counter;
-                    break;
-                }
+                m_data[handle.Index].Data = value;
             }
 
             return handle;
@@ -118,19 +125,11 @@ namespace ZEngine::Helpers
 
         Handle<T> Add(T&& value)
         {
-            std::unique_lock<std::shared_mutex> lock(m_mutex);
-            Handle<T>                           handle;
-            ArrayData                           data = {.Counter = ++m_counter, .Data = std::move(value)};
+            Handle<T> handle = Create();
 
-            for (int i = 0; i < m_count; ++i)
+            if (handle)
             {
-                if (m_data[i].Counter == INVALID_HANDLE_INDEX)
-                {
-                    m_data[i]        = data;
-                    handle.Index     = i;
-                    handle.m_counter = data.Counter;
-                    break;
-                }
+                m_data[handle.Index].Data = std::move(value);
             }
 
             return handle;
@@ -140,7 +139,7 @@ namespace ZEngine::Helpers
         {
             std::shared_lock<std::shared_mutex> lock(m_mutex);
             Handle<T>                           handle{};
-            assert(index < m_count);
+            ZENGINE_VALIDATE_ASSERT(index < m_free_indice_head, "Handle Index is beyond the head");
 
             ArrayData data   = m_data[index];
             handle.Index     = index;
@@ -151,7 +150,7 @@ namespace ZEngine::Helpers
         void Update(Handle<T>& handle, T& data)
         {
             std::unique_lock<std::shared_mutex> lock(m_mutex);
-            if ((handle) && (m_data[handle.Index].Counter == handle.m_counter) && (handle.Index < m_count))
+            if ((handle) && (m_data[handle.Index].Counter == handle.m_counter) && (handle.Index < m_free_indice_head))
             {
                 m_data[handle.Index].Data = data;
             }
@@ -160,7 +159,7 @@ namespace ZEngine::Helpers
         void Update(Handle<T>& handle, T&& data)
         {
             std::unique_lock<std::shared_mutex> lock(m_mutex);
-            if ((handle) && (m_data[handle.Index].Counter == handle.m_counter) && (handle.Index < m_count))
+            if ((handle) && (m_data[handle.Index].Counter == handle.m_counter) && (handle.Index < m_free_indice_head))
             {
                 m_data[handle.Index].Data = std::move(data);
             }
@@ -174,26 +173,11 @@ namespace ZEngine::Helpers
                 return;
             }
 
-            if ((handle.Index < m_count) && (m_data[handle.Index].Counter == handle.m_counter))
+            if ((handle.Index < m_free_indice_head) && (m_data[handle.Index].Counter == handle.m_counter))
             {
+                m_free_indices.insert(handle.Index);
                 m_data[handle.Index] = ArrayData{};
                 handle               = Handle<T>{};
-            }
-        }
-
-        void Invalidate(Handle<T>& handle)
-        {
-            std::unique_lock<std::shared_mutex> lock(m_mutex);
-            if (!handle)
-            {
-                return;
-            }
-
-            if ((handle.Index < m_count) && (m_data[handle.Index].Counter == handle.m_counter))
-            {
-                m_data[handle.Index].Counter = INVALID_HANDLE_INDEX;
-                handle.Index                 = INVALID_HANDLE_INDEX;
-                handle.m_counter             = INVALID_HANDLE_INDEX;
             }
         }
 
@@ -201,6 +185,17 @@ namespace ZEngine::Helpers
         {
             std::shared_lock<std::shared_mutex> lock(m_mutex);
             return m_count;
+        }
+
+        uint32_t Head() const
+        {
+            std::shared_lock<std::shared_mutex> lock(m_mutex);
+            return m_free_indice_head;
+        }
+
+        uint32_t Delta() const
+        {
+            return m_free_indice_head - (uint32_t) m_free_indices.size();
         }
 
         void Dispose() {}

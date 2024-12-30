@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Specifications
         uint32_t                                          Width              = 1;
         uint32_t                                          Height             = 1;
         uint32_t                                          Layers             = 1;
-        std::vector<VkImageView>                          RenderTargetViews  = {};
+        std::vector<uint32_t>                             RenderTargets      = {};
         Helpers::Ref<Renderers::RenderPasses::Attachment> Attachment         = {};
     };
 

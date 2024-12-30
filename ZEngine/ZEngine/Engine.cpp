@@ -75,13 +75,15 @@ namespace ZEngine
             /*On Update*/
             window->Update(dt);
 
-            Rendering::Renderers::ResizeRequest req;
-            if (g_renderer->EnqueuedResizeRequests.Pop(req))
+            if (g_renderer->EnqueuedResizeRequests.Size())
             {
-                g_renderer->RenderGraph->Resize(req.Width, req.Height);
-                continue;
+                Rendering::Renderers::ResizeRequest req;
+                if (g_renderer->EnqueuedResizeRequests.Pop(req))
+                {
+                    g_renderer->RenderGraph->Resize(req.Width, req.Height);
+                    continue;
+                }
             }
-
             g_device->NewFrame();
             {
                 auto buffer = g_device->GetCommandBuffer(true);
