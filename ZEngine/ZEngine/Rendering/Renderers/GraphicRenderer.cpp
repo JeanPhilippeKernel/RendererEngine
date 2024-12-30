@@ -1,10 +1,10 @@
 #include <pch.h>
 #include <Helpers/ThreadPool.h>
 #include <ImGUIRenderer.h>
+#include <RendererPasses.h>
 #include <Rendering/Buffers/Bitmap.h>
 #include <Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
-#include <SceneRenderer.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__
@@ -25,27 +25,55 @@ namespace ZEngine::Rendering::Renderers
 {
     GraphicRenderer::GraphicRenderer() {}
     GraphicRenderer::~GraphicRenderer() {}
+
     void GraphicRenderer::Initialize(Hardwares::VulkanDevice* device)
     {
         Device            = device;
         RenderGraph       = CreateScope<Renderers::RenderGraph>(this);
         m_resource_loader = CreateRef<AsyncResourceLoader>();
-        SceneRenderer     = CreateRef<Renderers::SceneRenderer>();
         ImguiRenderer     = CreateRef<ImGUIRenderer>();
+        /*
+         * Renderer Passes
+         */
+        auto scene_depth_prepass = CreateRef<SceneDepthPrePass>();
+        auto skybox_pass         = CreateRef<SkyboxPass>();
+        auto grid_pass           = CreateRef<GridPass>();
+        auto gbuffer_pass        = CreateRef<GbufferPass>();
+        auto lighting_pass       = CreateRef<LightingPass>();
         /*
          * Shared Buffers
          */
         m_scene_camera_buffer_handle = CreateUniformBufferSet();
-
-        auto builder = RenderGraph->GetBuilder();
-        builder->AttachBuffer("scene_camera", m_scene_camera_buffer_handle);
         /*
-         * Sub Renderer Initialization
+         * Subsystems initialization
          */
         m_resource_loader->Initialize(this);
-
-        SceneRenderer->Initialize(this);
         ImguiRenderer->Initialize(this);
+        scene_depth_prepass->Initialize(this);
+        skybox_pass->Initialize(this);
+        grid_pass->Initialize(this);
+        lighting_pass->Initialize(this);
+        /*
+         * Render Graph definition
+         */
+        auto builder = RenderGraph->GetBuilder();
+        builder->AttachBuffer("scene_camera", m_scene_camera_buffer_handle);
+        builder->CreateRenderTarget("g_scene_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
+        builder->CreateBufferSet("g_scene_vertex_buffer");
+        builder->CreateBufferSet("g_scene_index_buffer");
+        builder->CreateBufferSet("g_scene_draw_buffer");
+        builder->CreateBufferSet("g_scene_transform_buffer");
+        builder->CreateBufferSet("g_scene_material_buffer");
+        builder->CreateBufferSet("g_scene_directional_light_buffer");
+        builder->CreateBufferSet("g_scene_point_light_buffer");
+        builder->CreateBufferSet("g_scene_spot_light_buffer");
+        builder->CreateBufferSet("g_scene_indirect_buffer", BufferSetCreationType::INDIRECT);
+
+        RenderGraph->AddCallbackPass("Scene Depth Pre-Pass", scene_depth_prepass);
+        RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
+        RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
+        RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
+        RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
 
         RenderGraph->Setup();
         RenderGraph->Compile();
@@ -55,7 +83,6 @@ namespace ZEngine::Rendering::Renderers
     {
         RenderGraph->Dispose();
 
-        SceneRenderer->Deinitialize();
         ImguiRenderer->Deinitialize();
 
         VertexBufferSetManager.Dispose();

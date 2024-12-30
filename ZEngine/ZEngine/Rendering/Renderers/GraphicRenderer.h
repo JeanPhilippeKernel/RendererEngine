@@ -10,7 +10,6 @@
 #include <RenderPasses/RenderPass.h>
 #include <Rendering/Buffers/CommandBuffer.h>
 #include <Rendering/Renderers/RenderGraph.h>
-#include <SceneRenderer.h>
 #include <Textures/Texture.h>
 #include <vulkan/vulkan.h>
 #include <span>
@@ -57,7 +56,6 @@ namespace ZEngine::Rendering::Renderers
         ~GraphicRenderer();
 
         Hardwares::VulkanDevice*                              Device                   = nullptr;
-        Helpers::Ref<SceneRenderer>                           SceneRenderer            = nullptr;
         Helpers::Ref<ImGUIRenderer>                           ImguiRenderer            = nullptr;
         Helpers::Scope<RenderGraph>                           RenderGraph              = nullptr;
         Helpers::HandleManager<Buffers::VertexBufferSetRef>   VertexBufferSetManager   = {300};

@@ -121,9 +121,15 @@ namespace ZEngine::Rendering::Renderers
         {
             for (uint32_t i = 0; i < pass.second.Creation.Inputs.size(); ++i)
             {
-                RenderGraphResource& resource      = m_resource_map[pass.second.Creation.Inputs[i].Name];
-                RenderGraphNode&     producer_node = m_node[resource.ProducerNodeName];
-                producer_node.EdgeNodes.insert(pass.first);
+                if (m_resource_map.count(pass.second.Creation.Inputs[i].Name))
+                {
+                    RenderGraphResource& resource = m_resource_map[pass.second.Creation.Inputs[i].Name];
+                    if (m_node.count(resource.ProducerNodeName))
+                    {
+                        RenderGraphNode& producer_node = m_node[resource.ProducerNodeName];
+                        producer_node.EdgeNodes.insert(pass.first);
+                    }
+                }
             }
         }
 

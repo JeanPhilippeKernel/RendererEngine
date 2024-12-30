@@ -1,16 +1,9 @@
 #include <pch.h>
 #include <GraphicRenderer.h>
-#include <Rendering/Renderers/Contracts/RendererDataContract.h>
-#include <Rendering/Renderers/SceneRenderer.h>
+#include <RendererPasses.h>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;
-
-#define WRITE_BUFFERS_ONCE(frame_index, body)          \
-    if (!m_write_once_control.contains(frame_index))   \
-    {                                                  \
-        body m_write_once_control[frame_index] = true; \
-    }
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -22,41 +15,6 @@ namespace ZEngine::Rendering::Renderers
         m_transform_buffer_handle = renderer->CreateStorageBufferSet();
         m_indirect_buffer_handle  = renderer->CreateIndirectBufferSet();
     }
-
-    void SceneRenderer::Initialize(GraphicRenderer* renderer)
-    {
-        m_scene_depth_prepass = CreateRef<SceneDepthPrePass>();
-        m_skybox_pass         = CreateRef<SkyboxPass>();
-        m_grid_pass           = CreateRef<GridPass>();
-        m_gbuffer_pass        = CreateRef<GbufferPass>();
-        m_lighting_pass       = CreateRef<LightingPass>();
-
-        m_scene_depth_prepass->Initialize(renderer);
-        m_skybox_pass->Initialize(renderer);
-        m_grid_pass->Initialize(renderer);
-        m_lighting_pass->Initialize(renderer);
-
-        renderer->RenderGraph->AddCallbackPass("Scene Depth Pre-Pass", m_scene_depth_prepass);
-        renderer->RenderGraph->AddCallbackPass("Skybox Pass", m_skybox_pass);
-        renderer->RenderGraph->AddCallbackPass("Grid Pass", m_grid_pass);
-        renderer->RenderGraph->AddCallbackPass("G-Buffer Pass", m_gbuffer_pass);
-        renderer->RenderGraph->AddCallbackPass("Lighting Pass", m_lighting_pass);
-
-        TextureSpecification scene_render_target_spec = {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM};
-        auto                 builder                  = renderer->RenderGraph->GetBuilder();
-        builder->CreateRenderTarget("g_scene_render_target", scene_render_target_spec);
-        builder->CreateBufferSet("g_scene_vertex_buffer");
-        builder->CreateBufferSet("g_scene_index_buffer");
-        builder->CreateBufferSet("g_scene_draw_buffer");
-        builder->CreateBufferSet("g_scene_transform_buffer");
-        builder->CreateBufferSet("g_scene_material_buffer");
-        builder->CreateBufferSet("g_scene_directional_light_buffer");
-        builder->CreateBufferSet("g_scene_point_light_buffer");
-        builder->CreateBufferSet("g_scene_spot_light_buffer");
-        builder->CreateBufferSet("g_scene_indirect_buffer", BufferSetCreationType::INDIRECT);
-    }
-
-    void SceneRenderer::Deinitialize() {}
 
     void SceneDepthPrePass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
