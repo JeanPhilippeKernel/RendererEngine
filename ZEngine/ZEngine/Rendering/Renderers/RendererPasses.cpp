@@ -337,6 +337,7 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("DrawDataSB", draw_buffer);
         handle->SetInput("TransformSB", transform_buffer);
         handle->SetInput("MatSB", material_buffer);
+        handle->SetBindlessInput("TextureArray");
         handle->Verify();
         handle->Bake();
     }
@@ -348,14 +349,7 @@ namespace ZEngine::Rendering::Renderers
         Buffers::CommandBuffer*                command_buffer,
         RenderGraph* const                     graph)
     {
-        if ((m_cached_vertices_count[frame_index] != scene_data->Vertices.size()) || (m_cached_indices_count[frame_index] != scene_data->Indices.size()))
-        {
-            pass->MarkDirty();
-            m_cached_vertices_count[frame_index] = scene_data->Vertices.size();
-            m_cached_indices_count[frame_index]  = scene_data->Indices.size();
-        }
-
-        // GraphicRenderer::BindGlobalTextures(pass);
+        pass->MarkDirty();
     }
 
     void GbufferPass::Render(

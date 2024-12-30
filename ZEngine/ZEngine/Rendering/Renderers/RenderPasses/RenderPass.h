@@ -18,7 +18,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         UNIFORM_BUFFER_SET,
         STORAGE_BUFFER_SET,
-        TEXTURE_ARRAY,
+        BINDLESS_TEXTURE,
         UNIFORM_BUFFER,
         STORAGE_BUFFER,
         TEXTURE
@@ -58,6 +58,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                                              SetInput(std::string_view key_name, const Rendering::Buffers::UniformBufferSetHandle& buffer);
         void                                              SetInput(std::string_view key_name, const Rendering::Buffers::StorageBufferSetHandle& buffer);
         void                                              SetInput(std::string_view key_name, const Textures::TextureHandle& texture);
+        void                                              SetBindlessInput(std::string_view key_name);
         void                                              UpdateInputBinding();
         Helpers::Ref<Renderers::RenderPasses::Attachment> GetAttachment() const;
         void                                              UpdateRenderTargets();

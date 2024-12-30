@@ -564,10 +564,16 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::__cleanupDirtyResource()
     {
-        size_t dirty_resource_count = m_dirty_resources.Delta();
+        size_t dirty_resource_count = m_dirty_resources.Head();
         for (size_t i = 0; i < dirty_resource_count; ++i)
         {
-            auto           handle     = m_dirty_resources.ToHandle(i);
+            auto handle = m_dirty_resources.ToHandle(i);
+
+            if (!handle)
+            {
+                continue;
+            }
+
             DirtyResource& res_handle = m_dirty_resources[handle];
             switch (res_handle.Type)
             {
@@ -624,10 +630,16 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::__cleanupBufferDirtyResource()
     {
-        size_t dirty_buffer_count = m_dirty_buffers.Delta();
+        size_t dirty_buffer_count = m_dirty_buffers.Head();
         for (size_t i = 0; i < dirty_buffer_count; ++i)
         {
-            auto        handle = m_dirty_buffers.ToHandle(i);
+            auto handle = m_dirty_buffers.ToHandle(i);
+
+            if (!handle)
+            {
+                continue;
+            }
+
             BufferView& buffer = m_dirty_buffers[handle];
             vmaDestroyBuffer(VmaAllocator, buffer.Handle, buffer.Allocation);
             m_dirty_buffers.Remove(handle);
@@ -636,10 +648,16 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::__cleanupBufferImageDirtyResource()
     {
-        size_t dirty_buffer_image_count = m_dirty_buffer_images.Delta();
+        size_t dirty_buffer_image_count = m_dirty_buffer_images.Head();
         for (size_t i = 0; i < dirty_buffer_image_count; ++i)
         {
-            auto         handle = m_dirty_buffer_images.ToHandle(i);
+            auto handle = m_dirty_buffer_images.ToHandle(i);
+
+            if (!handle)
+            {
+                continue;
+            }
+
             BufferImage& buffer = m_dirty_buffer_images[handle];
 
             vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
@@ -1062,6 +1080,12 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS, "Failed to present current frame on Window")
 
         IncrementFrameImageCount();
+
+        {
+            std::lock_guard l(DirtyMutex);
+            IdleFrameCount++;
+        }
+        DirtyCollectorCond.notify_one();
     }
 
     void VulkanDevice::IncrementFrameImageCount()
@@ -1096,20 +1120,28 @@ namespace ZEngine::Hardwares
 
         ZENGINE_CORE_INFO("[*] Dirty Resource Collector started...")
 
-        while (RunningDirtyCollector.load())
+        while (RunningDirtyCollector)
         {
             std::unique_lock lock(DirtyMutex);
-            DirtyCollectorCond.wait_for(lock, 1s);
+            DirtyCollectorCond.wait(lock, [this] {
+                return (IdleFrameCount > IdleFrameThreshold) || RunningDirtyCollector.load() == false;
+            });
 
             if (RunningDirtyCollector == false)
             {
                 break;
             }
 
-            uint32_t dirty_resource_count = m_dirty_resources.Delta();
+            uint32_t dirty_resource_count = m_dirty_resources.Head();
             for (uint32_t i = 0; i < dirty_resource_count; ++i)
             {
-                auto           handle     = m_dirty_resources.ToHandle(i);
+                auto handle = m_dirty_resources.ToHandle(i);
+
+                if (!handle)
+                {
+                    continue;
+                }
+
                 DirtyResource& res_handle = m_dirty_resources[handle];
                 if (res_handle.FrameIndex == CurrentFrameIndex)
                 {
@@ -1166,10 +1198,16 @@ namespace ZEngine::Hardwares
                 }
             }
 
-            uint32_t dirty_buffer_count = m_dirty_buffers.Delta();
+            uint32_t dirty_buffer_count = m_dirty_buffers.Head();
             for (uint32_t i = 0; i < dirty_buffer_count; ++i)
             {
-                auto        handle = m_dirty_buffers.ToHandle(i);
+                auto handle = m_dirty_buffers.ToHandle(i);
+
+                if (!handle)
+                {
+                    continue;
+                }
+
                 BufferView& buffer = m_dirty_buffers[handle];
                 if (buffer.FrameIndex == CurrentFrameIndex)
                 {
@@ -1178,10 +1216,16 @@ namespace ZEngine::Hardwares
                 }
             }
 
-            uint32_t dirty_buffer_image_count = m_dirty_buffer_images.Delta();
+            uint32_t dirty_buffer_image_count = m_dirty_buffer_images.Head();
             for (uint32_t i = 0; i < dirty_buffer_image_count; ++i)
             {
-                auto         handle = m_dirty_buffer_images.ToHandle(i);
+                auto handle = m_dirty_buffer_images.ToHandle(i);
+
+                if (!handle)
+                {
+                    continue;
+                }
+
                 BufferImage& buffer = m_dirty_buffer_images[handle];
 
                 if (buffer.FrameIndex == CurrentFrameIndex)
@@ -1193,6 +1237,8 @@ namespace ZEngine::Hardwares
                     m_dirty_buffer_images.Remove(handle);
                 }
             }
+
+            IdleFrameCount = 0;
         }
 
         ZENGINE_CORE_INFO("[*] Dirty Resource Collector stopped...")

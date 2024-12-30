@@ -71,7 +71,6 @@ namespace ZEngine::Rendering::Renderers
         void            DrawScene(Buffers::CommandBuffer* const command_buffer, const Helpers::Ref<Cameras::Camera>& camera, const Helpers::Ref<Scenes::SceneRawData>& data);
         void            WriteDescriptorSets(std::span<Hardwares::WriteDescriptorSetRequest> requests);
         VkDescriptorSet GetImguiFrameOutput();
-        void            BindGlobalTextures(RenderPasses::RenderPass* pass);
 
         Buffers::VertexBufferSetHandle   CreateVertexBufferSet();
         Buffers::StorageBufferSetHandle  CreateStorageBufferSet();

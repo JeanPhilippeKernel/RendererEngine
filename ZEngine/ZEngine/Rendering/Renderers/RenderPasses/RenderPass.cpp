@@ -176,8 +176,21 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                         .DescriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER});
                 }
                 break;
-                case TEXTURE_ARRAY:
+                case BINDLESS_TEXTURE:
                 {
+                    auto count = m_device->GlobalTextures->Head();
+                    for (int i = 0; i < count; ++i)
+                    {
+                        EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
+                            .Handle          = i,
+                            .FrameIndex      = frame_index,
+                            .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
+                            .Binding         = input.Binding,
+                            .DstArrayElement = (uint32_t) i,
+                            .DescriptorCount = 1,
+                            .DescriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
+                    }
+
                     /*auto     texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
                     auto&    texture_collection = texture_array->Data();
                     uint32_t slot_count         = texture_array->GetUsedSlotCount();
@@ -286,11 +299,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         {
             return;
         }
-        bool        found        = false;
         const auto& binding_spec = validity_output.second;
-
-        Inputs[key_name.data()] = PassInput{
-            .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER_SET, .UniformBufferSetHandle = buffer};
+        Inputs[key_name.data()]  = PassInput{
+             .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER_SET, .UniformBufferSetHandle = buffer};
         EnqueuedUpdateInputs.insert(key_name.data());
     }
 
@@ -301,11 +312,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         {
             return;
         }
-        bool        found        = false;
         const auto& binding_spec = validity_output.second;
-
-        Inputs[key_name.data()] = PassInput{
-            .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER_SET, .BufferSetHandle = buffer};
+        Inputs[key_name.data()]  = PassInput{
+             .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER_SET, .BufferSetHandle = buffer};
 
         EnqueuedUpdateInputs.insert(key_name.data());
     }
@@ -317,11 +326,23 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         {
             return;
         }
-        bool        found        = false;
-        const auto& binding_spec = validity_output.second;
 
+        const auto& binding_spec = validity_output.second;
         Inputs[key_name.data()] =
             PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE, .TextureHandle = texture};
+
+        EnqueuedUpdateInputs.insert(key_name.data());
+    }
+
+    void RenderPass::SetBindlessInput(std::string_view key_name)
+    {
+        auto validity_output = ValidateInput(key_name);
+        if (!validity_output.first)
+        {
+            return;
+        }
+        const auto& binding_spec = validity_output.second;
+        Inputs[key_name.data()]  = PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::BINDLESS_TEXTURE};
 
         EnqueuedUpdateInputs.insert(key_name.data());
     }

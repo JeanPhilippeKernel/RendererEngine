@@ -200,12 +200,6 @@ namespace ZEngine::Rendering::Renderers
         return ImguiRenderer->UpdateFrameOutput(frame_color_res.ResourceInfo.TextureHandle);
     }
 
-    void GraphicRenderer::BindGlobalTextures(RenderPasses::RenderPass* pass)
-    {
-        // pass->SetInput("TextureArray", GlobalTextures);
-        // pass->MarkDirty();
-    }
-
     Buffers::VertexBufferSetHandle GraphicRenderer::CreateVertexBufferSet()
     {
         auto handle = VertexBufferSetManager.Create();

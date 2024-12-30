@@ -360,7 +360,7 @@ namespace ZEngine::Rendering::Renderers
                 auto temp_handle        = Renderer->Device->GlobalTextures->Create();
                 auto texture_to_dispose = Renderer->Device->GlobalTextures->Access(resource.ResourceInfo.TextureHandle);
                 Renderer->Device->GlobalTextures->Update(temp_handle, texture_to_dispose);
-                texture_to_dispose->Dispose();
+                Renderer->Device->GlobalTextures->Remove(temp_handle);
 
                 resource.ResourceInfo.TextureSpec.Width  = width;
                 resource.ResourceInfo.TextureSpec.Height = height;

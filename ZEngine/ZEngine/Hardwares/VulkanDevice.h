@@ -148,6 +148,8 @@ namespace ZEngine::Hardwares
         std::vector<Rendering::Buffers::CommandBuffer*>              EnqueuedCommandbuffers            = {};
         Helpers::Ref<Rendering::Textures::TextureHandleManager>      GlobalTextures                    = Helpers::CreateRef<Rendering::Textures::TextureHandleManager>(600);
         std::atomic_bool                                             RunningDirtyCollector             = true;
+        std::atomic_uint                                             IdleFrameCount                    = 0;
+        std::atomic_uint                                             IdleFrameThreshold                = SwapchainImageCount * 3;
         std::condition_variable                                      DirtyCollectorCond                = {};
         std::mutex                                                   DirtyMutex                        = {};
 
@@ -208,8 +210,8 @@ namespace ZEngine::Hardwares
         CommandBufferManager                                    m_buffer_manager{};
         std::map<Rendering::QueueType, VkQueue>                 m_queue_map{};
         Helpers::HandleManager<DirtyResource>                   m_dirty_resources{300};
-        Helpers::HandleManager<Rendering::Buffers::BufferView>  m_dirty_buffers{300};
-        Helpers::HandleManager<Rendering::Buffers::BufferImage> m_dirty_buffer_images{300};
+        Helpers::HandleManager<Rendering::Buffers::BufferView>  m_dirty_buffers{500};
+        Helpers::HandleManager<Rendering::Buffers::BufferImage> m_dirty_buffer_images{500};
         VkDebugUtilsMessengerEXT                                m_debug_messenger{VK_NULL_HANDLE};
         PFN_vkCreateDebugUtilsMessengerEXT                      __createDebugMessengerPtr{VK_NULL_HANDLE};
         PFN_vkDestroyDebugUtilsMessengerEXT                     __destroyDebugMessengerPtr{VK_NULL_HANDLE};
