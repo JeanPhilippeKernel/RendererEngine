@@ -167,14 +167,31 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
-        RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}, {.Name = "lighting_render_target"}}};
+        auto&                         output_skybox = builder->CreateRenderTarget("skybox_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
+        RenderGraphRenderPassCreation pass_node     = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}}, .Outputs = {{.Name = output_skybox.Name}}};
         builder->CreateRenderPassNode(pass_node);
+        builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
+
+        builder->CreateBufferSet("skybox_vertex_box", ...);
+        builder->CreateBufferSet("skybox_index_buffer", ...);
     }
 
     void SkyboxPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
     {
-        auto pass_spec      = builder.SetPipelineName("Skybox-Pipeline").EnablePipelineDepthTest(true).EnablePipelineDepthWrite(false).UseShader("skybox").Detach();
+        auto pass_spec = builder.SetPipelineName("Skybox-Pipeline")
+                             .SetInputBindingCount(1)
+                             .SetStride(0, sizeof(float) * 3)
+                             .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
+                             .SetInputAttributeCount(1)
+                             .SetLocation(0, 0)
+                             .SetBinding(0, 0)
+                             .SetFormat(0, Specifications::ImageFormat::R32G32B32_SFLOAT)
+                             .SetOffset(0, 0)
+                             .EnablePipelineDepthTest(true)
+                             .EnablePipelineDepthWrite(false)
+                             .UseShader("skybox")
+                             .Detach();
+
         auto camera_buffer  = graph.GetBufferUniformSet("scene_camera");
         auto skybox_env_map = graph.GetTexture("skybox_env_map");
 
@@ -208,8 +225,20 @@ namespace ZEngine::Rendering::Renderers
         index_buffer->SetData<uint32_t>(frame_index, m_index_data);
         draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
         transform_buffer->SetData<glm::mat4>(frame_index, std::vector<glm::mat4>{glm::identity<glm::mat4>()});
-        indirect_buffer->SetData<VkDrawIndirectCommand>(frame_index, m_indirect_commmand);
 
+        std::vector<VkDrawIndirectCommand> draw_indirect_commmand = {};
+        draw_indirect_commmand.resize(m_draw_data.size());
+        for (uint32_t i = 0; i < draw_indirect_commmand.size(); ++i)
+        {
+            draw_indirect_commmand[i] = {
+                .vertexCount   = m_draw_data[i].IndexCount,
+                .instanceCount = 1,
+                .firstVertex   = 0,
+                .firstInstance = i,
+            };
+        }
+
+        indirect_buffer->SetData<VkDrawIndirectCommand>(frame_index, draw_indirect_commmand);
         pass->MarkDirty();
     }
 
@@ -236,7 +265,8 @@ namespace ZEngine::Rendering::Renderers
 
     void GridPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}, {.Name = "lighting_render_target"}}};
+        auto&                         output_grid = builder->CreateRenderTarget("grid_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
+        RenderGraphRenderPassCreation pass_node   = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}}, .Outputs = {{.Name = output_grid.Name}}};
         builder->CreateRenderPassNode(pass_node);
     }
 

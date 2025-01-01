@@ -33,7 +33,9 @@ namespace ZEngine::Rendering::Renderers
     {
         INDIRECT,
         UNIFORM,
-        STORAGE
+        STORAGE,
+        VERTEX,
+        INDEX
     };
 
     struct RenderGraphResourceInfo

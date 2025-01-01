@@ -80,6 +80,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder& EnablePipelineBlending(bool value);
         RenderPassBuilder& EnablePipelineDepthTest(bool value);
         RenderPassBuilder& EnablePipelineDepthWrite(bool value);
+        RenderPassBuilder& PipelineDepthCompareOp(uint32_t value);
         RenderPassBuilder& SetShaderOverloadMaxSet(uint32_t count);
         RenderPassBuilder& SetOverloadPoolSize(uint32_t count);
 

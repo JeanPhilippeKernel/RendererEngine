@@ -76,12 +76,23 @@ namespace ZEngine::Rendering::Renderers
 
     private:
         const std::vector<float> m_vertex_data = {
-            -1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0,
-            -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            -1.0f, -1.0f, 1.0f,  // v0
+            1.0f,  -1.0f, 1.0f,  // v1
+            1.0f,  1.0f,  1.0f,  // v2
+            -1.0f, 1.0f,  1.0f,  // v3
+            -1.0f, -1.0f, -1.0f, // v4
+            1.0f,  -1.0f, -1.0f, // v5
+            1.0f,  1.0f,  -1.0f, // v6
+            -1.0f, 1.0f,  -1.0f, // v7
         };
-        const std::vector<uint32_t>              m_index_data        = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 7, 6, 5, 5, 4, 7, 4, 0, 3, 3, 7, 4, 4, 5, 1, 1, 0, 4, 3, 2, 6, 6, 7, 3};
-        const std::vector<DrawData>              m_draw_data         = {DrawData{.VertexOffset = 0, .IndexOffset = 0, .VertexCount = 8, .IndexCount = 36}};
-        const std::vector<VkDrawIndirectCommand> m_indirect_commmand = {VkDrawIndirectCommand{.vertexCount = 36, .instanceCount = 1, .firstVertex = 0, .firstInstance = 0}};
+        const std::vector<uint32_t> m_index_data = {
+            0, 1, 2, 2, 3, 0, // Front face
+            1, 5, 6, 6, 2, 1, // Right face
+            5, 4, 7, 7, 6, 5, // Back face
+            4, 0, 3, 3, 7, 4, // Left face
+            3, 2, 6, 6, 7, 3, // Top face
+            4, 5, 1, 1, 0, 4  // Bottom face
+        };
     };
 
     struct GridPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
