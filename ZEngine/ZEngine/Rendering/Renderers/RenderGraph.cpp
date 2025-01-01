@@ -11,10 +11,10 @@ namespace ZEngine::Rendering::Renderers
     {
         std::string resource_name(name);
 
-        m_graph.m_resource_map[resource_name].Name                         = name.data();
-        m_graph.m_resource_map[resource_name].Type                         = RenderGraphResourceType::BUFFER_SET;
-        m_graph.m_resource_map[resource_name].ResourceInfo.BufferSetHandle = buffer;
-        m_graph.m_resource_map[resource_name].ResourceInfo.External        = true;
+        m_graph.m_resource_map[resource_name].Name                                = name.data();
+        m_graph.m_resource_map[resource_name].Type                                = RenderGraphResourceType::BUFFER_SET;
+        m_graph.m_resource_map[resource_name].ResourceInfo.StorageBufferSetHandle = buffer;
+        m_graph.m_resource_map[resource_name].ResourceInfo.External               = true;
         return m_graph.m_resource_map[resource_name];
     }
 
@@ -93,14 +93,20 @@ namespace ZEngine::Rendering::Renderers
         m_graph.m_resource_map[resource_name].Type = RenderGraphResourceType::BUFFER_SET;
         switch (type)
         {
-            case ZEngine::Rendering::Renderers::INDIRECT:
+            case BufferSetCreationType::INDIRECT:
                 m_graph.m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle = m_graph.Renderer->CreateIndirectBufferSet();
                 break;
-            case ZEngine::Rendering::Renderers::UNIFORM:
+            case BufferSetCreationType::UNIFORM:
                 m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = m_graph.Renderer->CreateUniformBufferSet();
                 break;
-            case ZEngine::Rendering::Renderers::STORAGE:
-                m_graph.m_resource_map[resource_name].ResourceInfo.BufferSetHandle = m_graph.Renderer->CreateStorageBufferSet();
+            case BufferSetCreationType::STORAGE:
+                m_graph.m_resource_map[resource_name].ResourceInfo.StorageBufferSetHandle = m_graph.Renderer->CreateStorageBufferSet();
+                break;
+            case BufferSetCreationType::INDEX:
+                m_graph.m_resource_map[resource_name].ResourceInfo.IndexBufferSetHandle = m_graph.Renderer->CreateIndexBufferSet();
+                break;
+            case BufferSetCreationType::VERTEX:
+                m_graph.m_resource_map[resource_name].ResourceInfo.VertexBufferSetHandle = m_graph.Renderer->CreateVertexBufferSet();
                 break;
         }
         m_graph.m_resource_map[resource_name].ResourceInfo.External = false;
@@ -382,7 +388,6 @@ namespace ZEngine::Rendering::Renderers
                  */
                 else if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::TEXTURE)
                 {
-                    // auto texture                                       = global_textures[resource.ResourceInfo.TextureHandle];
                     pass_spec.InputTextures[input.BindingInputKeyName] = resource.ResourceInfo.TextureHandle;
                 }
             }
@@ -418,25 +423,29 @@ namespace ZEngine::Rendering::Renderers
                 if (value.ResourceInfo.TextureHandle)
                 {
                     Renderer->Device->GlobalTextures->Remove(value.ResourceInfo.TextureHandle);
-                    value.ResourceInfo.TextureHandle = {};
                 }
             }
             else if (value.Type == RenderGraphResourceType::BUFFER_SET)
             {
-                if (value.ResourceInfo.BufferSetHandle)
+                if (value.ResourceInfo.StorageBufferSetHandle)
                 {
-                    Renderer->StorageBufferSetManager.Remove(value.ResourceInfo.BufferSetHandle);
-                    value.ResourceInfo.BufferSetHandle = {};
+                    Renderer->StorageBufferSetManager.Remove(value.ResourceInfo.StorageBufferSetHandle);
                 }
                 else if (value.ResourceInfo.UniformBufferSetHandle)
                 {
                     Renderer->UniformBufferSetManager.Remove(value.ResourceInfo.UniformBufferSetHandle);
-                    value.ResourceInfo.UniformBufferSetHandle = {};
                 }
                 else if (value.ResourceInfo.IndirectBufferSetHandle)
                 {
                     Renderer->IndirectBufferSetManager.Remove(value.ResourceInfo.IndirectBufferSetHandle);
-                    value.ResourceInfo.IndirectBufferSetHandle = {};
+                }
+                else if (value.ResourceInfo.VertexBufferSetHandle)
+                {
+                    Renderer->VertexBufferSetManager.Remove(value.ResourceInfo.VertexBufferSetHandle);
+                }
+                else if (value.ResourceInfo.IndexBufferSetHandle)
+                {
+                    Renderer->IndexBufferSetManager.Remove(value.ResourceInfo.IndexBufferSetHandle);
                 }
             }
         }
@@ -506,14 +515,34 @@ namespace ZEngine::Rendering::Renderers
         return output;
     }
 
-    Buffers::StorageBufferSetHandle RenderGraph::GetBufferSet(std::string_view name)
+    Buffers::StorageBufferSetHandle RenderGraph::GetStorageBufferSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
         {
             m_resource_map[resource_name].Name = name.data();
         }
-        return m_resource_map[resource_name].ResourceInfo.BufferSetHandle;
+        return m_resource_map[resource_name].ResourceInfo.StorageBufferSetHandle;
+    }
+
+    Buffers::VertexBufferSetHandle RenderGraph::GetVertexBufferSet(std::string_view name)
+    {
+        std::string resource_name(name);
+        if (!m_resource_map.contains(resource_name))
+        {
+            m_resource_map[resource_name].Name = name.data();
+        }
+        return m_resource_map[resource_name].ResourceInfo.VertexBufferSetHandle;
+    }
+
+    Buffers::IndexBufferSetHandle RenderGraph::GetIndexBufferSet(std::string_view name)
+    {
+        std::string resource_name(name);
+        if (!m_resource_map.contains(resource_name))
+        {
+            m_resource_map[resource_name].Name = name.data();
+        }
+        return m_resource_map[resource_name].ResourceInfo.IndexBufferSetHandle;
     }
 
     Buffers::UniformBufferSetHandle RenderGraph::GetBufferUniformSet(std::string_view name)

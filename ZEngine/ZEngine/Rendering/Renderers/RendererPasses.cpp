@@ -29,10 +29,10 @@ namespace ZEngine::Rendering::Renderers
         auto pass_spec = builder.SetPipelineName("Depth-Prepass-Pipeline").EnablePipelineDepthTest(true).UseShader("depth_prepass_scene").Detach();
 
         auto camera_buffer    = graph.GetBufferUniformSet("scene_camera");
-        auto vertex_buffer    = graph.GetBufferSet("g_scene_vertex_buffer");
-        auto index_buffer     = graph.GetBufferSet("g_scene_index_buffer");
-        auto draw_buffer      = graph.GetBufferSet("g_scene_draw_buffer");
-        auto transform_buffer = graph.GetBufferSet("g_scene_transform_buffer");
+        auto vertex_buffer    = graph.GetStorageBufferSet("g_scene_vertex_buffer");
+        auto index_buffer     = graph.GetStorageBufferSet("g_scene_index_buffer");
+        auto draw_buffer      = graph.GetStorageBufferSet("g_scene_draw_buffer");
+        auto transform_buffer = graph.GetStorageBufferSet("g_scene_transform_buffer");
 
         handle = graph.Renderer->CreateRenderPass(pass_spec);
         handle->SetInput("UBCamera", camera_buffer);
@@ -52,14 +52,14 @@ namespace ZEngine::Rendering::Renderers
         Buffers::CommandBuffer*                command_buffer,
         RenderGraph* const                     graph)
     {
-        auto vertex_buffer_handle            = graph->GetBufferSet("g_scene_vertex_buffer");
-        auto index_buffer_handle             = graph->GetBufferSet("g_scene_index_buffer");
-        auto draw_buffer_handle              = graph->GetBufferSet("g_scene_draw_buffer");
-        auto transform_buffer_handle         = graph->GetBufferSet("g_scene_transform_buffer");
-        auto material_buffer_handle          = graph->GetBufferSet("g_scene_material_buffer");
-        auto directional_light_buffer_handle = graph->GetBufferSet("g_scene_directional_light_buffer");
-        auto point_light_buffer_handle       = graph->GetBufferSet("g_scene_point_light_buffer");
-        auto spot_light_buffer_handle        = graph->GetBufferSet("g_scene_spot_light_buffer");
+        auto vertex_buffer_handle            = graph->GetStorageBufferSet("g_scene_vertex_buffer");
+        auto index_buffer_handle             = graph->GetStorageBufferSet("g_scene_index_buffer");
+        auto draw_buffer_handle              = graph->GetStorageBufferSet("g_scene_draw_buffer");
+        auto transform_buffer_handle         = graph->GetStorageBufferSet("g_scene_transform_buffer");
+        auto material_buffer_handle          = graph->GetStorageBufferSet("g_scene_material_buffer");
+        auto directional_light_buffer_handle = graph->GetStorageBufferSet("g_scene_directional_light_buffer");
+        auto point_light_buffer_handle       = graph->GetStorageBufferSet("g_scene_point_light_buffer");
+        auto spot_light_buffer_handle        = graph->GetStorageBufferSet("g_scene_spot_light_buffer");
         auto indirect_buffer_handle          = graph->GetIndirectBufferSet("g_scene_indirect_buffer");
 
         auto& indirect_buffer = graph->Renderer->IndirectBufferSetManager.Access(indirect_buffer_handle);
@@ -167,24 +167,35 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
-        RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}, {.Name = "lighting_render_target"}}};
+        auto&                         output_skybox = builder->CreateRenderTarget("skybox_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
+        RenderGraphRenderPassCreation pass_node     = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}}, .Outputs = {{.Name = output_skybox.Name}}};
         builder->CreateRenderPassNode(pass_node);
+        builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
+        builder->CreateBufferSet("skybox_vertex_buffer", BufferSetCreationType::VERTEX);
+        builder->CreateBufferSet("skybox_index_buffer", BufferSetCreationType::INDEX);
     }
 
     void SkyboxPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
     {
-        auto pass_spec      = builder.SetPipelineName("Skybox-Pipeline").EnablePipelineDepthTest(true).EnablePipelineDepthWrite(false).UseShader("skybox").Detach();
+        auto pass_spec = builder.SetPipelineName("Skybox-Pipeline")
+                             .SetInputBindingCount(1)
+                             .SetStride(0, sizeof(float) * 3)
+                             .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
+                             .SetInputAttributeCount(1)
+                             .SetLocation(0, 0)
+                             .SetBinding(0, 0)
+                             .SetFormat(0, Specifications::ImageFormat::R32G32B32_SFLOAT)
+                             .SetOffset(0, 0)
+                             .EnablePipelineDepthTest(true)
+                             .EnablePipelineDepthWrite(false)
+                             .UseShader("skybox")
+                             .Detach();
+
         auto camera_buffer  = graph.GetBufferUniformSet("scene_camera");
         auto skybox_env_map = graph.GetTexture("skybox_env_map");
-
-        handle = graph.Renderer->CreateRenderPass(pass_spec);
+        handle              = graph.Renderer->CreateRenderPass(pass_spec);
         handle->SetInput("UBCamera", camera_buffer);
-        handle->SetInput("VertexSB", m_vertex_buffer_handle);
-        handle->SetInput("IndexSB", m_index_buffer_handle);
-        handle->SetInput("DrawDataSB", m_draw_buffer_handle);
-        handle->SetInput("TransformSB", m_transform_buffer_handle);
-        handle->SetInput("CubemapTexture", skybox_env_map);
+        handle->SetInput("EnvMap", skybox_env_map);
         handle->Verify();
         handle->Bake();
     }
@@ -196,19 +207,14 @@ namespace ZEngine::Rendering::Renderers
         Buffers::CommandBuffer*                command_buffer,
         RenderGraph* const                     graph)
     {
-        auto renderer = graph->Renderer;
-
-        auto vertex_buffer    = renderer->StorageBufferSetManager.Access(m_vertex_buffer_handle);
-        auto index_buffer     = renderer->StorageBufferSetManager.Access(m_index_buffer_handle);
-        auto draw_buffer      = renderer->StorageBufferSetManager.Access(m_draw_buffer_handle);
-        auto transform_buffer = renderer->StorageBufferSetManager.Access(m_transform_buffer_handle);
-        auto indirect_buffer  = renderer->IndirectBufferSetManager.Access(m_indirect_buffer_handle);
+        auto renderer      = graph->Renderer;
+        auto vb_handle     = graph->GetVertexBufferSet("skybox_vertex_buffer");
+        auto ib_handle     = graph->GetIndexBufferSet("skybox_index_buffer");
+        auto vertex_buffer = renderer->VertexBufferSetManager.Access(vb_handle);
+        auto index_buffer  = renderer->IndexBufferSetManager.Access(ib_handle);
 
         vertex_buffer->SetData<float>(frame_index, m_vertex_data);
-        index_buffer->SetData<uint32_t>(frame_index, m_index_data);
-        draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
-        transform_buffer->SetData<glm::mat4>(frame_index, std::vector<glm::mat4>{glm::identity<glm::mat4>()});
-        indirect_buffer->SetData<VkDrawIndirectCommand>(frame_index, m_indirect_commmand);
+        index_buffer->SetData<uint16_t>(frame_index, m_index_data);
 
         pass->MarkDirty();
     }
@@ -224,11 +230,17 @@ namespace ZEngine::Rendering::Renderers
 
         pass->Update(frame_index);
         renderer->WriteDescriptorSets(pass->EnqueuedWriteDescriptorSetRequests);
-        auto indirect_buffer = renderer->IndirectBufferSetManager.Access(m_indirect_buffer_handle);
+
+        auto vb_handle     = graph->GetVertexBufferSet("skybox_vertex_buffer");
+        auto ib_handle     = graph->GetIndexBufferSet("skybox_index_buffer");
+        auto vertex_buffer = renderer->VertexBufferSetManager.Access(vb_handle);
+        auto index_buffer  = renderer->IndexBufferSetManager.Access(ib_handle);
 
         command_buffer->BeginRenderPass(pass, framebuffer->Handle);
+        command_buffer->BindVertexBuffer(vertex_buffer->At(frame_index));
+        command_buffer->BindIndexBuffer(index_buffer->At(frame_index), VK_INDEX_TYPE_UINT16);
         command_buffer->BindDescriptorSets(frame_index);
-        command_buffer->DrawIndirect(indirect_buffer->At(frame_index));
+        command_buffer->DrawIndexed(36, 1, 0, 0, 0);
         command_buffer->EndRenderPass();
 
         ZENGINE_CLEAR_STD_VECTOR(pass->EnqueuedWriteDescriptorSetRequests)
@@ -236,7 +248,8 @@ namespace ZEngine::Rendering::Renderers
 
     void GridPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}, {.Name = "lighting_render_target"}}};
+        auto&                         output_grid = builder->CreateRenderTarget("grid_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
+        RenderGraphRenderPassCreation pass_node   = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}}, .Outputs = {{.Name = output_grid.Name}}};
         builder->CreateRenderPassNode(pass_node);
     }
 
@@ -325,11 +338,11 @@ namespace ZEngine::Rendering::Renderers
         handle         = graph.Renderer->CreateRenderPass(pass_spec);
 
         auto camera_buffer    = graph.GetBufferUniformSet("scene_camera");
-        auto vertex_buffer    = graph.GetBufferSet("g_scene_vertex_buffer");
-        auto index_buffer     = graph.GetBufferSet("g_scene_index_buffer");
-        auto draw_buffer      = graph.GetBufferSet("g_scene_draw_buffer");
-        auto transform_buffer = graph.GetBufferSet("g_scene_transform_buffer");
-        auto material_buffer  = graph.GetBufferSet("g_scene_material_buffer");
+        auto vertex_buffer    = graph.GetStorageBufferSet("g_scene_vertex_buffer");
+        auto index_buffer     = graph.GetStorageBufferSet("g_scene_index_buffer");
+        auto draw_buffer      = graph.GetStorageBufferSet("g_scene_draw_buffer");
+        auto transform_buffer = graph.GetStorageBufferSet("g_scene_transform_buffer");
+        auto material_buffer  = graph.GetStorageBufferSet("g_scene_material_buffer");
 
         handle->SetInput("UBCamera", camera_buffer);
         handle->SetInput("VertexSB", vertex_buffer);
@@ -392,11 +405,11 @@ namespace ZEngine::Rendering::Renderers
     {
         auto pass_spec        = builder.SetPipelineName("Deferred-lighting-Pipeline").EnablePipelineDepthTest(true).UseShader("deferred_lighting").Detach();
         auto camera_buffer    = graph.GetBufferUniformSet("scene_camera");
-        auto vertex_buffer    = graph.GetBufferSet("g_scene_vertex_buffer");
-        auto index_buffer     = graph.GetBufferSet("g_scene_index_buffer");
-        auto draw_buffer      = graph.GetBufferSet("g_scene_draw_buffer");
-        auto transform_buffer = graph.GetBufferSet("g_scene_transform_buffer");
-        auto material_buffer  = graph.GetBufferSet("g_scene_material_buffer");
+        auto vertex_buffer    = graph.GetStorageBufferSet("g_scene_vertex_buffer");
+        auto index_buffer     = graph.GetStorageBufferSet("g_scene_index_buffer");
+        auto draw_buffer      = graph.GetStorageBufferSet("g_scene_draw_buffer");
+        auto transform_buffer = graph.GetStorageBufferSet("g_scene_transform_buffer");
+        auto material_buffer  = graph.GetStorageBufferSet("g_scene_material_buffer");
 
         handle = graph.Renderer->CreateRenderPass(pass_spec);
         handle->SetInput("UBCamera", camera_buffer);
@@ -406,9 +419,9 @@ namespace ZEngine::Rendering::Renderers
         handle->SetInput("TransformSB", transform_buffer);
         handle->SetInput("MatSB", material_buffer);
 
-        auto directional_light_buffer = graph.GetBufferSet("g_scene_directional_light_buffer");
-        auto point_light_buffer       = graph.GetBufferSet("g_scene_point_light_buffer");
-        auto spot_light_buffer        = graph.GetBufferSet("g_scene_spot_light_buffer");
+        auto directional_light_buffer = graph.GetStorageBufferSet("g_scene_directional_light_buffer");
+        auto point_light_buffer       = graph.GetStorageBufferSet("g_scene_point_light_buffer");
+        auto spot_light_buffer        = graph.GetStorageBufferSet("g_scene_spot_light_buffer");
 
         handle->SetInput("DirectionalLightSB", directional_light_buffer);
         handle->SetInput("PointLightSB", point_light_buffer);
@@ -425,9 +438,9 @@ namespace ZEngine::Rendering::Renderers
         Buffers::CommandBuffer*                command_buffer,
         RenderGraph* const                     graph)
     {
-        auto directional_light_buffer_handle = graph->GetBufferSet("g_scene_directional_light_buffer");
-        auto point_light_buffer_handle       = graph->GetBufferSet("g_scene_point_light_buffer");
-        auto spot_light_buffer_handle        = graph->GetBufferSet("g_scene_spot_light_buffer");
+        auto directional_light_buffer_handle = graph->GetStorageBufferSet("g_scene_directional_light_buffer");
+        auto point_light_buffer_handle       = graph->GetStorageBufferSet("g_scene_point_light_buffer");
+        auto spot_light_buffer_handle        = graph->GetStorageBufferSet("g_scene_spot_light_buffer");
         /*
          * Composing Light Data
          */

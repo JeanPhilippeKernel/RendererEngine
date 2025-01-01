@@ -1,7 +1,9 @@
 #pragma once
 #include <Buffers/Framebuffer.h>
 #include <Helpers/IntrusivePtr.h>
+#include <Rendering/Buffers/IndexBuffer.h>
 #include <Rendering/Buffers/IndirectBuffer.h>
+#include <Rendering/Buffers/VertexBuffer.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/Scenes/GraphicScene.h>
 #include <Rendering/Specifications/TextureSpecification.h>
@@ -33,7 +35,9 @@ namespace ZEngine::Rendering::Renderers
     {
         INDIRECT,
         UNIFORM,
-        STORAGE
+        STORAGE,
+        VERTEX,
+        INDEX
     };
 
     struct RenderGraphResourceInfo
@@ -42,8 +46,10 @@ namespace ZEngine::Rendering::Renderers
         Specifications::TextureSpecification TextureSpec;
         Textures::TextureHandle              TextureHandle;
         Buffers::UniformBufferSetHandle      UniformBufferSetHandle;
-        Buffers::StorageBufferSetHandle      BufferSetHandle;
+        Buffers::StorageBufferSetHandle      StorageBufferSetHandle;
         Buffers::IndirectBufferSetHandle     IndirectBufferSetHandle;
+        Buffers::VertexBufferSetHandle       VertexBufferSetHandle;
+        Buffers::IndexBufferSetHandle        IndexBufferSetHandle;
     };
 
     struct RenderGraphResource
@@ -114,7 +120,9 @@ namespace ZEngine::Rendering::Renderers
         RenderGraphResource&             GetResource(std::string_view);
         Helpers::Ref<Textures::Texture>  GetRenderTarget(std::string_view);
         Textures::TextureHandle          GetTexture(std::string_view);
-        Buffers::StorageBufferSetHandle  GetBufferSet(std::string_view);
+        Buffers::StorageBufferSetHandle  GetStorageBufferSet(std::string_view);
+        Buffers::VertexBufferSetHandle   GetVertexBufferSet(std::string_view);
+        Buffers::IndexBufferSetHandle    GetIndexBufferSet(std::string_view);
         Buffers::UniformBufferSetHandle  GetBufferUniformSet(std::string_view);
         Buffers::IndirectBufferSetHandle GetIndirectBufferSet(std::string_view);
         Helpers::Ref<RenderGraphBuilder> GetBuilder() const;

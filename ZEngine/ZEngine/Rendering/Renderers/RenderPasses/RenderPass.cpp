@@ -470,6 +470,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
+    RenderPassBuilder& RenderPassBuilder::PipelineDepthCompareOp(uint32_t value)
+    {
+        m_spec.PipelineSpecification.DepthCompareOp = value;
+        return *this;
+    }
+
     RenderPassBuilder& RenderPassBuilder::EnablePipelineBlending(bool value)
     {
         m_spec.PipelineSpecification.EnableBlending = value;
