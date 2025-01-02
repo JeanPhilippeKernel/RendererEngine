@@ -105,11 +105,7 @@ namespace ZEngine::Rendering::Renderers
         uint32_t frame_index = Device->CurrentFrameIndex;
 
         auto& scene_camera    = UniformBufferSetManager.Access(m_scene_camera_buffer_handle);
-        auto  ubo_camera_data = UBOCameraLayout{
-             .View         = camera->GetViewMatrix(),
-             .RotScaleView = glm::mat4(glm::mat3(camera->GetViewMatrix())),
-             .Projection   = camera->GetPerspectiveMatrix(),
-             .Position     = glm::vec4(camera->GetPosition(), 1.0f)};
+        auto  ubo_camera_data = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = glm::vec4(camera->GetPosition(), 1.0f)};
 
         scene_camera->At(frame_index).SetData(&ubo_camera_data, sizeof(UBOCameraLayout));
 
