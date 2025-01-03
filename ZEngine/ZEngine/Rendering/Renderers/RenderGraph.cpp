@@ -273,6 +273,11 @@ namespace ZEngine::Rendering::Renderers
         {
             auto& node = m_node[node_name];
 
+            if (!node.Enabled)
+            {
+                continue;
+            }
+
             for (auto& input : node.Creation.Inputs)
             {
                 if (input.Type == RenderGraphResourceType::TEXTURE)
@@ -586,10 +591,11 @@ namespace ZEngine::Rendering::Renderers
         return m_node[pass_name];
     }
 
-    void RenderGraph::AddCallbackPass(std::string_view pass_name, const Ref<IRenderGraphCallbackPass>& pass_callback)
+    void RenderGraph::AddCallbackPass(std::string_view pass_name, const Ref<IRenderGraphCallbackPass>& pass_callback, bool enabled)
     {
         std::string resource_name(pass_name);
 
+        m_node[resource_name].Enabled      = enabled;
         m_node[resource_name].CallbackPass = pass_callback;
     }
 } // namespace ZEngine::Rendering::Renderers

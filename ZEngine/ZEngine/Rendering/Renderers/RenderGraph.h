@@ -94,11 +94,12 @@ namespace ZEngine::Rendering::Renderers
 
     struct RenderGraphNode
     {
-        RenderGraphRenderPassCreation           Creation;
-        std::unordered_set<std::string>         EdgeNodes;
-        Helpers::Ref<RenderPasses::RenderPass>  Handle;
-        Helpers::Ref<Buffers::FramebufferVNext> Framebuffer;
-        Helpers::Ref<IRenderGraphCallbackPass>  CallbackPass;
+        bool                                    Enabled      = true;
+        RenderGraphRenderPassCreation           Creation     = {};
+        std::unordered_set<std::string>         EdgeNodes    = {};
+        Helpers::Ref<RenderPasses::RenderPass>  Handle       = nullptr;
+        Helpers::Ref<Buffers::FramebufferVNext> Framebuffer  = nullptr;
+        Helpers::Ref<IRenderGraphCallbackPass>  CallbackPass = nullptr;
     };
 
     class RenderGraph : public Helpers::RefCounted
@@ -128,7 +129,7 @@ namespace ZEngine::Rendering::Renderers
         Helpers::Ref<RenderGraphBuilder> GetBuilder() const;
         Helpers::Ref<RenderPasses::RenderPassBuilder> GetRenderPassBuilder() const;
         RenderGraphNode&                              GetNode(std::string_view);
-        void                                          AddCallbackPass(std::string_view pass_name, const Helpers::Ref<IRenderGraphCallbackPass>& pass_callback);
+        void                                          AddCallbackPass(std::string_view pass_name, const Helpers::Ref<IRenderGraphCallbackPass>& pass_callback, bool enabled = true);
 
     private:
         std::vector<std::string>                      m_sorted_nodes;
