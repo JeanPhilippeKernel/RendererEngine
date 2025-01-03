@@ -16,15 +16,68 @@ namespace ZEngine::Rendering::Renderers
         m_indirect_buffer_handle  = renderer->CreateIndirectBufferSet();
     }
 
-    void SceneDepthPrePass::Setup(std::string_view name, RenderGraphBuilder* const builder)
+    void InitialPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
-        Specifications::TextureSpecification output_depth_desc = {.Width = 1280, .Height = 780, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE};
-        auto&                                output_depth      = builder->CreateRenderTarget("depth_prepass_render_target", output_depth_desc);
-        RenderGraphRenderPassCreation        pass_node         = {.Name = name.data(), .Outputs = {{.Name = output_depth.Name}}};
+        RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Outputs = {{.Name = "g_frame_depth_render_target"}, {.Name = "g_frame_color_render_target"}}};
+        builder->CreateRenderPassNode(pass_node);
+        auto vb_res = builder->CreateBufferSet("initial_vertex_buffer", BufferSetCreationType::VERTEX);
+        m_vb_handle = vb_res.ResourceInfo.VertexBufferSetHandle;
+    }
+
+    void InitialPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
+    {
+        auto pass_spec = builder.SetPipelineName("Initial-Pipeline")
+                             .SetInputBindingCount(1)
+                             .SetStride(0, sizeof(float) * 3)
+                             .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
+                             .SetInputAttributeCount(1)
+                             .SetLocation(0, 0)
+                             .SetBinding(0, 0)
+                             .SetFormat(0, Specifications::ImageFormat::R32G32B32_SFLOAT)
+                             .SetOffset(0, 0)
+                             .EnablePipelineDepthTest(true)
+                             .UseShader("initial")
+                             .Detach();
+        handle = graph.Renderer->CreateRenderPass(pass_spec);
+        handle->Bake();
+    }
+
+    void InitialPass::Execute(
+        uint32_t                               frame_index,
+        Rendering::Scenes::SceneRawData* const scene_data,
+        RenderPasses::RenderPass*              pass,
+        Buffers::CommandBuffer*                command_buffer,
+        RenderGraph* const                     graph)
+    {
+        auto renderer      = graph->Renderer;
+        auto vertex_buffer = renderer->VertexBufferSetManager.Access(m_vb_handle);
+        vertex_buffer->SetData<float>(frame_index, m_vertex_data);
+    }
+
+    void InitialPass::Render(
+        uint32_t                   frame_index,
+        RenderPasses::RenderPass*  pass,
+        Buffers::FramebufferVNext* framebuffer,
+        Buffers::CommandBuffer*    command_buffer,
+        RenderGraph*               graph)
+    {
+        auto renderer      = graph->Renderer;
+        auto vertex_buffer = renderer->VertexBufferSetManager.Access(m_vb_handle);
+
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
+        command_buffer->BindVertexBuffer(vertex_buffer->At(frame_index));
+        command_buffer->BindDescriptorSets(frame_index);
+        command_buffer->Draw(1, 1, 0, 0);
+        command_buffer->EndRenderPass();
+    }
+
+    void DepthPrePass::Setup(std::string_view name, RenderGraphBuilder* const builder)
+    {
+        RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "g_frame_depth_render_target"}}};
         builder->CreateRenderPassNode(pass_node);
     }
 
-    void SceneDepthPrePass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
+    void DepthPrePass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
     {
         auto pass_spec = builder.SetPipelineName("Depth-Prepass-Pipeline").EnablePipelineDepthTest(true).UseShader("depth_prepass_scene").Detach();
 
@@ -45,7 +98,7 @@ namespace ZEngine::Rendering::Renderers
         handle->Bake();
     }
 
-    void SceneDepthPrePass::Execute(
+    void DepthPrePass::Execute(
         uint32_t                               frame_index,
         Rendering::Scenes::SceneRawData* const scene_data,
         RenderPasses::RenderPass*              pass,
@@ -143,7 +196,7 @@ namespace ZEngine::Rendering::Renderers
         pass->MarkDirty();
     }
 
-    void SceneDepthPrePass::Render(
+    void DepthPrePass::Render(
         uint32_t                   frame_index,
         RenderPasses::RenderPass*  pass,
         Buffers::FramebufferVNext* framebuffer,
@@ -168,11 +221,16 @@ namespace ZEngine::Rendering::Renderers
     void SkyboxPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
         auto&                         output_skybox = builder->CreateRenderTarget("skybox_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
-        RenderGraphRenderPassCreation pass_node     = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}}, .Outputs = {{.Name = output_skybox.Name}}};
+        RenderGraphRenderPassCreation pass_node     = {
+                .Name = name.data(), .Inputs = {{.Name = "g_frame_depth_render_target"}, {.Name = "g_frame_color_render_target"}}, .Outputs = {{.Name = output_skybox.Name}}};
         builder->CreateRenderPassNode(pass_node);
-        builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
-        builder->CreateBufferSet("skybox_vertex_buffer", BufferSetCreationType::VERTEX);
-        builder->CreateBufferSet("skybox_index_buffer", BufferSetCreationType::INDEX);
+        auto env_map_res = builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
+        auto vb_res      = builder->CreateBufferSet("skybox_vertex_buffer", BufferSetCreationType::VERTEX);
+        auto ib_res      = builder->CreateBufferSet("skybox_index_buffer", BufferSetCreationType::INDEX);
+
+        m_env_map   = env_map_res.ResourceInfo.TextureHandle;
+        m_vb_handle = vb_res.ResourceInfo.VertexBufferSetHandle;
+        m_ib_handle = ib_res.ResourceInfo.IndexBufferSetHandle;
     }
 
     void SkyboxPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
@@ -191,11 +249,10 @@ namespace ZEngine::Rendering::Renderers
                              .UseShader("skybox")
                              .Detach();
 
-        auto camera_buffer  = graph.GetBufferUniformSet("scene_camera");
-        auto skybox_env_map = graph.GetTexture("skybox_env_map");
-        handle              = graph.Renderer->CreateRenderPass(pass_spec);
+        auto camera_buffer = graph.GetBufferUniformSet("scene_camera");
+        handle             = graph.Renderer->CreateRenderPass(pass_spec);
         handle->SetInput("UBCamera", camera_buffer);
-        handle->SetInput("EnvMap", skybox_env_map);
+        handle->SetInput("EnvMap", m_env_map);
         handle->Verify();
         handle->Bake();
     }
@@ -208,10 +265,8 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph* const                     graph)
     {
         auto renderer      = graph->Renderer;
-        auto vb_handle     = graph->GetVertexBufferSet("skybox_vertex_buffer");
-        auto ib_handle     = graph->GetIndexBufferSet("skybox_index_buffer");
-        auto vertex_buffer = renderer->VertexBufferSetManager.Access(vb_handle);
-        auto index_buffer  = renderer->IndexBufferSetManager.Access(ib_handle);
+        auto vertex_buffer = renderer->VertexBufferSetManager.Access(m_vb_handle);
+        auto index_buffer  = renderer->IndexBufferSetManager.Access(m_ib_handle);
 
         vertex_buffer->SetData<float>(frame_index, m_vertex_data);
         index_buffer->SetData<uint16_t>(frame_index, m_index_data);
@@ -231,10 +286,8 @@ namespace ZEngine::Rendering::Renderers
         pass->Update(frame_index);
         renderer->WriteDescriptorSets(pass->EnqueuedWriteDescriptorSetRequests);
 
-        auto vb_handle     = graph->GetVertexBufferSet("skybox_vertex_buffer");
-        auto ib_handle     = graph->GetIndexBufferSet("skybox_index_buffer");
-        auto vertex_buffer = renderer->VertexBufferSetManager.Access(vb_handle);
-        auto index_buffer  = renderer->IndexBufferSetManager.Access(ib_handle);
+        auto vertex_buffer = renderer->VertexBufferSetManager.Access(m_vb_handle);
+        auto index_buffer  = renderer->IndexBufferSetManager.Access(m_ib_handle);
 
         command_buffer->BeginRenderPass(pass, framebuffer->Handle);
         command_buffer->BindVertexBuffer(vertex_buffer->At(frame_index));
@@ -249,22 +302,33 @@ namespace ZEngine::Rendering::Renderers
     void GridPass::Setup(std::string_view name, RenderGraphBuilder* const builder)
     {
         auto&                         output_grid = builder->CreateRenderTarget("grid_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
-        RenderGraphRenderPassCreation pass_node   = {.Name = name.data(), .Inputs = {{.Name = "depth_prepass_render_target"}}, .Outputs = {{.Name = output_grid.Name}}};
+        RenderGraphRenderPassCreation pass_node   = {
+              .Name = name.data(), .Inputs = {{.Name = "g_frame_depth_render_target"}, {.Name = "g_frame_color_render_target"}}, .Outputs = {{.Name = output_grid.Name}}};
         builder->CreateRenderPassNode(pass_node);
+        auto vb_res = builder->CreateBufferSet("grid_vertex_buffer", BufferSetCreationType::VERTEX);
+        auto ib_res = builder->CreateBufferSet("grid_index_buffer", BufferSetCreationType::INDEX);
+        m_vb_handle = vb_res.ResourceInfo.VertexBufferSetHandle;
+        m_ib_handle = ib_res.ResourceInfo.IndexBufferSetHandle;
     }
 
     void GridPass::Compile(Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph)
     {
-        auto pass_spec = builder.SetPipelineName("Infinite-Grid-Pipeline").EnablePipelineDepthTest(true).UseShader("infinite_grid").Detach();
+        auto pass_spec = builder.SetPipelineName("Infinite-Grid-Pipeline")
+                             .SetInputBindingCount(1)
+                             .SetStride(0, sizeof(float) * 3)
+                             .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
+                             .SetInputAttributeCount(1)
+                             .SetLocation(0, 0)
+                             .SetBinding(0, 0)
+                             .SetFormat(0, Specifications::ImageFormat::R32G32B32_SFLOAT)
+                             .SetOffset(0, 0)
+                             .EnablePipelineDepthTest(true)
+                             .UseShader("infinite_grid")
+                             .Detach();
 
         auto camera_buffer = graph.GetBufferUniformSet("scene_camera");
-
-        handle = graph.Renderer->CreateRenderPass(pass_spec);
+        handle             = graph.Renderer->CreateRenderPass(pass_spec);
         handle->SetInput("UBCamera", camera_buffer);
-        handle->SetInput("VertexSB", m_vertex_buffer_handle);
-        handle->SetInput("IndexSB", m_index_buffer_handle);
-        handle->SetInput("DrawDataSB", m_draw_buffer_handle);
-        handle->SetInput("TransformSB", m_transform_buffer_handle);
         handle->Verify();
         handle->Bake();
     }
@@ -276,22 +340,13 @@ namespace ZEngine::Rendering::Renderers
         Buffers::CommandBuffer*                command_buffer,
         RenderGraph* const                     graph)
     {
+        auto renderer      = graph->Renderer;
+        auto vertex_buffer = renderer->VertexBufferSetManager.Access(m_vb_handle);
+        auto index_buffer  = renderer->IndexBufferSetManager.Access(m_ib_handle);
 
-        WRITE_BUFFERS_ONCE(frame_index, {
-            auto vertex_buffer    = graph->Renderer->StorageBufferSetManager.Access(m_vertex_buffer_handle);
-            auto index_buffer     = graph->Renderer->StorageBufferSetManager.Access(m_index_buffer_handle);
-            auto draw_buffer      = graph->Renderer->StorageBufferSetManager.Access(m_draw_buffer_handle);
-            auto transform_buffer = graph->Renderer->StorageBufferSetManager.Access(m_transform_buffer_handle);
-            auto indirect_buffer  = graph->Renderer->IndirectBufferSetManager.Access(m_indirect_buffer_handle);
-
-            vertex_buffer->SetData<float>(frame_index, m_vertex_data);
-            index_buffer->SetData<uint32_t>(frame_index, m_index_data);
-            draw_buffer->SetData<DrawData>(frame_index, m_draw_data);
-            transform_buffer->SetData<glm::mat4>(frame_index, std::vector<glm::mat4>{glm::identity<glm::mat4>()});
-            indirect_buffer->SetData<VkDrawIndirectCommand>(frame_index, m_indirect_commmand);
-
-            pass->MarkDirty();
-        })
+        vertex_buffer->SetData<float>(frame_index, m_vertex_data);
+        index_buffer->SetData<uint16_t>(frame_index, m_index_data);
+        pass->MarkDirty();
     }
 
     void GridPass::Render(uint32_t frame_index, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Buffers::CommandBuffer* command_buffer, RenderGraph* graph)
@@ -300,11 +355,14 @@ namespace ZEngine::Rendering::Renderers
         pass->Update(frame_index);
         renderer->WriteDescriptorSets(pass->EnqueuedWriteDescriptorSetRequests);
 
-        auto indirect_buffer = renderer->IndirectBufferSetManager.Access(m_indirect_buffer_handle);
+        auto vertex_buffer = renderer->VertexBufferSetManager.Access(m_vb_handle);
+        auto index_buffer  = renderer->IndexBufferSetManager.Access(m_ib_handle);
 
         command_buffer->BeginRenderPass(pass, framebuffer->Handle);
+        command_buffer->BindVertexBuffer(vertex_buffer->At(frame_index));
+        command_buffer->BindIndexBuffer(index_buffer->At(frame_index), VK_INDEX_TYPE_UINT16);
         command_buffer->BindDescriptorSets(frame_index);
-        command_buffer->DrawIndirect(indirect_buffer->At(frame_index));
+        command_buffer->DrawIndexed(6, 1, 0, 0, 0);
         command_buffer->EndRenderPass();
 
         ZENGINE_CLEAR_STD_VECTOR(pass->EnqueuedWriteDescriptorSetRequests)
@@ -322,9 +380,7 @@ namespace ZEngine::Rendering::Renderers
         auto& gbuffer_normals  = builder->CreateRenderTarget("gbuffer_normals_render_target", normal_output_spec);
         auto& gbuffer_position = builder->CreateRenderTarget("gbuffer_position_render_target", position_output_spec);
 
-        RenderGraphRenderPassCreation pass_node = {};
-        pass_node.Name                          = name.data();
-        pass_node.Inputs.push_back({.Name = "depth_prepass_render_target"});
+        RenderGraphRenderPassCreation pass_node = {.Name = name.data(), .Inputs = {{.Name = "g_frame_depth_render_target"}, {.Name = "g_frame_color_render_target"}}};
         pass_node.Outputs.push_back({.Name = gbuffer_albedo.Name});
         pass_node.Outputs.push_back({.Name = gbuffer_specular.Name});
         pass_node.Outputs.push_back({.Name = gbuffer_normals.Name});
@@ -392,7 +448,7 @@ namespace ZEngine::Rendering::Renderers
         auto&                                lighting_output      = builder->CreateRenderTarget("lighting_render_target", lighting_output_spec);
         RenderGraphRenderPassCreation        pass_node            = {.Name = name.data(), .Outputs = {{.Name = lighting_output.Name}}};
 
-        pass_node.Inputs.push_back({.Name = "depth_prepass_render_target"});
+        pass_node.Inputs.push_back({.Name = "g_frame_depth_render_target"});
         pass_node.Inputs.push_back({.Name = "gbuffer_albedo_render_target", .BindingInputKeyName = "AlbedoSampler", .Type = RenderGraphResourceType::TEXTURE});
         pass_node.Inputs.push_back({.Name = "gbuffer_position_render_target", .BindingInputKeyName = "PositionSampler", .Type = RenderGraphResourceType::TEXTURE});
         pass_node.Inputs.push_back({.Name = "gbuffer_normals_render_target", .BindingInputKeyName = "NormalSampler", .Type = RenderGraphResourceType::TEXTURE});

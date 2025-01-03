@@ -66,6 +66,7 @@ namespace ZEngine::Rendering::Buffers
         void                   DrawIndirect(const Buffers::IndirectBuffer& buffer);
         void                   DrawIndexedIndirect(const Buffers::IndirectBuffer& buffer, uint32_t count);
         void                   DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
+        void                   Draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_index, uint32_t first_instance);
         void                   TransitionImageLayout(const Primitives::ImageMemoryBarrier& image_barrier);
         void CopyBufferToImage(const BufferView& source, BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout);
         void BindVertexBuffer(const Buffers::VertexBuffer& buffer);

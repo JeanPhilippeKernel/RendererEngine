@@ -29,13 +29,28 @@ namespace ZEngine::Rendering::Renderers
         return m_graph.m_resource_map[resource_name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::AttachTexture(std::string_view name, const Textures::TextureHandle& texture)
+    RenderGraphResource& RenderGraphBuilder::AttachTexture(std::string_view name, const Textures::TextureHandle& handle)
     {
         std::string resource_name(name);
 
+        auto texture                                                     = m_graph.Renderer->Device->GlobalTextures->Access(handle);
         m_graph.m_resource_map[resource_name].Name                       = name.data();
         m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::TEXTURE;
-        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = texture;
+        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = handle;
+        m_graph.m_resource_map[resource_name].ResourceInfo.TextureSpec   = texture->Specification;
+        m_graph.m_resource_map[resource_name].ResourceInfo.External      = true;
+        return m_graph.m_resource_map[resource_name];
+    }
+
+    RenderGraphResource& RenderGraphBuilder::AttachRenderTarget(std::string_view name, const Textures::TextureHandle& handle)
+    {
+        std::string resource_name(name);
+
+        auto texture                                                     = m_graph.Renderer->Device->GlobalTextures->Access(handle);
+        m_graph.m_resource_map[resource_name].Name                       = name.data();
+        m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::ATTACHMENT;
+        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = handle;
+        m_graph.m_resource_map[resource_name].ResourceInfo.TextureSpec   = texture->Specification;
         m_graph.m_resource_map[resource_name].ResourceInfo.External      = true;
         return m_graph.m_resource_map[resource_name];
     }
@@ -43,7 +58,6 @@ namespace ZEngine::Rendering::Renderers
     RenderGraphResource& RenderGraphBuilder::CreateTexture(std::string_view name, const Specifications::TextureSpecification& spec)
     {
         std::string resource_name(name);
-
         m_graph.m_resource_map[resource_name].Name                     = name.data();
         m_graph.m_resource_map[resource_name].Type                     = RenderGraphResourceType::TEXTURE;
         m_graph.m_resource_map[resource_name].ResourceInfo.TextureSpec = spec;
@@ -471,10 +485,10 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name];
     }
 
-    Ref<Textures::Texture> RenderGraph::GetRenderTarget(std::string_view name)
+    Textures::TextureHandle RenderGraph::GetRenderTarget(std::string_view name)
     {
-        Ref<Textures::Texture> output = nullptr;
-        std::string            resource_name(name);
+        Textures::TextureHandle output = {};
+        std::string             resource_name(name);
         if (!m_resource_map.contains(resource_name))
         {
             m_resource_map[resource_name].Name = name.data();
@@ -487,8 +501,7 @@ namespace ZEngine::Rendering::Renderers
         auto handle = m_resource_map[resource_name].ResourceInfo.TextureHandle;
         if (handle.Valid())
         {
-            auto& textures = *(Renderer->Device->GlobalTextures);
-            output         = textures[handle];
+            output = handle;
         }
         return output;
     }

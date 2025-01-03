@@ -55,15 +55,19 @@ namespace ZEngine::Rendering::Renderers
         GraphicRenderer();
         ~GraphicRenderer();
 
-        Hardwares::VulkanDevice*                              Device                   = nullptr;
-        Helpers::Ref<ImGUIRenderer>                           ImguiRenderer            = nullptr;
-        Helpers::Scope<RenderGraph>                           RenderGraph              = nullptr;
-        Helpers::HandleManager<Buffers::VertexBufferSetRef>   VertexBufferSetManager   = {300};
-        Helpers::HandleManager<Buffers::StorageBufferSetRef>  StorageBufferSetManager  = {300};
-        Helpers::HandleManager<Buffers::IndirectBufferSetRef> IndirectBufferSetManager = {300};
-        Helpers::HandleManager<Buffers::IndexBufferSetRef>    IndexBufferSetManager    = {300};
-        Helpers::HandleManager<Buffers::UniformBufferSetRef>  UniformBufferSetManager  = {300};
-        Helpers::ThreadSafeQueue<ResizeRequest>               EnqueuedResizeRequests   = {};
+        const std::string_view                                FrameDepthRenderTargetName = "g_frame_depth_render_target";
+        const std::string_view                                FrameColorRenderTargetName = "g_frame_color_render_target";
+        Textures::TextureHandle                               FrameColorRenderTarget     = {};
+        Textures::TextureHandle                               FrameDepthRenderTarget     = {};
+        Hardwares::VulkanDevice*                              Device                     = nullptr;
+        Helpers::Ref<ImGUIRenderer>                           ImguiRenderer              = nullptr;
+        Helpers::Scope<RenderGraph>                           RenderGraph                = nullptr;
+        Helpers::HandleManager<Buffers::VertexBufferSetRef>   VertexBufferSetManager     = {300};
+        Helpers::HandleManager<Buffers::StorageBufferSetRef>  StorageBufferSetManager    = {300};
+        Helpers::HandleManager<Buffers::IndirectBufferSetRef> IndirectBufferSetManager   = {300};
+        Helpers::HandleManager<Buffers::IndexBufferSetRef>    IndexBufferSetManager      = {300};
+        Helpers::HandleManager<Buffers::UniformBufferSetRef>  UniformBufferSetManager    = {300};
+        Helpers::ThreadSafeQueue<ResizeRequest>               EnqueuedResizeRequests     = {};
 
         void            Initialize(Hardwares::VulkanDevice* device);
         void            Deinitialize();

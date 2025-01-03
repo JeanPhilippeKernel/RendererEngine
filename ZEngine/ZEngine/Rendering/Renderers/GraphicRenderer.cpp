@@ -35,7 +35,8 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Renderer Passes
          */
-        auto scene_depth_prepass = CreateRef<SceneDepthPrePass>();
+        auto initial_pass        = CreateRef<InitialPass>();
+        auto scene_depth_prepass = CreateRef<DepthPrePass>();
         auto skybox_pass         = CreateRef<SkyboxPass>();
         auto grid_pass           = CreateRef<GridPass>();
         auto gbuffer_pass        = CreateRef<GbufferPass>();
@@ -44,21 +45,23 @@ namespace ZEngine::Rendering::Renderers
          * Shared Buffers
          */
         m_scene_camera_buffer_handle = CreateUniformBufferSet();
+        FrameColorRenderTarget = Device->GlobalTextures->Add(CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM}));
+        FrameDepthRenderTarget =
+            Device->GlobalTextures->Add(CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE}));
         /*
          * Subsystems initialization
          */
         m_resource_loader->Initialize(this);
         ImguiRenderer->Initialize(this);
         scene_depth_prepass->Initialize(this);
-        skybox_pass->Initialize(this);
-        grid_pass->Initialize(this);
         lighting_pass->Initialize(this);
         /*
          * Render Graph definition
          */
         auto builder = RenderGraph->GetBuilder();
         builder->AttachBuffer("scene_camera", m_scene_camera_buffer_handle);
-        builder->CreateRenderTarget("g_scene_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
+        builder->AttachRenderTarget(FrameDepthRenderTargetName, FrameDepthRenderTarget);
+        builder->AttachRenderTarget(FrameColorRenderTargetName, FrameColorRenderTarget);
         builder->CreateBufferSet("g_scene_vertex_buffer");
         builder->CreateBufferSet("g_scene_index_buffer");
         builder->CreateBufferSet("g_scene_draw_buffer");
@@ -69,11 +72,12 @@ namespace ZEngine::Rendering::Renderers
         builder->CreateBufferSet("g_scene_spot_light_buffer");
         builder->CreateBufferSet("g_scene_indirect_buffer", BufferSetCreationType::INDIRECT);
 
-        RenderGraph->AddCallbackPass("Scene Depth Pre-Pass", scene_depth_prepass);
+        RenderGraph->AddCallbackPass("Initial Pass", initial_pass);
+        RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
-        // RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
-        //  RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
-        //   RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
+        RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
+        RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
+        RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
 
         RenderGraph->Setup();
         RenderGraph->Compile();
@@ -82,6 +86,8 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::Deinitialize()
     {
         RenderGraph->Dispose();
+        Device->GlobalTextures->Remove(FrameColorRenderTarget);
+        Device->GlobalTextures->Remove(FrameDepthRenderTarget);
 
         ImguiRenderer->Deinitialize();
 
@@ -192,9 +198,8 @@ namespace ZEngine::Rendering::Renderers
 
     VkDescriptorSet GraphicRenderer::GetImguiFrameOutput()
     {
-        auto& frame_color_res = RenderGraph->GetResource("skybox_render_target");
-        // auto& frame_color_res = RenderGraph->GetResource("lighting_render_target");
-        return ImguiRenderer->UpdateFrameOutput(frame_color_res.ResourceInfo.TextureHandle);
+        auto rt_handle = RenderGraph->GetRenderTarget(FrameColorRenderTargetName);
+        return ImguiRenderer->UpdateFrameOutput(rt_handle);
     }
 
     Buffers::VertexBufferSetHandle GraphicRenderer::CreateVertexBufferSet()

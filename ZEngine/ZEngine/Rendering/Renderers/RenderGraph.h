@@ -118,7 +118,7 @@ namespace ZEngine::Rendering::Renderers
         void                             Resize(uint32_t width, uint32_t height);
         void                             Dispose();
         RenderGraphResource&             GetResource(std::string_view);
-        Helpers::Ref<Textures::Texture>  GetRenderTarget(std::string_view);
+        Textures::TextureHandle          GetRenderTarget(std::string_view);
         Textures::TextureHandle          GetTexture(std::string_view);
         Buffers::StorageBufferSetHandle  GetStorageBufferSet(std::string_view);
         Buffers::VertexBufferSetHandle   GetVertexBufferSet(std::string_view);
@@ -149,6 +149,7 @@ namespace ZEngine::Rendering::Renderers
         RenderGraphResource& AttachBuffer(std::string_view name, const Buffers::StorageBufferSetHandle& buffer);
         RenderGraphResource& AttachBuffer(std::string_view name, const Buffers::UniformBufferSetHandle& buffer);
         RenderGraphResource& AttachTexture(std::string_view name, const Textures::TextureHandle& texture);
+        RenderGraphResource& AttachRenderTarget(std::string_view name, const Textures::TextureHandle& texture);
         void                 CreateRenderPassNode(const RenderGraphRenderPassCreation&);
 
         RenderGraphResource& CreateBuffer(std::string_view name) = delete;

@@ -272,6 +272,13 @@ namespace ZEngine::Rendering::Buffers
         vkCmdDrawIndexed(m_command_buffer, index_count, instanceCount, first_index, vertex_offset, first_instance);
     }
 
+    void CommandBuffer::Draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_index, uint32_t first_instance)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+
+        vkCmdDraw(m_command_buffer, vertex_count, instance_count, first_index, first_instance);
+    }
+
     void CommandBuffer::TransitionImageLayout(const Primitives::ImageMemoryBarrier& image_barrier)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
