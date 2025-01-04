@@ -8,14 +8,14 @@ namespace ZEngine::Managers
 {
     std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>> ShaderManager::s_shader_mappings = {};
 
-    Ref<Rendering::Shaders::Shader> ShaderManager::Get(ZEngine::Rendering::Specifications::ShaderSpecification& spec)
+    Ref<Rendering::Shaders::Shader> ShaderManager::Get(Hardwares::VulkanDevice* device, ZEngine::Rendering::Specifications::ShaderSpecification& spec)
     {
         auto& shader = s_shader_mappings[spec.Name];
         if (!shader)
         {
             spec.VertexFilename          = GetVertexFilename(spec.Name);
             spec.FragmentFilename        = GetFragmentFilename(spec.Name);
-            shader                       = ZEngine::Rendering::Shaders::Shader::Create(spec);
+            shader                       = CreateRef<Rendering::Shaders::Shader>(device, spec);
             s_shader_mappings[spec.Name] = shader;
         }
         return shader;
@@ -24,6 +24,7 @@ namespace ZEngine::Managers
     const std::string_view ShaderManager::s_base_dir = "Shaders/Cache/";
 
     const std::unordered_map<std::string, std::pair<std::string, std::string>> ShaderManager::s_shader_path = {
+        {"initial", {fmt::format("{}initial_vertex.spv", s_base_dir), fmt::format("{}initial_fragment.spv", s_base_dir)}},
         {"color", {fmt::format("{}final_color_vertex.spv", s_base_dir), fmt::format("{}final_color_fragment.spv", s_base_dir)}},
         {"g_buffer", {fmt::format("{}g_buffer_vertex.spv", s_base_dir), fmt::format("{}g_buffer_fragment.spv", s_base_dir)}},
         {"imgui", {fmt::format("{}imgui_vertex.spv", s_base_dir), fmt::format("{}imgui_fragment.spv", s_base_dir)}},

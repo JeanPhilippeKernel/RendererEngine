@@ -3,7 +3,6 @@
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
-#include <Rendering/Swapchain.h>
 
 namespace ZEngine::Rendering::Specifications
 {
@@ -27,11 +26,11 @@ namespace ZEngine::Rendering::Specifications
         bool                                               EnableBlending                     = false;
         bool                                               EnableDepthTest                    = false;
         bool                                               EnableDepthWrite                   = true;
+        uint32_t                                           DepthCompareOp                     = VK_COMPARE_OP_LESS_OR_EQUAL;
         bool                                               EnableStencilTest                  = false;
         const char*                                        DebugName                          = {};
         ShaderSpecification                                ShaderSpecification                = {};
         Helpers::Ref<Rendering::Buffers::FramebufferVNext> TargetFrameBuffer                  = {};
-        Helpers::Ref<Rendering::Swapchain>                 SwapchainRenderTarget              = {};
         Helpers::Ref<Renderers::RenderPasses::Attachment>  Attachment                         = {};
         std::vector<VertexInputBindingSpecification>       VertexInputBindingSpecifications   = {};
         std::vector<VertexInputAttributeSpecification>     VertexInputAttributeSpecifications = {};

@@ -59,7 +59,7 @@ namespace Tetragrama::Components
         co_return;
     }
 
-    void HierarchyViewUIComponent::Render()
+    void HierarchyViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
         if (ImGui::BeginPopupContextWindow(m_name.c_str()))

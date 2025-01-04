@@ -1,5 +1,6 @@
 #pragma once
 #include <Hardwares/VulkanDevice.h>
+#include <Helpers/HandleManager.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
 
 namespace ZEngine::Rendering::Buffers
@@ -8,12 +9,14 @@ namespace ZEngine::Rendering::Buffers
     class UniformBuffer : public IGraphicBuffer
     {
     public:
-        explicit UniformBuffer() : IGraphicBuffer() {}
+        explicit UniformBuffer() : IGraphicBuffer(nullptr) {}
+        explicit UniformBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
         explicit UniformBuffer(const UniformBuffer& rhs) = delete;
 
         explicit UniformBuffer(UniformBuffer& rhs)
         {
+            this->m_device    = rhs.m_device;
             this->m_byte_size = rhs.m_byte_size;
 
             std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
@@ -26,6 +29,7 @@ namespace ZEngine::Rendering::Buffers
 
         explicit UniformBuffer(UniformBuffer&& rhs) noexcept
         {
+            this->m_device    = rhs.m_device;
             this->m_byte_size = rhs.m_byte_size;
 
             std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
@@ -92,7 +96,7 @@ namespace ZEngine::Rendering::Buffers
 
                 CleanUpMemory();
                 this->m_byte_size = byte_size;
-                m_uniform_buffer  = Hardwares::VulkanDevice::CreateBuffer(
+                m_uniform_buffer  = m_device->CreateBuffer(
                     static_cast<VkDeviceSize>(this->m_byte_size),
                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
@@ -100,7 +104,7 @@ namespace ZEngine::Rendering::Buffers
             }
 
             VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(Hardwares::VulkanDevice::GetVmaAllocator(), m_uniform_buffer.Allocation, &allocation_info);
+            vmaGetAllocationInfo(m_device->VmaAllocator, m_uniform_buffer.Allocation, &allocation_info);
 
             if (allocation_info.pMappedData)
             {
@@ -150,7 +154,7 @@ namespace ZEngine::Rendering::Buffers
         {
             if (m_uniform_buffer)
             {
-                Hardwares::VulkanDevice::EnqueueBufferForDeletion(m_uniform_buffer);
+                m_device->EnqueueBufferForDeletion(m_uniform_buffer);
 
                 m_uniform_buffer_mapped = false;
                 m_uniform_buffer        = {};
@@ -159,40 +163,21 @@ namespace ZEngine::Rendering::Buffers
 
     private:
         bool                   m_uniform_buffer_mapped{false};
-        Hardwares::BufferView  m_uniform_buffer{};
+        BufferView             m_uniform_buffer{};
         VkDescriptorBufferInfo m_buffer_info{};
     };
 
-    struct UniformBufferSet : public Helpers::RefCounted
+    using UniformBufferSet       = IBufferSet<UniformBuffer>;
+    using UniformBufferSetRef    = Helpers::Ref<UniformBufferSet>;
+    using UniformBufferSetHandle = Helpers::Handle<UniformBufferSetRef>;
+
+    template <>
+    inline void UniformBufferSet::Dispose()
     {
-        UniformBufferSet(uint32_t count = 0) : m_buffer_set(count) {}
-
-        UniformBuffer& operator[](uint32_t index)
+        for (auto& buffer : m_set)
         {
-            assert(index < m_buffer_set.size());
-            return m_buffer_set[index];
+            buffer.Dispose();
         }
-
-        const std::vector<UniformBuffer>& Data() const
-        {
-            return m_buffer_set;
-        }
-
-        std::vector<UniformBuffer>& Data()
-        {
-            return m_buffer_set;
-        }
-
-        void Dispose()
-        {
-            for (auto& buffer : m_buffer_set)
-            {
-                buffer.Dispose();
-            }
-        }
-
-    private:
-        std::vector<UniformBuffer> m_buffer_set;
-    };
+    }
 
 } // namespace ZEngine::Rendering::Buffers

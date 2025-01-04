@@ -6,10 +6,9 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Windows
 {
-    CoreWindow::CoreWindow()
-    {
-        m_layer_stack_ptr = CreateScope<LayerStack>();
-    }
+    CoreWindow::CoreWindow() : m_layer_stack_ptr(CreateScope<LayerStack>()) {}
+
+    CoreWindow::CoreWindow(const WindowConfiguration& cfg) : m_configuration(cfg), m_layer_stack_ptr(CreateScope<LayerStack>()) {}
 
     CoreWindow::~CoreWindow() {}
 

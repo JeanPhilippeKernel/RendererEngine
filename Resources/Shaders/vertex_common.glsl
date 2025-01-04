@@ -27,7 +27,6 @@ struct DrawDataView
 layout(set = 0, binding = 0) uniform UBCamera
 { 
     mat4 View;
-    mat4 RotScaleView;
     mat4 Projection;
     vec4 Position;
 } Camera;

@@ -7,9 +7,10 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
-    GraphicPipeline::GraphicPipeline(Specifications::GraphicRendererPipelineSpecification&& spec) : m_pipeline_specification(std::move(spec))
+    GraphicPipeline::GraphicPipeline(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec)
+        : m_device(device), m_pipeline_specification(std::move(spec))
     {
-        m_shader = ZEngine::Managers::ShaderManager::Get(m_pipeline_specification.ShaderSpecification);
+        m_shader = ZEngine::Managers::ShaderManager::Get(m_device, m_pipeline_specification.ShaderSpecification);
     }
 
     Specifications::GraphicRendererPipelineSpecification& GraphicPipeline::GetSpecification()
@@ -24,7 +25,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     void GraphicPipeline::Bake()
     {
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
         /*Pipeline fixed states*/
         /*
          * Dynamic State
@@ -109,14 +109,13 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {};
         depth_stencil_state_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
         depth_stencil_state_create_info.stencilTestEnable                     = m_pipeline_specification.EnableStencilTest ? VK_TRUE : VK_FALSE;
-        if (m_pipeline_specification.EnableDepthTest)
-        {
-            depth_stencil_state_create_info.depthTestEnable  = VK_TRUE;
-            depth_stencil_state_create_info.depthWriteEnable = m_pipeline_specification.EnableDepthWrite ? VK_TRUE : VK_FALSE;
-            depth_stencil_state_create_info.depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL;
-            depth_stencil_state_create_info.minDepthBounds   = 0.0f;
-            depth_stencil_state_create_info.maxDepthBounds   = 1.0f;
-        }
+        depth_stencil_state_create_info.front                                 = {};
+        depth_stencil_state_create_info.back                                  = {};
+        depth_stencil_state_create_info.depthTestEnable                       = m_pipeline_specification.EnableDepthTest ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.depthCompareOp                        = VkCompareOp(m_pipeline_specification.DepthCompareOp);
+        depth_stencil_state_create_info.depthWriteEnable                      = m_pipeline_specification.EnableDepthWrite ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.minDepthBounds                        = 0.0f;
+        depth_stencil_state_create_info.maxDepthBounds                        = 1.0f;
         /*
          * Color blend state and attachment
          */
@@ -161,7 +160,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         pipeline_layout_create_info.pPushConstantRanges             = push_constant_collection.data();
         pipeline_layout_create_info.flags                           = 0;
         pipeline_layout_create_info.pNext                           = nullptr;
-        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(device, &(pipeline_layout_create_info), nullptr, &m_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
+        ZENGINE_VALIDATE_ASSERT(
+            vkCreatePipelineLayout(m_device->LogicalDevice, &(pipeline_layout_create_info), nullptr, &m_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
         /*
          * Graphic Pipeline Creation
          */
@@ -186,15 +186,16 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.flags                         = 0;              // Optional
         graphic_pipeline_create_info.pNext                         = nullptr;        // Optional
         ZENGINE_VALIDATE_ASSERT(
-            vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
+            vkCreateGraphicsPipelines(m_device->LogicalDevice, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS,
+            "Failed to create Graphics Pipeline")
     }
 
     void GraphicPipeline::Dispose()
     {
         m_shader->Dispose();
 
-        Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, m_pipeline_layout);
-        Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, m_pipeline_handle);
+        m_device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, m_pipeline_layout);
+        m_device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, m_pipeline_handle);
         m_pipeline_layout = VK_NULL_HANDLE;
         m_pipeline_handle = VK_NULL_HANDLE;
     }
@@ -214,9 +215,4 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         return m_shader;
     }
 
-    Ref<GraphicPipeline> GraphicPipeline::Create(Specifications::GraphicRendererPipelineSpecification& spec)
-    {
-        auto pipeline = CreateRef<GraphicPipeline>(std::move(spec));
-        return pipeline;
-    }
 } // namespace ZEngine::Rendering::Renderers::Pipelines

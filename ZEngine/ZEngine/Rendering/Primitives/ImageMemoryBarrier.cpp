@@ -7,8 +7,8 @@ namespace ZEngine::Rendering::Primitives
     ImageMemoryBarrier::ImageMemoryBarrier(const ImageMemoryBarrierSpecification& specification) : m_specification(specification)
     {
         m_handle.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        m_handle.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        m_handle.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        m_handle.srcQueueFamilyIndex             = specification.SourceQueueFamily;
+        m_handle.dstQueueFamilyIndex             = specification.DestinationQueueFamily;
         m_handle.subresourceRange.aspectMask     = specification.ImageAspectMask;
         m_handle.subresourceRange.baseMipLevel   = 0;
         m_handle.subresourceRange.baseArrayLayer = 0;

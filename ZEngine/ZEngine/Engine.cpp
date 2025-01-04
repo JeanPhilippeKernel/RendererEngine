@@ -4,58 +4,47 @@
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 
-using namespace ZEngine::Rendering::Renderers;
-
 namespace ZEngine
 {
-    static bool                                  s_request_terminate{false};
-    static Helpers::WeakRef<Windows::CoreWindow> g_current_window = nullptr;
+    static bool                                                  s_request_terminate{false};
+    static std::shared_mutex                                     g_mutex;
+    static Helpers::WeakRef<Windows::CoreWindow>                 g_current_window = nullptr;
+    static Helpers::Scope<Rendering::Renderers::GraphicRenderer> g_renderer       = Helpers::CreateScope<Rendering::Renderers::GraphicRenderer>();
+    static Helpers::Scope<Hardwares::VulkanDevice>               g_device         = Helpers::CreateScope<Hardwares::VulkanDevice>();
 
     void Engine::Initialize(const EngineConfiguration& engine_configuration, const Helpers::Ref<ZEngine::Windows::CoreWindow>& window)
     {
         g_current_window = window;
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
 
-        Hardwares::VulkanDevice::Initialize(window);
-
         window->Initialize();
-        GraphicRenderer::SetMainSwapchain(window->GetSwapchain());
-        GraphicRenderer::Initialize();
-        /*
-         * Renderer Post initialization
-         */
+        g_device->Initialize(g_current_window);
+        g_renderer->Initialize(g_device.get());
+
         ZENGINE_CORE_INFO("Engine initialized")
-
-        for (const auto& layer : engine_configuration.WindowConfiguration.RenderingLayerCollection)
-        {
-            window->PushLayer(layer);
-        }
-
-        for (const auto& layer : engine_configuration.WindowConfiguration.OverlayLayerCollection)
-        {
-            window->PushOverlayLayer(layer);
-        }
-        window->InitializeLayer();
     }
 
     void Engine::Deinitialize()
     {
+        std::unique_lock l(g_mutex);
         if (auto window = g_current_window.lock())
         {
             window->Deinitialize();
         }
-        GraphicRenderer::Deinitialize();
-        Hardwares::VulkanDevice::Deinitialize();
+        g_renderer->Deinitialize();
+        g_renderer.reset();
+
+        g_device->Deinitialize();
     }
 
     void Engine::Dispose()
     {
         s_request_terminate = false;
 
-        Hardwares::VulkanDevice::Dispose();
-
-        ZENGINE_CORE_INFO("Engine destroyed")
         Logging::Logger::Dispose();
+        g_device->Dispose();
+        g_device.reset();
+        ZENGINE_CORE_INFO("Engine destroyed")
     }
 
     bool Engine::OnEngineClosed(Event::EngineClosedEvent& event)
@@ -84,11 +73,26 @@ namespace ZEngine
             }
 
             /*On Update*/
-            GraphicRenderer::Update();
             window->Update(dt);
 
-            /*On Render*/
-            window->Render();
+            if (g_renderer->EnqueuedResizeRequests.Size())
+            {
+                Rendering::Renderers::ResizeRequest req;
+                if (g_renderer->EnqueuedResizeRequests.Pop(req))
+                {
+                    g_renderer->RenderGraph->Resize(req.Width, req.Height);
+                    continue;
+                }
+            }
+            g_device->NewFrame();
+            {
+                auto buffer = g_device->GetCommandBuffer(true);
+
+                /*On Render*/
+                window->Render(g_renderer.get(), buffer);
+                g_device->EnqueueCommandBuffer(buffer);
+            }
+            g_device->Present();
         }
 
         if (s_request_terminate)
@@ -99,6 +103,7 @@ namespace ZEngine
 
     Helpers::Ref<Windows::CoreWindow> Engine::GetWindow()
     {
+        std::shared_lock l(g_mutex);
         return g_current_window.lock();
     }
 } // namespace ZEngine

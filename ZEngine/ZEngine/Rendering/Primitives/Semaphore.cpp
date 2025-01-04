@@ -4,12 +4,12 @@
 
 namespace ZEngine::Rendering::Primitives
 {
-    Semaphore::Semaphore()
+    Semaphore::Semaphore(Hardwares::VulkanDevice* const device)
     {
+        Device                                      = device;
         VkSemaphoreCreateInfo semaphore_create_info = {};
         semaphore_create_info.sType                 = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        auto device                                 = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        ZENGINE_VALIDATE_ASSERT(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Semaphore")
+        ZENGINE_VALIDATE_ASSERT(vkCreateSemaphore(Device->LogicalDevice, &semaphore_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Semaphore")
     }
 
     Semaphore::~Semaphore()
@@ -20,7 +20,7 @@ namespace ZEngine::Rendering::Primitives
         }
 
         /*Todo : register for deletion from device*/
-        Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::SEMAPHORE, m_handle);
+        Device->EnqueueForDeletion(Rendering::DeviceResourceType::SEMAPHORE, m_handle);
         m_handle          = VK_NULL_HANDLE;
         m_semaphore_state = SemaphoreState::Idle;
     }

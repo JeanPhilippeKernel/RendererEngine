@@ -1,5 +1,6 @@
 #pragma once
-#include <Hardwares/VulkanDevice.h>
+#include <Helpers/HandleManager.h>
+#include <Rendering/Buffers/Image2DBuffer.h>
 #include <Rendering/Specifications/TextureSpecification.h>
 #include <vulkan/vulkan.h>
 
@@ -7,137 +8,51 @@ namespace ZEngine::Rendering::Textures
 {
     struct Texture : public Helpers::RefCounted
     {
-    public:
-        Texture()          = default;
-        virtual ~Texture() = default;
-
-        virtual Hardwares::BufferImage&       GetBuffer()       = 0;
-        virtual const Hardwares::BufferImage& GetBuffer() const = 0;
-        virtual void                          Dispose()         = 0;
-
-        virtual const VkDescriptorImageInfo& GetDescriptorImageInfo()
+        Texture() = default;
+        Texture(const Specifications::TextureSpecification& spec, const Helpers::Ref<Buffers::Image2DBuffer>& buffer) : Specification(spec), ImageBuffer(buffer)
         {
-            const auto& buffer_image = GetBuffer();
-            m_descriptor_image_info  = {.sampler = buffer_image.Sampler, .imageView = buffer_image.ViewHandle, .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-            return m_descriptor_image_info;
+            Width          = spec.Width;
+            Height         = spec.Height;
+            BytePerPixel   = spec.BytePerPixel;
+            BufferSize     = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
+            IsDepthTexture = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
         }
 
-        virtual const Specifications::TextureSpecification& GetSpecification() const
+        Texture(Specifications::TextureSpecification&& spec, Helpers::Ref<Buffers::Image2DBuffer>&& buffer) : Specification(std::move(spec)), ImageBuffer(std::move(buffer))
         {
-            return m_specification;
+            Width          = spec.Width;
+            Height         = spec.Height;
+            BytePerPixel   = spec.BytePerPixel;
+            BufferSize     = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
+            IsDepthTexture = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
         }
 
-        virtual Specifications::TextureSpecification& GetSpecification()
+        bool                                 IsDepthTexture = false;
+        uint32_t                             Width          = 1;
+        uint32_t                             Height         = 1;
+        uint32_t                             BytePerPixel   = 0;
+        VkDeviceSize                         BufferSize     = 0;
+        Specifications::TextureSpecification Specification  = {};
+        Helpers::Ref<Buffers::Image2DBuffer> ImageBuffer    = nullptr;
+
+        ~Texture()
         {
-            return m_specification;
-        }
-
-        virtual bool IsDepthTexture() const
-        {
-            return m_is_depth;
-        }
-
-        virtual bool operator==(const Texture& right)
-        {
-            return false;
-            // return m_texture_image == right.m_texture_image;
-        }
-
-        virtual bool operator!=(const Texture& right)
-        {
-            return false;
-            // return m_texture_image != right.m_texture_image;
-        }
-
-        unsigned int GetWidth() const
-        {
-            return m_width;
-        }
-
-        unsigned int GetHeight() const
-        {
-            return m_height;
-        }
-
-    protected:
-        bool                                 m_is_depth{false};
-        uint32_t                             m_width{0};
-        uint32_t                             m_height{0};
-        uint32_t                             m_byte_per_pixel{0};
-        VkDeviceSize                         m_buffer_size{0};
-        VkDescriptorImageInfo                m_descriptor_image_info{};
-        Specifications::TextureSpecification m_specification{};
-    };
-
-    struct TextureArray : public Helpers::RefCounted
-    {
-        TextureArray(uint32_t count = 0) : m_texture_array(count), m_count(count) {}
-
-        Helpers::Ref<Texture>& operator[](uint32_t index)
-        {
-            assert(index < m_texture_array.size());
-            return m_texture_array[index];
-        }
-
-        const std::vector<Helpers::Ref<Texture>>& Data() const
-        {
-            return m_texture_array;
-        }
-
-        std::vector<Helpers::Ref<Texture>>& Data()
-        {
-            return m_texture_array;
-        }
-
-        int Add(const Helpers::Ref<Texture>& texture)
-        {
-            int output_index = -1;
-
-            if (m_free_slot_index < m_count)
-            {
-                output_index                         = m_free_slot_index;
-                m_texture_array[m_free_slot_index++] = texture;
-            }
-
-            return output_index;
-        }
-
-        int Add(Helpers::Ref<Texture>&& texture)
-        {
-            int output_index = -1;
-
-            if (m_free_slot_index < m_count)
-            {
-                output_index                         = m_free_slot_index;
-                m_texture_array[m_free_slot_index++] = std::move(texture);
-            }
-
-            return output_index;
-        }
-
-        size_t Size() const
-        {
-            return m_count;
-        }
-
-        int GetUsedSlotCount() const
-        {
-            return m_free_slot_index;
+            Dispose();
         }
 
         void Dispose()
         {
-            for (size_t u = 0; u < m_free_slot_index; ++u)
+            if (ImageBuffer)
             {
-                m_texture_array[u]->Dispose();
+                ImageBuffer->Dispose();
+                ImageBuffer = nullptr;
             }
         }
-
-    private:
-        uint32_t                           m_count{0};
-        uint32_t                           m_free_slot_index{0};
-        std::vector<Helpers::Ref<Texture>> m_texture_array;
     };
+
+    using TextureRef           = Helpers::Ref<Texture>;
+    using TextureHandle        = Helpers::Handle<TextureRef>;
+    using TextureHandleManager = Helpers::HandleManager<TextureRef>;
 
     /*
      * To do : Should be deprecated
@@ -146,3 +61,18 @@ namespace ZEngine::Rendering::Textures
     Texture* CreateTexture(unsigned int width, unsigned int height);
     Texture* CreateTexture(unsigned int width, unsigned int height, float r, float g, float b, float a);
 } // namespace ZEngine::Rendering::Textures
+
+namespace ZEngine::Helpers
+{
+    template <>
+    inline void HandleManager<Helpers::Ref<Rendering::Textures::Texture>>::Dispose()
+    {
+        for (size_t i = 0; i < m_count; ++i)
+        {
+            if (m_data[i].Data)
+            {
+                m_data[i].Data->Dispose();
+            }
+        }
+    }
+} // namespace ZEngine::Helpers

@@ -1,7 +1,7 @@
 #pragma once
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-#include <ZEngine/Rendering/Swapchain.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <ZEngine/Windows/WindowConfiguration.h>
 #include <ZEngine/ZEngineDef.h>
@@ -32,13 +32,12 @@ namespace Tetragrama
         virtual float GetTime() override;
         virtual float GetDeltaTime() override;
         virtual void  Update(ZEngine::Core::TimeStep delta_time) override;
-        virtual void  Render() override;
+        virtual void  Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
 
         virtual std::future<std::string> OpenFileDialogAsync(std::span<std::string_view> type_filters = {}) override;
 
-        virtual bool                                         CreateSurface(void* instance, void** out_window_surface) override;
-        virtual std::vector<std::string>                     GetRequiredExtensionLayers() override;
-        ZEngine::Helpers::Ref<ZEngine::Rendering::Swapchain> GetSwapchain() const override;
+        virtual bool                     CreateSurface(void* instance, void** out_window_surface) override;
+        virtual std::vector<std::string> GetRequiredExtensionLayers() override;
 
     public:
         bool OnEvent(ZEngine::Core::CoreEvent& event) override;
@@ -75,8 +74,7 @@ namespace Tetragrama
         static void __OnGlfwFrameBufferSizeChanged(GLFWwindow*, int width, int height);
 
     private:
-        GLFWwindow*                                          m_native_window{nullptr};
-        ZEngine::Helpers::Ref<ZEngine::Rendering::Swapchain> m_swapchain;
+        GLFWwindow* m_native_window = nullptr;
     };
 
 } // namespace Tetragrama

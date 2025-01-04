@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <Hardwares/VulkanDevice.h>
 #include <Rendering/Buffers/Framebuffer.h>
 
 using namespace ZEngine::Helpers;
@@ -6,12 +7,14 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Buffers
 {
-    FramebufferVNext::FramebufferVNext(const Specifications::FrameBufferSpecificationVNext& specification) : m_specification(specification)
+    FramebufferVNext::FramebufferVNext(Hardwares::VulkanDevice* device, const Specifications::FrameBufferSpecificationVNext& specification)
+        : m_device(device), m_specification(specification)
     {
         Create();
     }
 
-    FramebufferVNext::FramebufferVNext(Specifications::FrameBufferSpecificationVNext&& specification) : m_specification(std::move(specification))
+    FramebufferVNext::FramebufferVNext(Hardwares::VulkanDevice* device, Specifications::FrameBufferSpecificationVNext&& specification)
+        : m_device(device), m_specification(std::move(specification))
     {
         Create();
     }
@@ -19,21 +22,6 @@ namespace ZEngine::Rendering::Buffers
     FramebufferVNext::~FramebufferVNext()
     {
         Dispose();
-    }
-
-    Ref<FramebufferVNext> FramebufferVNext::Create(const Specifications::FrameBufferSpecificationVNext& spec)
-    {
-        return CreateRef<FramebufferVNext>(spec);
-    }
-
-    Ref<FramebufferVNext> FramebufferVNext::Create(Specifications::FrameBufferSpecificationVNext&& spec)
-    {
-        return CreateRef<FramebufferVNext>(std::move(spec));
-    }
-
-    VkFramebuffer FramebufferVNext::GetHandle() const
-    {
-        return m_handle;
     }
 
     uint32_t FramebufferVNext::GetWidth() const
@@ -58,8 +46,16 @@ namespace ZEngine::Rendering::Buffers
 
     void FramebufferVNext::Create()
     {
-        m_handle = Hardwares::VulkanDevice::CreateFramebuffer(
-            m_specification.RenderTargetViews, m_specification.Attachment->GetHandle(), m_specification.Width, m_specification.Height, m_specification.Layers);
+        std::vector<VkImageView> views = {};
+        views.resize(m_specification.RenderTargets.size());
+
+        for (int i = 0; i < views.size(); ++i)
+        {
+            auto index  = m_specification.RenderTargets[i];
+            auto handle = m_device->GlobalTextures->ToHandle(index);
+            views[i]    = m_device->GlobalTextures->Access(handle)->ImageBuffer->GetImageViewHandle();
+        }
+        Handle = m_device->CreateFramebuffer(views, m_specification.Attachment->GetHandle(), m_specification.Width, m_specification.Height, m_specification.Layers);
     }
 
     void FramebufferVNext::Resize(uint32_t width, uint32_t height)
@@ -72,10 +68,10 @@ namespace ZEngine::Rendering::Buffers
 
     void FramebufferVNext::Dispose()
     {
-        if (m_handle)
+        if (Handle)
         {
-            Hardwares::VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType::FRAMEBUFFER, m_handle);
-            m_handle = VK_NULL_HANDLE;
+            m_device->EnqueueForDeletion(Rendering::DeviceResourceType::FRAMEBUFFER, Handle);
+            Handle = VK_NULL_HANDLE;
         }
     }
 } // namespace ZEngine::Rendering::Buffers

@@ -2,12 +2,14 @@
 #include <Helpers/IntrusivePtr.h>
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Buffers/GraphicBuffer.h>
+#include <Rendering/Buffers/IndirectBuffer.h>
 #include <Rendering/Buffers/StorageBuffer.h>
 #include <Rendering/Buffers/UniformBuffer.h>
 #include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <Rendering/Specifications/RenderPassSpecification.h>
 #include <Rendering/Textures/Texture.h>
 #include <vulkan/vulkan.h>
+#include <unordered_set>
 #include <vector>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
@@ -16,71 +18,59 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         UNIFORM_BUFFER_SET,
         STORAGE_BUFFER_SET,
-        TEXTURE_ARRAY,
+        BINDLESS_TEXTURE,
         UNIFORM_BUFFER,
         STORAGE_BUFFER,
         TEXTURE
     };
 
-    union InputData
-    {
-        void* Data{nullptr};
-    };
-
     struct PassInput
     {
-        uint32_t      Set{0};
-        uint32_t      Binding{0};
-        std::string   DebugName;
-        PassInputType Type;
-        InputData     Input;
+        uint32_t                         Set{0};
+        uint32_t                         Binding{0};
+        std::string                      DebugName;
+        PassInputType                    Type;
+        Textures::TextureHandle          TextureHandle;
+        Buffers::UniformBufferSetHandle  UniformBufferSetHandle;
+        Buffers::StorageBufferSetHandle  BufferSetHandle;
+        Buffers::IndirectBufferSetHandle IndirectBufferSetHandle;
     };
 
     struct RenderPass : public Helpers::RefCounted
     {
-        RenderPass() = default;
-        RenderPass(const Specifications::RenderPassSpecification& specification);
+        RenderPass(Hardwares::VulkanDevice* device, const Specifications::RenderPassSpecification& specification);
         ~RenderPass();
 
-        void Dispose();
-
-        Helpers::Ref<Pipelines::GraphicPipeline> GetPipeline() const;
-        void                                     Bake();
-        bool                                     Verify();
-        void                                     Update();
-        void                                     MarkDirty();
-        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::UniformBufferSet>& buffer);
-        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::StorageBufferSet>& buffer);
-        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Textures::TextureArray>& textures);
-        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::UniformBuffer>& buffer);
-        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Rendering::Buffers::StorageBuffer>& buffer);
-        void                                     SetInput(std::string_view key_name, const Helpers::Ref<Textures::Texture>& buffer);
-        void                                     UpdateInputBinding();
-        Helpers::Ref<Textures::Texture>          GetOutputColor(uint32_t color_index);
-        Helpers::Ref<Textures::Texture>          GetOutputDepth();
-
-        const Specifications::RenderPassSpecification& GetSpecification() const;
-        Specifications::RenderPassSpecification&       GetSpecification();
-
+        uint32_t                                          RenderAreaWidth                    = 0;
+        uint32_t                                          RenderAreaHeight                   = 0;
+        Specifications::RenderPassSpecification           Specification                      = {};
+        std::map<std::string, PassInput>                  Inputs                             = {};
+        std::unordered_set<std::string>                   EnqueuedUpdateInputs               = {};
+        std::vector<Hardwares::WriteDescriptorSetRequest> EnqueuedWriteDescriptorSetRequests = {};
+        std::vector<uint32_t>                             RenderTargets                      = {};
+        Helpers::Ref<Renderers::RenderPasses::Attachment> Attachment                         = {nullptr};
+        Helpers::Ref<Pipelines::GraphicPipeline>          Pipeline                           = {nullptr};
+        void                                              Dispose();
+        void                                              Bake();
+        bool                                              Verify();
+        void                                              Update(uint32_t frame_index);
+        void                                              MarkDirty();
+        void                                              SetInput(std::string_view key_name, const Rendering::Buffers::UniformBufferSetHandle& buffer);
+        void                                              SetInput(std::string_view key_name, const Rendering::Buffers::StorageBufferSetHandle& buffer);
+        void                                              SetInput(std::string_view key_name, const Textures::TextureHandle& texture);
+        void                                              SetBindlessInput(std::string_view key_name);
+        void                                              UpdateInputBinding();
         Helpers::Ref<Renderers::RenderPasses::Attachment> GetAttachment() const;
-
-        void          ResizeFramebuffer();
-        VkFramebuffer GetFramebuffer() const;
-        uint32_t      GetRenderAreaWidth() const;
-        uint32_t      GetRenderAreaHeight() const;
-
-        static Helpers::Ref<RenderPass> Create(const Specifications::RenderPassSpecification& specification);
+        void                                              UpdateRenderTargets();
+        uint32_t                                          GetRenderAreaWidth() const;
+        uint32_t                                          GetRenderAreaHeight() const;
 
     private:
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
 
     private:
-        bool                                              m_perform_update{false};
-        Specifications::RenderPassSpecification           m_specification;
-        std::vector<PassInput>                            m_input_collection;
-        Helpers::Ref<Pipelines::GraphicPipeline>          m_pipeline;
-        Helpers::Ref<Renderers::RenderPasses::Attachment> m_attachment;
-        Helpers::Ref<Buffers::FramebufferVNext>           m_framebuffer;
+        bool                     m_perform_update{false};
+        Hardwares::VulkanDevice* m_device;
     };
 
     struct RenderPassBuilder : public Helpers::RefCounted
@@ -90,6 +80,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder& EnablePipelineBlending(bool value);
         RenderPassBuilder& EnablePipelineDepthTest(bool value);
         RenderPassBuilder& EnablePipelineDepthWrite(bool value);
+        RenderPassBuilder& PipelineDepthCompareOp(uint32_t value);
         RenderPassBuilder& SetShaderOverloadMaxSet(uint32_t count);
         RenderPassBuilder& SetOverloadPoolSize(uint32_t count);
 
@@ -104,13 +95,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder& SetOffset(uint32_t input_attribute_index, uint32_t offset);
 
         RenderPassBuilder& UseShader(std::string_view name);
-        RenderPassBuilder& UseRenderTarget(const Helpers::Ref<Rendering::Textures::Texture>& target);
+        RenderPassBuilder& UseRenderTarget(const Textures::TextureHandle& target);
         RenderPassBuilder& AddRenderTarget(const Specifications::TextureSpecification& target_spec);
-        RenderPassBuilder& AddInputAttachment(const Helpers::Ref<Rendering::Textures::Texture>& target);
-        RenderPassBuilder& AddInputTexture(std::string_view key, const Helpers::Ref<Rendering::Textures::Texture>& input);
+        RenderPassBuilder& AddInputAttachment(const Textures::TextureHandle& target);
+        RenderPassBuilder& AddInputTexture(std::string_view key, const Rendering::Textures::TextureHandle& input);
         RenderPassBuilder& UseSwapchainAsRenderTarget();
 
-        Helpers::Ref<RenderPass> Create();
+        Specifications::RenderPassSpecification Detach();
 
     private:
         Specifications::RenderPassSpecification m_spec{};

@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <ImguiLayer.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
+#include <Rendering/Renderers/ImGUIRenderer.h>
 #include <fmt/format.h>
 #include <imgui.h>
 
@@ -181,26 +182,16 @@ namespace Tetragrama::Layers
         return false;
     }
 
-    void ImguiLayer::Render()
+    void ImguiLayer::Render(Rendering::Renderers::GraphicRenderer* const renderer, Rendering::Buffers::CommandBuffer* const command_buffer)
     {
-        if (auto window_ptr = m_window.lock())
+        renderer->ImguiRenderer->BeginFrame();
+        for (const auto& component : m_ui_components)
         {
-            if (window_ptr->IsMinimized())
+            if (component->GetVisibility() == true)
             {
-                return;
+                component->Render(renderer, command_buffer);
             }
-
-            GraphicRenderer::BeginImguiFrame();
-
-            for (const auto& component : m_ui_components)
-            {
-                if (component->GetVisibility() == true)
-                {
-                    component->Render();
-                }
-            }
-            GraphicRenderer::DrawUIFrame();
-            GraphicRenderer::EndImguiFrame();
         }
+        renderer->ImguiRenderer->EndFrame(command_buffer, renderer->Device->CurrentFrameIndex);
     }
 } // namespace Tetragrama::Layers

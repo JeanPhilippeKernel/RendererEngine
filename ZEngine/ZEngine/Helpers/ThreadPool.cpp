@@ -3,5 +3,5 @@
 
 namespace ZEngine::Helpers
 {
-    std::unique_ptr<ThreadPool> ThreadPoolHelper::m_threadPool = std::make_unique<ThreadPool>();
+    Scope<ThreadPool> ThreadPoolHelper::m_threadPool = CreateScope<ThreadPool>();
 }

@@ -29,10 +29,12 @@ using namespace ZEngine::Windows::Events;
 using namespace ZEngine::Windows;
 using namespace ZEngine::Rendering;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Hardwares;
+using namespace ZEngine::Rendering::Renderers;
 
 namespace Tetragrama
 {
-    EditorWindow::EditorWindow(const WindowConfiguration& configuration) : CoreWindow()
+    EditorWindow::EditorWindow(const WindowConfiguration& configuration) : CoreWindow(configuration)
     {
         m_property.Height = configuration.Height;
         m_property.Width  = configuration.Width;
@@ -137,7 +139,16 @@ namespace Tetragrama
 
     void EditorWindow::Initialize()
     {
-        m_swapchain = CreateRef<Rendering::Swapchain>();
+        for (const auto& layer : m_configuration.RenderingLayerCollection)
+        {
+            PushLayer(layer);
+        }
+
+        for (const auto& layer : m_configuration.OverlayLayerCollection)
+        {
+            PushOverlayLayer(layer);
+        }
+        InitializeLayer();
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
@@ -180,8 +191,6 @@ namespace Tetragrama
         {
             (*rlayer_it)->Deinitialize();
         }
-
-        m_swapchain.reset();
     }
 
     void EditorWindow::PollEvent()
@@ -365,14 +374,12 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::Render()
+    void EditorWindow::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {
-            layer->Render();
+            layer->Render(renderer, command_buffer);
         }
-
-        m_swapchain->Present();
     }
 
     std::future<std::string> EditorWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters)
@@ -433,11 +440,6 @@ namespace Tetragrama
         return outputs;
     }
 
-    Ref<Rendering::Swapchain> EditorWindow::GetSwapchain() const
-    {
-        return m_swapchain;
-    }
-
     EditorWindow::~EditorWindow()
     {
         glfwSetErrorCallback(NULL);
@@ -463,11 +465,6 @@ namespace Tetragrama
 
     bool EditorWindow::OnWindowResized(WindowResizedEvent& event)
     {
-        if (event.GetWidth() > 0 && event.GetHeight() > 0)
-        {
-            m_swapchain->Resize();
-        }
-
         ZENGINE_CORE_INFO("Window has been resized")
 
         Core::EventDispatcher event_dispatcher(event);

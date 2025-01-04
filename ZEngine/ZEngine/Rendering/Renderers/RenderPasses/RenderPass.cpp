@@ -1,8 +1,6 @@
 #include <pch.h>
-#include <Engine.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
-#include <Rendering/Textures/Texture2D.h>
 #include <fmt/format.h>
 
 using namespace ZEngine::Rendering::Buffers;
@@ -11,12 +9,13 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
-    RenderPass::RenderPass(const RenderPassSpecification& specification) : m_specification(specification)
+    RenderPass::RenderPass(Hardwares::VulkanDevice* device, const RenderPassSpecification& specification) : m_device(device), Specification(specification)
     {
-        if (m_specification.SwapchainAsRenderTarget)
+
+        if (Specification.SwapchainAsRenderTarget)
         {
-            m_specification.PipelineSpecification.Attachment = Engine::GetWindow()->GetSwapchain()->GetAttachment(); // Todo : Can potential Dispose() issue
-            m_pipeline                                       = Pipelines::GraphicPipeline::Create(m_specification.PipelineSpecification);
+            Specification.PipelineSpecification.Attachment = m_device->SwapchainAttachment; // Todo : Can potential Dispose() issue
+            Pipeline                                       = CreateRef<Pipelines::GraphicPipeline>(m_device, std::move(Specification.PipelineSpecification));
         }
         else
         {
@@ -24,16 +23,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
 
             uint32_t color_map_index = 0;
-            for (const auto& input : m_specification.Inputs)
+            for (const auto& handle : Specification.Inputs)
             {
-                bool        is_depth_texture = input->IsDepthTexture();
+                const auto& texture = device->GlobalTextures->Access(handle);
+
+                bool        is_depth_texture = texture->IsDepthTexture;
                 ImageLayout initial_layout   = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
                 ImageLayout final_layout     = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
                 ImageLayout reference_layout = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
 
-                const auto& texture_spec                                            = input->GetSpecification();
                 attachment_specification.ColorsMap[color_map_index]                 = {};
-                attachment_specification.ColorsMap[color_map_index].Format          = texture_spec.Format;
+                attachment_specification.ColorsMap[color_map_index].Format          = texture->Specification.Format;
                 attachment_specification.ColorsMap[color_map_index].Load            = LoadOperation::LOAD;
                 attachment_specification.ColorsMap[color_map_index].Store           = StoreOperation::STORE;
                 attachment_specification.ColorsMap[color_map_index].Initial         = initial_layout;
@@ -43,9 +43,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            for (const auto& output : m_specification.ExternalOutputs)
+            for (const auto& handle : Specification.ExternalOutputs)
             {
-                auto&       output_spec           = output->GetSpecification();
+                const auto& texture               = device->GlobalTextures->Access(handle);
+                auto&       output_spec           = texture->Specification;
                 bool        is_depth_image_format = (output_spec.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
                 ImageLayout initial_layout        = (output_spec.LoadOp == LoadOperation::CLEAR) ? ImageLayout::UNDEFINED
                                                     : is_depth_image_format                      ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
@@ -64,12 +65,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            m_attachment = Attachment::Create(attachment_specification);
+            Attachment                                     = CreateRef<RenderPasses::Attachment>(m_device, attachment_specification);
+            Specification.PipelineSpecification.Attachment = Attachment; // Todo : Can potential Dispose() issue
+            Pipeline                                       = CreateRef<Pipelines::GraphicPipeline>(m_device, std::move(Specification.PipelineSpecification));
 
-            m_specification.PipelineSpecification.Attachment = m_attachment; // Todo : Can potential Dispose() issue
-            m_pipeline                                       = Pipelines::GraphicPipeline::Create(m_specification.PipelineSpecification);
-
-            ResizeFramebuffer();
+            UpdateRenderTargets();
             UpdateInputBinding();
         }
     }
@@ -81,52 +81,36 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     void RenderPass::Dispose()
     {
-        for (Ref<Textures::Texture>& buffer : m_specification.ExternalOutputs)
+        for (auto& handle : Specification.ExternalOutputs)
         {
-            buffer->Dispose();
+            m_device->GlobalTextures->Remove(handle);
         }
 
-        m_pipeline->Dispose();
+        Pipeline->Dispose();
 
-        if (m_attachment)
+        if (!(Specification.SwapchainAsRenderTarget) && Attachment)
         {
-            m_attachment->Dispose();
+            Attachment->Dispose();
         }
-
-        if (m_framebuffer)
-        {
-            m_framebuffer->Dispose();
-        }
-    }
-
-    Ref<Pipelines::GraphicPipeline> RenderPass::GetPipeline() const
-    {
-        return m_pipeline;
     }
 
     void RenderPass::Bake()
     {
-        m_pipeline->Bake();
+        Pipeline->Bake();
     }
 
     bool RenderPass::Verify()
     {
-        const auto& m_layout_bindings = m_pipeline->GetShader()->GetLayoutBindingSpecificationCollection();
+        const auto& m_layout_bindings = Pipeline->GetShader()->GetLayoutBindingSpecificationCollection();
 
-        if (m_input_collection.size() != m_layout_bindings.size())
+        if (Inputs.size() != m_layout_bindings.size())
         {
-            std::unordered_set<std::string> input_names;
-            for (const auto& input : m_input_collection)
-            {
-                input_names.insert(input.DebugName);
-            }
-
             std::vector<std::string> missing_names;
             for (const auto& binding : m_layout_bindings)
             {
-                if (input_names.find(binding.Name) == input_names.end())
+                if (!Inputs.contains(binding.Name))
                 {
-                    missing_names.push_back(binding.Name);
+                    missing_names.emplace_back(binding.Name);
                 }
             }
             auto        start        = missing_names.begin();
@@ -135,92 +119,79 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 return fmt::format("{}, {}", a, b);
             });
 
-            ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", m_specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs);
+            ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", Specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs);
 
             return false;
         }
         return true;
     }
 
-    void RenderPass::Update()
+    void RenderPass::Update(uint32_t frame_index)
     {
-        if (!m_perform_update)
+        if (EnqueuedUpdateInputs.empty())
         {
             return;
         }
 
-        const uint32_t                    frame_count                     = Engine::GetWindow()->GetSwapchain()->GetImageCount();
-        const auto&                       shader                          = m_pipeline->GetShader();
-        const auto&                       descriptor_set_map              = shader->GetDescriptorSetMap();
-        std::vector<VkWriteDescriptorSet> write_descriptor_set_collection = {};
-        for (const auto& input : m_input_collection)
+        const auto& shader             = Pipeline->GetShader();
+        const auto& descriptor_set_map = shader->GetDescriptorSetMap();
+
+        for (std::string_view name : EnqueuedUpdateInputs)
         {
+            auto& input = Inputs[name.data()];
+
             switch (input.Type)
             {
                 case UNIFORM_BUFFER_SET:
                 {
-                    auto  buffer                    = reinterpret_cast<UniformBufferSet*>(input.Input.Data);
-                    auto& uniform_buffer_collection = buffer->Data();
-
-                    uint32_t index{0};
-                    for (auto& uniform_buffer : uniform_buffer_collection)
+                    if (!input.UniformBufferSetHandle)
                     {
-                        const auto& buffer_info = uniform_buffer.GetDescriptorBufferInfo();
-
-                        if (buffer_info.buffer == nullptr)
-                        {
-                            // invalid input
-                            continue;
-                        }
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[index],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                            .pImageInfo       = nullptr,
-                            .pBufferInfo      = &(buffer_info),
-                            .pTexelBufferView = nullptr});
-                        index++;
+                        continue;
                     }
+
+                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
+                        .Handle          = input.UniformBufferSetHandle.Index,
+                        .FrameIndex      = frame_index,
+                        .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
+                        .Binding         = input.Binding,
+                        .DstArrayElement = 0,
+                        .DescriptorCount = 1,
+                        .DescriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER});
                 }
                 break;
                 case STORAGE_BUFFER_SET:
                 {
-                    auto  buffer                    = reinterpret_cast<StorageBufferSet*>(input.Input.Data);
-                    auto& storage_buffer_collection = buffer->Data();
-
-                    uint32_t index{0};
-                    for (auto& storage_buffer : storage_buffer_collection)
+                    if (!input.BufferSetHandle)
                     {
-                        const auto& buffer_info = storage_buffer.GetDescriptorBufferInfo();
-
-                        if (buffer_info.buffer == nullptr)
-                        {
-                            // invalid input
-                            continue;
-                        }
-
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[index],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                            .pImageInfo       = nullptr,
-                            .pBufferInfo      = &(buffer_info),
-                            .pTexelBufferView = nullptr});
-                        index++;
+                        continue;
                     }
+
+                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
+                        .Handle          = input.BufferSetHandle.Index,
+                        .FrameIndex      = frame_index,
+                        .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
+                        .Binding         = input.Binding,
+                        .DstArrayElement = 0,
+                        .DescriptorCount = 1,
+                        .DescriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER});
                 }
                 break;
-                case TEXTURE_ARRAY:
+                case BINDLESS_TEXTURE:
                 {
-                    auto     texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
+                    auto count = m_device->GlobalTextures->Head();
+                    for (int i = 0; i < count; ++i)
+                    {
+                        EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
+                            .Handle          = i,
+                            .FrameIndex      = frame_index,
+                            .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
+                            .Binding         = input.Binding,
+                            .DstArrayElement = (uint32_t) i,
+                            .DescriptorCount = 1,
+                            .DescriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
+                    }
+
+                    /*auto     texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
                     auto&    texture_collection = texture_array->Data();
                     uint32_t slot_count         = texture_array->GetUsedSlotCount();
 
@@ -247,391 +218,222 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                                 .pBufferInfo      = nullptr,
                                 .pTexelBufferView = nullptr});
                         }
-                    }
+                    }*/
                 }
                 break;
                 case TEXTURE:
                 {
-                    auto buffer = reinterpret_cast<Textures::Texture*>(input.Input.Data);
-                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    if (!input.TextureHandle)
                     {
-                        const auto& image_info = buffer->GetDescriptorImageInfo();
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[frame_index],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                            .pImageInfo       = &(image_info),
-                            .pBufferInfo      = nullptr,
-                            .pTexelBufferView = nullptr});
+                        continue;
                     }
+
+                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
+                        .Handle          = input.TextureHandle.Index,
+                        .FrameIndex      = frame_index,
+                        .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
+                        .Binding         = input.Binding,
+                        .DstArrayElement = 0,
+                        .DescriptorCount = 1,
+                        .DescriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
                 }
                 break;
                 case UNIFORM_BUFFER:
                 {
-                    auto buffer = reinterpret_cast<UniformBuffer*>(input.Input.Data);
-                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
-                    {
-                        const auto& buffer_info = buffer->GetDescriptorBufferInfo();
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                            .pImageInfo       = nullptr,
-                            .pBufferInfo      = &(buffer_info),
-                            .pTexelBufferView = nullptr});
-                    }
+                    // auto buffer = reinterpret_cast<UniformBuffer*>(input.Input.Data);
+                    // for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    //{
+                    //     const auto& buffer_info = buffer->GetDescriptorBufferInfo();
+                    //     write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                    //         .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    //         .pNext            = nullptr,
+                    //         .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
+                    //         .dstBinding       = input.Binding,
+                    //         .dstArrayElement  = 0,
+                    //         .descriptorCount  = 1,
+                    //         .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    //         .pImageInfo       = nullptr,
+                    //         .pBufferInfo      = &(buffer_info),
+                    //         .pTexelBufferView = nullptr});
+                    // }
                 }
                 break;
                 case STORAGE_BUFFER:
                 {
-                    auto buffer = reinterpret_cast<StorageBuffer*>(input.Input.Data);
-                    for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
-                    {
-                        const auto& buffer_info = buffer->GetDescriptorBufferInfo();
-                        write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
-                            .dstBinding       = input.Binding,
-                            .dstArrayElement  = 0,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                            .pImageInfo       = nullptr,
-                            .pBufferInfo      = &(buffer_info),
-                            .pTexelBufferView = nullptr});
-                    }
+                    // auto buffer = reinterpret_cast<StorageBuffer*>(input.Input.Data);
+                    // for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+                    //{
+                    //     const auto& buffer_info = buffer->GetDescriptorBufferInfo();
+                    //     write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{
+                    //         .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    //         .pNext            = nullptr,
+                    //         .dstSet           = descriptor_set_map.at(input.Set)[frame_count],
+                    //         .dstBinding       = input.Binding,
+                    //         .dstArrayElement  = 0,
+                    //         .descriptorCount  = 1,
+                    //         .descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    //         .pImageInfo       = nullptr,
+                    //         .pBufferInfo      = &(buffer_info),
+                    //         .pTexelBufferView = nullptr});
+                    // }
                 }
                 break;
             }
         }
 
-        auto device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
-        if (!write_descriptor_set_collection.empty())
-        {
-            vkUpdateDescriptorSets(device, write_descriptor_set_collection.size(), write_descriptor_set_collection.data(), 0, nullptr);
-            m_perform_update = false;
-        }
+        EnqueuedUpdateInputs.clear();
     }
 
     void RenderPass::MarkDirty()
     {
-        m_perform_update = true;
-    }
-
-    void RenderPass::SetInput(std::string_view key_name, const Ref<UniformBufferSet>& buffer)
-    {
-        auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
+        for (const auto& [name, _] : Inputs)
         {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = buffer.get();
-                return;
-            }
-            m_input_collection.emplace_back(PassInput{
-                .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER_SET, .Input = buffer.get()});
-
-            m_perform_update = true;
+            EnqueuedUpdateInputs.insert(name);
         }
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Ref<StorageBufferSet>& buffer)
+    void RenderPass::SetInput(std::string_view key_name, const Rendering::Buffers::UniformBufferSetHandle& buffer)
     {
         auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
+        if (!validity_output.first)
         {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = buffer.get();
-                return;
-            }
-            m_input_collection.emplace_back(PassInput{
-                .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER_SET, .Input = buffer.get()});
-
-            m_perform_update = true;
+            return;
         }
+        const auto& binding_spec = validity_output.second;
+        Inputs[key_name.data()]  = PassInput{
+             .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER_SET, .UniformBufferSetHandle = buffer};
+        EnqueuedUpdateInputs.insert(key_name.data());
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Ref<Textures::TextureArray>& textures)
+    void RenderPass::SetInput(std::string_view key_name, const Rendering::Buffers::StorageBufferSetHandle& buffer)
     {
         auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
+        if (!validity_output.first)
         {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = textures.get();
-                return;
-            }
-            m_input_collection.emplace_back(
-                PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE_ARRAY, .Input = textures.get()});
-
-            m_perform_update = true;
+            return;
         }
+        const auto& binding_spec = validity_output.second;
+        Inputs[key_name.data()]  = PassInput{
+             .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER_SET, .BufferSetHandle = buffer};
+
+        EnqueuedUpdateInputs.insert(key_name.data());
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Ref<UniformBuffer>& buffer)
+    void RenderPass::SetInput(std::string_view key_name, const Textures::TextureHandle& texture)
     {
         auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
+        if (!validity_output.first)
         {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = buffer.get();
-                return;
-            }
-            m_input_collection.emplace_back(
-                PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER, .Input = buffer.get()});
-
-            m_perform_update = true;
+            return;
         }
+
+        const auto& binding_spec = validity_output.second;
+        Inputs[key_name.data()] =
+            PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE, .TextureHandle = texture};
+
+        EnqueuedUpdateInputs.insert(key_name.data());
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Ref<StorageBuffer>& buffer)
+    void RenderPass::SetBindlessInput(std::string_view key_name)
     {
         auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
+        if (!validity_output.first)
         {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = buffer.get();
-                return;
-            }
-            m_input_collection.emplace_back(
-                PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER, .Input = buffer.get()});
-
-            m_perform_update = true;
+            return;
         }
-    }
+        const auto& binding_spec = validity_output.second;
+        Inputs[key_name.data()]  = PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::BINDLESS_TEXTURE};
 
-    void RenderPass::SetInput(std::string_view key_name, const Ref<Textures::Texture>& buffer)
-    {
-        auto validity_output = ValidateInput(key_name);
-        if (validity_output.first)
-        {
-            const auto& binding_spec = validity_output.second;
-            auto        find_it      = std::find_if(std::begin(m_input_collection), std::end(m_input_collection), [&](const auto& input) {
-                return (input.Set == binding_spec.Set) && (input.Binding == binding_spec.Binding);
-            });
-
-            if (find_it != std::end(m_input_collection))
-            {
-                find_it->Input.Data = buffer.get();
-                return;
-            }
-            m_input_collection.emplace_back(
-                PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE, .Input = buffer.get()});
-
-            m_perform_update = true;
-        }
+        EnqueuedUpdateInputs.insert(key_name.data());
     }
 
     void RenderPass::UpdateInputBinding()
     {
-        for (auto& [binding_name, texture] : m_specification.InputTextures)
+        for (auto& [binding_name, texture] : Specification.InputTextures)
         {
             SetInput(binding_name, texture);
         }
     }
 
-    Ref<Textures::Texture> RenderPass::GetOutputColor(uint32_t color_index)
+    void RenderPass::UpdateRenderTargets()
     {
-        if (m_specification.ExternalOutputs.empty())
-        {
-            return nullptr;
-        }
-        return m_specification.ExternalOutputs.at(color_index);
-    }
+        RenderTargets.clear();
 
-    Ref<Textures::Texture> RenderPass::GetOutputDepth()
-    {
-        Ref<Textures::Texture> depth = {};
-
-        for (auto& texture : m_specification.ExternalOutputs)
+        uint32_t width  = 0;
+        uint32_t height = 0;
+        for (const auto& input : Specification.Inputs)
         {
-            if (texture->IsDepthTexture())
+            auto texture = m_device->GlobalTextures->Access(input);
+
+            if (width == 0)
             {
-                depth = texture;
-            }
-        }
-        return depth;
-    }
-
-    void RenderPass::ResizeFramebuffer()
-    {
-        if (m_framebuffer)
-        {
-            m_framebuffer->Dispose();
-        }
-
-        uint32_t                 framebuffer_width             = 0;
-        uint32_t                 framebuffer_height            = 0;
-        std::vector<VkImageView> render_target_view_collection = {};
-
-        for (const auto& input : m_specification.Inputs)
-        {
-            auto width = input->GetWidth();
-            if (framebuffer_width == 0)
-            {
-                framebuffer_width = width;
+                width = texture->Width;
             }
             else
             {
-                ZENGINE_VALIDATE_ASSERT(framebuffer_width == width, "Render Target Width is invalid for Framebuffer creation")
+                ZENGINE_VALIDATE_ASSERT(width == texture->Width, "Render Target Width is invalid for Framebuffer creation")
             }
 
-            auto height = input->GetHeight();
-            if (framebuffer_height == 0)
+            if (height == 0)
             {
-                framebuffer_height = height;
+                height = texture->Height;
             }
             else
             {
-                ZENGINE_VALIDATE_ASSERT(framebuffer_height == height, "Render Target Height is invalid for Framebuffer creation")
+                ZENGINE_VALIDATE_ASSERT(height == texture->Height, "Render Target Height is invalid for Framebuffer creation")
             }
 
-            render_target_view_collection.emplace_back(input->GetBuffer().ViewHandle);
+            RenderTargets.emplace_back(input.Index);
         }
 
-        for (const auto& output : m_specification.ExternalOutputs)
+        for (const auto& output : Specification.ExternalOutputs)
         {
-            auto width = output->GetWidth();
-            if (framebuffer_width == 0)
+            auto texture = m_device->GlobalTextures->Access(output);
+
+            if (width == 0)
             {
-                framebuffer_width = width;
+                width = texture->Width;
             }
             else
             {
-                ZENGINE_VALIDATE_ASSERT(framebuffer_width == width, "Render Target Width is invalid for Framebuffer creation")
+                ZENGINE_VALIDATE_ASSERT(width == texture->Width, "Render Target Width is invalid for Framebuffer creation")
             }
 
-            auto height = output->GetHeight();
-            if (framebuffer_height == 0)
+            if (height == 0)
             {
-                framebuffer_height = height;
+                height = texture->Height;
             }
             else
             {
-                ZENGINE_VALIDATE_ASSERT(framebuffer_height == height, "Render Target Height is invalid for Framebuffer creation")
+                ZENGINE_VALIDATE_ASSERT(height == texture->Height, "Render Target Height is invalid for Framebuffer creation")
             }
 
-            render_target_view_collection.emplace_back(output->GetBuffer().ViewHandle);
+            RenderTargets.emplace_back(output.Index);
         }
 
-        Specifications::FrameBufferSpecificationVNext framebuffer_spec = {};
-        framebuffer_spec.Width                                         = framebuffer_width;
-        framebuffer_spec.Height                                        = framebuffer_height;
-        framebuffer_spec.RenderTargetViews                             = std::move(render_target_view_collection);
-        framebuffer_spec.Attachment                                    = m_attachment;
-        m_framebuffer                                                  = Buffers::FramebufferVNext::Create(framebuffer_spec);
-    }
-
-    const Specifications::RenderPassSpecification& RenderPass::GetSpecification() const
-    {
-        return m_specification;
-    }
-
-    Specifications::RenderPassSpecification& RenderPass::GetSpecification()
-    {
-        return m_specification;
+        RenderAreaWidth  = width;
+        RenderAreaHeight = height;
     }
 
     Ref<Renderers::RenderPasses::Attachment> RenderPass::GetAttachment() const
     {
-        if (m_specification.SwapchainAsRenderTarget)
-        {
-            return Engine::GetWindow()->GetSwapchain()->GetAttachment();
-        }
-        else
-        {
-            return m_attachment;
-        }
-    }
-
-    VkFramebuffer RenderPass::GetFramebuffer() const
-    {
-        VkFramebuffer output = VK_NULL_HANDLE;
-
-        if (m_specification.SwapchainAsRenderTarget)
-        {
-            output = Engine::GetWindow()->GetSwapchain()->GetCurrentFramebuffer();
-        }
-        else
-        {
-            ZENGINE_VALIDATE_ASSERT(m_framebuffer, "Framebuffer can't be null")
-            output = m_framebuffer->GetHandle();
-        }
-        return output;
+        return Specification.SwapchainAsRenderTarget ? m_device->SwapchainAttachment : Attachment;
     }
 
     uint32_t RenderPass::GetRenderAreaWidth() const
     {
-        if (m_specification.SwapchainAsRenderTarget)
-        {
-            return Engine::GetWindow()->GetWidth();
-        }
-        else
-        {
-            ZENGINE_VALIDATE_ASSERT(m_framebuffer, "Framebuffer can't be null")
-            return m_framebuffer->GetWidth();
-        }
+        return Specification.SwapchainAsRenderTarget ? m_device->SwapchainImageWidth : RenderAreaWidth;
     }
 
     uint32_t RenderPass::GetRenderAreaHeight() const
     {
-        if (m_specification.SwapchainAsRenderTarget)
-        {
-            return Engine::GetWindow()->GetHeight();
-        }
-        else
-        {
-            ZENGINE_VALIDATE_ASSERT(m_framebuffer, "Framebuffer can't be null")
-            return m_framebuffer->GetHeight();
-        }
-    }
-
-    Ref<RenderPass> RenderPass::Create(const RenderPassSpecification& specification)
-    {
-        Ref<RenderPass> render_pass = CreateRef<RenderPass>(specification);
-        return render_pass;
+        return Specification.SwapchainAsRenderTarget ? m_device->SwapchainImageHeight : RenderAreaHeight;
     }
 
     std::pair<bool, Specifications::LayoutBindingSpecification> RenderPass::ValidateInput(std::string_view key)
     {
         bool        valid{true};
-        const auto& shader       = m_pipeline->GetShader();
+        const auto& shader       = Pipeline->GetShader();
         auto        binding_spec = shader->GetLayoutBindingSpecification(key);
         if ((binding_spec.Set == 0xFFFFFFFF) && (binding_spec.Binding == 0xFFFFFFFF))
         {
@@ -665,6 +467,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     RenderPassBuilder& RenderPassBuilder::EnablePipelineDepthWrite(bool value)
     {
         m_spec.PipelineSpecification.EnableDepthWrite = value;
+        return *this;
+    }
+
+    RenderPassBuilder& RenderPassBuilder::PipelineDepthCompareOp(uint32_t value)
+    {
+        m_spec.PipelineSpecification.DepthCompareOp = value;
         return *this;
     }
 
@@ -741,7 +549,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
-    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Ref<Rendering::Textures::Texture>& target)
+    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Textures::TextureHandle& target)
     {
         m_spec.ExternalOutputs.push_back(target);
         return *this;
@@ -753,13 +561,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
-    RenderPassBuilder& RenderPassBuilder::AddInputAttachment(const Ref<Rendering::Textures::Texture>& input)
+    RenderPassBuilder& RenderPassBuilder::AddInputAttachment(const Textures::TextureHandle& input)
     {
         m_spec.Inputs.push_back(input);
         return *this;
     }
 
-    RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Ref<Rendering::Textures::Texture>& input)
+    RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Textures::TextureHandle& input)
     {
         m_spec.InputTextures[key.data()] = input;
         return *this;
@@ -771,10 +579,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
-    Ref<RenderPass> RenderPassBuilder::Create()
+    Specifications::RenderPassSpecification RenderPassBuilder::Detach()
     {
-        auto pass = RenderPass::Create(m_spec);
-        m_spec    = {};
-        return pass;
+        RenderPassSpecification spec{};
+        std::swap(spec, m_spec);
+        return spec;
     }
 } // namespace ZEngine::Rendering::Renderers::RenderPasses

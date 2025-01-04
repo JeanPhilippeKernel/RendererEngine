@@ -30,19 +30,22 @@ namespace Tetragrama::Components
     {
         if ((m_viewport_size.x != m_content_region_available_size.x) || (m_viewport_size.y != m_content_region_available_size.y))
         {
-            m_viewport_size           = m_content_region_available_size;
-            m_request_renderer_resize = true;
+            if (!m_is_resizing)
+            {
+                m_is_resizing = true;
+            }
+
+            m_viewport_size    = m_content_region_available_size;
+            m_idle_frame_count = 0;
         }
-
-        if (m_request_renderer_resize)
+        else if (m_is_resizing)
         {
-            GraphicRenderer::SetViewportSize(m_viewport_size.x, m_viewport_size.y);
-            m_refresh_texture_handle = true;
-
-            Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
-                EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
-
-            m_request_renderer_resize = false;
+            m_idle_frame_count++;
+            if (m_idle_frame_count >= m_idle_frame_threshold)
+            {
+                m_is_resizing             = false;
+                m_request_renderer_resize = true;
+            }
         }
 
         if (m_is_window_hovered && m_is_window_focused)
@@ -70,13 +73,12 @@ namespace Tetragrama::Components
         }
     }
 
-    void SceneViewportUIComponent::Render()
+    void SceneViewportUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
 
-        auto viewport_offset = ImGui::GetCursorPos();
-
+        auto viewport_offset            = ImGui::GetCursorPos();
         m_content_region_available_size = ImGui::GetContentRegionAvail();
         m_is_window_focused             = ImGui::IsWindowFocused();
         m_is_window_hovered             = ImGui::IsWindowHovered();
@@ -85,7 +87,7 @@ namespace Tetragrama::Components
         // Scene texture representation
         if (!m_scene_texture || m_refresh_texture_handle)
         {
-            m_scene_texture          = GraphicRenderer::GetImguiFrameOutput();
+            m_scene_texture          = renderer->GetImguiFrameOutput();
             m_refresh_texture_handle = false;
         }
 
@@ -109,6 +111,17 @@ namespace Tetragrama::Components
         ImGui::End();
 
         ImGui::PopStyleVar();
+
+        if (m_request_renderer_resize)
+        {
+            renderer->EnqueuedResizeRequests.Emplace({.Width = (uint32_t) m_viewport_size.x, .Height = (uint32_t) m_viewport_size.y});
+            m_refresh_texture_handle = true;
+
+            Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
+                EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, Messengers::GenericMessage<std::pair<float, float>>{{m_viewport_size.x, m_viewport_size.y}});
+
+            m_request_renderer_resize = false;
+        }
     }
 
     std::future<void> SceneViewportUIComponent::SceneViewportClickedMessageHandlerAsync(Messengers::ArrayValueMessage<int, 2>& e)
