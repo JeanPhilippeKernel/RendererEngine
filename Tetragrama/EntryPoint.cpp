@@ -12,12 +12,12 @@ static void ConfigureWorkingSpace(nlohmann::json& config, std::string_view ws_pa
     if (working_space_path == ".")
     {
         std::string_view lookup_key("$(workingSpace)");
-        size_t           length = lookup_key.size();
+        size_t           length          = lookup_key.size();
 
-        auto& texture_path    = config["defaultImportDir"]["textureDir"];
-        auto& sound_path      = config["defaultImportDir"]["soundDir"];
-        auto& scene_path      = config["sceneDir"];
-        auto& scene_data_path = config["sceneDataDir"];
+        auto&            texture_path    = config["defaultImportDir"]["textureDir"];
+        auto&            sound_path      = config["defaultImportDir"]["soundDir"];
+        auto&            scene_path      = config["sceneDir"];
+        auto&            scene_data_path = config["sceneDataDir"];
 
         if (texture_path.get<std::string>().find(lookup_key) != std::string::npos)
         {

@@ -23,9 +23,9 @@ namespace ZEngine::Rendering::Shaders::Compilers
          */
         virtual std::future<void> RunAsync(ShaderInformation& information) override;
 
-        EShLanguage GetEShLanguage(const ShaderType type);
+        EShLanguage               GetEShLanguage(const ShaderType type);
 
-        void SetShaderRules(glslang::TShader& shader, ShaderInformation& information_list, TBuiltInResource& Resources);
+        void                      SetShaderRules(glslang::TShader& shader, ShaderInformation& information_list, TBuiltInResource& Resources);
     };
 
     class GlslangInitializer
@@ -40,13 +40,13 @@ namespace ZEngine::Rendering::Shaders::Compilers
             }
         }
 
-        GlslangInitializer(const GlslangInitializer&)            = delete;
-        GlslangInitializer& operator=(const GlslangInitializer&) = delete;
+        GlslangInitializer(const GlslangInitializer&)                = delete;
+        GlslangInitializer& operator=(const GlslangInitializer&)     = delete;
 
         GlslangInitializer(GlslangInitializer&&) noexcept            = default;
         GlslangInitializer& operator=(GlslangInitializer&&) noexcept = default;
 
-        bool isSuccess() const
+        bool                isSuccess() const
         {
             return initSuccess;
         }

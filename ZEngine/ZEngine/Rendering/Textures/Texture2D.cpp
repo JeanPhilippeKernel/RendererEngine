@@ -41,7 +41,7 @@ namespace ZEngine::Rendering::Textures
 {
     Ref<Texture2D> Texture2D::Read(std::string_view filename)
     {
-        int width = 0, height = 0, channel = 0;
+        int      width = 0, height = 0, channel = 0;
         // stbi_set_flip_vertically_on_load(1);
         stbi_uc* image_data = stbi_load(filename.data(), &width, &height, &channel, STBI_rgb_alpha);
 
@@ -78,14 +78,14 @@ namespace ZEngine::Rendering::Textures
         /*
          * post processing to convert the image from RGB to RBGA
          */
-        channel = (channel == STBI_rgb) ? STBI_rgb_alpha : channel;
+        channel                 = (channel == STBI_rgb) ? STBI_rgb_alpha : channel;
         std::vector<float> output_buffer(width * height * channel);
         // stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, channel);
         stbi_image_free((void*) image_data);
 
-        Buffers::Bitmap in             = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};
-        Buffers::Bitmap vertical_cross = Buffers::Bitmap::EquirectangularMapToVerticalCross(in);
-        Buffers::Bitmap cubemap        = Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
+        Buffers::Bitmap                      in                   = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};
+        Buffers::Bitmap                      vertical_cross       = Buffers::Bitmap::EquirectangularMapToVerticalCross(in);
+        Buffers::Bitmap                      cubemap              = Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
 
         Specifications::TextureSpecification cubemap_texture_spec = {};
         cubemap_texture_spec.IsCubemap                            = true;
@@ -124,14 +124,14 @@ namespace ZEngine::Rendering::Textures
 
     Ref<Texture2D> Texture2D::Create(uint32_t width, uint32_t height)
     {
-        unsigned char image_data[] = {255, 255, 255, 255, '\0'};
+        unsigned char                        image_data[] = {255, 255, 255, 255, '\0'};
 
-        Specifications::TextureSpecification spec = {};
-        spec.Width                                = width;
-        spec.Height                               = height;
-        spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
-        spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-        spec.Data                                 = image_data;
+        Specifications::TextureSpecification spec         = {};
+        spec.Width                                        = width;
+        spec.Height                                       = height;
+        spec.Format                                       = Specifications::ImageFormat::R8G8B8A8_SRGB;
+        spec.BytePerPixel                                 = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
+        spec.Data                                         = image_data;
         return Create(spec);
     }
 

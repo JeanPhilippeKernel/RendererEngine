@@ -14,7 +14,7 @@ namespace ZEngine::Managers
 
     Ref<Rendering::Textures::Texture> CoreTextureManager::Add(const char* name, const char* filename)
     {
-        const auto key = std::string(name).append(m_suffix);
+        const auto key   = std::string(name).append(m_suffix);
 
         const auto found = IManager::Exists(key);
         if (found.first)
@@ -32,7 +32,7 @@ namespace ZEngine::Managers
 
     Ref<Rendering::Textures::Texture> CoreTextureManager::Add(const char* name, unsigned int width, unsigned int height)
     {
-        const auto key = std::string(name).append(m_suffix);
+        const auto key   = std::string(name).append(m_suffix);
 
         const auto found = IManager::Exists(key);
         if (found.first)
@@ -55,7 +55,7 @@ namespace ZEngine::Managers
         return Add(reinterpret_cast<const char*>(name.u8string().c_str()), filename);
     }
 
-    Scope<CoreTextureManager> TextureManager::m_texture_manager = CreateScope<CoreTextureManager>();
+    Scope<CoreTextureManager>         TextureManager::m_texture_manager = CreateScope<CoreTextureManager>();
 
     Ref<Rendering::Textures::Texture> TextureManager::Add(std::string_view name, std::string_view filename)
     {

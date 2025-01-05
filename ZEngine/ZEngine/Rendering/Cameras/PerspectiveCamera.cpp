@@ -5,13 +5,9 @@
 namespace ZEngine::Rendering::Cameras
 {
 
-    PerspectiveCamera::PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far)
-        : PerspectiveCamera(field_of_view, aspect_ratio, clip_near, clip_far, 0, 0)
-    {
-    }
+    PerspectiveCamera::PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far) : PerspectiveCamera(field_of_view, aspect_ratio, clip_near, clip_far, 0, 0) {}
 
-    PerspectiveCamera::PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad, float pitch_rad)
-        : m_yaw_angle(yaw_rad), m_pitch_angle(pitch_rad)
+    PerspectiveCamera::PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad, float pitch_rad) : m_yaw_angle(yaw_rad), m_pitch_angle(pitch_rad)
     {
         Fov         = glm::radians(field_of_view);
         AspectRatio = aspect_ratio;
@@ -43,14 +39,14 @@ namespace ZEngine::Rendering::Cameras
         {
             if (Movement.MousePan)
             {
-                auto [xSpeed, ySpeed] = PanSpeed();
-                Target += -GetRight() * delta.x * xSpeed * static_cast<float>(m_distance);
-                Target += GetUp() * delta.y * ySpeed * static_cast<float>(m_distance);
+                auto [xSpeed, ySpeed]  = PanSpeed();
+                Target                += -GetRight() * delta.x * xSpeed * static_cast<float>(m_distance);
+                Target                += GetUp() * delta.y * ySpeed * static_cast<float>(m_distance);
             }
             if (Movement.MouseRotate)
             {
-                float yawSign = GetUp().y < 0 ? -1.0f : 1.0f;
-                m_yaw_angle += yawSign * m_mouse_speed * delta.x;
+                float yawSign  = GetUp().y < 0 ? -1.0f : 1.0f;
+                m_yaw_angle   += yawSign * m_mouse_speed * delta.x;
                 m_pitch_angle += m_mouse_speed * delta.y;
             }
 
@@ -64,13 +60,13 @@ namespace ZEngine::Rendering::Cameras
 
     void PerspectiveCamera::Zoom(float delta)
     {
-        float distance = m_distance * 0.2f;
-        distance       = std::max(distance, 0.0f);
-        float speed    = distance * distance;
-        speed          = std::min(speed, 100.0f);
+        float distance  = m_distance * 0.2f;
+        distance        = std::max(distance, 0.0f);
+        float speed     = distance * distance;
+        speed           = std::min(speed, 100.0f);
 
-        m_distance -= delta * speed;
-        m_distance = glm::clamp(static_cast<float>(m_distance), 3.0f, ClipFar);
+        m_distance     -= delta * speed;
+        m_distance      = glm::clamp(static_cast<float>(m_distance), 3.0f, ClipFar);
     }
 
     void PerspectiveCamera::SetDistance(double distance)
@@ -112,12 +108,12 @@ namespace ZEngine::Rendering::Cameras
          * Unlike the article, for our implementation we decided to use have the y-axis Up.
          * For future Gfx API we may want to revisit/adapt it.
          */
-        glm::mat4 I = glm::identity<glm::mat4>();
-        I[2][2]     = -1;
+        glm::mat4 I              = glm::identity<glm::mat4>();
+        I[2][2]                  = -1;
 
-        float inv_a          = m_viewport_height / m_viewport_width;
-        float tan_half_fov   = glm::tan(Fov / 2);
-        float far_minus_near = ClipFar - ClipNear;
+        float     inv_a          = m_viewport_height / m_viewport_width;
+        float     tan_half_fov   = glm::tan(Fov / 2);
+        float     far_minus_near = ClipFar - ClipNear;
 
         glm::mat4 P(0);
         P[0][0] = (inv_a / tan_half_fov);

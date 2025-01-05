@@ -8,9 +8,9 @@ namespace fs = std::filesystem;
 
 std::filesystem::path directoryPath("Shaders");
 
-void copyFiles()
+void                  copyFiles()
 {
-    std::filesystem::path rootPath = std::filesystem::current_path().parent_path().parent_path().parent_path();
+    std::filesystem::path rootPath   = std::filesystem::current_path().parent_path().parent_path().parent_path();
 
     std::filesystem::path sourcePath = rootPath / "Resources/Shaders";
     std::filesystem::create_directories(directoryPath);

@@ -77,14 +77,14 @@ namespace ZEngine::Hardwares
 
     struct CommandBufferManager
     {
-        void                               Initialize(VulkanDevice* device, uint8_t swapchain_image_count = 3, int thread_count = 1);
-        void                               Deinitialize();
-        Rendering::Buffers::CommandBuffer* GetCommandBuffer(uint8_t frame_index, bool begin = true);
-        Rendering::Buffers::CommandBuffer* GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin = true);
-        void                               EndInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer, VulkanDevice* const device, int wait_flag = 0);
-        Rendering::Pools::CommandPool*     GetCommandPool(Rendering::QueueType type, uint8_t frame_index);
-        int                                GetPoolFromIndex(Rendering::QueueType type, uint8_t index);
-        void                               ResetPool(int frame_index);
+        void                                                         Initialize(VulkanDevice* device, uint8_t swapchain_image_count = 3, int thread_count = 1);
+        void                                                         Deinitialize();
+        Rendering::Buffers::CommandBuffer*                           GetCommandBuffer(uint8_t frame_index, bool begin = true);
+        Rendering::Buffers::CommandBuffer*                           GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin = true);
+        void                                                         EndInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer, VulkanDevice* const device, int wait_flag = 0);
+        Rendering::Pools::CommandPool*                               GetCommandPool(Rendering::QueueType type, uint8_t frame_index);
+        int                                                          GetPoolFromIndex(Rendering::QueueType type, uint8_t index);
+        void                                                         ResetPool(int frame_index);
 
         VulkanDevice*                                                Device                  = nullptr;
         const int                                                    MaxBufferPerPool        = 4;
@@ -152,60 +152,42 @@ namespace ZEngine::Hardwares
         std::atomic_uint                                             IdleFrameThreshold                = SwapchainImageCount * 3;
         std::condition_variable                                      DirtyCollectorCond                = {};
         std::mutex                                                   DirtyMutex                        = {};
+        Windows::CoreWindow*                                         CurrentWindow                     = nullptr;
 
-        void Initialize(const Helpers::Ref<Windows::CoreWindow>& window);
-        void Deinitialize();
-        void Dispose();
-        bool QueueSubmit(
-            const VkPipelineStageFlags               wait_stage_flag,
-            Rendering::Buffers::CommandBuffer* const command_buffer,
-            Rendering::Primitives::Semaphore* const  signal_semaphore = nullptr,
-            Rendering::Primitives::Fence* const      fence            = nullptr);
-        void                            EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
-        void                            EnqueueForDeletion(Rendering::DeviceResourceType resource_type, DirtyResource resource);
-        void                            EnqueueBufferForDeletion(Rendering::Buffers::BufferView& buffer);
-        void                            EnqueueBufferImageForDeletion(Rendering::Buffers::BufferImage& buffer);
-        QueueView                       GetQueue(Rendering::QueueType type);
-        void                            QueueWait(Rendering::QueueType type);
-        void                            QueueWaitAll();
-        void                            MapAndCopyToMemory(Rendering::Buffers::BufferView& buffer, size_t data_size, const void* data);
-        Rendering::Buffers::BufferView  CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags = 0);
-        void                            CopyBuffer(const Rendering::Buffers::BufferView& source, const Rendering::Buffers::BufferView& destination, VkDeviceSize byte_size);
-        Rendering::Buffers::BufferImage CreateImage(
-            uint32_t              width,
-            uint32_t              height,
-            VkImageType           image_type,
-            VkImageViewType       image_view_type,
-            VkFormat              image_format,
-            VkImageTiling         image_tiling,
-            VkImageLayout         image_initial_layout,
-            VkImageUsageFlags     image_usage,
-            VkSharingMode         image_sharing_mode,
-            VkSampleCountFlagBits image_sample_count,
-            VkMemoryPropertyFlags requested_properties,
-            VkImageAspectFlagBits image_aspect_flag,
-            uint32_t              layer_count           = 1U,
-            VkImageCreateFlags    image_create_flag_bit = 0);
-        VkSampler     CreateImageSampler();
-        VkFormat      FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
-        VkFormat      FindDepthFormat();
-        VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
-        VkFramebuffer CreateFramebuffer(const std::vector<VkImageView>& attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1);
-        void          CreateSwapchain();
-        void          ResizeSwapchain();
-        void          DisposeSwapchain();
-        void          NewFrame();
-        void          Present();
-        void          IncrementFrameImageCount();
-        Rendering::Buffers::CommandBuffer* GetCommandBuffer(bool begin = true);
-        Rendering::Buffers::CommandBuffer* GetInstantCommandBuffer(Rendering::QueueType type, bool begin = true);
-        void                               EnqueueInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer, int wait_flag = 0);
-        void                               EnqueueCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer);
+        void                                                         Initialize(const Helpers::Ref<Windows::CoreWindow>& window);
+        void                                                         Deinitialize();
+        void                                                         Dispose();
+        bool                                                         QueueSubmit(const VkPipelineStageFlags wait_stage_flag, Rendering::Buffers::CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
+        void                                                         EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
+        void                                                         EnqueueForDeletion(Rendering::DeviceResourceType resource_type, DirtyResource resource);
+        void                                                         EnqueueBufferForDeletion(Rendering::Buffers::BufferView& buffer);
+        void                                                         EnqueueBufferImageForDeletion(Rendering::Buffers::BufferImage& buffer);
+        QueueView                                                    GetQueue(Rendering::QueueType type);
+        void                                                         QueueWait(Rendering::QueueType type);
+        void                                                         QueueWaitAll();
+        void                                                         MapAndCopyToMemory(Rendering::Buffers::BufferView& buffer, size_t data_size, const void* data);
+        Rendering::Buffers::BufferView                               CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags = 0);
+        void                                                         CopyBuffer(const Rendering::Buffers::BufferView& source, const Rendering::Buffers::BufferView& destination, VkDeviceSize byte_size);
+        Rendering::Buffers::BufferImage                              CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, VkImageCreateFlags image_create_flag_bit = 0);
+        VkSampler                                                    CreateImageSampler();
+        VkFormat                                                     FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
+        VkFormat                                                     FindDepthFormat();
+        VkImageView                                                  CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
+        VkFramebuffer                                                CreateFramebuffer(const std::vector<VkImageView>& attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1);
+        void                                                         CreateSwapchain();
+        void                                                         ResizeSwapchain();
+        void                                                         DisposeSwapchain();
+        void                                                         NewFrame();
+        void                                                         Present();
+        void                                                         IncrementFrameImageCount();
+        Rendering::Buffers::CommandBuffer*                           GetCommandBuffer(bool begin = true);
+        Rendering::Buffers::CommandBuffer*                           GetInstantCommandBuffer(Rendering::QueueType type, bool begin = true);
+        void                                                         EnqueueInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer, int wait_flag = 0);
+        void                                                         EnqueueCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer);
 
-        void DirtyCollector();
+        void                                                         DirtyCollector();
 
     private:
-        Windows::CoreWindow*                                    m_window{nullptr};
         VulkanLayer                                             m_layer{};
         CommandBufferManager                                    m_buffer_manager{};
         std::map<Rendering::QueueType, VkQueue>                 m_queue_map{};
@@ -218,10 +200,6 @@ namespace ZEngine::Hardwares
         void                                                    __cleanupDirtyResource();
         void                                                    __cleanupBufferDirtyResource();
         void                                                    __cleanupBufferImageDirtyResource();
-        static VKAPI_ATTR VkBool32 VKAPI_CALL                   __debugCallback(
-                              VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-                              VkDebugUtilsMessageTypeFlagsEXT             messageType,
-                              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                              void*                                       pUserData);
+        static VKAPI_ATTR VkBool32 VKAPI_CALL                   __debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
     };
 } // namespace ZEngine::Hardwares

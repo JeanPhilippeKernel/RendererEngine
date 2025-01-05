@@ -12,7 +12,7 @@ namespace ZEngine
     static Helpers::Scope<Rendering::Renderers::GraphicRenderer> g_renderer       = Helpers::CreateScope<Rendering::Renderers::GraphicRenderer>();
     static Helpers::Scope<Hardwares::VulkanDevice>               g_device         = Helpers::CreateScope<Hardwares::VulkanDevice>();
 
-    void Engine::Initialize(const EngineConfiguration& engine_configuration, const Helpers::Ref<ZEngine::Windows::CoreWindow>& window)
+    void                                                         Engine::Initialize(const EngineConfiguration& engine_configuration, const Helpers::Ref<ZEngine::Windows::CoreWindow>& window)
     {
         g_current_window = window;
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
@@ -86,7 +86,7 @@ namespace ZEngine
             }
             g_device->NewFrame();
             {
-                auto buffer = g_device->GetCommandBuffer(true);
+                auto buffer = g_device->GetCommandBuffer();
 
                 /*On Render*/
                 window->Render(g_renderer.get(), buffer);

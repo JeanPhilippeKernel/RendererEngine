@@ -69,7 +69,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
         TBuiltInResource Resources = DefaultTBuiltInResource;
         SetShaderRules(shader, information_list, Resources);
-        EShMessages messages = (EShMessages) (EShMsgSpvRules | EShMsgVulkanRules);
+        EShMessages messages     = (EShMessages) (EShMsgSpvRules | EShMsgVulkanRules);
 
         const char* shaderSource = information_list.Source.c_str();
         shader.setStrings(&shaderSource, 1);

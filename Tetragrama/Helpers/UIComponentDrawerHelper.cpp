@@ -4,12 +4,7 @@
 namespace Tetragrama::Helpers
 {
 
-    void DrawVec4Control(
-        std::string_view                                     label,
-        ZEngine::Maths::Vector4&                             values,
-        const std::function<void(ZEngine::Maths::Vector4&)>& callback,
-        float                                                default_value,
-        float                                                column_width)
+    void DrawVec4Control(std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback, float default_value, float column_width)
     {
         ImGuiIO& io                = ImGui::GetIO();
         auto     default_bold_font = io.Fonts->Fonts[0];
@@ -136,12 +131,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawVec3Control(
-        std::string_view                                     label,
-        ZEngine::Maths::Vector3&                             values,
-        const std::function<void(ZEngine::Maths::Vector3&)>& callback,
-        float                                                default_value,
-        float                                                column_width)
+    void DrawVec3Control(std::string_view label, ZEngine::Maths::Vector3& values, const std::function<void(ZEngine::Maths::Vector3&)>& callback, float default_value, float column_width)
     {
         ImGuiIO& io                = ImGui::GetIO();
         auto     default_bold_font = io.Fonts->Fonts[0];
@@ -244,12 +234,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawVec2Control(
-        std::string_view                                     label,
-        ZEngine::Maths::Vector2&                             values,
-        const std::function<void(ZEngine::Maths::Vector2&)>& callback,
-        float                                                default_value,
-        float                                                column_width)
+    void DrawVec2Control(std::string_view label, ZEngine::Maths::Vector2& values, const std::function<void(ZEngine::Maths::Vector2&)>& callback, float default_value, float column_width)
     {
         ImGuiIO& io                = ImGui::GetIO();
         auto     default_bold_font = io.Fonts->Fonts[0];
@@ -359,15 +344,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawDragFloatControl(
-        std::string_view                  label,
-        float                             value,
-        float                             increment_speed,
-        float                             min_value,
-        float                             max_value,
-        std::string_view                  fmt,
-        const std::function<void(float)>& callback,
-        float                             column_width)
+    void DrawDragFloatControl(std::string_view label, float value, float increment_speed, float min_value, float max_value, std::string_view fmt, const std::function<void(float)>& callback, float column_width)
     {
         ImGui::PushID(label.data(), (label.data() + label.size()));
         ImGui::Columns(2);
@@ -419,12 +396,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawColorEdit4Control(
-        std::string_view                                     label,
-        ZEngine::Maths::Vector4&                             values,
-        const std::function<void(ZEngine::Maths::Vector4&)>& callback,
-        float                                                default_value,
-        float                                                column_width)
+    void DrawColorEdit4Control(std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback, float default_value, float column_width)
     {
         ImGui::PushID(label.data(), (label.data() + label.size()));
 
@@ -451,12 +423,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawColorEdit3Control(
-        std::string_view                                     label,
-        ZEngine::Maths::Vector3&                             values,
-        const std::function<void(ZEngine::Maths::Vector3&)>& callback,
-        float                                                default_value,
-        float                                                column_width)
+    void DrawColorEdit3Control(std::string_view label, ZEngine::Maths::Vector3& values, const std::function<void(ZEngine::Maths::Vector3&)>& callback, float default_value, float column_width)
     {
         ImGui::PushID(label.data(), (label.data() + label.size()));
 
@@ -483,14 +450,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawTextureColorControl(
-        std::string_view                                     label,
-        ImTextureID                                          texture_id,
-        ZEngine::Maths::Vector4&                             tint_color,
-        bool                                                 enable_zoom,
-        const std::function<void(void)>&                     image_click_callback,
-        const std::function<void(ZEngine::Maths::Vector4&)>& tint_color_change_callback,
-        float                                                column_width)
+    void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Maths::Vector4& tint_color, bool enable_zoom, const std::function<void(void)>& image_click_callback, const std::function<void(ZEngine::Maths::Vector4&)>& tint_color_change_callback, float column_width)
     {
         ImGui::PushID(label.data(), (label.data() + label.size()));
         ImGui::Columns(2);
@@ -557,7 +517,7 @@ namespace Tetragrama::Helpers
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{2, 2});
         float line_height = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
 
-        bool opened = ImGui::TreeNodeEx(fmt::format("SceneEntity_{0}_cmpnt{1}", entity.GetNode(), component_name).c_str(), flags, "%s", component_name.data());
+        bool  opened      = ImGui::TreeNodeEx(fmt::format("SceneEntity_{0}_cmpnt{1}", entity.GetNode(), component_name).c_str(), flags, "%s", component_name.data());
         ImGui::PopStyleVar();
 
         if (opened)

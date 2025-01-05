@@ -17,8 +17,8 @@ namespace Tetragrama
 
     Editor::Editor(const EditorConfiguration& config) : m_engine_configuration()
     {
-        m_ui_layer     = CreateRef<Layers::UILayer>();
-        m_render_layer = CreateRef<Layers::RenderLayer>();
+        m_ui_layer             = CreateRef<Layers::UILayer>();
+        m_render_layer         = CreateRef<Layers::RenderLayer>();
 
         s_editor_configuration = config;
         if ((!s_editor_scene) && config.ActiveSceneName.empty())
@@ -52,33 +52,13 @@ namespace Tetragrama
     {
         ZEngine::Engine::Initialize(m_engine_configuration, m_window);
 
-        MESSENGER_REGISTER(
-            Windows::Layers::Layer,
-            SINGLE_ARG(GenericMessage<std::pair<float, float>>),
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE,
-            m_render_layer.get(),
-            return m_render_layer->SceneRequestResizeMessageHandlerAsync(*message_ptr))
+        MESSENGER_REGISTER(Windows::Layers::Layer, SINGLE_ARG(GenericMessage<std::pair<float, float>>), EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, m_render_layer.get(), return m_render_layer->SceneRequestResizeMessageHandlerAsync(*message_ptr))
 
-        MESSENGER_REGISTER(
-            Windows::Layers::Layer,
-            GenericMessage<bool>,
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS,
-            m_render_layer.get(),
-            return m_render_layer->SceneRequestFocusMessageHandlerAsync(*message_ptr))
+        MESSENGER_REGISTER(Windows::Layers::Layer, GenericMessage<bool>, EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, m_render_layer.get(), return m_render_layer->SceneRequestFocusMessageHandlerAsync(*message_ptr))
 
-        MESSENGER_REGISTER(
-            Windows::Layers::Layer,
-            GenericMessage<bool>,
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS,
-            m_render_layer.get(),
-            return m_render_layer->SceneRequestUnfocusMessageHandlerAsync(*message_ptr))
+        MESSENGER_REGISTER(Windows::Layers::Layer, GenericMessage<bool>, EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, m_render_layer.get(), return m_render_layer->SceneRequestUnfocusMessageHandlerAsync(*message_ptr))
 
-        MESSENGER_REGISTER(
-            Windows::Layers::Layer,
-            SINGLE_ARG(GenericMessage<std::pair<int, int>>),
-            EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL,
-            m_render_layer.get(),
-            return m_render_layer->SceneRequestSelectEntityFromPixelMessageHandlerAsync(*message_ptr))
+        MESSENGER_REGISTER(Windows::Layers::Layer, SINGLE_ARG(GenericMessage<std::pair<int, int>>), EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, m_render_layer.get(), return m_render_layer->SceneRequestSelectEntityFromPixelMessageHandlerAsync(*message_ptr))
     }
 
     void Editor::Run()

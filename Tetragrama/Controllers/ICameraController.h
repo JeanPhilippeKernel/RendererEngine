@@ -12,14 +12,14 @@ namespace Tetragrama::Controllers
         ICameraController();
         ICameraController(float aspect_ratio, bool can_rotate = false);
 
-        virtual ~ICameraController() = default;
+        virtual ~ICameraController()                                                                                    = default;
 
         virtual glm::vec3                                                        GetPosition() const                    = 0;
         virtual void                                                             SetPosition(const glm::vec3& position) = 0;
         virtual const ZEngine::Helpers::Ref<ZEngine::Rendering::Cameras::Camera> GetCamera() const                      = 0;
         virtual void                                                             UpdateProjectionMatrix()               = 0;
 
-        float GetRotationAngle() const
+        float                                                                    GetRotationAngle() const
         {
             return m_rotation_angle;
         }

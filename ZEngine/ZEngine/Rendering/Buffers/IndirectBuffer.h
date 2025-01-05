@@ -31,10 +31,7 @@ namespace ZEngine::Rendering::Buffers
                 CleanUpMemory();
                 this->m_byte_size = byte_size;
                 m_command_count   = byte_size / sizeof(VkDrawIndirectCommand);
-                m_indirect_buffer = m_device->CreateBuffer(
-                    static_cast<VkDeviceSize>(this->m_byte_size),
-                    VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
-                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+                m_indirect_buffer = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
             }
 
             VkMemoryPropertyFlags mem_prop_flags;
@@ -46,26 +43,19 @@ namespace ZEngine::Rendering::Buffers
                 vmaGetAllocationInfo(m_device->VmaAllocator, m_indirect_buffer.Allocation, &allocation_info);
                 if (data && allocation_info.pMappedData)
                 {
-                    ZENGINE_VALIDATE_ASSERT(
-                        Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS,
-                        "Failed to perform memory copy operation")
+                    ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
                 }
             }
             else
             {
-                BufferView staging_buffer = m_device->CreateBuffer(
-                    static_cast<VkDeviceSize>(this->m_byte_size),
-                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+                BufferView        staging_buffer  = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
                 VmaAllocationInfo allocation_info = {};
                 vmaGetAllocationInfo(m_device->VmaAllocator, staging_buffer.Allocation, &allocation_info);
 
                 if (data && allocation_info.pMappedData)
                 {
-                    ZENGINE_VALIDATE_ASSERT(
-                        Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS,
-                        "Failed to perform memory copy operation")
+                    ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
                     ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(m_device->VmaAllocator, staging_buffer.Allocation, 0, VK_WHOLE_SIZE) == VK_SUCCESS, "Failed to flush allocation")
                     m_device->CopyBuffer(staging_buffer, m_indirect_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
                 }

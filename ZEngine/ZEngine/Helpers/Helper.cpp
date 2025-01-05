@@ -48,7 +48,7 @@ namespace ZEngine::Helpers
 
         for (int i = 0; i < assimp_mesh_ids.size(); ++i)
         {
-            aiMesh* assimp_mesh = assimp_scene->mMeshes[assimp_mesh_ids[i]];
+            aiMesh*               assimp_mesh = assimp_scene->mMeshes[assimp_mesh_ids[i]];
 
             uint32_t              vertex_count{0};
             std::vector<float>    vertices = {};

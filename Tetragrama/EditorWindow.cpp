@@ -40,7 +40,7 @@ namespace Tetragrama
         m_property.Title  = configuration.Title;
         m_property.VSync  = configuration.EnableVsync;
 
-        int glfw_init = glfwInit();
+        int glfw_init     = glfwInit();
         if (glfw_init == GLFW_FALSE)
         {
             ZENGINE_CORE_CRITICAL("Unable to initialize glfw..")
@@ -206,9 +206,9 @@ namespace Tetragrama
     {
         static float last_frame_time = 0.f;
 
-        float time      = GetTime();
-        m_delta_time    = time - last_frame_time;
-        last_frame_time = time;
+        float        time            = GetTime();
+        m_delta_time                 = time - last_frame_time;
+        last_frame_time              = time;
         return m_delta_time;
     }
 
@@ -384,7 +384,7 @@ namespace Tetragrama
         std::string path{""};
 #ifdef _WIN32
 
-        auto native_hwnd = glfwGetWin32Window(m_native_window);
+        auto           native_hwnd = glfwGetWin32Window(m_native_window);
 
         FileOpenPicker file_picker;
         file_picker.ViewMode(PickerViewMode::Thumbnail);

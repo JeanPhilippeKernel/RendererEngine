@@ -13,7 +13,7 @@ namespace ZEngine::Core
         /**
          * A boolean that describes whether the stage was a success or not.
          */
-        bool IsSuccess{true};
+        bool        IsSuccess{true};
 
         /**
          * A log information that describes errors happened during the stage.
@@ -34,19 +34,19 @@ namespace ZEngine::Core
          *
          * @param context A back reference to a ShaderCompiler
          */
-        virtual void SetContext(IPipelineContext* const context);
+        virtual void                          SetContext(IPipelineContext* const context);
 
         /**
          * Update context to the next compiler stage
          */
-        virtual void Next();
+        virtual void                          Next();
 
         /**
          * Check if the stage has a next stage that should be run
          *
          * @return True or False
          */
-        virtual bool HasNext();
+        virtual bool                          HasNext();
 
         /**
          * Return information related to the stage.

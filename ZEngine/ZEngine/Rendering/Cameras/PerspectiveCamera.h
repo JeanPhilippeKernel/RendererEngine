@@ -11,25 +11,25 @@ namespace ZEngine::Rendering::Cameras
         PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad, float pitch_rad);
         virtual ~PerspectiveCamera() = default;
 
-        virtual void SetTarget(const glm::vec3& target);
-        virtual void SetPosition(const glm::vec3& position);
-        virtual void SetProjectionMatrix(const glm::mat4& projection);
+        virtual void                    SetTarget(const glm::vec3& target);
+        virtual void                    SetPosition(const glm::vec3& position);
+        virtual void                    SetProjectionMatrix(const glm::mat4& projection);
 
-        virtual void Update(float time_step, const glm::vec2& mouse_position, bool mouse_pressed);
+        virtual void                    Update(float time_step, const glm::vec2& mouse_position, bool mouse_pressed);
 
         virtual void                    Zoom(float delta);
         virtual void                    SetDistance(double distance);
         virtual std::pair<float, float> PanSpeed() const;
         virtual void                    SetViewport(float width, float height);
 
-        virtual glm::mat4 GetViewMatrix() override;
-        virtual glm::mat4 GetPerspectiveMatrix() const override;
-        virtual glm::vec3 GetPosition() const override;
+        virtual glm::mat4               GetViewMatrix() override;
+        virtual glm::mat4               GetPerspectiveMatrix() const override;
+        virtual glm::vec3               GetPosition() const override;
 
-        glm::quat GetOrientation();
-        glm::vec3 GetForward();
-        glm::vec3 GetUp();
-        glm::vec3 GetRight();
+        glm::quat                       GetOrientation();
+        glm::vec3                       GetForward();
+        glm::vec3                       GetUp();
+        glm::vec3                       GetRight();
 
     public:
         struct Movement

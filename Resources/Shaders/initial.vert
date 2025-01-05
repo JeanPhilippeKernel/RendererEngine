@@ -1,13 +1,14 @@
 #version 460
 
-layout (location = 0) in vec3 pos;
+layout(location = 0) in vec3 pos;
 
 layout(set = 0, binding = 0) uniform UBCamera
-{ 
+{
     mat4 View;
     mat4 Projection;
     vec4 Position;
-} Camera;
+}
+Camera;
 
 void main()
 {

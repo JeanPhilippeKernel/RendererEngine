@@ -14,16 +14,6 @@
 
 namespace ZEngine::Rendering::Renderers
 {
-    struct DrawData
-    {
-        uint32_t TransformIndex{0xFFFFFFFF};
-        uint32_t MaterialIndex{0xFFFFFFFF};
-        uint32_t VertexOffset;
-        uint32_t IndexOffset;
-        uint32_t VertexCount;
-        uint32_t IndexCount;
-    };
-
     struct IndirectRenderingStorage
     {
         virtual void Initialize(GraphicRenderer* renderer);
@@ -41,20 +31,10 @@ namespace ZEngine::Rendering::Renderers
 
     struct InitialPass : public IRenderGraphCallbackPass
     {
-        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
-        virtual void Execute(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer,
-            RenderGraph* const                     graph) override;
-        virtual void Render(
-            uint32_t                   frame_index,
-            RenderPasses::RenderPass*  pass,
-            Buffers::FramebufferVNext* framebuffer,
-            Buffers::CommandBuffer*    command_buffer,
-            RenderGraph*               graph) override;
+        virtual void Setup(std::string_view name, RenderGraph* const graph) override;
+        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph) override;
+        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
 
     private:
         const std::vector<float>       m_vertex_data = {0.0, 0.0, 0.0};
@@ -63,121 +43,57 @@ namespace ZEngine::Rendering::Renderers
 
     struct DepthPrePass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
     {
-        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
-        virtual void Execute(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer,
-            RenderGraph* const                     graph) override;
-        virtual void Render(
-            uint32_t                   frame_index,
-            RenderPasses::RenderPass*  pass,
-            Buffers::FramebufferVNext* framebuffer,
-            Buffers::CommandBuffer*    command_buffer,
-            RenderGraph*               graph) override;
+        virtual void Setup(std::string_view name, RenderGraph* const graph) override;
+        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph) override;
+        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
     };
 
     struct SkyboxPass : public IRenderGraphCallbackPass
     {
-        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
-        virtual void Execute(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer,
-            RenderGraph* const                     graph) override;
-        virtual void Render(
-            uint32_t                   frame_index,
-            RenderPasses::RenderPass*  pass,
-            Buffers::FramebufferVNext* framebuffer,
-            Buffers::CommandBuffer*    command_buffer,
-            RenderGraph*               graph) override;
+        virtual void Setup(std::string_view name, RenderGraph* const graph) override;
+        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph) override;
+        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
 
     private:
         Buffers::VertexBufferSetHandle m_vb_handle   = {};
         Buffers::IndexBufferSetHandle  m_ib_handle   = {};
         Textures::TextureHandle        m_env_map     = {};
+        const std::vector<uint16_t>    m_index_data  = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 5, 4, 7, 7, 6, 5, 4, 0, 3, 3, 7, 4, 3, 2, 6, 6, 7, 3, 4, 5, 1, 1, 0, 4};
         const std::vector<float>       m_vertex_data = {
-            -1.0f, -1.0f, 1.0f,  // v0
-            1.0f,  -1.0f, 1.0f,  // v1
-            1.0f,  1.0f,  1.0f,  // v2
-            -1.0f, 1.0f,  1.0f,  // v3
-            -1.0f, -1.0f, -1.0f, // v4
-            1.0f,  -1.0f, -1.0f, // v5
-            1.0f,  1.0f,  -1.0f, // v6
-            -1.0f, 1.0f,  -1.0f, // v7
-        };
-        const std::vector<uint16_t> m_index_data = {
-            0, 1, 2, 2, 3, 0, // Front face
-            1, 5, 6, 6, 2, 1, // Right face
-            5, 4, 7, 7, 6, 5, // Back face
-            4, 0, 3, 3, 7, 4, // Left face
-            3, 2, 6, 6, 7, 3, // Top face
-            4, 5, 1, 1, 0, 4  // Bottom face
+            -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
         };
     };
 
     struct GridPass : public IRenderGraphCallbackPass
     {
-        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
-        virtual void Execute(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer,
-            RenderGraph* const                     graph) override;
-        virtual void Render(
-            uint32_t                   frame_index,
-            RenderPasses::RenderPass*  pass,
-            Buffers::FramebufferVNext* framebuffer,
-            Buffers::CommandBuffer*    command_buffer,
-            RenderGraph*               graph) override;
+        virtual void Setup(std::string_view name, RenderGraph* const graph) override;
+        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph) override;
+        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
 
     private:
-        const std::vector<float>       m_vertex_data = {-1.0, 0.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 0.0, 1.0};
         const std::vector<uint16_t>    m_index_data  = {0, 1, 2, 2, 3, 0};
+        const std::vector<float>       m_vertex_data = {-1.0, 0.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 0.0, 1.0};
         Buffers::VertexBufferSetHandle m_vb_handle   = {};
         Buffers::IndexBufferSetHandle  m_ib_handle   = {};
     };
 
     struct GbufferPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
     {
-        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
-        virtual void Execute(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer,
-            RenderGraph* const                     graph) override;
-        virtual void Render(
-            uint32_t                   frame_index,
-            RenderPasses::RenderPass*  pass,
-            Buffers::FramebufferVNext* framebuffer,
-            Buffers::CommandBuffer*    command_buffer,
-            RenderGraph*               graph) override;
+        virtual void Setup(std::string_view name, RenderGraph* const graph) override;
+        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph) override;
+        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
     };
 
     struct LightingPass : public IRenderGraphCallbackPass, public IndirectRenderingStorage
     {
-        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) override;
-        virtual void Execute(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer,
-            RenderGraph* const                     graph) override;
-        virtual void Render(
-            uint32_t                   frame_index,
-            RenderPasses::RenderPass*  pass,
-            Buffers::FramebufferVNext* framebuffer,
-            Buffers::CommandBuffer*    command_buffer,
-            RenderGraph*               graph) override;
+        virtual void Setup(std::string_view name, RenderGraph* const graph) override;
+        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph) override;
+        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
     };
 
 } // namespace ZEngine::Rendering::Renderers

@@ -4,8 +4,7 @@
 
 namespace ZEngine::Rendering::Buffers
 {
-    Image2DBuffer::Image2DBuffer(Hardwares::VulkanDevice* device, const Specifications::Image2DBufferSpecification& spec)
-        : m_device(device), m_width(spec.Width), m_height(spec.Height)
+    Image2DBuffer::Image2DBuffer(Hardwares::VulkanDevice* device, const Specifications::Image2DBufferSpecification& spec) : m_device(device), m_width(spec.Width), m_height(spec.Height)
     {
         ZENGINE_VALIDATE_ASSERT(m_width > 0, "Image width must be greater then zero")
         ZENGINE_VALIDATE_ASSERT(m_height > 0, "Image height must be greater then zero")
@@ -19,21 +18,7 @@ namespace ZEngine::Rendering::Buffers
             image_create_flag = Specifications::ImageCreateFlag::CUBE_COMPATIBLE_BIT;
         }
 
-        m_buffer_image = m_device->CreateImage(
-            m_width,
-            m_height,
-            VK_IMAGE_TYPE_2D,
-            Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)],
-            spec.ImageFormat,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            spec.ImageUsage,
-            VK_SHARING_MODE_EXCLUSIVE,
-            VK_SAMPLE_COUNT_1_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            spec.ImageAspectFlag,
-            spec.LayerCount,
-            Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)]);
+        m_buffer_image = m_device->CreateImage(m_width, m_height, VK_IMAGE_TYPE_2D, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], spec.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, spec.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, spec.ImageAspectFlag, spec.LayerCount, Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)]);
     }
 
     Image2DBuffer::~Image2DBuffer()

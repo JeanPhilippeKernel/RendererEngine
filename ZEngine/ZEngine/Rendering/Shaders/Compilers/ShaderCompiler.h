@@ -27,7 +27,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
          * Set the shader source file
          * @param filename Path of the shader file
          */
-        void SetSource(std::string_view filename);
+        void                              SetSource(std::string_view filename);
 
         /**
          * Compile shader source code

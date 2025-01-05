@@ -23,7 +23,7 @@ namespace ZENGINE_COROUTINE_NAMESPACE
         {
             promise<T> m_promise;
 
-            auto get_return_object()
+            auto       get_return_object()
             {
                 return m_promise.get_future();
             }
@@ -63,7 +63,7 @@ namespace ZENGINE_COROUTINE_NAMESPACE
         {
             promise<void> m_promise;
 
-            auto get_return_object()
+            auto          get_return_object()
             {
                 return m_promise.get_future();
             }
@@ -100,7 +100,7 @@ namespace ZENGINE_COROUTINE_NAMESPACE
     {
         std::future<T>& m_internal_future;
 
-        bool await_ready() const
+        bool            await_ready() const
         {
             return future_status::ready == m_internal_future.wait_for(chrono::milliseconds::zero());
         }
@@ -108,10 +108,8 @@ namespace ZENGINE_COROUTINE_NAMESPACE
         void await_suspend(coroutine_handle<> callback)
         {
             ZEngine::Core::CoroutineAction coroutine_action = {};
-            coroutine_action.Ready                          = [&m_internal_future = m_internal_future]() -> bool {
-                return future_status::ready == m_internal_future.wait_for(chrono::milliseconds::zero());
-            };
-            coroutine_action.Action = callback;
+            coroutine_action.Ready                          = [&m_internal_future = m_internal_future]() -> bool { return future_status::ready == m_internal_future.wait_for(chrono::milliseconds::zero()); };
+            coroutine_action.Action                         = callback;
 
             ZEngine::Core::CoroutineScheduler::Schedule(std::move(coroutine_action));
         }

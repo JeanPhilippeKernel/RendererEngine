@@ -19,7 +19,7 @@ namespace ZEngine::Helpers
     template <typename T>
     struct Handle : public Helpers::RefCounted
     {
-        int Index = INVALID_HANDLE_INDEX;
+        int  Index = INVALID_HANDLE_INDEX;
 
         bool Valid() const
         {

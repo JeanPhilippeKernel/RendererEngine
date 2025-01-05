@@ -36,14 +36,14 @@ namespace ZEngine::Rendering::Scenes
      */
     struct SceneRawData : public Helpers::RefCounted
     {
-        uint32_t                               SVertexDataSize{0};
-        uint32_t                               SIndexDataSize{0};
-        uint32_t                               SMeshCountOffset{0};
-        std::vector<SceneNodeHierarchy>        NodeHierarchyCollection;
-        std::vector<glm::mat4>                 LocalTransformCollection;
-        std::vector<glm::mat4>                 GlobalTransformCollection;
-        std::map<uint32_t, std::set<uint32_t>> LevelSceneNodeChangedMap;
-        std::set<int>                          TextureCollection;
+        uint32_t                                   SVertexDataSize{0};
+        uint32_t                                   SIndexDataSize{0};
+        uint32_t                                   SMeshCountOffset{0};
+        std::vector<SceneNodeHierarchy>            NodeHierarchyCollection;
+        std::vector<glm::mat4>                     LocalTransformCollection;
+        std::vector<glm::mat4>                     GlobalTransformCollection;
+        std::map<uint32_t, std::set<uint32_t>>     LevelSceneNodeChangedMap;
+        std::set<int>                              TextureCollection;
         /*
          * New Properties
          */
@@ -61,12 +61,12 @@ namespace ZEngine::Rendering::Scenes
         /*
          * Scene Entity Related data
          */
-        std::vector<Lights::GpuDirectionLight> DirectionalLights;
-        std::vector<Lights::GpuPointLight>     PointLights;
-        std::vector<Lights::GpuSpotlight>      SpotLights;
+        std::vector<Lights::GpuDirectionLight>     DirectionalLights;
+        std::vector<Lights::GpuPointLight>         PointLights;
+        std::vector<Lights::GpuSpotlight>          SpotLights;
 
-        static int  AddNode(ZEngine::Rendering::Scenes::SceneRawData*, int parent, int depth);
-        static bool SetNodeName(ZEngine::Rendering::Scenes::SceneRawData*, int node_id, std::string_view name);
+        static int                                 AddNode(ZEngine::Rendering::Scenes::SceneRawData*, int parent, int depth);
+        static bool                                SetNodeName(ZEngine::Rendering::Scenes::SceneRawData*, int node_id, std::string_view name);
     };
 
     entt::registry& GetEntityRegistry();
@@ -144,19 +144,19 @@ namespace ZEngine::Rendering::Scenes
         GraphicScene(const GraphicScene&) = delete;
         ~GraphicScene()                   = default;
 
-        static void        Initialize();
-        static void        Deinitialize();
-        static void        SetRootNodeName(std::string_view);
-        static void        Merge(std::span<SceneRawData> scenes);
-        static SceneEntity GetPrimariyCameraEntity();
+        static void                           Initialize();
+        static void                           Deinitialize();
+        static void                           SetRootNodeName(std::string_view);
+        static void                           Merge(std::span<SceneRawData> scenes);
+        static SceneEntity                    GetPrimariyCameraEntity();
         /*
          * SceneEntity operations
          */
-        static std::future<SceneEntity> CreateEntityAsync(std::string_view entity_name = "Empty Entity", int parent_id = 0, int depth_level = 1);
-        static std::future<SceneEntity> CreateEntityAsync(uuids::uuid uuid, std::string_view entity_name);
-        static std::future<SceneEntity> CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name);
-        static std::future<SceneEntity> GetEntityAsync(std::string_view entity_name);
-        static std::future<bool>        RemoveEntityAsync(const SceneEntity& entity);
+        static std::future<SceneEntity>       CreateEntityAsync(std::string_view entity_name = "Empty Entity", int parent_id = 0, int depth_level = 1);
+        static std::future<SceneEntity>       CreateEntityAsync(uuids::uuid uuid, std::string_view entity_name);
+        static std::future<SceneEntity>       CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name);
+        static std::future<SceneEntity>       GetEntityAsync(std::string_view entity_name);
+        static std::future<bool>              RemoveEntityAsync(const SceneEntity& entity);
         /*
          * SceneNode operations
          */
@@ -175,12 +175,12 @@ namespace ZEngine::Rendering::Scenes
         /*
          * Scene Graph operations
          */
-        static bool                       HasSceneNodes();
-        static uint32_t                   GetSceneNodeCount() = delete;
-        static std::vector<int>           GetRootSceneNodes();
-        static Helpers::Ref<SceneRawData> GetRawData();
-        static void                       SetRawData(Helpers::Ref<SceneRawData>&& data);
-        static void                       ComputeAllTransforms();
+        static bool                           HasSceneNodes();
+        static uint32_t                       GetSceneNodeCount() = delete;
+        static std::vector<int>               GetRootSceneNodes();
+        static Helpers::Ref<SceneRawData>     GetRawData();
+        static void                           SetRawData(Helpers::Ref<SceneRawData>&& data);
+        static void                           ComputeAllTransforms();
 
     private:
         static Helpers::Ref<SceneRawData>   s_raw_data;

@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Lights
     {
         virtual void UpdateBuffer() = 0;
 
-        LightType GetLightType() const
+        LightType    GetLightType() const
         {
             return m_light_type;
         }
@@ -30,9 +30,9 @@ namespace ZEngine::Rendering::Lights
 
     struct LightVNext : public Helpers::RefCounted
     {
-        gpuvec4 Ambient  = 1.0f;
-        gpuvec4 Diffuse  = 1.0f;
-        gpuvec4 Specular = 1.0f;
+        gpuvec4   Ambient  = 1.0f;
+        gpuvec4   Diffuse  = 1.0f;
+        gpuvec4   Specular = 1.0f;
 
         LightType GetLightType() const
         {
@@ -66,7 +66,7 @@ namespace ZEngine::Rendering::Lights
         {
             m_type = LightType::DIRECTIONAL;
         }
-        gpuvec4 Direction{1.0f};
+        gpuvec4           Direction{1.0f};
 
         GpuDirectionLight GPUPackedData() const
         {
@@ -96,15 +96,14 @@ namespace ZEngine::Rendering::Lights
             m_type = LightType::POINT;
         }
 
-        gpuvec4 Position  = 1.0f;
-        float   Constant  = 1.0f;
-        float   Linear    = 0.7f;
-        float   Quadratic = 1.8f;
+        gpuvec4       Position  = 1.0f;
+        float         Constant  = 1.0f;
+        float         Linear    = 0.7f;
+        float         Quadratic = 1.8f;
 
         GpuPointLight GPUPackedData() const
         {
-            return GpuPointLight{
-                .Position = Position, .Ambient = Ambient, .Diffuse = Diffuse, .Specular = Specular, .Constant = Constant, .Linear = Linear, .Quadratic = Quadratic};
+            return GpuPointLight{.Position = Position, .Ambient = Ambient, .Diffuse = Diffuse, .Specular = Specular, .Constant = Constant, .Linear = Linear, .Quadratic = Quadratic};
         }
     };
 
@@ -131,25 +130,16 @@ namespace ZEngine::Rendering::Lights
             m_type = LightType::SPOT;
         }
 
-        gpuvec4 Position  = 1.0f;
-        gpuvec4 Direction = 1.0f;
-        float   CutOff    = 0.0f;
-        float   Constant  = 1.0f;
-        float   Linear    = 0.7f;
-        float   Quadratic = 1.8f;
+        gpuvec4      Position  = 1.0f;
+        gpuvec4      Direction = 1.0f;
+        float        CutOff    = 0.0f;
+        float        Constant  = 1.0f;
+        float        Linear    = 0.7f;
+        float        Quadratic = 1.8f;
 
         GpuSpotlight GPUPackedData() const
         {
-            return GpuSpotlight{
-                .Position  = Position,
-                .Direction = Direction,
-                .Ambient   = Ambient,
-                .Diffuse   = Diffuse,
-                .Specular  = Specular,
-                .CutOff    = CutOff,
-                .Constant  = Constant,
-                .Linear    = Linear,
-                .Quadratic = Quadratic};
+            return GpuSpotlight{.Position = Position, .Direction = Direction, .Ambient = Ambient, .Diffuse = Diffuse, .Specular = Specular, .CutOff = CutOff, .Constant = Constant, .Linear = Linear, .Quadratic = Quadratic};
         }
     };
 
@@ -160,8 +150,8 @@ namespace ZEngine::Rendering::Lights
         size_t               buffer_size = sizeof(LightBuffer) + (sizeof(T) * count);
         std::vector<uint8_t> buffer(buffer_size);
 
-        auto light_buffer   = reinterpret_cast<LightBuffer*>(buffer.data());
-        light_buffer->Count = count;
+        auto                 light_buffer = reinterpret_cast<LightBuffer*>(buffer.data());
+        light_buffer->Count               = count;
         Helpers::secure_memset(light_buffer->Padding, 0, sizeof(light_buffer->Padding), sizeof(light_buffer->Padding));
         Helpers::secure_memcpy((buffer.data() + sizeof(Lights::LightBuffer)), data.size_bytes(), data.data(), data.size_bytes());
 

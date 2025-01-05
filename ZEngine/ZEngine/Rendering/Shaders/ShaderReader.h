@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Shaders
         ShaderReader();
         ~ShaderReader();
 
-        static std::vector<uint32_t> ReadAsBinary(std::string_view filename);
+        static std::vector<uint32_t>       ReadAsBinary(std::string_view filename);
 
         /**
          * Read asynchronously content of shader file
@@ -35,7 +35,7 @@ namespace ZEngine::Rendering::Shaders
          * @see Read(std::string_view) and ReadAsync(std::string_view) methods
          * @return ShaderInformation
          */
-        const ShaderInformation& GetInformations() const;
+        const ShaderInformation&           GetInformations() const;
 
         /**
          * Get shaders information collected during Reading process
@@ -43,8 +43,8 @@ namespace ZEngine::Rendering::Shaders
          * @see Read(std::string_view) and ReadAsync(std::string_view) methods
          * @return ShaderInformation
          */
-        ShaderInformation& GetInformations();
-        ShaderType         GetShaderType(const std::filesystem::path& path);
+        ShaderInformation&                 GetInformations();
+        ShaderType                         GetShaderType(const std::filesystem::path& path);
 
     private:
         std::ifstream     m_filestream{};

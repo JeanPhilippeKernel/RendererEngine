@@ -1,10 +1,9 @@
 #include <pch.h>
-#include <Engine.h>
 #include <GraphicRenderer.h>
 #include <Hardwares/VulkanDevice.h>
 #include <ImGuizmo/ImGuizmo.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
-#include <Rendering/Textures/Texture2D.h>
+#include <Windows/CoreWindow.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
 
@@ -18,48 +17,48 @@ namespace ZEngine::Rendering::Renderers
     void ImGUIRenderer::Initialize(GraphicRenderer* renderer)
     {
         m_renderer          = renderer;
-        auto current_window = Engine::GetWindow();
+        auto current_window = renderer->Device->CurrentWindow;
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         StyleDarkTheme();
 
-        ImGuiIO& io                     = ImGui::GetIO();
-        io.ConfigViewportsNoTaskBarIcon = true;
-        io.ConfigViewportsNoDecoration  = true;
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
-        io.BackendFlags |= ImGuiBackendFlags_HasMouseHoveredViewport;
-        io.BackendRendererName = "ZEngine";
+        ImGuiIO& io                          = ImGui::GetIO();
+        io.ConfigViewportsNoTaskBarIcon      = true;
+        io.ConfigViewportsNoDecoration       = true;
+        io.BackendFlags                     |= ImGuiBackendFlags_RendererHasViewports;
+        io.BackendFlags                     |= ImGuiBackendFlags_RendererHasVtxOffset;
+        io.BackendFlags                     |= ImGuiBackendFlags_HasMouseHoveredViewport;
+        io.BackendRendererName               = "ZEngine-Imgui";
 
-        std::string_view default_layout_ini = "Settings/DefaultLayout.ini";
-        const auto       current_directoy   = std::filesystem::current_path();
-        auto             layout_file_path   = fmt::format("{0}/{1}", current_directoy.string(), default_layout_ini);
+        std::string_view default_layout_ini  = "Settings/DefaultLayout.ini";
+        const auto       current_directoy    = std::filesystem::current_path();
+        auto             layout_file_path    = fmt::format("{0}/{1}", current_directoy.string(), default_layout_ini);
         if (std::filesystem::exists(std::filesystem::path(layout_file_path)))
         {
             io.IniFilename = default_layout_ini.data();
         }
 
         // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        io.ConfigFlags         |= ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags         |= ImGuiConfigFlags_ViewportsEnable;
 
-        auto& style            = ImGui::GetStyle();
-        style.WindowBorderSize = 0.f;
-        style.ChildBorderSize  = 0.f;
-        style.FrameRounding    = 7.0f;
+        auto& style             = ImGui::GetStyle();
+        style.WindowBorderSize  = 0.f;
+        style.ChildBorderSize   = 0.f;
+        style.FrameRounding     = 7.0f;
 
-        auto window_property = current_window->GetWindowProperty();
+        auto window_property    = current_window->GetWindowProperty();
         io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Bold.ttf", 17.f * window_property.DpiScale);
         io.FontDefault     = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f * window_property.DpiScale);
         io.FontGlobalScale = window_property.DpiScale;
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window->GetNativeWindow()), false);
 
-        m_vertex_buffer_handle                   = renderer->CreateVertexBufferSet();
-        m_index_buffer_handle                    = renderer->CreateIndexBufferSet();
-        RenderPasses::RenderPassBuilder& builder = *(renderer->RenderGraph->GetRenderPassBuilder());
-        builder.SetName("Imgui Pass")
+        m_vertex_buffer_handle = renderer->CreateVertexBufferSet();
+        m_index_buffer_handle  = renderer->CreateIndexBufferSet();
+        auto& builder          = renderer->RenderGraph->RenderPassBuilder;
+        builder->SetName("Imgui Pass")
             .SetPipelineName("Imgui-Pipeline")
             .EnablePipelineBlending(true)
             .SetInputBindingCount(1)
@@ -86,12 +85,12 @@ namespace ZEngine::Rendering::Renderers
 
             .UseSwapchainAsRenderTarget();
 
-        m_ui_pass = renderer->CreateRenderPass(builder.Detach());
+        m_ui_pass = renderer->CreateRenderPass(builder->Detach());
         m_ui_pass->Verify();
         m_ui_pass->Bake();
 
-        auto shader               = m_ui_pass->Pipeline->GetShader();
-        auto descriptor_setlayout = shader->GetDescriptorSetLayout()[0];
+        auto           shader               = m_ui_pass->Pipeline->GetShader();
+        auto           descriptor_setlayout = shader->GetDescriptorSetLayout()[0];
 
         /*
          * Font uploading
@@ -99,7 +98,7 @@ namespace ZEngine::Rendering::Renderers
         unsigned char* pixels;
         int            width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        size_t upload_size = width * height * 4 * sizeof(char);
+        size_t                               upload_size   = width * height * 4 * sizeof(char);
 
         Specifications::TextureSpecification font_tex_spec = {};
         font_tex_spec.Width                                = width;
@@ -114,8 +113,7 @@ namespace ZEngine::Rendering::Renderers
         font_alloc_info.descriptorPool              = shader->GetDescriptorPool();
         font_alloc_info.descriptorSetCount          = 1;
         font_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(
-            vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
+        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
 
         auto                 font_image_info = font_texture->ImageBuffer->GetDescriptorImageInfo();
         VkWriteDescriptorSet write_desc[1]   = {};
@@ -148,23 +146,23 @@ namespace ZEngine::Rendering::Renderers
 
     void ImGUIRenderer::StyleDarkTheme()
     {
-        auto& colors              = ImGui::GetStyle().Colors;
-        colors[ImGuiCol_WindowBg] = ImVec4{0.1f, 0.105f, 0.11f, 1.0f};
+        auto& colors                        = ImGui::GetStyle().Colors;
+        colors[ImGuiCol_WindowBg]           = ImVec4{0.1f, 0.105f, 0.11f, 1.0f};
 
         // Headers
-        colors[ImGuiCol_Header]        = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
-        colors[ImGuiCol_HeaderHovered] = ImVec4{0.3f, 0.305f, 0.31f, 1.0f};
-        colors[ImGuiCol_HeaderActive]  = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_Header]             = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
+        colors[ImGuiCol_HeaderHovered]      = ImVec4{0.3f, 0.305f, 0.31f, 1.0f};
+        colors[ImGuiCol_HeaderActive]       = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
 
         // Buttons
-        colors[ImGuiCol_Button]        = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
-        colors[ImGuiCol_ButtonHovered] = ImVec4{0.3f, 0.305f, 0.31f, 1.0f};
-        colors[ImGuiCol_ButtonActive]  = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_Button]             = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
+        colors[ImGuiCol_ButtonHovered]      = ImVec4{0.3f, 0.305f, 0.31f, 1.0f};
+        colors[ImGuiCol_ButtonActive]       = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
 
         // Frame BG
-        colors[ImGuiCol_FrameBg]        = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
-        colors[ImGuiCol_FrameBgHovered] = ImVec4{0.3f, 0.305f, 0.31f, 1.0f};
-        colors[ImGuiCol_FrameBgActive]  = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_FrameBg]            = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
+        colors[ImGuiCol_FrameBgHovered]     = ImVec4{0.3f, 0.305f, 0.31f, 1.0f};
+        colors[ImGuiCol_FrameBgActive]      = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
 
         // Tabs
         colors[ImGuiCol_Tab]                = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
@@ -174,26 +172,26 @@ namespace ZEngine::Rendering::Renderers
         colors[ImGuiCol_TabUnfocusedActive] = ImVec4{0.2f, 0.205f, 0.21f, 1.0f};
 
         // Title
-        colors[ImGuiCol_TitleBg]          = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
-        colors[ImGuiCol_TitleBgActive]    = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
-        colors[ImGuiCol_TitleBgCollapsed] = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_TitleBg]            = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_TitleBgActive]      = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
+        colors[ImGuiCol_TitleBgCollapsed]   = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
 
-        colors[ImGuiCol_DockingPreview]   = ImVec4{0.2f, 0.205f, 0.21f, .5f};
-        colors[ImGuiCol_SeparatorHovered] = ImVec4{1.f, 1.f, 1.0f, .5f};
-        colors[ImGuiCol_SeparatorActive]  = ImVec4{1.f, 1.f, 1.0f, .5f};
-        colors[ImGuiCol_CheckMark]        = ImVec4{1.0f, 1.f, 1.0f, 1.f};
+        colors[ImGuiCol_DockingPreview]     = ImVec4{0.2f, 0.205f, 0.21f, .5f};
+        colors[ImGuiCol_SeparatorHovered]   = ImVec4{1.f, 1.f, 1.0f, .5f};
+        colors[ImGuiCol_SeparatorActive]    = ImVec4{1.f, 1.f, 1.0f, .5f};
+        colors[ImGuiCol_CheckMark]          = ImVec4{1.0f, 1.f, 1.0f, 1.f};
 
-        colors[ImGuiCol_PlotHistogram] = ImVec4{1.0f, 1.f, 1.0f, 1.f};
+        colors[ImGuiCol_PlotHistogram]      = ImVec4{1.0f, 1.f, 1.0f, 1.f};
     }
 
-    void ImGUIRenderer::BeginFrame()
+    void ImGUIRenderer::NewFrame()
     {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
     }
 
-    void ImGUIRenderer::EndFrame(Rendering::Buffers::CommandBuffer* const command_buffer, uint32_t frame_index)
+    void ImGUIRenderer::DrawFrame(uint32_t frame_index, Rendering::Buffers::CommandBuffer* const command_buffer)
     {
         ImGui::Render();
         ImDrawData* draw_data = ImGui::GetDrawData();
@@ -221,7 +219,7 @@ namespace ZEngine::Rendering::Renderers
         std::vector<ImDrawVert> vertex_data(vertex_count);
         std::vector<ImDrawIdx>  index_data(index_count);
 
-        ImDrawVert* vertex_data_ptr = vertex_data.data();
+        ImDrawVert*             vertex_data_ptr = vertex_data.data();
         for (int n = 0; n < draw_data->CmdListsCount; ++n)
         {
             const ImDrawList* cmd_list  = draw_data->CmdLists[n];
@@ -265,13 +263,13 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
 
         // Will project scissor/clipping rectangles into framebuffer space
-        ImVec2 clip_off   = draw_data->DisplayPos;       // (0,0) unless using multi-viewports
-        ImVec2 clip_scale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
+        ImVec2 clip_off          = draw_data->DisplayPos;       // (0,0) unless using multi-viewports
+        ImVec2 clip_scale        = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
 
         // Render command lists
         // (Because we merged all buffers into a single one, we maintain our own offset into them)
-        int global_vtx_offset = 0;
-        int global_idx_offset = 0;
+        int    global_vtx_offset = 0;
+        int    global_idx_offset = 0;
         for (int n = 0; n < draw_data->CmdListsCount; n++)
         {
             const ImDrawList* cmd_list = draw_data->CmdLists[n];
@@ -329,8 +327,8 @@ namespace ZEngine::Rendering::Renderers
 
     VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Textures::TextureHandle& handle)
     {
-        auto& texture = m_renderer->Device->GlobalTextures->Access(handle);
-        auto& buffer  = texture->ImageBuffer->GetBuffer();
+        auto&                 texture       = m_renderer->Device->GlobalTextures->Access(handle);
+        auto&                 buffer        = texture->ImageBuffer->GetBuffer();
 
         VkDescriptorImageInfo desc_image[1] = {};
         desc_image[0].sampler               = buffer.Sampler;

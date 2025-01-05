@@ -4,7 +4,7 @@
 
 void main()
 {
-    DrawDataView dataView   = GetDrawDataView();
-	vec4 worldPosition      = dataView.Transform * dataView.Vertex;
-    gl_Position = Camera.Projection * Camera.View * worldPosition;
+    DrawDataView dataView      = GetDrawDataView();
+    vec4         worldPosition = dataView.Transform * dataView.Vertex;
+    gl_Position                = Camera.Projection * Camera.View * worldPosition;
 }

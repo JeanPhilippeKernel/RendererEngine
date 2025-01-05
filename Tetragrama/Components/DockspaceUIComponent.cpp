@@ -21,20 +21,14 @@ namespace Tetragrama::Components
     std::string DockspaceUIComponent::s_asset_importer_report_msg         = "";
     float       DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
 
-    DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility)
-        : UIComponent(name, visibility, false), m_asset_importer(CreateScope<Importers::AssimpImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>())
+    DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false), m_asset_importer(CreateScope<Importers::AssimpImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>())
     {
-        m_dockspace_node_flag = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
-        m_window_flags        = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+        m_dockspace_node_flag          = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
+        m_window_flags                 = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
-        const auto& editor_config = Editor::GetCurrentEditorConfiguration();
+        const auto& editor_config      = Editor::GetCurrentEditorConfiguration();
 
-        m_default_import_configuration = {
-            .OutputModelFilePath    = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath),
-            .OutputMeshFilePath     = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath),
-            .OutputTextureFilesPath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.DefaultImportTexturePath),
-            .OutputMaterialsPath    = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath)};
+        m_default_import_configuration = {.OutputModelFilePath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath), .OutputMeshFilePath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath), .OutputTextureFilesPath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.DefaultImportTexturePath), .OutputMaterialsPath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath)};
 
 #ifdef _WIN32
         std::replace(m_default_import_configuration.OutputModelFilePath.begin(), m_default_import_configuration.OutputModelFilePath.end(), '/', '\\');
@@ -193,9 +187,7 @@ namespace Tetragrama::Components
 
         if (ImGui::Button("Launch", ImVec2(80, 0)) && is_import_button_enabled)
         {
-            Helpers::UIDispatcher::RunAsync([this] {
-                OnImportAssetAsync(s_asset_importer_input_buffer);
-            });
+            Helpers::UIDispatcher::RunAsync([this] { OnImportAssetAsync(s_asset_importer_input_buffer); });
         }
 
         if (!is_import_button_enabled || std::string_view(s_asset_importer_input_buffer).empty())
@@ -258,9 +250,7 @@ namespace Tetragrama::Components
         if (m_pending_shutdown)
         {
             m_open_save_scene = false;
-            Helpers::UIDispatcher::RunAsync([this] {
-                OnExitAsync();
-            });
+            Helpers::UIDispatcher::RunAsync([this] { OnExitAsync(); });
         }
         else if (m_request_save_scene_ui_close)
         {
@@ -347,9 +337,7 @@ namespace Tetragrama::Components
         auto current_scene = Editor::GetCurrentEditorScene();
         if (!current_scene->HasPendingChange())
         {
-            Helpers::UIDispatcher::RunAsync([this] {
-                OnExitAsync();
-            });
+            Helpers::UIDispatcher::RunAsync([this] { OnExitAsync(); });
         }
 
         const char* str_id = "Saving changes to the current Scene ?";
@@ -377,9 +365,7 @@ namespace Tetragrama::Components
             {
                 ImGui::CloseCurrentPopup();
 
-                Helpers::UIDispatcher::RunAsync([this] {
-                    OnExitAsync();
-                });
+                Helpers::UIDispatcher::RunAsync([this] { OnExitAsync(); });
             }
             ImGui::SetItemDefaultFocus();
             ImGui::SameLine();
@@ -410,12 +396,12 @@ namespace Tetragrama::Components
         s_asset_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
         s_asset_importer_report_msg       = "Completed";
 
-        auto editor_scene  = Editor::GetCurrentEditorScene();
-        auto editor_config = Editor::GetCurrentEditorConfiguration();
+        auto editor_scene                 = Editor::GetCurrentEditorScene();
+        auto editor_config                = Editor::GetCurrentEditorConfiguration();
         /*
          * Removing the WorkingSpace Path
          */
-        auto ws = editor_config.WorkingSpacePath + "\\";
+        auto ws                           = editor_config.WorkingSpacePath + "\\";
         if (data.SerializedMeshesPath.find(ws) != std::string::npos)
         {
             data.SerializedMeshesPath.replace(data.SerializedMeshesPath.find(ws), ws.size(), "");
@@ -464,16 +450,12 @@ namespace Tetragrama::Components
             {
                 if (ImGui::MenuItem("New Scene"))
                 {
-                    Helpers::UIDispatcher::RunAsync([this] {
-                        OnNewSceneAsync();
-                    });
+                    Helpers::UIDispatcher::RunAsync([this] { OnNewSceneAsync(); });
                 }
 
                 if (ImGui::MenuItem("Open Scene"))
                 {
-                    Helpers::UIDispatcher::RunAsync([this] {
-                        OnOpenSceneAsync();
-                    });
+                    Helpers::UIDispatcher::RunAsync([this] { OnOpenSceneAsync(); });
                 }
 
                 ImGui::MenuItem("Import New Asset...", NULL, &m_open_asset_importer);
@@ -483,9 +465,7 @@ namespace Tetragrama::Components
                 {
                     m_open_save_scene             = true;
                     m_request_save_scene_ui_close = true;
-                    Helpers::UIDispatcher::RunAsync([this] {
-                        m_editor_serializer->Serialize(Editor::GetCurrentEditorScene());
-                    });
+                    Helpers::UIDispatcher::RunAsync([this] { m_editor_serializer->Serialize(Editor::GetCurrentEditorScene()); });
                 }
 
                 ImGui::MenuItem("Save As...", NULL, &m_open_save_scene_as);
@@ -521,8 +501,8 @@ namespace Tetragrama::Components
 
         ZEngine::Rendering::Scenes::GraphicScene::SetRootNodeName(scene.GetName());
 
-        const auto& config       = Editor::GetCurrentEditorConfiguration();
-        const auto& scene_models = scene.GetModels();
+        const auto&                                           config       = Editor::GetCurrentEditorConfiguration();
+        const auto&                                           scene_models = scene.GetModels();
 
         std::vector<ZEngine::Rendering::Scenes::SceneRawData> scene_data;
         for (auto& [_, model] : scene_models)

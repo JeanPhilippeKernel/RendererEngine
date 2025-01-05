@@ -6,7 +6,18 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Managers
 {
-    std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>> ShaderManager::s_shader_mappings = {};
+    std::unordered_map<std::string, Ref<Rendering::Shaders::Shader>>           ShaderManager::s_shader_mappings = {};
+    const std::string_view                                                     ShaderManager::s_base_dir        = "Shaders/Cache/";
+    const std::unordered_map<std::string, std::pair<std::string, std::string>> ShaderManager::s_shader_path     = {
+        {            "initial",                     {fmt::format("{}initial_vertex.spv", s_base_dir), fmt::format("{}initial_fragment.spv", s_base_dir)}},
+        {              "color",             {fmt::format("{}final_color_vertex.spv", s_base_dir), fmt::format("{}final_color_fragment.spv", s_base_dir)}},
+        {           "g_buffer",                   {fmt::format("{}g_buffer_vertex.spv", s_base_dir), fmt::format("{}g_buffer_fragment.spv", s_base_dir)}},
+        {              "imgui",                         {fmt::format("{}imgui_vertex.spv", s_base_dir), fmt::format("{}imgui_fragment.spv", s_base_dir)}},
+        {      "infinite_grid",         {fmt::format("{}infinite_grid_vertex.spv", s_base_dir), fmt::format("{}infinite_grid_fragment.spv", s_base_dir)}},
+        {             "skybox",                       {fmt::format("{}skybox_vertex.spv", s_base_dir), fmt::format("{}skybox_fragment.spv", s_base_dir)}},
+        {"depth_prepass_scene",                                                        {fmt::format("{}depth_prepass_scene_vertex.spv", s_base_dir), ""}},
+        {  "deferred_lighting", {fmt::format("{}deferred_lighting_vertex.spv", s_base_dir), fmt::format("{}deferred_lighting_fragment.spv", s_base_dir)}}
+    };
 
     Ref<Rendering::Shaders::Shader> ShaderManager::Get(Hardwares::VulkanDevice* device, ZEngine::Rendering::Specifications::ShaderSpecification& spec)
     {
@@ -20,18 +31,6 @@ namespace ZEngine::Managers
         }
         return shader;
     }
-
-    const std::string_view ShaderManager::s_base_dir = "Shaders/Cache/";
-
-    const std::unordered_map<std::string, std::pair<std::string, std::string>> ShaderManager::s_shader_path = {
-        {"initial", {fmt::format("{}initial_vertex.spv", s_base_dir), fmt::format("{}initial_fragment.spv", s_base_dir)}},
-        {"color", {fmt::format("{}final_color_vertex.spv", s_base_dir), fmt::format("{}final_color_fragment.spv", s_base_dir)}},
-        {"g_buffer", {fmt::format("{}g_buffer_vertex.spv", s_base_dir), fmt::format("{}g_buffer_fragment.spv", s_base_dir)}},
-        {"imgui", {fmt::format("{}imgui_vertex.spv", s_base_dir), fmt::format("{}imgui_fragment.spv", s_base_dir)}},
-        {"infinite_grid", {fmt::format("{}infinite_grid_vertex.spv", s_base_dir), fmt::format("{}infinite_grid_fragment.spv", s_base_dir)}},
-        {"skybox", {fmt::format("{}skybox_vertex.spv", s_base_dir), fmt::format("{}skybox_fragment.spv", s_base_dir)}},
-        {"depth_prepass_scene", {fmt::format("{}depth_prepass_scene_vertex.spv", s_base_dir), ""}},
-        {"deferred_lighting", {fmt::format("{}deferred_lighting_vertex.spv", s_base_dir), fmt::format("{}deferred_lighting_fragment.spv", s_base_dir)}}};
 
     const std::string ShaderManager::GetFragmentFilename(std::string_view key)
     {
@@ -68,9 +67,9 @@ namespace ZEngine::Managers
         std::ranlux48_base                                     generator(rd());
         uuids::basic_uuid_random_generator<std::ranlux48_base> gen(&generator);
 
-        uuids::uuid const guid   = gen();
-        const auto        key    = uuids::to_string(guid) + m_suffix;
-        const auto        result = IManager::Add(key, std::move(shader));
+        uuids::uuid const                                      guid   = gen();
+        const auto                                             key    = uuids::to_string(guid) + m_suffix;
+        const auto                                             result = IManager::Add(key, std::move(shader));
 
         assert(result.has_value() == true);
         return result->get();

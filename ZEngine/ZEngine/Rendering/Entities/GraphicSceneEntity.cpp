@@ -5,7 +5,7 @@ namespace ZEngine::Rendering::Entities
 {
     std::weak_ptr<entt::registry> GraphicSceneEntity::s_weak_registry_ptr;
 
-    GraphicSceneEntity GraphicSceneEntity::CreateWrapper(const std::shared_ptr<entt::registry>& registry_ptr, entt::entity handle)
+    GraphicSceneEntity            GraphicSceneEntity::CreateWrapper(const std::shared_ptr<entt::registry>& registry_ptr, entt::entity handle)
     {
         if (s_weak_registry_ptr.expired())
         {

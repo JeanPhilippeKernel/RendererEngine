@@ -34,7 +34,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
     std::future<ShaderCompilerResult> ShaderCompiler::CompileAsync()
     {
-        std::unique_lock lock(m_mutex);
+        std::unique_lock      lock(m_mutex);
 
         ShaderOperationResult read_operation = co_await m_reader->ReadAsync(m_source_file);
         if (read_operation == ShaderOperationResult::FAILURE)

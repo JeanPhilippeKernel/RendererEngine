@@ -266,8 +266,8 @@ TEST(IntrusivePtrTest, MakeIntrusiveFunction)
 // Test std::hash Specialization
 TEST(IntrusivePtrTest, HashSpecialization)
 {
-    MockObject*              rawPtr = new MockObject();
-    IntrusivePtr<MockObject> ptr(rawPtr);
+    MockObject*                         rawPtr = new MockObject();
+    IntrusivePtr<MockObject>            ptr(rawPtr);
 
     std::hash<IntrusivePtr<MockObject>> intrusivePtrHash;
     std::hash<MockObject*>              rawPtrHash;
@@ -307,15 +307,15 @@ TEST(IntrusivePtrTest, SwapDeferencedValue)
 
 TEST(IntrusivePtrTest, BaseDerivedType)
 {
-    std::shared_ptr<MockObject> sharedPtr = std::make_shared<MockObjectChild>(5);
-    std::shared_ptr<MockObject> sharedPtr2(new MockObjectChild{4});
+    std::shared_ptr<MockObject>      sharedPtr = std::make_shared<MockObjectChild>(5);
+    std::shared_ptr<MockObject>      sharedPtr2(new MockObjectChild{4});
 
     std::shared_ptr<MockObject>      sharedPtr3 = std::make_shared<MockObject>(5);
     std::shared_ptr<MockObjectChild> sharedPtr4 = std::make_shared<MockObjectChild>(5);
     sharedPtr3                                  = sharedPtr4;
 
-    IntrusivePtr<MockObject> intrusivePtr = make_intrusive<MockObjectChild>(45);
-    IntrusivePtr<MockObject> intrusivePtr2(new MockObjectChild{45});
+    IntrusivePtr<MockObject>      intrusivePtr  = make_intrusive<MockObjectChild>(45);
+    IntrusivePtr<MockObject>      intrusivePtr2(new MockObjectChild{45});
 
     IntrusivePtr<MockObject>      intrusivePtr3 = make_intrusive<MockObject>(5);
     IntrusivePtr<MockObjectChild> intrusivePtr4 = make_intrusive<MockObjectChild>(5);

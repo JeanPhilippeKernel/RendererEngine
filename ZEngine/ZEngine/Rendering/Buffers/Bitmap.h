@@ -84,21 +84,13 @@ namespace ZEngine::Rendering::Buffers
     struct Bitmap
     {
         Bitmap() = default;
-        Bitmap(int width, int height, int channel, BitmapFormat format)
-            : Width(width), Height(height), Channel(channel), Format(format), Buffer(width * height * channel * BytePerChannel(format))
-        {
-        }
-        Bitmap(int width, int height, int depth, int channel, BitmapFormat format)
-            : Width(width), Height(height), Depth(depth), Channel(channel), Format(format), Buffer(width * height * depth * channel * BytePerChannel(format))
-        {
-        }
-        Bitmap(int width, int height, int channel, BitmapFormat format, const void* data)
-            : Width(width), Height(height), Channel(channel), Format(format), Buffer(width * height * channel * BytePerChannel(format))
+        Bitmap(int width, int height, int channel, BitmapFormat format) : Width(width), Height(height), Channel(channel), Format(format), Buffer(width * height * channel * BytePerChannel(format)) {}
+        Bitmap(int width, int height, int depth, int channel, BitmapFormat format) : Width(width), Height(height), Depth(depth), Channel(channel), Format(format), Buffer(width * height * depth * channel * BytePerChannel(format)) {}
+        Bitmap(int width, int height, int channel, BitmapFormat format, const void* data) : Width(width), Height(height), Channel(channel), Format(format), Buffer(width * height * channel * BytePerChannel(format))
         {
             if (data)
             {
-                ZENGINE_VALIDATE_ASSERT(
-                    Helpers::secure_memcpy(Buffer.data(), Buffer.size(), data, Buffer.size()) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
+                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(Buffer.data(), Buffer.size(), data, Buffer.size()) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
             }
         }
         ~Bitmap() = default;
@@ -137,11 +129,7 @@ namespace ZEngine::Rendering::Buffers
             if (Format == BitmapFormat::UNSIGNED_BYTE)
             {
                 const int ofs = Channel * (y * Width + x);
-                return glm::vec4(
-                    Channel > 0 ? float(Buffer[ofs + 0]) / 255.0f : 0.0f,
-                    Channel > 1 ? float(Buffer[ofs + 1]) / 255.0f : 0.0f,
-                    Channel > 2 ? float(Buffer[ofs + 2]) / 255.0f : 0.0f,
-                    Channel > 3 ? float(Buffer[ofs + 3]) / 255.0f : 0.0f);
+                return glm::vec4(Channel > 0 ? float(Buffer[ofs + 0]) / 255.0f : 0.0f, Channel > 1 ? float(Buffer[ofs + 1]) / 255.0f : 0.0f, Channel > 2 ? float(Buffer[ofs + 2]) / 255.0f : 0.0f, Channel > 3 ? float(Buffer[ofs + 3]) / 255.0f : 0.0f);
             }
             else if (Format == BitmapFormat::FLOAT)
             {
@@ -174,20 +162,21 @@ namespace ZEngine::Rendering::Buffers
                 return Bitmap();
             }
 
-            const int face_size = input_map.Width / 4;
+            const int        face_size      = input_map.Width / 4;
 
-            const int width  = face_size * 3;
-            const int height = face_size * 4;
+            const int        width          = face_size * 3;
+            const int        height         = face_size * 4;
 
-            Bitmap vertical_cross = Bitmap(width, height, input_map.Channel, input_map.Format);
+            Bitmap           vertical_cross = Bitmap(width, height, input_map.Channel, input_map.Format);
 
             const glm::ivec2 face_offsets[] = {
-                glm::ivec2{face_size, face_size * 3},
-                glm::ivec2{0, face_size},
-                glm::ivec2{face_size, face_size},
-                glm::ivec2{face_size * 2, face_size},
-                glm::ivec2{face_size, 0},
-                glm::ivec2{face_size, face_size * 2}};
+                glm::ivec2{    face_size, face_size * 3},
+                glm::ivec2{            0,     face_size},
+                glm::ivec2{    face_size,     face_size},
+                glm::ivec2{face_size * 2,     face_size},
+                glm::ivec2{    face_size,             0},
+                glm::ivec2{    face_size, face_size * 2}
+            };
 
             const int clamped_width  = input_map.Width - 1;
             const int clamped_height = input_map.Height - 1;
@@ -203,21 +192,21 @@ namespace ZEngine::Rendering::Buffers
                         const float     theta = atan2(P.y, P.x);
                         const float     phi   = atan2(P.z, R);
 
-                        const float Uf = float(2.0f * face_size * (theta + glm::pi<float>()) / glm::pi<float>());
-                        const float Vf = float(2.0f * face_size * (glm::pi<float>() / 2.0f - phi) / glm::pi<float>());
+                        const float     Uf    = float(2.0f * face_size * (theta + glm::pi<float>()) / glm::pi<float>());
+                        const float     Vf    = float(2.0f * face_size * (glm::pi<float>() / 2.0f - phi) / glm::pi<float>());
 
-                        const int U1 = glm::clamp(int(floor(Uf)), 0, clamped_width);
-                        const int V1 = glm::clamp(int(floor(Vf)), 0, clamped_height);
-                        const int U2 = glm::clamp(U1 + 1, 0, clamped_width);
-                        const int V2 = glm::clamp(V1 + 1, 0, clamped_height);
+                        const int       U1    = glm::clamp(int(floor(Uf)), 0, clamped_width);
+                        const int       V1    = glm::clamp(int(floor(Vf)), 0, clamped_height);
+                        const int       U2    = glm::clamp(U1 + 1, 0, clamped_width);
+                        const int       V2    = glm::clamp(V1 + 1, 0, clamped_height);
 
-                        const float s = Uf - U1;
-                        const float t = Vf - V1;
+                        const float     s     = Uf - U1;
+                        const float     t     = Vf - V1;
 
-                        const glm::vec4 A = input_map.GetPixel(U1, V1);
-                        const glm::vec4 B = input_map.GetPixel(U2, V1);
-                        const glm::vec4 C = input_map.GetPixel(U1, V2);
-                        const glm::vec4 D = input_map.GetPixel(U2, V2);
+                        const glm::vec4 A     = input_map.GetPixel(U1, V1);
+                        const glm::vec4 B     = input_map.GetPixel(U2, V1);
+                        const glm::vec4 C     = input_map.GetPixel(U1, V2);
+                        const glm::vec4 D     = input_map.GetPixel(U2, V2);
 
                         const glm::vec4 color = A * (1 - s) * (1 - t) + B * (s) * (1 - t) + C * (1 - s) * t + D * (s) * (t);
                         vertical_cross.SetPixel(i + face_offsets[face].x, j + face_offsets[face].y, color);
@@ -229,22 +218,22 @@ namespace ZEngine::Rendering::Buffers
 
         inline static Bitmap VerticalCrossToCubemap(const Bitmap& input_map)
         {
-            const int face_width  = input_map.Width / 3;
-            const int face_height = input_map.Height / 4;
+            const int face_width       = input_map.Width / 3;
+            const int face_height      = input_map.Height / 4;
 
-            Bitmap cubemap = Bitmap(face_width, face_height, 6, input_map.Channel, input_map.Format);
-            cubemap.Type   = CUBE;
+            Bitmap    cubemap          = Bitmap(face_width, face_height, 6, input_map.Channel, input_map.Format);
+            cubemap.Type               = CUBE;
 
             const uint8_t* source      = input_map.Buffer.data();
             uint8_t*       destination = cubemap.Buffer.data();
             int            pixel_size  = cubemap.Channel * BytePerChannel(cubemap.Format);
 
-            const int RIGHT_FACE = 0;
-            const int LEFT_FACE  = 1;
-            const int UP_FACE    = 2;
-            const int DOWN_FACE  = 3;
-            const int FRONT_FACE = 4;
-            const int BACK_FACE  = 5;
+            const int      RIGHT_FACE  = 0;
+            const int      LEFT_FACE   = 1;
+            const int      UP_FACE     = 2;
+            const int      DOWN_FACE   = 3;
+            const int      FRONT_FACE  = 4;
+            const int      BACK_FACE   = 5;
 
             for (int face = 0; face < 6; ++face)
             {
@@ -294,10 +283,7 @@ namespace ZEngine::Rendering::Buffers
                                 break;
                             }
                         }
-                        ZENGINE_VALIDATE_ASSERT(
-                            Helpers::secure_memcpy(destination, pixel_size, source + (pixel_pos_y * input_map.Width + pixel_pos_x) * pixel_size, pixel_size) ==
-                                Helpers::MEMORY_OP_SUCCESS,
-                            "Failed to perform memory copy operation")
+                        ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(destination, pixel_size, source + (pixel_pos_y * input_map.Width + pixel_pos_x) * pixel_size, pixel_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
                         destination += pixel_size;
                     }
                 }

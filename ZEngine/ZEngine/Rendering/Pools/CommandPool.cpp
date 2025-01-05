@@ -8,7 +8,7 @@ namespace ZEngine::Rendering::Pools
 {
     CommandPool::CommandPool(Hardwares::VulkanDevice* device, Rendering::QueueType type)
     {
-        Device = device;
+        Device                                           = device;
 
         QueueType                                        = type;
         Hardwares::QueueView    queue_view               = device->GetQueue(type);

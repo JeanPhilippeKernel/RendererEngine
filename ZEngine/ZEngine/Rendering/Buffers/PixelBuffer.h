@@ -25,15 +25,7 @@ namespace ZEngine::Rendering::Buffers
             glDeleteBuffers(1, &m_pixel_buffer_id);
         }
 
-        void ReadPixelFrom(
-            uint32_t                             buffer_source,
-            int                                  x,
-            int                                  y,
-            uint32_t                             width,
-            uint32_t                             height,
-            GLenum                               format,
-            GLenum                               type,
-            const std::function<void(T* const)>& read_pixel_callback)
+        void ReadPixelFrom(uint32_t buffer_source, int x, int y, uint32_t width, uint32_t height, GLenum format, GLenum type, const std::function<void(T* const)>& read_pixel_callback)
         {
             glReadBuffer(buffer_source);
             glBindBuffer(GL_PIXEL_PACK_BUFFER, m_pixel_buffer_id);

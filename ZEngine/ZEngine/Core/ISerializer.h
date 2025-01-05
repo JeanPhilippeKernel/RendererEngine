@@ -9,7 +9,7 @@ namespace ZEngine::Core
         /**
          * A boolean that describes whether the serialization was a success or not.
          */
-        bool IsSuccess{true};
+        bool        IsSuccess{true};
 
         /**
          * A log information that describes errors happened during the serialization.
@@ -19,8 +19,8 @@ namespace ZEngine::Core
 
     struct ISerializer : public Helpers::RefCounted
     {
-        ISerializer()          = default;
-        virtual ~ISerializer() = default;
+        ISerializer()                                                       = default;
+        virtual ~ISerializer()                                              = default;
 
         virtual SerializeInformation Serialize(std::string_view filename)   = 0;
         virtual SerializeInformation Deserialize(std::string_view filename) = 0;

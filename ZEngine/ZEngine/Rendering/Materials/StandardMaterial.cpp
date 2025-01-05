@@ -6,9 +6,7 @@ using namespace ZEngine::Helpers;
 namespace ZEngine::Rendering::Materials
 {
 
-    StandardMaterial::StandardMaterial()
-        : ShaderMaterial(Shaders::ShaderBuiltInType::STANDARD), m_tile_factor(1.0f), m_diffuse_tint_color(glm::vec4(1.0f)), m_specular_tint_color(glm::vec4(1.0f)),
-          m_diffuse_map(Textures::CreateTexture(1, 1)), m_specular_map(Textures::CreateTexture(1, 1))
+    StandardMaterial::StandardMaterial() : ShaderMaterial(Shaders::ShaderBuiltInType::STANDARD), m_tile_factor(1.0f), m_diffuse_tint_color(glm::vec4(1.0f)), m_specular_tint_color(glm::vec4(1.0f)), m_diffuse_map(Textures::CreateTexture(1, 1)), m_specular_map(Textures::CreateTexture(1, 1))
     {
         m_material_name = typeid(*this).name();
     }

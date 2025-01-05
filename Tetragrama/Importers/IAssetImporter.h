@@ -52,8 +52,8 @@ namespace Tetragrama::Importers
         on_import_error_fn    m_error_callback{nullptr};
         on_import_log_fn      m_log_callback{nullptr};
 
-        std::mutex       m_mutex;
-        std::atomic_bool m_is_importing{false};
+        std::mutex            m_mutex;
+        std::atomic_bool      m_is_importing{false};
 
     public:
         virtual ~IAssetImporter() = default;
@@ -86,13 +86,13 @@ namespace Tetragrama::Importers
 
         virtual std::future<void> ImportAsync(std::string_view filename, ImportConfiguration config = {}) = 0;
 
-        static void SerializeImporterData(ImporterData& data, const ImportConfiguration&);
-        static void SerializeMapData(std::ostream&, const std::unordered_map<uint32_t, uint32_t>&);
-        static void SerializeStringArrayData(std::ostream&, std::span<std::string>);
+        static void               SerializeImporterData(ImporterData& data, const ImportConfiguration&);
+        static void               SerializeMapData(std::ostream&, const std::unordered_map<uint32_t, uint32_t>&);
+        static void               SerializeStringArrayData(std::ostream&, std::span<std::string>);
 
-        static ImporterData DeserializeImporterData(std::string_view model_path, std::string_view mesh_path, std::string_view material_path);
-        static void         DeserializeMapData(std::istream&, std::unordered_map<uint32_t, uint32_t>&);
-        static void         DeserializeStringArrayData(std::istream&, std::vector<std::string>&);
+        static ImporterData       DeserializeImporterData(std::string_view model_path, std::string_view mesh_path, std::string_view material_path);
+        static void               DeserializeMapData(std::istream&, std::unordered_map<uint32_t, uint32_t>&);
+        static void               DeserializeStringArrayData(std::istream&, std::vector<std::string>&);
     };
 
 } // namespace Tetragrama::Importers

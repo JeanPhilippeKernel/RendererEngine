@@ -9,13 +9,13 @@
 
 namespace ZEngine::Logging
 {
-    static std::atomic_uint32_t                               g_cookie{0};
-    spdlog::sink_ptr                                          Logger::s_sink;
-    std::recursive_mutex                                      Logger::s_mutex;
-    std::vector<std::shared_ptr<spdlog::logger>>              Logger::s_logger_collection;
-    std::vector<std::pair<uint32_t, Logger::LogEventHandler>> Logger::s_log_event_handlers;
+    static std::atomic_uint32_t                               g_cookie                     = 0;
+    spdlog::sink_ptr                                          Logger::s_sink               = nullptr;
+    std::recursive_mutex                                      Logger::s_mutex              = {};
+    std::vector<std::shared_ptr<spdlog::logger>>              Logger::s_logger_collection  = {};
+    std::vector<std::pair<uint32_t, Logger::LogEventHandler>> Logger::s_log_event_handlers = {};
 
-    void Logger::Initialize(const LoggerConfiguration& configuration)
+    void                                                      Logger::Initialize(const LoggerConfiguration& configuration)
     {
         const auto current_directoy   = std::filesystem::current_path();
         const auto log_directory      = fmt::format("{0}/{1}", current_directoy.string(), configuration.OutputDirectory);

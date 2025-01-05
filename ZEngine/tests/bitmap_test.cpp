@@ -9,7 +9,7 @@ using namespace ZEngine::Rendering::Buffers;
 
 constexpr float epsilon = 1e-2;
 
-static bool approximatelyEqual(float a, float b, float epsilon)
+static bool     approximatelyEqual(float a, float b, float epsilon)
 {
     return fabs(a - b) <= epsilon * fmax(1.0f, fmax(fabs(a), fabs(b)));
 }
@@ -19,7 +19,7 @@ TEST(BitmapTest, GetOrSetPixel)
 
     glm::vec4 p(0.5, 0.5, 0.8, 0.0);
 
-    Bitmap bitmap(100, 100, 3, BitmapFormat::UNSIGNED_BYTE);
+    Bitmap    bitmap(100, 100, 3, BitmapFormat::UNSIGNED_BYTE);
     bitmap.SetPixel(0, 0, p);
 
     auto pp = bitmap.GetPixel(0, 0);
@@ -32,11 +32,11 @@ TEST(BitmapTest, GetOrSetPixel)
 TEST(BitmapTest, TestVerticalCross)
 {
     int          width = 0, height = 0, channel = 0;
-    const float* image_data = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
+    const float* image_data     = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
 
-    Bitmap in             = {width, height, channel, BitmapFormat::FLOAT, image_data};
-    Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(in);
-    Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
+    Bitmap       in             = {width, height, channel, BitmapFormat::FLOAT, image_data};
+    Bitmap       vertical_cross = Bitmap::EquirectangularMapToVerticalCross(in);
+    Bitmap       cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
     stbi_image_free((void*) image_data);
 
     stbi_write_hdr("screenshot.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer.data());
@@ -50,8 +50,8 @@ TEST(BitmapTest, TestVerticalCross)
 
 TEST(BitmapTest, TestVerticalCross2)
 {
-    int          width = 0, height = 0, channel = 0;
-    const float* image_data = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
+    int                width = 0, height = 0, channel = 0;
+    const float*       image_data         = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
 
     std::vector<float> image_buffer_32bit = {};
 

@@ -20,8 +20,7 @@ namespace glm
             return false;
 
         // First, isolate perspective.  This is the messiest.
-        if (epsilonNotEqual(LocalMatrix[0][3], static_cast<T>(0), epsilon<T>()) || epsilonNotEqual(LocalMatrix[1][3], static_cast<T>(0), epsilon<T>()) ||
-            epsilonNotEqual(LocalMatrix[2][3], static_cast<T>(0), epsilon<T>()))
+        if (epsilonNotEqual(LocalMatrix[0][3], static_cast<T>(0), epsilon<T>()) || epsilonNotEqual(LocalMatrix[1][3], static_cast<T>(0), epsilon<T>()) || epsilonNotEqual(LocalMatrix[2][3], static_cast<T>(0), epsilon<T>()))
         {
             // Clear the perspective partition
             LocalMatrix[0][3] = LocalMatrix[1][3] = LocalMatrix[2][3] = static_cast<T>(0);
@@ -40,12 +39,12 @@ namespace glm
                 Row[i][j] = LocalMatrix[i][j];
 
         // Compute X scale factor and normalize first row.
-        scale.x = length(Row[0]);
-        Row[0]  = detail::scale(Row[0], static_cast<T>(1));
-        scale.y = length(Row[1]);
-        Row[1]  = detail::scale(Row[1], static_cast<T>(1));
-        scale.z = length(Row[2]);
-        Row[2]  = detail::scale(Row[2], static_cast<T>(1));
+        scale.x    = length(Row[0]);
+        Row[0]     = detail::scale(Row[0], static_cast<T>(1));
+        scale.y    = length(Row[1]);
+        Row[1]     = detail::scale(Row[1], static_cast<T>(1));
+        scale.z    = length(Row[2]);
+        Row[2]     = detail::scale(Row[2], static_cast<T>(1));
 
         // At this point, the matrix (in rows[]) is orthonormal.
         // Check for a coordinate system flip.  If the determinant

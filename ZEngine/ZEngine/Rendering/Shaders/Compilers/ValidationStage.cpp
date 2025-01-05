@@ -21,9 +21,7 @@ namespace ZEngine::Rendering::Shaders::Compilers
         std::unique_lock     lock(m_mutex);
         spvtools::SpirvTools tools(SPV_ENV_UNIVERSAL_1_6);
 
-        tools.SetMessageConsumer([this](spv_message_level_t level, const char* source, const spv_position_t& position, const char* message) {
-            m_information.ErrorMessage = "Validation Error (" + std::string(source) + ":" + std::to_string(position.index) + "): " + std::string(message) + "\n";
-        });
+        tools.SetMessageConsumer([this](spv_message_level_t level, const char* source, const spv_position_t& position, const char* message) { m_information.ErrorMessage = "Validation Error (" + std::string(source) + ":" + std::to_string(position.index) + "): " + std::string(message) + "\n"; });
 
         // First validation pass on the original SPIR-V code
         bool isValidInitial = tools.Validate(information_list.BinarySource.data(), information_list.BinarySource.size());

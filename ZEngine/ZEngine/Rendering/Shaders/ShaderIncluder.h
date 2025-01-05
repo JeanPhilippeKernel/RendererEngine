@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Shaders
             std::filesystem::path fullPath = std::filesystem::path(basePath) / headerName;
             const auto            cacheKey = fullPath.string();
 
-            auto it = cache.find(cacheKey);
+            auto                  it       = cache.find(cacheKey);
             if (it != cache.end())
             {
                 return new IncludeResult(cacheKey, it->second.data(), it->second.size(), nullptr);
@@ -40,7 +40,7 @@ namespace ZEngine::Rendering::Shaders
         std::string_view                             basePath = "Shaders/";
         std::unordered_map<std::string, std::string> cache;
 
-        std::string readFileContent(const std::filesystem::path& filePath) const
+        std::string                                  readFileContent(const std::filesystem::path& filePath) const
         {
             std::ifstream fileStream(filePath, std::ios::in | std::ios::binary);
             if (!fileStream)

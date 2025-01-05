@@ -18,15 +18,15 @@ namespace ZEngine::Rendering::Renderers::Storages
 
         ~GraphicVertex() = default;
 
-        glm::vec3 GetPosition() const;
-        glm::vec3 GetNormal() const;
-        glm::vec2 GetTextureCoord() const;
+        glm::vec3                   GetPosition() const;
+        glm::vec3                   GetNormal() const;
+        glm::vec2                   GetTextureCoord() const;
 
-        void SetPosition(const glm::vec3& value);
-        void SetNormal(const glm::vec3& value);
-        void SetTextureCoord(const glm::vec2& value);
+        void                        SetPosition(const glm::vec3& value);
+        void                        SetNormal(const glm::vec3& value);
+        void                        SetTextureCoord(const glm::vec2& value);
 
-        void TransformPosition(const glm::mat4& matrix);
+        void                        TransformPosition(const glm::mat4& matrix);
 
         const std::array<float, 8>& GetData() const
         {
