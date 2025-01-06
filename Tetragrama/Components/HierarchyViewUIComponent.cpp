@@ -109,9 +109,9 @@ namespace Tetragrama::Components
             const auto camera_projection  = camera->GetPerspectiveMatrix();
             const auto camera_view_matrix = camera->GetViewMatrix();
 
-            auto& global_transform  = GraphicScene::GetSceneNodeGlobalTransform(m_selected_node_identifier);
-            auto  initial_transform = global_transform;
-            auto& local_transform   = GraphicScene::GetSceneNodeLocalTransform(m_selected_node_identifier);
+            auto&      global_transform   = GraphicScene::GetSceneNodeGlobalTransform(m_selected_node_identifier);
+            auto       initial_transform  = global_transform;
+            auto&      local_transform    = GraphicScene::GetSceneNodeLocalTransform(m_selected_node_identifier);
 
             if (camera && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, Engine::GetWindow()))
             {
@@ -129,14 +129,7 @@ namespace Tetragrama::Components
 
             if (m_gizmo_operation > 0)
             {
-                ImGuizmo::Manipulate(
-                    glm::value_ptr(camera_view_matrix),
-                    glm::value_ptr(camera_projection),
-                    (ImGuizmo::OPERATION) m_gizmo_operation,
-                    ImGuizmo::MODE::WORLD,
-                    glm::value_ptr(global_transform),
-                    nullptr,
-                    is_snap_operation ? snap_array : nullptr);
+                ImGuizmo::Manipulate(glm::value_ptr(camera_view_matrix), glm::value_ptr(camera_projection), (ImGuizmo::OPERATION) m_gizmo_operation, ImGuizmo::MODE::WORLD, glm::value_ptr(global_transform), nullptr, is_snap_operation ? snap_array : nullptr);
             }
 
             auto delta_transform = glm::inverse(initial_transform) * global_transform;
@@ -162,21 +155,20 @@ namespace Tetragrama::Components
             return;
         }
 
-        const auto& node_hierarchy         = GraphicScene::GetSceneNodeHierarchy(node_identifier);
-        auto        node_name              = GraphicScene::GetSceneNodeName(node_identifier);
-        auto        node_identifier_string = fmt::format("SceneNode_{0}", node_identifier);
-        auto        flags                  = (node_hierarchy.FirstChild < 0) ? (ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | m_node_flag) : m_node_flag;
-        flags |= (m_selected_node_identifier == node_identifier) ? ImGuiTreeNodeFlags_Selected : 0;
-        auto label          = (!node_name.empty()) ? std::string(node_name) : fmt::format("Node_{0}", node_identifier);
-        bool is_node_opened = ImGui::TreeNodeEx(node_identifier_string.c_str(), flags, "%s", label.c_str());
+        const auto& node_hierarchy          = GraphicScene::GetSceneNodeHierarchy(node_identifier);
+        auto        node_name               = GraphicScene::GetSceneNodeName(node_identifier);
+        auto        node_identifier_string  = fmt::format("SceneNode_{0}", node_identifier);
+        auto        flags                   = (node_hierarchy.FirstChild < 0) ? (ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | m_node_flag) : m_node_flag;
+        flags                              |= (m_selected_node_identifier == node_identifier) ? ImGuiTreeNodeFlags_Selected : 0;
+        auto label                          = (!node_name.empty()) ? std::string(node_name) : fmt::format("Node_{0}", node_identifier);
+        bool is_node_opened                 = ImGui::TreeNodeEx(node_identifier_string.c_str(), flags, "%s", label.c_str());
 
         if (ImGui::IsItemClicked())
         {
             m_selected_node_identifier = node_identifier;
 
-            auto entity = GraphicScene::GetSceneNodeEntityWrapper(m_selected_node_identifier);
-            Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::GenericMessage<SceneEntity>>(
-                EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::GenericMessage<SceneEntity>{std::move(entity)});
+            auto entity                = GraphicScene::GetSceneNodeEntityWrapper(m_selected_node_identifier);
+            Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::GenericMessage<SceneEntity>>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::GenericMessage<SceneEntity>{std::move(entity)});
         }
 
         if (is_node_opened)

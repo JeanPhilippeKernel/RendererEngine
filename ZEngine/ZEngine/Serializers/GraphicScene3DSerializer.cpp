@@ -332,9 +332,7 @@ namespace ZEngine::Serializers
     {
         emitter << YAML::BeginMap;
 
-        SerializeSceneEntityComponent<UUIComponent>(emitter, entity, [](YAML::Emitter& emitter, UUIComponent& component) {
-            emitter << YAML::Key << "Entity" << YAML::Value << uuids::to_string(component.Identifier);
-        });
+        SerializeSceneEntityComponent<UUIComponent>(emitter, entity, [](YAML::Emitter& emitter, UUIComponent& component) { emitter << YAML::Key << "Entity" << YAML::Value << uuids::to_string(component.Identifier); });
 
         SerializeSceneEntityComponent<NameComponent>(emitter, entity, [](YAML::Emitter& emitter, NameComponent& component) {
             emitter << YAML::Key << "NameComponent";

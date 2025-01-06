@@ -128,7 +128,7 @@ TEST(IntrusiveWeakPtrTest, BaseDerivedType)
 
     std::shared_ptr<MockWeakObject> sharedPtr3 = std::make_shared<MockObjectChild>(5);
     std::weak_ptr<MockWeakObject>   weakSharedPtr3;
-    weakSharedPtr3 = sharedPtr3;
+    weakSharedPtr3                                = sharedPtr3;
 
     IntrusivePtr<MockWeakObject>     intrusivePtr = make_intrusive<MockObjectChild>(45);
     IntrusiveWeakPtr<MockWeakObject> intrusiveWeakPtr2(intrusivePtr);

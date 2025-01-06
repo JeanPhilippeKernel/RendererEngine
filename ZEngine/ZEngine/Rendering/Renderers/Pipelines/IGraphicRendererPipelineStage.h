@@ -10,15 +10,15 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /**
          * Initialize a new IGraphicRendererPipelineStage instance.
          */
-        IGraphicRendererPipelineStage()          = default;
-        virtual ~IGraphicRendererPipelineStage() = default;
+        IGraphicRendererPipelineStage()                                                     = default;
+        virtual ~IGraphicRendererPipelineStage()                                            = default;
 
         /**
          * Run Graphic renderer stage
          *
          * @param information A Graphic renderer pipeline information
          */
-        virtual void Run(GraphicRendererPipelineInformation& information) = 0;
+        virtual void              Run(GraphicRendererPipelineInformation& information)      = 0;
 
         /**
          * Run asynchronously renderer stage

@@ -8,8 +8,8 @@ namespace ZEngine::Managers
     template <typename T>
     struct IAssetManager : public IManager<std::string, Helpers::Ref<T>>
     {
-        IAssetManager()          = default;
-        virtual ~IAssetManager() = default;
+        IAssetManager()                                                     = default;
+        virtual ~IAssetManager()                                            = default;
 
         /**
          * Add an asset to the Asset manager store
@@ -26,7 +26,7 @@ namespace ZEngine::Managers
          * @param filename Path to find the asset file in the system
          * @return An asset instance
          */
-        virtual Helpers::Ref<T> Load(const char* filename) = 0;
+        virtual Helpers::Ref<T> Load(const char* filename)                  = 0;
 
         /**
          * Get an asset instance from the Asset manager store
@@ -35,7 +35,7 @@ namespace ZEngine::Managers
          * @return An asset instance.
          *		  The asset must exists in the store, otherwise an assertion will be raised
          */
-        Helpers::Ref<T> Obtains(const char* name)
+        Helpers::Ref<T>         Obtains(const char* name)
         {
             const auto key    = std::string(name).append(this->m_suffix);
             const auto result = IManager<std::string, Helpers::Ref<T>>::Get(key);

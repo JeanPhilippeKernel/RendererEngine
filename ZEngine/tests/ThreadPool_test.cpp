@@ -14,9 +14,7 @@ protected:
 TEST_F(ThreadPoolTest, Submit)
 {
     std::atomic<bool> executed = false;
-    ThreadPoolHelper::Submit([&executed] {
-        executed = true;
-    });
+    ThreadPoolHelper::Submit([&executed] { executed = true; });
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -28,9 +26,7 @@ TEST_F(ThreadPoolTest, TaskExecution)
     std::atomic<int> counter = 0;
     for (int i = 0; i < 5; ++i)
     {
-        ThreadPoolHelper::Submit([&counter] {
-            counter++;
-        });
+        ThreadPoolHelper::Submit([&counter] { counter++; });
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));

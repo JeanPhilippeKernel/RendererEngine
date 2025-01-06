@@ -12,8 +12,7 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Buffers
 {
-    CommandBuffer::CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool one_time_usage)
-        : Device(device), QueueType(type), m_command_pool(command_pool)
+    CommandBuffer::CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool one_time_usage) : Device(device), QueueType(type), m_command_pool(command_pool)
     {
         Create();
     }
@@ -33,8 +32,7 @@ namespace ZEngine::Rendering::Buffers
         command_buffer_allocation_info.commandBufferCount          = 1;
         command_buffer_allocation_info.commandPool                 = m_command_pool;
 
-        ZENGINE_VALIDATE_ASSERT(
-            vkAllocateCommandBuffers(Device->LogicalDevice, &command_buffer_allocation_info, &m_command_buffer) == VK_SUCCESS, "Failed to allocate command buffer!")
+        ZENGINE_VALIDATE_ASSERT(vkAllocateCommandBuffers(Device->LogicalDevice, &command_buffer_allocation_info, &m_command_buffer) == VK_SUCCESS, "Failed to allocate command buffer!")
         m_command_buffer_state = CommanBufferState::Idle;
     }
 
@@ -140,11 +138,11 @@ namespace ZEngine::Rendering::Buffers
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        const auto&    render_pass_spec = render_pass->Specification;
-        const uint32_t width            = render_pass->GetRenderAreaWidth();
-        const uint32_t height           = render_pass->GetRenderAreaHeight();
+        const auto&               render_pass_spec = render_pass->Specification;
+        const uint32_t            width            = render_pass->GetRenderAreaWidth();
+        const uint32_t            height           = render_pass->GetRenderAreaHeight();
 
-        std::vector<VkClearValue> clear_values = {};
+        std::vector<VkClearValue> clear_values     = {};
 
         if (render_pass_spec.SwapchainAsRenderTarget)
         {
@@ -222,8 +220,8 @@ namespace ZEngine::Rendering::Buffers
     {
         if (auto render_pass = m_active_render_pass.lock())
         {
-            auto        pipeline_layout    = render_pass->Pipeline->GetPipelineLayout();
-            const auto& descriptor_set_map = render_pass->Pipeline->GetShader()->GetDescriptorSetMap();
+            auto                         pipeline_layout      = render_pass->Pipeline->GetPipelineLayout();
+            const auto&                  descriptor_set_map   = render_pass->Pipeline->GetShader()->GetDescriptorSetMap();
 
             std::vector<VkDescriptorSet> frame_set_collection = {};
             for (auto& descriptor_set : descriptor_set_map)

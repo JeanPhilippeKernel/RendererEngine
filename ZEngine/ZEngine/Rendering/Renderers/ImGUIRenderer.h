@@ -10,13 +10,13 @@ namespace ZEngine::Rendering::Renderers
     struct GraphicRenderer;
     struct ImGUIRenderer : public Helpers::RefCounted
     {
-        void Initialize(GraphicRenderer* renderer);
-        void Deinitialize();
+        void            Initialize(GraphicRenderer* renderer);
+        void            Deinitialize();
 
-        void StyleDarkTheme();
+        void            StyleDarkTheme();
 
-        void BeginFrame();
-        void EndFrame(Rendering::Buffers::CommandBuffer* const command_buffer, uint32_t frame_index);
+        void            NewFrame();
+        void            DrawFrame(uint32_t frame_index, Rendering::Buffers::CommandBuffer* const command_buffer);
 
         VkDescriptorSet UpdateFrameOutput(const Textures::TextureHandle& handle);
 

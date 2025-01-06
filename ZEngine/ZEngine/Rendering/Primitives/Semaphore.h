@@ -18,16 +18,16 @@ namespace ZEngine::Rendering::Primitives
 
     struct Semaphore : public Helpers::RefCounted
     {
-        Hardwares::VulkanDevice* Device = nullptr;
-
         Semaphore(Hardwares::VulkanDevice* const device);
         ~Semaphore();
-        void        Wait(const uint64_t value, const uint64_t timeout = UINT64_MAX);
-        void        Signal(const uint64_t value);
-        VkSemaphore GetHandle() const;
 
-        void           SetState(SemaphoreState state);
-        SemaphoreState GetState() const;
+        Hardwares::VulkanDevice* Device = nullptr;
+        void                     Wait(const uint64_t value, const uint64_t timeout = UINT64_MAX);
+        void                     Signal(const uint64_t value);
+        VkSemaphore              GetHandle() const;
+
+        void                     SetState(SemaphoreState state);
+        SemaphoreState           GetState() const;
 
     private:
         SemaphoreState m_semaphore_state{SemaphoreState::Idle};

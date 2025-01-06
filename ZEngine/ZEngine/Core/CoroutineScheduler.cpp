@@ -9,7 +9,7 @@ namespace ZEngine::Core
     std::atomic_bool                                 CoroutineScheduler::s_running      = false;
     Helpers::Ref<CoroutineScheduler::SchedulerQueue> CoroutineScheduler::s_action_queue = Helpers::CreateRef<CoroutineScheduler::SchedulerQueue>();
 
-    void CoroutineScheduler::Schedule(CoroutineAction&& action)
+    void                                             CoroutineScheduler::Schedule(CoroutineAction&& action)
     {
         if (!action)
         {

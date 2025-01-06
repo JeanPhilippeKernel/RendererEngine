@@ -33,7 +33,7 @@ namespace ZEngine::Rendering::Renderers
     {
         std::string resource_name(name);
 
-        auto texture                                                     = m_graph.Renderer->Device->GlobalTextures->Access(handle);
+        auto        texture                                              = m_graph.Renderer->Device->GlobalTextures->Access(handle);
         m_graph.m_resource_map[resource_name].Name                       = name.data();
         m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::TEXTURE;
         m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = handle;
@@ -46,7 +46,7 @@ namespace ZEngine::Rendering::Renderers
     {
         std::string resource_name(name);
 
-        auto texture                                                     = m_graph.Renderer->Device->GlobalTextures->Access(handle);
+        auto        texture                                              = m_graph.Renderer->Device->GlobalTextures->Access(handle);
         m_graph.m_resource_map[resource_name].Name                       = name.data();
         m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::ATTACHMENT;
         m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = handle;
@@ -129,9 +129,9 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::Setup()
     {
-        for (auto& pass_callback : m_node)
+        for (auto& [name, node] : m_node)
         {
-            pass_callback.second.CallbackPass->Setup(pass_callback.first, m_builder.get());
+            node.CallbackPass->Setup(name, this);
         }
     }
 
@@ -212,7 +212,7 @@ namespace ZEngine::Rendering::Renderers
         {
             auto& node = m_node[node_name.data()];
 
-            m_render_pass_builder->SetName(node.Creation.Name);
+            RenderPassBuilder->SetName(node.Creation.Name);
 
             for (auto& output : node.Creation.Outputs)
             {
@@ -220,7 +220,7 @@ namespace ZEngine::Rendering::Renderers
 
                 if (resource.ResourceInfo.External)
                 {
-                    m_render_pass_builder->UseRenderTarget(resource.ResourceInfo.TextureHandle);
+                    RenderPassBuilder->UseRenderTarget(resource.ResourceInfo.TextureHandle);
                     continue;
                 }
 
@@ -230,7 +230,7 @@ namespace ZEngine::Rendering::Renderers
                     auto texture                                        = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
                     resource.ResourceInfo.TextureHandle                 = global_textures.Add(texture);
 
-                    m_render_pass_builder->UseRenderTarget(resource.ResourceInfo.TextureHandle);
+                    RenderPassBuilder->UseRenderTarget(resource.ResourceInfo.TextureHandle);
                 }
             }
 
@@ -240,23 +240,22 @@ namespace ZEngine::Rendering::Renderers
 
                 if (input.Type == RenderGraphResourceType::ATTACHMENT)
                 {
-                    m_render_pass_builder->AddInputAttachment(resource.ResourceInfo.TextureHandle);
+                    RenderPassBuilder->AddInputAttachment(resource.ResourceInfo.TextureHandle);
                 }
                 else if (input.Type == RenderGraphResourceType::TEXTURE)
                 {
-                    m_render_pass_builder->AddInputTexture(input.BindingInputKeyName, resource.ResourceInfo.TextureHandle);
+                    RenderPassBuilder->AddInputTexture(input.BindingInputKeyName, resource.ResourceInfo.TextureHandle);
                 }
             }
 
-            node.CallbackPass->Compile(node.Handle, *m_render_pass_builder, *this);
+            node.CallbackPass->Compile(node.Handle, this);
         }
 
         for (std::string_view name : m_sorted_nodes)
         {
             auto&                                         node             = m_node[name.data()];
-            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {
-                .Width = node.Handle->RenderAreaWidth, .Height = node.Handle->RenderAreaHeight, .RenderTargets = node.Handle->RenderTargets, .Attachment = node.Handle->Attachment};
-            node.Framebuffer = CreateRef<Buffers::FramebufferVNext>(Renderer->Device, framebuffer_spec);
+            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {.Width = node.Handle->RenderAreaWidth, .Height = node.Handle->RenderAreaHeight, .RenderTargets = node.Handle->RenderTargets, .Attachment = node.Handle->Attachment};
+            node.Framebuffer                                               = CreateRef<Buffers::FramebufferVNext>(Renderer->Device, framebuffer_spec);
         }
     }
 
@@ -282,26 +281,26 @@ namespace ZEngine::Rendering::Renderers
             {
                 if (input.Type == RenderGraphResourceType::TEXTURE)
                 {
-                    auto& resource = m_resource_map[input.Name];
+                    auto&                                           resource               = m_resource_map[input.Name];
                     /*
                      * The input texture can from an attachment that should read as Shader Sampler2D data
                      * So we need ensure the right config for transition
                      */
-                    bool is_resource_attachment = resource.Type == RenderGraphResourceType::ATTACHMENT;
+                    bool                                            is_resource_attachment = resource.Type == RenderGraphResourceType::ATTACHMENT;
 
-                    auto  texture = global_textures[resource.ResourceInfo.TextureHandle];
-                    auto& buffer  = texture->ImageBuffer->GetBuffer();
+                    auto                                            texture                = global_textures[resource.ResourceInfo.TextureHandle];
+                    auto&                                           buffer                 = texture->ImageBuffer->GetBuffer();
 
-                    Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
-                    barrier_spec.ImageHandle                                     = buffer.Handle;
-                    barrier_spec.OldLayout             = is_resource_attachment ? Specifications::ImageLayout::COLOR_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::UNDEFINED;
-                    barrier_spec.NewLayout             = Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-                    barrier_spec.ImageAspectMask       = VK_IMAGE_ASPECT_COLOR_BIT;
-                    barrier_spec.SourceAccessMask      = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                    barrier_spec.DestinationAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                    barrier_spec.SourceStageMask       = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-                    barrier_spec.DestinationStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                    barrier_spec.LayerCount            = 1;
+                    Specifications::ImageMemoryBarrierSpecification barrier_spec           = {};
+                    barrier_spec.ImageHandle                                               = buffer.Handle;
+                    barrier_spec.OldLayout                                                 = is_resource_attachment ? Specifications::ImageLayout::COLOR_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::UNDEFINED;
+                    barrier_spec.NewLayout                                                 = Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+                    barrier_spec.ImageAspectMask                                           = VK_IMAGE_ASPECT_COLOR_BIT;
+                    barrier_spec.SourceAccessMask                                          = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    barrier_spec.DestinationAccessMask                                     = VK_ACCESS_SHADER_READ_BIT;
+                    barrier_spec.SourceStageMask                                           = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                    barrier_spec.DestinationStageMask                                      = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                    barrier_spec.LayerCount                                                = 1;
 
                     Primitives::ImageMemoryBarrier barrier{barrier_spec};
                     command_buffer->TransitionImageLayout(barrier);
@@ -318,18 +317,17 @@ namespace ZEngine::Rendering::Renderers
                 auto& resource = m_resource_map[output.Name];
                 ZENGINE_VALIDATE_ASSERT(resource.Type == RenderGraphResourceType::ATTACHMENT, "RenderPass Output should be an Attachment")
 
-                auto  texture = global_textures[resource.ResourceInfo.TextureHandle];
-                auto& buffer  = texture->ImageBuffer->GetBuffer();
+                auto                                            texture      = global_textures[resource.ResourceInfo.TextureHandle];
+                auto&                                           buffer       = texture->ImageBuffer->GetBuffer();
 
                 Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
                 if (texture->IsDepthTexture)
                 {
-                    barrier_spec.ImageHandle = buffer.Handle;
-                    barrier_spec.OldLayout   = Specifications::ImageLayout::UNDEFINED;
-                    barrier_spec.NewLayout   = Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    barrier_spec.ImageAspectMask =
-                        VkImageAspectFlagBits(VK_IMAGE_ASPECT_DEPTH_BIT /*| VK_IMAGE_ASPECT_STENCIL_BIT*/); // Todo : To consider Stencil buffer, we want to extend Texture spec to
-                                                                                                            // introduce HasStencil bit
+                    barrier_spec.ImageHandle           = buffer.Handle;
+                    barrier_spec.OldLayout             = Specifications::ImageLayout::UNDEFINED;
+                    barrier_spec.NewLayout             = Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                    barrier_spec.ImageAspectMask       = VkImageAspectFlagBits(VK_IMAGE_ASPECT_DEPTH_BIT /*| VK_IMAGE_ASPECT_STENCIL_BIT*/); // Todo : To consider Stencil buffer, we want to extend Texture
+                                                                                                                                             // spec to introduce HasStencil bit
                     barrier_spec.SourceAccessMask      = 0;
                     barrier_spec.DestinationAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
                     barrier_spec.SourceStageMask       = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -365,7 +363,7 @@ namespace ZEngine::Rendering::Renderers
     {
         for (auto& node_name : m_sorted_nodes)
         {
-            auto& node = m_node[node_name];
+            auto& node      = m_node[node_name];
 
             auto& pass_spec = node.Handle->Specification;
 
@@ -414,9 +412,8 @@ namespace ZEngine::Rendering::Renderers
             node.Handle->UpdateRenderTargets();
             node.Handle->UpdateInputBinding();
 
-            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {
-                .Width = node.Handle->RenderAreaWidth, .Height = node.Handle->RenderAreaHeight, .RenderTargets = node.Handle->RenderTargets, .Attachment = node.Handle->Attachment};
-            node.Framebuffer = CreateRef<Buffers::FramebufferVNext>(Renderer->Device, framebuffer_spec);
+            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {.Width = node.Handle->RenderAreaWidth, .Height = node.Handle->RenderAreaHeight, .RenderTargets = node.Handle->RenderTargets, .Attachment = node.Handle->Attachment};
+            node.Framebuffer                                               = CreateRef<Buffers::FramebufferVNext>(Renderer->Device, framebuffer_spec);
         }
     }
 
@@ -470,16 +467,6 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    Ref<RenderGraphBuilder> RenderGraph::GetBuilder() const
-    {
-        return m_builder;
-    }
-
-    Helpers::Ref<RenderPasses::RenderPassBuilder> RenderGraph::GetRenderPassBuilder() const
-    {
-        return m_render_pass_builder;
-    }
-
     RenderGraphResource& RenderGraph::GetResource(std::string_view name)
     {
         std::string resource_name(name);
@@ -515,7 +502,7 @@ namespace ZEngine::Rendering::Renderers
     {
         Textures::TextureHandle output = {};
 
-        std::string resource_name(name);
+        std::string             resource_name(name);
         if (!m_resource_map.contains(resource_name))
         {
             m_resource_map[resource_name].Name = name.data();

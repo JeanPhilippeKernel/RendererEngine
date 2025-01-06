@@ -14,19 +14,19 @@ namespace ZEngine::Rendering::Shaders
         /**
          * Wether the shader has been compiled once
          */
-        bool CompiledOnce;
+        bool                            CompiledOnce;
         /**
          * Graphic Shader type
          * @see ShaderType
          */
-        ShaderType Type;
+        ShaderType                      Type;
         /**
          * Name of shader
          */
-        std::string Name;
+        std::string                     Name;
         /**
          * Source of shader
          */
-        std::string Source;
+        std::string                     Source;
     };
 } // namespace ZEngine::Rendering::Shaders

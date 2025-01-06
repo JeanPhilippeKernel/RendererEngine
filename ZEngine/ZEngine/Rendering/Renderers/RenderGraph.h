@@ -76,20 +76,10 @@ namespace ZEngine::Rendering::Renderers
 
     struct IRenderGraphCallbackPass : public Helpers::RefCounted
     {
-        virtual void Setup(std::string_view name, RenderGraphBuilder* const builder)                                                       = 0;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& handle, RenderPasses::RenderPassBuilder& builder, RenderGraph& graph) = 0;
-        virtual void Render(
-            uint32_t                   frame_index,
-            RenderPasses::RenderPass*  pass,
-            Buffers::FramebufferVNext* framebuffer,
-            Buffers::CommandBuffer*    command_buffer,
-            RenderGraph*               graph) = 0;
-        virtual void Execute(
-            uint32_t                               frame_index,
-            Rendering::Scenes::SceneRawData* const scene_data,
-            RenderPasses::RenderPass*              pass,
-            Buffers::CommandBuffer*                command_buffer,
-            RenderGraph* const                     graph) = 0;
+        virtual void Setup(std::string_view name, RenderGraph* const graph)                                                                                                                                         = 0;
+        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph)                                                                                                                = 0;
+        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) = 0;
+        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph)       = 0;
     };
 
     struct RenderGraphNode
@@ -105,38 +95,33 @@ namespace ZEngine::Rendering::Renderers
     class RenderGraph : public Helpers::RefCounted
     {
     public:
-        RenderGraph(GraphicRenderer* renderer)
-            : Renderer(renderer), m_builder(Helpers::CreateRef<RenderGraphBuilder>(*this)), m_render_pass_builder(new RenderPasses::RenderPassBuilder{})
-        {
-        }
-        ~RenderGraph() = default;
+        RenderGraph(GraphicRenderer* renderer) : Renderer(renderer), Builder(Helpers::CreateRef<RenderGraphBuilder>(*this)) {}
+        ~RenderGraph()                                                  = default;
 
-        GraphicRenderer* Renderer = {nullptr};
+        GraphicRenderer*                              Renderer          = nullptr;
+        Helpers::Ref<RenderGraphBuilder>              Builder           = nullptr;
+        Helpers::Ref<RenderPasses::RenderPassBuilder> RenderPassBuilder = Helpers::CreateRef<RenderPasses::RenderPassBuilder>();
 
-        void                             Setup();
-        void                             Compile();
-        void                             Execute(uint32_t frame_index, Buffers::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data);
-        void                             Resize(uint32_t width, uint32_t height);
-        void                             Dispose();
-        RenderGraphResource&             GetResource(std::string_view);
-        Textures::TextureHandle          GetRenderTarget(std::string_view);
-        Textures::TextureHandle          GetTexture(std::string_view);
-        Buffers::StorageBufferSetHandle  GetStorageBufferSet(std::string_view);
-        Buffers::VertexBufferSetHandle   GetVertexBufferSet(std::string_view);
-        Buffers::IndexBufferSetHandle    GetIndexBufferSet(std::string_view);
-        Buffers::UniformBufferSetHandle  GetBufferUniformSet(std::string_view);
-        Buffers::IndirectBufferSetHandle GetIndirectBufferSet(std::string_view);
-        Helpers::Ref<RenderGraphBuilder> GetBuilder() const;
-        Helpers::Ref<RenderPasses::RenderPassBuilder> GetRenderPassBuilder() const;
+        void                                          Setup();
+        void                                          Compile();
+        void                                          Execute(uint32_t frame_index, Buffers::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data);
+        void                                          Resize(uint32_t width, uint32_t height);
+        void                                          Dispose();
+        RenderGraphResource&                          GetResource(std::string_view);
+        Textures::TextureHandle                       GetRenderTarget(std::string_view);
+        Textures::TextureHandle                       GetTexture(std::string_view);
+        Buffers::StorageBufferSetHandle               GetStorageBufferSet(std::string_view);
+        Buffers::VertexBufferSetHandle                GetVertexBufferSet(std::string_view);
+        Buffers::IndexBufferSetHandle                 GetIndexBufferSet(std::string_view);
+        Buffers::UniformBufferSetHandle               GetBufferUniformSet(std::string_view);
+        Buffers::IndirectBufferSetHandle              GetIndirectBufferSet(std::string_view);
         RenderGraphNode&                              GetNode(std::string_view);
         void                                          AddCallbackPass(std::string_view pass_name, const Helpers::Ref<IRenderGraphCallbackPass>& pass_callback, bool enabled = true);
 
     private:
-        std::vector<std::string>                      m_sorted_nodes;
-        std::map<std::string, RenderGraphNode>        m_node;
-        std::map<std::string, RenderGraphResource>    m_resource_map;
-        Helpers::Ref<RenderGraphBuilder>              m_builder;
-        Helpers::Ref<RenderPasses::RenderPassBuilder> m_render_pass_builder;
+        std::vector<std::string>                   m_sorted_nodes;
+        std::map<std::string, RenderGraphNode>     m_node;
+        std::map<std::string, RenderGraphResource> m_resource_map;
         friend struct RenderGraphBuilder;
     };
 

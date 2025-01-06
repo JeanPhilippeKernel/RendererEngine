@@ -12,8 +12,8 @@ namespace ZEngine::Rendering::Shaders::Compilers
         /**
          * Initialize a new ICompilerStage instance.
          */
-        ICompilerStage()          = default;
-        virtual ~ICompilerStage() = default;
+        ICompilerStage()                                                   = default;
+        virtual ~ICompilerStage()                                          = default;
 
         /**
          * Run asynchronously compiler stage

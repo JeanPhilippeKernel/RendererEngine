@@ -22,8 +22,8 @@ namespace Tetragrama
         EditorScene(const EditorScene& scene) : m_name(scene.m_name), m_models(scene.m_models), m_has_pending_change(scene.m_has_pending_change.load()) {}
         EditorScene(std::string_view name, std::unordered_map<std::string, Model> models) : m_name(name), m_models(models) {}
 
-        void AddModel(const Model&);
-        void AddModel(Model&&);
+        void                                          AddModel(const Model&);
+        void                                          AddModel(Model&&);
 
         void                                          SetName(std::string_view name);
         std::string_view                              GetName() const;
@@ -63,8 +63,8 @@ namespace Tetragrama
         Editor(const EditorConfiguration&);
         virtual ~Editor();
 
-        void Initialize() override;
-        void Run();
+        void                                      Initialize() override;
+        void                                      Run();
 
         static const EditorConfiguration&         GetCurrentEditorConfiguration();
         static ZEngine::Helpers::Ref<EditorScene> GetCurrentEditorScene();

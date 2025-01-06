@@ -77,7 +77,6 @@ To only build the Launcher only, you can specify `-LauncherOnly` which will skip
 ### Important Notes:
 - Setting `-RunBuilds` to `$false` will result to *only* generate the build directory.
 - Omitting `-Configuration` will result to generate and build for both `Debug` and `Release` versions.
-- Specifying `-ForceShaderRebuild` option will force the engine's shaders rebuilding.
 
 ## Dependencies
 

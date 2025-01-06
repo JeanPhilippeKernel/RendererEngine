@@ -23,13 +23,12 @@ namespace Tetragrama::Components
 {
     InspectorViewUIComponent::InspectorViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
     {
-        m_node_flag =
-            ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding;
+        m_node_flag = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding;
     }
 
     InspectorViewUIComponent::~InspectorViewUIComponent() {}
 
-    void InspectorViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
+    void              InspectorViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
     std::future<void> InspectorViewUIComponent::SceneAvailableMessageHandlerAsync(Messengers::GenericMessage<Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
     {
@@ -89,13 +88,11 @@ namespace Tetragrama::Components
 
         Helpers::DrawEntityControl("Name", m_scene_entity, m_node_flag, [this] {
             ImGui::Dummy(ImVec2(0, 3));
-            Helpers::DrawInputTextControl("Entity name", m_scene_entity.GetName(), [this](std::string_view value) {
-                m_scene_entity.SetName(value);
-            });
+            Helpers::DrawInputTextControl("Entity name", m_scene_entity.GetName(), [this](std::string_view value) { m_scene_entity.SetName(value); });
         });
 
         Helpers::DrawEntityControl("Transform", m_scene_entity, m_node_flag, [this] {
-            auto transform = m_scene_entity.GetTransform();
+            auto            transform = m_scene_entity.GetTransform();
 
             glm::vec3       translation, scale, skew;
             glm::qua<float> rot_quat;
@@ -103,24 +100,14 @@ namespace Tetragrama::Components
             glm::decompose(transform, scale, rot_quat, translation, skew, perspective);
 
             ImGui::Dummy(ImVec2(0, 3));
-            Helpers::DrawVec3Control("Position", translation, [&translation](glm::vec3& value) {
-                translation = value;
-            });
+            Helpers::DrawVec3Control("Position", translation, [&translation](glm::vec3& value) { translation = value; });
 
             glm::vec3 rotation = glm::eulerAngles(rot_quat);
             ImGui::Dummy(ImVec2(0, 0.5));
-            Helpers::DrawVec3Control("Rotation", rotation, [&rotation](glm::vec3& value) {
-                rotation = value;
-            });
+            Helpers::DrawVec3Control("Rotation", rotation, [&rotation](glm::vec3& value) { rotation = value; });
 
             ImGui::Dummy(ImVec2(0, 0.5));
-            Helpers::DrawVec3Control(
-                "Scale",
-                scale,
-                [&scale](glm::vec3& value) {
-                    scale = value;
-                },
-                1.0f);
+            Helpers::DrawVec3Control("Scale", scale, [&scale](glm::vec3& value) { scale = value; }, 1.0f);
         });
 
         // Mesh Renderer
@@ -138,12 +125,12 @@ namespace Tetragrama::Components
         });
 
         Helpers::DrawEntityComponentControl<MaterialComponent>("Materials", m_scene_entity, m_node_flag, true, [](MaterialComponent& component) {
-            auto material             = component.GetMaterials()[0]; // Todo : need to be refactor to consider the collection of materials
-            auto material_shader_type = material->GetShaderBuiltInType();
+            auto        material               = component.GetMaterials()[0]; // Todo : need to be refactor to consider the collection of materials
+            auto        material_shader_type   = material->GetShaderBuiltInType();
 
             const char* built_in_shader_type[] = {"Basic", "BASIC_2", "Standard"};
 
-            auto material_name = fmt::format("{0} Material", built_in_shader_type[(int) material_shader_type]);
+            auto        material_name          = fmt::format("{0} Material", built_in_shader_type[(int) material_shader_type]);
             ImGui::Dummy(ImVec2(0, 3));
             Helpers::DrawInputTextControl("Name", material_name, nullptr, true);
 
@@ -154,15 +141,11 @@ namespace Tetragrama::Components
                 ImGui::Dummy(ImVec2(0, 0.5f));
 
                 float tile_factor = standard_material->GetTileFactor();
-                Helpers::DrawDragFloatControl("Tile Factor", tile_factor, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) {
-                    standard_material->SetTileFactor(value);
-                });
+                Helpers::DrawDragFloatControl("Tile Factor", tile_factor, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetTileFactor(value); });
                 ImGui::Dummy(ImVec2(0, 0.5f));
 
                 float shininess = standard_material->GetShininess();
-                Helpers::DrawDragFloatControl("Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) {
-                    standard_material->SetShininess(value);
-                });
+                Helpers::DrawDragFloatControl("Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetShininess(value); });
                 ImGui::Dummy(ImVec2(0, 0.5f));
 
                 // auto diffuse_tint_color = standard_material->GetDiffuseTintColor();
@@ -197,24 +180,16 @@ namespace Tetragrama::Components
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
                 {
-                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) {
-                        light_ptr->Direction = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) { light_ptr->Direction = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
-                        light_ptr->Ambient = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) { light_ptr->Ambient = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
-                        light_ptr->Diffuse = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) { light_ptr->Diffuse = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
-                        light_ptr->Specular = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) { light_ptr->Specular = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             }
@@ -224,54 +199,40 @@ namespace Tetragrama::Components
                 auto transform = m_scene_entity.GetTransform();
                 auto light_ptr = reinterpret_cast<PointLight*>(light.get());
 
-                auto position = glm::vec3(transform[3]);
-                auto ambient  = light_ptr->Ambient.As<glm::vec3>();
-                auto diffuse  = light_ptr->Diffuse.As<glm::vec3>();
-                auto specular = light_ptr->Specular.As<glm::vec3>();
+                auto position  = glm::vec3(transform[3]);
+                auto ambient   = light_ptr->Ambient.As<glm::vec3>();
+                auto diffuse   = light_ptr->Diffuse.As<glm::vec3>();
+                auto specular  = light_ptr->Specular.As<glm::vec3>();
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
                 {
-                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) {
-                        light_ptr->Position = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) { light_ptr->Position = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
-                        light_ptr->Ambient = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) { light_ptr->Ambient = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
-                        light_ptr->Diffuse = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) { light_ptr->Diffuse = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
-                        light_ptr->Specular = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) { light_ptr->Specular = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f", [light_ptr](float value) {
-                        light_ptr->Constant = value;
-                    });
+                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f", [light_ptr](float value) { light_ptr->Constant = value; });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f", [light_ptr](float value) {
-                        light_ptr->Linear = value;
-                    });
+                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f", [light_ptr](float value) { light_ptr->Linear = value; });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f", [light_ptr](float value) {
-                        light_ptr->Quadratic = value;
-                    });
+                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f", [light_ptr](float value) { light_ptr->Quadratic = value; });
                     ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             }
 
             else if (light_type == LightType::SPOT)
             {
-                auto transform = m_scene_entity.GetTransform();
-                auto light_ptr = reinterpret_cast<Spotlight*>(light.get());
+                auto         transform = m_scene_entity.GetTransform();
+                auto         light_ptr = reinterpret_cast<Spotlight*>(light.get());
 
                 auto         direction = light_ptr->Direction.As<glm::vec3>();
                 auto         position  = glm::vec3(transform[3]);
@@ -282,29 +243,19 @@ namespace Tetragrama::Components
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
                 {
-                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) {
-                        light_ptr->Position = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) { light_ptr->Position = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) {
-                        light_ptr->Direction = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) { light_ptr->Direction = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
-                        light_ptr->Ambient = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) { light_ptr->Ambient = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
-                        light_ptr->Diffuse = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) { light_ptr->Diffuse = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
-                        light_ptr->Specular = glm::vec4(value, 1.0f);
-                    });
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) { light_ptr->Specular = glm::vec4(value, 1.0f); });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
                     Helpers::DrawDragFloatControl("CutOff", phi_angle, 0.1f, 0.0f, 360.0f, "%.2f", [light_ptr](float value) {
@@ -313,19 +264,13 @@ namespace Tetragrama::Components
                     });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f", [light_ptr](float value) {
-                        light_ptr->Constant = value;
-                    });
+                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f", [light_ptr](float value) { light_ptr->Constant = value; });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f", [light_ptr](float value) {
-                        light_ptr->Linear = value;
-                    });
+                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f", [light_ptr](float value) { light_ptr->Linear = value; });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f", [light_ptr](float value) {
-                        light_ptr->Quadratic = value;
-                    });
+                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f", [light_ptr](float value) { light_ptr->Quadratic = value; });
                     ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             }
@@ -402,9 +347,7 @@ namespace Tetragrama::Components
         ImGui::Dummy(ImVec2(0, 5));
 
         bool should_open_popup = false;
-        Helpers::DrawCenteredButtonControl("Add Components", [&should_open_popup]() {
-            should_open_popup = true;
-        });
+        Helpers::DrawCenteredButtonControl("Add Components", [&should_open_popup]() { should_open_popup = true; });
 
         if (should_open_popup)
         {

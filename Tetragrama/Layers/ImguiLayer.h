@@ -11,11 +11,7 @@ namespace Tetragrama::Components
 
 namespace Tetragrama::Layers
 {
-    class ImguiLayer : public ZEngine::Windows::Layers::Layer,
-                       public ZEngine::Windows::Inputs::IKeyboardEventCallback,
-                       public ZEngine::Windows::Inputs::IMouseEventCallback,
-                       public ZEngine::Windows::Inputs::ITextInputEventCallback,
-                       public ZEngine::Windows::Inputs::IWindowEventCallback
+    class ImguiLayer : public ZEngine::Windows::Layers::Layer, public ZEngine::Windows::Inputs::IKeyboardEventCallback, public ZEngine::Windows::Inputs::IMouseEventCallback, public ZEngine::Windows::Inputs::ITextInputEventCallback, public ZEngine::Windows::Inputs::IWindowEventCallback
     {
 
     public:
@@ -26,11 +22,11 @@ namespace Tetragrama::Layers
         virtual void Initialize() override;
         virtual void Deinitialize() override;
 
-        bool OnEvent(ZEngine::Core::CoreEvent& event) override;
+        bool         OnEvent(ZEngine::Core::CoreEvent& event) override;
 
-        void Update(ZEngine::Core::TimeStep dt) override;
+        void         Update(ZEngine::Core::TimeStep dt) override;
 
-        void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+        void         Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
 
         virtual void AddUIComponent(const ZEngine::Helpers::Ref<Components::UIComponent>& component);
         virtual void AddUIComponent(ZEngine::Helpers::Ref<Components::UIComponent>&& component);

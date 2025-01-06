@@ -15,12 +15,12 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Scenes
 {
-    std::recursive_mutex GraphicScene::s_scene_node_mutex;
-    Ref<SceneRawData>    GraphicScene::s_raw_data = CreateRef<SceneRawData>();
+    std::recursive_mutex  GraphicScene::s_scene_node_mutex;
+    Ref<SceneRawData>     GraphicScene::s_raw_data = CreateRef<SceneRawData>();
 
     static entt::registry g_sceneEntityRegistry;
 
-    entt::registry& GetEntityRegistry()
+    entt::registry&       GetEntityRegistry()
     {
         return g_sceneEntityRegistry;
     }
@@ -55,8 +55,7 @@ namespace ZEngine::Rendering::Scenes
                 if (right_sibling > -1)
                 {
                     // iterate nextSibling_ indices
-                    for (right_sibling = first_child; scene->NodeHierarchyCollection[right_sibling].RightSibling != -1;
-                         right_sibling = scene->NodeHierarchyCollection[right_sibling].RightSibling)
+                    for (right_sibling = first_child; scene->NodeHierarchyCollection[right_sibling].RightSibling != -1; right_sibling = scene->NodeHierarchyCollection[right_sibling].RightSibling)
                     {
                     }
                     scene->NodeHierarchyCollection[right_sibling].RightSibling = node_id;
@@ -171,7 +170,7 @@ namespace ZEngine::Rendering::Scenes
         {
             std::lock_guard l(s_scene_node_mutex);
 
-            auto& hierarchy = s_raw_data->NodeHierarchyCollection[0];
+            auto&           hierarchy = s_raw_data->NodeHierarchyCollection[0];
             if (!scenes.empty() && hierarchy.FirstChild == -1)
             {
                 hierarchy.FirstChild = 1;
@@ -200,10 +199,10 @@ namespace ZEngine::Rendering::Scenes
         auto& names            = s_raw_data->Names;
         auto& materialNames    = s_raw_data->MaterialNames;
 
-        int offs            = 1;
-        int mesh_offset     = 0;
-        int material_offset = 0;
-        int name_offset     = (int) names.size();
+        int   offs             = 1;
+        int   mesh_offset      = 0;
+        int   material_offset  = 0;
+        int   name_offset      = (int) names.size();
 
         for (auto& scene : scenes)
         {
@@ -238,26 +237,26 @@ namespace ZEngine::Rendering::Scenes
             MergeMap(scene.NodeNames, s_raw_data->NodeNames, offs, name_offset);
             MergeMap(scene.NodeMaterials, s_raw_data->NodeMaterials, offs, material_offset);
 
-            offs += node_count;
+            offs            += node_count;
 
             material_offset += scene.MaterialNames.size();
-            name_offset += scene.Names.size();
-            mesh_offset += scene.Meshes.size();
+            name_offset     += scene.Names.size();
+            mesh_offset     += scene.Meshes.size();
         }
 
         offs    = 1;
         int idx = 0;
         for (auto& scene : scenes)
         {
-            int  nodeCount = (int) scene.NodeHierarchyCollection.size();
-            bool isLast    = (idx == scenes.size() - 1);
+            int  nodeCount                = (int) scene.NodeHierarchyCollection.size();
+            bool isLast                   = (idx == scenes.size() - 1);
             // calculate new next sibling for the old scene roots
-            int next                     = isLast ? -1 : offs + nodeCount;
-            hierarchy[offs].RightSibling = next;
+            int  next                     = isLast ? -1 : offs + nodeCount;
+            hierarchy[offs].RightSibling  = next;
             // attach to new root
-            hierarchy[offs].Parent = 0;
+            hierarchy[offs].Parent        = 0;
 
-            offs += nodeCount;
+            offs                         += nodeCount;
             idx++;
         }
 
@@ -296,8 +295,8 @@ namespace ZEngine::Rendering::Scenes
 
             s_raw_data->SMeshCountOffset += (uint32_t) scene.Meshes.size();
 
-            s_raw_data->SIndexDataSize += (uint32_t) scene.Indices.size();
-            s_raw_data->SVertexDataSize += (uint32_t) scene.Vertices.size();
+            s_raw_data->SIndexDataSize   += (uint32_t) scene.Indices.size();
+            s_raw_data->SVertexDataSize  += (uint32_t) scene.Vertices.size();
         }
     }
 
@@ -352,8 +351,8 @@ namespace ZEngine::Rendering::Scenes
     {
         std::unique_lock lock(s_scene_node_mutex);
 
-        SceneEntity entity  = {};
-        int         node_id = SceneRawData::AddNode(s_raw_data.get(), parent_id, depth_level);
+        SceneEntity      entity  = {};
+        int              node_id = SceneRawData::AddNode(s_raw_data.get(), parent_id, depth_level);
         if (SceneRawData::SetNodeName(s_raw_data.get(), node_id, entity_name))
         {
             auto  vertices         = std::vector<float>{0, 0, 0, 0, 1, 0, 0, 0};
@@ -372,21 +371,21 @@ namespace ZEngine::Rendering::Scenes
             MergeVector(std::span{vertices}, s_raw_data->Vertices);
             MergeVector(std::span{indices}, s_raw_data->Indices);
 
-            uint32_t vtx_off = s_raw_data->SVertexDataSize / 8;
+            uint32_t vtx_off                                              = s_raw_data->SVertexDataSize / 8;
             s_raw_data->Meshes[s_raw_data->SMeshCountOffset].IndexOffset += s_raw_data->SIndexDataSize;
-            s_raw_data->Indices[s_raw_data->SIndexDataSize] += vtx_off;
+            s_raw_data->Indices[s_raw_data->SIndexDataSize]              += vtx_off;
 
             s_raw_data->SMeshCountOffset++;
-            s_raw_data->SIndexDataSize += indices.size();
-            s_raw_data->SVertexDataSize += (uint32_t) vertices.size();
+            s_raw_data->SIndexDataSize      += indices.size();
+            s_raw_data->SVertexDataSize     += (uint32_t) vertices.size();
 
-            s_raw_data->NodeMeshes[node_id] = s_raw_data->Meshes.size() - 1;
+            s_raw_data->NodeMeshes[node_id]  = s_raw_data->Meshes.size() - 1;
 
             s_raw_data->MaterialNames.push_back("<unamed material>");
             s_raw_data->Materials.emplace_back();
             s_raw_data->NodeMaterials[node_id] = s_raw_data->Materials.size() - 1;
 
-            entity = {node_id, s_raw_data.Weak()};
+            entity                             = {node_id, s_raw_data.Weak()};
         }
         co_return entity;
     }
@@ -411,9 +410,9 @@ namespace ZEngine::Rendering::Scenes
     {
         std::unique_lock lock(s_scene_node_mutex);
 
-        int   node       = -1;
-        auto& node_names = s_raw_data->NodeNames;
-        auto& names      = s_raw_data->Names;
+        int              node       = -1;
+        auto&            node_names = s_raw_data->NodeNames;
+        auto&            names      = s_raw_data->Names;
 
         for (auto& [id, name] : node_names)
         {
@@ -463,7 +462,7 @@ namespace ZEngine::Rendering::Scenes
 
     std::vector<int> GraphicScene::GetSceneNodeSiblingCollection(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
+        std::lock_guard  lock(s_scene_node_mutex);
 
         std::vector<int> sibling_scene_nodes = {};
         if (node_identifier < 0)
@@ -471,8 +470,7 @@ namespace ZEngine::Rendering::Scenes
             return sibling_scene_nodes;
         }
 
-        for (auto sibling = s_raw_data->NodeHierarchyCollection[node_identifier].RightSibling; sibling != INVALID_NODE_ID;
-             sibling      = s_raw_data->NodeHierarchyCollection[sibling].RightSibling)
+        for (auto sibling = s_raw_data->NodeHierarchyCollection[node_identifier].RightSibling; sibling != INVALID_NODE_ID; sibling = s_raw_data->NodeHierarchyCollection[sibling].RightSibling)
         {
             sibling_scene_nodes.push_back(sibling);
         }
@@ -594,7 +592,7 @@ namespace ZEngine::Rendering::Scenes
             std::lock_guard  l(s_scene_node_mutex);
             std::vector<int> root_scene_nodes;
 
-            const auto& hierarchy = s_raw_data->NodeHierarchyCollection;
+            const auto&      hierarchy = s_raw_data->NodeHierarchyCollection;
             for (uint32_t i = 0; i < hierarchy.size(); ++i)
             {
                 if (hierarchy[i].Parent == NODE_PARENT_ID)
@@ -611,10 +609,10 @@ namespace ZEngine::Rendering::Scenes
         {
             std::lock_guard l(s_scene_node_mutex);
 
-            const auto& hierarchy         = s_raw_data->NodeHierarchyCollection;
-            auto&       global_transforms = s_raw_data->GlobalTransformCollection;
-            auto&       local_transforms  = s_raw_data->LocalTransformCollection;
-            auto&       node_changed_map  = s_raw_data->LevelSceneNodeChangedMap;
+            const auto&     hierarchy         = s_raw_data->NodeHierarchyCollection;
+            auto&           global_transforms = s_raw_data->GlobalTransformCollection;
+            auto&           local_transforms  = s_raw_data->LocalTransformCollection;
+            auto&           node_changed_map  = s_raw_data->LevelSceneNodeChangedMap;
             for (auto& [level, nodes] : node_changed_map)
             {
                 for (auto node : nodes)
@@ -638,7 +636,7 @@ namespace ZEngine::Rendering::Scenes
         {
             std::lock_guard l(s_scene_node_mutex);
 
-            auto& hierarchy = s_raw_data->NodeHierarchyCollection;
+            auto&           hierarchy = s_raw_data->NodeHierarchyCollection;
             if (hierarchy.empty())
             {
                 return;

@@ -37,8 +37,8 @@ TEST_F(HandleManagerTest, AddValue)
 
 TEST_F(HandleManagerTest, UpdateValue)
 {
-    int value1 = 42;
-    int value2 = 84;
+    int  value1 = 42;
+    int  value2 = 84;
 
     auto handle = manager->Add(&value1);
     EXPECT_EQ(*(*manager)[handle], 42);
@@ -49,9 +49,9 @@ TEST_F(HandleManagerTest, UpdateValue)
 
 TEST_F(HandleManagerTest, MultipleUpdates)
 {
-    int value1 = 10;
-    int value2 = 20;
-    int value3 = 30;
+    int  value1 = 10;
+    int  value2 = 20;
+    int  value3 = 30;
 
     auto handle = manager->Add(&value1);
     EXPECT_EQ(*(*manager)[handle], 10);
@@ -93,8 +93,8 @@ TEST_F(HandleManagerTest, FullCapacity)
 
 TEST_F(HandleManagerTest, ReuseSlot)
 {
-    int value1 = 42;
-    int value2 = 84;
+    int  value1     = 42;
+    int  value2     = 84;
 
     auto handle1    = manager->Add(&value1);
     int  firstIndex = handle1.Index;

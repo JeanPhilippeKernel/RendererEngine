@@ -64,9 +64,7 @@ namespace ZEngine::Windows::Layers
 
     void LayerStack::PopLayer(const Ref<Layer>& layer)
     {
-        const auto it = std::find_if(std::begin(m_layers), std::end(m_layers), [&layer](const Ref<Layer>& x) {
-            return x == layer;
-        });
+        const auto it = std::find_if(std::begin(m_layers), std::end(m_layers), [&layer](const Ref<Layer>& x) { return x == layer; });
 
         if (it != std::end(m_layers))
         {
@@ -76,9 +74,7 @@ namespace ZEngine::Windows::Layers
 
     void LayerStack::PopLayer(Ref<Layer>&& layer)
     {
-        const auto it = std::find_if(std::begin(m_layers), std::end(m_layers), [&layer](const Ref<Layer>& x) {
-            return x == layer;
-        });
+        const auto it = std::find_if(std::begin(m_layers), std::end(m_layers), [&layer](const Ref<Layer>& x) { return x == layer; });
 
         if (it != std::end(m_layers))
         {
@@ -106,9 +102,7 @@ namespace ZEngine::Windows::Layers
 
     void LayerStack::PopOverlayLayer(const Ref<Layer>& layer)
     {
-        const auto it = std::find_if(std::begin(m_layers), std::end(m_layers), [&layer](const Ref<Layer>& x) {
-            return x == layer;
-        });
+        const auto it = std::find_if(std::begin(m_layers), std::end(m_layers), [&layer](const Ref<Layer>& x) { return x == layer; });
 
         if (it != std::end(m_layers))
         {
@@ -118,9 +112,7 @@ namespace ZEngine::Windows::Layers
 
     void LayerStack::PopOverlayLayer(Ref<Layer>&& layer)
     {
-        const auto it = std::find_if(std::begin(m_layers), std::end(m_layers), [&layer](const Ref<Layer>& x) {
-            return x == layer;
-        });
+        const auto it = std::find_if(std::begin(m_layers), std::end(m_layers), [&layer](const Ref<Layer>& x) { return x == layer; });
 
         if (it != std::end(m_layers))
         {

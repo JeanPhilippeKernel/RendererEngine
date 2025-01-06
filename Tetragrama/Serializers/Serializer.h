@@ -32,10 +32,10 @@ namespace Tetragrama::Serializers
         on_serializer_error_fn                m_error_callback{nullptr};
         on_serializer_log_fn                  m_log_callback{nullptr};
 
-        std::recursive_mutex m_mutex;
-        std::atomic_bool     m_is_serializing{false};
-        std::atomic_bool     m_is_deserializing{false};
-        std::string          m_default_output;
+        std::recursive_mutex                  m_mutex;
+        std::atomic_bool                      m_is_serializing{false};
+        std::atomic_bool                      m_is_deserializing{false};
+        std::string                           m_default_output;
 
     public:
         virtual ~Serializer() = default;

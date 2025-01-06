@@ -75,31 +75,31 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     struct RenderPassBuilder : public Helpers::RefCounted
     {
-        RenderPassBuilder& SetName(std::string_view name);
-        RenderPassBuilder& SetPipelineName(std::string_view name);
-        RenderPassBuilder& EnablePipelineBlending(bool value);
-        RenderPassBuilder& EnablePipelineDepthTest(bool value);
-        RenderPassBuilder& EnablePipelineDepthWrite(bool value);
-        RenderPassBuilder& PipelineDepthCompareOp(uint32_t value);
-        RenderPassBuilder& SetShaderOverloadMaxSet(uint32_t count);
-        RenderPassBuilder& SetOverloadPoolSize(uint32_t count);
+        RenderPassBuilder&                      SetName(std::string_view name);
+        RenderPassBuilder&                      SetPipelineName(std::string_view name);
+        RenderPassBuilder&                      EnablePipelineBlending(bool value);
+        RenderPassBuilder&                      EnablePipelineDepthTest(bool value);
+        RenderPassBuilder&                      EnablePipelineDepthWrite(bool value);
+        RenderPassBuilder&                      PipelineDepthCompareOp(uint32_t value);
+        RenderPassBuilder&                      SetShaderOverloadMaxSet(uint32_t count);
+        RenderPassBuilder&                      SetOverloadPoolSize(uint32_t count);
 
-        RenderPassBuilder& SetInputBindingCount(uint32_t count);
-        RenderPassBuilder& SetStride(uint32_t input_binding_index, uint32_t value);
-        RenderPassBuilder& SetRate(uint32_t input_binding_index, uint32_t value);
+        RenderPassBuilder&                      SetInputBindingCount(uint32_t count);
+        RenderPassBuilder&                      SetStride(uint32_t input_binding_index, uint32_t value);
+        RenderPassBuilder&                      SetRate(uint32_t input_binding_index, uint32_t value);
 
-        RenderPassBuilder& SetInputAttributeCount(uint32_t count);
-        RenderPassBuilder& SetLocation(uint32_t input_attribute_index, uint32_t value);
-        RenderPassBuilder& SetBinding(uint32_t input_attribute_index, uint32_t input_binding_index);
-        RenderPassBuilder& SetFormat(uint32_t input_attribute_index, Specifications::ImageFormat value);
-        RenderPassBuilder& SetOffset(uint32_t input_attribute_index, uint32_t offset);
+        RenderPassBuilder&                      SetInputAttributeCount(uint32_t count);
+        RenderPassBuilder&                      SetLocation(uint32_t input_attribute_index, uint32_t value);
+        RenderPassBuilder&                      SetBinding(uint32_t input_attribute_index, uint32_t input_binding_index);
+        RenderPassBuilder&                      SetFormat(uint32_t input_attribute_index, Specifications::ImageFormat value);
+        RenderPassBuilder&                      SetOffset(uint32_t input_attribute_index, uint32_t offset);
 
-        RenderPassBuilder& UseShader(std::string_view name);
-        RenderPassBuilder& UseRenderTarget(const Textures::TextureHandle& target);
-        RenderPassBuilder& AddRenderTarget(const Specifications::TextureSpecification& target_spec);
-        RenderPassBuilder& AddInputAttachment(const Textures::TextureHandle& target);
-        RenderPassBuilder& AddInputTexture(std::string_view key, const Rendering::Textures::TextureHandle& input);
-        RenderPassBuilder& UseSwapchainAsRenderTarget();
+        RenderPassBuilder&                      UseShader(std::string_view name);
+        RenderPassBuilder&                      UseRenderTarget(const Textures::TextureHandle& target);
+        RenderPassBuilder&                      AddRenderTarget(const Specifications::TextureSpecification& target_spec);
+        RenderPassBuilder&                      AddInputAttachment(const Textures::TextureHandle& target);
+        RenderPassBuilder&                      AddInputTexture(std::string_view key, const Rendering::Textures::TextureHandle& input);
+        RenderPassBuilder&                      UseSwapchainAsRenderTarget();
 
         Specifications::RenderPassSpecification Detach();
 

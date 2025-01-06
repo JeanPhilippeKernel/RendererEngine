@@ -14,9 +14,9 @@ namespace Tetragrama::Components
         virtual void Update(ZEngine::Core::TimeStep dt) override;
         virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
 
-        void OnLog(ZEngine::Logging::LogMessage);
+        void         OnLog(ZEngine::Logging::LogMessage);
 
-        void ClearLog();
+        void         ClearLog();
 
         std::string GetMessageType(const ZEngine::Logging::LogMessage& message);
 

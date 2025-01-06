@@ -48,7 +48,7 @@ namespace Tetragrama::Serializers
 
             size_t byte_written = 0;
 
-            size_t name_size = scene_name.size();
+            size_t name_size    = scene_name.size();
             {
                 out.write(reinterpret_cast<const char*>(&name_size), sizeof(size_t));
                 byte_written += sizeof(size_t);
@@ -167,7 +167,7 @@ namespace Tetragrama::Serializers
             total_size = in_stream.tellg();
             in_stream.seekg(0, std::ios::beg);
 
-            size_t byte_read = 0;
+            size_t      byte_read       = 0;
 
             size_t      scene_name_size = 0;
             std::string scene_name;
@@ -193,7 +193,7 @@ namespace Tetragrama::Serializers
                 {
                     EditorScene::Model model = {};
 
-                    size_t model_name_size{0};
+                    size_t             model_name_size{0};
                     {
                         in_stream.read(reinterpret_cast<char*>(&model_name_size), sizeof(size_t));
                         byte_read += sizeof(size_t);

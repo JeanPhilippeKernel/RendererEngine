@@ -9,7 +9,7 @@ namespace ZEngine::Hardwares
         uint32_t                       instance_layer_count{0};
         std::vector<VkLayerProperties> layer_properties;
 
-        VkResult result;
+        VkResult                       result;
         result = vkEnumerateInstanceLayerProperties(&instance_layer_count, nullptr);
         if ((result == VK_INCOMPLETE) || (instance_layer_count <= 0))
         {
@@ -54,8 +54,7 @@ namespace ZEngine::Hardwares
             if (extension_count > 0)
             {
                 layer_property.DeviceExtensionCollection.resize(extension_count);
-                result = vkEnumerateDeviceExtensionProperties(
-                    *physical_gpu_device, layer_property.Properties.layerName, &extension_count, layer_property.DeviceExtensionCollection.data());
+                result = vkEnumerateDeviceExtensionProperties(*physical_gpu_device, layer_property.Properties.layerName, &extension_count, layer_property.DeviceExtensionCollection.data());
             }
         }
         else

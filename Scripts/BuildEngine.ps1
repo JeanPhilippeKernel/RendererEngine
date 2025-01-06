@@ -37,9 +37,6 @@ param (
     [Parameter(HelpMessage = "Whether to check code formatting correctness, default to False")]
     [bool] $VerifyFormatting = $False,
 
-    [Parameter(HelpMessage = "Whether to rebuild shader files")]
-    [switch] $ForceShaderRebuild,
-
     [Parameter(HelpMessage = "VS version use to build, default to 2022")]
     [ValidateSet(2022)]
     [int] $VsVersion = 2022,
@@ -248,6 +245,7 @@ if(-Not $LauncherOnly) {
         [string[]]$srcDirectories = @(
             (Join-Path $repositoryRootPath -ChildPath "ZEngine"),
             (Join-Path $repositoryRootPath -ChildPath "Tetragrama")
+            (Join-Path $repositoryRootPath -ChildPath "Resources/Shaders")
         )
     
         foreach ($directory in $srcDirectories) {
@@ -261,10 +259,9 @@ if(-Not $LauncherOnly) {
 
 
     # Run Shader Compilation
-    [bool]$forceRebuild = If ($ForceShaderRebuild) { $True } Else { $False }
     foreach ($config in $Configurations) {
         $shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"
-        & pwsh -File $shaderCompileScript -Configuration:$config -ForceRebuild:$forceRebuild
+        & pwsh -File $shaderCompileScript -Configuration:$config -ForceRebuild:$true
     }
 
     if ($LASTEXITCODE -ne 0) {

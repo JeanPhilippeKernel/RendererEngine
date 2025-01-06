@@ -26,34 +26,24 @@ namespace ZEngine::Hardwares
 {
     void VulkanDevice::Initialize(const Ref<Windows::CoreWindow>& window)
     {
-        m_window = window.get();
+        CurrentWindow                                   = window.get();
 
         /*Create Vulkan Instance*/
-        VkApplicationInfo app_info = {
-            .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-            .pNext              = VK_NULL_HANDLE,
-            .pApplicationName   = ApplicationName.data(),
-            .applicationVersion = 1,
-            .pEngineName        = EngineName.data(),
-            .engineVersion      = 1,
-            .apiVersion         = VK_API_VERSION_1_3};
+        VkApplicationInfo          app_info             = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pNext = VK_NULL_HANDLE, .pApplicationName = ApplicationName.data(), .applicationVersion = 1, .pEngineName = EngineName.data(), .engineVersion = 1, .apiVersion = VK_API_VERSION_1_3};
 
-        VkInstanceCreateInfo instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = VK_NULL_HANDLE, .flags = 0, .pApplicationInfo = &app_info};
+        VkInstanceCreateInfo       instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = VK_NULL_HANDLE, .flags = 0, .pApplicationInfo = &app_info};
 
-        auto layer_properties = m_layer.GetInstanceLayerProperties();
+        auto                       layer_properties     = m_layer.GetInstanceLayerProperties();
 
         std::vector<const char*>   enabled_layer_name_collection;
         std::vector<LayerProperty> selected_layer_property_collection;
 
 #ifdef ENABLE_VULKAN_VALIDATION_LAYER
-        std::unordered_set<std::string> validation_layer_name_collection = {
-            "VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_screenshot"};
+        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_screenshot"};
 
         for (std::string_view layer_name : validation_layer_name_collection)
         {
-            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) {
-                return std::string_view(layer_property.Properties.layerName) == layer_name;
-            });
+            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
             if (find_it == std::end(layer_properties))
             {
                 continue;
@@ -68,9 +58,7 @@ namespace ZEngine::Hardwares
         std::unordered_set<std::string> synchronization_layer_collection = {"VK_LAYER_KHRONOS_synchronization2"};
         for (std::string_view layer_name : synchronization_layer_collection)
         {
-            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) {
-                return std::string_view(layer_property.Properties.layerName) == layer_name;
-            });
+            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
             if (find_it == std::end(layer_properties))
             {
                 continue;
@@ -108,7 +96,7 @@ namespace ZEngine::Hardwares
         instance_create_info.enabledExtensionCount   = enabled_extension_layer_name_collection.size();
         instance_create_info.ppEnabledExtensionNames = enabled_extension_layer_name_collection.data();
 
-        VkResult result = vkCreateInstance(&instance_create_info, nullptr, &Instance);
+        VkResult result                              = vkCreateInstance(&instance_create_info, nullptr, &Instance);
 
         if (result == VK_ERROR_INCOMPATIBLE_DRIVER)
         {
@@ -123,17 +111,16 @@ namespace ZEngine::Hardwares
         }
 
         /*Create Message Callback*/
-        VkDebugUtilsMessengerCreateInfoEXT messenger_create_info = {};
-        messenger_create_info.sType                              = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-        messenger_create_info.messageSeverity                    = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
-        messenger_create_info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
-        messenger_create_info.messageType =
-            VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-        messenger_create_info.pfnUserCallback = __debugCallback;
-        messenger_create_info.pUserData       = nullptr; // Optional
+        VkDebugUtilsMessengerCreateInfoEXT messenger_create_info  = {};
+        messenger_create_info.sType                               = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+        messenger_create_info.messageSeverity                     = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+        messenger_create_info.messageSeverity                    |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+        messenger_create_info.messageType                         = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+        messenger_create_info.pfnUserCallback                     = __debugCallback;
+        messenger_create_info.pUserData                           = nullptr; // Optional
 
-        __createDebugMessengerPtr  = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(Instance, "vkCreateDebugUtilsMessengerEXT"));
-        __destroyDebugMessengerPtr = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(Instance, "vkDestroyDebugUtilsMessengerEXT"));
+        __createDebugMessengerPtr                                 = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(Instance, "vkCreateDebugUtilsMessengerEXT"));
+        __destroyDebugMessengerPtr                                = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(Instance, "vkDestroyDebugUtilsMessengerEXT"));
         if (__createDebugMessengerPtr)
         {
             __createDebugMessengerPtr(Instance, &messenger_create_info, nullptr, &m_debug_messenger);
@@ -157,9 +144,7 @@ namespace ZEngine::Hardwares
             vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
             vkGetPhysicalDeviceFeatures(physical_device, &physical_device_feature);
 
-            if ((physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) &&
-                ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) ||
-                 (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
+            if ((physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
                 PhysicalDevice           = physical_device;
                 PhysicalDeviceProperties = physical_device_properties;
@@ -203,8 +188,7 @@ namespace ZEngine::Hardwares
                 {
                     VkBool32 present_support = false;
 
-                    ZENGINE_VALIDATE_ASSERT(
-                        vkGetPhysicalDeviceSurfaceSupportKHR(PhysicalDevice, index, Surface, &present_support) == VK_SUCCESS, "Failed to get device surface support information")
+                    ZENGINE_VALIDATE_ASSERT(vkGetPhysicalDeviceSurfaceSupportKHR(PhysicalDevice, index, Surface, &present_support) == VK_SUCCESS, "Failed to get device surface support information")
 
                     if (present_support)
                     {
@@ -219,16 +203,13 @@ namespace ZEngine::Hardwares
                     TransferFamilyIndex = index;
                 }
             }
-            else if (
-                (physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_TRANSFER_BIT) &&
-                (physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0 &&
-                (physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_COMPUTE_BIT) == 0)
+            else if ((physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_TRANSFER_BIT) && (physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0 && (physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_COMPUTE_BIT) == 0)
             {
                 TransferFamilyIndex = index;
             }
         }
 
-        HasSeperateTransfertQueueFamily = GraphicFamilyIndex != TransferFamilyIndex;
+        HasSeperateTransfertQueueFamily                                   = GraphicFamilyIndex != TransferFamilyIndex;
 
         const float                          queue_prorities[]            = {1.0f};
         auto                                 family_index_collection      = std::set{GraphicFamilyIndex, TransferFamilyIndex};
@@ -245,9 +226,9 @@ namespace ZEngine::Hardwares
         /*
          * Enabling some features
          */
-        PhysicalDeviceFeature.drawIndirectFirstInstance              = VK_TRUE;
-        PhysicalDeviceFeature.multiDrawIndirect                      = VK_TRUE;
-        PhysicalDeviceFeature.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
+        PhysicalDeviceFeature.drawIndirectFirstInstance                                            = VK_TRUE;
+        PhysicalDeviceFeature.multiDrawIndirect                                                    = VK_TRUE;
+        PhysicalDeviceFeature.shaderSampledImageArrayDynamicIndexing                               = VK_TRUE;
 
         VkPhysicalDeviceDescriptorIndexingFeaturesEXT physical_device_descriptor_indexing_features = {};
         physical_device_descriptor_indexing_features.sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
@@ -257,20 +238,19 @@ namespace ZEngine::Hardwares
         physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound               = VK_TRUE;
         physical_device_descriptor_indexing_features.runtimeDescriptorArray                        = VK_TRUE;
 
-        VkPhysicalDeviceFeatures2 device_features_2 = {};
-        device_features_2.sType                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features_2.pNext                     = &physical_device_descriptor_indexing_features;
-        device_features_2.features                  = PhysicalDeviceFeature;
+        VkPhysicalDeviceFeatures2 device_features_2                                                = {};
+        device_features_2.sType                                                                    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        device_features_2.pNext                                                                    = &physical_device_descriptor_indexing_features;
+        device_features_2.features                                                                 = PhysicalDeviceFeature;
 
-        VkDeviceCreateInfo device_create_info    = {};
-        device_create_info.sType                 = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        device_create_info.queueCreateInfoCount  = queue_create_info_collection.size();
-        device_create_info.pQueueCreateInfos     = queue_create_info_collection.data();
-        device_create_info.enabledExtensionCount = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
-        device_create_info.ppEnabledExtensionNames =
-            (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
-        device_create_info.pEnabledFeatures = nullptr;
-        device_create_info.pNext            = &device_features_2;
+        VkDeviceCreateInfo device_create_info                                                      = {};
+        device_create_info.sType                                                                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        device_create_info.queueCreateInfoCount                                                    = queue_create_info_collection.size();
+        device_create_info.pQueueCreateInfos                                                       = queue_create_info_collection.data();
+        device_create_info.enabledExtensionCount                                                   = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
+        device_create_info.ppEnabledExtensionNames                                                 = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
+        device_create_info.pEnabledFeatures                                                        = nullptr;
+        device_create_info.pNext                                                                   = &device_features_2;
 
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice) == VK_SUCCESS, "Failed to create GPU logical device")
 
@@ -344,8 +324,7 @@ namespace ZEngine::Hardwares
         /*
          * Creating VMA Allocators
          */
-        VmaAllocatorCreateInfo vma_allocator_create_info = {
-            .physicalDevice = PhysicalDevice, .device = LogicalDevice, .instance = Instance, .vulkanApiVersion = VK_API_VERSION_1_3};
+        VmaAllocatorCreateInfo vma_allocator_create_info = {.physicalDevice = PhysicalDevice, .device = LogicalDevice, .instance = Instance, .vulkanApiVersion = VK_API_VERSION_1_3};
         ZENGINE_VALIDATE_ASSERT(vmaCreateAllocator(&vma_allocator_create_info, &VmaAllocator) == VK_SUCCESS, "Failed to create VMA Allocator")
 
         m_buffer_manager.Initialize(this);
@@ -377,9 +356,7 @@ namespace ZEngine::Hardwares
         }
         CreateSwapchain();
 
-        ThreadPoolHelper::Submit([this] {
-            DirtyCollector();
-        });
+        ThreadPoolHelper::Submit([this] { DirtyCollector(); });
     }
 
     void VulkanDevice::Deinitialize()
@@ -432,18 +409,14 @@ namespace ZEngine::Hardwares
         Instance      = VK_NULL_HANDLE;
     }
 
-    bool VulkanDevice::QueueSubmit(
-        const VkPipelineStageFlags              wait_stage_flag,
-        Rendering::Buffers::CommandBuffer*      command_buffer,
-        Rendering::Primitives::Semaphore* const signal_semaphore,
-        Rendering::Primitives::Fence* const     fence)
+    bool VulkanDevice::QueueSubmit(const VkPipelineStageFlags wait_stage_flag, Rendering::Buffers::CommandBuffer* command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, Rendering::Primitives::Fence* const fence)
     {
         ZENGINE_VALIDATE_ASSERT(fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
 
         // Todo : Think of a way to signal/wait the same  semaphore signal_semaphore
         ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
 
-        VkPipelineStageFlags flags[] = {command_buffer->QueueType == QueueType::GRAPHIC_QUEUE ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT};
+        VkPipelineStageFlags flags[]      = {wait_stage_flag};
         VkSemaphore          semaphores[] = {signal_semaphore->GetHandle()};
         VkCommandBuffer      buffers[]    = {command_buffer->GetHandle()};
         VkSubmitInfo         submit_info  = {
@@ -533,11 +506,7 @@ namespace ZEngine::Hardwares
         QueueWait(Rendering::QueueType::GRAPHIC_QUEUE);
     }
 
-    VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDevice::__debugCallback(
-        VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-        VkDebugUtilsMessageTypeFlagsEXT             messageType,
-        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-        void*                                       pUserData)
+    VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDevice::__debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
     {
         if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
         {
@@ -681,20 +650,18 @@ namespace ZEngine::Hardwares
 
     BufferView VulkanDevice::CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags)
     {
-        BufferView         buffer_view        = {};
-        VkBufferCreateInfo buffer_create_info = {};
-        buffer_create_info.sType              = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_create_info.size               = byte_size;
-        buffer_create_info.usage              = buffer_usage;
-        buffer_create_info.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;
+        BufferView         buffer_view                 = {};
+        VkBufferCreateInfo buffer_create_info          = {};
+        buffer_create_info.sType                       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        buffer_create_info.size                        = byte_size;
+        buffer_create_info.usage                       = buffer_usage;
+        buffer_create_info.sharingMode                 = VK_SHARING_MODE_EXCLUSIVE;
 
         VmaAllocationCreateInfo allocation_create_info = {};
         allocation_create_info.usage                   = VMA_MEMORY_USAGE_AUTO;
         allocation_create_info.flags                   = vma_create_flags;
 
-        ZENGINE_VALIDATE_ASSERT(
-            vmaCreateBuffer(VmaAllocator, &buffer_create_info, &allocation_create_info, &(buffer_view.Handle), &(buffer_view.Allocation), nullptr) == VK_SUCCESS,
-            "Failed to create buffer");
+        ZENGINE_VALIDATE_ASSERT(vmaCreateBuffer(VmaAllocator, &buffer_create_info, &allocation_create_info, &(buffer_view.Handle), &(buffer_view.Allocation), nullptr) == VK_SUCCESS, "Failed to create buffer");
 
         // Metadata info
         buffer_view.FrameIndex = CurrentFrameIndex;
@@ -716,46 +683,30 @@ namespace ZEngine::Hardwares
         EnqueueInstantCommandBuffer(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT);
     }
 
-    BufferImage VulkanDevice::CreateImage(
-        uint32_t              width,
-        uint32_t              height,
-        VkImageType           image_type,
-        VkImageViewType       image_view_type,
-        VkFormat              image_format,
-        VkImageTiling         image_tiling,
-        VkImageLayout         image_initial_layout,
-        VkImageUsageFlags     image_usage,
-        VkSharingMode         image_sharing_mode,
-        VkSampleCountFlagBits image_sample_count,
-        VkMemoryPropertyFlags requested_properties,
-        VkImageAspectFlagBits image_aspect_flag,
-        uint32_t              layer_count,
-        VkImageCreateFlags    image_create_flag_bit)
+    BufferImage VulkanDevice::CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, VkImageCreateFlags image_create_flag_bit)
     {
-        BufferImage       buffer_image      = {};
-        VkImageCreateInfo image_create_info = {};
-        image_create_info.sType             = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image_create_info.flags             = image_create_flag_bit;
-        image_create_info.imageType         = image_type;
-        image_create_info.extent.width      = width;
-        image_create_info.extent.height     = height;
-        image_create_info.extent.depth      = 1;
-        image_create_info.mipLevels         = 1;
-        image_create_info.arrayLayers       = layer_count;
-        image_create_info.format            = image_format;
-        image_create_info.tiling            = image_tiling;
-        image_create_info.initialLayout     = image_initial_layout;
-        image_create_info.usage             = image_usage;
-        image_create_info.sharingMode       = image_sharing_mode;
-        image_create_info.samples           = image_sample_count;
+        BufferImage       buffer_image                 = {};
+        VkImageCreateInfo image_create_info            = {};
+        image_create_info.sType                        = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image_create_info.flags                        = image_create_flag_bit;
+        image_create_info.imageType                    = image_type;
+        image_create_info.extent.width                 = width;
+        image_create_info.extent.height                = height;
+        image_create_info.extent.depth                 = 1;
+        image_create_info.mipLevels                    = 1;
+        image_create_info.arrayLayers                  = layer_count;
+        image_create_info.format                       = image_format;
+        image_create_info.tiling                       = image_tiling;
+        image_create_info.initialLayout                = image_initial_layout;
+        image_create_info.usage                        = image_usage;
+        image_create_info.sharingMode                  = image_sharing_mode;
+        image_create_info.samples                      = image_sample_count;
 
         VmaAllocationCreateInfo allocation_create_info = {};
         // allocation_create_info.requiredFlags           = requested_properties;
-        allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+        allocation_create_info.usage                   = VMA_MEMORY_USAGE_AUTO;
 
-        ZENGINE_VALIDATE_ASSERT(
-            vmaCreateImage(VmaAllocator, &image_create_info, &allocation_create_info, &(buffer_image.Handle), &(buffer_image.Allocation), nullptr) == VK_SUCCESS,
-            "Failed to create buffer");
+        ZENGINE_VALIDATE_ASSERT(vmaCreateImage(VmaAllocator, &image_create_info, &allocation_create_info, &(buffer_image.Handle), &(buffer_image.Allocation), nullptr) == VK_SUCCESS, "Failed to create buffer");
 
         buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_view_type, image_aspect_flag, layer_count);
         buffer_image.Sampler    = CreateImageSampler();
@@ -768,7 +719,7 @@ namespace ZEngine::Hardwares
 
     VkSampler VulkanDevice::CreateImageSampler()
     {
-        VkSampler sampler{VK_NULL_HANDLE};
+        VkSampler           sampler{VK_NULL_HANDLE};
 
         VkSamplerCreateInfo sampler_create_info     = {};
         sampler_create_info.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -825,8 +776,7 @@ namespace ZEngine::Hardwares
 
     VkFormat VulkanDevice::FindDepthFormat()
     {
-        return FindSupportedFormat(
-            {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        return FindSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
     }
 
     VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count)
@@ -852,12 +802,7 @@ namespace ZEngine::Hardwares
         return image_view;
     }
 
-    VkFramebuffer VulkanDevice::CreateFramebuffer(
-        const std::vector<VkImageView>& attachments,
-        const VkRenderPass&             render_pass,
-        uint32_t                        width,
-        uint32_t                        height,
-        uint32_t                        layer_number)
+    VkFramebuffer VulkanDevice::CreateFramebuffer(const std::vector<VkImageView>& attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number)
     {
         VkFramebuffer           framebuffer{VK_NULL_HANDLE};
         VkFramebufferCreateInfo framebuffer_create_info = {};
@@ -886,19 +831,9 @@ namespace ZEngine::Hardwares
 
         auto                     min_image_count       = std::clamp(capabilities.minImageCount, capabilities.minImageCount + 1, capabilities.maxImageCount);
         VkSwapchainCreateInfoKHR swapchain_create_info = {
-            .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-            .pNext            = nullptr,
-            .surface          = Surface,
-            .minImageCount    = min_image_count,
-            .imageFormat      = SurfaceFormat.format,
-            .imageColorSpace  = SurfaceFormat.colorSpace,
-            .imageExtent      = VkExtent2D{.width = SwapchainImageWidth, .height = SwapchainImageHeight},
-            .imageArrayLayers = 1,
-            .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-            .preTransform     = capabilities.currentTransform,
-            .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-            .presentMode      = PresentMode,
-            .clipped          = VK_TRUE};
+            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, .pNext = nullptr, .surface = Surface, .minImageCount = min_image_count, .imageFormat = SurfaceFormat.format, .imageColorSpace = SurfaceFormat.colorSpace, .imageExtent = VkExtent2D{.width = SwapchainImageWidth, .height = SwapchainImageHeight},
+                                .imageArrayLayers = 1, .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, .preTransform = capabilities.currentTransform, .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, .presentMode = PresentMode, .clipped = VK_TRUE
+        };
 
         std::vector<uint32_t> family_indice = {};
         family_indice.resize(HasSeperateTransfertQueueFamily ? 2 : 1);
@@ -917,8 +852,7 @@ namespace ZEngine::Hardwares
 
         std::vector<VkImage> SwapchainImages = {};
         SwapchainImages.resize(SwapchainImageCount);
-        ZENGINE_VALIDATE_ASSERT(
-            vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &SwapchainImageCount, SwapchainImages.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
+        ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &SwapchainImageCount, SwapchainImages.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
 
         /*Transition Image from Undefined to Present_src*/
         auto command_buffer = GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
@@ -957,7 +891,7 @@ namespace ZEngine::Hardwares
         DisposeSwapchain();
 
         ZENGINE_DESTROY_VULKAN_HANDLE(Instance, vkDestroySurfaceKHR, Surface, nullptr)
-        ZENGINE_VALIDATE_ASSERT(m_window->CreateSurface(Instance, reinterpret_cast<void**>(&Surface)), "Failed Window Surface from GLFW")
+        ZENGINE_VALIDATE_ASSERT(CurrentWindow->CreateSurface(Instance, reinterpret_cast<void**>(&Surface)), "Failed Window Surface from GLFW")
 
         CreateSwapchain();
     }
@@ -1014,9 +948,9 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::Present()
     {
-        Primitives::Semaphore* acquired_semaphore        = SwapchainAcquiredSemaphores[CurrentFrameIndex].get();
-        Primitives::Semaphore* render_complete_semaphore = SwapchainRenderCompleteSemaphores[CurrentFrameIndex].get();
-        Primitives::Fence*     signal_fence              = SwapchainSignalFences[CurrentFrameIndex].get();
+        Primitives::Semaphore*       acquired_semaphore        = SwapchainAcquiredSemaphores[CurrentFrameIndex].get();
+        Primitives::Semaphore*       render_complete_semaphore = SwapchainRenderCompleteSemaphores[CurrentFrameIndex].get();
+        Primitives::Fence*           signal_fence              = SwapchainSignalFences[CurrentFrameIndex].get();
 
         std::vector<VkCommandBuffer> buffer(EnqueuedCommandbufferIndex);
         for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
@@ -1032,18 +966,9 @@ namespace ZEngine::Hardwares
         VkSemaphore          wait_semaphores[]   = {acquired_semaphore->GetHandle()};
         VkSemaphore          signal_semaphores[] = {render_complete_semaphore->GetHandle()};
         VkPipelineStageFlags stage_flags[]       = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-        VkSubmitInfo         submit_info         = {
-                            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                            .pNext                = nullptr,
-                            .waitSemaphoreCount   = 1,
-                            .pWaitSemaphores      = wait_semaphores,
-                            .pWaitDstStageMask    = stage_flags,
-                            .commandBufferCount   = (uint32_t) buffer.size(),
-                            .pCommandBuffers      = buffer.data(),
-                            .signalSemaphoreCount = 1,
-                            .pSignalSemaphores    = signal_semaphores};
+        VkSubmitInfo         submit_info         = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .pNext = nullptr, .waitSemaphoreCount = 1, .pWaitSemaphores = wait_semaphores, .pWaitDstStageMask = stage_flags, .commandBufferCount = (uint32_t) buffer.size(), .pCommandBuffers = buffer.data(), .signalSemaphoreCount = 1, .pSignalSemaphores = signal_semaphores};
 
-        auto submit = vkQueueSubmit(queue, 1, &(submit_info), signal_fence->GetHandle());
+        auto                 submit              = vkQueueSubmit(queue, 1, &(submit_info), signal_fence->GetHandle());
         ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
 
         for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
@@ -1054,19 +979,12 @@ namespace ZEngine::Hardwares
         signal_fence->SetState(FenceState::Submitted);
         render_complete_semaphore->SetState(SemaphoreState::Submitted);
 
-        VkSwapchainKHR   swapchains[] = {SwapchainHandle};
-        uint32_t         frames[]     = {SwapchainImageIndex};
-        VkPresentInfoKHR present_info = {
-            .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .pNext              = nullptr,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores    = signal_semaphores,
-            .swapchainCount     = 1,
-            .pSwapchains        = swapchains,
-            .pImageIndices      = frames};
+        VkSwapchainKHR   swapchains[]   = {SwapchainHandle};
+        uint32_t         frames[]       = {SwapchainImageIndex};
+        VkPresentInfoKHR present_info   = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .pNext = nullptr, .waitSemaphoreCount = 1, .pWaitSemaphores = signal_semaphores, .swapchainCount = 1, .pSwapchains = swapchains, .pImageIndices = frames};
 
-        VkResult present_result    = vkQueuePresentKHR(queue, &present_info);
-        EnqueuedCommandbufferIndex = 0;
+        VkResult         present_result = vkQueuePresentKHR(queue, &present_info);
+        EnqueuedCommandbufferIndex      = 0;
         acquired_semaphore->SetState(SemaphoreState::Idle);
         render_complete_semaphore->SetState(SemaphoreState::Idle);
 
@@ -1123,9 +1041,7 @@ namespace ZEngine::Hardwares
         while (RunningDirtyCollector)
         {
             std::unique_lock lock(DirtyMutex);
-            DirtyCollectorCond.wait(lock, [this] {
-                return (IdleFrameCount > IdleFrameThreshold) || RunningDirtyCollector.load() == false;
-            });
+            DirtyCollectorCond.wait(lock, [this] { return (IdleFrameCount > IdleFrameThreshold) || RunningDirtyCollector.load() == false; });
 
             if (RunningDirtyCollector == false)
             {
@@ -1312,13 +1228,10 @@ namespace ZEngine::Hardwares
 
     Rendering::Buffers::CommandBuffer* CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin)
     {
-        CommandBuffer* buffer = (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[frame_index].get()
-                                                                                                               : CommandBuffers[(frame_index * MaxBufferPerPool) + 1].get();
+        CommandBuffer*   buffer = (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[frame_index].get() : CommandBuffers[(frame_index * MaxBufferPerPool) + 1].get();
 
         std::unique_lock l(m_instant_command_mutex);
-        m_cond.wait(l, [this] {
-            return m_instant_semaphore->GetState() == Primitives::SemaphoreState::Idle;
-        });
+        m_cond.wait(l, [this] { return m_instant_semaphore->GetState() == Primitives::SemaphoreState::Idle; });
         m_executing_instant_command = true;
 
         if (begin)
@@ -1332,7 +1245,8 @@ namespace ZEngine::Hardwares
     void CommandBufferManager::EndInstantCommandBuffer(Rendering::Buffers::CommandBuffer* const buffer, VulkanDevice* const device, int wait_flag)
     {
         buffer->End();
-        device->QueueSubmit(wait_flag, buffer, m_instant_semaphore.get(), m_instant_fence.get());
+        auto flag = buffer->QueueType == QueueType::GRAPHIC_QUEUE ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
+        device->QueueSubmit(flag, buffer, m_instant_semaphore.get(), m_instant_fence.get());
         {
             std::unique_lock l(m_instant_command_mutex);
             m_executing_instant_command = false;

@@ -7,8 +7,8 @@ namespace ZEngine::Core
 
     struct IEventable
     {
-        IEventable()          = default;
-        virtual ~IEventable() = default;
+        IEventable()                     = default;
+        virtual ~IEventable()            = default;
 
         virtual bool OnEvent(CoreEvent&) = 0;
     };

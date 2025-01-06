@@ -15,12 +15,12 @@ namespace Tetragrama::Components
         HierarchyViewUIComponent(std::string_view name = "Hierarchy", bool visibility = true);
         virtual ~HierarchyViewUIComponent();
 
-        void         Update(ZEngine::Core::TimeStep dt) override;
-        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+        void              Update(ZEngine::Core::TimeStep dt) override;
+        virtual void      Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
 
-        void RenderTreeNodes();
-        void RenderGuizmo();
-        void RenderSceneNodeTree(int node_identifier);
+        void              RenderTreeNodes();
+        void              RenderGuizmo();
+        void              RenderSceneNodeTree(int node_identifier);
 
         std::future<void> EditorCameraAvailableMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Helpers::Ref<Controllers::EditorCameraController>>&);
 

@@ -16,7 +16,7 @@ namespace ZEngine::Rendering::Buffers
         FramebufferVNext(Hardwares::VulkanDevice* device, Specifications::FrameBufferSpecificationVNext&&);
         ~FramebufferVNext();
 
-        VkFramebuffer Handle{VK_NULL_HANDLE};
+        VkFramebuffer                                        Handle{VK_NULL_HANDLE};
 
         void                                                 Create();
         void                                                 Resize(uint32_t width = 1, uint32_t height = 1);

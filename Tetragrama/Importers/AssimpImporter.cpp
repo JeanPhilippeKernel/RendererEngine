@@ -11,11 +11,7 @@ using namespace ZEngine::Rendering::Scenes;
 
 namespace Tetragrama::Importers
 {
-    AssimpImporter::AssimpImporter()
-        : m_progress_handler{}, m_flags{
-                                    aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_SplitLargeMeshes |
-                                    aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_GenUVCoords | aiProcess_FlipUVs |
-                                    aiProcess_ValidateDataStructure | aiProcess_FindDegenerates | aiProcess_FindInvalidData | aiProcess_LimitBoneWeights}
+    AssimpImporter::AssimpImporter() : m_progress_handler{}, m_flags{aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_SplitLargeMeshes | aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_GenUVCoords | aiProcess_FlipUVs | aiProcess_ValidateDataStructure | aiProcess_FindDegenerates | aiProcess_FindInvalidData | aiProcess_LimitBoneWeights}
     {
         m_progress_handler.SetImporter(this);
     }
@@ -89,7 +85,7 @@ namespace Tetragrama::Importers
 
             REPORT_LOG(fmt::format("Extrating Meshes : {0}/{1} ", (m + 1), number_of_meshes).c_str())
 
-            aiMesh* ai_mesh = scene->mMeshes[m];
+            aiMesh*  ai_mesh = scene->mMeshes[m];
 
             uint32_t vertex_count{0};
 
@@ -128,20 +124,20 @@ namespace Tetragrama::Importers
                 }
             }
 
-            MeshVNext& mesh           = importer_data.Scene.Meshes.emplace_back();
-            mesh.VertexCount          = vertex_count;
-            mesh.VertexOffset         = importer_data.VertexOffset;
-            mesh.VertexUnitStreamSize = sizeof(float) * (3 + 3 + 2) /*pos-cmp + normal-cmp + tex-cmp*/;
-            mesh.StreamOffset         = (mesh.VertexUnitStreamSize * mesh.VertexOffset);
-            mesh.IndexOffset          = importer_data.IndexOffset;
-            mesh.IndexCount           = index_count;
-            mesh.IndexUnitStreamSize  = sizeof(uint32_t);
-            mesh.IndexStreamOffset    = (mesh.IndexUnitStreamSize * mesh.IndexOffset);
-            mesh.TotalByteSize        = (mesh.VertexCount * mesh.VertexUnitStreamSize) + (mesh.IndexCount * mesh.IndexUnitStreamSize);
+            MeshVNext& mesh             = importer_data.Scene.Meshes.emplace_back();
+            mesh.VertexCount            = vertex_count;
+            mesh.VertexOffset           = importer_data.VertexOffset;
+            mesh.VertexUnitStreamSize   = sizeof(float) * (3 + 3 + 2) /*pos-cmp + normal-cmp + tex-cmp*/;
+            mesh.StreamOffset           = (mesh.VertexUnitStreamSize * mesh.VertexOffset);
+            mesh.IndexOffset            = importer_data.IndexOffset;
+            mesh.IndexCount             = index_count;
+            mesh.IndexUnitStreamSize    = sizeof(uint32_t);
+            mesh.IndexStreamOffset      = (mesh.IndexUnitStreamSize * mesh.IndexOffset);
+            mesh.TotalByteSize          = (mesh.VertexCount * mesh.VertexUnitStreamSize) + (mesh.IndexCount * mesh.IndexUnitStreamSize);
 
             /* Computing offset data */
             importer_data.VertexOffset += ai_mesh->mNumVertices;
-            importer_data.IndexOffset += index_count;
+            importer_data.IndexOffset  += index_count;
         }
     }
 
@@ -226,59 +222,47 @@ namespace Tetragrama::Importers
         aiString         texture_filename;
         aiTextureMapping texture_mapping;
         uint32_t         uv_index;
-        float            blend              = 1.0f;
-        aiTextureOp      texture_operation  = aiTextureOp_Add;
-        aiTextureMapMode texture_map_mode[] = {aiTextureMapMode_Wrap, aiTextureMapMode_Wrap};
-        uint32_t         texture_flags      = 0;
+        float            blend               = 1.0f;
+        aiTextureOp      texture_operation   = aiTextureOp_Add;
+        aiTextureMapMode texture_map_mode[]  = {aiTextureMapMode_Wrap, aiTextureMapMode_Wrap};
+        uint32_t         texture_flags       = 0;
 
-        uint32_t number_of_materials = scene->mNumMaterials;
+        uint32_t         number_of_materials = scene->mNumMaterials;
         for (uint32_t m = 0; m < number_of_materials; ++m)
         {
             REPORT_LOG(fmt::format("Extrating Material's textures:  {0}/{1} materials", (m + 1), number_of_materials).c_str())
 
             aiMaterial* ai_material = scene->mMaterials[m];
 
-            if (aiGetMaterialTexture(
-                    ai_material, aiTextureType_DIFFUSE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
-                AI_SUCCESS)
+            if (aiGetMaterialTexture(ai_material, aiTextureType_DIFFUSE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
                 importer_data.Scene.Materials[m].AlbedoMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
             }
 
-            if (aiGetMaterialTexture(
-                    ai_material, aiTextureType_SPECULAR, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
-                AI_SUCCESS)
+            if (aiGetMaterialTexture(ai_material, aiTextureType_SPECULAR, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
                 importer_data.Scene.Materials[m].SpecularMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
             }
 
-            if (aiGetMaterialTexture(
-                    ai_material, aiTextureType_EMISSIVE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
-                AI_SUCCESS)
+            if (aiGetMaterialTexture(ai_material, aiTextureType_EMISSIVE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
                 importer_data.Scene.Materials[m].EmissiveMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
             }
 
-            if (aiGetMaterialTexture(
-                    ai_material, aiTextureType_NORMALS, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
-                AI_SUCCESS)
+            if (aiGetMaterialTexture(ai_material, aiTextureType_NORMALS, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
                 importer_data.Scene.Materials[m].NormalMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
             }
 
             if (importer_data.Scene.Materials[m].NormalMap == 0xFFFFFFFF)
             {
-                if (aiGetMaterialTexture(
-                        ai_material, aiTextureType_HEIGHT, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
-                    AI_SUCCESS)
+                if (aiGetMaterialTexture(ai_material, aiTextureType_HEIGHT, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
                 {
                     importer_data.Scene.Materials[m].NormalMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
                 }
             }
 
-            if (aiGetMaterialTexture(
-                    ai_material, aiTextureType_OPACITY, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) ==
-                AI_SUCCESS)
+            if (aiGetMaterialTexture(ai_material, aiTextureType_OPACITY, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
                 importer_data.Scene.Materials[m].OpacityMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
                 importer_data.Scene.Materials[m].Factors.z  = 0.5f;
@@ -307,9 +291,9 @@ namespace Tetragrama::Importers
 
         for (uint32_t i = 0; i < node->mNumMeshes; ++i)
         {
-            auto     sub_node_id = SceneRawData::AddNode(scene, node_id, depth_level + 1);
-            uint32_t mesh        = node->mMeshes[i];
-            aiString mesh_name   = ai_scene->mMeshes[mesh]->mName;
+            auto     sub_node_id          = SceneRawData::AddNode(scene, node_id, depth_level + 1);
+            uint32_t mesh                 = node->mMeshes[i];
+            aiString mesh_name            = ai_scene->mMeshes[mesh]->mName;
 
             scene->NodeNames[sub_node_id] = scene->Names.size();
             scene->Names.push_back(mesh_name.C_Str() ? std::string(mesh_name.C_Str()) : std::string{"<unamed node>"});

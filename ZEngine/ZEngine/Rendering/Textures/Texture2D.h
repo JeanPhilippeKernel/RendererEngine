@@ -32,10 +32,10 @@ namespace ZEngine::Rendering::Textures
         static Helpers::Ref<Texture2D>              ReadCubemap(std::string_view filename);
         static std::future<Helpers::Ref<Texture2D>> ReadAsync(std::string_view filename);
 
-        virtual Buffers::BufferImage&        GetBuffer() /*override*/;
-        virtual const Buffers::BufferImage&  GetBuffer() const /*override*/;
-        Helpers::Ref<Buffers::Image2DBuffer> GetImage2DBuffer() const;
-        virtual void                         Dispose() /*override*/;
+        virtual Buffers::BufferImage&               GetBuffer() /*override*/;
+        virtual const Buffers::BufferImage&         GetBuffer() const /*override*/;
+        Helpers::Ref<Buffers::Image2DBuffer>        GetImage2DBuffer() const;
+        virtual void                                Dispose() /*override*/;
 
     protected:
         static void FillAsVulkanImage(Helpers::Ref<Texture2D>& texture, const Specifications::TextureSpecification& specification);

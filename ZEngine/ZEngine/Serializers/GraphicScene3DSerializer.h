@@ -42,10 +42,7 @@ namespace ZEngine::Serializers
         void SerializeSceneEntity(YAML::Emitter& emitter, const ZEngine::Rendering::Entities::GraphicSceneEntity& entity);
 
         template <typename T>
-        void SerializeSceneEntityComponent(
-            YAML::Emitter&                                          emitter,
-            const ZEngine::Rendering::Entities::GraphicSceneEntity& entity,
-            std::function<void(YAML::Emitter&, T&)>                 serialize_function)
+        void SerializeSceneEntityComponent(YAML::Emitter& emitter, const ZEngine::Rendering::Entities::GraphicSceneEntity& entity, std::function<void(YAML::Emitter&, T&)> serialize_function)
         {
             if (entity.HasComponent<T>())
             {

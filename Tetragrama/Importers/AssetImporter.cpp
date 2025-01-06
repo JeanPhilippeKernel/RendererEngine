@@ -43,16 +43,11 @@ namespace Tetragrama::Importers
              */
             std::vector<std::string> source_file_fullnames = {};
             source_file_fullnames.reserve(importer_data.Scene.Files.size());
-            std::transform(std::begin(importer_data.Scene.Files), std::end(importer_data.Scene.Files), std::back_inserter(source_file_fullnames), [&config](std::string_view file) {
-                return fmt::format("{0}/{1}", config.InputBaseAssetFilePath, file);
-            });
+            std::transform(std::begin(importer_data.Scene.Files), std::end(importer_data.Scene.Files), std::back_inserter(source_file_fullnames), [&config](std::string_view file) { return fmt::format("{0}/{1}", config.InputBaseAssetFilePath, file); });
 
             std::vector<std::string> destination_file_fullnames = {};
             destination_file_fullnames.reserve(importer_data.Scene.Files.size());
-            std::transform(
-                std::begin(importer_data.Scene.Files), std::end(importer_data.Scene.Files), std::back_inserter(destination_file_fullnames), [&config](std::string_view file) {
-                    return fmt::format("{0}/{1}/{2}", config.OutputTextureFilesPath, config.AssetFilename, file);
-                });
+            std::transform(std::begin(importer_data.Scene.Files), std::end(importer_data.Scene.Files), std::back_inserter(destination_file_fullnames), [&config](std::string_view file) { return fmt::format("{0}/{1}/{2}", config.OutputTextureFilesPath, config.AssetFilename, file); });
 
             std::string   fullname_path = fmt::format("{0}/{1}.zematerials", config.OutputMaterialsPath, config.AssetFilename);
             std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
@@ -126,9 +121,7 @@ namespace Tetragrama::Importers
 
                 size_t node_hierarchy_count = importer_data.Scene.NodeHierarchyCollection.size();
                 out.write(reinterpret_cast<const char*>(&node_hierarchy_count), sizeof(size_t));
-                out.write(
-                    reinterpret_cast<const char*>(importer_data.Scene.NodeHierarchyCollection.data()),
-                    sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
+                out.write(reinterpret_cast<const char*>(importer_data.Scene.NodeHierarchyCollection.data()), sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
 
                 SerializeStringArrayData(out, importer_data.Scene.Names);
                 SerializeStringArrayData(out, importer_data.Scene.MaterialNames);
@@ -238,8 +231,7 @@ namespace Tetragrama::Importers
                 size_t node_hierarchy_count;
                 in.read(reinterpret_cast<char*>(&node_hierarchy_count), sizeof(size_t));
                 deserialized_data.Scene.NodeHierarchyCollection.resize(node_hierarchy_count);
-                in.read(
-                    reinterpret_cast<char*>(deserialized_data.Scene.NodeHierarchyCollection.data()), sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
+                in.read(reinterpret_cast<char*>(deserialized_data.Scene.NodeHierarchyCollection.data()), sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
 
                 DeserializeStringArrayData(in, deserialized_data.Scene.Names);
                 DeserializeStringArrayData(in, deserialized_data.Scene.MaterialNames);

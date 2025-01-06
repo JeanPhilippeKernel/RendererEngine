@@ -8,10 +8,7 @@ namespace Tetragrama::Components
 {
     UIComponent::UIComponent(std::string_view name, bool visibility, bool can_be_closed) : m_name(name.data()), m_visibility(visibility), m_can_be_closed(can_be_closed) {}
 
-    UIComponent::UIComponent(const Ref<Layers::ImguiLayer>& layer, std::string_view name, bool visibility, bool can_be_closed)
-        : m_parent_layer(layer), m_name(name.data()), m_visibility(visibility), m_can_be_closed(can_be_closed)
-    {
-    }
+    UIComponent::UIComponent(const Ref<Layers::ImguiLayer>& layer, std::string_view name, bool visibility, bool can_be_closed) : m_parent_layer(layer), m_name(name.data()), m_visibility(visibility), m_can_be_closed(can_be_closed) {}
 
     void UIComponent::SetName(std::string_view name)
     {

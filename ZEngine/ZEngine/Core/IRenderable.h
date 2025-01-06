@@ -7,8 +7,8 @@ namespace ZEngine::Core
 
     struct IRenderable
     {
-        IRenderable()          = default;
-        virtual ~IRenderable() = default;
+        IRenderable()                                                                                                                                           = default;
+        virtual ~IRenderable()                                                                                                                                  = default;
 
         virtual void Render(Rendering::Renderers::GraphicRenderer* const renderer = nullptr, Rendering::Buffers::CommandBuffer* const command_buffer = nullptr) = 0;
     };

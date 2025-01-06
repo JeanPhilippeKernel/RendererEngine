@@ -13,10 +13,7 @@ namespace ZEngine::Rendering::Buffers::Layout
     class ElementLayout
     {
     public:
-        explicit ElementLayout(size_t count = 0, std::string name = "", bool normalized = false, uint32_t format = 0 /* vulkan attrib description format*/)
-            : m_name(name), m_count(count), m_size(count * sizeof(T)), m_normalized(normalized), m_data_type(typeid(T).name()), m_format(format)
-        {
-        }
+        explicit ElementLayout(size_t count = 0, std::string name = "", bool normalized = false, uint32_t format = 0 /* vulkan attrib description format*/) : m_name(name), m_count(count), m_size(count * sizeof(T)), m_normalized(normalized), m_data_type(typeid(T).name()), m_format(format) {}
 
         ~ElementLayout() = default;
 

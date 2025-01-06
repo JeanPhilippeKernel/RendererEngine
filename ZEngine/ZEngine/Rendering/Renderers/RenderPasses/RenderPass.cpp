@@ -22,15 +22,15 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             Specifications::AttachmentSpecification attachment_specification = {};
             attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
 
-            uint32_t color_map_index = 0;
+            uint32_t color_map_index                                         = 0;
             for (const auto& handle : Specification.Inputs)
             {
-                const auto& texture = device->GlobalTextures->Access(handle);
+                const auto& texture                                                 = device->GlobalTextures->Access(handle);
 
-                bool        is_depth_texture = texture->IsDepthTexture;
-                ImageLayout initial_layout   = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                ImageLayout final_layout     = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                ImageLayout reference_layout = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                bool        is_depth_texture                                        = texture->IsDepthTexture;
+                ImageLayout initial_layout                                          = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                ImageLayout final_layout                                            = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                ImageLayout reference_layout                                        = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
 
                 attachment_specification.ColorsMap[color_map_index]                 = {};
                 attachment_specification.ColorsMap[color_map_index].Format          = texture->Specification.Format;
@@ -45,14 +45,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
             for (const auto& handle : Specification.ExternalOutputs)
             {
-                const auto& texture               = device->GlobalTextures->Access(handle);
-                auto&       output_spec           = texture->Specification;
-                bool        is_depth_image_format = (output_spec.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
-                ImageLayout initial_layout        = (output_spec.LoadOp == LoadOperation::CLEAR) ? ImageLayout::UNDEFINED
-                                                    : is_depth_image_format                      ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                                                                                                 : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                ImageLayout final_layout          = is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                ImageLayout reference_layout      = is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                const auto& texture                                                 = device->GlobalTextures->Access(handle);
+                auto&       output_spec                                             = texture->Specification;
+                bool        is_depth_image_format                                   = (output_spec.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
+                ImageLayout initial_layout                                          = (output_spec.LoadOp == LoadOperation::CLEAR) ? ImageLayout::UNDEFINED : is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                ImageLayout final_layout                                            = is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                ImageLayout reference_layout                                        = is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
 
                 attachment_specification.ColorsMap[color_map_index]                 = {};
                 attachment_specification.ColorsMap[color_map_index].Format          = output_spec.Format;
@@ -115,9 +113,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             }
             auto        start        = missing_names.begin();
             auto        end          = missing_names.end();
-            std::string unset_inputs = std::accumulate(std::next(start), end, *start, [](std::string_view a, std::string_view b) {
-                return fmt::format("{}, {}", a, b);
-            });
+            std::string unset_inputs = std::accumulate(std::next(start), end, *start, [](std::string_view a, std::string_view b) { return fmt::format("{}, {}", a, b); });
 
             ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", Specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs);
 
@@ -149,14 +145,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                         continue;
                     }
 
-                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
-                        .Handle          = input.UniformBufferSetHandle.Index,
-                        .FrameIndex      = frame_index,
-                        .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
-                        .Binding         = input.Binding,
-                        .DstArrayElement = 0,
-                        .DescriptorCount = 1,
-                        .DescriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER});
+                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{.Handle = input.UniformBufferSetHandle.Index, .FrameIndex = frame_index, .DstSet = descriptor_set_map.at(input.Set)[frame_index], .Binding = input.Binding, .DstArrayElement = 0, .DescriptorCount = 1, .DescriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER});
                 }
                 break;
                 case STORAGE_BUFFER_SET:
@@ -166,14 +155,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                         continue;
                     }
 
-                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
-                        .Handle          = input.BufferSetHandle.Index,
-                        .FrameIndex      = frame_index,
-                        .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
-                        .Binding         = input.Binding,
-                        .DstArrayElement = 0,
-                        .DescriptorCount = 1,
-                        .DescriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER});
+                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{.Handle = input.BufferSetHandle.Index, .FrameIndex = frame_index, .DstSet = descriptor_set_map.at(input.Set)[frame_index], .Binding = input.Binding, .DstArrayElement = 0, .DescriptorCount = 1, .DescriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER});
                 }
                 break;
                 case BINDLESS_TEXTURE:
@@ -181,14 +163,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                     auto count = m_device->GlobalTextures->Head();
                     for (int i = 0; i < count; ++i)
                     {
-                        EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
-                            .Handle          = i,
-                            .FrameIndex      = frame_index,
-                            .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
-                            .Binding         = input.Binding,
-                            .DstArrayElement = (uint32_t) i,
-                            .DescriptorCount = 1,
-                            .DescriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
+                        EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{.Handle = i, .FrameIndex = frame_index, .DstSet = descriptor_set_map.at(input.Set)[frame_index], .Binding = input.Binding, .DstArrayElement = (uint32_t) i, .DescriptorCount = 1, .DescriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
                     }
 
                     /*auto     texture_array      = reinterpret_cast<Textures::TextureArray*>(input.Input.Data);
@@ -228,14 +203,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                         continue;
                     }
 
-                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{
-                        .Handle          = input.TextureHandle.Index,
-                        .FrameIndex      = frame_index,
-                        .DstSet          = descriptor_set_map.at(input.Set)[frame_index],
-                        .Binding         = input.Binding,
-                        .DstArrayElement = 0,
-                        .DescriptorCount = 1,
-                        .DescriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
+                    EnqueuedWriteDescriptorSetRequests.emplace_back(Hardwares::WriteDescriptorSetRequest{.Handle = input.TextureHandle.Index, .FrameIndex = frame_index, .DstSet = descriptor_set_map.at(input.Set)[frame_index], .Binding = input.Binding, .DstArrayElement = 0, .DescriptorCount = 1, .DescriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
                 }
                 break;
                 case UNIFORM_BUFFER:
@@ -300,8 +268,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
         const auto& binding_spec = validity_output.second;
-        Inputs[key_name.data()]  = PassInput{
-             .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER_SET, .UniformBufferSetHandle = buffer};
+        Inputs[key_name.data()]  = PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::UNIFORM_BUFFER_SET, .UniformBufferSetHandle = buffer};
         EnqueuedUpdateInputs.insert(key_name.data());
     }
 
@@ -313,8 +280,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
         const auto& binding_spec = validity_output.second;
-        Inputs[key_name.data()]  = PassInput{
-             .Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER_SET, .BufferSetHandle = buffer};
+        Inputs[key_name.data()]  = PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::STORAGE_BUFFER_SET, .BufferSetHandle = buffer};
 
         EnqueuedUpdateInputs.insert(key_name.data());
     }
@@ -328,8 +294,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
 
         const auto& binding_spec = validity_output.second;
-        Inputs[key_name.data()] =
-            PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE, .TextureHandle = texture};
+        Inputs[key_name.data()]  = PassInput{.Set = binding_spec.Set, .Binding = binding_spec.Binding, .DebugName = binding_spec.Name, .Type = PassInputType::TEXTURE, .TextureHandle = texture};
 
         EnqueuedUpdateInputs.insert(key_name.data());
     }
@@ -526,8 +491,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::SetBinding(uint32_t input_attribute_index, uint32_t input_binding_index)
     {
-        m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Binding =
-            m_spec.PipelineSpecification.VertexInputBindingSpecifications[input_binding_index].Binding;
+        m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Binding = m_spec.PipelineSpecification.VertexInputBindingSpecifications[input_binding_index].Binding;
         return *this;
     }
 

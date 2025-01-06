@@ -2,20 +2,40 @@ Language: Cpp
 BasedOnStyle: Microsoft
 AccessModifierOffset: -4
 AlignAfterOpenBracket: AlwaysBreak
-AlignConsecutiveMacros: true # Only available in clang-format-10
-AlignConsecutiveAssignments: Consecutive
-AlignConsecutiveDeclarations: Consecutive
+BracedInitializerIndentWidth: 0
+AlignConsecutiveMacros: # Only available in clang-format-10
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCompound: true
+  # AlignFunctionDeclarations: true
+  # AlignFunctionPointers: true
+  PadOperators: true
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+  # AlignFunctionDeclarations: true
+  # AlignFunctionPointers: true
+  PadOperators: true
 AlignEscapedNewlines: Left
 AlignOperands: true
 AlignTrailingComments: true
-# AlignArrayOfStructures: Left
+AlignEscapedNewlinesLeft: false
+# AlignConsecutiveFields: true
+AlignArrayOfStructures: Right
+
 # AllowAllArgumentsOnNextLine: true # Only available in clang-format-10
 AllowAllConstructorInitializersOnNextLine: false # Only available in clang-format-10
 AllowAllParametersOfDeclarationOnNextLine: false # Only available in clang-format-10
 AllowShortBlocksOnASingleLine: Empty # Only available in clang-format-10
 AllowShortCaseLabelsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: Empty
-AllowShortLambdasOnASingleLine: Empty # Only available in clang-format-10
+AllowShortLambdasOnASingleLine: All # Only available in clang-format-10
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakAfterDefinitionReturnType: None
@@ -50,7 +70,7 @@ BreakConstructorInitializersBeforeComma: false
 BreakConstructorInitializers: BeforeColon
 BreakAfterJavaFieldAnnotations: false
 BreakStringLiterals: true
-ColumnLimit: 180
+ColumnLimit: 570
 CommentPragmas: '^ IWYU pragma:'
 CompactNamespaces: false
 ConstructorInitializerAllOnOneLineOrOnePerLine: false
@@ -122,4 +142,3 @@ SpacesInSquareBrackets: false
 Standard: c++20
 TabWidth: 4
 UseTab: Never
-

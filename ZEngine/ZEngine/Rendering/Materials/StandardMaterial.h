@@ -12,21 +12,21 @@ namespace ZEngine::Rendering::Materials
         explicit StandardMaterial();
         virtual ~StandardMaterial() = default;
 
-        void SetTileFactor(float value);
-        void SetDiffuseTintColor(const glm::vec4& value);
-        void SetSpecularTintColor(const glm::vec4& value);
+        void                            SetTileFactor(float value);
+        void                            SetDiffuseTintColor(const glm::vec4& value);
+        void                            SetSpecularTintColor(const glm::vec4& value);
 
-        void SetShininess(float value);
+        void                            SetShininess(float value);
 
-        void Apply(const Helpers::Ref<Shaders::Shader>&) override;
+        void                            Apply(const Helpers::Ref<Shaders::Shader>&) override;
 
-        void SetSpecularMap(const Helpers::Ref<Textures::Texture>& texture);
-        void SetDiffuseMap(const Helpers::Ref<Textures::Texture>& texture);
+        void                            SetSpecularMap(const Helpers::Ref<Textures::Texture>& texture);
+        void                            SetDiffuseMap(const Helpers::Ref<Textures::Texture>& texture);
 
-        float                 GetTileFactor() const;
-        float                 GetShininess() const;
-        const Maths::Vector4& GetDiffuseTintColor() const;
-        const Maths::Vector4& GetSpecularTintColor() const;
+        float                           GetTileFactor() const;
+        float                           GetShininess() const;
+        const Maths::Vector4&           GetDiffuseTintColor() const;
+        const Maths::Vector4&           GetSpecularTintColor() const;
 
         Helpers::Ref<Textures::Texture> GetSpecularMap() const;
         Helpers::Ref<Textures::Texture> GetDiffuseMap() const;

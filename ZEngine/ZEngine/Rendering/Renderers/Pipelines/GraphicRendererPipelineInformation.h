@@ -19,13 +19,13 @@ namespace ZEngine::Rendering::Renderers
 
     struct GraphicRendererPipelineInformation
     {
-        bool IsPipelineStatesInitialized{false};
+        bool                                                 IsPipelineStatesInitialized{false};
 
-        uint32_t DesiredWidth{1};
-        uint32_t DesiredHeight{1};
+        uint32_t                                             DesiredWidth{1};
+        uint32_t                                             DesiredHeight{1};
 
-        uint32_t GeometryCollectionCount{0};
-        uint32_t MaterialCollectionCount{0};
+        uint32_t                                             GeometryCollectionCount{0};
+        uint32_t                                             MaterialCollectionCount{0};
 
         std::vector<Rendering::Meshes::Mesh>                 MeshCollection;
         std::vector<Helpers::Ref<Geometries::IGeometry>>     GeometryCollection;

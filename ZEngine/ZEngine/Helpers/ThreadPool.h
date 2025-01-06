@@ -10,9 +10,7 @@ namespace ZEngine::Helpers
     class ThreadPool
     {
     public:
-        ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency()) : m_maxThreadCount(maxThreadCount), m_taskQueue(CreateRef<ThreadSafeQueue<std::function<void()>>>())
-        {
-        }
+        ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency()) : m_maxThreadCount(maxThreadCount), m_taskQueue(CreateRef<ThreadSafeQueue<std::function<void()>>>()) {}
 
         ~ThreadPool()
         {
@@ -41,7 +39,7 @@ namespace ZEngine::Helpers
         std::mutex                                  m_mutex;
         Ref<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
 
-        static void WorkerThread(WeakRef<ThreadSafeQueue<std::function<void()>>> weakQueue, const std::atomic_bool& cancellationToken)
+        static void                                 WorkerThread(WeakRef<ThreadSafeQueue<std::function<void()>>> weakQueue, const std::atomic_bool& cancellationToken)
         {
             while (auto queue = weakQueue.lock())
             {

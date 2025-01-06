@@ -95,11 +95,8 @@ namespace ZEngine::Rendering::Buffers
                 m_last_byte_size = m_byte_size;
 
                 CleanUpMemory();
-                this->m_byte_size = byte_size;
-                m_uniform_buffer  = m_device->CreateBuffer(
-                    static_cast<VkDeviceSize>(this->m_byte_size),
-                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+                this->m_byte_size       = byte_size;
+                m_uniform_buffer        = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
                 m_uniform_buffer_mapped = true;
             }
 
@@ -108,16 +105,12 @@ namespace ZEngine::Rendering::Buffers
 
             if (allocation_info.pMappedData)
             {
-                ZENGINE_VALIDATE_ASSERT(
-                    Helpers::secure_memset(allocation_info.pMappedData, 0, this->m_byte_size, allocation_info.size) == Helpers::MEMORY_OP_SUCCESS,
-                    "Failed to perform memory set operation")
+                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memset(allocation_info.pMappedData, 0, this->m_byte_size, allocation_info.size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory set operation")
             }
 
             if (data && allocation_info.pMappedData)
             {
-                ZENGINE_VALIDATE_ASSERT(
-                    Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS,
-                    "Failed to perform memory copy operation")
+                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
             }
         }
 

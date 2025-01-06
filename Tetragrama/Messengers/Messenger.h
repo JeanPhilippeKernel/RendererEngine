@@ -146,7 +146,7 @@ namespace Tetragrama::Messengers
         template <typename TRecipient, typename TMessage>
         void Register(TRecipient* const recipient, std::string_view token, action_callback&& callback)
         {
-            std::lock_guard lock(m_mutex);
+            std::lock_guard     lock(m_mutex);
 
             std::string         routing_token    = token.data();
             ComponentActionPair component_action = std::make_pair(recipient, std::move(callback));

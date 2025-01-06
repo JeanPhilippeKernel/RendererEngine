@@ -16,11 +16,14 @@
 
 namespace ZEngine::Rendering::Renderers
 {
-    enum RenderTarget : uint32_t
+    struct DrawData
     {
-        FRAME_OUTPUT = 0,
-        ENVIROMENT_CUBEMAP,
-        COUNT
+        uint32_t TransformIndex{0xFFFFFFFF};
+        uint32_t MaterialIndex{0xFFFFFFFF};
+        uint32_t VertexOffset;
+        uint32_t IndexOffset;
+        uint32_t VertexCount;
+        uint32_t IndexCount;
     };
 
     struct ResizeRequest
@@ -69,24 +72,24 @@ namespace ZEngine::Rendering::Renderers
         Helpers::HandleManager<Buffers::UniformBufferSetRef>  UniformBufferSetManager    = {300};
         Helpers::ThreadSafeQueue<ResizeRequest>               EnqueuedResizeRequests     = {};
 
-        void            Initialize(Hardwares::VulkanDevice* device);
-        void            Deinitialize();
-        void            Update();
-        void            DrawScene(Buffers::CommandBuffer* const command_buffer, const Helpers::Ref<Cameras::Camera>& camera, const Helpers::Ref<Scenes::SceneRawData>& data);
-        void            WriteDescriptorSets(std::span<Hardwares::WriteDescriptorSetRequest> requests);
-        VkDescriptorSet GetImguiFrameOutput();
+        void                                                  Initialize(Hardwares::VulkanDevice* device);
+        void                                                  Deinitialize();
+        void                                                  Update();
+        void                                                  DrawScene(Buffers::CommandBuffer* const command_buffer, const Helpers::Ref<Cameras::Camera>& camera, const Helpers::Ref<Scenes::SceneRawData>& data);
+        void                                                  WriteDescriptorSets(std::span<Hardwares::WriteDescriptorSetRequest> requests);
+        VkDescriptorSet                                       GetImguiFrameOutput();
 
-        Buffers::VertexBufferSetHandle   CreateVertexBufferSet();
-        Buffers::StorageBufferSetHandle  CreateStorageBufferSet();
-        Buffers::IndirectBufferSetHandle CreateIndirectBufferSet();
-        Buffers::IndexBufferSetHandle    CreateIndexBufferSet();
-        Buffers::UniformBufferSetHandle  CreateUniformBufferSet();
+        Buffers::VertexBufferSetHandle                        CreateVertexBufferSet();
+        Buffers::StorageBufferSetHandle                       CreateStorageBufferSet();
+        Buffers::IndirectBufferSetHandle                      CreateIndirectBufferSet();
+        Buffers::IndexBufferSetHandle                         CreateIndexBufferSet();
+        Buffers::UniformBufferSetHandle                       CreateUniformBufferSet();
 
-        Helpers::Ref<RenderPasses::RenderPass> CreateRenderPass(const Specifications::RenderPassSpecification& spec);
-        Helpers::Ref<Textures::Texture>        CreateTexture(const Specifications::TextureSpecification& spec);
-        Helpers::Ref<Textures::Texture>        CreateTexture(uint32_t width, uint32_t height);
-        Helpers::Ref<Textures::Texture>        CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a);
-        Textures::TextureHandle                LoadTextureFile(std::string_view filename);
+        Helpers::Ref<RenderPasses::RenderPass>                CreateRenderPass(const Specifications::RenderPassSpecification& spec);
+        Helpers::Ref<Textures::Texture>                       CreateTexture(const Specifications::TextureSpecification& spec);
+        Helpers::Ref<Textures::Texture>                       CreateTexture(uint32_t width, uint32_t height);
+        Helpers::Ref<Textures::Texture>                       CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a);
+        Textures::TextureHandle                               LoadTextureFile(std::string_view filename);
 
     private:
         Buffers::UniformBufferSetHandle   m_scene_camera_buffer_handle;
@@ -97,11 +100,11 @@ namespace ZEngine::Rendering::Renderers
     {
         GraphicRenderer* Renderer = nullptr;
 
-        void Initialize(GraphicRenderer* renderer);
-        void Run();
-        void Shutdown();
+        void             Initialize(GraphicRenderer* renderer);
+        void             Run();
+        void             Shutdown();
 
-        void EnqueueTextureRequest(std::string_view file, const Textures::TextureHandle& handle);
+        void             EnqueueTextureRequest(std::string_view file, const Textures::TextureHandle& handle);
 
     private:
         std::atomic_bool                               m_cancellation_token{false};

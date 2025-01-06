@@ -29,12 +29,12 @@ namespace ZEngine::Windows::Inputs
 
             Helpers::Ref<IDevice> device_ptr = Helpers::CreateRef<T>();
 
-            auto pair = m_devices.emplace(std::make_pair(std::string(type.name()), std::move(device_ptr)));
+            auto                  pair       = m_devices.emplace(std::make_pair(std::string(type.name()), std::move(device_ptr)));
             return reinterpret_cast<T*>(pair.first->second.get());
         }
 
-        virtual bool IsKeyPressed(ZENGINE_KEYCODE key, const Helpers::Ref<Windows::CoreWindow>& window) const  = 0;
-        virtual bool IsKeyReleased(ZENGINE_KEYCODE key, const Helpers::Ref<Windows::CoreWindow>& window) const = 0;
+        virtual bool             IsKeyPressed(ZENGINE_KEYCODE key, const Helpers::Ref<Windows::CoreWindow>& window) const  = 0;
+        virtual bool             IsKeyReleased(ZENGINE_KEYCODE key, const Helpers::Ref<Windows::CoreWindow>& window) const = 0;
 
         virtual std::string_view GetName() const
         {

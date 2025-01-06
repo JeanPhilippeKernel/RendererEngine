@@ -24,16 +24,14 @@ namespace Tetragrama::Controllers
             m_process_event   = true;
         }
 
-        explicit PerspectiveCameraController(float aspect_ratio, ZEngine::Rendering::Cameras::PerspectiveCamera* const camera)
-            : ICameraController(aspect_ratio), m_perspective_camera(camera)
+        explicit PerspectiveCameraController(float aspect_ratio, ZEngine::Rendering::Cameras::PerspectiveCamera* const camera) : ICameraController(aspect_ratio), m_perspective_camera(camera)
         {
             m_position        = {0.0f, 0.0f, 1.5f};
             m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
             m_process_event   = true;
         }
 
-        explicit PerspectiveCameraController(float aspect_ratio)
-            : ICameraController(aspect_ratio), m_perspective_camera(new ZEngine::Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far))
+        explicit PerspectiveCameraController(float aspect_ratio) : ICameraController(aspect_ratio), m_perspective_camera(new ZEngine::Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far))
         {
             m_position        = {0.0f, 0.0f, 1.5f};
             m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
@@ -42,31 +40,31 @@ namespace Tetragrama::Controllers
 
         virtual ~PerspectiveCameraController() = default;
 
-        void Initialize() override;
-        void Update(ZEngine::Core::TimeStep) override;
-        bool OnEvent(ZEngine::Core::CoreEvent&) override;
+        void                                                             Initialize() override;
+        void                                                             Update(ZEngine::Core::TimeStep) override;
+        bool                                                             OnEvent(ZEngine::Core::CoreEvent&) override;
 
         const ZEngine::Helpers::Ref<ZEngine::Rendering::Cameras::Camera> GetCamera() const override;
 
-        void UpdateProjectionMatrix() override;
+        void                                                             UpdateProjectionMatrix() override;
 
-        virtual glm::vec3 GetPosition() const override;
-        virtual void      SetPosition(const glm::vec3& position) override;
+        virtual glm::vec3                                                GetPosition() const override;
+        virtual void                                                     SetPosition(const glm::vec3& position) override;
 
-        virtual float GetFieldOfView() const;
-        virtual void  SetFieldOfView(float rad_fov);
+        virtual float                                                    GetFieldOfView() const;
+        virtual void                                                     SetFieldOfView(float rad_fov);
 
-        virtual float GetNear() const;
-        virtual void  SetNear(float value);
+        virtual float                                                    GetNear() const;
+        virtual void                                                     SetNear(float value);
 
-        virtual float GetFar() const;
-        virtual void  SetFar(float value);
+        virtual float                                                    GetFar() const;
+        virtual void                                                     SetFar(float value);
 
-        void SetViewport(float width, float height);
-        void SetTarget(const glm::vec3& target);
+        void                                                             SetViewport(float width, float height);
+        void                                                             SetTarget(const glm::vec3& target);
 
-        virtual void ResumeEventProcessing();
-        virtual void PauseEventProcessing();
+        virtual void                                                     ResumeEventProcessing();
+        virtual void                                                     PauseEventProcessing();
 
     public:
         bool OnMouseButtonPressed(ZEngine::Windows::Events::MouseButtonPressedEvent&) override

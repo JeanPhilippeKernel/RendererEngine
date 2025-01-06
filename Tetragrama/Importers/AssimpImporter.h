@@ -32,14 +32,14 @@ namespace Tetragrama::Importers
 
         friend struct AssimpProgressHandler;
 
-        void ExtractMeshes(const aiScene*, ImporterData&);
-        void ExtractMaterials(const aiScene*, ImporterData&);
-        void ExtractTextures(const aiScene*, ImporterData&);
-        void CreateHierachyScene(const aiScene*, ImporterData&);
+        void      ExtractMeshes(const aiScene*, ImporterData&);
+        void      ExtractMaterials(const aiScene*, ImporterData&);
+        void      ExtractTextures(const aiScene*, ImporterData&);
+        void      CreateHierachyScene(const aiScene*, ImporterData&);
 
         void      TraverseNode(const aiScene*, ZEngine::Rendering::Scenes::SceneRawData* const, const aiNode*, int parent_node_id, int depth_level);
         glm::mat4 ConvertToMat4(const aiMatrix4x4& m);
 
-        int GenerateFileIndex(std::vector<std::string>& data_viewer, std::string_view filename);
+        int       GenerateFileIndex(std::vector<std::string>& data_viewer, std::string_view filename);
     };
 } // namespace Tetragrama::Importers

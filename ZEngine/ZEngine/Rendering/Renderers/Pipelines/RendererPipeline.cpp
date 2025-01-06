@@ -7,8 +7,7 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
-    GraphicPipeline::GraphicPipeline(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec)
-        : m_device(device), m_pipeline_specification(std::move(spec))
+    GraphicPipeline::GraphicPipeline(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec) : m_device(device), m_pipeline_specification(std::move(spec))
     {
         m_shader = ZEngine::Managers::ShaderManager::Get(m_device, m_pipeline_specification.ShaderSpecification);
     }
@@ -29,18 +28,18 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Dynamic State
          */
-        std::array<VkDynamicState, 2>    dynamic_state_collection  = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-        VkPipelineDynamicStateCreateInfo dynamic_state_create_info = {};
-        dynamic_state_create_info.sType                            = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynamic_state_create_info.dynamicStateCount                = dynamic_state_collection.size();
-        dynamic_state_create_info.pDynamicStates                   = dynamic_state_collection.data();
+        std::array<VkDynamicState, 2>    dynamic_state_collection               = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo dynamic_state_create_info              = {};
+        dynamic_state_create_info.sType                                         = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamic_state_create_info.dynamicStateCount                             = dynamic_state_collection.size();
+        dynamic_state_create_info.pDynamicStates                                = dynamic_state_collection.data();
         /*
          * Viewports and Scissors
          */
-        VkPipelineViewportStateCreateInfo viewport_state_create_info = {};
-        viewport_state_create_info.sType                             = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-        viewport_state_create_info.viewportCount                     = 1;
-        viewport_state_create_info.scissorCount                      = 1;
+        VkPipelineViewportStateCreateInfo viewport_state_create_info            = {};
+        viewport_state_create_info.sType                                        = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewport_state_create_info.viewportCount                                = 1;
+        viewport_state_create_info.scissorCount                                 = 1;
         /*
          * Input Assembly
          */
@@ -53,56 +52,43 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Vertex Input
          */
-        std::vector<VkVertexInputBindingDescription> vertex_input_bindings = {};
-        std::transform(
-            m_pipeline_specification.VertexInputBindingSpecifications.begin(),
-            m_pipeline_specification.VertexInputBindingSpecifications.end(),
-            std::back_inserter(vertex_input_bindings),
-            [](const Specifications::VertexInputBindingSpecification& input) {
-                return VkVertexInputBindingDescription{.binding = input.Binding, .stride = input.Stride, .inputRate = (VkVertexInputRate) input.Rate};
-            });
+        std::vector<VkVertexInputBindingDescription> vertex_input_bindings      = {};
+        std::transform(m_pipeline_specification.VertexInputBindingSpecifications.begin(), m_pipeline_specification.VertexInputBindingSpecifications.end(), std::back_inserter(vertex_input_bindings), [](const Specifications::VertexInputBindingSpecification& input) { return VkVertexInputBindingDescription{.binding = input.Binding, .stride = input.Stride, .inputRate = (VkVertexInputRate) input.Rate}; });
 
         std::vector<VkVertexInputAttributeDescription> vertex_input_attributes = {};
-        std::transform(
-            m_pipeline_specification.VertexInputAttributeSpecifications.begin(),
-            m_pipeline_specification.VertexInputAttributeSpecifications.end(),
-            std::back_inserter(vertex_input_attributes),
-            [](const Specifications::VertexInputAttributeSpecification& input) {
-                return VkVertexInputAttributeDescription{
-                    .location = input.Location, .binding = input.Binding, .format = Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(input.Format)], .offset = input.Offset};
-            });
+        std::transform(m_pipeline_specification.VertexInputAttributeSpecifications.begin(), m_pipeline_specification.VertexInputAttributeSpecifications.end(), std::back_inserter(vertex_input_attributes), [](const Specifications::VertexInputAttributeSpecification& input) { return VkVertexInputAttributeDescription{.location = input.Location, .binding = input.Binding, .format = Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(input.Format)], .offset = input.Offset}; });
 
-        VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info = {};
-        vertex_input_state_create_info.sType                                = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertex_input_state_create_info.vertexBindingDescriptionCount        = vertex_input_bindings.size();
-        vertex_input_state_create_info.pVertexBindingDescriptions           = vertex_input_bindings.data();
-        vertex_input_state_create_info.vertexAttributeDescriptionCount      = vertex_input_attributes.size();
-        vertex_input_state_create_info.pVertexAttributeDescriptions         = vertex_input_attributes.data();
+        VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info   = {};
+        vertex_input_state_create_info.sType                                  = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertex_input_state_create_info.vertexBindingDescriptionCount          = vertex_input_bindings.size();
+        vertex_input_state_create_info.pVertexBindingDescriptions             = vertex_input_bindings.data();
+        vertex_input_state_create_info.vertexAttributeDescriptionCount        = vertex_input_attributes.size();
+        vertex_input_state_create_info.pVertexAttributeDescriptions           = vertex_input_attributes.data();
         /*
          * Rasterizer
          */
-        VkPipelineRasterizationStateCreateInfo rasterization_create_info = {};
-        rasterization_create_info.sType                                  = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rasterization_create_info.depthClampEnable                       = VK_FALSE;
-        rasterization_create_info.rasterizerDiscardEnable                = VK_FALSE;
-        rasterization_create_info.polygonMode                            = VK_POLYGON_MODE_FILL;
-        rasterization_create_info.lineWidth                              = 1.0f;
-        rasterization_create_info.cullMode                               = VK_CULL_MODE_NONE;
-        rasterization_create_info.frontFace                              = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-        rasterization_create_info.depthBiasEnable                        = VK_FALSE;
-        rasterization_create_info.depthBiasConstantFactor                = 0.0f; // Optional
-        rasterization_create_info.depthBiasClamp                         = 0.0f; // Optional
-        rasterization_create_info.depthBiasSlopeFactor                   = 0.0f; // Optional
-        rasterization_create_info.pNext                                  = nullptr;
+        VkPipelineRasterizationStateCreateInfo rasterization_create_info      = {};
+        rasterization_create_info.sType                                       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterization_create_info.depthClampEnable                            = VK_FALSE;
+        rasterization_create_info.rasterizerDiscardEnable                     = VK_FALSE;
+        rasterization_create_info.polygonMode                                 = VK_POLYGON_MODE_FILL;
+        rasterization_create_info.lineWidth                                   = 1.0f;
+        rasterization_create_info.cullMode                                    = VK_CULL_MODE_NONE;
+        rasterization_create_info.frontFace                                   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rasterization_create_info.depthBiasEnable                             = VK_FALSE;
+        rasterization_create_info.depthBiasConstantFactor                     = 0.0f; // Optional
+        rasterization_create_info.depthBiasClamp                              = 0.0f; // Optional
+        rasterization_create_info.depthBiasSlopeFactor                        = 0.0f; // Optional
+        rasterization_create_info.pNext                                       = nullptr;
         /*
          * Multisampling
          */
-        VkPipelineMultisampleStateCreateInfo multisample_state_create_info = {};
-        multisample_state_create_info.sType                                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        multisample_state_create_info.sampleShadingEnable                  = VK_FALSE;
-        multisample_state_create_info.rasterizationSamples                 = VK_SAMPLE_COUNT_1_BIT;
-        multisample_state_create_info.minSampleShading                     = 1.0f;
-        multisample_state_create_info.pNext                                = nullptr;
+        VkPipelineMultisampleStateCreateInfo multisample_state_create_info    = {};
+        multisample_state_create_info.sType                                   = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisample_state_create_info.sampleShadingEnable                     = VK_FALSE;
+        multisample_state_create_info.rasterizationSamples                    = VK_SAMPLE_COUNT_1_BIT;
+        multisample_state_create_info.minSampleShading                        = 1.0f;
+        multisample_state_create_info.pNext                                   = nullptr;
         /*
          * Depth and Stencil testing
          */
@@ -150,18 +136,17 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Pipeline layout
          */
-        const auto                 descriptor_set_layout_collection = m_shader->GetDescriptorSetLayout();
-        const auto&                push_constant_collection         = m_shader->GetPushConstants();
-        VkPipelineLayoutCreateInfo pipeline_layout_create_info      = {};
-        pipeline_layout_create_info.sType                           = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipeline_layout_create_info.setLayoutCount                  = descriptor_set_layout_collection.size(); // Optional
-        pipeline_layout_create_info.pSetLayouts                     = descriptor_set_layout_collection.data(); // Optional
-        pipeline_layout_create_info.pushConstantRangeCount          = push_constant_collection.size();
-        pipeline_layout_create_info.pPushConstantRanges             = push_constant_collection.data();
-        pipeline_layout_create_info.flags                           = 0;
-        pipeline_layout_create_info.pNext                           = nullptr;
-        ZENGINE_VALIDATE_ASSERT(
-            vkCreatePipelineLayout(m_device->LogicalDevice, &(pipeline_layout_create_info), nullptr, &m_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
+        const auto                 descriptor_set_layout_collection       = m_shader->GetDescriptorSetLayout();
+        const auto&                push_constant_collection               = m_shader->GetPushConstants();
+        VkPipelineLayoutCreateInfo pipeline_layout_create_info            = {};
+        pipeline_layout_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipeline_layout_create_info.setLayoutCount                        = descriptor_set_layout_collection.size(); // Optional
+        pipeline_layout_create_info.pSetLayouts                           = descriptor_set_layout_collection.data(); // Optional
+        pipeline_layout_create_info.pushConstantRangeCount                = push_constant_collection.size();
+        pipeline_layout_create_info.pPushConstantRanges                   = push_constant_collection.data();
+        pipeline_layout_create_info.flags                                 = 0;
+        pipeline_layout_create_info.pNext                                 = nullptr;
+        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(m_device->LogicalDevice, &(pipeline_layout_create_info), nullptr, &m_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
         /*
          * Graphic Pipeline Creation
          */
@@ -185,9 +170,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.basePipelineIndex             = -1;             // Optional
         graphic_pipeline_create_info.flags                         = 0;              // Optional
         graphic_pipeline_create_info.pNext                         = nullptr;        // Optional
-        ZENGINE_VALIDATE_ASSERT(
-            vkCreateGraphicsPipelines(m_device->LogicalDevice, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS,
-            "Failed to create Graphics Pipeline")
+        ZENGINE_VALIDATE_ASSERT(vkCreateGraphicsPipelines(m_device->LogicalDevice, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
     }
 
     void GraphicPipeline::Dispose()

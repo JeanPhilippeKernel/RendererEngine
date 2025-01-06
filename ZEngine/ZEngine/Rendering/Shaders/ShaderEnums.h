@@ -8,7 +8,7 @@ namespace ZEngine::Rendering::Shaders
         /**
          * Vertex shader type
          */
-        VERTEX = 0,
+        VERTEX   = 0,
         /**
          * Fragment shader type
          */
@@ -20,7 +20,7 @@ namespace ZEngine::Rendering::Shaders
         /**
          * Unknown shader type
          */
-        UNKNOWN = 3
+        UNKNOWN  = 3
     };
 
     enum class ShaderOperationResult : int

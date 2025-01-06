@@ -18,19 +18,19 @@ namespace ZEngine::Rendering::Primitives
 
     struct Fence : public Helpers::RefCounted
     {
-        Hardwares::VulkanDevice* Device = nullptr;
-
         Fence(Hardwares::VulkanDevice* const device, bool as_signaled = false);
         ~Fence();
-        bool IsSignaled();
 
-        bool Wait(uint64_t timeout = 1000000000);
-        void Reset();
+        Hardwares::VulkanDevice* Device = nullptr;
+        bool                     IsSignaled();
 
-        void       SetState(FenceState state);
-        FenceState GetState() const;
+        bool                     Wait(uint64_t timeout = 1000000000);
+        void                     Reset();
 
-        VkFence GetHandle() const;
+        void                     SetState(FenceState state);
+        FenceState               GetState() const;
+
+        VkFence                  GetHandle() const;
 
     private:
         FenceState m_fence_state{FenceState::Idle};

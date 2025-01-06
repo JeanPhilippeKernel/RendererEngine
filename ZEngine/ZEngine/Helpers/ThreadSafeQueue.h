@@ -61,9 +61,7 @@ namespace ZEngine::Helpers
             std::unique_lock<std::mutex> lock(m_mutex);
             if (m_queue.empty())
             {
-                m_condition.wait(lock, [this] {
-                    return !m_queue.empty();
-                });
+                m_condition.wait(lock, [this] { return !m_queue.empty(); });
             }
         }
 
@@ -72,9 +70,7 @@ namespace ZEngine::Helpers
             std::unique_lock<std::mutex> lock(m_mutex);
             if (m_queue.empty())
             {
-                m_condition.wait_for(lock, time, [this] {
-                    return !m_queue.empty();
-                });
+                m_condition.wait_for(lock, time, [this] { return !m_queue.empty(); });
             }
         }
 
@@ -83,9 +79,7 @@ namespace ZEngine::Helpers
             std::unique_lock<std::mutex> lock(m_mutex);
             if (m_queue.empty())
             {
-                m_condition.wait(lock, [this, &cancellationToken] {
-                    return !m_queue.empty() || (cancellationToken.load() == true);
-                });
+                m_condition.wait(lock, [this, &cancellationToken] { return !m_queue.empty() || (cancellationToken.load() == true); });
             }
         }
 

@@ -14,13 +14,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         Attachment(Hardwares::VulkanDevice* device, const Specifications::AttachmentSpecification& spec);
         ~Attachment();
-        void Dispose();
+        void                                           Dispose();
 
         VkRenderPass                                   GetHandle() const;
         const Specifications::AttachmentSpecification& GetSpecification() const;
 
-        uint32_t GetColorAttachmentCount() const;
-        uint32_t GetDepthAttachmentCount() const;
+        uint32_t                                       GetColorAttachmentCount() const;
+        uint32_t                                       GetDepthAttachmentCount() const;
 
     private:
         uint32_t                                m_color_attachment_count{0};

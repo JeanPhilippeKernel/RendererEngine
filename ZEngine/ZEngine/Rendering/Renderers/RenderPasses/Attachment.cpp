@@ -20,10 +20,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         for (int i = 0; i < spec.ColorsMap.size(); ++i)
         {
-            const auto& color = spec.ColorsMap.at(i);
+            const auto& color        = spec.ColorsMap.at(i);
 
             // Determine the right Image format
-            VkFormat color_format = VK_FORMAT_UNDEFINED;
+            VkFormat    color_format = VK_FORMAT_UNDEFINED;
             if (color.Format == ImageFormat::FORMAT_FROM_DEVICE)
             {
                 color_format = m_device->SurfaceFormat.format;
