@@ -1,6 +1,5 @@
 #include <pch.h>
 #include <Editor.h>
-#include <Layers/UILayer.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
 #include <fmt/format.h>
@@ -17,7 +16,7 @@ namespace Tetragrama
 
     Editor::Editor(const EditorConfiguration& config) : m_engine_configuration()
     {
-        m_ui_layer             = CreateRef<Layers::UILayer>();
+        m_ui_layer             = CreateRef<Layers::ImguiLayer>();
         m_render_layer         = CreateRef<Layers::RenderLayer>();
 
         s_editor_configuration = config;

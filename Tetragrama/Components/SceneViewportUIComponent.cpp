@@ -1,5 +1,4 @@
 #include <pch.h>
-#include <Layers/UILayer.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
 #include <SceneViewportUIComponent.h>
@@ -73,7 +72,7 @@ namespace Tetragrama::Components
     void SceneViewportUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
+        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
 
         auto viewport_offset            = ImGui::GetCursorPos();
         m_content_region_available_size = ImGui::GetContentRegionAvail();
