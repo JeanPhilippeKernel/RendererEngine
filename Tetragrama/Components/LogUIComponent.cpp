@@ -27,7 +27,7 @@ namespace Tetragrama::Components
 
     void LogUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
-        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : nullptr), ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
         static const char* items[]      = {"All", "info", "error", "warn", "critical", "trace"};
         static int         current_item = 0;
