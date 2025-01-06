@@ -18,7 +18,7 @@ namespace Tetragrama::Components
 
         void         ClearLog();
 
-        std::string GetMessageType(const ZEngine::Logging::LogMessage& message);
+        std::string  GetMessageType(const ZEngine::Logging::LogMessage& message);
 
     private:
         uint32_t                                  m_maxCount{1024};

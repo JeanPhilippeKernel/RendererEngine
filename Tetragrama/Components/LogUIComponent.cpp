@@ -1,9 +1,11 @@
 #include <pch.h>
+#include <Helpers/MemoryOperations.h>
 #include <LogUIComponent.h>
 #include <imgui.h>
 #include <algorithm>
 
 using namespace ZEngine::Logging;
+using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
@@ -65,7 +67,7 @@ namespace Tetragrama::Components
         ImGui::Separator();
 
         std::string search_term;
-        if (std::strlen(m_search_buffer) > 0)
+        if (secure_strlen(m_search_buffer) > 0)
         {
             search_term = m_search_buffer;
             std::transform(search_term.begin(), search_term.end(), search_term.begin(), ::tolower);
@@ -82,7 +84,7 @@ namespace Tetragrama::Components
                     if (GetMessageType(message) != items[current_item])
                         continue;
                 }
-                if (std::strlen(m_search_buffer) > 0)
+                if (secure_strlen(m_search_buffer) > 0)
                 {
                     std::string message_lower = message.Message;
                     std::transform(message_lower.begin(), message_lower.end(), message_lower.begin(), ::tolower);
