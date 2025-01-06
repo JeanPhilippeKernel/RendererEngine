@@ -61,8 +61,8 @@ namespace Tetragrama::Components
 
     void HierarchyViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
     {
-        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
-        if (ImGui::BeginPopupContextWindow(m_name.c_str()))
+        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
+        if (ImGui::BeginPopupContextWindow(Name.c_str()))
         {
             if (ImGui::MenuItem("Create Empty"))
             {

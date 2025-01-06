@@ -84,14 +84,18 @@ namespace ZEngine
                     continue;
                 }
             }
-            g_device->NewFrame();
-            {
-                auto buffer = g_device->GetCommandBuffer();
 
-                /*On Render*/
+            /*On Render*/
+            g_device->NewFrame();
+            g_renderer->ImguiRenderer->NewFrame();
+            auto buffer = g_device->GetCommandBuffer();
+            {
+
                 window->Render(g_renderer.get(), buffer);
-                g_device->EnqueueCommandBuffer(buffer);
+
+                g_renderer->ImguiRenderer->DrawFrame(g_device->CurrentFrameIndex, buffer);
             }
+            g_device->EnqueueCommandBuffer(buffer);
             g_device->Present();
         }
 

@@ -6,50 +6,55 @@
 
 namespace Tetragrama::Components
 {
-    class UIComponent;
+    struct UIComponent;
 }
 
 namespace Tetragrama::Layers
 {
+    struct NodeHierarchy
+    {
+        int Parent       = -1;
+        int FirstChild   = -1;
+        int RightSibling = -1;
+        int DepthLevel   = -1;
+    };
+
     class ImguiLayer : public ZEngine::Windows::Layers::Layer, public ZEngine::Windows::Inputs::IKeyboardEventCallback, public ZEngine::Windows::Inputs::IMouseEventCallback, public ZEngine::Windows::Inputs::ITextInputEventCallback, public ZEngine::Windows::Inputs::IWindowEventCallback
     {
 
     public:
         ImguiLayer(std::string_view name = "ImGUI Layer") : Layer(name) {}
-
         virtual ~ImguiLayer();
 
-        virtual void Initialize() override;
-        virtual void Deinitialize() override;
+        std::vector<NodeHierarchy>                                         NodeHierarchies  = {};
+        std::map<uint32_t, ZEngine::Helpers::Ref<Components::UIComponent>> NodeUIComponents = {};
+        std::vector<uint32_t>                                              NodeToRender     = {};
 
-        bool         OnEvent(ZEngine::Core::CoreEvent& event) override;
+        virtual void                                                       Initialize() override;
+        virtual void                                                       Deinitialize() override;
 
-        void         Update(ZEngine::Core::TimeStep dt) override;
+        bool                                                               OnEvent(ZEngine::Core::CoreEvent& event) override;
 
-        void         Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+        void                                                               Update(ZEngine::Core::TimeStep dt) override;
 
-        virtual void AddUIComponent(const ZEngine::Helpers::Ref<Components::UIComponent>& component);
-        virtual void AddUIComponent(ZEngine::Helpers::Ref<Components::UIComponent>&& component);
-        virtual void AddUIComponent(std::vector<ZEngine::Helpers::Ref<Components::UIComponent>>&& components);
+        void                                                               Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
 
-    protected:
-        bool OnKeyPressed(ZEngine::Windows::Events::KeyPressedEvent&) override;
-        bool OnKeyReleased(ZEngine::Windows::Events::KeyReleasedEvent&) override;
+        int                                                                AddNode(Components::UIComponent* cmp, int parent, int depth);
+        virtual void                                                       AddUIComponent(Components::UIComponent* cmp, int parent, int depth);
 
-        bool OnMouseButtonPressed(ZEngine::Windows::Events::MouseButtonPressedEvent&) override;
-        bool OnMouseButtonReleased(ZEngine::Windows::Events::MouseButtonReleasedEvent&) override;
-        bool OnMouseButtonMoved(ZEngine::Windows::Events::MouseButtonMovedEvent&) override;
-        bool OnMouseButtonWheelMoved(ZEngine::Windows::Events::MouseButtonWheelEvent&) override;
-        bool OnTextInputRaised(ZEngine::Windows::Events::TextInputEvent&) override;
+        bool                                                               OnKeyPressed(ZEngine::Windows::Events::KeyPressedEvent&) override;
+        bool                                                               OnKeyReleased(ZEngine::Windows::Events::KeyReleasedEvent&) override;
 
-        bool OnWindowClosed(ZEngine::Windows::Events::WindowClosedEvent&) override;
-        bool OnWindowResized(ZEngine::Windows::Events::WindowResizedEvent&) override;
-        bool OnWindowMinimized(ZEngine::Windows::Events::WindowMinimizedEvent&) override;
-        bool OnWindowMaximized(ZEngine::Windows::Events::WindowMaximizedEvent&) override;
-        bool OnWindowRestored(ZEngine::Windows::Events::WindowRestoredEvent&) override;
+        bool                                                               OnMouseButtonPressed(ZEngine::Windows::Events::MouseButtonPressedEvent&) override;
+        bool                                                               OnMouseButtonReleased(ZEngine::Windows::Events::MouseButtonReleasedEvent&) override;
+        bool                                                               OnMouseButtonMoved(ZEngine::Windows::Events::MouseButtonMovedEvent&) override;
+        bool                                                               OnMouseButtonWheelMoved(ZEngine::Windows::Events::MouseButtonWheelEvent&) override;
+        bool                                                               OnTextInputRaised(ZEngine::Windows::Events::TextInputEvent&) override;
 
-    private:
-        static bool                                                 m_initialized;
-        std::vector<ZEngine::Helpers::Ref<Components::UIComponent>> m_ui_components;
+        bool                                                               OnWindowClosed(ZEngine::Windows::Events::WindowClosedEvent&) override;
+        bool                                                               OnWindowResized(ZEngine::Windows::Events::WindowResizedEvent&) override;
+        bool                                                               OnWindowMinimized(ZEngine::Windows::Events::WindowMinimizedEvent&) override;
+        bool                                                               OnWindowMaximized(ZEngine::Windows::Events::WindowMaximizedEvent&) override;
+        bool                                                               OnWindowRestored(ZEngine::Windows::Events::WindowRestoredEvent&) override;
     };
 } // namespace Tetragrama::Layers

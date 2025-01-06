@@ -78,14 +78,14 @@ namespace Tetragrama::Components
         m_window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
-        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), m_window_flags);
+        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), m_window_flags);
 
         ImGui::PopStyleVar(3);
 
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable)
         {
             // Dock space
-            const auto window_id = ImGui::GetID(m_name.c_str());
+            const auto window_id = ImGui::GetID(Name.c_str());
             if (!ImGui::DockBuilderGetNode(window_id))
             {
                 // Reset current docking state
@@ -158,9 +158,9 @@ namespace Tetragrama::Components
         if (ImGui::Button("...", ImVec2(50, 0)) && is_import_button_enabled)
         {
             Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
-                if (auto layer = m_parent_layer.lock())
+                if (ParentLayer)
                 {
-                    auto                          window = layer->GetAttachedWindow();
+                    auto                          window = ParentLayer->GetAttachedWindow();
                     std::vector<std::string_view> filters{".obj", ".gltf"};
                     std::string                   filename = co_await window->OpenFileDialogAsync(filters);
 
@@ -536,9 +536,9 @@ namespace Tetragrama::Components
 
     std::future<void> DockspaceUIComponent::OnOpenSceneAsync()
     {
-        if (auto layer = m_parent_layer.lock())
+        if (ParentLayer)
         {
-            auto                          window         = layer->GetAttachedWindow();
+            auto                          window         = ParentLayer->GetAttachedWindow();
             std::vector<std::string_view> filters        = {"."};
             std::string                   scene_filename = co_await window->OpenFileDialogAsync(filters);
 
@@ -566,10 +566,10 @@ namespace Tetragrama::Components
 
     std::future<void> DockspaceUIComponent::OnExitAsync()
     {
-        if (auto layer = m_parent_layer.lock())
+        if (ParentLayer)
         {
             ZEngine::Windows::Events::WindowClosedEvent e{};
-            layer->OnEvent(e);
+            ParentLayer->OnEvent(e);
         }
         ZENGINE_CORE_WARN("Editor stopped")
         co_return;

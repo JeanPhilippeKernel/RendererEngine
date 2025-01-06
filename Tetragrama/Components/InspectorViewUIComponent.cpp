@@ -68,10 +68,6 @@ namespace Tetragrama::Components
 
     std::future<void> InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandlerAsync(Messengers::GenericMessage<bool>& message)
     {
-        {
-            std::lock_guard lock(m_mutex);
-            m_is_allowed_to_render = message.GetValue();
-        }
         co_return;
     }
 
@@ -84,7 +80,7 @@ namespace Tetragrama::Components
             m_recieved_unselected_request = false;
         }
 
-        ImGui::Begin(m_name.c_str(), (m_can_be_closed ? &m_can_be_closed : NULL), ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
         Helpers::DrawEntityControl("Name", m_scene_entity, m_node_flag, [this] {
             ImGui::Dummy(ImVec2(0, 3));
