@@ -31,7 +31,7 @@ namespace ZEngine::Hardwares
         /*Create Vulkan Instance*/
         VkApplicationInfo          app_info             = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pNext = VK_NULL_HANDLE, .pApplicationName = ApplicationName.data(), .applicationVersion = 1, .pEngineName = EngineName.data(), .engineVersion = 1, .apiVersion = VK_API_VERSION_1_3};
 
-        VkInstanceCreateInfo       instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = VK_NULL_HANDLE, .flags = 0, .pApplicationInfo = &app_info};
+        VkInstanceCreateInfo       instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = VK_NULL_HANDLE, .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR, .pApplicationInfo = &app_info};
 
         auto                       layer_properties     = m_layer.GetInstanceLayerProperties();
 
@@ -39,7 +39,7 @@ namespace ZEngine::Hardwares
         std::vector<LayerProperty> selected_layer_property_collection;
 
 #ifdef ENABLE_VULKAN_VALIDATION_LAYER
-        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_screenshot"};
+        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation"};
 
         for (std::string_view layer_name : validation_layer_name_collection)
         {
@@ -91,6 +91,7 @@ namespace ZEngine::Hardwares
             }
         }
 
+        enabled_extension_layer_name_collection.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
         instance_create_info.enabledLayerCount       = enabled_layer_name_collection.size();
         instance_create_info.ppEnabledLayerNames     = enabled_layer_name_collection.data();
         instance_create_info.enabledExtensionCount   = enabled_extension_layer_name_collection.size();
@@ -144,7 +145,7 @@ namespace ZEngine::Hardwares
             vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
             vkGetPhysicalDeviceFeatures(physical_device, &physical_device_feature);
 
-            if ((physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
+            if ((physical_device_feature.samplerAnisotropy == VK_TRUE) && ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
                 PhysicalDevice           = physical_device;
                 PhysicalDeviceProperties = physical_device_properties;
@@ -155,7 +156,7 @@ namespace ZEngine::Hardwares
         }
 
         std::vector<const char*> requested_device_enabled_layer_name_collection   = {};
-        std::vector<const char*> requested_device_extension_layer_name_collection = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME};
+        std::vector<const char*> requested_device_extension_layer_name_collection = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME, "VK_KHR_portability_subset"};
 
         for (LayerProperty& layer : selected_layer_property_collection)
         {

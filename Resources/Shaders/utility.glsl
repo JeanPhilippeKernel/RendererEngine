@@ -1,4 +1,4 @@
-float log10(float x)
+float log_10(float x)
 {
     return log(x) / log(10.0);
 }

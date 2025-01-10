@@ -17,7 +17,7 @@ void        main()
 {
     vec2  dudv            = vec2(length(vec2(dFdx(uv.x), dFdy(uv.x))), length(vec2(dFdx(uv.y), dFdy(uv.y))));
 
-    float lodLevel        = max(0.0, log10((length(dudv) * gridMinPixelsBetweenCells) / gridCellSize) + 1.0);
+    float lodLevel        = max(0.0, log_10((length(dudv) * gridMinPixelsBetweenCells) / gridCellSize) + 1.0);
     float lodFade         = fract(lodLevel);
 
     float lod0            = gridCellSize * pow(10.0, floor(lodLevel + 0));

@@ -9,13 +9,13 @@
 
 namespace ZEngine::Logging
 {
-    static std::atomic_uint32_t                               g_cookie                     = 0;
-    spdlog::sink_ptr                                          Logger::s_sink               = nullptr;
-    std::recursive_mutex                                      Logger::s_mutex              = {};
-    std::vector<std::shared_ptr<spdlog::logger>>              Logger::s_logger_collection  = {};
-    std::vector<std::pair<uint32_t, Logger::LogEventHandler>> Logger::s_log_event_handlers = {};
+    static std::atomic_uint32_t                  g_cookie                     = 0;
+    spdlog::sink_ptr                             Logger::s_sink               = nullptr;
+    std::recursive_mutex                         Logger::s_mutex              = {};
+    std::vector<std::shared_ptr<spdlog::logger>> Logger::s_logger_collection  = {};
+    std::map<uint32_t, Logger::LogEventHandler>  Logger::s_log_event_handlers = {};
 
-    void                                                      Logger::Initialize(const LoggerConfiguration& configuration)
+    void                                         Logger::Initialize(const LoggerConfiguration& configuration)
     {
         const auto current_directoy   = std::filesystem::current_path();
         const auto log_directory      = fmt::format("{0}/{1}", current_directoy.string(), configuration.OutputDirectory);
@@ -53,16 +53,23 @@ namespace ZEngine::Logging
     void Logger::Dispose()
     {
         s_log_event_handlers.clear();
-        s_log_event_handlers.shrink_to_fit();
-
         Flush();
 
         s_logger_collection.clear();
-        s_logger_collection.shrink_to_fit();
     }
 
-    void Logger::AddEventHandler(LogEventHandler handler)
+    uint32_t Logger::AddEventHandler(LogEventHandler handler)
     {
-        s_log_event_handlers.emplace_back(g_cookie++, handler);
+        std::unique_lock l(s_mutex);
+        uint32_t         cookie      = g_cookie++;
+        s_log_event_handlers[cookie] = handler;
+        return cookie;
     }
+
+    void Logger::RemoveEventHandler(uint32_t cookie)
+    {
+        std::unique_lock l(s_mutex);
+        s_log_event_handlers.erase(cookie);
+    }
+
 } // namespace ZEngine::Logging

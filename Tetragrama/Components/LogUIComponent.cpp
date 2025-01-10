@@ -11,10 +11,13 @@ namespace Tetragrama::Components
 {
     LogUIComponent::LogUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
     {
-        Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
+        auto m_cookie = Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
     }
 
-    LogUIComponent::~LogUIComponent() {}
+    LogUIComponent::~LogUIComponent()
+    {
+        Logger::RemoveEventHandler(m_cookie);
+    }
 
     void LogUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 

@@ -18,25 +18,26 @@ namespace ZEngine::Logging
     {
         using LogEventHandler = std::function<void(LogMessage)>;
 
-        static void Initialize(const LoggerConfiguration&);
-        static void Flush();
-        static void Dispose();
-        static void AddEventHandler(LogEventHandler handler);
+        static void     Initialize(const LoggerConfiguration&);
+        static void     Flush();
+        static void     Dispose();
+        static uint32_t AddEventHandler(LogEventHandler handler);
+        static void     RemoveEventHandler(uint32_t cookie);
 
-        static void Info(std::string msg);
-        static void Trace(std::string msg);
-        static void Warn(std::string msg);
-        static void Error(std::string msg);
-        static void Critical(std::string msg);
+        static void     Info(std::string msg);
+        static void     Trace(std::string msg);
+        static void     Warn(std::string msg);
+        static void     Error(std::string msg);
+        static void     Critical(std::string msg);
 
     private:
         Logger()              = delete;
         Logger(const Logger&) = delete;
 
-        static spdlog::sink_ptr                                  s_sink;
-        static std::recursive_mutex                              s_mutex;
-        static std::vector<std::shared_ptr<spdlog::logger>>      s_logger_collection;
-        static std::vector<std::pair<uint32_t, LogEventHandler>> s_log_event_handlers;
+        static spdlog::sink_ptr                             s_sink;
+        static std::recursive_mutex                         s_mutex;
+        static std::vector<std::shared_ptr<spdlog::logger>> s_logger_collection;
+        static std::map<uint32_t, LogEventHandler>          s_log_event_handlers;
     };
 
     inline void Logger::Info(std::string msg)

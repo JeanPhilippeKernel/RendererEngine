@@ -21,6 +21,7 @@ namespace Tetragrama::Components
         std::string  GetMessageType(const ZEngine::Logging::LogMessage& message);
 
     private:
+        uint32_t                                  m_cookie{0};
         uint32_t                                  m_maxCount{1024};
         uint32_t                                  m_currentCount{0};
         bool                                      m_auto_scroll{true};
