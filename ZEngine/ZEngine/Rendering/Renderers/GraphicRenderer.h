@@ -90,6 +90,7 @@ namespace ZEngine::Rendering::Renderers
         Helpers::Ref<Textures::Texture>                       CreateTexture(uint32_t width, uint32_t height);
         Helpers::Ref<Textures::Texture>                       CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a);
         Textures::TextureHandle                               LoadTextureFile(std::string_view filename);
+        Textures::TextureHandle                               LoadTextureFileSync(std::string_view filename);
 
     private:
         Buffers::UniformBufferSetHandle   m_scene_camera_buffer_handle;

@@ -73,7 +73,7 @@ namespace ZEngine::Rendering::Renderers
 
         RenderGraph->AddCallbackPass("Initial Pass", initial_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
-        RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
+        RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass, false);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
@@ -337,6 +337,31 @@ namespace ZEngine::Rendering::Renderers
         return handle;
     }
 
+    Textures::TextureHandle GraphicRenderer::LoadTextureFileSync(std::string_view filename)
+    {
+        int      width = 0, height = 0, channel = 0;
+        stbi_uc* image_data = stbi_load(filename.data(), &width, &height, &channel, STBI_rgb_alpha);
+        if (!image_data)
+        {
+            ZENGINE_CORE_ERROR("Failed to load texture file synchronously: {}", filename.data());
+            return Textures::TextureHandle{};
+        }
+
+        Specifications::TextureSpecification spec = {
+            .Width        = static_cast<uint32_t>(width),
+            .Height       = static_cast<uint32_t>(height),
+            .BytePerPixel = 4, // RGBA
+            .Format       = Specifications::ImageFormat::R8G8B8A8_SRGB,
+            .Data         = image_data,
+        };
+
+        auto                    texture = CreateTexture(spec);
+        Textures::TextureHandle handle  = Device->GlobalTextures->Add(std::move(texture));
+        stbi_image_free(image_data);
+
+        return handle;
+    }
+
     // AsyncResourceLoader
     //
     void AsyncResourceLoader::Initialize(GraphicRenderer* renderer)
@@ -499,6 +524,8 @@ namespace ZEngine::Rendering::Renderers
                     }
 
                     spec.LayerCount = 1;
+                    spec.Width      = width;
+                    spec.Height     = height;
                     spec.Format     = Specifications::ImageFormat::R8G8B8A8_SRGB;
                     channel         = (channel == STBI_rgb) ? STBI_rgb_alpha : channel;
                     m_temp_buffer.resize(width * height * channel);

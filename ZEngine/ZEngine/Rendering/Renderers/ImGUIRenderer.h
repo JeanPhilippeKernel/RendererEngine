@@ -19,9 +19,11 @@ namespace ZEngine::Rendering::Renderers
         void            DrawFrame(uint32_t frame_index, Rendering::Buffers::CommandBuffer* const command_buffer);
 
         VkDescriptorSet UpdateFrameOutput(const Textures::TextureHandle& handle);
+        VkDescriptorSet UpdateIconOutput(const Textures::TextureHandle& handle);
 
     private:
         VkDescriptorSet                        m_frame_output{VK_NULL_HANDLE};
+        VkDescriptorSet                        m_icon_output{VK_NULL_HANDLE};
         VkDescriptorSet                        m_font_descriptor_set{VK_NULL_HANDLE};
         GraphicRenderer*                       m_renderer;
         Buffers::VertexBufferSetHandle         m_vertex_buffer_handle;
