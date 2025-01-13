@@ -11,13 +11,13 @@ namespace Tetragrama::Components
         ProjectViewUIComponent(std::string_view name = "Project", bool visibility = true);
         virtual ~ProjectViewUIComponent();
 
-        void         Update(ZEngine::Core::TimeStep dt) override;
+        void                  Update(ZEngine::Core::TimeStep dt) override;
 
-        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
-        void         RenderGridItem(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry);
-        void         RenderSearchResults(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::string& searchTerm);
+        virtual void          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+        void                  RenderGridItem(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry);
+        void                  RenderSearchResults(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::string& searchTerm);
         std::filesystem::path MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base);
-        void         RenderBackButton();
+        void                  RenderBackButton();
 
     private:
         const std::filesystem::path                 m_assets_directory = std::filesystem::path("Assets");
@@ -27,7 +27,7 @@ namespace Tetragrama::Components
         ZEngine::Rendering::Textures::TextureHandle m_directoryIcon;
         ZEngine::Rendering::Textures::TextureHandle m_fileIcon;
         bool                                        m_texturesLoaded     = false;
-        static constexpr float                      m_thumbnailSize       = 128.0f;
+        static constexpr float                      m_thumbnailSize      = 128.0f;
         char                                        m_search_buffer[256] = "";
     };
 } // namespace Tetragrama::Components
