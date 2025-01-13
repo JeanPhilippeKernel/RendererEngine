@@ -142,7 +142,7 @@ namespace ZEngine::Rendering::Renderers
         image_alloc_info.pSetLayouts                 = &descriptor_setlayout;
         ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &image_alloc_info, &m_folder_output) == VK_SUCCESS, "Failed to create descriptor set")
 
-         VkDescriptorSetAllocateInfo image2_alloc_info = {};
+        VkDescriptorSetAllocateInfo image2_alloc_info = {};
         image2_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         image2_alloc_info.descriptorPool              = shader->GetDescriptorPool();
         image2_alloc_info.descriptorSetCount          = 1;

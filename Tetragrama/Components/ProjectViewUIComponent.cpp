@@ -7,7 +7,7 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    ProjectViewUIComponent::ProjectViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false), m_currentDirectory(m_assets_directory) {}
+    ProjectViewUIComponent::ProjectViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false), m_currentDirectory(m_assets_directory), m_lastRenderedFolder(m_assets_directory) {}
 
     ProjectViewUIComponent::~ProjectViewUIComponent() {}
 
@@ -23,7 +23,6 @@ namespace Tetragrama::Components
         }
 
         ImGui::Begin(Name.c_str(), CanBeClosed ? &CanBeClosed : nullptr, ImGuiWindowFlags_NoCollapse);
-        ImGui::SameLine();
         RenderBackButton();
         ImGui::SameLine();
         ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
@@ -35,19 +34,28 @@ namespace Tetragrama::Components
 
         // grid layout
         const float padding     = 16.0f;
-        const float cellSize    = THUMBNAIL_SIZE + padding;
+        const float cellSize    = m_thumbnailSize + padding;
         const float panelWidth  = ImGui::GetContentRegionAvail().x;
         const int   columnCount = std::max(1, static_cast<int>(panelWidth / cellSize));
 
-        ImGui::Columns(columnCount, nullptr, false);
-
-        for (const auto& entry : std::filesystem::directory_iterator(m_currentDirectory))
+        if (ImGui::BeginTable("GridTable", columnCount))
         {
-            RenderGridItem(renderer, entry);
-            ImGui::NextColumn();
+            if (secure_strlen(m_search_buffer) > 0)
+            {
+                std::string searchTerm = m_search_buffer;
+                std::transform(searchTerm.begin(), searchTerm.end(), searchTerm.begin(), ::tolower);
+                RenderSearchResults(renderer, searchTerm);
+            }
+            else
+            {
+                for (const auto& entry : std::filesystem::directory_iterator(m_currentDirectory))
+                {
+                    ImGui::TableNextColumn();
+                    RenderGridItem(renderer, entry);
+                }
+            }
+            ImGui::EndTable();
         }
-
-        ImGui::Columns(1);
         ImGui::End();
     }
 
@@ -61,7 +69,7 @@ namespace Tetragrama::Components
         ImTextureID icon = entry.is_directory() ? static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateFileIconOutput(m_directoryIcon)) : static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateDirIconOutput(m_fileIcon));
 
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::ImageButton(icon, {THUMBNAIL_SIZE, THUMBNAIL_SIZE}, {0, 1}, {1, 0});
+        ImGui::ImageButton(icon, {m_thumbnailSize, m_thumbnailSize}, {0, 1}, {1, 0});
         ImGui::PopStyleColor();
 
         if (ImGui::BeginDragDropSource())
@@ -76,14 +84,16 @@ namespace Tetragrama::Components
         {
             if (entry.is_directory())
             {
-                m_currentDirectory /= entry.path().filename();
+                auto relativePath  = std::filesystem::relative(entry.path(), m_assets_directory);
+                m_currentDirectory = m_assets_directory / relativePath;
+                secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
             }
         }
 
         // centered label
         float textWidth  = ImGui::CalcTextSize(name.c_str()).x;
         float cursorPosX = ImGui::GetCursorPosX();
-        float centerPosX = cursorPosX + (THUMBNAIL_SIZE - textWidth) * 0.5f;
+        float centerPosX = cursorPosX + (m_thumbnailSize - textWidth) * 0.5f;
 
         ImGui::SetCursorPosX(centerPosX);
         ImGui::TextWrapped(name.c_str());
@@ -91,8 +101,60 @@ namespace Tetragrama::Components
         ImGui::PopID();
     }
 
+    void ProjectViewUIComponent::RenderSearchResults(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::string& searchTerm)
+    {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(m_assets_directory))
+        {
+            if (entry.is_regular_file() || entry.is_directory())
+            {
+                std::string nameLower = entry.path().filename().string();
+                std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+
+                if (nameLower.find(searchTerm) != std::string::npos)
+                {
+                    auto relativeFolder = MakeRelative(entry.path().parent_path(), m_assets_directory).string();
+                    if (m_lastRenderedFolder != relativeFolder)
+                    {
+                        m_lastRenderedFolder = relativeFolder;
+                    }
+
+                    ImGui::TableNextColumn();
+                    RenderGridItem(renderer, entry);
+                }
+            }
+        }
+    }
+
+    std::filesystem::path ProjectViewUIComponent::MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base)
+    {
+        auto path_itr = path.begin();
+        auto base_itr = base.begin();
+
+        while (path_itr != path.end() && base_itr != base.end() && *path_itr == *base_itr)
+        {
+            ++path_itr;
+            ++base_itr;
+        }
+
+        std::filesystem::path result;
+        while (base_itr != base.end())
+        {
+            result /= "..";
+            ++base_itr;
+        }
+
+        while (path_itr != path.end())
+        {
+            result /= *path_itr;
+            ++path_itr;
+        }
+
+        return result;
+    }
+
     void ProjectViewUIComponent::RenderBackButton()
     {
+        ImGui::SameLine();
         static constexpr float ButtonSize    = 20.0f;
         static constexpr float TriangleSize  = 8.0f;
 
