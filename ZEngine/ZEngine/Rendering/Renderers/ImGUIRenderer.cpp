@@ -81,7 +81,7 @@ namespace ZEngine::Rendering::Renderers
 
             .UseShader("imgui")
             .SetShaderOverloadMaxSet(2000)
-            .SetOverloadPoolSize(3)
+            .SetOverloadPoolSize(4)
 
             .UseSwapchainAsRenderTarget();
 
@@ -140,7 +140,14 @@ namespace ZEngine::Rendering::Renderers
         image_alloc_info.descriptorPool              = shader->GetDescriptorPool();
         image_alloc_info.descriptorSetCount          = 1;
         image_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &image_alloc_info, &m_icon_output) == VK_SUCCESS, "Failed to create descriptor set")
+        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &image_alloc_info, &m_folder_output) == VK_SUCCESS, "Failed to create descriptor set")
+
+         VkDescriptorSetAllocateInfo image2_alloc_info = {};
+        image2_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        image2_alloc_info.descriptorPool              = shader->GetDescriptorPool();
+        image2_alloc_info.descriptorSetCount          = 1;
+        image2_alloc_info.pSetLayouts                 = &descriptor_setlayout;
+        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &image2_alloc_info, &m_file_output) == VK_SUCCESS, "Failed to create descriptor set")
     }
 
     void ImGUIRenderer::Deinitialize()
@@ -352,7 +359,7 @@ namespace ZEngine::Rendering::Renderers
         return m_frame_output;
     }
 
-    VkDescriptorSet ImGUIRenderer::UpdateIconOutput(const Textures::TextureHandle& handle)
+    VkDescriptorSet ImGUIRenderer::UpdateFileIconOutput(const Textures::TextureHandle& handle)
     {
         auto&                 texture       = m_renderer->Device->GlobalTextures->Access(handle);
         auto&                 buffer        = texture->ImageBuffer->GetBuffer();
@@ -363,12 +370,32 @@ namespace ZEngine::Rendering::Renderers
         desc_image[0].imageLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkWriteDescriptorSet write_desc[1]  = {};
         write_desc[0].sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write_desc[0].dstSet                = m_icon_output;
+        write_desc[0].dstSet                = m_folder_output;
         write_desc[0].descriptorCount       = 1;
         write_desc[0].descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         write_desc[0].pImageInfo            = desc_image;
         vkUpdateDescriptorSets(m_renderer->Device->LogicalDevice, 1, write_desc, 0, nullptr);
 
-        return m_icon_output;
+        return m_folder_output;
+    }
+
+    VkDescriptorSet ImGUIRenderer::UpdateDirIconOutput(const Textures::TextureHandle& handle)
+    {
+        auto&                 texture       = m_renderer->Device->GlobalTextures->Access(handle);
+        auto&                 buffer        = texture->ImageBuffer->GetBuffer();
+
+        VkDescriptorImageInfo desc_image[1] = {};
+        desc_image[0].sampler               = buffer.Sampler;
+        desc_image[0].imageView             = buffer.ViewHandle;
+        desc_image[0].imageLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkWriteDescriptorSet write_desc[1]  = {};
+        write_desc[0].sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_desc[0].dstSet                = m_file_output;
+        write_desc[0].descriptorCount       = 1;
+        write_desc[0].descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write_desc[0].pImageInfo            = desc_image;
+        vkUpdateDescriptorSets(m_renderer->Device->LogicalDevice, 1, write_desc, 0, nullptr);
+
+        return m_file_output;
     }
 } // namespace ZEngine::Rendering::Renderers

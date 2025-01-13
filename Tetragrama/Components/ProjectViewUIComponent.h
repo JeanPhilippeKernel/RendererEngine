@@ -14,6 +14,7 @@ namespace Tetragrama::Components
         void         Update(ZEngine::Core::TimeStep dt) override;
 
         virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+         void RenderGridItem(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry);
         void         RenderBackButton();
 
     private:
@@ -23,5 +24,7 @@ namespace Tetragrama::Components
         ZEngine::Rendering::Textures::TextureHandle m_directoryIcon;
         ZEngine::Rendering::Textures::TextureHandle m_fileIcon;
         bool                                        m_texturesLoaded = false;
+        static constexpr float                      THUMBNAIL_SIZE   = 128.0f;
+        char                                        m_search_buffer[256] = "";
     };
 } // namespace Tetragrama::Components
