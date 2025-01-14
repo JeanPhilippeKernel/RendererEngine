@@ -74,9 +74,8 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginDragDropSource())
         {
-            const auto     path     = entry.path();
-            const wchar_t* itemPath = path.c_str();
-            ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", itemPath, (wcslen(itemPath) + 1) * sizeof(wchar_t));
+            std::string itemPath = entry.path().string();
+            ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", itemPath.c_str(), (itemPath.length() + 1) * sizeof(char));
             ImGui::EndDragDropSource();
         }
 
