@@ -17,8 +17,8 @@ namespace Tetragrama::Components
     {
         if (!m_texturesLoaded)
         {
-            m_directoryIcon  = renderer->LoadTextureFileSync(m_assets_directory.string() + "/DirectoryIcon.png");
-            m_fileIcon       = renderer->LoadTextureFileSync(m_assets_directory.string() + "/FileIcon.png");
+            m_directoryIcon  = renderer->LoadTextureFileSync("Settings/Icons/DirectoryIcon.png");
+            m_fileIcon       = renderer->LoadTextureFileSync("Settings/Icons/FileIcon.png");
             m_texturesLoaded = true;
         }
 
