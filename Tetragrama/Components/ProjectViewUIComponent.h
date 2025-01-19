@@ -14,10 +14,15 @@ namespace Tetragrama::Components
         void                  Update(ZEngine::Core::TimeStep dt) override;
 
         virtual void          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+
+        void                  RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
+        void                  RenderTreeBrowser();
+        void                  RenderDirectoryNode(const std::filesystem::path& directory);
         void                  RenderGridItem(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry);
         void                  RenderSearchResults(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::string& searchTerm);
-        std::filesystem::path MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base);
         void                  RenderBackButton();
+
+        std::filesystem::path MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base);
 
     private:
         const std::filesystem::path                 m_assets_directory = std::filesystem::path("Assets");

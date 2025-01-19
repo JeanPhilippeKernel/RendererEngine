@@ -23,6 +23,66 @@ namespace Tetragrama::Components
         }
 
         ImGui::Begin(Name.c_str(), CanBeClosed ? &CanBeClosed : nullptr, ImGuiWindowFlags_NoCollapse);
+
+        ImGui::BeginChild("Left Pane", ImVec2(ImGui::GetContentRegionAvail().x * 0.15f, 0), true);
+        RenderTreeBrowser();
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+        ImGui::GetWindowDrawList()->AddLine(ImGui::GetCursorScreenPos(), ImVec2(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y + ImGui::GetContentRegionAvail().y), ImGui::GetColorU32(ImGuiCol_Separator), 0.5f);
+
+        ImGui::BeginChild("Right Pane", ImVec2(0, 0), true);
+        RenderContentBrowser(renderer);
+        ImGui::EndChild();
+
+        ImGui::End();
+    }
+
+    void ProjectViewUIComponent::RenderTreeBrowser()
+    {
+        // Start with the root node
+        if (ImGui::TreeNodeEx(m_assets_directory.filename().string().c_str(), ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            RenderDirectoryNode(m_assets_directory);
+            ImGui::TreePop();
+        }
+    }
+
+    void ProjectViewUIComponent::RenderDirectoryNode(const std::filesystem::path& directory)
+    {
+
+        for (const auto& entry : std::filesystem::directory_iterator(directory))
+        {
+            if (entry.is_directory())
+            {
+                ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow;
+
+                if (m_currentDirectory == entry.path())
+                {
+                    flags |= ImGuiTreeNodeFlags_Selected;
+                }
+
+                bool nodeOpen = ImGui::TreeNodeEx(entry.path().filename().string().c_str(), flags);
+
+                if (ImGui::IsItemClicked())
+                {
+                    auto relativePath  = std::filesystem::relative(entry.path(), m_assets_directory);
+                    m_currentDirectory = m_assets_directory / relativePath;
+                    secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
+                }
+
+                if (nodeOpen)
+                {
+                    RenderDirectoryNode(entry.path());
+                    ImGui::TreePop();
+                }
+            }
+        }
+    }
+
+    void ProjectViewUIComponent::RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer)
+    {
+
         RenderBackButton();
         ImGui::SameLine();
         ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
@@ -32,7 +92,6 @@ namespace Tetragrama::Components
         ImGui::PopFont();
         ImGui::Separator();
 
-        // grid layout
         const float padding     = 16.0f;
         const float cellSize    = m_thumbnailSize + padding;
         const float panelWidth  = ImGui::GetContentRegionAvail().x;
@@ -56,7 +115,6 @@ namespace Tetragrama::Components
             }
             ImGui::EndTable();
         }
-        ImGui::End();
     }
 
     void ProjectViewUIComponent::RenderGridItem(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry)
