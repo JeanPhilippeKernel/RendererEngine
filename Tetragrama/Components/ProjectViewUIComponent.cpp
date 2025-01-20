@@ -2,6 +2,7 @@
 #include <Helpers/MemoryOperations.h>
 #include <ProjectViewUIComponent.h>
 #include <imgui.h>
+#include <iostream>
 
 using namespace ZEngine::Helpers;
 
@@ -40,12 +41,21 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::RenderTreeBrowser()
     {
-        // Start with the root node
-        if (ImGui::TreeNodeEx(m_assets_directory.filename().string().c_str(), ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen))
+        bool nodeOpen = ImGui::TreeNodeEx(m_assets_directory.filename().string().c_str(), ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen);
+
+        if (ImGui::BeginPopupContextItem("root_context"))
+        {
+            HandleFolderContextMenu(m_assets_directory);
+            ImGui::EndPopup();
+        }
+
+        if (nodeOpen)
         {
             RenderDirectoryNode(m_assets_directory);
             ImGui::TreePop();
         }
+
+        HandleCreateFolderPopup();
     }
 
     void ProjectViewUIComponent::RenderDirectoryNode(const std::filesystem::path& directory)
@@ -71,12 +81,86 @@ namespace Tetragrama::Components
                     secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
                 }
 
+                if (ImGui::BeginPopupContextItem(entry.path().filename().string().c_str()))
+                {
+                    HandleFolderContextMenu(std::filesystem::absolute(entry.path()));
+                    ImGui::EndPopup();
+                }
+
                 if (nodeOpen)
                 {
                     RenderDirectoryNode(entry.path());
                     ImGui::TreePop();
                 }
             }
+        }
+    }
+
+    void ProjectViewUIComponent::HandleFolderContextMenu(const std::filesystem::path& path)
+    {
+        if (ImGui::MenuItem("Create Folder"))
+        {
+            m_show_create_folder = true;         
+            m_create_folder_path = path;        
+            m_new_folder_name    = "New Folder"; 
+        }
+        if (ImGui::MenuItem("Delete Folder"))
+        {
+            // HandleFolderDeletion(path);
+        }
+        if (ImGui::MenuItem("Rename Folder"))
+        {
+            // BeginRenameFolder(path);
+        }
+    }
+
+    void ProjectViewUIComponent::HandleCreateFolderPopup() 
+    {
+        if (m_show_create_folder)
+        {
+            ImGui::OpenPopup("Create New Folder");
+            ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+            ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        }
+
+        if (ImGui::BeginPopupModal("Create New Folder", &m_show_create_folder, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("Enter folder name:");
+
+            // Create a buffer for input
+            char buffer[256];
+            strncpy(buffer, m_new_folder_name.c_str(), sizeof(buffer) - 1);
+            buffer[sizeof(buffer) - 1] = '\0';
+
+            if (ImGui::InputText("##create", buffer, sizeof(buffer)))
+            {
+                m_new_folder_name = buffer;
+            }
+
+            if (ImGui::Button("Create", ImVec2(120, 0)))
+            {
+                if (!m_new_folder_name.empty())
+                {
+                    std::filesystem::path newPath = m_create_folder_path / m_new_folder_name;
+                    if (!std::filesystem::exists(newPath))
+                    {
+                        std::filesystem::create_directory(newPath);
+                        m_show_create_folder = false;
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else
+                    {
+                        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "A folder with this name already exists!");
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0)))
+            {
+                m_show_create_folder = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
         }
     }
 
