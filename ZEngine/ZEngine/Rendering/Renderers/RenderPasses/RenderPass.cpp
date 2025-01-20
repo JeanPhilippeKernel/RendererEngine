@@ -228,9 +228,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         for (unsigned i = 0; i < frame_count; ++i)
         {
             auto                                    set  = descriptor_set_map.at(binding_spec.Set)[i];
-            auto&                                   reqs = m_device->WriteBindlessDescriptorSetRequests;
             Hardwares::WriteDescriptorSetRequestKey key  = {.Binding = binding_spec.Binding, .DstSet = set};
-
+            auto&                                   reqs = m_device->WriteBindlessDescriptorSetRequests;
             reqs.insert(key);
         }
 

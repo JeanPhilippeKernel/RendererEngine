@@ -404,14 +404,14 @@ namespace ZEngine::Hardwares
         if (TextureHandleToUpdates.Pop(tex_handle))
         {
 
-            auto& texture = GlobalTextures->Access(tex_handle);
+            auto&                             texture               = GlobalTextures->Access(tex_handle);
 
             if (!texture)
             {
                 TextureHandleToUpdates.Enqueue(tex_handle);
                 return;
             }
-            const auto&                       image_info            = texture->ImageBuffer->GetDescriptorImageInfo();
+            const auto& image_info = texture->ImageBuffer->GetDescriptorImageInfo();
             std::vector<VkWriteDescriptorSet> write_descriptor_sets = {};
             write_descriptor_sets.reserve(WriteBindlessDescriptorSetRequests.size());
 

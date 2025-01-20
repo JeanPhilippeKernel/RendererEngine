@@ -24,7 +24,7 @@ namespace ZEngine::Rendering::Textures
         uint32_t                               BytePerPixel   = 0;
         VkDeviceSize                           BufferSize     = 0;
         Specifications::TextureSpecification   Specification  = {};
-        Helpers::Ref<Hardwares::Image2DBuffer> ImageBuffer    = nullptr;
+        Helpers::Ref<Hardwares::Image2DBuffer> ImageBuffer;
 
         void                                   Dispose();
     };
