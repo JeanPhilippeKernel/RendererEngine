@@ -9,8 +9,9 @@ namespace Tetragrama::Controllers
 
     struct ICameraController : public IController
     {
-        ICameraController();
-        ICameraController(float aspect_ratio, bool can_rotate = false);
+        ICameraController() {}
+        ICameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window) : m_window(window) {}
+        ICameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window, float aspect_ratio, bool can_rotate = false) : m_aspect_ratio(aspect_ratio), m_can_rotate(can_rotate), m_window(window) {}
 
         virtual ~ICameraController()                                                                                    = default;
 

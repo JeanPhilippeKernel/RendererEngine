@@ -7,12 +7,12 @@
 #include <mutex>
 #include <string>
 
-#define REPORT_LOG(msg)          \
-    {                            \
-        if (m_log_callback)      \
-        {                        \
-            m_log_callback(msg); \
-        }                        \
+#define REPORT_LOG(ctx, msg)          \
+    {                                 \
+        if (m_log_callback)           \
+        {                             \
+            m_log_callback(ctx, msg); \
+        }                             \
     }
 
 namespace Tetragrama::Importers
@@ -42,10 +42,10 @@ namespace Tetragrama::Importers
     struct IAssetImporter : public ZEngine::Helpers::RefCounted
     {
     protected:
-        typedef void (*on_import_complete_fn)(ImporterData&& result);
-        typedef void (*on_import_progress_fn)(float progress);
-        typedef void (*on_import_error_fn)(std::string_view error_message);
-        typedef void (*on_import_log_fn)(std::string_view log_message);
+        typedef void (*on_import_complete_fn)(void* const, ImporterData&& result);
+        typedef void (*on_import_progress_fn)(void* const, float progress);
+        typedef void (*on_import_error_fn)(void* const, std::string_view error_message);
+        typedef void (*on_import_log_fn)(void* const, std::string_view log_message);
 
         on_import_complete_fn m_complete_callback{nullptr};
         on_import_progress_fn m_progress_callback{nullptr};
@@ -57,6 +57,8 @@ namespace Tetragrama::Importers
 
     public:
         virtual ~IAssetImporter() = default;
+
+        void*        Context      = nullptr;
 
         virtual void SetOnCompleteCallback(on_import_complete_fn callback)
         {
@@ -87,12 +89,7 @@ namespace Tetragrama::Importers
         virtual std::future<void> ImportAsync(std::string_view filename, ImportConfiguration config = {}) = 0;
 
         static void               SerializeImporterData(ImporterData& data, const ImportConfiguration&);
-        static void               SerializeMapData(std::ostream&, const std::unordered_map<uint32_t, uint32_t>&);
-        static void               SerializeStringArrayData(std::ostream&, std::span<std::string>);
-
         static ImporterData       DeserializeImporterData(std::string_view model_path, std::string_view mesh_path, std::string_view material_path);
-        static void               DeserializeMapData(std::istream&, std::unordered_map<uint32_t, uint32_t>&);
-        static void               DeserializeStringArrayData(std::istream&, std::vector<std::string>&);
     };
 
 } // namespace Tetragrama::Importers

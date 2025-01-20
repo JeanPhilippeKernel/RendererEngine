@@ -20,7 +20,9 @@ namespace ZEngine::Windows::Layers
     public:
         Layer(std::string_view name = "default_layer") : m_name(name) {}
 
-        virtual ~Layer() = default;
+        virtual ~Layer()               = default;
+
+        void*            ParentContext = nullptr;
 
         std::string_view GetName() const
         {

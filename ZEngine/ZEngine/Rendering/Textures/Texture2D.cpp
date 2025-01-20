@@ -1,6 +1,5 @@
 #include <pch.h>
 #include <Core/Coroutine.h>
-#include <Hardwares/VulkanDevice.h>
 #include <Rendering/Buffers/Bitmap.h>
 #include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/Textures/Texture2D.h>
@@ -17,6 +16,7 @@
 // #include <stb/stb_image_write.h>
 
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Hardwares;
 
 namespace ZEngine::Rendering::Textures
 {
@@ -104,12 +104,12 @@ namespace ZEngine::Rendering::Textures
         co_return Read(filename);
     }
 
-    Buffers::BufferImage& Texture2D::GetBuffer()
+    BufferImage& Texture2D::GetBuffer()
     {
         return m_image_2d_buffer->GetBuffer();
     }
 
-    const Buffers::BufferImage& Texture2D::GetBuffer() const
+    const BufferImage& Texture2D::GetBuffer() const
     {
         return m_image_2d_buffer->GetBuffer();
     }
@@ -151,7 +151,7 @@ namespace ZEngine::Rendering::Textures
         return Create(spec);
     }
 
-    Ref<Buffers::Image2DBuffer> Texture2D::GetImage2DBuffer() const
+    Ref<Hardwares::Image2DBuffer> Texture2D::GetImage2DBuffer() const
     {
         return m_image_2d_buffer;
     }

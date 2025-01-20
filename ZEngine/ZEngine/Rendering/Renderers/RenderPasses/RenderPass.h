@@ -1,14 +1,11 @@
 #pragma once
 #include <Helpers/IntrusivePtr.h>
 #include <Rendering/Buffers/Framebuffer.h>
-#include <Rendering/Buffers/GraphicBuffer.h>
-#include <Rendering/Buffers/IndirectBuffer.h>
-#include <Rendering/Buffers/StorageBuffer.h>
-#include <Rendering/Buffers/UniformBuffer.h>
 #include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <Rendering/Specifications/RenderPassSpecification.h>
 #include <Rendering/Textures/Texture.h>
 #include <vulkan/vulkan.h>
+#include <set>
 #include <unordered_set>
 #include <vector>
 
@@ -24,39 +21,23 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         TEXTURE
     };
 
-    struct PassInput
-    {
-        uint32_t                         Set{0};
-        uint32_t                         Binding{0};
-        std::string                      DebugName;
-        PassInputType                    Type;
-        Textures::TextureHandle          TextureHandle;
-        Buffers::UniformBufferSetHandle  UniformBufferSetHandle;
-        Buffers::StorageBufferSetHandle  BufferSetHandle;
-        Buffers::IndirectBufferSetHandle IndirectBufferSetHandle;
-    };
-
     struct RenderPass : public Helpers::RefCounted
     {
         RenderPass(Hardwares::VulkanDevice* device, const Specifications::RenderPassSpecification& specification);
         ~RenderPass();
 
-        uint32_t                                          RenderAreaWidth                    = 0;
-        uint32_t                                          RenderAreaHeight                   = 0;
-        Specifications::RenderPassSpecification           Specification                      = {};
-        std::map<std::string, PassInput>                  Inputs                             = {};
-        std::unordered_set<std::string>                   EnqueuedUpdateInputs               = {};
-        std::vector<Hardwares::WriteDescriptorSetRequest> EnqueuedWriteDescriptorSetRequests = {};
-        std::vector<uint32_t>                             RenderTargets                      = {};
-        Helpers::Ref<Renderers::RenderPasses::Attachment> Attachment                         = {nullptr};
-        Helpers::Ref<Pipelines::GraphicPipeline>          Pipeline                           = {nullptr};
+        uint32_t                                          RenderAreaWidth  = 0;
+        uint32_t                                          RenderAreaHeight = 0;
+        Specifications::RenderPassSpecification           Specification    = {};
+        std::set<std::string>                             Inputs           = {};
+        std::vector<uint32_t>                             RenderTargets    = {};
+        Helpers::Ref<Renderers::RenderPasses::Attachment> Attachment       = {nullptr};
+        Helpers::Ref<Pipelines::GraphicPipeline>          Pipeline         = {nullptr};
         void                                              Dispose();
         void                                              Bake();
         bool                                              Verify();
-        void                                              Update(uint32_t frame_index);
-        void                                              MarkDirty();
-        void                                              SetInput(std::string_view key_name, const Rendering::Buffers::UniformBufferSetHandle& buffer);
-        void                                              SetInput(std::string_view key_name, const Rendering::Buffers::StorageBufferSetHandle& buffer);
+        void                                              SetInput(std::string_view key_name, const Hardwares::UniformBufferSetHandle& buffer);
+        void                                              SetInput(std::string_view key_name, const Hardwares::StorageBufferSetHandle& buffer);
         void                                              SetInput(std::string_view key_name, const Textures::TextureHandle& texture);
         void                                              SetBindlessInput(std::string_view key_name);
         void                                              UpdateInputBinding();

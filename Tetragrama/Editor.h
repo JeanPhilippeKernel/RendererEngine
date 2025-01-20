@@ -1,9 +1,11 @@
 #pragma once
+#include <EditorCameraController.h>
 #include <Layers/ImguiLayer.h>
 #include <Layers/RenderLayer.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Windows/CoreWindow.h>
+#include <vector>
 
 namespace Tetragrama::Serializers
 {
@@ -18,32 +20,30 @@ namespace Tetragrama
         struct Model;
 
         EditorScene() = default;
-        EditorScene(std::string_view name) : m_name(name) {}
-        EditorScene(const EditorScene& scene) : m_name(scene.m_name), m_models(scene.m_models), m_has_pending_change(scene.m_has_pending_change.load()) {}
-        EditorScene(std::string_view name, std::unordered_map<std::string, Model> models) : m_name(name), m_models(models) {}
+        EditorScene(std::string_view name) : Name(name) {}
+        EditorScene(const EditorScene& scene) : Name(scene.Name), m_has_pending_change(scene.m_has_pending_change.load()) {}
 
-        void                                          AddModel(const Model&);
-        void                                          AddModel(Model&&);
+        std::string                                                     Name          = {};
+        std::vector<std::string>                                        MeshFiles     = {};
+        std::vector<std::string>                                        ModelFiles    = {};
+        std::vector<std::string>                                        MaterialFiles = {};
+        std::map<std::string, Model>                                    Data          = {};
 
-        void                                          SetName(std::string_view name);
-        std::string_view                              GetName() const;
-        const std::unordered_map<std::string, Model>& GetModels() const;
-        bool                                          HasPendingChange() const;
+        ZEngine::Helpers::Ref<ZEngine::Rendering::Scenes::GraphicScene> RenderScene   = ZEngine::Helpers::CreateRef<ZEngine::Rendering::Scenes::GraphicScene>();
+
+        void                                                            Push(std::string_view mesh, std::string_view model, std::string_view material);
+        bool                                                            HasPendingChange() const;
 
     private:
-        std::atomic_bool                       m_has_pending_change;
-        std::mutex                             m_mutex;
-        std::string                            m_name;
-        std::unordered_map<std::string, Model> m_models;
+        std::atomic_bool m_has_pending_change;
         friend class Serializers::EditorSceneSerializer;
     };
 
     struct EditorScene::Model
     {
-        std::string Name          = {};
-        std::string MeshesPath    = {};
-        std::string MaterialsPath = {};
-        std::string ModelPath     = {};
+        uint16_t MeshFileIndex     = 0xFFFF;
+        uint16_t ModelPathIndex    = 0xFFFF;
+        uint16_t MaterialPathIndex = 0xFFFF;
     };
 
     struct EditorConfiguration
@@ -57,29 +57,32 @@ namespace Tetragrama
         std::string ActiveSceneName;
     };
 
+    struct EditorContext : public ZEngine::Helpers::RefCounted
+    {
+        EditorConfiguration*                 ConfigurationPtr    = nullptr;
+        EditorScene*                         CurrentScenePtr     = nullptr;
+        Controllers::EditorCameraController* CameraControllerPtr = nullptr;
+    };
+
     class Editor : ZEngine::Core::IInitializable, public ZEngine::Helpers::RefCounted
     {
     public:
         Editor(const EditorConfiguration&);
         virtual ~Editor();
 
-        void                                      Initialize() override;
-        void                                      Run();
+        EditorConfiguration                                        Configuration    = {};
+        ZEngine::Helpers::Ref<EditorContext>                       Context          = nullptr;
+        ZEngine::Helpers::Ref<Layers::ImguiLayer>                  UILayer          = nullptr;
+        ZEngine::Helpers::Ref<Layers::RenderLayer>                 CanvasLayer      = nullptr;
+        ZEngine::Helpers::Ref<Controllers::EditorCameraController> CameraController = nullptr;
+        ZEngine::Helpers::Ref<EditorScene>                         CurrentScene     = nullptr;
 
-        static const EditorConfiguration&         GetCurrentEditorConfiguration();
-        static ZEngine::Helpers::Ref<EditorScene> GetCurrentEditorScene();
-        static void                               SetCurrentEditorScene(EditorScene&&);
+        void                                                       Initialize() override;
+        void                                                       Run();
 
     private:
+        std::recursive_mutex                                m_mutex;
         ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow> m_window;
-
-    private:
-        static EditorConfiguration                 s_editor_configuration;
-        static ZEngine::Helpers::Ref<EditorScene>  s_editor_scene;
-        static std::recursive_mutex                s_mutex;
-        ZEngine::EngineConfiguration               m_engine_configuration;
-        ZEngine::Helpers::Ref<Layers::ImguiLayer>  m_ui_layer;
-        ZEngine::Helpers::Ref<Layers::RenderLayer> m_render_layer;
     };
 
 } // namespace Tetragrama

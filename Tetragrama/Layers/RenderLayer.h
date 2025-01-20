@@ -23,28 +23,12 @@ namespace Tetragrama::Layers
         virtual void Deinitialize() override;
         virtual void Update(ZEngine::Core::TimeStep dt) override;
 
-        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
         virtual bool OnEvent(ZEngine::Core::CoreEvent& e) override;
 
-    public:
-        std::future<void> SceneRequestResizeMessageHandlerAsync(Messengers::GenericMessage<std::pair<float, float>>&);
-        std::future<void> SceneRequestFocusMessageHandlerAsync(Messengers::GenericMessage<bool>&);
-        std::future<void> SceneRequestUnfocusMessageHandlerAsync(Messengers::GenericMessage<bool>&);
-        std::future<void> SceneRequestNewSceneMessageHandlerAsync(Messengers::EmptyMessage&);
-        std::future<void> SceneRequestSelectEntityFromPixelMessageHandlerAsync(Messengers::GenericMessage<std::pair<int, int>>&);
-
     private:
-        ZEngine::Helpers::Ref<ZEngine::Serializers::GraphicSceneSerializer>    m_scene_serializer;
-        ZEngine::Helpers::Ref<Tetragrama::Controllers::EditorCameraController> m_editor_camera_controller;
-        std::queue<std::function<void(void)>>                                  m_deferral_operation;
-        std::mutex                                                             m_message_handler_mutex;
-        std::mutex                                                             m_mutex;
-        std::queue<std::pair<float, float>>                                    m_viewport_requested_size_collection;
-
-    private:
-        void HandleNewSceneMessage(const Messengers::EmptyMessage&);
-        void HandleOpenSceneMessage(const Messengers::GenericMessage<std::string>&);
+        ZEngine::Helpers::Ref<ZEngine::Serializers::GraphicSceneSerializer> m_scene_serializer;
     };
 
 } // namespace Tetragrama::Layers

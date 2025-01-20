@@ -6,11 +6,11 @@
 
 namespace ZEngine
 {
-    static bool                                                  s_request_terminate{false};
-    static std::shared_mutex                                     g_mutex;
-    static Helpers::WeakRef<Windows::CoreWindow>                 g_current_window = nullptr;
-    static Helpers::Scope<Rendering::Renderers::GraphicRenderer> g_renderer       = Helpers::CreateScope<Rendering::Renderers::GraphicRenderer>();
-    static Helpers::Scope<Hardwares::VulkanDevice>               g_device         = Helpers::CreateScope<Hardwares::VulkanDevice>();
+    static bool                                                  s_request_terminate = false;
+    static std::shared_mutex                                     g_mutex             = {};
+    static Helpers::WeakRef<Windows::CoreWindow>                 g_current_window    = nullptr;
+    static Helpers::Scope<Rendering::Renderers::GraphicRenderer> g_renderer          = Helpers::CreateScope<Rendering::Renderers::GraphicRenderer>();
+    static Helpers::Scope<Hardwares::VulkanDevice>               g_device            = Helpers::CreateScope<Hardwares::VulkanDevice>();
 
     void                                                         Engine::Initialize(const EngineConfiguration& engine_configuration, const Helpers::Ref<ZEngine::Windows::CoreWindow>& window)
     {
@@ -75,6 +75,7 @@ namespace ZEngine
             /*On Update*/
             window->Update(dt);
 
+            g_device->Update();
             if (g_renderer->EnqueuedResizeRequests.Size())
             {
                 Rendering::Renderers::ResizeRequest req;

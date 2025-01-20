@@ -1,7 +1,5 @@
 #pragma once
-#include <Buffers/GraphicBuffer.h>
-#include <Rendering/Buffers/Image2DBuffer.h>
-// #include <Rendering/Textures/Texture.h>
+#include <Hardwares/VulkanDevice.h>
 #include <future>
 
 namespace ZEngine::Rendering::Textures
@@ -11,13 +9,13 @@ namespace ZEngine::Rendering::Textures
     {
     public:
         Texture2D() = default;
-        Texture2D(const Specifications::TextureSpecification& spec, const Helpers::Ref<Buffers::Image2DBuffer>& buffer)
+        Texture2D(const Specifications::TextureSpecification& spec, const Helpers::Ref<Hardwares::Image2DBuffer>& buffer)
         {
             m_image_2d_buffer = buffer;
             // m_specification   = spec;
         }
 
-        Texture2D(Specifications::TextureSpecification&& spec, Helpers::Ref<Buffers::Image2DBuffer>&& buffer)
+        Texture2D(Specifications::TextureSpecification&& spec, Helpers::Ref<Hardwares::Image2DBuffer>&& buffer)
         {
             m_image_2d_buffer = std::move(buffer);
             // m_specification   = std::move(spec);
@@ -32,15 +30,15 @@ namespace ZEngine::Rendering::Textures
         static Helpers::Ref<Texture2D>              ReadCubemap(std::string_view filename);
         static std::future<Helpers::Ref<Texture2D>> ReadAsync(std::string_view filename);
 
-        virtual Buffers::BufferImage&               GetBuffer() /*override*/;
-        virtual const Buffers::BufferImage&         GetBuffer() const /*override*/;
-        Helpers::Ref<Buffers::Image2DBuffer>        GetImage2DBuffer() const;
+        virtual Hardwares::BufferImage&             GetBuffer() /*override*/;
+        virtual const Hardwares::BufferImage&       GetBuffer() const /*override*/;
+        Helpers::Ref<Hardwares::Image2DBuffer>      GetImage2DBuffer() const;
         virtual void                                Dispose() /*override*/;
 
     protected:
         static void FillAsVulkanImage(Helpers::Ref<Texture2D>& texture, const Specifications::TextureSpecification& specification);
 
     private:
-        Helpers::Ref<Buffers::Image2DBuffer> m_image_2d_buffer;
+        Helpers::Ref<Hardwares::Image2DBuffer> m_image_2d_buffer;
     };
 } // namespace ZEngine::Rendering::Textures

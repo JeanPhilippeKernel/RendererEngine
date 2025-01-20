@@ -1,6 +1,8 @@
 ﻿#pragma once
+#include <Hardwares/VulkanDevice.h>
 #include <Rendering/Lights/Light.h>
 #include <Rendering/Meshes/Mesh.h>
+#include <Textures/Texture.h>
 #include <ZEngineDef.h>
 #include <entt/entt.hpp>
 #include <uuid.h>
@@ -14,16 +16,15 @@ namespace ZEngine::Serializers
     class GraphicScene3DSerializer;
 }
 
+namespace ZEngine::Rendering::Renderers
+{
+    struct AsyncResourceLoader;
+    struct GraphicRenderer;
+    class RenderGraph;
+} // namespace ZEngine::Rendering::Renderers
+
 namespace ZEngine::Rendering::Scenes
 {
-    struct SceneNodeHierarchy
-    {
-        int Parent{-1};
-        int FirstChild{-1};
-        int RightSibling{-1};
-        int DepthLevel{-1};
-    };
-
     /*
      * This internal defragmented storage represents SceneNode struct with a DoD (Data-Oriented Design) approach
      * The access is index based.
@@ -34,39 +35,68 @@ namespace ZEngine::Rendering::Scenes
      *         /
      *        (6) --> ##-1
      */
+    struct SceneNodeHierarchy
+    {
+        int Parent       = -1;
+        int FirstChild   = -1;
+        int RightSibling = -1;
+        int DepthLevel   = -1;
+    };
+
+    struct DrawData
+    {
+        uint32_t TransformIndex = std::numeric_limits<uint32_t>::max();
+        uint32_t MaterialIndex  = std::numeric_limits<uint32_t>::max();
+        uint32_t VertexOffset   = std::numeric_limits<uint32_t>::max();
+        uint32_t IndexOffset    = std::numeric_limits<uint32_t>::max();
+        uint32_t VertexCount    = std::numeric_limits<uint32_t>::max();
+        uint32_t IndexCount     = std::numeric_limits<uint32_t>::max();
+    };
+
     struct SceneRawData : public Helpers::RefCounted
     {
-        uint32_t                                   SVertexDataSize{0};
-        uint32_t                                   SIndexDataSize{0};
-        uint32_t                                   SMeshCountOffset{0};
-        std::vector<SceneNodeHierarchy>            NodeHierarchyCollection;
-        std::vector<glm::mat4>                     LocalTransformCollection;
-        std::vector<glm::mat4>                     GlobalTransformCollection;
-        std::map<uint32_t, std::set<uint32_t>>     LevelSceneNodeChangedMap;
-        std::set<int>                              TextureCollection;
+        uint32_t                                   SVertexDataSize              = 0;
+        uint32_t                                   SIndexDataSize               = 0;
+        uint32_t                                   SMeshCountOffset             = 0;
+        std::vector<SceneNodeHierarchy>            NodeHierarchies              = {};
+        std::vector<glm::mat4>                     LocalTransforms              = {};
+        std::vector<glm::mat4>                     GlobalTransforms             = {};
+        std::map<uint32_t, std::set<uint32_t>>     LevelSceneNodeChangedMap     = {};
         /*
          * New Properties
          */
-        std::vector<float>                         Vertices;
-        std::vector<uint32_t>                      Indices;
-        std::vector<std::string>                   Names;
-        std::vector<std::string>                   MaterialNames;
-        std::unordered_map<uint32_t, uint32_t>     NodeMeshes;
-        std::unordered_map<uint32_t, uint32_t>     NodeNames;
-        std::unordered_map<uint32_t, uint32_t>     NodeMaterials;
-        std::unordered_map<uint32_t, entt::entity> NodeEntities;
-        std::vector<Meshes::MeshVNext>             Meshes    = {};
-        std::vector<Meshes::MeshMaterial>          Materials = {};
-        std::vector<std::string>                   Files     = {};
+        std::vector<float>                         Vertices                     = {};
+        std::vector<uint32_t>                      Indices                      = {};
+        std::vector<DrawData>                      DrawData                     = {};
+        std::vector<std::string>                   Names                        = {};
+        std::vector<std::string>                   MaterialNames                = {};
+        std::unordered_map<uint32_t, uint32_t>     NodeMeshes                   = {};
+        std::unordered_map<uint32_t, uint32_t>     NodeNames                    = {};
+        std::unordered_map<uint32_t, uint32_t>     NodeMaterials                = {};
+        std::unordered_map<uint32_t, entt::entity> NodeEntities                 = {};
+        std::vector<Meshes::MeshVNext>             Meshes                       = {};
+        std::vector<Meshes::MeshMaterial>          Materials                    = {};
+        std::vector<Meshes::MaterialFile>          MaterialFiles                = {};
+
         /*
          * Scene Entity Related data
          */
-        std::vector<Lights::GpuDirectionLight>     DirectionalLights;
-        std::vector<Lights::GpuPointLight>         PointLights;
-        std::vector<Lights::GpuSpotlight>          SpotLights;
+        std::vector<Lights::GpuDirectionLight>     DirectionalLights            = {};
+        std::vector<Lights::GpuPointLight>         PointLights                  = {};
+        std::vector<Lights::GpuSpotlight>          SpotLights                   = {};
 
-        static int                                 AddNode(ZEngine::Rendering::Scenes::SceneRawData*, int parent, int depth);
-        static bool                                SetNodeName(ZEngine::Rendering::Scenes::SceneRawData*, int node_id, std::string_view name);
+        /*
+         * Buffers
+         */
+        Hardwares::StorageBufferSetHandle          TransformBufferHandle        = {};
+        Hardwares::StorageBufferSetHandle          VertexBufferHandle           = {};
+        Hardwares::StorageBufferSetHandle          IndexBufferHandle            = {};
+        Hardwares::StorageBufferSetHandle          MaterialBufferHandle         = {};
+        Hardwares::StorageBufferSetHandle          IndirectDataDrawBufferHandle = {};
+        Hardwares::IndirectBufferSetHandle         IndirectBufferHandle         = {};
+
+        int                                        AddNode(int parent, int depth);
+        bool                                       SetNodeName(int node_id, std::string_view name);
     };
 
     entt::registry& GetEntityRegistry();
@@ -140,58 +170,51 @@ namespace ZEngine::Rendering::Scenes
 
     struct GraphicScene : public Helpers::RefCounted
     {
-        GraphicScene()                    = delete;
-        GraphicScene(const GraphicScene&) = delete;
-        ~GraphicScene()                   = default;
+        GraphicScene();
 
-        static void                           Initialize();
-        static void                           Deinitialize();
-        static void                           SetRootNodeName(std::string_view);
-        static void                           Merge(std::span<SceneRawData> scenes);
-        static SceneEntity                    GetPrimariyCameraEntity();
+        bool                           IsDrawDataDirty = false;
+        Helpers::Ref<SceneRawData>     SceneData       = nullptr;
+
+        void                           InitOrResetDrawBuffer(Hardwares::VulkanDevice* device, Renderers::RenderGraph* render_graph, Renderers::AsyncResourceLoader* async_loader);
+
+        void                           SetRootNodeName(std::string_view);
+        void                           Merge(std::span<SceneRawData> scenes);
+        SceneEntity                    GetPrimariyCameraEntity();
         /*
          * SceneEntity operations
          */
-        static std::future<SceneEntity>       CreateEntityAsync(std::string_view entity_name = "Empty Entity", int parent_id = 0, int depth_level = 1);
-        static std::future<SceneEntity>       CreateEntityAsync(uuids::uuid uuid, std::string_view entity_name);
-        static std::future<SceneEntity>       CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name);
-        static std::future<SceneEntity>       GetEntityAsync(std::string_view entity_name);
-        static std::future<bool>              RemoveEntityAsync(const SceneEntity& entity);
+        std::future<SceneEntity>       CreateEntityAsync(std::string_view entity_name = "Empty Entity", int parent_id = 0, int depth_level = 1);
+        std::future<SceneEntity>       CreateEntityAsync(uuids::uuid uuid, std::string_view entity_name);
+        std::future<SceneEntity>       CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name);
+        std::future<SceneEntity>       GetEntityAsync(std::string_view entity_name);
+        std::future<bool>              RemoveEntityAsync(const SceneEntity& entity);
         /*
          * SceneNode operations
          */
-        static std::future<bool>              RemoveNodeAsync(int node_identifier);
-        static int                            GetSceneNodeParent(int node_identifier);
-        static int                            GetSceneNodeFirstChild(int node_identifier);
-        static std::vector<int>               GetSceneNodeSiblingCollection(int node_identifier);
-        static std::string_view               GetSceneNodeName(int node_identifier);
-        static glm::mat4&                     GetSceneNodeLocalTransform(int node_identifier);
-        static glm::mat4&                     GetSceneNodeGlobalTransform(int node_identifier);
-        static const SceneNodeHierarchy&      GetSceneNodeHierarchy(int node_identifier);
-        static SceneEntity                    GetSceneNodeEntityWrapper(int node_identifier);
-        static std::future<void>              SetSceneNodeNameAsync(int node_identifier, std::string_view node_name);
-        static std::future<Meshes::MeshVNext> GetSceneNodeMeshAsync(int node_identifier);
-        static void                           MarkSceneNodeAsChanged(int node_identifier);
+        std::future<bool>              RemoveNodeAsync(int node_identifier);
+        int                            GetSceneNodeParent(int node_identifier);
+        int                            GetSceneNodeFirstChild(int node_identifier);
+        std::vector<int>               GetSceneNodeSiblingCollection(int node_identifier);
+        std::string_view               GetSceneNodeName(int node_identifier);
+        glm::mat4&                     GetSceneNodeLocalTransform(int node_identifier);
+        glm::mat4&                     GetSceneNodeGlobalTransform(int node_identifier);
+        const SceneNodeHierarchy&      GetSceneNodeHierarchy(int node_identifier);
+        SceneEntity                    GetSceneNodeEntityWrapper(int node_identifier);
+        std::future<void>              SetSceneNodeNameAsync(int node_identifier, std::string_view node_name);
+        std::future<Meshes::MeshVNext> GetSceneNodeMeshAsync(int node_identifier);
+        void                           MarkSceneNodeAsChanged(int node_identifier);
         /*
          * Scene Graph operations
          */
-        static bool                           HasSceneNodes();
-        static uint32_t                       GetSceneNodeCount() = delete;
-        static std::vector<int>               GetRootSceneNodes();
-        static Helpers::Ref<SceneRawData>     GetRawData();
-        static void                           SetRawData(Helpers::Ref<SceneRawData>&& data);
-        static void                           ComputeAllTransforms();
+        bool                           HasSceneNodes();
+        uint32_t                       GetSceneNodeCount() = delete;
+        std::vector<int>               GetRootSceneNodes();
+        Helpers::Ref<SceneRawData>     GetRawData();
+        void                           ComputeAllTransforms();
 
-    private:
-        static Helpers::Ref<SceneRawData>   s_raw_data;
-        static Helpers::Ref<entt::registry> s_entities;
-        static std::recursive_mutex         s_scene_node_mutex;
-        friend class ZEngine::Serializers::GraphicScene3DSerializer;
-
-    private:
-        static void MergeScenes(std::span<SceneRawData> scenes);
-        static void MergeMeshData(std::span<SceneRawData> scenes);
-        static void MergeMaterials(std::span<SceneRawData> scenes);
+        void                           MergeScenes(std::span<SceneRawData> scenes);
+        void                           MergeMeshData(std::span<SceneRawData> scenes);
+        void                           MergeMaterials(std::span<SceneRawData> scenes);
 
         template <typename T, typename V>
         static void MergeMap(const std::unordered_map<T, V>& src, std::unordered_map<T, V>& dst, int index_off, int item_off)
@@ -207,5 +230,9 @@ namespace ZEngine::Rendering::Scenes
         {
             dst.insert(std::end(dst), std::cbegin(src), std::cend(src));
         }
+
+    private:
+        std::recursive_mutex m_mutex = {};
+        friend class ZEngine::Serializers::GraphicScene3DSerializer;
     };
 } // namespace ZEngine::Rendering::Scenes

@@ -6,8 +6,6 @@
 #include <ZEngine/Rendering/Components/GeometryComponent.h>
 #include <ZEngine/Rendering/Components/LightComponent.h>
 #include <ZEngine/Rendering/Components/MaterialComponent.h>
-#include <ZEngine/Rendering/Materials/ShaderMaterial.h>
-#include <ZEngine/Rendering/Materials/StandardMaterial.h>
 #include <ZEngine/Rendering/Textures/Texture2D.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -21,7 +19,7 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    InspectorViewUIComponent::InspectorViewUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
+    InspectorViewUIComponent::InspectorViewUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false)
     {
         m_node_flag = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding;
     }
@@ -29,15 +27,6 @@ namespace Tetragrama::Components
     InspectorViewUIComponent::~InspectorViewUIComponent() {}
 
     void              InspectorViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
-
-    std::future<void> InspectorViewUIComponent::SceneAvailableMessageHandlerAsync(Messengers::GenericMessage<Ref<ZEngine::Rendering::Scenes::GraphicScene>>& message)
-    {
-        {
-            std::lock_guard lock(m_mutex);
-            m_active_scene = message.GetValue();
-        }
-        co_return;
-    }
 
     std::future<void> InspectorViewUIComponent::SceneEntitySelectedMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>& message)
     {
@@ -66,12 +55,7 @@ namespace Tetragrama::Components
         co_return;
     }
 
-    std::future<void> InspectorViewUIComponent::RequestStartOrPauseRenderMessageHandlerAsync(Messengers::GenericMessage<bool>& message)
-    {
-        co_return;
-    }
-
-    void InspectorViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
+    void InspectorViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
         if (m_recieved_deleted_request || m_recieved_unselected_request)
         {
@@ -107,58 +91,58 @@ namespace Tetragrama::Components
         });
 
         // Mesh Renderer
-        Helpers::DrawEntityComponentControl<MeshComponent>("Mesh Geometry", m_scene_entity, m_node_flag, true, [this](MeshComponent& component) {
-            std::string type_name;
-            if (auto active_scene = m_active_scene.lock())
-            {
-                // const auto& mesh                  = active_scene->GetMesh(component.GetMeshID());
-                // const char* geometry_type_value[] = {"Custom", "Cube", "Quad", "Square"};
-                // type_name                         = geometry_type_value[(int) mesh.Type];
-            }
+        // Helpers::DrawEntityComponentControl<MeshComponent>("Mesh Geometry", m_scene_entity, m_node_flag, true, [this](MeshComponent& component) {
+        //    std::string type_name;
+        //    if (auto active_scene = m_active_scene.lock())
+        //    {
+        //        // const auto& mesh                  = active_scene->GetMesh(component.GetMeshID());
+        //        // const char* geometry_type_value[] = {"Custom", "Cube", "Quad", "Square"};
+        //        // type_name                         = geometry_type_value[(int) mesh.Type];
+        //    }
 
-            ImGui::Dummy(ImVec2(0, 3));
-            Helpers::DrawInputTextControl("Mesh", type_name, nullptr, true);
-        });
+        //    ImGui::Dummy(ImVec2(0, 3));
+        //    Helpers::DrawInputTextControl("Mesh", type_name, nullptr, true);
+        //});
 
-        Helpers::DrawEntityComponentControl<MaterialComponent>("Materials", m_scene_entity, m_node_flag, true, [](MaterialComponent& component) {
-            auto        material               = component.GetMaterials()[0]; // Todo : need to be refactor to consider the collection of materials
-            auto        material_shader_type   = material->GetShaderBuiltInType();
+        // Helpers::DrawEntityComponentControl<MaterialComponent>("Materials", m_scene_entity, m_node_flag, true, [](MaterialComponent& component) {
+        //     auto        material               = component.GetMaterials()[0]; // Todo : need to be refactor to consider the collection of materials
+        //     auto        material_shader_type   = material->GetShaderBuiltInType();
 
-            const char* built_in_shader_type[] = {"Basic", "BASIC_2", "Standard"};
+        //    const char* built_in_shader_type[] = {"Basic", "BASIC_2", "Standard"};
 
-            auto        material_name          = fmt::format("{0} Material", built_in_shader_type[(int) material_shader_type]);
-            ImGui::Dummy(ImVec2(0, 3));
-            Helpers::DrawInputTextControl("Name", material_name, nullptr, true);
+        //    auto        material_name          = fmt::format("{0} Material", built_in_shader_type[(int) material_shader_type]);
+        //    ImGui::Dummy(ImVec2(0, 3));
+        //    Helpers::DrawInputTextControl("Name", material_name, nullptr, true);
 
-            if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::STANDARD)
-            {
-                auto standard_material = reinterpret_cast<ZEngine::Rendering::Materials::StandardMaterial*>(material.get());
+        //    if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::STANDARD)
+        //    {
+        //        auto standard_material = reinterpret_cast<ZEngine::Rendering::Materials::StandardMaterial*>(material.get());
 
-                ImGui::Dummy(ImVec2(0, 0.5f));
+        //        ImGui::Dummy(ImVec2(0, 0.5f));
 
-                float tile_factor = standard_material->GetTileFactor();
-                Helpers::DrawDragFloatControl("Tile Factor", tile_factor, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetTileFactor(value); });
-                ImGui::Dummy(ImVec2(0, 0.5f));
+        //        float tile_factor = standard_material->GetTileFactor();
+        //        Helpers::DrawDragFloatControl("Tile Factor", tile_factor, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetTileFactor(value); });
+        //        ImGui::Dummy(ImVec2(0, 0.5f));
 
-                float shininess = standard_material->GetShininess();
-                Helpers::DrawDragFloatControl("Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetShininess(value); });
-                ImGui::Dummy(ImVec2(0, 0.5f));
+        //        float shininess = standard_material->GetShininess();
+        //        Helpers::DrawDragFloatControl("Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetShininess(value); });
+        //        ImGui::Dummy(ImVec2(0, 0.5f));
 
-                // auto diffuse_tint_color = standard_material->GetDiffuseTintColor();
-                // auto diffuse_texture    = standard_material->GetDiffuseMap();
-                // Helpers::DrawTextureColorControl("Diffuse Map", reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), diffuse_tint_color, true, nullptr,
-                //     [standard_material](auto& value) { standard_material->SetDiffuseTintColor(value); });
-                // ImGui::Dummy(ImVec2(0, 0.5f));
+        //        // auto diffuse_tint_color = standard_material->GetDiffuseTintColor();
+        //        // auto diffuse_texture    = standard_material->GetDiffuseMap();
+        //        // Helpers::DrawTextureColorControl("Diffuse Map", reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), diffuse_tint_color, true, nullptr,
+        //        //     [standard_material](auto& value) { standard_material->SetDiffuseTintColor(value); });
+        //        // ImGui::Dummy(ImVec2(0, 0.5f));
 
-                // auto specular_tint_color = standard_material->GetSpecularTintColor();
-                // auto specular_texture    = standard_material->GetSpecularMap();
-                // Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color, true, nullptr,
-                //     [standard_material](auto& value) { standard_material->SetSpecularTintColor(value); });
-                // ImGui::Dummy(ImVec2(0, 0.5f));
-            }
-        });
+        //        // auto specular_tint_color = standard_material->GetSpecularTintColor();
+        //        // auto specular_texture    = standard_material->GetSpecularMap();
+        //        // Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color, true, nullptr,
+        //        //     [standard_material](auto& value) { standard_material->SetSpecularTintColor(value); });
+        //        // ImGui::Dummy(ImVec2(0, 0.5f));
+        //    }
+        //});
 
-        Helpers::DrawEntityComponentControl<LightComponent>("Lighting", m_scene_entity, m_node_flag, true, [this](LightComponent& component) {
+        /*Helpers::DrawEntityComponentControl<LightComponent>("Lighting", m_scene_entity, m_node_flag, true, [this](LightComponent& component) {
             auto                            light           = component.GetLight();
             auto                            light_type      = light->GetLightType();
             std::array<std::string_view, 3> light_type_name = {"Directional", "Point", "Spot"};
@@ -270,7 +254,7 @@ namespace Tetragrama::Components
                     ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             }
-        });
+        });*/
 
         // Camera
         // Helpers::DrawEntityComponentControl<CameraComponent>("Camera", m_scene_entity, m_node_flag, true, [this](CameraComponent& component) {
@@ -352,31 +336,6 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginPopup("PopupAddComponent"))
         {
-            if (ImGui::MenuItem("Geometry"))
-            {
-                int32_t mesh_id{-1};
-                if (auto active_scene = m_active_scene.lock())
-                {
-                    auto cube_mesh = ZEngine::Helpers::CreateBuiltInMesh(ZEngine::Rendering::Meshes::MeshType::CUSTOM);
-                    // mesh_id = active_scene->AddMesh(std::move(cube_mesh));
-                }
-
-                // m_scene_entity->AddComponent<MeshComponent>(mesh_id);
-                ImGui::CloseCurrentPopup();
-            }
-
-            if (ImGui::MenuItem("Material"))
-            {
-                Ref<StandardMaterial> material = CreateRef<StandardMaterial>();
-                material->SetTileFactor(20.f);
-                material->SetShininess(10.0f);
-                material->SetDiffuseMap(Ref<Texture>(CreateTexture(1, 1)));
-                material->SetSpecularMap(Ref<Texture>(CreateTexture(1, 1)));
-
-                // m_scene_entity->AddComponent<MaterialComponent>(std::move(material));
-                ImGui::CloseCurrentPopup();
-            }
-
             if (ImGui::BeginMenu("Lights"))
             {
                 if (ImGui::MenuItem("Directional Light"))

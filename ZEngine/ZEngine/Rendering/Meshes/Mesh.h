@@ -1,5 +1,6 @@
 #pragma once
 #include <Rendering/GPUTypes.h>
+#include <ZEngineDef.h>
 
 #define INVALID_MAP_HANDLE 0xFFFFFFFFu
 
@@ -41,5 +42,14 @@ namespace ZEngine::Rendering::Meshes
         uint64_t NormalMap      = INVALID_MAP_HANDLE;
         uint64_t OpacityMap     = INVALID_MAP_HANDLE;
         uint64_t _padding       = INVALID_MAP_HANDLE;
+    };
+
+    struct MaterialFile
+    {
+        char AlbedoTexture[MAX_FILE_PATH_COUNT]   = {0};
+        char EmissiveTexture[MAX_FILE_PATH_COUNT] = {0};
+        char NormalTexture[MAX_FILE_PATH_COUNT]   = {0};
+        char OpacityTexture[MAX_FILE_PATH_COUNT]  = {0};
+        char SpecularTexture[MAX_FILE_PATH_COUNT] = {0};
     };
 } // namespace ZEngine::Rendering::Meshes

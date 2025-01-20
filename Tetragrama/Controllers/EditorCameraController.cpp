@@ -5,7 +5,7 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Controllers
 {
-    EditorCameraController::EditorCameraController(double distance, float yaw_angle_degree, float pitch_angle_degree) : PerspectiveCameraController(0.0f)
+    EditorCameraController::EditorCameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window, double distance, float yaw_angle_degree, float pitch_angle_degree) : PerspectiveCameraController(window, 0.0f)
     {
         m_process_event      = true;
         m_controller_type    = Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;

@@ -55,8 +55,8 @@ namespace ZEngine::Rendering::Renderers
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window->GetNativeWindow()), false);
 
-        m_vertex_buffer_handle = renderer->CreateVertexBufferSet();
-        m_index_buffer_handle  = renderer->CreateIndexBufferSet();
+        m_vertex_buffer_handle = renderer->Device->CreateVertexBufferSet();
+        m_index_buffer_handle  = renderer->Device->CreateIndexBufferSet();
         auto& builder          = renderer->RenderGraph->RenderPassBuilder;
         builder->SetName("Imgui Pass")
             .SetPipelineName("Imgui-Pipeline")
@@ -191,7 +191,7 @@ namespace ZEngine::Rendering::Renderers
         ImGuizmo::BeginFrame();
     }
 
-    void ImGUIRenderer::DrawFrame(uint32_t frame_index, Rendering::Buffers::CommandBuffer* const command_buffer)
+    void ImGUIRenderer::DrawFrame(uint32_t frame_index, Hardwares::CommandBuffer* const command_buffer)
     {
         ImGui::Render();
         ImDrawData* draw_data = ImGui::GetDrawData();
@@ -237,8 +237,8 @@ namespace ZEngine::Rendering::Renderers
             index_data_ptr += cmd_list->IdxBuffer.Size;
         }
 
-        auto& vertex_buffer = m_renderer->VertexBufferSetManager.Access(m_vertex_buffer_handle);
-        auto& index_buffer  = m_renderer->IndexBufferSetManager.Access(m_index_buffer_handle);
+        auto& vertex_buffer = m_renderer->Device->VertexBufferSetManager.Access(m_vertex_buffer_handle);
+        auto& index_buffer  = m_renderer->Device->IndexBufferSetManager.Access(m_index_buffer_handle);
 
         vertex_buffer->SetData<ImDrawVert>(frame_index, vertex_data);
         index_buffer->SetData<ImDrawIdx>(frame_index, index_data);

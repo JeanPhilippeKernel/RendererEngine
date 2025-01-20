@@ -8,11 +8,11 @@ namespace Tetragrama::Components
     class LogUIComponent : public UIComponent
     {
     public:
-        LogUIComponent(std::string_view name = "Console", bool visibility = true);
+        LogUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Console", bool visibility = true);
         virtual ~LogUIComponent();
 
         virtual void Update(ZEngine::Core::TimeStep dt) override;
-        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
         void         OnLog(ZEngine::Logging::LogMessage);
 

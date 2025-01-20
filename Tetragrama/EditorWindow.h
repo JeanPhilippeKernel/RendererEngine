@@ -32,7 +32,7 @@ namespace Tetragrama
         virtual float                                   GetTime() override;
         virtual float                                   GetDeltaTime() override;
         virtual void                                    Update(ZEngine::Core::TimeStep delta_time) override;
-        virtual void                                    Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+        virtual void                                    Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
         virtual std::future<std::string>                OpenFileDialogAsync(std::span<std::string_view> type_filters = {}) override;
 

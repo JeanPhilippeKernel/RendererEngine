@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <Editor.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
 #include <RenderLayer.h>
@@ -20,81 +21,40 @@ namespace Tetragrama::Layers
 
     RenderLayer::~RenderLayer() {}
 
-    void RenderLayer::Initialize()
-    {
-        GraphicScene::Initialize();
+    void RenderLayer::Initialize() {}
 
-        m_editor_camera_controller = CreateRef<EditorCameraController>(150.0, 0.f, 45.f);
-        Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::GenericMessage<Ref<EditorCameraController>>>(EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE, Messengers::GenericMessage<Ref<EditorCameraController>>{m_editor_camera_controller});
-    }
-
-    void RenderLayer::Deinitialize()
-    {
-        GraphicScene::Deinitialize();
-    }
+    void RenderLayer::Deinitialize() {}
 
     void RenderLayer::Update(TimeStep dt)
     {
-        m_editor_camera_controller->Update(dt);
-        GraphicScene::ComputeAllTransforms();
+        if (ParentContext)
+        {
+            auto ctx = reinterpret_cast<EditorContext*>(ParentContext);
+            ctx->CurrentScenePtr->RenderScene->ComputeAllTransforms();
+            ctx->CameraControllerPtr->Update(dt);
+        }
     }
 
     bool RenderLayer::OnEvent(CoreEvent& e)
     {
-        m_editor_camera_controller->OnEvent(e);
+        if (ParentContext)
+        {
+            auto ctx = reinterpret_cast<EditorContext*>(ParentContext);
+            ctx->CameraControllerPtr->OnEvent(e);
+        }
         return false;
     }
 
-    void RenderLayer::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
+    void RenderLayer::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        auto camera = m_editor_camera_controller->GetCamera();
-        renderer->DrawScene(command_buffer, camera, GraphicScene::GetRawData());
-    }
+        if (!ParentContext)
+        {
+            return;
+        }
 
-    std::future<void> RenderLayer::SceneRequestResizeMessageHandlerAsync(Messengers::GenericMessage<std::pair<float, float>>& message)
-    {
-        std::unique_lock lock(m_message_handler_mutex);
-
-        const auto&      value = message.GetValue();
-        m_editor_camera_controller->SetViewport(value.first, value.second);
-        co_return;
-    }
-
-    std::future<void> RenderLayer::SceneRequestFocusMessageHandlerAsync(Messengers::GenericMessage<bool>& message)
-    {
-        m_editor_camera_controller->ResumeEventProcessing();
-        co_return;
-    }
-
-    std::future<void> RenderLayer::SceneRequestUnfocusMessageHandlerAsync(Messengers::GenericMessage<bool>& message)
-    {
-        m_editor_camera_controller->PauseEventProcessing();
-        co_return;
-    }
-
-    std::future<void> RenderLayer::SceneRequestSelectEntityFromPixelMessageHandlerAsync(Messengers::GenericMessage<std::pair<int, int>>& mouse_position)
-    {
-        // const auto& value  = mouse_position.GetValue();
-        // auto        entity = m_scene->GetEntity(value.first, value.second);
-        // ZENGINE_EDITOR_INFO("Mouse Pos: X={} -- Y={}", value.first, value.second)
-        co_return;
-    }
-
-    void RenderLayer::HandleNewSceneMessage(const Messengers::EmptyMessage&)
-    {
-        //{
-        //    std::unique_lock lock(m_message_handler_mutex);
-        //    m_scene->InvalidateAllEntities();
-        //}
-    }
-
-    void RenderLayer::HandleOpenSceneMessage(const Messengers::GenericMessage<std::string>& message)
-    {
-        //{
-        //    std::unique_lock lock(m_message_handler_mutex);
-        //    m_scene->InvalidateAllEntities();
-        //    Messengers::IMessenger::SendAsync<ZEngine::Layers::Layer, Messengers::GenericMessage<std::string>>(
-        //        EDITOR_RENDER_LAYER_SCENE_REQUEST_DESERIALIZATION, Messengers::GenericMessage<std::string>{message});
-        //}
+        auto ctx    = reinterpret_cast<EditorContext*>(ParentContext);
+        auto camera = ctx->CameraControllerPtr->GetCamera();
+        auto data   = ctx->CurrentScenePtr->RenderScene->GetRawData();
+        renderer->DrawScene(command_buffer, camera.get(), data.get());
     }
 } // namespace Tetragrama::Layers

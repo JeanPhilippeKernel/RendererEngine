@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <AssimpImporter.h>
 #include <Core/Coroutine.h>
+#include <Helpers/MemoryOperations.h>
 #include <Helpers/ThreadPool.h>
 #include <assimp/postprocess.h>
 #include <fmt/format.h>
@@ -11,7 +12,7 @@ using namespace ZEngine::Rendering::Scenes;
 
 namespace Tetragrama::Importers
 {
-    AssimpImporter::AssimpImporter() : m_progress_handler{}, m_flags{aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_SplitLargeMeshes | aiProcess_ImproveCacheLocality | aiProcess_RemoveRedundantMaterials | aiProcess_GenUVCoords | aiProcess_FlipUVs | aiProcess_ValidateDataStructure | aiProcess_FindDegenerates | aiProcess_FindInvalidData | aiProcess_LimitBoneWeights}
+    AssimpImporter::AssimpImporter() : m_progress_handler{}, m_flags{aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_SortByPType}
     {
         m_progress_handler.SetImporter(this);
     }
@@ -35,7 +36,7 @@ namespace Tetragrama::Importers
             {
                 if (m_error_callback)
                 {
-                    m_error_callback(importer.GetErrorString());
+                    m_error_callback(Context, importer.GetErrorString());
                 }
             }
             else
@@ -49,12 +50,12 @@ namespace Tetragrama::Importers
                 /*
                  * Serialization of ImporterData
                  */
-                REPORT_LOG("Serializing model...")
+                REPORT_LOG(Context, "Serializing model...")
                 SerializeImporterData(import_data, config);
 
                 if (m_complete_callback)
                 {
-                    m_complete_callback(std::move(import_data));
+                    m_complete_callback(Context, std::move(import_data));
                 }
             }
 
@@ -83,7 +84,7 @@ namespace Tetragrama::Importers
         for (uint32_t m = 0; m < number_of_meshes; ++m)
         {
 
-            REPORT_LOG(fmt::format("Extrating Meshes : {0}/{1} ", (m + 1), number_of_meshes).c_str())
+            REPORT_LOG(Context, fmt::format("Extrating Meshes : {0}/{1} ", (m + 1), number_of_meshes).c_str())
 
             aiMesh*  ai_mesh = scene->mMeshes[m];
 
@@ -149,19 +150,20 @@ namespace Tetragrama::Importers
         }
 
         uint32_t number_of_materials = scene->mNumMaterials;
-        importer_data.Scene.Materials.reserve(number_of_materials);
-        importer_data.Scene.MaterialNames.reserve(number_of_materials);
+        importer_data.Scene.Materials.resize(number_of_materials);
+        importer_data.Scene.MaterialFiles.resize(number_of_materials);
+        importer_data.Scene.MaterialNames.resize(number_of_materials);
 
         for (uint32_t m = 0; m < number_of_materials; ++m)
         {
-            REPORT_LOG(fmt::format("Extrating materials : {0}/{1}", (m + 1), number_of_materials).c_str())
+            REPORT_LOG(Context, fmt::format("Extrating materials : {0}/{1}", (m + 1), number_of_materials).c_str())
 
             aiColor4D     color;
-            aiMaterial*   ai_material = scene->mMaterials[m];
-            aiString      mat_name    = ai_material->GetName();
-            MeshMaterial& material    = importer_data.Scene.Materials.emplace_back();
+            aiMaterial*   ai_material            = scene->mMaterials[m];
+            aiString      mat_name               = ai_material->GetName();
+            MeshMaterial& material               = importer_data.Scene.Materials[m];
 
-            importer_data.Scene.MaterialNames.push_back(mat_name.C_Str() ? std::string(mat_name.C_Str()) : std::string("<unamed material>"));
+            importer_data.Scene.MaterialNames[m] = (mat_name.C_Str() ? std::string(mat_name.C_Str()) : std::string("<unamed material>"));
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_AMBIENT, &color) == AI_SUCCESS)
             {
@@ -230,42 +232,42 @@ namespace Tetragrama::Importers
         uint32_t         number_of_materials = scene->mNumMaterials;
         for (uint32_t m = 0; m < number_of_materials; ++m)
         {
-            REPORT_LOG(fmt::format("Extrating Material's textures:  {0}/{1} materials", (m + 1), number_of_materials).c_str())
+            REPORT_LOG(Context, fmt::format("Extrating Material's textures:  {0}/{1} materials", (m + 1), number_of_materials).c_str())
 
             aiMaterial* ai_material = scene->mMaterials[m];
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_DIFFUSE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                importer_data.Scene.Materials[m].AlbedoMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                secure_strcpy(importer_data.Scene.MaterialFiles[m].AlbedoTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
             }
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_SPECULAR, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                importer_data.Scene.Materials[m].SpecularMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                secure_strcpy(importer_data.Scene.MaterialFiles[m].SpecularTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
             }
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_EMISSIVE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                importer_data.Scene.Materials[m].EmissiveMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                secure_strcpy(importer_data.Scene.MaterialFiles[m].EmissiveTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
             }
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_NORMALS, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                importer_data.Scene.Materials[m].NormalMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                secure_strcpy(importer_data.Scene.MaterialFiles[m].NormalTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
             }
 
             if (importer_data.Scene.Materials[m].NormalMap == 0xFFFFFFFF)
             {
                 if (aiGetMaterialTexture(ai_material, aiTextureType_HEIGHT, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
                 {
-                    importer_data.Scene.Materials[m].NormalMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
+                    secure_strcpy(importer_data.Scene.MaterialFiles[m].NormalTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
                 }
             }
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_OPACITY, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                importer_data.Scene.Materials[m].OpacityMap = GenerateFileIndex(importer_data.Scene.Files, texture_filename.C_Str());
-                importer_data.Scene.Materials[m].Factors.z  = 0.5f;
+                secure_strcpy(importer_data.Scene.MaterialFiles[m].OpacityTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
+                importer_data.Scene.Materials[m].Factors.z = 0.5f;
             }
         }
     }
@@ -282,26 +284,26 @@ namespace Tetragrama::Importers
 
     void AssimpImporter::TraverseNode(const aiScene* ai_scene, SceneRawData* const scene, const aiNode* node, int parent_node_id, int depth_level)
     {
-        auto node_id              = SceneRawData::AddNode(scene, parent_node_id, depth_level);
+        auto node_id              = scene->AddNode(parent_node_id, depth_level);
         scene->NodeNames[node_id] = scene->Names.size();
         scene->Names.push_back(node->mName.C_Str() ? std::string(node->mName.C_Str()) : std::string{"<unamed node>"});
 
-        scene->GlobalTransformCollection[node_id] = glm::mat4(1.0f);
-        scene->LocalTransformCollection[node_id]  = ConvertToMat4(node->mTransformation);
+        scene->GlobalTransforms[node_id] = glm::mat4(1.0f);
+        scene->LocalTransforms[node_id]  = ConvertToMat4(node->mTransformation);
 
         for (uint32_t i = 0; i < node->mNumMeshes; ++i)
         {
-            auto     sub_node_id          = SceneRawData::AddNode(scene, node_id, depth_level + 1);
+            auto     sub_node_id          = scene->AddNode(node_id, depth_level + 1);
             uint32_t mesh                 = node->mMeshes[i];
             aiString mesh_name            = ai_scene->mMeshes[mesh]->mName;
 
             scene->NodeNames[sub_node_id] = scene->Names.size();
             scene->Names.push_back(mesh_name.C_Str() ? std::string(mesh_name.C_Str()) : std::string{"<unamed node>"});
 
-            scene->NodeMeshes[sub_node_id]                = mesh;
-            scene->NodeMaterials[sub_node_id]             = ai_scene->mMeshes[mesh]->mMaterialIndex;
-            scene->GlobalTransformCollection[sub_node_id] = glm::mat4(1.0f);
-            scene->LocalTransformCollection[sub_node_id]  = glm::mat4(1.0f);
+            scene->NodeMeshes[sub_node_id]       = mesh;
+            scene->NodeMaterials[sub_node_id]    = ai_scene->mMeshes[mesh]->mMaterialIndex;
+            scene->GlobalTransforms[sub_node_id] = glm::mat4(1.0f);
+            scene->LocalTransforms[sub_node_id]  = glm::mat4(1.0f);
         }
 
         for (uint32_t child = 0; child < node->mNumChildren; ++child)
@@ -323,18 +325,6 @@ namespace Tetragrama::Importers
         return mm;
     }
 
-    int AssimpImporter::GenerateFileIndex(std::vector<std::string>& data, std::string_view filename)
-    {
-        auto find = std::find(std::begin(data), std::end(data), filename);
-        if (find != std::end(data))
-        {
-            return std::distance(std::begin(data), find);
-        }
-
-        data.push_back(filename.data());
-        return (data.size() - 1);
-    }
-
     void AssimpProgressHandler::SetImporter(AssimpImporter* const importer)
     {
         m_importer = importer;
@@ -344,7 +334,7 @@ namespace Tetragrama::Importers
     {
         if (m_importer && m_importer->m_progress_callback)
         {
-            m_importer->m_progress_callback(percentage);
+            m_importer->m_progress_callback(m_importer->Context, percentage);
         }
         return true;
     }

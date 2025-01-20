@@ -1,11 +1,10 @@
 ﻿#include <pch.h>
 #include <Core/Coroutine.h>
+#include <Renderers/GraphicRenderer.h>
 #include <Rendering/Components/CameraComponent.h>
 #include <Rendering/Components/LightComponent.h>
 #include <Rendering/Components/UUIComponent.h>
-#include <Rendering/Renderers/GraphicRenderer.h>
 #include <Rendering/Scenes/GraphicScene.h>
-#include <Rendering/Textures/Texture2D.h>
 
 #define NODE_PARENT_ID  -1
 #define INVALID_NODE_ID -1
@@ -15,9 +14,6 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Scenes
 {
-    std::recursive_mutex  GraphicScene::s_scene_node_mutex;
-    Ref<SceneRawData>     GraphicScene::s_raw_data = CreateRef<SceneRawData>();
-
     static entt::registry g_sceneEntityRegistry;
 
     entt::registry&       GetEntityRegistry()
@@ -28,59 +24,59 @@ namespace ZEngine::Rendering::Scenes
     /*
      * SceneRawData Implementation
      */
-    int SceneRawData::AddNode(ZEngine::Rendering::Scenes::SceneRawData* scene, int parent, int depth)
+    int SceneRawData::AddNode(int parent, int depth)
     {
-        if ((!scene) || (depth < 0))
+        if (depth < 0)
         {
-            return -1;
+            return INVALID_NODE_ID;
         }
 
-        int node_id = (int) scene->NodeHierarchyCollection.size();
+        int node_id = (int) NodeHierarchies.size();
 
-        scene->NodeHierarchyCollection.push_back({.Parent = parent});
-        scene->LocalTransformCollection.emplace_back(1.0f);
-        scene->GlobalTransformCollection.emplace_back(1.0f);
+        NodeHierarchies.push_back({.Parent = parent});
+        LocalTransforms.emplace_back(1.0f);
+        GlobalTransforms.emplace_back(1.0f);
 
         if (parent > -1)
         {
-            int first_child = scene->NodeHierarchyCollection[parent].FirstChild;
+            int first_child = NodeHierarchies[parent].FirstChild;
 
             if (first_child == -1)
             {
-                scene->NodeHierarchyCollection[parent].FirstChild = node_id;
+                NodeHierarchies[parent].FirstChild = node_id;
             }
             else
             {
-                int right_sibling = scene->NodeHierarchyCollection[first_child].RightSibling;
+                int right_sibling = NodeHierarchies[first_child].RightSibling;
                 if (right_sibling > -1)
                 {
                     // iterate nextSibling_ indices
-                    for (right_sibling = first_child; scene->NodeHierarchyCollection[right_sibling].RightSibling != -1; right_sibling = scene->NodeHierarchyCollection[right_sibling].RightSibling)
+                    for (right_sibling = first_child; NodeHierarchies[right_sibling].RightSibling != -1; right_sibling = NodeHierarchies[right_sibling].RightSibling)
                     {
                     }
-                    scene->NodeHierarchyCollection[right_sibling].RightSibling = node_id;
+                    NodeHierarchies[right_sibling].RightSibling = node_id;
                 }
                 else
                 {
-                    scene->NodeHierarchyCollection[first_child].RightSibling = node_id;
+                    NodeHierarchies[first_child].RightSibling = node_id;
                 }
             }
         }
-        scene->NodeHierarchyCollection[node_id].DepthLevel   = depth;
-        scene->NodeHierarchyCollection[node_id].RightSibling = -1;
-        scene->NodeHierarchyCollection[node_id].FirstChild   = -1;
+        NodeHierarchies[node_id].DepthLevel   = depth;
+        NodeHierarchies[node_id].RightSibling = -1;
+        NodeHierarchies[node_id].FirstChild   = -1;
 
         return node_id;
     }
 
-    bool SceneRawData::SetNodeName(ZEngine::Rendering::Scenes::SceneRawData* scene, int node_id, std::string_view name)
+    bool SceneRawData::SetNodeName(int node_id, std::string_view name)
     {
-        if ((!scene) || node_id < 0)
+        if (node_id < 0)
         {
             return false;
         }
-        scene->NodeNames[node_id] = scene->Names.size();
-        scene->Names.push_back(name.empty() ? std::string("") : name.data());
+        NodeNames[node_id] = Names.size();
+        Names.emplace_back(name.empty() ? std::string("") : name.data());
         return true;
     }
 
@@ -121,7 +117,7 @@ namespace ZEngine::Rendering::Scenes
             {
                 return;
             }
-            scene->GlobalTransformCollection[m_node] = transform;
+            scene->GlobalTransforms[m_node] = transform;
         }
     }
 
@@ -132,7 +128,7 @@ namespace ZEngine::Rendering::Scenes
         {
             if (m_node > 0)
             {
-                transform = scene->GlobalTransformCollection[m_node];
+                transform = scene->GlobalTransforms[m_node];
             }
         }
         return transform;
@@ -143,34 +139,166 @@ namespace ZEngine::Rendering::Scenes
         return m_node;
     }
 
-    void GraphicScene::Initialize()
+    /*
+     * Graphic Scene implementation
+     */
+    GraphicScene::GraphicScene()
     {
         std::string_view root_node = "Root";
-        s_raw_data->NodeNames[0]   = 0;
-        s_raw_data->Names.emplace_back(root_node);
-        s_raw_data->GlobalTransformCollection.emplace_back(1.0f);
-        s_raw_data->LocalTransformCollection.emplace_back(1.0f);
-        s_raw_data->NodeHierarchyCollection.push_back({.Parent = -1, .FirstChild = -1, .DepthLevel = 0});
+        SceneData                  = CreateRef<SceneRawData>();
+        SceneData->NodeNames[0]    = 0;
+
+        SceneData->Names.emplace_back(root_node);
+        SceneData->GlobalTransforms.emplace_back(1.0f);
+        SceneData->LocalTransforms.emplace_back(1.0f);
+        SceneData->NodeHierarchies.push_back({.Parent = -1, .FirstChild = -1, .DepthLevel = 0});
+
+        SceneData->Vertices      = {0, 0, 0, 0, 0, 0, 0, 0};
+        SceneData->Indices       = {0};
+        SceneData->Materials     = {Meshes::MeshMaterial{}};
+        SceneData->MaterialFiles = {Meshes::MaterialFile{}};
+        SceneData->DrawData      = {
+            DrawData{.TransformIndex = 0, .VertexOffset = 0, .IndexOffset = 0, .VertexCount = 1, .IndexCount = 1}
+        };
     }
 
-    void GraphicScene::Deinitialize() {}
+    void GraphicScene::InitOrResetDrawBuffer(Hardwares::VulkanDevice* device, Renderers::RenderGraph* render_graph, Renderers::AsyncResourceLoader* async_loader)
+    {
+        auto                               draw_count         = SceneData->NodeMeshes.size();
+        std::vector<VkDrawIndirectCommand> indirect_commmands = {};
+
+        if (draw_count)
+        {
+            SceneData->DrawData.resize(draw_count);
+            indirect_commmands.resize(draw_count);
+
+            int i = 0;
+            for (auto& [node, mesh] : SceneData->NodeMeshes)
+            {
+                DrawData& draw_data      = SceneData->DrawData[i];
+                draw_data.TransformIndex = node;
+                draw_data.MaterialIndex  = SceneData->NodeMaterials[node];
+                draw_data.VertexOffset   = SceneData->Meshes[mesh].VertexOffset;
+                draw_data.IndexOffset    = SceneData->Meshes[mesh].IndexOffset;
+                draw_data.VertexCount    = SceneData->Meshes[mesh].VertexCount;
+                draw_data.IndexCount     = SceneData->Meshes[mesh].IndexCount;
+
+                ++i;
+            }
+        }
+        else
+        {
+            // We use the default data
+            indirect_commmands.resize(SceneData->DrawData.size());
+        }
+
+        for (uint32_t i = 0; i < SceneData->DrawData.size(); ++i)
+        {
+            indirect_commmands[i] = {
+                .vertexCount   = SceneData->DrawData[i].IndexCount,
+                .instanceCount = 1,
+                .firstVertex   = 0,
+                .firstInstance = i,
+            };
+        }
+
+        for (int i = 0; i < SceneData->Materials.size(); ++i)
+        {
+            auto& mat       = SceneData->Materials[i];
+            auto& mat_files = SceneData->MaterialFiles[i];
+
+            if (!std::string_view(mat_files.AlbedoTexture).empty())
+            {
+                auto handle = async_loader->LoadTextureFile(mat_files.AlbedoTexture);
+                if (handle)
+                {
+                    mat.AlbedoMap = handle.Index;
+                }
+            }
+
+            if (!std::string_view(mat_files.EmissiveTexture).empty())
+            {
+                auto handle = async_loader->LoadTextureFile(mat_files.EmissiveTexture);
+                if (handle)
+                {
+                    mat.EmissiveMap = handle.Index;
+                }
+            }
+
+            if (!std::string_view(mat_files.NormalTexture).empty())
+            {
+                auto handle = async_loader->LoadTextureFile(mat_files.NormalTexture);
+                if (handle)
+                {
+                    mat.NormalMap = handle.Index;
+                }
+            }
+
+            if (!std::string_view(mat_files.OpacityTexture).empty())
+            {
+                auto handle = async_loader->LoadTextureFile(mat_files.OpacityTexture);
+                if (handle)
+                {
+                    mat.OpacityMap = handle.Index;
+                }
+            }
+
+            if (!std::string_view(mat_files.SpecularTexture).empty())
+            {
+                auto handle = async_loader->LoadTextureFile(mat_files.SpecularTexture);
+                if (handle)
+                {
+                    mat.SpecularMap = handle.Index;
+                }
+            }
+        }
+
+        SceneData->TransformBufferHandle        = device->CreateStorageBufferSet();
+        SceneData->VertexBufferHandle           = device->CreateStorageBufferSet();
+        SceneData->IndexBufferHandle            = device->CreateStorageBufferSet();
+        SceneData->MaterialBufferHandle         = device->CreateStorageBufferSet();
+        SceneData->IndirectDataDrawBufferHandle = device->CreateStorageBufferSet();
+        SceneData->IndirectBufferHandle         = device->CreateIndirectBufferSet();
+
+        auto& transform_buf                     = device->StorageBufferSetManager.Access(SceneData->TransformBufferHandle);
+        auto& vert_buf                          = device->StorageBufferSetManager.Access(SceneData->VertexBufferHandle);
+        auto& ind_buf                           = device->StorageBufferSetManager.Access(SceneData->IndexBufferHandle);
+        auto& material_buf                      = device->StorageBufferSetManager.Access(SceneData->MaterialBufferHandle);
+        auto& indirect_datadraw_buf             = device->StorageBufferSetManager.Access(SceneData->IndirectDataDrawBufferHandle);
+        auto& indirect_buf                      = device->IndirectBufferSetManager.Access(SceneData->IndirectBufferHandle);
+
+        for (unsigned i = 0; i < device->SwapchainImageCount; ++i)
+        {
+            transform_buf->SetData<glm::mat4>(i, SceneData->GlobalTransforms);
+            vert_buf->SetData<float>(i, SceneData->Vertices);
+            ind_buf->SetData<uint32_t>(i, SceneData->Indices);
+            material_buf->SetData<Meshes::MeshMaterial>(i, SceneData->Materials);
+            indirect_datadraw_buf->SetData<DrawData>(i, SceneData->DrawData);
+            indirect_buf->SetData<VkDrawIndirectCommand>(i, indirect_commmands);
+        }
+
+        render_graph->MarkAsDirty = true;
+        IsDrawDataDirty           = false;
+    }
+
     void GraphicScene::SetRootNodeName(std::string_view name)
     {
         {
-            std::lock_guard l(s_scene_node_mutex);
-            if (s_raw_data && (!s_raw_data->Names.empty()))
+            std::lock_guard l(m_mutex);
+            if ((!SceneData) || SceneData->Names.empty())
             {
-                s_raw_data->Names[0] = name;
+                return;
             }
+            SceneData->Names[0] = name;
         }
     }
 
     void GraphicScene::Merge(std::span<SceneRawData> scenes)
     {
         {
-            std::lock_guard l(s_scene_node_mutex);
+            std::lock_guard l(m_mutex);
 
-            auto&           hierarchy = s_raw_data->NodeHierarchyCollection[0];
+            auto&           hierarchy = SceneData->NodeHierarchies[0];
             if (!scenes.empty() && hierarchy.FirstChild == -1)
             {
                 hierarchy.FirstChild = 1;
@@ -179,25 +307,16 @@ namespace ZEngine::Rendering::Scenes
             MergeScenes(scenes);
             MergeMeshData(scenes);
             MergeMaterials(scenes);
-
-            if (!s_raw_data->Files.empty())
-            {
-                for (std::string_view file : s_raw_data->Files)
-                {
-                    // auto handle = Renderers::GraphicRenderer::AddTexture(file);
-                    // s_raw_data->TextureCollection.emplace(handle);
-                }
-            }
         }
     }
 
     void GraphicScene::MergeScenes(std::span<SceneRawData> scenes)
     {
-        auto& hierarchy        = s_raw_data->NodeHierarchyCollection;
-        auto& global_transform = s_raw_data->GlobalTransformCollection;
-        auto& local_transform  = s_raw_data->LocalTransformCollection;
-        auto& names            = s_raw_data->Names;
-        auto& materialNames    = s_raw_data->MaterialNames;
+        auto& hierarchy        = SceneData->NodeHierarchies;
+        auto& global_transform = SceneData->GlobalTransforms;
+        auto& local_transform  = SceneData->LocalTransforms;
+        auto& names            = SceneData->Names;
+        auto& materialNames    = SceneData->MaterialNames;
 
         int   offs             = 1;
         int   mesh_offset      = 0;
@@ -206,14 +325,14 @@ namespace ZEngine::Rendering::Scenes
 
         for (auto& scene : scenes)
         {
-            MergeVector(std::span{scene.NodeHierarchyCollection}, hierarchy);
-            MergeVector(std::span{scene.LocalTransformCollection}, local_transform);
-            MergeVector(std::span{scene.GlobalTransformCollection}, global_transform);
+            MergeVector(std::span{scene.NodeHierarchies}, hierarchy);
+            MergeVector(std::span{scene.LocalTransforms}, local_transform);
+            MergeVector(std::span{scene.GlobalTransforms}, global_transform);
 
             MergeVector(std::span{scene.Names}, names);
             MergeVector(std::span{scene.MaterialNames}, materialNames);
 
-            int node_count = scene.NodeHierarchyCollection.size();
+            int node_count = scene.NodeHierarchies.size();
 
             // Shifting node index
             for (int i = 0; i < node_count; ++i)
@@ -233,9 +352,9 @@ namespace ZEngine::Rendering::Scenes
                 }
             }
 
-            MergeMap(scene.NodeMeshes, s_raw_data->NodeMeshes, offs, mesh_offset);
-            MergeMap(scene.NodeNames, s_raw_data->NodeNames, offs, name_offset);
-            MergeMap(scene.NodeMaterials, s_raw_data->NodeMaterials, offs, material_offset);
+            MergeMap(scene.NodeMeshes, SceneData->NodeMeshes, offs, mesh_offset);
+            MergeMap(scene.NodeNames, SceneData->NodeNames, offs, name_offset);
+            MergeMap(scene.NodeMaterials, SceneData->NodeMaterials, offs, material_offset);
 
             offs            += node_count;
 
@@ -248,7 +367,7 @@ namespace ZEngine::Rendering::Scenes
         int idx = 0;
         for (auto& scene : scenes)
         {
-            int  nodeCount                = (int) scene.NodeHierarchyCollection.size();
+            int  nodeCount                = (int) scene.NodeHierarchies.size();
             bool isLast                   = (idx == scenes.size() - 1);
             // calculate new next sibling for the old scene roots
             int  next                     = isLast ? -1 : offs + nodeCount;
@@ -268,9 +387,9 @@ namespace ZEngine::Rendering::Scenes
 
     void GraphicScene::MergeMeshData(std::span<SceneRawData> scenes)
     {
-        auto& vertices = s_raw_data->Vertices;
-        auto& indices  = s_raw_data->Indices;
-        auto& meshes   = s_raw_data->Meshes;
+        auto& vertices = SceneData->Vertices;
+        auto& indices  = SceneData->Indices;
+        auto& meshes   = SceneData->Meshes;
 
         for (auto& scene : scenes)
         {
@@ -278,86 +397,50 @@ namespace ZEngine::Rendering::Scenes
             MergeVector(std::span{scene.Indices}, indices);
             MergeVector(std::span{scene.Meshes}, meshes);
 
-            uint32_t vtxOffset = s_raw_data->SVertexDataSize / 8; /* 8 is the number of per-vertex attributes: position, normal + UV */
+            uint32_t vtxOffset = SceneData->SVertexDataSize / 8; /* 8 is the number of per-vertex attributes: position, normal + UV */
 
             for (size_t j = 0; j < (uint32_t) scene.Meshes.size(); j++)
             {
                 // m.vertexCount, m.lodCount and m.streamCount do not change
                 // m.vertexOffset also does not change, because vertex offsets are local (i.e., baked into the indices)
-                meshes[s_raw_data->SMeshCountOffset + j].IndexOffset += s_raw_data->SIndexDataSize;
+                meshes[SceneData->SMeshCountOffset + j].IndexOffset += SceneData->SIndexDataSize;
             }
 
             // shift individual indices
             for (size_t j = 0; j < scene.Indices.size(); j++)
             {
-                indices[s_raw_data->SIndexDataSize + j] += vtxOffset;
+                indices[SceneData->SIndexDataSize + j] += vtxOffset;
             }
 
-            s_raw_data->SMeshCountOffset += (uint32_t) scene.Meshes.size();
+            SceneData->SMeshCountOffset += (uint32_t) scene.Meshes.size();
 
-            s_raw_data->SIndexDataSize   += (uint32_t) scene.Indices.size();
-            s_raw_data->SVertexDataSize  += (uint32_t) scene.Vertices.size();
+            SceneData->SIndexDataSize   += (uint32_t) scene.Indices.size();
+            SceneData->SVertexDataSize  += (uint32_t) scene.Vertices.size();
         }
     }
 
     void GraphicScene::MergeMaterials(std::span<SceneRawData> scenes)
     {
-        auto& materials = s_raw_data->Materials;
-        auto& files     = s_raw_data->Files;
+        auto& materials      = SceneData->Materials;
+        auto& material_files = SceneData->MaterialFiles;
         for (auto& scene : scenes)
         {
-            for (auto& m : scene.Materials)
-            {
-                if (m.AlbedoMap != 0xFFFFFFFF)
-                {
-                    auto& f = scene.Files[m.AlbedoMap];
-                    files.push_back(f);
-                    m.AlbedoMap = (files.size() - 1);
-                }
-
-                if (m.EmissiveMap != 0xFFFFFFFF)
-                {
-                    auto& f = scene.Files[m.EmissiveMap];
-                    files.push_back(f);
-                    m.EmissiveMap = (files.size() - 1);
-                }
-
-                if (m.SpecularMap != 0xFFFFFFFF)
-                {
-                    auto& f = scene.Files[m.SpecularMap];
-                    files.push_back(f);
-                    m.SpecularMap = (files.size() - 1);
-                }
-
-                if (m.NormalMap != 0xFFFFFFFF)
-                {
-                    auto& f = scene.Files[m.NormalMap];
-                    files.push_back(f);
-                    m.NormalMap = (files.size() - 1);
-                }
-
-                if (m.OpacityMap != 0xFFFFFFFF)
-                {
-                    auto& f = scene.Files[m.OpacityMap];
-                    files.push_back(f);
-                    m.OpacityMap = (files.size() - 1);
-                }
-            }
             MergeVector(std::span{scene.Materials}, materials);
+            MergeVector(std::span{scene.MaterialFiles}, material_files);
         }
     }
 
     std::future<SceneEntity> GraphicScene::CreateEntityAsync(std::string_view entity_name, int parent_id, int depth_level)
     {
-        std::unique_lock lock(s_scene_node_mutex);
+        std::unique_lock lock(m_mutex);
 
         SceneEntity      entity  = {};
-        int              node_id = SceneRawData::AddNode(s_raw_data.get(), parent_id, depth_level);
-        if (SceneRawData::SetNodeName(s_raw_data.get(), node_id, entity_name))
+        int              node_id = SceneData->AddNode(parent_id, depth_level);
+        if (SceneData->SetNodeName(node_id, entity_name))
         {
             auto  vertices         = std::vector<float>{0, 0, 0, 0, 1, 0, 0, 0};
             auto  indices          = std::vector<uint32_t>{0};
-            auto& m                = s_raw_data->Meshes.emplace_back();
+            auto& m                = SceneData->Meshes.emplace_back();
             m.VertexCount          = 1;
             m.IndexCount           = 1;
             m.VertexOffset         = 0;
@@ -368,31 +451,31 @@ namespace ZEngine::Rendering::Scenes
             m.IndexStreamOffset    = (m.IndexUnitStreamSize * m.IndexOffset);
             m.TotalByteSize        = (m.VertexCount * m.VertexUnitStreamSize) + (m.IndexCount * m.IndexUnitStreamSize);
 
-            MergeVector(std::span{vertices}, s_raw_data->Vertices);
-            MergeVector(std::span{indices}, s_raw_data->Indices);
+            MergeVector(std::span{vertices}, SceneData->Vertices);
+            MergeVector(std::span{indices}, SceneData->Indices);
 
-            uint32_t vtx_off                                              = s_raw_data->SVertexDataSize / 8;
-            s_raw_data->Meshes[s_raw_data->SMeshCountOffset].IndexOffset += s_raw_data->SIndexDataSize;
-            s_raw_data->Indices[s_raw_data->SIndexDataSize]              += vtx_off;
+            uint32_t vtx_off                                            = SceneData->SVertexDataSize / 8;
+            SceneData->Meshes[SceneData->SMeshCountOffset].IndexOffset += SceneData->SIndexDataSize;
+            SceneData->Indices[SceneData->SIndexDataSize]              += vtx_off;
 
-            s_raw_data->SMeshCountOffset++;
-            s_raw_data->SIndexDataSize      += indices.size();
-            s_raw_data->SVertexDataSize     += (uint32_t) vertices.size();
+            SceneData->SMeshCountOffset++;
+            SceneData->SIndexDataSize      += indices.size();
+            SceneData->SVertexDataSize     += (uint32_t) vertices.size();
 
-            s_raw_data->NodeMeshes[node_id]  = s_raw_data->Meshes.size() - 1;
+            SceneData->NodeMeshes[node_id]  = SceneData->Meshes.size() - 1;
 
-            s_raw_data->MaterialNames.push_back("<unamed material>");
-            s_raw_data->Materials.emplace_back();
-            s_raw_data->NodeMaterials[node_id] = s_raw_data->Materials.size() - 1;
+            SceneData->MaterialNames.push_back("<unamed material>");
+            SceneData->Materials.emplace_back();
+            SceneData->NodeMaterials[node_id] = SceneData->Materials.size() - 1;
 
-            entity                             = {node_id, s_raw_data.Weak()};
+            entity                            = {node_id, SceneData.Weak()};
         }
         co_return entity;
     }
 
     std::future<SceneEntity> GraphicScene::CreateEntityAsync(uuids::uuid uuid, std::string_view entity_name)
     {
-        std::unique_lock lock(s_scene_node_mutex);
+        std::unique_lock lock(m_mutex);
         auto             entity = co_await CreateEntityAsync(entity_name);
         entity.AddComponent<UUIComponent>(uuid);
         co_return entity;
@@ -400,7 +483,7 @@ namespace ZEngine::Rendering::Scenes
 
     std::future<SceneEntity> GraphicScene::CreateEntityAsync(std::string_view uuid_string, std::string_view entity_name)
     {
-        std::unique_lock lock(s_scene_node_mutex);
+        std::unique_lock lock(m_mutex);
         auto             entity = co_await CreateEntityAsync(entity_name);
         entity.AddComponent<UUIComponent>(uuid_string);
         co_return entity;
@@ -408,11 +491,11 @@ namespace ZEngine::Rendering::Scenes
 
     std::future<SceneEntity> GraphicScene::GetEntityAsync(std::string_view entity_name)
     {
-        std::unique_lock lock(s_scene_node_mutex);
+        std::unique_lock lock(m_mutex);
 
         int              node       = -1;
-        auto&            node_names = s_raw_data->NodeNames;
-        auto&            names      = s_raw_data->Names;
+        auto&            node_names = SceneData->NodeNames;
+        auto&            names      = SceneData->Names;
 
         for (auto& [id, name] : node_names)
         {
@@ -426,43 +509,43 @@ namespace ZEngine::Rendering::Scenes
         {
             ZENGINE_CORE_ERROR("An entity with name {0} deosn't exist", entity_name.data())
         }
-        co_return SceneEntity{node, s_raw_data.Weak()};
+        co_return SceneEntity{node, SceneData.Weak()};
     }
 
     std::future<bool> GraphicScene::RemoveEntityAsync(const SceneEntity& entity)
     {
         co_return false;
-        // std::unique_lock lock(s_scene_node_mutex);
-        // if (!s_raw_data->EntityRegistry->valid(entity))
+        // std::unique_lock lock(m_mutex);
+        // if (!SceneData->EntityRegistry->valid(entity))
         //{
         //     ZENGINE_CORE_ERROR("This entity is no longer valid")
         //     co_return false;
         // }
-        // s_raw_data->EntityRegistry->destroy(entity);
+        // SceneData->EntityRegistry->destroy(entity);
         // co_return true;
     }
 
     std::future<bool> GraphicScene::RemoveNodeAsync(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
+        std::lock_guard lock(m_mutex);
         return std::future<bool>();
     }
 
     int GraphicScene::GetSceneNodeParent(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
-        return (node_identifier < 0) ? INVALID_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].Parent;
+        std::lock_guard lock(m_mutex);
+        return (node_identifier < 0) ? INVALID_NODE_ID : SceneData->NodeHierarchies[node_identifier].Parent;
     }
 
     int GraphicScene::GetSceneNodeFirstChild(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
-        return (node_identifier < 0) ? INVALID_NODE_ID : s_raw_data->NodeHierarchyCollection[node_identifier].FirstChild;
+        std::lock_guard lock(m_mutex);
+        return (node_identifier < 0) ? INVALID_NODE_ID : SceneData->NodeHierarchies[node_identifier].FirstChild;
     }
 
     std::vector<int> GraphicScene::GetSceneNodeSiblingCollection(int node_identifier)
     {
-        std::lock_guard  lock(s_scene_node_mutex);
+        std::lock_guard  lock(m_mutex);
 
         std::vector<int> sibling_scene_nodes = {};
         if (node_identifier < 0)
@@ -470,7 +553,7 @@ namespace ZEngine::Rendering::Scenes
             return sibling_scene_nodes;
         }
 
-        for (auto sibling = s_raw_data->NodeHierarchyCollection[node_identifier].RightSibling; sibling != INVALID_NODE_ID; sibling = s_raw_data->NodeHierarchyCollection[sibling].RightSibling)
+        for (auto sibling = SceneData->NodeHierarchies[node_identifier].RightSibling; sibling != INVALID_NODE_ID; sibling = SceneData->NodeHierarchies[sibling].RightSibling)
         {
             sibling_scene_nodes.push_back(sibling);
         }
@@ -480,62 +563,62 @@ namespace ZEngine::Rendering::Scenes
 
     std::string_view GraphicScene::GetSceneNodeName(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
-        return s_raw_data->NodeNames.contains(node_identifier) ? s_raw_data->Names[s_raw_data->NodeNames[node_identifier]] : std::string_view();
+        std::lock_guard lock(m_mutex);
+        return SceneData->NodeNames.contains(node_identifier) ? SceneData->Names[SceneData->NodeNames[node_identifier]] : std::string_view();
     }
 
     glm::mat4& GraphicScene::GetSceneNodeLocalTransform(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT((node_identifier > INVALID_NODE_ID) && (node_identifier < s_raw_data->LocalTransformCollection.size()), "node identifier is invalid")
-        return s_raw_data->LocalTransformCollection[node_identifier];
+        std::lock_guard lock(m_mutex);
+        ZENGINE_VALIDATE_ASSERT((node_identifier > INVALID_NODE_ID) && (node_identifier < SceneData->LocalTransforms.size()), "node identifier is invalid")
+        return SceneData->LocalTransforms[node_identifier];
     }
 
     glm::mat4& GraphicScene::GetSceneNodeGlobalTransform(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < s_raw_data->GlobalTransformCollection.size(), "node identifier is invalid")
-        return s_raw_data->GlobalTransformCollection[node_identifier];
+        std::lock_guard lock(m_mutex);
+        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < SceneData->GlobalTransforms.size(), "node identifier is invalid")
+        return SceneData->GlobalTransforms[node_identifier];
     }
 
     const SceneNodeHierarchy& GraphicScene::GetSceneNodeHierarchy(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < s_raw_data->NodeHierarchyCollection.size(), "node identifier is invalid")
-        return s_raw_data->NodeHierarchyCollection[node_identifier];
+        std::lock_guard lock(m_mutex);
+        ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < SceneData->NodeHierarchies.size(), "node identifier is invalid")
+        return SceneData->NodeHierarchies[node_identifier];
     }
 
     SceneEntity GraphicScene::GetSceneNodeEntityWrapper(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
-        return SceneEntity{node_identifier, s_raw_data.Weak()};
+        std::lock_guard lock(m_mutex);
+        return SceneEntity{node_identifier, SceneData.Weak()};
     }
 
     std::future<void> GraphicScene::SetSceneNodeNameAsync(int node_identifier, std::string_view node_name)
     {
-        std::lock_guard lock(s_scene_node_mutex);
+        std::lock_guard lock(m_mutex);
         ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID, "node identifier is invalid")
-        s_raw_data->Names[s_raw_data->NodeNames[node_identifier]] = node_name;
+        SceneData->Names[SceneData->NodeNames[node_identifier]] = node_name;
         co_return;
     }
 
     std::future<Meshes::MeshVNext> GraphicScene::GetSceneNodeMeshAsync(int node_identifier)
     {
-        std::lock_guard lock(s_scene_node_mutex);
-        ZENGINE_VALIDATE_ASSERT(s_raw_data->NodeMeshes.contains(node_identifier), "node identifier is invalid")
-        co_return s_raw_data->Meshes.at(s_raw_data->NodeMeshes[node_identifier]);
+        std::lock_guard lock(m_mutex);
+        ZENGINE_VALIDATE_ASSERT(SceneData->NodeMeshes.contains(node_identifier), "node identifier is invalid")
+        co_return SceneData->Meshes.at(SceneData->NodeMeshes[node_identifier]);
     }
 
     Ref<SceneRawData> GraphicScene::GetRawData()
     {
         {
-            std::lock_guard lock(s_scene_node_mutex);
-            s_raw_data->DirectionalLights.clear();
-            s_raw_data->PointLights.clear();
-            s_raw_data->SpotLights.clear();
-            s_raw_data->DirectionalLights.shrink_to_fit();
-            s_raw_data->PointLights.shrink_to_fit();
-            s_raw_data->SpotLights.shrink_to_fit();
+            std::lock_guard lock(m_mutex);
+            SceneData->DirectionalLights.clear();
+            SceneData->PointLights.clear();
+            SceneData->SpotLights.clear();
+            SceneData->DirectionalLights.shrink_to_fit();
+            SceneData->PointLights.shrink_to_fit();
+            SceneData->SpotLights.shrink_to_fit();
             auto light_cmp = g_sceneEntityRegistry.view<LightComponent>();
             for (auto handle : light_cmp)
             {
@@ -546,53 +629,40 @@ namespace ZEngine::Rendering::Scenes
                     case Lights::LightType::DIRECTIONAL:
                     {
                         auto directional = reinterpret_cast<Lights::DirectionalLight*>(light.get());
-                        s_raw_data->DirectionalLights.push_back(directional->GPUPackedData());
+                        SceneData->DirectionalLights.push_back(directional->GPUPackedData());
                     }
                     break;
                     case Lights::LightType::POINT:
                     {
                         auto point = reinterpret_cast<Lights::PointLight*>(light.get());
-                        s_raw_data->PointLights.push_back(point->GPUPackedData());
+                        SceneData->PointLights.push_back(point->GPUPackedData());
                     }
                     break;
                     case Lights::LightType::SPOT:
                     {
                         auto spot = reinterpret_cast<Lights::Spotlight*>(light.get());
-                        s_raw_data->SpotLights.push_back(spot->GPUPackedData());
+                        SceneData->SpotLights.push_back(spot->GPUPackedData());
                     }
                     break;
                 }
             }
         }
-        return s_raw_data;
-    }
-
-    void GraphicScene::SetRawData(Ref<SceneRawData>&& data)
-    {
-        {
-            std::lock_guard lock(s_scene_node_mutex);
-            s_raw_data = data;
-            for (std::string_view file : data->Files)
-            {
-                // auto index = Renderers::GraphicRenderer::AddTexture(file);
-                //  s_raw_data->TextureCollection.emplace(index);
-            }
-        }
+        return SceneData;
     }
 
     bool GraphicScene::HasSceneNodes()
     {
-        std::lock_guard l(s_scene_node_mutex);
-        return !s_raw_data->NodeHierarchyCollection.empty();
+        std::lock_guard l(m_mutex);
+        return !SceneData->NodeHierarchies.empty();
     }
 
     std::vector<int> GraphicScene::GetRootSceneNodes()
     {
         {
-            std::lock_guard  l(s_scene_node_mutex);
+            std::lock_guard  l(m_mutex);
             std::vector<int> root_scene_nodes;
 
-            const auto&      hierarchy = s_raw_data->NodeHierarchyCollection;
+            const auto&      hierarchy = SceneData->NodeHierarchies;
             for (uint32_t i = 0; i < hierarchy.size(); ++i)
             {
                 if (hierarchy[i].Parent == NODE_PARENT_ID)
@@ -607,12 +677,12 @@ namespace ZEngine::Rendering::Scenes
     void GraphicScene::ComputeAllTransforms()
     {
         {
-            std::lock_guard l(s_scene_node_mutex);
+            std::lock_guard l(m_mutex);
 
-            const auto&     hierarchy         = s_raw_data->NodeHierarchyCollection;
-            auto&           global_transforms = s_raw_data->GlobalTransformCollection;
-            auto&           local_transforms  = s_raw_data->LocalTransformCollection;
-            auto&           node_changed_map  = s_raw_data->LevelSceneNodeChangedMap;
+            const auto&     hierarchy         = SceneData->NodeHierarchies;
+            auto&           global_transforms = SceneData->GlobalTransforms;
+            auto&           local_transforms  = SceneData->LocalTransforms;
+            auto&           node_changed_map  = SceneData->LevelSceneNodeChangedMap;
             for (auto& [level, nodes] : node_changed_map)
             {
                 for (auto node : nodes)
@@ -634,9 +704,9 @@ namespace ZEngine::Rendering::Scenes
     void GraphicScene::MarkSceneNodeAsChanged(int node_identifier)
     {
         {
-            std::lock_guard l(s_scene_node_mutex);
+            std::lock_guard l(m_mutex);
 
-            auto&           hierarchy = s_raw_data->NodeHierarchyCollection;
+            auto&           hierarchy = SceneData->NodeHierarchies;
             if (hierarchy.empty())
             {
                 return;
@@ -644,7 +714,7 @@ namespace ZEngine::Rendering::Scenes
 
             std::queue<int>  q;
             std::vector<int> n;
-            auto&            node_changed_map = s_raw_data->LevelSceneNodeChangedMap;
+            auto&            node_changed_map = SceneData->LevelSceneNodeChangedMap;
             q.push(node_identifier);
             while (!q.empty())
             {
@@ -675,13 +745,13 @@ namespace ZEngine::Rendering::Scenes
     {
         SceneEntity camera_entity;
 
-        // auto view_cameras = s_raw_data->EntityRegistry->view<CameraComponent>();
+        // auto view_cameras = SceneData->EntityRegistry->view<CameraComponent>();
         // for (auto entity : view_cameras)
         //{
         //     auto& component = view_cameras.get<CameraComponent>(entity);
         //     if (component.IsPrimaryCamera)
         //     {
-        //         camera_entity = GraphicSceneEntity::CreateWrapper(s_raw_data->EntityRegistry, entity);
+        //         camera_entity = GraphicSceneEntity::CreateWrapper(SceneData->EntityRegistry, entity);
         //         break;
         //     }
         // }

@@ -10,11 +10,11 @@ namespace Tetragrama::Components
     class DockspaceUIComponent : public UIComponent
     {
     public:
-        DockspaceUIComponent(std::string_view name = "Dockspace", bool visibility = true);
+        DockspaceUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Dockspace", bool visibility = true);
         virtual ~DockspaceUIComponent();
 
         void              Update(ZEngine::Core::TimeStep dt) override;
-        virtual void      Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+        virtual void      Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
         void              RenderMenuBar();
         void              RenderSaveScene();
@@ -27,18 +27,18 @@ namespace Tetragrama::Components
          */
         void              RenderImporter();
         void              ResetImporterBuffers();
-        static void       OnAssetImporterComplete(Importers::ImporterData&&);
-        static void       OnAssetImporterProgress(float value);
-        static void       OnAssetImporterError(std::string_view);
-        static void       OnAssetImporterLog(std::string_view);
+        static void       OnAssetImporterComplete(void* const, Importers::ImporterData&&);
+        static void       OnAssetImporterProgress(void* const, float value);
+        static void       OnAssetImporterError(void* const, std::string_view);
+        static void       OnAssetImporterLog(void* const, std::string_view);
 
         /*
          * Editor Scene Funcs
          */
-        static void       OnEditorSceneSerializerProgress(float value);
-        static void       OnEditorSceneSerializerComplete();
-        static void       OnEditorSceneSerializerDeserializeComplete(EditorScene&&);
-        static void       OnEditorSceneSerializerError(std::string_view);
+        static void       OnEditorSceneSerializerProgress(void* const, float value);
+        static void       OnEditorSceneSerializerComplete(void* const);
+        static void       OnEditorSceneSerializerDeserializeComplete(void* const, EditorScene&&);
+        static void       OnEditorSceneSerializerError(void* const, std::string_view);
 
         std::future<void> OnNewSceneAsync();
         std::future<void> OnOpenSceneAsync();

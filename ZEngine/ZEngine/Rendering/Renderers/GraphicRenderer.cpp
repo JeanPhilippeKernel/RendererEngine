@@ -5,6 +5,7 @@
 #include <Rendering/Buffers/Bitmap.h>
 #include <Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
+#include <Specifications/FormatSpecification.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__
@@ -17,9 +18,11 @@
 #include <stb/stb_image_resize.h>
 #include <stb/stb_image_write.h>
 
+using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering::Specifications;
 using namespace ZEngine::Rendering::Renderers::Contracts;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -30,7 +33,7 @@ namespace ZEngine::Rendering::Renderers
     {
         Device                       = device;
         RenderGraph                  = CreateScope<Renderers::RenderGraph>(this);
-        m_resource_loader            = CreateRef<AsyncResourceLoader>();
+        AsyncLoader                  = CreateRef<AsyncResourceLoader>();
         ImguiRenderer                = CreateRef<ImGUIRenderer>();
         /*
          * Renderer Passes
@@ -44,184 +47,77 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Shared Buffers
          */
-        m_scene_camera_buffer_handle = CreateUniformBufferSet();
-        FrameColorRenderTarget       = Device->GlobalTextures->Add(CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM}));
-        FrameDepthRenderTarget       = Device->GlobalTextures->Add(CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE}));
+        SceneCameraBufferHandle      = Device->CreateUniformBufferSet();
+        auto&           scene_camera = Device->UniformBufferSetManager.Access(SceneCameraBufferHandle);
+        UBOCameraLayout ubo_camera   = {};
+        for (int i = 0; i < Device->SwapchainImageCount; ++i)
+        {
+            scene_camera->At(i).SetData(&ubo_camera, sizeof(UBOCameraLayout));
+        }
+
+        FrameColorRenderTarget = Device->GlobalTextures->Add(CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM}));
+        FrameDepthRenderTarget = Device->GlobalTextures->Add(CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE}));
         /*
          * Subsystems initialization
          */
-        m_resource_loader->Initialize(this);
+        AsyncLoader->Initialize(this);
         ImguiRenderer->Initialize(this);
-        scene_depth_prepass->Initialize(this);
-        lighting_pass->Initialize(this);
         /*
          * Render Graph definition
          */
         auto& builder = RenderGraph->Builder;
-        builder->AttachBuffer("scene_camera", m_scene_camera_buffer_handle);
         builder->AttachRenderTarget(FrameDepthRenderTargetName, FrameDepthRenderTarget);
         builder->AttachRenderTarget(FrameColorRenderTargetName, FrameColorRenderTarget);
-        builder->CreateBufferSet("g_scene_vertex_buffer");
-        builder->CreateBufferSet("g_scene_index_buffer");
-        builder->CreateBufferSet("g_scene_draw_buffer");
-        builder->CreateBufferSet("g_scene_transform_buffer");
-        builder->CreateBufferSet("g_scene_material_buffer");
         builder->CreateBufferSet("g_scene_directional_light_buffer");
         builder->CreateBufferSet("g_scene_point_light_buffer");
         builder->CreateBufferSet("g_scene_spot_light_buffer");
-        builder->CreateBufferSet("g_scene_indirect_buffer", BufferSetCreationType::INDIRECT);
 
         RenderGraph->AddCallbackPass("Initial Pass", initial_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
-        RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
+        // RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
 
         RenderGraph->Setup();
-        RenderGraph->Compile();
+        RenderGraph->Compile(nullptr);
     }
 
     void GraphicRenderer::Deinitialize()
     {
+        AsyncLoader->Shutdown();
+        AsyncLoader.reset();
+
         RenderGraph->Dispose();
         Device->GlobalTextures->Remove(FrameColorRenderTarget);
         Device->GlobalTextures->Remove(FrameDepthRenderTarget);
 
         ImguiRenderer->Deinitialize();
-
-        VertexBufferSetManager.Dispose();
-        StorageBufferSetManager.Dispose();
-        IndirectBufferSetManager.Dispose();
-        IndexBufferSetManager.Dispose();
-        UniformBufferSetManager.Dispose();
-
-        m_resource_loader->Shutdown();
-        m_resource_loader.reset();
     }
 
     void GraphicRenderer::Update() {}
 
-    void GraphicRenderer::DrawScene(Rendering::Buffers::CommandBuffer* const command_buffer, const Ref<Rendering::Cameras::Camera>& camera, const Ref<Rendering::Scenes::SceneRawData>& scene_data)
+    void GraphicRenderer::DrawScene(Hardwares::CommandBuffer* const command_buffer, Cameras::Camera* const camera, Scenes::SceneRawData* const scene)
     {
         uint32_t frame_index     = Device->CurrentFrameIndex;
-
-        auto&    scene_camera    = UniformBufferSetManager.Access(m_scene_camera_buffer_handle);
+        auto&    scene_camera    = Device->UniformBufferSetManager.Access(SceneCameraBufferHandle);
         auto     ubo_camera_data = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = glm::vec4(camera->GetPosition(), 1.0f)};
 
         scene_camera->At(frame_index).SetData(&ubo_camera_data, sizeof(UBOCameraLayout));
 
-        RenderGraph->Execute(frame_index, command_buffer, scene_data.get());
-    }
-
-    void GraphicRenderer::WriteDescriptorSets(std::span<Hardwares::WriteDescriptorSetRequest> requests)
-    {
-        std::vector<VkWriteDescriptorSet> write_descriptor_set_collection = {};
-        for (int i = 0; i < requests.size(); ++i)
+        if (RenderGraph->MarkAsDirty)
         {
-            auto& request = requests[i];
-
-            if (request.DescriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-            {
-                auto        handle      = UniformBufferSetManager.ToHandle(request.Handle);
-                auto&       buffer_set  = UniformBufferSetManager.Access(handle);
-                const auto& buffer_info = buffer_set->At(request.FrameIndex).GetDescriptorBufferInfo();
-
-                if (!buffer_info.buffer)
-                {
-                    continue;
-                }
-                write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = request.DstSet, .dstBinding = request.Binding, .dstArrayElement = request.DstArrayElement, .descriptorCount = request.DescriptorCount, .descriptorType = request.DescriptorType, .pImageInfo = nullptr, .pBufferInfo = &(buffer_info), .pTexelBufferView = nullptr});
-            }
-
-            else if (request.DescriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
-            {
-                auto        handle      = StorageBufferSetManager.ToHandle(request.Handle);
-                auto&       buffer_set  = StorageBufferSetManager.Access(handle);
-                const auto& buffer_info = buffer_set->At(request.FrameIndex).GetDescriptorBufferInfo();
-
-                if (!buffer_info.buffer)
-                {
-                    continue;
-                }
-                write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = request.DstSet, .dstBinding = request.Binding, .dstArrayElement = request.DstArrayElement, .descriptorCount = request.DescriptorCount, .descriptorType = request.DescriptorType, .pImageInfo = nullptr, .pBufferInfo = &(buffer_info), .pTexelBufferView = nullptr});
-            }
-            else if (request.DescriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-            {
-                auto  handle  = Device->GlobalTextures->ToHandle(request.Handle);
-                auto& texture = Device->GlobalTextures->Access(handle);
-
-                if (!texture)
-                {
-                    continue;
-                }
-                const auto& image_info = texture->ImageBuffer->GetDescriptorImageInfo();
-                write_descriptor_set_collection.emplace_back(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = request.DstSet, .dstBinding = request.Binding, .dstArrayElement = request.DstArrayElement, .descriptorCount = request.DescriptorCount, .descriptorType = request.DescriptorType, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-            }
+            RenderGraph->Compile(scene);
+            RenderGraph->MarkAsDirty = false;
         }
-        vkUpdateDescriptorSets(Device->LogicalDevice, write_descriptor_set_collection.size(), write_descriptor_set_collection.data(), 0, nullptr);
+
+        RenderGraph->Execute(frame_index, command_buffer, scene);
     }
 
     VkDescriptorSet GraphicRenderer::GetImguiFrameOutput()
     {
         auto rt_handle = RenderGraph->GetRenderTarget(FrameColorRenderTargetName);
         return ImguiRenderer->UpdateFrameOutput(rt_handle);
-    }
-
-    Buffers::VertexBufferSetHandle GraphicRenderer::CreateVertexBufferSet()
-    {
-        auto handle = VertexBufferSetManager.Create();
-        if (handle)
-        {
-            auto& buffer = VertexBufferSetManager.Access(handle);
-            buffer       = CreateRef<Buffers::VertexBufferSet>(Device, Device->SwapchainImageCount);
-        }
-
-        return handle;
-    }
-
-    Buffers::StorageBufferSetHandle GraphicRenderer::CreateStorageBufferSet()
-    {
-        auto handle = StorageBufferSetManager.Create();
-        if (handle)
-        {
-            auto& buffer = StorageBufferSetManager.Access(handle);
-            buffer       = CreateRef<Buffers::StorageBufferSet>(Device, Device->SwapchainImageCount);
-        }
-        return handle;
-    }
-
-    Buffers::IndirectBufferSetHandle GraphicRenderer::CreateIndirectBufferSet()
-    {
-        auto handle = IndirectBufferSetManager.Create();
-        if (handle)
-        {
-            auto& buffer = IndirectBufferSetManager.Access(handle);
-            buffer       = CreateRef<Buffers::IndirectBufferSet>(Device, Device->SwapchainImageCount);
-        }
-        return handle;
-    }
-
-    Buffers::IndexBufferSetHandle GraphicRenderer::CreateIndexBufferSet()
-    {
-        auto handle = IndexBufferSetManager.Create();
-        if (handle)
-        {
-            auto& buffer = IndexBufferSetManager.Access(handle);
-            buffer       = CreateRef<Buffers::IndexBufferSet>(Device, Device->SwapchainImageCount);
-        }
-        return handle;
-    }
-
-    Buffers::UniformBufferSetHandle GraphicRenderer::CreateUniformBufferSet()
-    {
-        auto handle = UniformBufferSetManager.Create();
-        if (handle)
-        {
-            auto& buffer = UniformBufferSetManager.Access(handle);
-            buffer       = CreateRef<Buffers::UniformBufferSet>(Device, Device->SwapchainImageCount);
-        }
-        return handle;
     }
 
     Helpers::Ref<RenderPasses::RenderPass> GraphicRenderer::CreateRenderPass(const Specifications::RenderPassSpecification& spec)
@@ -231,10 +127,6 @@ namespace ZEngine::Rendering::Renderers
 
     Helpers::Ref<Textures::Texture> GraphicRenderer::CreateTexture(const Specifications::TextureSpecification& spec)
     {
-        auto                buffer_size    = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
-        Buffers::BufferView staging_buffer = Device->CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-        Device->MapAndCopyToMemory(staging_buffer, buffer_size, spec.Data);
-
         uint32_t                                   storage_bit            = spec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;
         uint32_t                                   transfert_bit          = spec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
         uint32_t                                   sampled_bit            = spec.IsUsageSampled ? VK_IMAGE_USAGE_SAMPLED_BIT : 0;
@@ -246,46 +138,52 @@ namespace ZEngine::Rendering::Renderers
         Specifications::Image2DBufferSpecification buffer_spec            = {.Width = spec.Width, .Height = spec.Height, .BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .LayerCount = spec.LayerCount};
 
         buffer_spec.ImageUsage                                            = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
-        Ref<Buffers::Image2DBuffer> image_2d_buffer                       = CreateRef<Buffers::Image2DBuffer>(Device, std::move(buffer_spec));
+        Ref<Hardwares::Image2DBuffer> image_2d_buffer                     = CreateRef<Hardwares::Image2DBuffer>(Device, std::move(buffer_spec));
+
+        auto                          command_buffer                      = Device->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE);
+
+        auto                          image_handle                        = image_2d_buffer->GetHandle();
+        auto&                         image_buffer                        = image_2d_buffer->GetBuffer();
 
         if (spec.PerformTransition)
         {
-            auto command_buffer = Device->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE);
+            Specifications::ImageMemoryBarrierSpecification barrier_spec_0 = {};
+            barrier_spec_0.ImageHandle                                     = image_handle;
+            barrier_spec_0.OldLayout                                       = Specifications::ImageLayout::UNDEFINED;
+            barrier_spec_0.NewLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+            barrier_spec_0.ImageAspectMask                                 = VkImageAspectFlagBits(image_aspect);
+            barrier_spec_0.SourceAccessMask                                = VK_ACCESS_NONE;
+            barrier_spec_0.DestinationAccessMask                           = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier_spec_0.SourceStageMask                                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            barrier_spec_0.DestinationStageMask                            = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            barrier_spec_0.LayerCount                                      = spec.LayerCount;
+            Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
+            command_buffer->TransitionImageLayout(barrier_0);
+
+            if (spec.Data)
             {
-                auto                                            image_handle   = image_2d_buffer->GetHandle();
-                auto&                                           image_buffer   = image_2d_buffer->GetBuffer();
-                Specifications::ImageMemoryBarrierSpecification barrier_spec_0 = {};
-                barrier_spec_0.ImageHandle                                     = image_handle;
-                barrier_spec_0.OldLayout                                       = Specifications::ImageLayout::UNDEFINED;
-                barrier_spec_0.NewLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-                barrier_spec_0.ImageAspectMask                                 = VkImageAspectFlagBits(image_aspect);
-                barrier_spec_0.SourceAccessMask                                = 0;
-                barrier_spec_0.DestinationAccessMask                           = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier_spec_0.SourceStageMask                                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                barrier_spec_0.DestinationStageMask                            = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                barrier_spec_0.LayerCount                                      = spec.LayerCount;
-                Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-
-                command_buffer->TransitionImageLayout(barrier_0);
-                command_buffer->CopyBufferToImage(staging_buffer, image_buffer, spec.Width, spec.Height, spec.LayerCount, barrier_0.GetHandle().newLayout);
-
-                Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
-                barrier_spec_1.ImageHandle                                     = image_handle;
-                barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-                barrier_spec_1.NewLayout                                       = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-                barrier_spec_1.ImageAspectMask                                 = VkImageAspectFlagBits(image_aspect);
-                barrier_spec_1.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier_spec_1.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
-                barrier_spec_1.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                barrier_spec_1.LayerCount                                      = spec.LayerCount;
-                Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
-                command_buffer->TransitionImageLayout(barrier_1);
+                auto       buffer_size    = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
+                BufferView staging_buffer = Device->CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
+                Device->MapAndCopyToMemory(staging_buffer, buffer_size, spec.Data);
+                command_buffer->CopyBufferToImage(staging_buffer, image_2d_buffer->GetBuffer(), spec.Width, spec.Height, spec.LayerCount, barrier_0.GetHandle().newLayout);
+                Device->EnqueueBufferForDeletion(staging_buffer);
             }
-            Device->EnqueueInstantCommandBuffer(command_buffer);
+
+            Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
+            barrier_spec_1.ImageHandle                                     = image_handle;
+            barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+            barrier_spec_1.NewLayout                                       = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            barrier_spec_1.ImageAspectMask                                 = VkImageAspectFlagBits(image_aspect);
+            barrier_spec_1.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier_spec_1.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
+            barrier_spec_1.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            barrier_spec_1.LayerCount                                      = spec.LayerCount;
+            Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
+            command_buffer->TransitionImageLayout(barrier_1);
         }
 
-        Device->EnqueueBufferForDeletion(staging_buffer);
+        Device->EnqueueInstantCommandBuffer(command_buffer);
 
         return CreateRef<Textures::Texture>(spec, std::move(image_2d_buffer));
     }
@@ -317,13 +215,6 @@ namespace ZEngine::Rendering::Renderers
         return CreateTexture(spec);
     }
 
-    Textures::TextureHandle GraphicRenderer::LoadTextureFile(std::string_view filename)
-    {
-        Textures::TextureHandle handle = Device->GlobalTextures->Create();
-        m_resource_loader->EnqueueTextureRequest(filename, handle);
-        return handle;
-    }
-
     // AsyncResourceLoader
     //
     void AsyncResourceLoader::Initialize(GraphicRenderer* renderer)
@@ -331,6 +222,38 @@ namespace ZEngine::Rendering::Renderers
         Renderer = renderer;
         m_buffer_manager.Initialize(Renderer->Device);
         Helpers::ThreadPoolHelper::Submit([this] { Run(); });
+    }
+
+    Textures::TextureHandle AsyncResourceLoader::LoadTextureFile(std::string_view filename)
+    {
+        auto abs_filename = std::filesystem::absolute(filename).string();
+
+        int  w, h, ch;
+        if (!stbi_info(abs_filename.c_str(), &w, &h, &ch))
+        {
+            return {};
+        }
+
+        const std::set<std::string_view>     known_cubmap_file_ext = {".hdr", ".exr"};
+        auto                                 file_ext              = std::filesystem::path(filename).extension().string();
+
+        Specifications::TextureSpecification spec{.Width = (uint32_t) w, .Height = (uint32_t) h, .Format = Specifications::ImageFormat::R8G8B8A8_SRGB};
+
+        if (known_cubmap_file_ext.contains(file_ext))
+        {
+            int face_size   = w / 4;
+
+            spec.IsCubemap  = true;
+            spec.LayerCount = 6;
+            spec.Format     = Specifications::ImageFormat::R32G32B32A32_SFLOAT;
+
+            spec.Width      = face_size;
+            spec.Height     = face_size;
+        }
+
+        Textures::TextureHandle handle = Renderer->Device->GlobalTextures->Add(Renderer->CreateTexture(spec));
+        EnqueueTextureRequest(filename, handle);
+        return handle;
     }
 
     void AsyncResourceLoader::Run()
@@ -351,17 +274,44 @@ namespace ZEngine::Rendering::Renderers
                 UpdateTextureRequest tr;
                 if (m_update_texture_request.Pop(tr))
                 {
-                    auto                                            image_handle = tr.Texture->ImageBuffer->GetHandle();
-                    auto&                                           spec         = tr.Texture->Specification;
-                    uint32_t                                        image_aspect = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+                    auto&    texture      = Renderer->Device->GlobalTextures->Access(tr.Handle);
+                    auto&    spec         = texture->Specification;
+                    auto     image_handle = texture->ImageBuffer->GetHandle();
+                    uint32_t image_aspect = (texture->Specification.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+
+                    if (Renderer->Device->HasSeperateTransfertQueueFamily)
+                    {
+                        Specifications::ImageMemoryBarrierSpecification barrier_spec_0 = {};
+                        barrier_spec_0.ImageHandle                                     = image_handle;
+                        barrier_spec_0.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+                        barrier_spec_0.NewLayout                                       = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+                        barrier_spec_0.ImageAspectMask                                 = VkImageAspectFlagBits(image_aspect);
+                        barrier_spec_0.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
+                        barrier_spec_0.DestinationAccessMask                           = VK_ACCESS_NONE;
+                        barrier_spec_0.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                        barrier_spec_0.DestinationStageMask                            = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+                        barrier_spec_0.LayerCount                                      = spec.LayerCount;
+                        barrier_spec_0.SourceQueueFamily                               = Renderer->Device->TransferFamilyIndex;
+                        barrier_spec_0.DestinationQueueFamily                          = Renderer->Device->GraphicFamilyIndex;
+                        Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
+                        auto                           command_buffer_0 = m_buffer_manager.GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Renderer->Device->CurrentFrameIndex);
+                        {
+                            command_buffer_0->TransitionImageLayout(barrier_0);
+                        }
+                        m_buffer_manager.EndInstantCommandBuffer(command_buffer_0, Renderer->Device);
+                    }
+
+                    VkAccessFlags                                   access_flag  = Renderer->Device->HasSeperateTransfertQueueFamily ? VK_ACCESS_NONE : VK_ACCESS_TRANSFER_WRITE_BIT;
+                    VkPipelineStageFlagBits                         src_stage    = Renderer->Device->HasSeperateTransfertQueueFamily ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
+
                     Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
                     barrier_spec.ImageHandle                                     = image_handle;
                     barrier_spec.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
                     barrier_spec.NewLayout                                       = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
                     barrier_spec.ImageAspectMask                                 = VkImageAspectFlagBits(image_aspect);
-                    barrier_spec.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    barrier_spec.SourceAccessMask                                = access_flag;
                     barrier_spec.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
-                    barrier_spec.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                    barrier_spec.SourceStageMask                                 = src_stage;
                     barrier_spec.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
                     barrier_spec.LayerCount                                      = spec.LayerCount;
                     barrier_spec.SourceQueueFamily                               = Renderer->Device->TransferFamilyIndex;
@@ -374,7 +324,7 @@ namespace ZEngine::Rendering::Renderers
                     }
                     m_buffer_manager.EndInstantCommandBuffer(command_buffer, Renderer->Device);
 
-                    Renderer->Device->GlobalTextures->Update(tr.Handle, std::move(tr.Texture));
+                    Renderer->Device->TextureHandleToUpdates.Enqueue(tr.Handle);
                 }
             }
 
@@ -384,26 +334,14 @@ namespace ZEngine::Rendering::Renderers
                 TextureUploadRequest upload_request;
                 if (m_upload_requests.Pop(upload_request))
                 {
-                    Buffers::BufferView staging_buffer = Renderer->Device->CreateBuffer(upload_request.BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-                    Renderer->Device->MapAndCopyToMemory(staging_buffer, upload_request.BufferSize, upload_request.TextureSpec.Data);
+                    auto&    texture        = Renderer->Device->GlobalTextures->Access(upload_request.Handle);
+                    uint32_t image_aspect   = (texture->Specification.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
-                    /* Create VkImage */
-                    uint32_t                                   storage_bit            = upload_request.TextureSpec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;
-                    uint32_t                                   transfert_bit          = upload_request.TextureSpec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0;
-                    uint32_t                                   sampled_bit            = upload_request.TextureSpec.IsUsageSampled ? VK_IMAGE_USAGE_SAMPLED_BIT : 0;
-                    uint32_t                                   image_aspect           = (upload_request.TextureSpec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-                    uint32_t                                   image_usage_attachment = (upload_request.TextureSpec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-                    VkFormat                                   image_format           = (upload_request.TextureSpec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Renderer->Device->FindDepthFormat() : Specifications::ImageFormatMap[static_cast<uint32_t>(upload_request.TextureSpec.Format)];
-                    Specifications::Image2DBufferSpecification buffer_spec            = {.Width = upload_request.TextureSpec.Width, .Height = upload_request.TextureSpec.Height, .BufferUsageType = upload_request.TextureSpec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .LayerCount = upload_request.TextureSpec.LayerCount};
-                    buffer_spec.ImageUsage                                            = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
-
-                    Ref<Buffers::Image2DBuffer> image_2d_buffer                       = CreateRef<Buffers::Image2DBuffer>(Renderer->Device, std::move(buffer_spec));
-
-                    auto                        command_buffer                        = m_buffer_manager.GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Renderer->Device->CurrentFrameIndex);
+                    auto     command_buffer = m_buffer_manager.GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Renderer->Device->CurrentFrameIndex);
                     {
-                        auto                                            image_handle   = image_2d_buffer->GetHandle();
-                        auto&                                           image_buffer   = image_2d_buffer->GetBuffer();
+                        auto                                            image_handle   = texture->ImageBuffer->GetHandle();
+                        auto&                                           image_buffer   = texture->ImageBuffer->GetBuffer();
+
                         Specifications::ImageMemoryBarrierSpecification barrier_spec_0 = {};
                         barrier_spec_0.ImageHandle                                     = image_handle;
                         barrier_spec_0.OldLayout                                       = Specifications::ImageLayout::UNDEFINED;
@@ -419,17 +357,19 @@ namespace ZEngine::Rendering::Renderers
                         Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
                         command_buffer->TransitionImageLayout(barrier_0);
 
+                        BufferView staging_buffer = Renderer->Device->CreateBuffer(upload_request.BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
+                        Renderer->Device->MapAndCopyToMemory(staging_buffer, upload_request.BufferSize, upload_request.TextureSpec.Data);
                         command_buffer->CopyBufferToImage(staging_buffer, image_buffer, upload_request.TextureSpec.Width, upload_request.TextureSpec.Height, upload_request.TextureSpec.LayerCount, barrier_0.GetHandle().newLayout);
+                        Renderer->Device->EnqueueBufferForDeletion(staging_buffer);
                     }
                     m_buffer_manager.EndInstantCommandBuffer(command_buffer, Renderer->Device, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
-                    UpdateTextureRequest tr = {.Handle = upload_request.Handle, .Texture = CreateRef<Textures::Texture>(std::move(upload_request.TextureSpec), std::move(image_2d_buffer))};
+                    UpdateTextureRequest tr = {.Handle = upload_request.Handle};
 
                     m_update_texture_request.Emplace(std::move(tr));
 
                     /* Cleanup resource */
                     ZENGINE_CLEAR_STD_VECTOR(m_temp_buffer)
-                    Renderer->Device->EnqueueBufferForDeletion(staging_buffer);
                 }
             }
 
@@ -458,11 +398,45 @@ namespace ZEngine::Rendering::Renderers
                         continue;
                     }
 
-                    spec.LayerCount = 6;
-                    spec.Format     = Specifications::ImageFormat::R32G32B32A32_SFLOAT;
-                    channel         = (channel == STBI_rgb) ? STBI_rgb_alpha : channel;
-                    std::vector<float> output_buffer(width * height * channel);
-                    stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, channel);
+                    spec.LayerCount                                = 6;
+                    spec.Format                                    = Specifications::ImageFormat::R32G32B32A32_SFLOAT;
+
+                    bool               perform_convert_rgb_to_rgba = (channel == STBI_rgb);
+
+                    std::vector<float> output_buffer               = {};
+                    if (perform_convert_rgb_to_rgba)
+                    {
+                        size_t total_pixel = width * height;
+                        size_t buffer_size = total_pixel * 4;
+                        output_buffer.resize(buffer_size);
+                        stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, 4);
+
+                        for (int i = 0; i < total_pixel; ++i)
+                        {
+                            int offset = i * 4; // RGBA format (4 channels)
+
+                            if (channel == 1)
+                            {
+                                output_buffer[offset + 3] = 255;
+                            }
+                            else if (channel == 2)
+                            {
+                                output_buffer[offset + 3] = image_data[i * 2 + 1];
+                            }
+                            else if (channel == 3)
+                            {
+                                output_buffer[offset + 3] = 255;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        size_t total_pixel = width * height;
+                        size_t buffer_size = total_pixel * channel;
+                        output_buffer.resize(buffer_size);
+                        Helpers::secure_memset(output_buffer.data(), 0.f, buffer_size, buffer_size);
+                    }
+
                     stbi_image_free((void*) image_data);
 
                     Buffers::Bitmap in             = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};
@@ -478,6 +452,8 @@ namespace ZEngine::Rendering::Renderers
                 }
                 else
                 {
+                    stbi_set_flip_vertically_on_load(1);
+
                     stbi_uc* image_data = stbi_load(file_request.Filename.data(), &width, &height, &channel, STBI_rgb_alpha);
                     if (!image_data)
                     {
@@ -485,11 +461,46 @@ namespace ZEngine::Rendering::Renderers
                         continue;
                     }
 
+                    bool perform_convert_rgb_to_rgba = (channel <= STBI_rgb);
+
+                    if (perform_convert_rgb_to_rgba)
+                    {
+                        size_t total_pixel = width * height;
+                        size_t buffer_size = total_pixel * 4;
+                        m_temp_buffer.resize(buffer_size);
+                        stbir_resize_uint8(image_data, width, height, 0, m_temp_buffer.data(), width, height, 0, 4);
+
+                        for (int i = 0; i < total_pixel; ++i)
+                        {
+                            int offset = i * 4; // RGBA format (4 channels)
+
+                            if (channel == 1)
+                            {
+                                m_temp_buffer[offset + 3] = 255;
+                            }
+                            else if (channel == 2)
+                            {
+                                m_temp_buffer[offset + 3] = image_data[i * 2 + 1];
+                            }
+                            else if (channel == 3)
+                            {
+                                m_temp_buffer[offset + 3] = 255;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        size_t total_pixel = width * height;
+                        size_t buffer_size = total_pixel * channel;
+                        m_temp_buffer.resize(buffer_size, 0);
+                        Helpers::secure_memmove(m_temp_buffer.data(), buffer_size, image_data, buffer_size);
+                    }
+
+                    spec.Width      = width;
+                    spec.Height     = height;
                     spec.LayerCount = 1;
                     spec.Format     = Specifications::ImageFormat::R8G8B8A8_SRGB;
-                    channel         = (channel == STBI_rgb) ? STBI_rgb_alpha : channel;
-                    m_temp_buffer.resize(width * height * channel);
-                    stbir_resize_uint8(image_data, width, height, 0, m_temp_buffer.data(), width, height, 0, channel);
+
                     stbi_image_free(image_data);
                 }
 

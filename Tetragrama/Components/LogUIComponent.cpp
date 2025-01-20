@@ -6,7 +6,7 @@ using namespace ZEngine::Logging;
 
 namespace Tetragrama::Components
 {
-    LogUIComponent::LogUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
+    LogUIComponent::LogUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false)
     {
         Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
     }
@@ -24,7 +24,7 @@ namespace Tetragrama::Components
         }
     }
 
-    void LogUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
+    void LogUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
         ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 

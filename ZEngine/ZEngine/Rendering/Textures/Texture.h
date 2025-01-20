@@ -1,53 +1,32 @@
 #pragma once
 #include <Helpers/HandleManager.h>
-#include <Rendering/Buffers/Image2DBuffer.h>
-#include <Rendering/Specifications/TextureSpecification.h>
+#include <Helpers/IntrusivePtr.h>
+#include <Specifications/TextureSpecification.h>
 #include <vulkan/vulkan.h>
+
+namespace ZEngine::Hardwares
+{
+    struct Image2DBuffer;
+}
 
 namespace ZEngine::Rendering::Textures
 {
     struct Texture : public Helpers::RefCounted
     {
         Texture() = default;
-        Texture(const Specifications::TextureSpecification& spec, const Helpers::Ref<Buffers::Image2DBuffer>& buffer) : Specification(spec), ImageBuffer(buffer)
-        {
-            Width          = spec.Width;
-            Height         = spec.Height;
-            BytePerPixel   = spec.BytePerPixel;
-            BufferSize     = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
-            IsDepthTexture = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
-        }
+        Texture(const Specifications::TextureSpecification& spec, const Helpers::Ref<Hardwares::Image2DBuffer>& buffer);
+        Texture(Specifications::TextureSpecification&& spec, Helpers::Ref<Hardwares::Image2DBuffer>&& buffer);
+        ~Texture();
 
-        Texture(Specifications::TextureSpecification&& spec, Helpers::Ref<Buffers::Image2DBuffer>&& buffer) : Specification(std::move(spec)), ImageBuffer(std::move(buffer))
-        {
-            Width          = spec.Width;
-            Height         = spec.Height;
-            BytePerPixel   = spec.BytePerPixel;
-            BufferSize     = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
-            IsDepthTexture = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
-        }
+        bool                                   IsDepthTexture = false;
+        uint32_t                               Width          = 1;
+        uint32_t                               Height         = 1;
+        uint32_t                               BytePerPixel   = 0;
+        VkDeviceSize                           BufferSize     = 0;
+        Specifications::TextureSpecification   Specification  = {};
+        Helpers::Ref<Hardwares::Image2DBuffer> ImageBuffer    = nullptr;
 
-        bool                                 IsDepthTexture = false;
-        uint32_t                             Width          = 1;
-        uint32_t                             Height         = 1;
-        uint32_t                             BytePerPixel   = 0;
-        VkDeviceSize                         BufferSize     = 0;
-        Specifications::TextureSpecification Specification  = {};
-        Helpers::Ref<Buffers::Image2DBuffer> ImageBuffer    = nullptr;
-
-        ~Texture()
-        {
-            Dispose();
-        }
-
-        void Dispose()
-        {
-            if (ImageBuffer)
-            {
-                ImageBuffer->Dispose();
-                ImageBuffer = nullptr;
-            }
-        }
+        void                                   Dispose();
     };
 
     using TextureRef           = Helpers::Ref<Texture>;

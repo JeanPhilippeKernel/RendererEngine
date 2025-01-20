@@ -1,9 +1,7 @@
 #pragma once
 #include <Buffers/Framebuffer.h>
+#include <Hardwares/VulkanDevice.h>
 #include <Helpers/IntrusivePtr.h>
-#include <Rendering/Buffers/IndexBuffer.h>
-#include <Rendering/Buffers/IndirectBuffer.h>
-#include <Rendering/Buffers/VertexBuffer.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/Scenes/GraphicScene.h>
 #include <Rendering/Specifications/TextureSpecification.h>
@@ -45,11 +43,11 @@ namespace ZEngine::Rendering::Renderers
         bool                                 External = false;
         Specifications::TextureSpecification TextureSpec;
         Textures::TextureHandle              TextureHandle;
-        Buffers::UniformBufferSetHandle      UniformBufferSetHandle;
-        Buffers::StorageBufferSetHandle      StorageBufferSetHandle;
-        Buffers::IndirectBufferSetHandle     IndirectBufferSetHandle;
-        Buffers::VertexBufferSetHandle       VertexBufferSetHandle;
-        Buffers::IndexBufferSetHandle        IndexBufferSetHandle;
+        Hardwares::UniformBufferSetHandle    UniformBufferSetHandle;
+        Hardwares::StorageBufferSetHandle    StorageBufferSetHandle;
+        Hardwares::IndirectBufferSetHandle   IndirectBufferSetHandle;
+        Hardwares::VertexBufferSetHandle     VertexBufferSetHandle;
+        Hardwares::IndexBufferSetHandle      IndexBufferSetHandle;
     };
 
     struct RenderGraphResource
@@ -76,10 +74,10 @@ namespace ZEngine::Rendering::Renderers
 
     struct IRenderGraphCallbackPass : public Helpers::RefCounted
     {
-        virtual void Setup(std::string_view name, RenderGraph* const graph)                                                                                                                                         = 0;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph)                                                                                                                = 0;
-        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph) = 0;
-        virtual void Render(uint32_t frame_index, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Buffers::CommandBuffer* const command_buffer, RenderGraph* const graph)       = 0;
+        virtual void Setup(std::string_view name, RenderGraph* const graph)                                                                                                                                                                                   = 0;
+        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene)                                                                                                            = 0;
+        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph)                                              = 0;
+        virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) = 0;
     };
 
     struct RenderGraphNode
@@ -98,23 +96,24 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph(GraphicRenderer* renderer) : Renderer(renderer), Builder(Helpers::CreateRef<RenderGraphBuilder>(*this)) {}
         ~RenderGraph()                                                  = default;
 
+        bool                                          MarkAsDirty       = false;
         GraphicRenderer*                              Renderer          = nullptr;
         Helpers::Ref<RenderGraphBuilder>              Builder           = nullptr;
         Helpers::Ref<RenderPasses::RenderPassBuilder> RenderPassBuilder = Helpers::CreateRef<RenderPasses::RenderPassBuilder>();
 
         void                                          Setup();
-        void                                          Compile();
-        void                                          Execute(uint32_t frame_index, Buffers::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data);
+        void                                          Compile(Rendering::Scenes::SceneRawData* const scene_data);
+        void                                          Execute(uint32_t frame_index, Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data);
         void                                          Resize(uint32_t width, uint32_t height);
         void                                          Dispose();
         RenderGraphResource&                          GetResource(std::string_view);
         Textures::TextureHandle                       GetRenderTarget(std::string_view);
         Textures::TextureHandle                       GetTexture(std::string_view);
-        Buffers::StorageBufferSetHandle               GetStorageBufferSet(std::string_view);
-        Buffers::VertexBufferSetHandle                GetVertexBufferSet(std::string_view);
-        Buffers::IndexBufferSetHandle                 GetIndexBufferSet(std::string_view);
-        Buffers::UniformBufferSetHandle               GetBufferUniformSet(std::string_view);
-        Buffers::IndirectBufferSetHandle              GetIndirectBufferSet(std::string_view);
+        Hardwares::StorageBufferSetHandle             GetStorageBufferSet(std::string_view);
+        Hardwares::VertexBufferSetHandle              GetVertexBufferSet(std::string_view);
+        Hardwares::IndexBufferSetHandle               GetIndexBufferSet(std::string_view);
+        Hardwares::UniformBufferSetHandle             GetBufferUniformSet(std::string_view);
+        Hardwares::IndirectBufferSetHandle            GetIndirectBufferSet(std::string_view);
         RenderGraphNode&                              GetNode(std::string_view);
         void                                          AddCallbackPass(std::string_view pass_name, const Helpers::Ref<IRenderGraphCallbackPass>& pass_callback, bool enabled = true);
 
@@ -132,8 +131,8 @@ namespace ZEngine::Rendering::Renderers
         RenderGraphResource& CreateTexture(std::string_view name, const Specifications::TextureSpecification& spec);
         RenderGraphResource& CreateTexture(std::string_view name, std::string_view filename);
         RenderGraphResource& CreateRenderTarget(std::string_view name, const Specifications::TextureSpecification& spec);
-        RenderGraphResource& AttachBuffer(std::string_view name, const Buffers::StorageBufferSetHandle& buffer);
-        RenderGraphResource& AttachBuffer(std::string_view name, const Buffers::UniformBufferSetHandle& buffer);
+        RenderGraphResource& AttachBuffer(std::string_view name, const Hardwares::StorageBufferSetHandle& buffer);
+        RenderGraphResource& AttachBuffer(std::string_view name, const Hardwares::UniformBufferSetHandle& buffer);
         RenderGraphResource& AttachTexture(std::string_view name, const Textures::TextureHandle& texture);
         RenderGraphResource& AttachRenderTarget(std::string_view name, const Textures::TextureHandle& texture);
         void                 CreateRenderPassNode(const RenderGraphRenderPassCreation&);

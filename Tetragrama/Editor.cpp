@@ -4,60 +4,51 @@
 #include <Messengers/Messenger.h>
 #include <fmt/format.h>
 
-using namespace Tetragrama::Messengers;
 using namespace ZEngine;
 using namespace ZEngine::Helpers;
+using namespace Tetragrama::Layers;
+using namespace Tetragrama::Messengers;
+using namespace Tetragrama::Controllers;
 
 namespace Tetragrama
 {
-    EditorConfiguration  Editor::s_editor_configuration;
-    Ref<EditorScene>     Editor::s_editor_scene{nullptr};
-    std::recursive_mutex Editor::s_mutex;
-
-    Editor::Editor(const EditorConfiguration& config) : m_engine_configuration()
+    Editor::Editor(const EditorConfiguration& config)
     {
-        m_ui_layer             = CreateRef<Layers::ImguiLayer>();
-        m_render_layer         = CreateRef<Layers::RenderLayer>();
-
-        s_editor_configuration = config;
-        if ((!s_editor_scene) && config.ActiveSceneName.empty())
-        {
-            s_editor_scene = CreateRef<EditorScene>("Empty_Scene");
-        }
-        else if (!config.ActiveSceneName.empty())
-        {
-            s_editor_scene = CreateRef<EditorScene>(config.ActiveSceneName);
-        }
-
-        auto title = config.ProjectName;
-        if (s_editor_scene)
-        {
-            title = fmt::format("{0} - Active Scene : {1}", title, s_editor_scene->GetName());
-        }
-        m_engine_configuration.WindowConfiguration = {.EnableVsync = true, .Title = title, .RenderingLayerCollection = {m_render_layer}, .OverlayLayerCollection = {m_ui_layer}};
-
-        m_window.reset(ZEngine::Windows::Create(m_engine_configuration.WindowConfiguration));
+        Configuration = config;
+        Context       = CreateRef<EditorContext>();
+        CurrentScene  = CreateRef<EditorScene>();
+        UILayer       = CreateRef<ImguiLayer>();
+        CanvasLayer   = CreateRef<RenderLayer>();
     }
 
     Editor::~Editor()
     {
-        m_ui_layer.reset();
-        m_render_layer.reset();
+        UILayer.reset();
+        CanvasLayer.reset();
         m_window.reset();
         ZEngine::Engine::Dispose();
     }
 
     void Editor::Initialize()
     {
-        ZEngine::Engine::Initialize(m_engine_configuration, m_window);
+        if (!Configuration.ActiveSceneName.empty())
+        {
+            CurrentScene->Name = Configuration.ActiveSceneName;
+        }
 
-        MESSENGER_REGISTER(Windows::Layers::Layer, SINGLE_ARG(GenericMessage<std::pair<float, float>>), EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE, m_render_layer.get(), return m_render_layer->SceneRequestResizeMessageHandlerAsync(*message_ptr))
+        Context->ConfigurationPtr                              = &Configuration;
+        Context->CurrentScenePtr                               = CurrentScene.get();
+        Context->CurrentScenePtr->RenderScene->IsDrawDataDirty = true;
 
-        MESSENGER_REGISTER(Windows::Layers::Layer, GenericMessage<bool>, EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, m_render_layer.get(), return m_render_layer->SceneRequestFocusMessageHandlerAsync(*message_ptr))
+        UILayer->ParentContext                                 = reinterpret_cast<void*>(Context.get());
+        CanvasLayer->ParentContext                             = reinterpret_cast<void*>(Context.get());
 
-        MESSENGER_REGISTER(Windows::Layers::Layer, GenericMessage<bool>, EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, m_render_layer.get(), return m_render_layer->SceneRequestUnfocusMessageHandlerAsync(*message_ptr))
+        std::string title                                      = fmt::format("{0} - Active Scene : {1}", Configuration.ProjectName, CurrentScene->Name);
+        m_window.reset(ZEngine::Windows::Create({.EnableVsync = true, .Title = title, .RenderingLayerCollection = {CanvasLayer}, .OverlayLayerCollection = {UILayer}}));
+        CameraController             = CreateRef<EditorCameraController>(m_window, 150.0, 0.f, 45.f);
+        Context->CameraControllerPtr = CameraController.get();
 
-        MESSENGER_REGISTER(Windows::Layers::Layer, SINGLE_ARG(GenericMessage<std::pair<int, int>>), EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, m_render_layer.get(), return m_render_layer->SceneRequestSelectEntityFromPixelMessageHandlerAsync(*message_ptr))
+        ZEngine::Engine::Initialize({}, m_window);
     }
 
     void Editor::Run()
@@ -65,61 +56,22 @@ namespace Tetragrama
         ZEngine::Engine::Run();
     }
 
-    const EditorConfiguration& Editor::GetCurrentEditorConfiguration()
+    void EditorScene::Push(std::string_view mesh, std::string_view model, std::string_view material)
     {
-        return s_editor_configuration;
-    }
+        uint16_t mesh_file_id     = MeshFiles.size();
+        uint16_t model_file_id    = ModelFiles.size();
+        uint16_t material_file_id = MaterialFiles.size();
 
-    Ref<EditorScene> Editor::GetCurrentEditorScene()
-    {
-        {
-            std::unique_lock l(s_mutex);
-            return s_editor_scene;
-        }
-    }
+        MeshFiles.emplace_back(mesh);
+        ModelFiles.emplace_back(model);
+        MaterialFiles.emplace_back(material);
 
-    void Editor::SetCurrentEditorScene(EditorScene&& scene)
-    {
-        {
-            std::unique_lock l(s_mutex);
-            s_editor_scene.reset(new EditorScene(scene));
-        }
-    }
+        std::stringstream ss;
+        ss << mesh_file_id << ":" << model_file_id << ":" << material_file_id;
+        auto hash            = ss.str();
+        Data[hash]           = {.MeshFileIndex = mesh_file_id, .ModelPathIndex = model_file_id, .MaterialPathIndex = material_file_id};
 
-    void EditorScene::AddModel(const Model& m)
-    {
-        {
-            std::lock_guard l(m_mutex);
-            m_models[m.Name]     = m;
-            m_has_pending_change = true;
-        }
-    }
-
-    void EditorScene::AddModel(Model&& m)
-    {
-        {
-            std::lock_guard l(m_mutex);
-            m_models[m.Name]     = std::move(m);
-            m_has_pending_change = true;
-        }
-    }
-
-    void EditorScene::SetName(std::string_view name)
-    {
-        {
-            std::lock_guard l(m_mutex);
-            m_name = name;
-        }
-    }
-
-    std::string_view EditorScene::GetName() const
-    {
-        return m_name;
-    }
-
-    const std::unordered_map<std::string, EditorScene::Model>& EditorScene::GetModels() const
-    {
-        return m_models;
+        m_has_pending_change = true;
     }
 
     bool EditorScene::HasPendingChange() const

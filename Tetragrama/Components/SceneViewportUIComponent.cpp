@@ -6,6 +6,7 @@
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 /**/
+#include <Editor.h>
 #include <ImGuizmo/ImGuizmo.h>
 
 using namespace Tetragrama::Components::Event;
@@ -16,7 +17,7 @@ using namespace ZEngine;
 
 namespace Tetragrama::Components
 {
-    SceneViewportUIComponent::SceneViewportUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false)
+    SceneViewportUIComponent::SceneViewportUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false)
     {
         // ImGuizmo configuration
         ImGuizmo::AllowAxisFlip(false);
@@ -47,13 +48,19 @@ namespace Tetragrama::Components
             }
         }
 
+        auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        if (m_request_renderer_resize)
+        {
+            ctx->CameraControllerPtr->SetViewport(m_viewport_size.x, m_viewport_size.y);
+        }
+
         if (m_is_window_hovered && m_is_window_focused)
         {
-            Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, Messengers::GenericMessage<bool>{true});
+            ctx->CameraControllerPtr->ResumeEventProcessing();
         }
         else
         {
-            Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{false});
+            ctx->CameraControllerPtr->PauseEventProcessing();
         }
 
         if (m_is_window_clicked && m_is_window_hovered && m_is_window_focused)
@@ -64,12 +71,11 @@ namespace Tetragrama::Components
 
             auto mouse_bounded_x  = static_cast<int>(mouse_position.x);
             auto mouse_bounded_y  = static_cast<int>(mouse_position.y);
-            auto message_data     = std::array{mouse_bounded_x, mouse_bounded_y};
-            Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::ArrayValueMessage<int, 2>>(EDITOR_COMPONENT_SCENEVIEWPORT_CLICKED, Messengers::ArrayValueMessage<int, 2>{message_data});
+            // Todo : We should store mouse position...
         }
     }
 
-    void SceneViewportUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
+    void SceneViewportUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
@@ -111,32 +117,27 @@ namespace Tetragrama::Components
         if (m_request_renderer_resize)
         {
             renderer->EnqueuedResizeRequests.Emplace({.Width = (uint32_t) m_viewport_size.x, .Height = (uint32_t) m_viewport_size.y});
-            m_refresh_texture_handle = true;
-
-            Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<std::pair<float, float>>>(
-                EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE,
-                Messengers::GenericMessage<std::pair<float, float>>{
-                {m_viewport_size.x, m_viewport_size.y}
-            });
-
+            m_refresh_texture_handle  = true;
             m_request_renderer_resize = false;
         }
     }
 
-    std::future<void> SceneViewportUIComponent::SceneViewportClickedMessageHandlerAsync(Messengers::ArrayValueMessage<int, 2>& e)
-    {
-        // Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<int, int>>>(
-        //     EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, Messengers::GenericMessage<std::pair<int, int>>{e});
-        co_return;
-    }
+    // std::future<void> SceneViewportUIComponent::SceneViewportClickedMessageHandlerAsync(Messengers::ArrayValueMessage<int, 2>& e)
+    //{
+    //     // Messengers::IMessenger::Send<ZEngine::Layers::Layer, Messengers::GenericMessage<std::pair<int, int>>>(
+    //     //     EDITOR_RENDER_LAYER_SCENE_REQUEST_SELECT_ENTITY_FROM_PIXEL, Messengers::GenericMessage<std::pair<int, int>>{e});
+    //     co_return;
+    // }
 
-    std::future<void> SceneViewportUIComponent::SceneViewportFocusedMessageHandlerAsync(Messengers::GenericMessage<bool>& e)
-    {
-        co_await Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, Messengers::GenericMessage<bool>{e});
-    }
+    // std::future<void> SceneViewportUIComponent::SceneViewportFocusedMessageHandlerAsync(Messengers::GenericMessage<bool>& e)
+    //{
+    //     co_return;
+    //     //co_await Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS, Messengers::GenericMessage<bool>{e});
+    // }
 
-    std::future<void> SceneViewportUIComponent::SceneViewportUnfocusedMessageHandlerAsync(Messengers::GenericMessage<bool>& e)
-    {
-        co_await Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{e});
-    }
+    // std::future<void> SceneViewportUIComponent::SceneViewportUnfocusedMessageHandlerAsync(Messengers::GenericMessage<bool>& e)
+    //{
+    //     co_return;
+    //     //co_await Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<bool>>(EDITOR_RENDER_LAYER_SCENE_REQUEST_UNFOCUS, Messengers::GenericMessage<bool>{e});
+    // }
 } // namespace Tetragrama::Components

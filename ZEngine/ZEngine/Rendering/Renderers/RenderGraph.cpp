@@ -1,13 +1,12 @@
 #include <pch.h>
 #include <GraphicRenderer.h>
-#include <Rendering/Buffers/CommandBuffer.h>
 #include <Rendering/Renderers/RenderGraph.h>
 
 using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Buffers::StorageBufferSetHandle& buffer)
+    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Hardwares::StorageBufferSetHandle& buffer)
     {
         std::string resource_name(name);
 
@@ -18,7 +17,7 @@ namespace ZEngine::Rendering::Renderers
         return m_graph.m_resource_map[resource_name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Buffers::UniformBufferSetHandle& buffer)
+    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Hardwares::UniformBufferSetHandle& buffer)
     {
         std::string resource_name(name);
 
@@ -70,7 +69,7 @@ namespace ZEngine::Rendering::Renderers
 
         m_graph.m_resource_map[resource_name].Name                       = name.data();
         m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::TEXTURE;
-        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = m_graph.Renderer->LoadTextureFile(filename);
+        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = m_graph.Renderer->AsyncLoader->LoadTextureFile(filename);
         return m_graph.m_resource_map[resource_name];
     }
 
@@ -108,19 +107,19 @@ namespace ZEngine::Rendering::Renderers
         switch (type)
         {
             case BufferSetCreationType::INDIRECT:
-                m_graph.m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle = m_graph.Renderer->CreateIndirectBufferSet();
+                m_graph.m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle = m_graph.Renderer->Device->CreateIndirectBufferSet();
                 break;
             case BufferSetCreationType::UNIFORM:
-                m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = m_graph.Renderer->CreateUniformBufferSet();
+                m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = m_graph.Renderer->Device->CreateUniformBufferSet();
                 break;
             case BufferSetCreationType::STORAGE:
-                m_graph.m_resource_map[resource_name].ResourceInfo.StorageBufferSetHandle = m_graph.Renderer->CreateStorageBufferSet();
+                m_graph.m_resource_map[resource_name].ResourceInfo.StorageBufferSetHandle = m_graph.Renderer->Device->CreateStorageBufferSet();
                 break;
             case BufferSetCreationType::INDEX:
-                m_graph.m_resource_map[resource_name].ResourceInfo.IndexBufferSetHandle = m_graph.Renderer->CreateIndexBufferSet();
+                m_graph.m_resource_map[resource_name].ResourceInfo.IndexBufferSetHandle = m_graph.Renderer->Device->CreateIndexBufferSet();
                 break;
             case BufferSetCreationType::VERTEX:
-                m_graph.m_resource_map[resource_name].ResourceInfo.VertexBufferSetHandle = m_graph.Renderer->CreateVertexBufferSet();
+                m_graph.m_resource_map[resource_name].ResourceInfo.VertexBufferSetHandle = m_graph.Renderer->Device->CreateVertexBufferSet();
                 break;
         }
         m_graph.m_resource_map[resource_name].ResourceInfo.External = false;
@@ -135,8 +134,21 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    void RenderGraph::Compile()
+    void RenderGraph::Compile(Rendering::Scenes::SceneRawData* const scene)
     {
+
+        if (MarkAsDirty)
+        {
+            ZENGINE_VALIDATE_ASSERT(!m_sorted_nodes.empty(), "Sorted nodes can't be empty")
+
+            for (std::string_view name : m_sorted_nodes)
+            {
+                auto& node = m_node[name.data()];
+                node.CallbackPass->Compile(node.Handle, this, scene);
+            }
+            return;
+        }
+
         for (auto& pass : m_node)
         {
             for (uint32_t i = 0; i < pass.second.Creation.Inputs.size(); ++i)
@@ -248,7 +260,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            node.CallbackPass->Compile(node.Handle, this);
+            node.CallbackPass->Compile(node.Handle, this, scene);
         }
 
         for (std::string_view name : m_sorted_nodes)
@@ -259,7 +271,7 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    void RenderGraph::Execute(uint32_t frame_index, Buffers::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data)
+    void RenderGraph::Execute(uint32_t frame_index, Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer, "Command Buffer can't be null")
 
@@ -354,8 +366,8 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            node.CallbackPass->Execute(frame_index, scene_data, node.Handle.get(), command_buffer, this);
-            node.CallbackPass->Render(frame_index, node.Handle.get(), node.Framebuffer.get(), command_buffer, this);
+            node.CallbackPass->Execute(frame_index, scene, node.Handle.get(), command_buffer, this);
+            node.CallbackPass->Render(frame_index, scene, node.Handle.get(), node.Framebuffer.get(), command_buffer, this);
         }
     }
 
@@ -389,6 +401,7 @@ namespace ZEngine::Rendering::Renderers
                 resource.ResourceInfo.TextureSpec.Height = height;
                 auto texture                             = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
                 Renderer->Device->GlobalTextures->Update(resource.ResourceInfo.TextureHandle, texture);
+                // Renderer->Device->TextureHandleToUpdates.Enqueue(resource.ResourceInfo.TextureHandle);
                 pass_spec.ExternalOutputs.emplace_back(resource.ResourceInfo.TextureHandle);
             }
 
@@ -445,23 +458,23 @@ namespace ZEngine::Rendering::Renderers
             {
                 if (value.ResourceInfo.StorageBufferSetHandle)
                 {
-                    Renderer->StorageBufferSetManager.Remove(value.ResourceInfo.StorageBufferSetHandle);
+                    Renderer->Device->StorageBufferSetManager.Remove(value.ResourceInfo.StorageBufferSetHandle);
                 }
                 else if (value.ResourceInfo.UniformBufferSetHandle)
                 {
-                    Renderer->UniformBufferSetManager.Remove(value.ResourceInfo.UniformBufferSetHandle);
+                    Renderer->Device->UniformBufferSetManager.Remove(value.ResourceInfo.UniformBufferSetHandle);
                 }
                 else if (value.ResourceInfo.IndirectBufferSetHandle)
                 {
-                    Renderer->IndirectBufferSetManager.Remove(value.ResourceInfo.IndirectBufferSetHandle);
+                    Renderer->Device->IndirectBufferSetManager.Remove(value.ResourceInfo.IndirectBufferSetHandle);
                 }
                 else if (value.ResourceInfo.VertexBufferSetHandle)
                 {
-                    Renderer->VertexBufferSetManager.Remove(value.ResourceInfo.VertexBufferSetHandle);
+                    Renderer->Device->VertexBufferSetManager.Remove(value.ResourceInfo.VertexBufferSetHandle);
                 }
                 else if (value.ResourceInfo.IndexBufferSetHandle)
                 {
-                    Renderer->IndexBufferSetManager.Remove(value.ResourceInfo.IndexBufferSetHandle);
+                    Renderer->Device->IndexBufferSetManager.Remove(value.ResourceInfo.IndexBufferSetHandle);
                 }
             }
         }
@@ -520,7 +533,7 @@ namespace ZEngine::Rendering::Renderers
         return output;
     }
 
-    Buffers::StorageBufferSetHandle RenderGraph::GetStorageBufferSet(std::string_view name)
+    Hardwares::StorageBufferSetHandle RenderGraph::GetStorageBufferSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
@@ -530,7 +543,7 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name].ResourceInfo.StorageBufferSetHandle;
     }
 
-    Buffers::VertexBufferSetHandle RenderGraph::GetVertexBufferSet(std::string_view name)
+    Hardwares::VertexBufferSetHandle RenderGraph::GetVertexBufferSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
@@ -540,7 +553,7 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name].ResourceInfo.VertexBufferSetHandle;
     }
 
-    Buffers::IndexBufferSetHandle RenderGraph::GetIndexBufferSet(std::string_view name)
+    Hardwares::IndexBufferSetHandle RenderGraph::GetIndexBufferSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
@@ -550,7 +563,7 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name].ResourceInfo.IndexBufferSetHandle;
     }
 
-    Buffers::UniformBufferSetHandle RenderGraph::GetBufferUniformSet(std::string_view name)
+    Hardwares::UniformBufferSetHandle RenderGraph::GetBufferUniformSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))
@@ -560,7 +573,7 @@ namespace ZEngine::Rendering::Renderers
         return m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle;
     }
 
-    Buffers::IndirectBufferSetHandle RenderGraph::GetIndirectBufferSet(std::string_view name)
+    Hardwares::IndirectBufferSetHandle RenderGraph::GetIndirectBufferSet(std::string_view name)
     {
         std::string resource_name(name);
         if (!m_resource_map.contains(resource_name))

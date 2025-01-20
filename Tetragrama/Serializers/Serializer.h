@@ -6,12 +6,12 @@
 #include <mutex>
 #include <string>
 
-#define REPORT_PROGRESS(value)          \
-    {                                   \
-        if (m_progress_callback)        \
-        {                               \
-            m_progress_callback(value); \
-        }                               \
+#define REPORT_PROGRESS(ctx, value)          \
+    {                                        \
+        if (m_progress_callback)             \
+        {                                    \
+            m_progress_callback(ctx, value); \
+        }                                    \
     }
 
 namespace Tetragrama::Serializers
@@ -20,11 +20,11 @@ namespace Tetragrama::Serializers
     struct Serializer : public ZEngine::Helpers::RefCounted
     {
     protected:
-        typedef void (*on_serializer_complete_fn)(void);
-        typedef void (*on_serializer_deserialize_complete_fn)(TSerializerData&& data);
-        typedef void (*on_serializer_progress_fn)(float progress);
-        typedef void (*on_serializer_error_fn)(std::string_view error_message);
-        typedef void (*on_serializer_log_fn)(std::string_view log_message);
+        typedef void (*on_serializer_complete_fn)(void* const);
+        typedef void (*on_serializer_deserialize_complete_fn)(void* const, TSerializerData&& data);
+        typedef void (*on_serializer_progress_fn)(void* const, float progress);
+        typedef void (*on_serializer_error_fn)(void* const, std::string_view error_message);
+        typedef void (*on_serializer_log_fn)(void* const, std::string_view log_message);
 
         on_serializer_deserialize_complete_fn m_deserialize_complete_callback{nullptr};
         on_serializer_complete_fn             m_complete_callback{nullptr};
@@ -39,6 +39,8 @@ namespace Tetragrama::Serializers
 
     public:
         virtual ~Serializer() = default;
+
+        void*        Context  = nullptr;
 
         virtual void SetOnCompleteCallback(on_serializer_complete_fn callback)
         {

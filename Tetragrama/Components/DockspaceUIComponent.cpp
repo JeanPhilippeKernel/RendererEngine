@@ -21,12 +21,16 @@ namespace Tetragrama::Components
     std::string DockspaceUIComponent::s_asset_importer_report_msg         = "";
     float       DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
 
-    DockspaceUIComponent::DockspaceUIComponent(std::string_view name, bool visibility) : UIComponent(name, visibility, false), m_asset_importer(CreateScope<Importers::AssimpImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>())
+    DockspaceUIComponent::DockspaceUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false), m_asset_importer(CreateScope<Importers::AssimpImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>())
     {
         m_dockspace_node_flag          = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
         m_window_flags                 = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
-        const auto& editor_config      = Editor::GetCurrentEditorConfiguration();
+        auto context                   = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        m_editor_serializer->Context   = context;
+        m_asset_importer->Context      = context;
+
+        const auto& editor_config      = *context->ConfigurationPtr;
 
         m_default_import_configuration = {.OutputModelFilePath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath), .OutputMeshFilePath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath), .OutputTextureFilesPath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.DefaultImportTexturePath), .OutputMaterialsPath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath)};
 
@@ -52,21 +56,13 @@ namespace Tetragrama::Components
         m_asset_importer->SetOnProgressCallback(OnAssetImporterProgress);
         m_asset_importer->SetOnLogCallback(OnAssetImporterLog);
         m_asset_importer->SetOnErrorCallback(OnAssetImporterError);
-
-        auto scene_fullname = fmt::format("{0}/{1}/{2}.zescene", editor_config.WorkingSpacePath, editor_config.ScenePath, editor_config.ActiveSceneName);
-
-#ifdef _WIN32
-        std::replace(scene_fullname.begin(), scene_fullname.end(), '/', '\\'); // Todo : Move this replace into an helper function....
-#endif                                                                         // _WIN32
-
-        m_editor_serializer->Deserialize(scene_fullname);
     }
 
     DockspaceUIComponent::~DockspaceUIComponent() {}
 
     void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
-    void DockspaceUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
+    void DockspaceUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->Pos);
@@ -123,6 +119,12 @@ namespace Tetragrama::Components
         RenderSaveSceneAs();
 
         ImGui::End();
+
+        auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        if (ctx->CurrentScenePtr && ctx->CurrentScenePtr->RenderScene->IsDrawDataDirty)
+        {
+            ctx->CurrentScenePtr->RenderScene->InitOrResetDrawBuffer(renderer->Device, renderer->RenderGraph.get(), renderer->AsyncLoader.get());
+        }
     }
 
     void DockspaceUIComponent::RenderImporter()
@@ -299,9 +301,9 @@ namespace Tetragrama::Components
 
             if (ImGui::Button("Save", ImVec2(80, 0)) && is_save_button_enabled)
             {
-                auto active_scene = Editor::GetCurrentEditorScene();
-                active_scene->SetName(s_save_as_input_buffer);
-                m_editor_serializer->Serialize(active_scene);
+                auto context                   = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+                context->CurrentScenePtr->Name = s_save_as_input_buffer;
+                m_editor_serializer->Serialize(context->CurrentScenePtr);
 
                 m_open_save_scene_as          = false;
                 m_open_save_scene             = true;
@@ -334,7 +336,8 @@ namespace Tetragrama::Components
 
         m_pending_shutdown = true;
 
-        auto current_scene = Editor::GetCurrentEditorScene();
+        auto context       = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        auto current_scene = context->CurrentScenePtr;
         if (!current_scene->HasPendingChange())
         {
             Helpers::UIDispatcher::RunAsync([this] { OnExitAsync(); });
@@ -348,7 +351,7 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginPopupModal(str_id, NULL, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::Text(fmt::format("You have unsaved changes for your current scene : {}", current_scene->GetName()).c_str());
+            ImGui::Text(fmt::format("You have unsaved changes for your current scene : {}", current_scene->Name).c_str());
             ImGui::Separator();
 
             if (ImGui::Button("Save", ImVec2(120, 0)))
@@ -357,7 +360,7 @@ namespace Tetragrama::Components
                 m_open_exit       = false;
                 ImGui::CloseCurrentPopup();
 
-                m_editor_serializer->Serialize(Editor::GetCurrentEditorScene());
+                m_editor_serializer->Serialize(current_scene);
             }
             ImGui::SetItemDefaultFocus();
             ImGui::SameLine();
@@ -391,17 +394,16 @@ namespace Tetragrama::Components
         ZEngine::Helpers::secure_memset(s_save_as_input_buffer, 0, IM_ARRAYSIZE(s_save_as_input_buffer), IM_ARRAYSIZE(s_save_as_input_buffer));
     }
 
-    void DockspaceUIComponent::OnAssetImporterComplete(Importers::ImporterData&& data)
+    void DockspaceUIComponent::OnAssetImporterComplete(void* const context, Importers::ImporterData&& data)
     {
         s_asset_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
         s_asset_importer_report_msg       = "Completed";
 
-        auto editor_scene                 = Editor::GetCurrentEditorScene();
-        auto editor_config                = Editor::GetCurrentEditorConfiguration();
+        auto context_ptr                  = reinterpret_cast<EditorContext*>(context);
         /*
          * Removing the WorkingSpace Path
          */
-        auto ws                           = editor_config.WorkingSpacePath + "\\";
+        auto ws                           = context_ptr->ConfigurationPtr->WorkingSpacePath + "\\";
         if (data.SerializedMeshesPath.find(ws) != std::string::npos)
         {
             data.SerializedMeshesPath.replace(data.SerializedMeshesPath.find(ws), ws.size(), "");
@@ -416,27 +418,28 @@ namespace Tetragrama::Components
         {
             data.SerializedModelPath.replace(data.SerializedModelPath.find(ws), ws.size(), "");
         }
-        editor_scene->AddModel({.Name = data.Name, .MeshesPath = data.SerializedMeshesPath, .MaterialsPath = data.SerializedMaterialsPath, .ModelPath = data.SerializedModelPath});
+
+        context_ptr->CurrentScenePtr->Push(data.SerializedMeshesPath, data.SerializedModelPath, data.SerializedMaterialsPath);
     }
 
-    void DockspaceUIComponent::OnAssetImporterProgress(float value)
+    void DockspaceUIComponent::OnAssetImporterProgress(void* const context, float value)
     {
         s_asset_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
         s_asset_importer_report_msg       = fmt::format("Reading file: {:.1f} %%", (value * 100.f));
     }
 
-    void DockspaceUIComponent::OnAssetImporterError(std::string_view msg)
+    void DockspaceUIComponent::OnAssetImporterError(void* const, std::string_view msg)
     {
         s_asset_importer_report_msg_color = {1.0f, 0.0f, 0.0f, 1.0f};
         s_asset_importer_report_msg       = msg;
     }
 
-    void DockspaceUIComponent::OnEditorSceneSerializerError(std::string_view msg)
+    void DockspaceUIComponent::OnEditorSceneSerializerError(void* const, std::string_view msg)
     {
         ZENGINE_CORE_ERROR("{}", msg)
     }
 
-    void DockspaceUIComponent::OnAssetImporterLog(std::string_view msg)
+    void DockspaceUIComponent::OnAssetImporterLog(void* const, std::string_view msg)
     {
         s_asset_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
         s_asset_importer_report_msg       = msg;
@@ -465,7 +468,13 @@ namespace Tetragrama::Components
                 {
                     m_open_save_scene             = true;
                     m_request_save_scene_ui_close = true;
-                    Helpers::UIDispatcher::RunAsync([this] { m_editor_serializer->Serialize(Editor::GetCurrentEditorScene()); });
+                    Helpers::UIDispatcher::RunAsync([this] {
+                        if (ParentLayer->ParentContext)
+                        {
+                            auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+                            m_editor_serializer->Serialize(ctx->CurrentScenePtr);
+                        }
+                    });
                 }
 
                 ImGui::MenuItem("Save As...", NULL, &m_open_save_scene_as);
@@ -488,45 +497,26 @@ namespace Tetragrama::Components
         }
     }
 
-    void DockspaceUIComponent::OnEditorSceneSerializerProgress(float value)
+    void DockspaceUIComponent::OnEditorSceneSerializerProgress(void* const, float value)
     {
         s_editor_scene_serializer_progress = value;
     }
 
-    void DockspaceUIComponent::OnEditorSceneSerializerComplete() {}
+    void DockspaceUIComponent::OnEditorSceneSerializerComplete(void* const) {}
 
-    void DockspaceUIComponent::OnEditorSceneSerializerDeserializeComplete(EditorScene&& scene)
+    void DockspaceUIComponent::OnEditorSceneSerializerDeserializeComplete(void* const context, EditorScene&& scene)
     {
-        ZENGINE_CORE_INFO("Scene {} loaded successfully", scene.GetName())
+        auto ctx                            = reinterpret_cast<EditorContext*>(context);
 
-        ZEngine::Rendering::Scenes::GraphicScene::SetRootNodeName(scene.GetName());
+        // Todo : Ensure no data race on CurrentScenePtr
+        ctx->CurrentScenePtr->Name          = scene.Name;
+        ctx->CurrentScenePtr->Data          = scene.Data;
+        ctx->CurrentScenePtr->MeshFiles     = scene.MeshFiles;
+        ctx->CurrentScenePtr->ModelFiles    = scene.ModelFiles;
+        ctx->CurrentScenePtr->MaterialFiles = scene.MaterialFiles;
+        ctx->CurrentScenePtr->RenderScene   = scene.RenderScene;
 
-        const auto&                                           config       = Editor::GetCurrentEditorConfiguration();
-        const auto&                                           scene_models = scene.GetModels();
-
-        std::vector<ZEngine::Rendering::Scenes::SceneRawData> scene_data;
-        for (auto& [_, model] : scene_models)
-        {
-            auto model_path    = fmt::format("{0}/{1}", config.WorkingSpacePath, model.ModelPath);
-            auto mesh_path     = fmt::format("{0}/{1}", config.WorkingSpacePath, model.MeshesPath);
-            auto material_path = fmt::format("{0}/{1}", config.WorkingSpacePath, model.MaterialsPath);
-
-#ifdef _WIN32
-            std::replace(model_path.begin(), model_path.end(), '/', '\\');
-            std::replace(mesh_path.begin(), mesh_path.end(), '/', '\\');
-            std::replace(material_path.begin(), material_path.end(), '/', '\\');
-#endif // _WIN32
-
-            auto import_data = Importers::IAssetImporter::DeserializeImporterData(model_path, mesh_path, material_path);
-            scene_data.push_back(import_data.Scene);
-        }
-
-        if (!scene_data.empty())
-        {
-            ZEngine::Rendering::Scenes::GraphicScene::Merge(scene_data);
-        }
-
-        Editor::SetCurrentEditorScene(std::move(scene));
+        ZENGINE_CORE_INFO("Scene {} deserialized successfully", ctx->CurrentScenePtr->Name)
     }
 
     std::future<void> DockspaceUIComponent::OnNewSceneAsync()
@@ -539,11 +529,14 @@ namespace Tetragrama::Components
         if (ParentLayer)
         {
             auto                          window         = ParentLayer->GetAttachedWindow();
-            std::vector<std::string_view> filters        = {"."};
+            std::vector<std::string_view> filters        = {".zescene"};
             std::string                   scene_filename = co_await window->OpenFileDialogAsync(filters);
 
             if (!scene_filename.empty())
             {
+#ifdef _WIN32
+                std::replace(scene_filename.begin(), scene_filename.end(), '/', '\\'); // Todo : Move this replace into an helper function....
+#endif
                 m_editor_serializer->Deserialize(scene_filename);
             }
         }

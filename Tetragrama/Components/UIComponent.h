@@ -15,7 +15,7 @@ namespace Tetragrama::Components
     struct UIComponent : public ZEngine::Core::IRenderable, public ZEngine::Core::IUpdatable, public ZEngine::Helpers::RefCounted
     {
         UIComponent() = default;
-        UIComponent(std::string_view name, bool visibility, bool can_be_closed) : Name(name.data()), IsVisible(visibility), CanBeClosed(can_be_closed) {}
+        UIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility, bool can_be_closed) : ParentLayer(parent), Name(name.data()), IsVisible(visibility), CanBeClosed(can_be_closed) {}
         virtual ~UIComponent()                        = default;
 
         bool                            IsVisible     = true;

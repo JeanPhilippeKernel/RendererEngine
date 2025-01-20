@@ -39,4 +39,6 @@
         collection.shrink_to_fit();          \
     }
 
-#define SINGLE_ARG(...) __VA_ARGS__
+#define SINGLE_ARG(...)     __VA_ARGS__
+
+#define MAX_FILE_PATH_COUNT 256

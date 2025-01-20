@@ -371,7 +371,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer)
+    void EditorWindow::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
         for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
         {

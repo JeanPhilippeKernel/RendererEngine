@@ -28,46 +28,21 @@ namespace Tetragrama::Layers
     {
         NodeHierarchies.reserve(10);
 
-        auto dockspace_cmp           = CreateRef<Components::DockspaceUIComponent>();
-        auto scene_cmp               = CreateRef<Components::SceneViewportUIComponent>();
-        auto editor_log_cmp          = CreateRef<Components::LogUIComponent>();
-        auto demo_cmp                = CreateRef<Components::DemoUIComponent>();
-        auto project_view_cmp        = CreateRef<Components::ProjectViewUIComponent>();
-        auto inspector_view_cmp      = CreateRef<Components::InspectorViewUIComponent>();
-        auto hierarchy_view_cmp      = CreateRef<Components::HierarchyViewUIComponent>();
+        auto dockspace_cmp           = CreateRef<Components::DockspaceUIComponent>(this);
+        auto scene_cmp               = CreateRef<Components::SceneViewportUIComponent>(this);
+        auto editor_log_cmp          = CreateRef<Components::LogUIComponent>(this);
+        auto demo_cmp                = CreateRef<Components::DemoUIComponent>(this);
+        auto project_view_cmp        = CreateRef<Components::ProjectViewUIComponent>(this);
+        auto inspector_view_cmp      = CreateRef<Components::InspectorViewUIComponent>(this);
+        auto hierarchy_view_cmp      = CreateRef<Components::HierarchyViewUIComponent>(this);
 
         dockspace_cmp->Children      = {scene_cmp.get(), editor_log_cmp.get(), demo_cmp.get(), project_view_cmp.get(), inspector_view_cmp.get(), hierarchy_view_cmp.get()};
         dockspace_cmp->ChildrenCount = dockspace_cmp->Children.size();
 
         AddUIComponent(dockspace_cmp.get(), -1, 0);
-
-        /*
-         *  Register Scene Component
-         */
-        IMessenger::Register<Components::UIComponent, GenericMessage<bool>>(scene_cmp.get(), EDITOR_COMPONENT_SCENEVIEWPORT_FOCUSED, [=](void* const message) -> std::future<void> {
-            auto message_ptr = reinterpret_cast<GenericMessage<bool>*>(message);
-            return scene_cmp->SceneViewportFocusedMessageHandlerAsync(*message_ptr);
-        });
-
-        IMessenger::Register<Components::UIComponent, ArrayValueMessage<int, 2>>(scene_cmp.get(), EDITOR_COMPONENT_SCENEVIEWPORT_CLICKED, [=](void* const message) -> std::future<void> {
-            auto message_ptr = reinterpret_cast<ArrayValueMessage<int, 2>*>(message);
-            return scene_cmp->SceneViewportClickedMessageHandlerAsync(*message_ptr);
-        });
-        /*
-         *  Register Hierarchy Component
-         */
-        IMessenger::Register<Components::UIComponent, GenericMessage<Ref<Controllers::EditorCameraController>>>(hierarchy_view_cmp.get(), EDITOR_RENDER_LAYER_CAMERA_CONTROLLER_AVAILABLE, [=](void* const message) -> std::future<void> {
-            auto message_ptr = reinterpret_cast<GenericMessage<Ref<Controllers::EditorCameraController>>*>(message);
-            return hierarchy_view_cmp->EditorCameraAvailableMessageHandlerAsync(*message_ptr);
-        });
         /*
          *  Register Inspector Component
          */
-        IMessenger::Register<Components::UIComponent, GenericMessage<bool>>(inspector_view_cmp.get(), EDITOR_COMPONENT_INSPECTORVIEW_REQUEST_RESUME_OR_PAUSE_RENDER, [=](void* const message) -> std::future<void> {
-            auto message_ptr = reinterpret_cast<GenericMessage<bool>*>(message);
-            return inspector_view_cmp->RequestStartOrPauseRenderMessageHandlerAsync(*message_ptr);
-        });
-
         IMessenger::Register<Components::UIComponent, GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>>(inspector_view_cmp.get(), EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, [=](void* const message) -> std::future<void> {
             auto message_ptr = reinterpret_cast<GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>*>(message);
             return inspector_view_cmp->SceneEntitySelectedMessageHandlerAsync(*message_ptr);
@@ -81,11 +56,6 @@ namespace Tetragrama::Layers
         IMessenger::Register<Components::UIComponent, EmptyMessage>(inspector_view_cmp.get(), EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, [=](void* const message) -> std::future<void> {
             auto message_ptr = reinterpret_cast<EmptyMessage*>(message);
             return inspector_view_cmp->SceneEntityDeletedMessageHandlerAsync(*message_ptr);
-        });
-
-        IMessenger::Register<Components::UIComponent, GenericMessage<Ref<ZEngine::Rendering::Scenes::GraphicScene>>>(inspector_view_cmp.get(), EDITOR_RENDER_LAYER_SCENE_AVAILABLE, [=](void* const message) -> std::future<void> {
-            auto message_ptr = reinterpret_cast<GenericMessage<Ref<ZEngine::Rendering::Scenes::GraphicScene>>*>(message);
-            return inspector_view_cmp->SceneAvailableMessageHandlerAsync(*message_ptr);
         });
     }
 
@@ -232,8 +202,11 @@ namespace Tetragrama::Layers
             return;
         }
 
-        auto node_id              = AddNode(cmp, parent, depth);
-        cmp->ParentLayer          = this;
+        auto node_id = AddNode(cmp, parent, depth);
+        if (!cmp->ParentLayer)
+        {
+            cmp->ParentLayer = this;
+        }
         NodeUIComponents[node_id] = cmp;
         for (int i = 0; i < cmp->ChildrenCount; ++i)
         {
@@ -335,7 +308,7 @@ namespace Tetragrama::Layers
         return false;
     }
 
-    void ImguiLayer::Render(Rendering::Renderers::GraphicRenderer* const renderer, Rendering::Buffers::CommandBuffer* const command_buffer)
+    void ImguiLayer::Render(Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
         for (auto& id : NodeToRender)
         {

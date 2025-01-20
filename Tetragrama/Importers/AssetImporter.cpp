@@ -1,8 +1,13 @@
 #include <pch.h>
+#include <Helpers/SerializerCommonHelper.h>
 #include <IAssetImporter.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <fmt/format.h>
 
 namespace fs = std::filesystem;
+
+using namespace Tetragrama::Helpers;
+using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Importers
 {
@@ -41,13 +46,112 @@ namespace Tetragrama::Importers
             /*
              * Normalize file naming
              */
-            std::vector<std::string> source_file_fullnames = {};
-            source_file_fullnames.reserve(importer_data.Scene.Files.size());
-            std::transform(std::begin(importer_data.Scene.Files), std::end(importer_data.Scene.Files), std::back_inserter(source_file_fullnames), [&config](std::string_view file) { return fmt::format("{0}/{1}", config.InputBaseAssetFilePath, file); });
+            auto dst_dir            = fmt::format("{0}/{1}", config.OutputTextureFilesPath, config.AssetFilename);
 
-            std::vector<std::string> destination_file_fullnames = {};
-            destination_file_fullnames.reserve(importer_data.Scene.Files.size());
-            std::transform(std::begin(importer_data.Scene.Files), std::end(importer_data.Scene.Files), std::back_inserter(destination_file_fullnames), [&config](std::string_view file) { return fmt::format("{0}/{1}/{2}", config.OutputTextureFilesPath, config.AssetFilename, file); });
+            auto create_base_dir_fn = [](std::string_view filename) -> void {
+                auto            base_dir = fs::absolute(filename).parent_path();
+
+                std::error_code err      = {};
+                if (!fs::exists(base_dir))
+                {
+                    fs::create_directories(base_dir, err);
+                }
+            };
+
+            std::vector<std::string> src_tex_files = {};
+            std::vector<std::string> dst_tex_files = {};
+            for (auto& mat_file : importer_data.Scene.MaterialFiles)
+            {
+                if (!std::string_view(mat_file.AlbedoTexture).empty())
+                {
+                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath, mat_file.AlbedoTexture);
+                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.AlbedoTexture);
+                    create_base_dir_fn(dst_file);
+
+                    ZEngine::Helpers::secure_strcpy(mat_file.AlbedoTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
+
+                    src_tex_files.emplace_back(src_file);
+                    dst_tex_files.emplace_back(dst_file);
+                }
+
+                if (!std::string_view(mat_file.EmissiveTexture).empty())
+                {
+                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath, mat_file.EmissiveTexture);
+                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.EmissiveTexture);
+
+                    create_base_dir_fn(dst_file);
+
+                    ZEngine::Helpers::secure_strcpy(mat_file.EmissiveTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
+
+                    src_tex_files.emplace_back(src_file);
+                    dst_tex_files.emplace_back(dst_file);
+                }
+
+                if (!std::string_view(mat_file.NormalTexture).empty())
+                {
+                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath, mat_file.NormalTexture);
+                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.NormalTexture);
+
+                    create_base_dir_fn(dst_file);
+                    ZEngine::Helpers::secure_strcpy(mat_file.NormalTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
+
+                    src_tex_files.emplace_back(src_file);
+                    dst_tex_files.emplace_back(dst_file);
+                }
+
+                if (!std::string_view(mat_file.OpacityTexture).empty())
+                {
+                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath, mat_file.OpacityTexture);
+                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.OpacityTexture);
+
+                    create_base_dir_fn(dst_file);
+
+                    ZEngine::Helpers::secure_strcpy(mat_file.OpacityTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
+
+                    src_tex_files.emplace_back(src_file);
+                    dst_tex_files.emplace_back(dst_file);
+                }
+
+                if (!std::string_view(mat_file.SpecularTexture).empty())
+                {
+                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath, mat_file.SpecularTexture);
+                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.SpecularTexture);
+
+                    create_base_dir_fn(dst_file);
+
+                    ZEngine::Helpers::secure_strcpy(mat_file.SpecularTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
+
+                    src_tex_files.emplace_back(src_file);
+                    dst_tex_files.emplace_back(dst_file);
+                }
+            }
+            /*
+             * Texture files processing
+             *  (1) Ensuring Scene sub-dir is created
+             *  (2) Copying files to destination
+             */
+
+            ZENGINE_VALIDATE_ASSERT(src_tex_files.size() == dst_tex_files.size(), "source files count can't be diff of destination files count")
+            for (int i = 0; i < src_tex_files.size(); ++i)
+            {
+                auto          src = fs::absolute(src_tex_files[i]);
+                auto          dst = fs::absolute(dst_tex_files[i]);
+
+                std::ifstream in(src.c_str(), std::ios::binary);
+                std::ofstream out(dst.c_str(), std::ios::binary);
+
+                if (!in.is_open() || !out.is_open())
+                {
+                    in.close();
+                    out.close();
+                    continue;
+                }
+
+                out << in.rdbuf();
+
+                in.close();
+                out.close();
+            }
 
             std::string   fullname_path = fmt::format("{0}/{1}.zematerials", config.OutputMaterialsPath, config.AssetFilename);
             std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
@@ -60,44 +164,18 @@ namespace Tetragrama::Importers
                 out.write(reinterpret_cast<const char*>(&material_total_count), sizeof(size_t));
                 out.write(reinterpret_cast<const char*>(importer_data.Scene.Materials.data()), sizeof(ZEngine::Rendering::Meshes::MeshMaterial) * material_total_count);
 
-                SerializeStringArrayData(out, destination_file_fullnames);
+                size_t mat_file_count = importer_data.Scene.MaterialFiles.size();
+                out.write(reinterpret_cast<const char*>(&mat_file_count), sizeof(size_t));
+                for (auto& mat_file : importer_data.Scene.MaterialFiles)
+                {
+                    Tetragrama::Helpers::SerializeStringData(out, mat_file.AlbedoTexture);
+                    Tetragrama::Helpers::SerializeStringData(out, mat_file.EmissiveTexture);
+                    Tetragrama::Helpers::SerializeStringData(out, mat_file.NormalTexture);
+                    Tetragrama::Helpers::SerializeStringData(out, mat_file.OpacityTexture);
+                    Tetragrama::Helpers::SerializeStringData(out, mat_file.SpecularTexture);
+                }
             }
             out.close();
-
-            /*
-             * Texture files processing
-             *  (1) Ensuring Scene sub-dir is created
-             *  (2) Copying files to destination
-             */
-            for (int i = 0; i < importer_data.Scene.Files.size(); ++i)
-            {
-                std::string_view source = source_file_fullnames[i];
-                std::string_view dest   = destination_file_fullnames[i];
-
-                {
-                    std::error_code err;
-                    auto            destination_base_dir = fs::path(dest).parent_path();
-                    if (!fs::exists(destination_base_dir))
-                    {
-                        fs::create_directories(destination_base_dir, err);
-                    }
-                }
-
-                std::ifstream in_file(source.data(), std::ios::binary);
-                std::ofstream out_file(dest.data(), std::ios::binary);
-
-                if (!in_file.is_open() || !out_file.is_open())
-                {
-                    in_file.close();
-                    out_file.close();
-                    continue;
-                }
-
-                out_file << in_file.rdbuf();
-
-                in_file.close();
-                out_file.close();
-            }
 
             importer_data.SerializedMaterialsPath = fullname_path;
         }
@@ -111,55 +189,28 @@ namespace Tetragrama::Importers
             {
                 out.seekp(std::ios::beg);
 
-                size_t local_transform_count = importer_data.Scene.LocalTransformCollection.size();
+                size_t local_transform_count = importer_data.Scene.LocalTransforms.size();
                 out.write(reinterpret_cast<const char*>(&local_transform_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.LocalTransformCollection.data()), sizeof(glm::mat4) * local_transform_count);
+                out.write(reinterpret_cast<const char*>(importer_data.Scene.LocalTransforms.data()), sizeof(glm::mat4) * local_transform_count);
 
-                size_t gobal_transform_count = importer_data.Scene.GlobalTransformCollection.size();
+                size_t gobal_transform_count = importer_data.Scene.GlobalTransforms.size();
                 out.write(reinterpret_cast<const char*>(&gobal_transform_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.GlobalTransformCollection.data()), sizeof(glm::mat4) * gobal_transform_count);
+                out.write(reinterpret_cast<const char*>(importer_data.Scene.GlobalTransforms.data()), sizeof(glm::mat4) * gobal_transform_count);
 
-                size_t node_hierarchy_count = importer_data.Scene.NodeHierarchyCollection.size();
+                size_t node_hierarchy_count = importer_data.Scene.NodeHierarchies.size();
                 out.write(reinterpret_cast<const char*>(&node_hierarchy_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.NodeHierarchyCollection.data()), sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
+                out.write(reinterpret_cast<const char*>(importer_data.Scene.NodeHierarchies.data()), sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
 
-                SerializeStringArrayData(out, importer_data.Scene.Names);
-                SerializeStringArrayData(out, importer_data.Scene.MaterialNames);
-                SerializeMapData(out, importer_data.Scene.NodeNames);
-                SerializeMapData(out, importer_data.Scene.NodeMeshes);
-                SerializeMapData(out, importer_data.Scene.NodeMaterials);
+                Tetragrama::Helpers::SerializeStringArrayData(out, importer_data.Scene.Names);
+                Tetragrama::Helpers::SerializeStringArrayData(out, importer_data.Scene.MaterialNames);
+                Tetragrama::Helpers::SerializeMapData(out, importer_data.Scene.NodeNames);
+                Tetragrama::Helpers::SerializeMapData(out, importer_data.Scene.NodeMeshes);
+                Tetragrama::Helpers::SerializeMapData(out, importer_data.Scene.NodeMaterials);
             }
 
             out.close();
 
             importer_data.SerializedModelPath = fullname_path;
-        }
-    }
-
-    void IAssetImporter::SerializeMapData(std::ostream& os, const std::unordered_map<uint32_t, uint32_t>& data)
-    {
-        std::vector<uint32_t> flat_data = {};
-        flat_data.reserve(data.size() * 2);
-        for (auto d : data)
-        {
-            flat_data.push_back(d.first);
-            flat_data.push_back(d.second);
-        }
-
-        size_t data_count = flat_data.size();
-        os.write(reinterpret_cast<const char*>(&data_count), sizeof(size_t));
-        os.write(reinterpret_cast<const char*>(flat_data.data()), sizeof(uint32_t) * flat_data.size());
-    }
-
-    void IAssetImporter::SerializeStringArrayData(std::ostream& os, std::span<std::string> str_view)
-    {
-        size_t count = str_view.size();
-        os.write(reinterpret_cast<const char*>(&count), sizeof(size_t));
-        for (std::string_view str : str_view)
-        {
-            size_t f_count = str.size();
-            os.write(reinterpret_cast<const char*>(&f_count), sizeof(size_t));
-            os.write(str.data(), f_count + 1);
         }
     }
 
@@ -206,7 +257,25 @@ namespace Tetragrama::Importers
                 deserialized_data.Scene.Materials.resize(material_total_count);
                 in.read(reinterpret_cast<char*>(deserialized_data.Scene.Materials.data()), sizeof(ZEngine::Rendering::Meshes::MeshMaterial) * material_total_count);
 
-                DeserializeStringArrayData(in, deserialized_data.Scene.Files);
+                size_t mat_file_count;
+                in.read(reinterpret_cast<char*>(&mat_file_count), sizeof(size_t));
+                deserialized_data.Scene.MaterialFiles.resize(mat_file_count);
+
+                std::string textures[5] = {""};
+                for (auto& mat_file : deserialized_data.Scene.MaterialFiles)
+                {
+                    Tetragrama::Helpers::DeserializeStringData(in, textures[0]);
+                    Tetragrama::Helpers::DeserializeStringData(in, textures[1]);
+                    Tetragrama::Helpers::DeserializeStringData(in, textures[2]);
+                    Tetragrama::Helpers::DeserializeStringData(in, textures[3]);
+                    Tetragrama::Helpers::DeserializeStringData(in, textures[4]);
+
+                    ZEngine::Helpers::secure_strcpy(mat_file.AlbedoTexture, MAX_FILE_PATH_COUNT, textures[0].c_str());
+                    ZEngine::Helpers::secure_strcpy(mat_file.EmissiveTexture, MAX_FILE_PATH_COUNT, textures[1].c_str());
+                    ZEngine::Helpers::secure_strcpy(mat_file.NormalTexture, MAX_FILE_PATH_COUNT, textures[2].c_str());
+                    ZEngine::Helpers::secure_strcpy(mat_file.OpacityTexture, MAX_FILE_PATH_COUNT, textures[3].c_str());
+                    ZEngine::Helpers::secure_strcpy(mat_file.SpecularTexture, MAX_FILE_PATH_COUNT, textures[4].c_str());
+                }
             }
             in.close();
         }
@@ -220,18 +289,18 @@ namespace Tetragrama::Importers
 
                 size_t local_transform_count;
                 in.read(reinterpret_cast<char*>(&local_transform_count), sizeof(size_t));
-                deserialized_data.Scene.LocalTransformCollection.resize(local_transform_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.LocalTransformCollection.data()), sizeof(glm::mat4) * local_transform_count);
+                deserialized_data.Scene.LocalTransforms.resize(local_transform_count);
+                in.read(reinterpret_cast<char*>(deserialized_data.Scene.LocalTransforms.data()), sizeof(glm::mat4) * local_transform_count);
 
                 size_t gobal_transform_count;
                 in.read(reinterpret_cast<char*>(&gobal_transform_count), sizeof(size_t));
-                deserialized_data.Scene.GlobalTransformCollection.resize(gobal_transform_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.GlobalTransformCollection.data()), sizeof(glm::mat4) * gobal_transform_count);
+                deserialized_data.Scene.GlobalTransforms.resize(gobal_transform_count);
+                in.read(reinterpret_cast<char*>(deserialized_data.Scene.GlobalTransforms.data()), sizeof(glm::mat4) * gobal_transform_count);
 
                 size_t node_hierarchy_count;
                 in.read(reinterpret_cast<char*>(&node_hierarchy_count), sizeof(size_t));
-                deserialized_data.Scene.NodeHierarchyCollection.resize(node_hierarchy_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.NodeHierarchyCollection.data()), sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
+                deserialized_data.Scene.NodeHierarchies.resize(node_hierarchy_count);
+                in.read(reinterpret_cast<char*>(deserialized_data.Scene.NodeHierarchies.data()), sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
 
                 DeserializeStringArrayData(in, deserialized_data.Scene.Names);
                 DeserializeStringArrayData(in, deserialized_data.Scene.MaterialNames);
@@ -243,37 +312,5 @@ namespace Tetragrama::Importers
         }
 
         return deserialized_data;
-    }
-
-    void IAssetImporter::DeserializeMapData(std::istream& in, std::unordered_map<uint32_t, uint32_t>& data)
-    {
-        size_t data_count;
-        in.read(reinterpret_cast<char*>(&data_count), sizeof(size_t));
-
-        std::vector<uint32_t> flat_data = {};
-        flat_data.resize(data_count);
-        in.read(reinterpret_cast<char*>(flat_data.data()), sizeof(uint32_t) * data_count);
-
-        for (int i = 0; i < data_count; i += 2)
-        {
-            data[flat_data[i]] = flat_data[i + 1];
-        }
-    }
-
-    void IAssetImporter::DeserializeStringArrayData(std::istream& in, std::vector<std::string>& data)
-    {
-        size_t data_count;
-        in.read(reinterpret_cast<char*>(&data_count), sizeof(size_t));
-
-        for (int i = 0; i < data_count; ++i)
-        {
-            size_t v_count;
-            in.read(reinterpret_cast<char*>(&v_count), sizeof(size_t));
-
-            std::string v;
-            v.resize(v_count);
-            in.read(v.data(), v_count + 1);
-            data.push_back(v);
-        }
     }
 } // namespace Tetragrama::Importers

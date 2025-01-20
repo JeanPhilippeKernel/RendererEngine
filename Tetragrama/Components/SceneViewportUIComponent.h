@@ -12,16 +12,16 @@ namespace Tetragrama::Components
     class SceneViewportUIComponent : public UIComponent
     {
     public:
-        SceneViewportUIComponent(std::string_view name = "Scene", bool visibility = true);
+        SceneViewportUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Scene", bool visibility = true);
         virtual ~SceneViewportUIComponent();
 
         void         Update(ZEngine::Core::TimeStep dt) override;
-        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Rendering::Buffers::CommandBuffer* const command_buffer) override;
+        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
     public:
-        std::future<void> SceneViewportClickedMessageHandlerAsync(Messengers::ArrayValueMessage<int, 2>&);
-        std::future<void> SceneViewportFocusedMessageHandlerAsync(Messengers::GenericMessage<bool>&);
-        std::future<void> SceneViewportUnfocusedMessageHandlerAsync(Messengers::GenericMessage<bool>&);
+        // std::future<void> SceneViewportClickedMessageHandlerAsync(Messengers::ArrayValueMessage<int, 2>&);
+        // std::future<void> SceneViewportFocusedMessageHandlerAsync(Messengers::GenericMessage<bool>&);
+        // std::future<void> SceneViewportUnfocusedMessageHandlerAsync(Messengers::GenericMessage<bool>&);
 
     private:
         bool                  m_is_window_focused{false};

@@ -1,9 +1,13 @@
 #include <pch.h>
+#include <Helpers/SerializerCommonHelper.h>
 #include <Helpers/ThreadPool.h>
+#include <Importers/IAssetImporter.h>
 #include <Serializers/EditorSceneSerializer.h>
 #include <fmt/format.h>
 
 using namespace ZEngine::Helpers;
+using namespace Tetragrama::Helpers;
+using namespace Tetragrama::Importers;
 
 namespace Tetragrama::Serializers
 {
@@ -25,9 +29,7 @@ namespace Tetragrama::Serializers
                 return;
             }
 
-            auto          scene_name     = scene->GetName();
-            const auto&   scene_models   = scene->GetModels();
-            auto          full_scenename = fmt::format("{0}/{1}.zescene", m_default_output, scene_name);
+            auto          full_scenename = fmt::format("{0}/{1}.zescene", m_default_output, scene->Name);
             std::ofstream out(full_scenename, std::ios::binary | std::ios::trunc | std::ios::out);
             if (!out.is_open())
             {
@@ -35,85 +37,32 @@ namespace Tetragrama::Serializers
 
                 if (m_error_callback)
                 {
-                    m_error_callback("Error: Unable to open file for writing.");
+                    m_error_callback(Context, "Error: Unable to open file for writing.");
                 }
             }
 
-            size_t total_size = sizeof(size_t) * 2;
-            for (const auto& [name, model] : scene_models)
+            out.seekp(std::ios::beg);
+
+            size_t name_count = scene->Name.size();
+            out.write(reinterpret_cast<const char*>(&name_count), sizeof(size_t));
+            out.write(scene->Name.data(), name_count + 1);
+
+            SerializeStringArrayData(out, scene->MeshFiles);
+            REPORT_PROGRESS(Context, 0.25f)
+
+            SerializeStringArrayData(out, scene->ModelFiles);
+            REPORT_PROGRESS(Context, 0.5f)
+
+            SerializeStringArrayData(out, scene->MaterialFiles);
+            REPORT_PROGRESS(Context, 0.75f)
+
+            std::vector<std::string> hashes = {};
+            for (auto& [k, _] : scene->Data)
             {
-                // For each model: name size, model properties sizes, and name itself
-                total_size += sizeof(size_t) + (model.MeshesPath.size() + 1) + (model.MaterialsPath.size() + 1) + (model.ModelPath.size() + 1) + model.Name.size();
+                hashes.emplace_back(k);
             }
-
-            size_t byte_written = 0;
-
-            size_t name_size    = scene_name.size();
-            {
-                out.write(reinterpret_cast<const char*>(&name_size), sizeof(size_t));
-                byte_written += sizeof(size_t);
-                REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-
-                out.write(scene_name.data(), name_size + 1);
-                byte_written += (name_size + 1);
-                REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-            }
-
-            // Write number of models
-            size_t models_size = scene_models.size();
-            out.write(reinterpret_cast<const char*>(&models_size), sizeof(size_t));
-            byte_written += sizeof(size_t);
-            REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-
-            // Write models
-            for (const auto& [name, model] : scene_models)
-            {
-                // Write model name
-                size_t model_name_size = model.Name.size();
-                {
-                    out.write(reinterpret_cast<const char*>(&model_name_size), sizeof(size_t));
-                    byte_written += sizeof(size_t);
-                    REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-
-                    out.write(model.Name.data(), model_name_size + 1);
-                    byte_written += (model_name_size + 1);
-                    REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-                }
-
-                // Write model properties
-                size_t mesh_path_size = model.MeshesPath.size();
-                {
-                    out.write(reinterpret_cast<const char*>(&mesh_path_size), sizeof(size_t));
-                    byte_written += sizeof(size_t);
-                    REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-
-                    out.write(model.MeshesPath.data(), mesh_path_size + 1);
-                    byte_written += (mesh_path_size + 1);
-                    REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-                }
-
-                size_t material_path_size = model.MaterialsPath.size();
-                {
-                    out.write(reinterpret_cast<const char*>(&material_path_size), sizeof(size_t));
-                    byte_written += sizeof(size_t);
-                    REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-
-                    out.write(model.MaterialsPath.data(), material_path_size + 1);
-                    byte_written += (material_path_size + 1);
-                    REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-                }
-
-                size_t model_path_size = model.ModelPath.size();
-                {
-                    out.write(reinterpret_cast<const char*>(&model_path_size), sizeof(size_t));
-                    byte_written += sizeof(size_t);
-                    REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-
-                    out.write(model.ModelPath.data(), model_path_size + 1);
-                    byte_written += (model_path_size + 1);
-                    REPORT_PROGRESS(static_cast<float>(byte_written) / total_size * 100.0f)
-                }
-            }
+            SerializeStringArrayData(out, hashes);
+            REPORT_PROGRESS(Context, 1.f)
 
             out.close();
             {
@@ -123,7 +72,7 @@ namespace Tetragrama::Serializers
 
             if (m_complete_callback)
             {
-                m_complete_callback();
+                m_complete_callback(Context);
             }
         });
     }
@@ -136,7 +85,8 @@ namespace Tetragrama::Serializers
                 m_is_deserializing = true;
             }
 
-            EditorScene deserialized_scene;
+            EditorScene scene = {};
+
             if (scene_filename.empty())
             {
                 {
@@ -146,7 +96,7 @@ namespace Tetragrama::Serializers
 
                 if (m_deserialize_complete_callback)
                 {
-                    m_deserialize_complete_callback(std::move(deserialized_scene));
+                    m_deserialize_complete_callback(Context, std::move(scene));
                 }
                 return;
             }
@@ -157,95 +107,94 @@ namespace Tetragrama::Serializers
                 in_stream.close();
                 if (m_error_callback)
                 {
-                    m_error_callback("Error: Unable to open file for reading.");
+                    m_error_callback(Context, "Error: Unable to open file for reading.");
                 }
                 return;
             }
 
-            size_t total_size = 0;
-            in_stream.seekg(0, std::ios::end);
-            total_size = in_stream.tellg();
             in_stream.seekg(0, std::ios::beg);
 
-            size_t      byte_read       = 0;
+            size_t name_count;
+            in_stream.read(reinterpret_cast<char*>(&name_count), sizeof(size_t));
 
-            size_t      scene_name_size = 0;
-            std::string scene_name;
+            scene.Name.resize(name_count);
+            in_stream.read(scene.Name.data(), name_count + 1);
+
+            DeserializeStringArrayData(in_stream, scene.MeshFiles);
+            REPORT_PROGRESS(Context, 0.25f)
+
+            DeserializeStringArrayData(in_stream, scene.ModelFiles);
+            REPORT_PROGRESS(Context, 0.5f)
+
+            DeserializeStringArrayData(in_stream, scene.MaterialFiles);
+            REPORT_PROGRESS(Context, 0.75f)
+
+            std::vector<std::string> hashes = {};
+            DeserializeStringArrayData(in_stream, hashes);
+
+            for (auto& hash : hashes)
             {
-                in_stream.read(reinterpret_cast<char*>(&scene_name_size), sizeof(size_t));
-                byte_read += sizeof(size_t);
-                REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
+                uint16_t indices[3] = {0};
 
-                scene_name.resize(scene_name_size);
-                in_stream.read(scene_name.data(), scene_name_size + 1);
-                byte_read += (scene_name_size + 1);
-                REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-            }
-            deserialized_scene.SetName(scene_name);
+                int      i          = 0;
 
-            size_t model_count = 0;
-            {
-                in_stream.read(reinterpret_cast<char*>(&model_count), sizeof(size_t));
-                byte_read += sizeof(size_t);
-                REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-
-                for (size_t i = 0; i < model_count; ++i)
+                while (hash[i] != ':' && hash[i] != '\0')
                 {
-                    EditorScene::Model model = {};
-
-                    size_t             model_name_size{0};
-                    {
-                        in_stream.read(reinterpret_cast<char*>(&model_name_size), sizeof(size_t));
-                        byte_read += sizeof(size_t);
-                        REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-
-                        model.Name.resize(model_name_size);
-                        in_stream.read(model.Name.data(), model_name_size + 1);
-                        byte_read += (model_name_size + 1);
-                        REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-                    }
-
-                    size_t mesh_path_size{0};
-                    {
-                        in_stream.read(reinterpret_cast<char*>(&mesh_path_size), sizeof(size_t));
-                        byte_read += sizeof(size_t);
-                        REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-
-                        model.MeshesPath.resize(mesh_path_size);
-                        in_stream.read(model.MeshesPath.data(), mesh_path_size + 1);
-                        byte_read += (mesh_path_size + 1);
-                        REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-                    }
-
-                    size_t material_path_size{0};
-                    {
-                        in_stream.read(reinterpret_cast<char*>(&material_path_size), sizeof(size_t));
-                        byte_read += sizeof(size_t);
-                        REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-
-                        model.MaterialsPath.resize(material_path_size);
-                        in_stream.read(model.MaterialsPath.data(), material_path_size + 1);
-                        byte_read += (material_path_size + 1);
-                        REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-                    }
-
-                    size_t model_path_size{0};
-                    {
-                        in_stream.read(reinterpret_cast<char*>(&model_path_size), sizeof(size_t));
-                        byte_read += sizeof(size_t);
-                        REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-
-                        model.ModelPath.resize(model_path_size);
-                        in_stream.read(model.ModelPath.data(), model_path_size + 1);
-                        byte_read += (model_path_size + 1);
-                        REPORT_PROGRESS(static_cast<float>(byte_read) / total_size * 100.0f)
-                    }
-
-                    deserialized_scene.m_models[model.Name] = std::move(model);
+                    indices[0] = indices[0] * 10 + (hash[i] - '0');
+                    i++;
                 }
+                i++; // Skip the colon
+
+                while (hash[i] != ':' && hash[i] != '\0')
+                {
+                    indices[1] = indices[1] * 10 + (hash[i] - '0');
+                    i++;
+                }
+                i++;
+
+                while (hash[i] != '\0')
+                {
+                    indices[2] = indices[2] * 10 + (hash[i] - '0');
+                    i++;
+                }
+
+                scene.Data[hash] = {.MeshFileIndex = indices[0], .ModelPathIndex = indices[1], .MaterialPathIndex = indices[2]};
             }
+
+            REPORT_PROGRESS(Context, 1.f)
 
             in_stream.close();
+
+            auto                                                  ctx    = reinterpret_cast<EditorContext*>(Context);
+            const auto&                                           config = *ctx->ConfigurationPtr;
+
+            std::vector<ZEngine::Rendering::Scenes::SceneRawData> scene_data;
+            for (auto& [_, model] : scene.Data)
+            {
+                auto mesh_path     = fmt::format("{0}/{1}", config.WorkingSpacePath, scene.MeshFiles[model.MeshFileIndex]);
+                auto model_path    = fmt::format("{0}/{1}", config.WorkingSpacePath, scene.ModelFiles[model.ModelPathIndex]);
+                auto material_path = fmt::format("{0}/{1}", config.WorkingSpacePath, scene.MaterialFiles[model.MaterialPathIndex]);
+
+#ifdef _WIN32
+                std::replace(model_path.begin(), model_path.end(), '/', '\\');
+                std::replace(mesh_path.begin(), mesh_path.end(), '/', '\\');
+                std::replace(material_path.begin(), material_path.end(), '/', '\\');
+#endif // _WIN32
+
+                auto import_data = IAssetImporter::DeserializeImporterData(model_path, mesh_path, material_path);
+                scene_data.push_back(import_data.Scene);
+            }
+
+            scene.RenderScene->SceneData->Vertices.clear();
+            scene.RenderScene->SceneData->Indices.clear();
+            scene.RenderScene->SceneData->Materials.clear();
+            scene.RenderScene->SceneData->MaterialFiles.clear();
+            scene.RenderScene->SceneData->DrawData.clear();
+
+            scene.RenderScene->SetRootNodeName(scene.Name);
+            scene.RenderScene->Merge(scene_data);
+            scene.RenderScene->IsDrawDataDirty = true;
+
             {
                 std::unique_lock l(m_mutex);
                 m_is_deserializing = false;
@@ -253,7 +202,7 @@ namespace Tetragrama::Serializers
 
             if (m_deserialize_complete_callback)
             {
-                m_deserialize_complete_callback(std::move(deserialized_scene));
+                m_deserialize_complete_callback(Context, std::move(scene));
             }
         });
     }
