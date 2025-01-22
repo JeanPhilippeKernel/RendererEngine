@@ -217,7 +217,6 @@ namespace Tetragrama::Components
                     ImGui::OpenPopup(popupId.c_str());
                 }
 
-                // Directory node context menu
                 if (ImGui::BeginPopup(popupId.c_str()))
                 {
                     RenderContextMenu(ContextMenuType::LeftPane, std::filesystem::absolute(entry.path()));
@@ -460,7 +459,6 @@ namespace Tetragrama::Components
             ImGui::Text("Are you sure you want to delete this folder?");
             ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "%s", path.filename().string().c_str());
 
-            // Show warning if folder is not empty
             if (!std::filesystem::is_empty(path))
             {
                 ImGui::Spacing();
