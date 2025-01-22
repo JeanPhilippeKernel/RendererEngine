@@ -99,11 +99,16 @@ namespace Tetragrama::Components
 
         ImGui::PushID(name.c_str());
 
-        ImTextureID icon = entry.is_directory() ? static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateDirIconOutput(m_directory_icon)) : static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateFileIconOutput(m_file_icon));
+        ImTextureID icon      = entry.is_directory() ? static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateDirIconOutput(m_directory_icon)) : static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateFileIconOutput(m_file_icon));
+
+        const float margin    = 5.0f;
+        ImVec2      cursorPos = ImGui::GetCursorPos();
+        ImGui::SetCursorPos(ImVec2(cursorPos.x + margin, cursorPos.y + margin));
 
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
         ImGui::ImageButton(icon, {m_thumbnail_size, m_thumbnail_size}, {0, 1}, {1, 0});
         ImGui::PopStyleColor();
+        ImGui::SetCursorPos(ImVec2(cursorPos.x, cursorPos.y + m_thumbnail_size + margin));
 
         if (ImGui::BeginDragDropSource())
         {
