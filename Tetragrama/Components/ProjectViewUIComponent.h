@@ -16,11 +16,11 @@ namespace Tetragrama::Components
     {
         None,
         CreateFolder,
-        CreateNewFile,
+        CreateFile,
         RenameFolder,
         RenameFile,
         DeleteFolder,
-        DeleteFiled,
+        DeleteFile,
     };
 
     class ProjectViewUIComponent : public UIComponent
@@ -29,39 +29,41 @@ namespace Tetragrama::Components
         ProjectViewUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Project", bool visibility = true);
         virtual ~ProjectViewUIComponent();
 
-        void         Update(ZEngine::Core::TimeStep dt) override;
+        void                  Update(ZEngine::Core::TimeStep dt) override;
 
-        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
+        virtual void          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
         // Render Panes
-        void         RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
-        void         RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::string& searchTerm);
-        void         RenderDirectoryNode(const std::filesystem::path& directory);
-        void         RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry);
-        void         RenderBackButton();
-        void         RenderTreeBrowser();
+        void                  RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
+        void                  RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, std::string_view searchTerm);
+        void                  RenderDirectoryNode(const std::filesystem::path& directory);
+        void                  RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry);
+        void                  RenderBackButton();
+        void                  RenderTreeBrowser();
 
         // Popup helpers
-        void         RenderContextMenu(ContextMenuType type, const std::filesystem::path& targetPath);
-        void         RenderPopUpMenu();
-        void         HandleCreateFolderPopup(const std::filesystem::path& path);
-        void         HandleCreateFilePopup(const std::filesystem::path& path);
+        void                  RenderContextMenu(ContextMenuType type, const std::filesystem::path& targetPath);
+        void                  RenderPopUpMenu();
+        void                  HandleCreateFolderPopup(const std::filesystem::path& path);
+        void                  HandleCreateFilePopup(const std::filesystem::path& path);
 
-        void         HandleRenameFolderPopup(const std::filesystem::path& path);
-        void         HandleDeleteFolderPopup(const std::filesystem::path& path);
-        void         HandleRenameFilePopup(const std::filesystem::path& path);
-        void         HandleDeleteFilePopup(const std::filesystem::path& path);
+        void                  HandleRenameFolderPopup(const std::filesystem::path& path);
+        void                  HandleDeleteFolderPopup(const std::filesystem::path& path);
+        void                  HandleRenameFilePopup(const std::filesystem::path& path);
+        void                  HandleDeleteFilePopup(const std::filesystem::path& path);
+
+        std::filesystem::path MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base);
 
     private:
-        const std::filesystem::path                 m_assets_directory = std::filesystem::path("Assets");
-        std::filesystem::path                       m_currentDirectory;
+        std::filesystem::path                       m_assets_directory;
+        std::filesystem::path                       m_current_directory;
         PopupType                                   m_active_popup = PopupType::None;
         std::filesystem::path                       m_popup_target_path;
 
-        ZEngine::Rendering::Textures::TextureHandle m_directoryIcon;
-        ZEngine::Rendering::Textures::TextureHandle m_fileIcon;
-        bool                                        m_texturesLoaded     = false;
-        static constexpr float                      m_thumbnailSize      = 128.0f;
-        char                                        m_search_buffer[256] = "";
+        ZEngine::Rendering::Textures::TextureHandle m_directory_icon;
+        ZEngine::Rendering::Textures::TextureHandle m_file_icon;
+        bool                                        m_textures_loaded                    = false;
+        static constexpr float                      m_thumbnail_size                     = 128.0f;
+        char                                        m_search_buffer[MAX_FILE_PATH_COUNT] = "";
     };
 } // namespace Tetragrama::Components

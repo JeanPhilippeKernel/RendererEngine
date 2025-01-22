@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <Editor.h>
 #include <Helpers/MemoryOperations.h>
 #include <ProjectViewUIComponent.h>
 #include <imgui.h>
@@ -7,7 +8,12 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    ProjectViewUIComponent::ProjectViewUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false), m_currentDirectory(m_assets_directory) {}
+    ProjectViewUIComponent::ProjectViewUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false)
+    {
+        auto context        = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        m_assets_directory  = context->ConfigurationPtr->WorkingSpacePath;
+        m_current_directory = m_assets_directory;
+    }
 
     ProjectViewUIComponent::~ProjectViewUIComponent() {}
 
@@ -15,11 +21,11 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        if (!m_texturesLoaded)
+        if (!m_textures_loaded)
         {
-            m_directoryIcon  = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/DirectoryIcon.png");
-            m_fileIcon       = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/FileIcon.png");
-            m_texturesLoaded = true;
+            m_directory_icon  = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/DirectoryIcon.png");
+            m_file_icon       = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/FileIcon.png");
+            m_textures_loaded = true;
         }
 
         ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
@@ -38,7 +44,7 @@ namespace Tetragrama::Components
         }
         if (ImGui::BeginPopup("ContextMenu"))
         {
-            RenderContextMenu(ContextMenuType::RightPane, m_assets_directory);
+            RenderContextMenu(ContextMenuType::RightPane, m_current_directory);
             ImGui::EndPopup();
         }
         RenderPopUpMenu();
@@ -56,12 +62,13 @@ namespace Tetragrama::Components
         ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
         ImGui::SameLine();
         ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-        ImGui::Text(m_currentDirectory.string().c_str());
+        auto relative_path = MakeRelative(m_current_directory, m_assets_directory.parent_path());
+        ImGui::Text(relative_path.string().c_str());
         ImGui::PopFont();
         ImGui::Separator();
 
         const float padding     = 16.0f;
-        const float cellSize    = m_thumbnailSize + padding;
+        const float cellSize    = m_thumbnail_size + padding;
         const float panelWidth  = ImGui::GetContentRegionAvail().x;
         const int   columnCount = std::max(1, static_cast<int>(panelWidth / cellSize));
 
@@ -75,7 +82,7 @@ namespace Tetragrama::Components
             }
             else
             {
-                for (const auto& entry : std::filesystem::directory_iterator(m_currentDirectory))
+                for (const auto& entry : std::filesystem::directory_iterator(m_current_directory))
                 {
                     ImGui::TableNextColumn();
                     RenderContentTile(renderer, entry);
@@ -92,10 +99,10 @@ namespace Tetragrama::Components
 
         ImGui::PushID(name.c_str());
 
-        ImTextureID icon = entry.is_directory() ? static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateDirIconOutput(m_directoryIcon)) : static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateFileIconOutput(m_fileIcon));
+        ImTextureID icon = entry.is_directory() ? static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateDirIconOutput(m_directory_icon)) : static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateFileIconOutput(m_file_icon));
 
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::ImageButton(icon, {m_thumbnailSize, m_thumbnailSize}, {0, 1}, {1, 0});
+        ImGui::ImageButton(icon, {m_thumbnail_size, m_thumbnail_size}, {0, 1}, {1, 0});
         ImGui::PopStyleColor();
 
         if (ImGui::BeginDragDropSource())
@@ -109,8 +116,8 @@ namespace Tetragrama::Components
         {
             if (entry.is_directory())
             {
-                auto relativePath  = std::filesystem::relative(entry.path(), m_assets_directory);
-                m_currentDirectory = m_assets_directory / relativePath;
+                auto relativePath   = std::filesystem::relative(entry.path(), m_assets_directory);
+                m_current_directory = m_assets_directory / relativePath;
                 secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
             }
         }
@@ -128,7 +135,7 @@ namespace Tetragrama::Components
         // centered label
         float textWidth  = ImGui::CalcTextSize(name.c_str()).x;
         float cursorPosX = ImGui::GetCursorPosX();
-        float centerPosX = cursorPosX + (m_thumbnailSize - textWidth) * 0.5f;
+        float centerPosX = cursorPosX + (m_thumbnail_size - textWidth) * 0.5f;
 
         ImGui::SetCursorPosX(centerPosX);
         ImGui::TextWrapped(name.c_str());
@@ -136,7 +143,7 @@ namespace Tetragrama::Components
         ImGui::PopID();
     }
 
-    void ProjectViewUIComponent::RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::string& searchTerm)
+    void ProjectViewUIComponent::RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, std::string_view searchTerm)
     {
         for (const auto& entry : std::filesystem::recursive_directory_iterator(m_assets_directory))
         {
@@ -160,7 +167,7 @@ namespace Tetragrama::Components
 
         if (ImGui::IsItemClicked())
         {
-            m_currentDirectory = m_assets_directory;
+            m_current_directory = m_assets_directory;
             secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
         }
 
@@ -189,7 +196,7 @@ namespace Tetragrama::Components
             if (entry.is_directory())
             {
                 ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow;
-                if (m_currentDirectory == entry.path())
+                if (m_current_directory == entry.path())
                 {
                     flags |= ImGuiTreeNodeFlags_Selected;
                 }
@@ -200,8 +207,8 @@ namespace Tetragrama::Components
 
                 if (ImGui::IsItemClicked())
                 {
-                    auto relativePath  = std::filesystem::relative(entry.path(), m_assets_directory);
-                    m_currentDirectory = m_assets_directory / relativePath;
+                    auto relativePath   = std::filesystem::relative(entry.path(), m_assets_directory);
+                    m_current_directory = m_assets_directory / relativePath;
                     secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
                 }
 
@@ -234,7 +241,7 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginPopupModal("Create New File", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            static char new_file_name[256] = "NewFile.txt";
+            static char new_file_name[MAX_FILE_PATH_COUNT] = "NewFile.txt";
             ImGui::Text("Enter file name (with extension):");
             ImGui::InputText("##create", new_file_name, sizeof(new_file_name));
 
@@ -289,7 +296,7 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginPopupModal("Create New Folder", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            static char new_folder_name[256] = "New Folder";
+            static char new_folder_name[MAX_FILE_PATH_COUNT] = "New Folder";
             ImGui::Text("Enter folder name:");
             ImGui::InputText("##create", new_folder_name, sizeof(new_folder_name));
 
@@ -326,13 +333,19 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::HandleRenameFolderPopup(const std::filesystem::path& path)
     {
+        if (m_popup_target_path == m_assets_directory)
+        {
+            ZENGINE_CORE_ERROR("Cannot rename root folder");
+            m_active_popup = PopupType::None;
+            return;
+        }
         ImGui::OpenPopup("Rename Folder");
         ImVec2 center = ImGui::GetMainViewport()->GetCenter();
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 
         if (ImGui::BeginPopupModal("Rename Folder", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            static char new_name[256];
+            static char new_name[MAX_FILE_PATH_COUNT];
             static bool initialized = false;
 
             if (!initialized)
@@ -353,9 +366,9 @@ namespace Tetragrama::Components
                     if (!std::filesystem::exists(newPath))
                     {
                         std::filesystem::rename(path, newPath);
-                        if (m_currentDirectory == path)
+                        if (m_current_directory == path)
                         {
-                            m_currentDirectory = newPath;
+                            m_current_directory = newPath;
                         }
 
                         m_active_popup = PopupType::None;
@@ -406,9 +419,9 @@ namespace Tetragrama::Components
 
                 if (std::filesystem::exists(path))
                 {
-                    if (m_currentDirectory == path)
+                    if (m_current_directory == path)
                     {
-                        m_currentDirectory = path.parent_path();
+                        m_current_directory = path.parent_path();
                     }
 
                     std::filesystem::remove(path);
@@ -432,6 +445,12 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::HandleDeleteFolderPopup(const std::filesystem::path& path)
     {
+        if (m_popup_target_path == m_assets_directory)
+        {
+            ZENGINE_CORE_ERROR("Cannot rename root folder");
+            m_active_popup = PopupType::None;
+            return;
+        }
         ImGui::OpenPopup("Delete Folder");
         ImVec2 center = ImGui::GetMainViewport()->GetCenter();
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
@@ -457,9 +476,9 @@ namespace Tetragrama::Components
             {
                 auto parentPath = path;
 
-                if (m_currentDirectory == path || m_currentDirectory.string().find(path.string()) == 0)
+                if (m_current_directory == path || m_current_directory.string().find(path.string()) == 0)
                 {
-                    m_currentDirectory = path.parent_path();
+                    m_current_directory = path.parent_path();
                 }
 
                 std::filesystem::remove_all(parentPath);
@@ -487,7 +506,7 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginPopupModal("Rename File", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            static char new_name[256];
+            static char new_name[MAX_FILE_PATH_COUNT];
             static bool initialized = false;
 
             if (!initialized)
@@ -553,13 +572,13 @@ namespace Tetragrama::Components
         ImVec2                 triangleLeft        = {center.x - TriangleSize, center.y};
         ImVec2                 triangleTopRight    = {center.x + TriangleSize, center.y - TriangleSize};
         ImVec2                 triangleBottomRight = {center.x + TriangleSize, center.y + TriangleSize};
-        bool                   canGoBack           = (m_currentDirectory != m_assets_directory);
+        bool                   canGoBack           = (m_current_directory != m_assets_directory);
         ImU32                  triangleColor       = DefaultColor;
         if (canGoBack)
         {
             if (ImGui::Button("##BackButton", buttonSize))
             {
-                m_currentDirectory = m_currentDirectory.parent_path();
+                m_current_directory = m_current_directory.parent_path();
             }
             triangleColor = ImGui::IsItemHovered() ? HoverColor : DefaultColor;
         }
@@ -579,7 +598,7 @@ namespace Tetragrama::Components
             case ContextMenuType::RightPane:
                 if (ImGui::MenuItem("Create New File"))
                 {
-                    m_active_popup = PopupType::CreateNewFile;
+                    m_active_popup = PopupType::CreateFile;
                 }
                 if (ImGui::MenuItem("Create New Folder"))
                 {
@@ -594,7 +613,7 @@ namespace Tetragrama::Components
                 }
                 if (ImGui::MenuItem("Create New File"))
                 {
-                    m_active_popup = PopupType::CreateNewFile;
+                    m_active_popup = PopupType::CreateFile;
                 }
                 if (ImGui::MenuItem("Delete Folder"))
                 {
@@ -613,7 +632,7 @@ namespace Tetragrama::Components
                 }
                 if (ImGui::MenuItem("Delete File"))
                 {
-                    m_active_popup = PopupType::DeleteFiled;
+                    m_active_popup = PopupType::DeleteFile;
                 }
                 break;
 
@@ -643,10 +662,10 @@ namespace Tetragrama::Components
             case PopupType::DeleteFolder:
                 HandleDeleteFolderPopup(m_popup_target_path);
                 break;
-            case PopupType::CreateNewFile:
+            case PopupType::CreateFile:
                 HandleCreateFilePopup(m_popup_target_path);
                 break;
-            case PopupType::DeleteFiled:
+            case PopupType::DeleteFile:
                 HandleDeleteFilePopup(m_popup_target_path);
                 break;
             case PopupType::RenameFile:
@@ -656,6 +675,33 @@ namespace Tetragrama::Components
             default:
                 break;
         }
+    }
+
+    std::filesystem::path ProjectViewUIComponent::MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base)
+    {
+        auto path_itr = path.begin();
+        auto base_itr = base.begin();
+
+        while (path_itr != path.end() && base_itr != base.end() && *path_itr == *base_itr)
+        {
+            ++path_itr;
+            ++base_itr;
+        }
+
+        std::filesystem::path result;
+        while (base_itr != base.end())
+        {
+            result /= "..";
+            ++base_itr;
+        }
+
+        while (path_itr != path.end())
+        {
+            result /= *path_itr;
+            ++path_itr;
+        }
+
+        return result;
     }
 
 } // namespace Tetragrama::Components

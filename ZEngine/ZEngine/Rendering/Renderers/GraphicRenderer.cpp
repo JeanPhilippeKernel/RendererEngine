@@ -228,6 +228,15 @@ namespace ZEngine::Rendering::Renderers
         return CreateTexture(spec);
     }
 
+    // AsyncResourceLoader
+    //
+    void AsyncResourceLoader::Initialize(GraphicRenderer* renderer)
+    {
+        Renderer = renderer;
+        m_buffer_manager.Initialize(Renderer->Device);
+        Helpers::ThreadPoolHelper::Submit([this] { Run(); });
+    }
+
     Textures::TextureHandle AsyncResourceLoader::LoadTextureFileSync(std::string_view filename)
     {
         int      width = 0, height = 0, channel = 0;
@@ -250,15 +259,6 @@ namespace ZEngine::Rendering::Renderers
         stbi_image_free(image_data);
 
         return handle;
-    }
-
-    // AsyncResourceLoader
-    //
-    void AsyncResourceLoader::Initialize(GraphicRenderer* renderer)
-    {
-        Renderer = renderer;
-        m_buffer_manager.Initialize(Renderer->Device);
-        Helpers::ThreadPoolHelper::Submit([this] { Run(); });
     }
 
     Textures::TextureHandle AsyncResourceLoader::LoadTextureFile(std::string_view filename)
