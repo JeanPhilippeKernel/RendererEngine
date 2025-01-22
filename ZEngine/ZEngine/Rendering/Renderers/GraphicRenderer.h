@@ -79,6 +79,7 @@ namespace ZEngine::Rendering::Renderers
 
         void                    EnqueueTextureRequest(std::string_view file, const Textures::TextureHandle& handle);
         Textures::TextureHandle LoadTextureFile(std::string_view filename);
+        Textures::TextureHandle LoadTextureFileSync(std::string_view filename);
 
     private:
         std::atomic_bool                               m_cancellation_token{false};

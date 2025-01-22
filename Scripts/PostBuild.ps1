@@ -63,14 +63,17 @@ $ContentsToProcess = @(
                 "Windows" {
                     @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\$Configurations\Shaders"}
                     @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\$Configurations\Settings"}
+                    @{ From = "$RepoRoot\Panzerfaust\Assets";            To = "$OuputBuildDirectory\Tetragrama\$Configurations\Assets"}
                 }
                 "Darwin" {
                     @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\$Configurations\Shaders"}
                     @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\$Configurations\Settings"}
+                    @{ From = "$RepoRoot\Panzerfaust\Assets";            To = "$OuputBuildDirectory\Tetragrama\$Configurations\Assets"}
                 }
                 "Linux" {
                     @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\Shaders"}
                     @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\Settings"}
+                    @{ From = "$RepoRoot\Panzerfaust\Assets";            To = "$OuputBuildDirectory\Tetragrama\$Configurations\Assets"}
                 }
                 Default {
                     throw 'This system is not supported'

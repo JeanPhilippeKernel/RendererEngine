@@ -228,6 +228,30 @@ namespace ZEngine::Rendering::Renderers
         return CreateTexture(spec);
     }
 
+    Textures::TextureHandle AsyncResourceLoader::LoadTextureFileSync(std::string_view filename)
+    {
+        int      width = 0, height = 0, channel = 0;
+        stbi_uc* image_data = stbi_load(filename.data(), &width, &height, &channel, STBI_rgb_alpha);
+        if (!image_data)
+        {
+            ZENGINE_CORE_ERROR("Failed to load texture file synchronously: {}", filename.data());
+            return Textures::TextureHandle{};
+        }
+
+        Specifications::TextureSpecification spec = {
+            .Width        = static_cast<uint32_t>(width),
+            .Height       = static_cast<uint32_t>(height),
+            .BytePerPixel = 4, // RGBA
+            .Format       = Specifications::ImageFormat::R8G8B8A8_SRGB,
+            .Data         = image_data,
+        };
+
+        Textures::TextureHandle handle = Renderer->Device->GlobalTextures->Add(Renderer->CreateTexture(spec));
+        stbi_image_free(image_data);
+
+        return handle;
+    }
+
     // AsyncResourceLoader
     //
     void AsyncResourceLoader::Initialize(GraphicRenderer* renderer)
