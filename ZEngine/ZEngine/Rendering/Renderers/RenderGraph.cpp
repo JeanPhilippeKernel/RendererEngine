@@ -401,7 +401,11 @@ namespace ZEngine::Rendering::Renderers
                 resource.ResourceInfo.TextureSpec.Height = height;
                 auto texture                             = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
                 Renderer->Device->GlobalTextures->Update(resource.ResourceInfo.TextureHandle, texture);
-                // Renderer->Device->TextureHandleToUpdates.Enqueue(resource.ResourceInfo.TextureHandle);
+
+                if ((output.Name == Renderer->FrameColorRenderTargetName) || (output.Name == Renderer->FrameDepthRenderTargetName))
+                {
+                    Renderer->Device->TextureHandleToUpdates.Enqueue(resource.ResourceInfo.TextureHandle);
+                }
                 pass_spec.ExternalOutputs.emplace_back(resource.ResourceInfo.TextureHandle);
             }
 

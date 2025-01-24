@@ -57,6 +57,8 @@ namespace ZEngine::Rendering::Renderers
 
         FrameColorRenderTarget = Device->GlobalTextures->Add(CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM}));
         FrameDepthRenderTarget = Device->GlobalTextures->Add(CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE}));
+
+        Device->TextureHandleToUpdates.Enqueue(FrameColorRenderTarget);
         /*
          * Subsystems initialization
          */
@@ -114,10 +116,9 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->Execute(frame_index, command_buffer, scene);
     }
 
-    VkDescriptorSet GraphicRenderer::GetImguiFrameOutput()
+    Textures::TextureHandle GraphicRenderer::GetFrameOutput()
     {
-        auto rt_handle = RenderGraph->GetRenderTarget(FrameColorRenderTargetName);
-        return ImguiRenderer->UpdateFrameOutput(rt_handle);
+        return RenderGraph->GetRenderTarget(FrameColorRenderTargetName);
     }
 
     Helpers::Ref<RenderPasses::RenderPass> GraphicRenderer::CreateRenderPass(const Specifications::RenderPassSpecification& spec)

@@ -48,10 +48,7 @@ namespace ZEngine::Rendering::Renderers
         style.ChildBorderSize   = 0.f;
         style.FrameRounding     = 7.0f;
 
-        auto window_property    = current_window->GetWindowProperty();
-        io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Bold.ttf", 17.f * window_property.DpiScale);
-        io.FontDefault     = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f * window_property.DpiScale);
-        io.FontGlobalScale = window_property.DpiScale;
+        io.FontDefault          = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f);
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window->GetNativeWindow()), false);
 
@@ -81,73 +78,44 @@ namespace ZEngine::Rendering::Renderers
 
             .UseShader("imgui")
             .SetShaderOverloadMaxSet(2000)
-            .SetOverloadPoolSize(4)
 
             .UseSwapchainAsRenderTarget();
 
         m_ui_pass = renderer->CreateRenderPass(builder->Detach());
+        m_ui_pass->SetBindlessInput("TextureArray");
         m_ui_pass->Verify();
         m_ui_pass->Bake();
-
-        auto           shader               = m_ui_pass->Pipeline->GetShader();
-        auto           descriptor_setlayout = shader->GetDescriptorSetLayout()[0];
-
         /*
          * Font uploading
          */
         unsigned char* pixels;
         int            width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        size_t                               upload_size   = width * height * 4 * sizeof(char);
+        size_t                               upload_size        = width * height * 4 * sizeof(char);
 
-        Specifications::TextureSpecification font_tex_spec = {};
-        font_tex_spec.Width                                = width;
-        font_tex_spec.Height                               = height;
-        font_tex_spec.Data                                 = pixels;
-        font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
-        auto font_texture                                  = renderer->CreateTexture(font_tex_spec);
-        renderer->Device->GlobalTextures->Add(font_texture);
+        Specifications::TextureSpecification font_tex_spec      = {};
+        font_tex_spec.Width                                     = width;
+        font_tex_spec.Height                                    = height;
+        font_tex_spec.Data                                      = pixels;
+        font_tex_spec.Format                                    = Specifications::ImageFormat::R8G8B8A8_UNORM;
+        auto font_texture                                       = renderer->CreateTexture(font_tex_spec);
+        auto font_tex_handle                                    = renderer->Device->GlobalTextures->Add(font_texture);
 
-        VkDescriptorSetAllocateInfo font_alloc_info = {};
-        font_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        font_alloc_info.descriptorPool              = shader->GetDescriptorPool();
-        font_alloc_info.descriptorSetCount          = 1;
-        font_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &font_alloc_info, &m_font_descriptor_set) == VK_SUCCESS, "Failed to create descriptor set")
+        io.Fonts->TexID                                         = (ImTextureID) font_tex_handle.Index;
 
-        auto                 font_image_info = font_texture->ImageBuffer->GetDescriptorImageInfo();
-        VkWriteDescriptorSet write_desc[1]   = {};
-        write_desc[0].sType                  = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write_desc[0].dstSet                 = m_font_descriptor_set;
-        write_desc[0].descriptorCount        = 1;
-        write_desc[0].descriptorType         = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write_desc[0].pImageInfo             = &font_image_info;
-        vkUpdateDescriptorSets(m_renderer->Device->LogicalDevice, 1, write_desc, 0, nullptr);
+        auto                              font_image_info       = font_texture->ImageBuffer->GetDescriptorImageInfo();
+        uint32_t                          frame_count           = renderer->Device->SwapchainImageCount;
+        auto                              shader                = m_ui_pass->Pipeline->GetShader();
+        auto                              descriptor_set_map    = shader->GetDescriptorSetMap();
+        std::vector<VkWriteDescriptorSet> write_descriptor_sets = {};
 
-        io.Fonts->SetTexID((ImTextureID) m_font_descriptor_set);
-        /*
-         * Creating another DescriptorSet from the SetLayout that will serve has Image/Frame output
-         */
-        VkDescriptorSetAllocateInfo frame_alloc_info = {};
-        frame_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        frame_alloc_info.descriptorPool              = shader->GetDescriptorPool();
-        frame_alloc_info.descriptorSetCount          = 1;
-        frame_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &frame_alloc_info, &m_frame_output) == VK_SUCCESS, "Failed to create descriptor set")
+        for (unsigned i = 0; i < frame_count; ++i)
+        {
+            auto set = descriptor_set_map.at(0)[i];
+            write_descriptor_sets.push_back(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
+        }
 
-        VkDescriptorSetAllocateInfo image_alloc_info = {};
-        image_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        image_alloc_info.descriptorPool              = shader->GetDescriptorPool();
-        image_alloc_info.descriptorSetCount          = 1;
-        image_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &image_alloc_info, &m_folder_output) == VK_SUCCESS, "Failed to create descriptor set")
-
-        VkDescriptorSetAllocateInfo image2_alloc_info = {};
-        image2_alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        image2_alloc_info.descriptorPool              = shader->GetDescriptorPool();
-        image2_alloc_info.descriptorSetCount          = 1;
-        image2_alloc_info.pSetLayouts                 = &descriptor_setlayout;
-        ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_renderer->Device->LogicalDevice, &image2_alloc_info, &m_file_output) == VK_SUCCESS, "Failed to create descriptor set")
+        vkUpdateDescriptorSets(renderer->Device->LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
     }
 
     void ImGUIRenderer::Deinitialize()
@@ -267,14 +235,12 @@ namespace ZEngine::Rendering::Renderers
         // Setup scale and translation:
         // Our visible imgui space lies from draw_data->DisplayPps (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single
         // viewport apps.
-        float scale[2];
-        scale[0] = 2.0f / draw_data->DisplaySize.x;
-        scale[1] = 2.0f / draw_data->DisplaySize.y;
-        float translate[2];
-        translate[0] = -1.0f - draw_data->DisplayPos.x * scale[0];
-        translate[1] = -1.0f - draw_data->DisplayPos.y * scale[1];
-        command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 0, sizeof(float) * 2, scale);
-        command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, sizeof(float) * 2, sizeof(float) * 2, translate);
+
+        PushConstantData pc_data = {};
+        pc_data.Scale[0]         = 2.0f / draw_data->DisplaySize.x;
+        pc_data.Scale[1]         = 2.0f / draw_data->DisplaySize.y;
+        pc_data.Translate[0]     = -1.0f - draw_data->DisplayPos.x * pc_data.Scale[0];
+        pc_data.Translate[1]     = -1.0f - draw_data->DisplayPos.y * pc_data.Scale[1];
 
         // Will project scissor/clipping rectangles into framebuffer space
         ImVec2 clip_off          = draw_data->DisplayPos;       // (0,0) unless using multi-viewports
@@ -313,15 +279,9 @@ namespace ZEngine::Rendering::Renderers
                         scissor.extent.height = (uint32_t) (clip_rect.w - clip_rect.y);
                         command_buffer->SetScissor(scissor);
 
-                        // Bind DescriptorSet with font or user texture
-                        VkDescriptorSet desc_set[1] = {(VkDescriptorSet) pcmd->TextureId};
-                        if (sizeof(ImTextureID) < sizeof(ImU64))
-                        {
-                            // We don't support texture switches if ImTextureID hasn't been redefined to be 64-bit. Do a flaky check that other textures haven't been used.
-                            IM_ASSERT(pcmd->TextureId == (ImTextureID) m_font_descriptor_set);
-                            desc_set[0] = m_font_descriptor_set;
-                        }
-                        command_buffer->BindDescriptorSet(desc_set[0]);
+                        pc_data.TextureId = (uint32_t) (intptr_t) pcmd->TextureId;
+                        command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &pc_data);
+                        command_buffer->BindDescriptorSets(frame_index);
                         command_buffer->DrawIndexed(pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
                     }
                 }
@@ -337,65 +297,5 @@ namespace ZEngine::Rendering::Renderers
             ImGui::UpdatePlatformWindows();
             ImGui::RenderPlatformWindowsDefault();
         }
-    }
-
-    VkDescriptorSet ImGUIRenderer::UpdateFrameOutput(const Textures::TextureHandle& handle)
-    {
-        auto&                 texture       = m_renderer->Device->GlobalTextures->Access(handle);
-        auto&                 buffer        = texture->ImageBuffer->GetBuffer();
-
-        VkDescriptorImageInfo desc_image[1] = {};
-        desc_image[0].sampler               = buffer.Sampler;
-        desc_image[0].imageView             = buffer.ViewHandle;
-        desc_image[0].imageLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        VkWriteDescriptorSet write_desc[1]  = {};
-        write_desc[0].sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write_desc[0].dstSet                = m_frame_output;
-        write_desc[0].descriptorCount       = 1;
-        write_desc[0].descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write_desc[0].pImageInfo            = desc_image;
-        vkUpdateDescriptorSets(m_renderer->Device->LogicalDevice, 1, write_desc, 0, nullptr);
-
-        return m_frame_output;
-    }
-
-    VkDescriptorSet ImGUIRenderer::UpdateFileIconOutput(const Textures::TextureHandle& handle)
-    {
-        auto&                 texture       = m_renderer->Device->GlobalTextures->Access(handle);
-        auto&                 buffer        = texture->ImageBuffer->GetBuffer();
-
-        VkDescriptorImageInfo desc_image[1] = {};
-        desc_image[0].sampler               = buffer.Sampler;
-        desc_image[0].imageView             = buffer.ViewHandle;
-        desc_image[0].imageLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        VkWriteDescriptorSet write_desc[1]  = {};
-        write_desc[0].sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write_desc[0].dstSet                = m_file_output;
-        write_desc[0].descriptorCount       = 1;
-        write_desc[0].descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write_desc[0].pImageInfo            = desc_image;
-        vkUpdateDescriptorSets(m_renderer->Device->LogicalDevice, 1, write_desc, 0, nullptr);
-
-        return m_file_output;
-    }
-
-    VkDescriptorSet ImGUIRenderer::UpdateDirIconOutput(const Textures::TextureHandle& handle)
-    {
-        auto&                 texture       = m_renderer->Device->GlobalTextures->Access(handle);
-        auto&                 buffer        = texture->ImageBuffer->GetBuffer();
-
-        VkDescriptorImageInfo desc_image[1] = {};
-        desc_image[0].sampler               = buffer.Sampler;
-        desc_image[0].imageView             = buffer.ViewHandle;
-        desc_image[0].imageLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        VkWriteDescriptorSet write_desc[1]  = {};
-        write_desc[0].sType                 = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write_desc[0].dstSet                = m_folder_output;
-        write_desc[0].descriptorCount       = 1;
-        write_desc[0].descriptorType        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write_desc[0].pImageInfo            = desc_image;
-        vkUpdateDescriptorSets(m_renderer->Device->LogicalDevice, 1, write_desc, 0, nullptr);
-
-        return m_folder_output;
     }
 } // namespace ZEngine::Rendering::Renderers

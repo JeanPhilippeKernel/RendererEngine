@@ -380,11 +380,16 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::CreatePushConstantRange()
     {
-        for (const auto& push_constant_spec : m_push_constant_specification_collection)
+        if (!m_push_constant_specification_collection.empty())
         {
-            m_push_constant_collection.emplace_back(VkPushConstantRange{.stageFlags = ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(push_constant_spec.Flags)], .offset = push_constant_spec.Offset, .size = push_constant_spec.Size});
+            VkPushConstantRange& range = m_push_constant_collection.emplace_back(VkPushConstantRange{.offset = 0});
+            for (const auto& push_constant_spec : m_push_constant_specification_collection)
+            {
+                range.stageFlags |= ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(push_constant_spec.Flags)];
+                range.size       += push_constant_spec.Size;
+            }
+            m_push_constant_specification_collection.clear();
+            m_push_constant_specification_collection.shrink_to_fit();
         }
-        m_push_constant_specification_collection.clear();
-        m_push_constant_specification_collection.shrink_to_fit();
     }
 } // namespace ZEngine::Rendering::Shaders

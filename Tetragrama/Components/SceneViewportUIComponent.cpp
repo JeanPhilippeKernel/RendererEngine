@@ -89,11 +89,11 @@ namespace Tetragrama::Components
         // Scene texture representation
         if (!m_scene_texture || m_refresh_texture_handle)
         {
-            m_scene_texture          = renderer->GetImguiFrameOutput();
+            m_scene_texture          = renderer->GetFrameOutput();
             m_refresh_texture_handle = false;
         }
 
-        ImGui::Image(m_scene_texture, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+        ImGui::Image((ImTextureID) m_scene_texture.Index, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
         // ViewPort bound computation
         ImVec2 viewport_windows_size  = ImGui::GetWindowSize();
         ImVec2 minimum_bound          = ImGui::GetWindowPos();

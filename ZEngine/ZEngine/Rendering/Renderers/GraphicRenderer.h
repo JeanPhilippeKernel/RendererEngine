@@ -59,7 +59,7 @@ namespace ZEngine::Rendering::Renderers
         void                                    Deinitialize();
         void                                    Update();
         void                                    DrawScene(Hardwares::CommandBuffer* const command_buffer, Cameras::Camera* const camera, Scenes::SceneRawData* const scene);
-        VkDescriptorSet                         GetImguiFrameOutput();
+        Textures::TextureHandle                 GetFrameOutput();
 
         Helpers::Ref<RenderPasses::RenderPass>  CreateRenderPass(const Specifications::RenderPassSpecification& spec);
         Helpers::Ref<Textures::Texture>         CreateTexture(const Specifications::TextureSpecification& spec);

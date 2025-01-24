@@ -23,8 +23,12 @@ namespace Tetragrama::Components
     {
         if (!m_textures_loaded)
         {
-            m_directory_icon  = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/DirectoryIcon.png");
-            m_file_icon       = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/FileIcon.png");
+            m_directory_icon = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/DirectoryIcon.png");
+            m_file_icon      = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/FileIcon.png");
+
+            renderer->Device->TextureHandleToUpdates.Enqueue(m_directory_icon);
+            renderer->Device->TextureHandleToUpdates.Enqueue(m_file_icon);
+
             m_textures_loaded = true;
         }
 
@@ -99,7 +103,7 @@ namespace Tetragrama::Components
 
         ImGui::PushID(name.c_str());
 
-        ImTextureID icon      = entry.is_directory() ? static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateDirIconOutput(m_directory_icon)) : static_cast<ImTextureID>(renderer->ImguiRenderer->UpdateFileIconOutput(m_file_icon));
+        ImTextureID icon      = entry.is_directory() ? (ImTextureID) m_directory_icon.Index : (ImTextureID) m_file_icon.Index;
 
         const float margin    = 5.0f;
         ImVec2      cursorPos = ImGui::GetCursorPos();
