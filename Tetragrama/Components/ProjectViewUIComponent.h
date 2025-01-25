@@ -63,7 +63,7 @@ namespace Tetragrama::Components
         ZEngine::Rendering::Textures::TextureHandle m_directory_icon;
         ZEngine::Rendering::Textures::TextureHandle m_file_icon;
         bool                                        m_textures_loaded                    = false;
-        static constexpr float                      m_thumbnail_size                     = 128.0f;
+        static constexpr float                      m_thumbnail_size                     = 64.0f;
         char                                        m_search_buffer[MAX_FILE_PATH_COUNT] = "";
     };
 } // namespace Tetragrama::Components

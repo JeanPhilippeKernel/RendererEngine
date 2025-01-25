@@ -34,43 +34,50 @@ namespace Tetragrama::Components
 
         ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
-        ImGui::BeginChild("Left Pane", ImVec2(ImGui::GetContentRegionAvail().x * 0.15f, 0), true);
-        RenderTreeBrowser();
-        ImGui::EndChild();
-
-        ImGui::SameLine();
-        ImGui::GetWindowDrawList()->AddLine(ImGui::GetCursorScreenPos(), ImVec2(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y + ImGui::GetContentRegionAvail().y), ImGui::GetColorU32(ImGuiCol_Separator), 0.5f);
-
-        ImGui::BeginChild("Right Pane", ImVec2(0, 0), true);
-        if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
+        ImVec2 current_win_size = ImGui::GetContentRegionAvail();
+        if (ImGui::BeginTable("#AssetBrowserArea", 2, ImGuiTableFlags_Resizable, current_win_size))
         {
-            ImGui::OpenPopup("ContextMenu");
+            /*Left Pane*/
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            RenderTreeBrowser();
+
+            /*Right Pane*/
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+            {
+                ImGui::OpenPopup("ContextMenu");
+            }
+            if (ImGui::BeginPopup("ContextMenu"))
+            {
+                RenderContextMenu(ContextMenuType::RightPane, m_current_directory);
+                ImGui::EndPopup();
+            }
+            RenderPopUpMenu();
+
+            RenderBackButton();
+            ImGui::SameLine();
+            ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
+            ImGui::SameLine();
+
+            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+            auto relative_path = MakeRelative(m_current_directory, m_assets_directory.parent_path());
+            ImGui::Text(relative_path.string().c_str());
+            ImGui::PopFont();
+            ImGui::Separator();
+
+            RenderContentBrowser(renderer);
+
+            ImGui::EndTable();
         }
-        if (ImGui::BeginPopup("ContextMenu"))
-        {
-            RenderContextMenu(ContextMenuType::RightPane, m_current_directory);
-            ImGui::EndPopup();
-        }
-        RenderPopUpMenu();
-        RenderContentBrowser(renderer);
-        ImGui::EndChild();
+        ImGui::PopStyleVar();
 
         ImGui::End();
     }
 
     void ProjectViewUIComponent::RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer)
     {
-
-        RenderBackButton();
-        ImGui::SameLine();
-        ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
-        ImGui::SameLine();
-        ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-        auto relative_path = MakeRelative(m_current_directory, m_assets_directory.parent_path());
-        ImGui::Text(relative_path.string().c_str());
-        ImGui::PopFont();
-        ImGui::Separator();
-
         const float padding     = 16.0f;
         const float cellSize    = m_thumbnail_size + padding;
         const float panelWidth  = ImGui::GetContentRegionAvail().x;
@@ -110,7 +117,7 @@ namespace Tetragrama::Components
         ImGui::SetCursorPos(ImVec2(cursorPos.x + margin, cursorPos.y + margin));
 
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::ImageButton(icon, {m_thumbnail_size, m_thumbnail_size}, {0, 1}, {1, 0});
+        ImGui::ImageButton("#image", icon, {m_thumbnail_size, m_thumbnail_size}, {0, 1}, {1, 0});
         ImGui::PopStyleColor();
         ImGui::SetCursorPos(ImVec2(cursorPos.x, cursorPos.y + m_thumbnail_size + margin));
 
@@ -564,37 +571,25 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::RenderBackButton()
     {
-        ImGui::SameLine();
-        static constexpr float ButtonSize    = 20.0f;
-        static constexpr float TriangleSize  = 8.0f;
-        const ImU32            DefaultColor  = IM_COL32(150, 150, 150, 255);
-        const ImU32            HoverColor    = IM_COL32(200, 200, 200, 255);
-        const ImU32            DisabledColor = IM_COL32(100, 100, 100, 128);
-        ImDrawList*            drawList      = ImGui::GetWindowDrawList();
-        ImVec2                 cursorPos     = ImGui::GetCursorScreenPos();
-        // Calculate positions
-        ImVec2                 buttonSize(ButtonSize, ButtonSize);
-        ImVec2                 center              = {cursorPos.x + ButtonSize / 2, cursorPos.y + ButtonSize / 2};
-        // Calculate triangle vertices
-        ImVec2                 triangleLeft        = {center.x - TriangleSize, center.y};
-        ImVec2                 triangleTopRight    = {center.x + TriangleSize, center.y - TriangleSize};
-        ImVec2                 triangleBottomRight = {center.x + TriangleSize, center.y + TriangleSize};
-        bool                   canGoBack           = (m_current_directory != m_assets_directory);
-        ImU32                  triangleColor       = DefaultColor;
+        bool canGoBack = (m_current_directory != m_assets_directory);
         if (canGoBack)
         {
-            if (ImGui::Button("##BackButton", buttonSize))
+            if (ImGui::ArrowButton("##left", ImGuiDir_Left))
             {
                 m_current_directory = m_current_directory.parent_path();
             }
-            triangleColor = ImGui::IsItemHovered() ? HoverColor : DefaultColor;
         }
         else
         {
-            ImGui::Dummy(buttonSize);
-            triangleColor = DisabledColor;
+            ImVec4 color = {0.2f, 0.2f, 0.2f, .2f};
+            ImGui::PushStyleColor(ImGuiCol_Button, color); // Grayed out color
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, color);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, color);
+
+            ImGui::ArrowButton("##left", ImGuiDir_Left);
+
+            ImGui::PopStyleColor(3);
         }
-        drawList->AddTriangleFilled(triangleLeft, triangleTopRight, triangleBottomRight, triangleColor);
     }
 
     void ProjectViewUIComponent::RenderContextMenu(ContextMenuType type, const std::filesystem::path& targetPath)
