@@ -39,7 +39,7 @@ namespace ZEngine::Hardwares
         std::vector<LayerProperty> selected_layer_property_collection;
 
 #ifdef ENABLE_VULKAN_VALIDATION_LAYER
-        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation"};
+        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNAR_monitor"};
 
         for (std::string_view layer_name : validation_layer_name_collection)
         {

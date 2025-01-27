@@ -48,10 +48,7 @@ namespace ZEngine::Rendering::Renderers
         style.ChildBorderSize   = 0.f;
         style.FrameRounding     = 7.0f;
 
-        // auto window_property    = current_window->GetWindowProperty();
-        // io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Bold.ttf", 0.0f);
-        // io.FontDefault     = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 0.0f);
-        // io.FontGlobalScale = window_property.DpiScale;
+        io.FontDefault          = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 13.0f);
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window->GetNativeWindow()), false);
 
