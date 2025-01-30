@@ -78,6 +78,9 @@ To only build the Launcher only, you can specify `-LauncherOnly` which will skip
 - Setting `-RunBuilds` to `$false` will result to *only* generate the build directory.
 - Omitting `-Configuration` will result to generate and build for both `Debug` and `Release` versions.
 
+## Roadmap
+See our roadmap here [Roadmap](Roadmap.md)
+
 ## Dependencies
 
 The project uses the following dependencies as submodules : 
