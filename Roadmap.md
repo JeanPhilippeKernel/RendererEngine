@@ -6,14 +6,14 @@ This document outlines our vision for the next steps and the features we want to
 * [ ] Owned implementation of Math library
 * [ ] Support of RHI abstraction for DirectX, Metal, vulkan, OpenGL
 * [ ] Support of Scene runtime actions (Play/Pause/Stop)
-* [ ] Support of Scene serialization / deserialization
-* [ ] Support of imported model (as today OBJ model) serialization / deserialization
+* [x] Support of Scene serialization / deserialization
+* [x] Support of imported model (as today OBJ model) serialization / deserialization
 * [ ] Support of Animation board
 * [ ] Support of Scene picking object
 
 # Rendering
-* [ ] Support of Render Graph
-* [ ] Support of Gizmo
+* [x] Support of Render Graph
+* [x] Support of Gizmo
 * [ ] Support of ktx Textures
 * [ ] Support of PBR material
 * [ ] Support of shadow mapping
