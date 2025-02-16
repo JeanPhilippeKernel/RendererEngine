@@ -57,6 +57,7 @@ if (NOT LAUNCHER_ONLY)
 	add_subdirectory (${EXTERNAL_DIR}/SPIRV-Cross)
 	add_subdirectory (${EXTERNAL_DIR}/gtest)
 	add_subdirectory (${EXTERNAL_DIR}/VulkanMemoryAllocator)
+	add_subdirectory (${EXTERNAL_DIR}/tlsf)
 
 	set (CMAKE_PREFIX_PATH
 		${CMAKE_PREFIX_PATH}
