@@ -58,3 +58,6 @@
 [submodule "__externals/Vulkan-Headers"]
 	path = __externals/Vulkan-Headers
 	url = https://github.com/KhronosGroup/Vulkan-Headers
+[submodule "__externals/tlsf/src"]
+	path = __externals/tlsf/src
+	url = https://github.com/mattconte/tlsf
