@@ -1,4 +1,5 @@
 #pragma once
+#include <cassert>
 #include <cstring>
 
 #ifdef __STDC_LIB_EXT1__
@@ -135,6 +136,27 @@ namespace ZEngine::Helpers
         }
 
         return std::memcmp(ptr1, ptr2, num);
+    }
+
+    inline bool is_power_of_two(uintptr_t x)
+    {
+        return (x & (x - 1)) == 0;
+    }
+
+    inline uintptr_t memory_align(uintptr_t ptr, size_t align)
+    {
+        uintptr_t p, a, mod;
+
+        assert(is_power_of_two(align) && "Alignment should be power of two");
+
+        p   = ptr;
+        a   = static_cast<uintptr_t>(align);
+        mod = p & (a - 1);
+        if (mod != 0)
+        {
+            p += a - mod;
+        }
+        return p;
     }
 
 } // namespace ZEngine::Helpers
