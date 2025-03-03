@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <cstdint>
 
 #ifndef DEFAULT_ALIGNMENT
@@ -26,7 +27,7 @@ namespace ZEngine::Core::Memory
         void*    Allocate(size_t size, size_t alignment, const char* file, int line) override;
         void     Deallocate(void* pointer) override;
 
-        void*    Resize(void* old_memory, size_t old_size, size_t new_size);
+        void*    Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
         void     Clear();
 
         uint8_t* memory          = nullptr;

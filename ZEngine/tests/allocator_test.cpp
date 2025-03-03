@@ -31,11 +31,15 @@ TEST(AllocatorTest, ArenaAllocate)
 
         *x  = 123;
         *f  = 987.0f;
-
         Helpers::secure_memmove(str, 10, "hellope", 7);
+
+        EXPECT_EQ(*x, 123);
+        EXPECT_EQ(*f, 987.0f);
+        EXPECT_STREQ(str, "hellope");
 
         str = reinterpret_cast<char*>(arena.Resize(str, 10, 16));
         Helpers::secure_memmove(str + 7, 7, " world!", 7);
+        EXPECT_STREQ(str, "hellope world!");
     }
 
     arena.Shutdown();
