@@ -47,7 +47,6 @@ namespace ZEngine::Core::Memory
 
     void* ArenaAllocator::Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment)
     {
-        // Todo : implement resize
         assert(Helpers::is_power_of_two(alignment) && "Alignment should be power of 2");
 
         uint8_t* old_mem = reinterpret_cast<uint8_t*>(old_memory);
@@ -60,13 +59,16 @@ namespace ZEngine::Core::Memory
             if ((memory + previous_offset) == old_mem)
             {
                 current_offset = previous_offset + new_size;
-                if (new_size > old_size)
+                if (current_offset <= total_size)
                 {
-                    void*  dst  = &memory[current_offset];
-                    size_t size = new_size - old_size;
-                    Helpers::secure_memset(dst, 0, size, size);
+                    if (new_size > old_size)
+                    {
+                        void*  dst  = &memory[previous_offset + old_size];
+                        size_t size = new_size - old_size;
+                        Helpers::secure_memset(dst, 0, size, size);
+                    }
+                    return old_memory;
                 }
-                return old_memory;
             }
             else
             {
