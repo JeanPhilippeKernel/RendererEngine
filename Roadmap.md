@@ -30,3 +30,8 @@ This document outlines our vision for the next steps and the features we want to
 
 # Scripting
 * [ ] Support of object scripting with C# and Lua
+
+
+# Future
+* [ ] Support of Rendering Order (check Painter's Algorithm)
+* [ ] Support of Depth Sorting
