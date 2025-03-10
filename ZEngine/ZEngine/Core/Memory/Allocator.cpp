@@ -100,21 +100,21 @@ namespace ZEngine::Core::Memory
         arena->current_offset  = tmp.CurrentOffset;
     }
 
-    void PoolAllocator::Initialize(Arena* arena, size_t size, size_t chunk_size, size_t alignment)
+    void PoolAllocator::Initialize(Arena* arena, size_t size, size_t chk_size, size_t alignment)
     {
         uintptr_t initial_start  = (uintptr_t) &arena->memory[arena->current_offset];
         uintptr_t start          = Helpers::memory_align(initial_start, (uintptr_t) alignment);
         size                    -= (size_t) (start - initial_start);
 
-        chunk_size               = Helpers::memory_align_size_t(chunk_size, alignment);
+        chk_size                 = Helpers::memory_align_size_t(chk_size, alignment);
 
-        assert(chunk_size >= sizeof(PoolFreeNode) && "Chunk size is too small");
-        assert(size >= chunk_size && "Backing buffer length is smaller than the chunk size");
+        assert(chk_size >= sizeof(PoolFreeNode) && "Chunk size is too small");
+        assert(size >= chk_size && "Backing buffer length is smaller than the chunk size");
 
-        memory       = (uint8_t*) arena->Allocate(size, alignment);
-        total_size   = size;
-        m_chunk_size = chunk_size;
-        head         = nullptr;
+        memory     = (uint8_t*) arena->Allocate(size, alignment);
+        total_size = size;
+        chunk_size = chk_size;
+        head       = nullptr;
 
         Clear();
     }
@@ -129,7 +129,7 @@ namespace ZEngine::Core::Memory
         }
 
         head = head->Next;
-        Helpers::secure_memset(node, 0, m_chunk_size, m_chunk_size);
+        Helpers::secure_memset(node, 0, chunk_size, chunk_size);
 
         return node;
     }
@@ -161,12 +161,12 @@ namespace ZEngine::Core::Memory
 
     void PoolAllocator::Clear()
     {
-        auto   chunk_count = total_size / m_chunk_size;
+        auto   chunk_count = total_size / chunk_size;
         size_t i           = 0;
 
         for (i = 0; i < chunk_count; i++)
         {
-            void*         ptr  = &memory[i * m_chunk_size];
+            void*         ptr  = &memory[i * chunk_size];
             PoolFreeNode* node = (PoolFreeNode*) ptr;
             // Push free node onto thte free list
             node->Next         = head;

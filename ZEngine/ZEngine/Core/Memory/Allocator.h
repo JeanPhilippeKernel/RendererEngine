@@ -53,10 +53,10 @@ namespace ZEngine::Core::Memory
         void          Free(void* ptr);
         void          Clear();
 
-        uint8_t*      memory       = nullptr;
-        PoolFreeNode* head         = nullptr;
-        size_t        total_size   = 0;
-        size_t        m_chunk_size = 0;
+        uint8_t*      memory     = nullptr;
+        PoolFreeNode* head       = nullptr;
+        size_t        total_size = 0;
+        size_t        chunk_size = 0;
     };
 
     ArenaTemp BeginTempArena(ArenaAllocator* arena);
