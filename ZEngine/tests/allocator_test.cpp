@@ -148,8 +148,8 @@ TEST(AllocatorTest, ArenaMemoryPool)
         pool.Initialize(arena, sizeof(Foo) * 100, sizeof(Foo));
 
         auto fooPtr  = ZPushDynamicArray(&pool, Foo);
-        auto fooPtr1  = ZPushDynamicArray(&pool, Foo);
-        auto fooPtr2  = ZPushDynamicArray(&pool, Foo);
+        auto fooPtr1 = ZPushDynamicArray(&pool, Foo);
+        auto fooPtr2 = ZPushDynamicArray(&pool, Foo);
         fooPtr->name = ZPushString(arena, 5);
         Helpers::secure_strcpy(fooPtr->name, 5, "helo");
 
