@@ -6,6 +6,7 @@ set (TEST_SOURCES
     ThreadPool_test.cpp
     handleManager_test.cpp
     allocator_test.cpp
+    ../ZEngine/Core/Memory/Allocator.cpp
 )
 
 add_executable(ZEngineTests ${TEST_SOURCES})

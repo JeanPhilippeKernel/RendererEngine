@@ -159,4 +159,20 @@ namespace ZEngine::Helpers
         return p;
     }
 
+    inline size_t memory_align_size_t(size_t ptr, size_t align)
+    {
+        size_t p, a, mod;
+
+        assert(is_power_of_two((uintptr_t) align) && "Alignment should be power of two");
+
+        p   = ptr;
+        a   = align;
+        mod = p & (a - 1);
+        if (mod != 0)
+        {
+            p += a - mod;
+        }
+        return p;
+    }
+
 } // namespace ZEngine::Helpers
