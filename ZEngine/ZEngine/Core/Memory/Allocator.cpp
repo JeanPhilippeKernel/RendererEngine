@@ -111,7 +111,10 @@ namespace ZEngine::Core::Memory
         assert(chk_size >= sizeof(PoolFreeNode) && "Chunk size is too small");
         assert(size >= chk_size && "Backing buffer length is smaller than the chunk size");
 
-        memory     = (uint8_t*) arena->Allocate(size, alignment);
+        memory = (uint8_t*) arena->Allocate(size, alignment);
+
+        assert(memory && "Failed to allocate memory");
+
         total_size = size;
         chunk_size = chk_size;
         head       = nullptr;
