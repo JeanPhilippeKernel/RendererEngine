@@ -4,8 +4,6 @@
 
 namespace ZEngine::Core::Memory
 {
-    ArenaAllocator::~ArenaAllocator() {}
-
     void ArenaAllocator::Initialize(size_t size)
     {
         memory          = (uint8_t*) malloc(size);
@@ -42,8 +40,6 @@ namespace ZEngine::Core::Memory
     {
         return Allocate(size, alignment);
     }
-
-    void  ArenaAllocator::Deallocate(void* pointer) {}
 
     void* ArenaAllocator::Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment)
     {
@@ -88,4 +84,96 @@ namespace ZEngine::Core::Memory
         current_offset  = 0;
     }
 
+    ArenaTemp BeginTempArena(ArenaAllocator* arena)
+    {
+        ArenaTemp temp      = {};
+        temp.Arena          = arena;
+        temp.PreviousOffset = arena->previous_offset;
+        temp.CurrentOffset  = arena->current_offset;
+        return temp;
+    }
+
+    void EndTempArena(ArenaTemp tmp)
+    {
+        auto arena             = tmp.Arena;
+        arena->previous_offset = tmp.PreviousOffset;
+        arena->current_offset  = tmp.CurrentOffset;
+    }
+
+    void PoolAllocator::Initialize(Arena* arena, size_t size, size_t chk_size, size_t alignment)
+    {
+        uintptr_t initial_start  = (uintptr_t) &arena->memory[arena->current_offset];
+        uintptr_t start          = Helpers::memory_align(initial_start, (uintptr_t) alignment);
+        size                    -= (size_t) (start - initial_start);
+
+        chk_size                 = Helpers::memory_align_size_t(chk_size, alignment);
+
+        assert(chk_size >= sizeof(PoolFreeNode) && "Chunk size is too small");
+        assert(size >= chk_size && "Backing buffer length is smaller than the chunk size");
+
+        memory = (uint8_t*) arena->Allocate(size, alignment);
+
+        assert(memory && "Failed to allocate memory");
+
+        total_size = size;
+        chunk_size = chk_size;
+        head       = nullptr;
+
+        Clear();
+    }
+
+    void* PoolAllocator::Allocate()
+    {
+        PoolFreeNode* node = head;
+
+        if (node == nullptr)
+        {
+            return nullptr;
+        }
+
+        head = head->Next;
+        Helpers::secure_memset(node, 0, chunk_size, chunk_size);
+
+        return node;
+    }
+
+    void* PoolAllocator::Allocate(const char* file, int line)
+    {
+        return Allocate();
+    }
+
+    void PoolAllocator::Free(void* ptr)
+    {
+        if (!ptr)
+        {
+            return;
+        }
+
+        auto start = memory;
+        auto end   = &memory[total_size];
+
+        if (!(start <= ptr && ptr < end))
+        {
+            return;
+        }
+
+        PoolFreeNode* node = (PoolFreeNode*) (ptr);
+        node->Next         = head;
+        head               = node;
+    }
+
+    void PoolAllocator::Clear()
+    {
+        auto   chunk_count = total_size / chunk_size;
+        size_t i           = 0;
+
+        for (i = 0; i < chunk_count; i++)
+        {
+            void*         ptr  = &memory[i * chunk_size];
+            PoolFreeNode* node = (PoolFreeNode*) ptr;
+            // Push free node onto thte free list
+            node->Next         = head;
+            head               = node;
+        }
+    }
 } // namespace ZEngine::Core::Memory

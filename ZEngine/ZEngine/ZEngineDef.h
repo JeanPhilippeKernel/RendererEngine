@@ -42,3 +42,22 @@
 #define SINGLE_ARG(...)     __VA_ARGS__
 
 #define MAX_FILE_PATH_COUNT 256
+
+/*
+ * Allocator and Memory Macros
+ */
+#ifndef DEFAULT_ALIGNMENT
+#define DEFAULT_ALIGNMENT (2 * sizeof(void*))
+#endif // !DEFAULT_ALIGNMENT
+
+#define ZKilo(size)                    (size * 1024)
+#define ZMega(size)                    (ZKilo(size) * 1024)
+#define ZGiga(size)                    (ZMega(size) * 1024)
+
+#define ZPush(allocator, type, size)   ((type*) (allocator)->Allocate(size, DEFAULT_ALIGNMENT, __FILE__, __LINE__))
+
+#define ZPushArray(arena, type, count) ZPush(arena, type, (sizeof(type) * count))
+#define ZPushString(arena, count)      ZPushArray(arena, char, count)
+#define ZPushStruct(arena, type)       ZPushArray(arena, type, 1)
+
+#define ZPushDynamicArray(pool, type)  ((type*) (pool)->Allocate(__FILE__, __LINE__))
