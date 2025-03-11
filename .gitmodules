@@ -61,3 +61,6 @@
 [submodule "__externals/tlsf/src"]
 	path = __externals/tlsf/src
 	url = https://github.com/mattconte/tlsf
+[submodule "__externals/CLI11"]
+	path = __externals/CLI11
+	url = https://github.com/CLIUtils/CLI11
