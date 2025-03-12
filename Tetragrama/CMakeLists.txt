@@ -31,6 +31,8 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set_target_properties(${TARGET_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$(ProjectDir)$(Configuration)")
 endif ()
 
+include(${EXTERNAL_DIR}/externals.cmake)
+
 target_include_directories (${TARGET_NAME}
 	PRIVATE
         .
@@ -54,6 +56,9 @@ target_compile_definitions(${TARGET_NAME}
         _UNICODE
 )
 
-target_link_libraries(${TARGET_NAME} PRIVATE zEngineLib)
+target_link_libraries(${TARGET_NAME} PRIVATE
+    zEngineLib
+    imported::External_editorLibs
+)
 
 set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME "zEngineEditor")

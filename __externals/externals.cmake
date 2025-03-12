@@ -18,6 +18,7 @@ set(EXTERNAL_INCLUDE_DIRS
 	${EXTERNAL_DIR}/SPIRV-Cross
 	${EXTERNAL_DIR}/VulkanMemoryAllocator
 	${EXTERNAL_DIR}/nlohmann_json/single_include
+	${EXTERNAL_DIR}/CLI11/include
 )
 
 if (MSVC)
@@ -31,6 +32,12 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 endif()
 
 add_library (imported::External_libs INTERFACE IMPORTED)
+add_library(imported::External_editorLibs INTERFACE IMPORTED)
+
+
+target_link_libraries(imported::External_editorLibs INTERFACE
+	CLI11::CLI11
+)
 
 target_link_libraries(imported::External_libs INTERFACE
 	vulkan
