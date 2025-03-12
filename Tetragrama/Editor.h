@@ -55,6 +55,8 @@ namespace Tetragrama
         std::string SceneDataPath;
         std::string ProjectName;
         std::string ActiveSceneName;
+
+        void        ReadConfig(std::string_view file);
     };
 
     struct EditorContext : public ZEngine::Helpers::RefCounted

@@ -3,6 +3,7 @@
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
 #include <fmt/format.h>
+#include <nlohmann/json.hpp>
 
 using namespace ZEngine;
 using namespace ZEngine::Helpers;
@@ -77,5 +78,67 @@ namespace Tetragrama
     bool EditorScene::HasPendingChange() const
     {
         return m_has_pending_change;
+    }
+
+    void EditorConfiguration::ReadConfig(std::string_view file)
+    {
+        std::ifstream  f(file.data());
+        nlohmann::json config             = nlohmann::json::parse(f);
+        std::string    root_project_dir   = std::filesystem::path(file).parent_path().string();
+
+        std::string    working_space_path = config["workingSpace"];
+        if (working_space_path == ".")
+        {
+            std::string_view lookup_key("$(workingSpace)");
+            size_t           length          = lookup_key.size();
+
+            auto&            texture_path    = config["defaultImportDir"]["textureDir"];
+            auto&            sound_path      = config["defaultImportDir"]["soundDir"];
+            auto&            scene_path      = config["sceneDir"];
+            auto&            scene_data_path = config["sceneDataDir"];
+
+            if (texture_path.get<std::string>().find(lookup_key) != std::string::npos)
+            {
+                config["defaultImportDir"]["textureDir"] = texture_path.get<std::string>().replace(texture_path.get<std::string>().find(lookup_key), length, "");
+            }
+
+            if (sound_path.get<std::string>().find(lookup_key) != std::string::npos)
+            {
+                config["defaultImportDir"]["soundDir"] = sound_path.get<std::string>().replace(sound_path.get<std::string>().find(lookup_key), length, "");
+            }
+
+            if (scene_path.get<std::string>().find(lookup_key) != std::string::npos)
+            {
+                config["sceneDir"] = scene_path.get<std::string>().replace(scene_path.get<std::string>().find(lookup_key), length, "");
+            }
+
+            if (scene_data_path.get<std::string>().find(lookup_key) != std::string::npos)
+            {
+                config["sceneDataDir"] = scene_data_path.get<std::string>().replace(scene_data_path.get<std::string>().find(lookup_key), length, "");
+            }
+
+            config["workingSpace"] = root_project_dir;
+        }
+
+        ProjectName              = config["projectName"];
+        WorkingSpacePath         = config["workingSpace"];
+        DefaultImportTexturePath = config["defaultImportDir"]["textureDir"];
+        DefaultImportSoundPath   = config["defaultImportDir"]["soundDir"];
+        ScenePath                = config["sceneDir"];
+        SceneDataPath            = config["sceneDataDir"];
+
+        /*
+         * Retreiving the Active Scene
+         */
+        for (const auto& scene : config["sceneList"])
+        {
+            bool is_default = scene["isDefault"].get<bool>();
+            if (!is_default)
+            {
+                continue;
+            }
+            ActiveSceneName = scene["name"];
+            break;
+        }
     }
 } // namespace Tetragrama
