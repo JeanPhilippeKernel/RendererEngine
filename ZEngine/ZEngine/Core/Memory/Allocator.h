@@ -25,13 +25,13 @@ namespace ZEngine::Core::Memory
         void*    Allocate(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
         void*    Allocate(size_t size, size_t alignment, const char* file, int line);
 
-        void*    Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
+        void*    Reallocate(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
         void     Clear();
 
-        uint8_t* memory          = nullptr;
-        size_t   total_size      = 0;
-        size_t   current_offset  = 0;
-        size_t   previous_offset = 0;
+        uint8_t* m_memory          = nullptr;
+        size_t   m_total_size      = 0;
+        size_t   m_current_offset  = 0;
+        size_t   m_previous_offset = 0;
     }; // struct ArenaAllocator
 
     struct PoolFreeNode

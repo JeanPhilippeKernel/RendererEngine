@@ -23,6 +23,7 @@ target_include_directories (zEngineLib
 		.
 		./Core
 		./Core/Memory
+		./Core/Container
 		./Hardwares
 		./Helpers
 		./Layers
