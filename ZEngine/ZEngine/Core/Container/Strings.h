@@ -19,12 +19,12 @@ namespace ZEngine::Core::Container
 
         explicit String(Memory::ArenaAllocator* arena) : m_data(nullptr), m_size(0), m_capacity(0), m_arena(arena) {}
 
-        String(const char* str, Memory::ArenaAllocator* arena) : m_data(nullptr), m_size(0), m_capacity(0), m_arena(arena)
+        String(Memory::ArenaAllocator* arena, const char* str) : m_data(nullptr), m_size(0), m_capacity(0), m_arena(arena)
         {
             if (str)
             {
-                size_t len = strlen(str);
-                Reserve(len + 1);
+                size_t len = Helpers::secure_strlen(str);
+                reserve(len + 1);
                 Helpers::secure_memcpy(m_data, m_capacity, str, len);
                 m_data[len] = '\0';
                 m_size      = len;
@@ -35,7 +35,7 @@ namespace ZEngine::Core::Container
         {
             if (other.m_size > 0)
             {
-                Reserve(other.m_size + 1);
+                reserve(other.m_size + 1);
                 Helpers::secure_memcpy(m_data, m_capacity, other.m_data, other.m_size + 1);
                 m_size = other.m_size;
             }
@@ -62,7 +62,7 @@ namespace ZEngine::Core::Container
                 m_arena = other.m_arena;
                 if (other.m_size > 0)
                 {
-                    Reserve(other.m_size + 1);
+                    reserve(other.m_size + 1);
                     Helpers::secure_memcpy(m_data, m_capacity, other.m_data, other.m_size + 1);
                     m_size = other.m_size;
                 }
@@ -96,38 +96,38 @@ namespace ZEngine::Core::Container
 
         String& operator=(const char* str)
         {
-            Clear();
+            clear();
             if (str)
             {
-                size_t len = strlen(str);
-                Reserve(len + 1);
+                size_t len = Helpers::secure_strlen(str);
+                reserve(len + 1);
                 Helpers::secure_memcpy(m_data, m_capacity, str, len + 1);
                 m_size = len;
             }
             return *this;
         }
 
-        String& Append(const String& other)
+        String& append(const String& other)
         {
             if (other.m_size > 0)
             {
                 size_t new_size = m_size + other.m_size;
-                Reserve(new_size + 1);
+                reserve(new_size + 1);
                 Helpers::secure_memcpy(m_data + m_size, m_capacity, other.m_data, other.m_size + 1);
                 m_size = new_size;
             }
             return *this;
         }
 
-        String& Append(const char* str)
+        String& append(const char* str)
         {
             if (str)
             {
-                size_t len = strlen(str);
+                size_t len = Helpers::secure_strlen(str);
                 if (len > 0)
                 {
                     size_t new_size = m_size + len;
-                    Reserve(new_size + 1);
+                    reserve(new_size + 1);
                     Helpers::secure_memcpy(m_data + m_size, m_capacity, str, len + 1);
                     m_size = new_size;
                 }
@@ -135,9 +135,9 @@ namespace ZEngine::Core::Container
             return *this;
         }
 
-        String& Append(char c)
+        String& append(char c)
         {
-            Reserve(m_size + 2);
+            reserve(m_size + 2);
             m_data[m_size]     = c;
             m_data[m_size + 1] = '\0';
             m_size++;
@@ -146,24 +146,24 @@ namespace ZEngine::Core::Container
 
         String& operator+=(const String& other)
         {
-            return Append(other);
+            return append(other);
         }
         String& operator+=(const char* str)
         {
-            return Append(str);
+            return append(str);
         }
         String& operator+=(char c)
         {
-            return Append(c);
+            return append(c);
         }
 
-        String Substring(size_t start, size_t length) const
+        String substring(size_t start, size_t length) const
         {
             String result(m_arena);
             if (start < m_size)
             {
                 length = (start + length > m_size) ? (m_size - start) : length;
-                result.Reserve(length + 1);
+                result.reserve(length + 1);
                 Helpers::secure_memcpy(result.m_data, m_capacity, m_data + start, length);
                 result.m_data[length] = '\0';
                 result.m_size         = length;
@@ -171,7 +171,7 @@ namespace ZEngine::Core::Container
             return result;
         }
 
-        void Clear()
+        void clear()
         {
             if (m_data)
             {
@@ -180,7 +180,7 @@ namespace ZEngine::Core::Container
             m_size = 0;
         }
 
-        void Reserve(size_t capacity)
+        void reserve(size_t capacity)
         {
             if (capacity > m_capacity && m_arena)
             {
@@ -229,21 +229,21 @@ namespace ZEngine::Core::Container
             return !(*this == other);
         }
 
-        const_pointer CStr() const
+        const_pointer cstr() const
         {
             return m_data ? m_data : "";
         }
 
-        bool IsEmpty() const
+        bool isempty() const
         {
             return m_size == 0;
         }
-        size_t Length() const
+        size_t length() const
         {
             return m_size;
         }
 
-        size_t Capacity() const
+        size_t capacity() const
         {
             return m_capacity;
         }

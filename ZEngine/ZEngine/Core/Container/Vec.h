@@ -26,26 +26,26 @@ namespace ZEngine::Core::Container
 
         Vec(Memory::ArenaAllocator& allocator) : m_allocator(allocator), m_size(0), m_capacity(0), m_data(nullptr) {}
 
-        Vec(size_type initial_capacity, Memory::ArenaAllocator& allocator) : m_allocator(allocator), m_size(0), m_capacity(0), m_data(nullptr)
+        Vec(Memory::ArenaAllocator& allocator, size_type initial_capacity) : m_allocator(allocator), m_size(0), m_capacity(0), m_data(nullptr)
         {
-            Reserve(initial_capacity);
+            reserve(initial_capacity);
         }
 
-        Vec(std::initializer_list<T> init, Memory::ArenaAllocator& allocator) : m_allocator(allocator), m_size(0), m_capacity(0), m_data(nullptr)
+        Vec(Memory::ArenaAllocator& allocator, std::initializer_list<T> init) : m_allocator(allocator), m_size(0), m_capacity(0), m_data(nullptr)
         {
-            Reserve(init.size());
+            reserve(init.size());
             for (const auto& item : init)
             {
-                PushBack(item);
+                pushback(item);
             }
         }
 
         Vec(const Vec& other) : m_allocator(other.m_allocator), m_size(0), m_capacity(0), m_data(nullptr)
         {
-            Reserve(other.m_size);
+            reserve(other.m_size);
             for (size_type i = 0; i < other.m_size; ++i)
             {
-                PushBack(other.m_data[i]);
+                pushback(other.m_data[i]);
             }
         }
 
@@ -60,12 +60,12 @@ namespace ZEngine::Core::Container
         {
             if (this != &other)
             {
-                Clear();
-                Reserve(other.Size());
+                clear();
+                reserve(other.size());
 
-                for (size_type i = 0; i < other.Size(); i++)
+                for (size_type i = 0; i < other.size(); i++)
                 {
-                    PushBack(other.m_data[i]);
+                    pushback(other.m_data[i]);
                 }
             }
             return *this;
@@ -75,7 +75,7 @@ namespace ZEngine::Core::Container
         {
             if (this != &other)
             {
-                Clear();
+                clear();
 
                 m_allocator      = other.m_allocator;
                 m_size           = other.m_size;
@@ -90,13 +90,13 @@ namespace ZEngine::Core::Container
             return *this;
         }
 
-        reference At(size_type index)
+        reference at(size_type index)
         {
             assert(index <= m_size && "Index out of bounds");
             return m_data[index];
         }
 
-        const_reference At(size_type index) const
+        const_reference at(size_type index) const
         {
             assert(index <= m_size && "Index out of bounds");
             return m_data[index];
@@ -112,72 +112,72 @@ namespace ZEngine::Core::Container
             return m_data[index];
         }
 
-        iterator Begin()
+        iterator begin()
         {
             return m_data;
         }
 
-        const_iterator Begin() const
+        const_iterator begin() const
         {
             return m_data;
         }
 
-        iterator End()
+        iterator end()
         {
             return m_data + m_size;
         }
 
-        const_iterator End() const
+        const_iterator end() const
         {
             return m_data + m_size;
         }
 
-        reference Front()
+        reference front()
         {
             return m_data[0];
         }
 
-        const_reference Front() const
+        const_reference front() const
         {
             return m_data[0];
         }
 
-        reference Back()
+        reference back()
         {
             return m_data[m_size - 1];
         }
 
-        const_reference Back() const
+        const_reference back() const
         {
             return m_data[m_size - 1];
         }
 
-        pointer Data()
+        pointer data()
         {
             return m_data;
         }
 
-        const_pointer Data() const
+        const_pointer data() const
         {
             return m_data;
         }
 
-        bool Empty() const
+        bool empty() const
         {
             return m_size == 0;
         }
 
-        size_type Size() const
+        size_type size() const
         {
             return m_size;
         }
 
-        size_type Capacity() const
+        size_type capacity() const
         {
             return m_capacity;
         }
 
-        void Clear()
+        void clear()
         {
             for (size_type i = 0; i < m_size; ++i)
             {
@@ -186,41 +186,41 @@ namespace ZEngine::Core::Container
             m_size = 0;
         }
 
-        void PushBack(const T& value)
+        void pushback(const T& value)
         {
             if (m_size == m_capacity)
             {
                 size_type new_capacity = m_capacity == 0 ? 4 : m_capacity * 2;
-                Reserve(new_capacity);
+                reserve(new_capacity);
             }
             new (m_data + m_size) T(value);
             ++m_size;
         }
 
-        void PushBack(T&& value)
+        void pushback(T&& value)
         {
             if (m_size == m_capacity)
             {
                 size_type new_capacity = m_capacity == 0 ? 4 : m_capacity * 2;
-                Reserve(new_capacity);
+                reserve(new_capacity);
             }
             new (m_data + m_size) T(std::move(value));
             ++m_size;
         }
 
         template <typename... Args>
-        reference EmplaceBack(Args&&... args)
+        reference emplaceBack(Args&&... args)
         {
             if (m_size == m_capacity)
             {
                 size_type new_capacity = m_capacity == 0 ? 4 : m_capacity * 2;
-                Reserve(new_capacity);
+                reserve(new_capacity);
             }
             new (m_data + m_size) T(std::forward<Args>(args)...);
             return m_data[m_size++];
         }
 
-        void PopBack()
+        void popback()
         {
             if (m_size > 0)
             {
@@ -229,12 +229,12 @@ namespace ZEngine::Core::Container
             }
         }
 
-        void Resize(size_type count)
+        void resize(size_type count)
         {
-            Resize(count, T());
+            resize(count, T());
         }
 
-        void Resize(size_type count, const T& value)
+        void resize(size_type count, const T& value)
         {
             if (count < m_size)
             {
@@ -245,7 +245,7 @@ namespace ZEngine::Core::Container
             }
             else if (count > m_size)
             {
-                Reserve(count);
+                reserve(count);
                 for (size_type i = m_size; i < count; ++i)
                 {
                     new (m_data + i) T(value);
@@ -256,12 +256,12 @@ namespace ZEngine::Core::Container
 
         ~Vec()
         {
-            Clear();
+            clear();
             m_data     = nullptr;
             m_capacity = 0;
         }
 
-        void Reserve(size_type new_capacity)
+        void reserve(size_type new_capacity)
         {
             if (new_capacity <= m_capacity)
             {
