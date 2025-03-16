@@ -6,46 +6,38 @@ using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::Core::Container
 {
-    class String
+    struct String
     {
-    public:
         using size_type       = size_t;
+        using value_type      = char;
         using pointer         = char*;
         using const_pointer   = const char*;
-        using iterator        = char*;
-        using const_iterator  = const char*;
         using reference       = char&;
         using const_reference = const char&;
+        using iterator        = char*;
+        using const_iterator  = const char*;
 
-        explicit String(Memory::ArenaAllocator* arena) : m_data(nullptr), m_size(0), m_capacity(0), m_arena(arena) {}
+        String(Memory::ArenaAllocator& allocator, size_type initial_capacity = 16) : m_allocator(allocator), m_size(0), m_capacity(0), m_data(nullptr)
+        {
+            reserve(initial_capacity);
+            m_data[0] = '\0';
+        }
 
-        String(Memory::ArenaAllocator* arena, const char* str) : m_data(nullptr), m_size(0), m_capacity(0), m_arena(arena)
+        String(Memory::ArenaAllocator& allocator, const char* str) : m_allocator(allocator), m_size(0), m_capacity(0), m_data(nullptr)
         {
             if (str)
             {
-                size_t len = Helpers::secure_strlen(str);
+                size_type len = Helpers::secure_strlen(str);
                 reserve(len + 1);
                 Helpers::secure_memcpy(m_data, m_capacity, str, len);
-                m_data[len] = '\0';
-                m_size      = len;
+                m_size         = len;
+                m_data[m_size] = '\0';
             }
-        }
-
-        String(const String& other) : m_data(nullptr), m_size(0), m_capacity(0), m_arena(other.m_arena)
-        {
-            if (other.m_size > 0)
+            else
             {
-                reserve(other.m_size + 1);
-                Helpers::secure_memcpy(m_data, m_capacity, other.m_data, other.m_size + 1);
-                m_size = other.m_size;
+                reserve(16);
+                m_data[0] = '\0';
             }
-        }
-
-        String(String&& other) noexcept : m_data(other.m_data), m_size(other.m_size), m_capacity(other.m_capacity), m_arena(other.m_arena)
-        {
-            other.m_data     = nullptr;
-            other.m_size     = 0;
-            other.m_capacity = 0;
         }
 
         ~String()
@@ -55,203 +47,197 @@ namespace ZEngine::Core::Container
             m_capacity = 0;
         }
 
-        String& operator=(const String& other)
+        void append(const char* str)
         {
-            if (this != &other)
-            {
-                m_arena = other.m_arena;
-                if (other.m_size > 0)
-                {
-                    reserve(other.m_size + 1);
-                    Helpers::secure_memcpy(m_data, m_capacity, other.m_data, other.m_size + 1);
-                    m_size = other.m_size;
-                }
-                else
-                {
-                    m_size = 0;
-                    if (m_data)
-                    {
-                        m_data[0] = '\0';
-                    }
-                }
-            }
-            return *this;
-        }
+            if (!str)
+                return;
 
-        String& operator=(String&& other) noexcept
-        {
-            if (this != &other)
-            {
-                m_data           = other.m_data;
-                m_size           = other.m_size;
-                m_capacity       = other.m_capacity;
-                m_arena          = other.m_arena;
+            size_type len = Helpers::secure_strlen(str);
+            if (len == 0)
+                return;
 
-                other.m_data     = nullptr;
-                other.m_size     = 0;
-                other.m_capacity = 0;
-            }
-            return *this;
-        }
-
-        String& operator=(const char* str)
-        {
-            clear();
-            if (str)
+            size_type new_size = m_size + len;
+            if (new_size + 1 > m_capacity)
             {
-                size_t len = Helpers::secure_strlen(str);
-                reserve(len + 1);
-                Helpers::secure_memcpy(m_data, m_capacity, str, len + 1);
-                m_size = len;
-            }
-            return *this;
-        }
-
-        String& append(const String& other)
-        {
-            if (other.m_size > 0)
-            {
-                size_t new_size = m_size + other.m_size;
                 reserve(new_size + 1);
-                Helpers::secure_memcpy(m_data + m_size, m_capacity, other.m_data, other.m_size + 1);
-                m_size = new_size;
             }
-            return *this;
+
+            Helpers::secure_memcpy(m_data + m_size, m_capacity, str, len);
+            m_size         = new_size;
+            m_data[m_size] = '\0';
         }
 
-        String& append(const char* str)
+        void append(const String& other)
         {
-            if (str)
+            append(other.c_str());
+        }
+
+        void append(char c)
+        {
+            if (m_size + 2 > m_capacity)
             {
-                size_t len = Helpers::secure_strlen(str);
-                if (len > 0)
-                {
-                    size_t new_size = m_size + len;
-                    reserve(new_size + 1);
-                    Helpers::secure_memcpy(m_data + m_size, m_capacity, str, len + 1);
-                    m_size = new_size;
-                }
+                reserve((m_size + 2) * 2);
             }
-            return *this;
-        }
 
-        String& append(char c)
-        {
-            reserve(m_size + 2);
-            m_data[m_size]     = c;
-            m_data[m_size + 1] = '\0';
+            m_data[m_size] = c;
             m_size++;
-            return *this;
+            m_data[m_size] = '\0';
         }
 
-        String& operator+=(const String& other)
+        reference operator[](size_type index)
         {
-            return append(other);
-        }
-        String& operator+=(const char* str)
-        {
-            return append(str);
-        }
-        String& operator+=(char c)
-        {
-            return append(c);
+            ZENGINE_VALIDATE_ASSERT(index < m_size, "Index out of range");
+            return m_data[index];
         }
 
-        String substring(size_t start, size_t length) const
+        const_reference operator[](size_type index) const
         {
-            String result(m_arena);
-            if (start < m_size)
-            {
-                length = (start + length > m_size) ? (m_size - start) : length;
-                result.reserve(length + 1);
-                Helpers::secure_memcpy(result.m_data, m_capacity, m_data + start, length);
-                result.m_data[length] = '\0';
-                result.m_size         = length;
-            }
-            return result;
+            ZENGINE_VALIDATE_ASSERT(index < m_size, "Index out of range");
+            return m_data[index];
+        }
+
+        iterator begin()
+        {
+            return m_data;
+        }
+
+        const_iterator begin() const
+        {
+            return m_data;
+        }
+
+        iterator end()
+        {
+            return m_data + m_size;
+        }
+
+        const_iterator end() const
+        {
+            return m_data + m_size;
+        }
+
+        bool empty() const
+        {
+            return m_size == 0;
+        }
+
+        size_type size() const
+        {
+            return m_size;
+        }
+
+        size_type length() const
+        {
+            return m_size;
+        }
+
+        size_type capacity() const
+        {
+            return m_capacity;
+        }
+
+        const char* c_str() const
+        {
+            return m_data;
         }
 
         void clear()
         {
             if (m_data)
             {
+                m_size    = 0;
                 m_data[0] = '\0';
             }
-            m_size = 0;
         }
 
-        void reserve(size_t capacity)
+        void reserve(size_type new_capacity)
         {
-            if (capacity > m_capacity && m_arena)
+            if (new_capacity <= m_capacity)
             {
-                char* new_data = static_cast<char*>(m_arena->Allocate(capacity * sizeof(char)));
-
-                if (m_data && m_size > 0)
-                {
-                    Helpers::secure_memcpy(new_data, m_capacity, m_data, m_size + 1);
-                }
-                else
-                {
-                    new_data[0] = '\0';
-                }
-
-                m_data     = new_data;
-                m_capacity = capacity;
+                return;
             }
+
+            size_t old_alloc_size = m_capacity * sizeof(char);
+            size_t new_alloc_size = new_capacity * sizeof(char);
+
+            m_data                = static_cast<pointer>(m_allocator.Reallocate(m_data, old_alloc_size, new_alloc_size, alignof(value_type)));
+            m_capacity            = new_capacity;
         }
 
-        void SetArenaAllocator(Memory::ArenaAllocator* arena)
+        Memory::ArenaAllocator& m_allocator;
+        size_type               m_size;
+        size_type               m_capacity;
+        pointer                 m_data;
+    };
+
+    struct StringView
+    {
+        using size_type = size_t;
+
+        StringView() : m_data(nullptr), m_size(0) {}
+
+        StringView(const char* str) : m_data(str), m_size(str ? Helpers::secure_strlen(str) : 0) {}
+
+        StringView(const char* str, size_type size) : m_data(str), m_size(size) {}
+
+        StringView(const String& str) : m_data(str.c_str()), m_size(str.size()) {}
+
+        void set(const char* str)
         {
-            m_arena = arena;
+            m_data = str;
+            m_size = str ? Helpers::secure_strlen(str) : 0;
         }
 
-        reference operator[](size_t index)
+        void set(const char* str, size_type size)
         {
+            m_data = str;
+            m_size = size;
+        }
+
+        void set(const String& str)
+        {
+            m_data = str.c_str();
+            m_size = str.size();
+        }
+
+        char operator[](size_type index) const
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_size, "Index out of range");
             return m_data[index];
         }
 
-        const_reference operator[](size_t index) const
+        const char* begin() const
         {
-            return m_data[index];
+            return m_data;
         }
 
-        bool operator==(const String& other) const
+        const char* end() const
         {
-            if (m_size != other.m_size)
-                return false;
-            if (m_size == 0)
-                return true;
-            return Helpers::secure_memcmp(m_data, m_capacity, other.m_data, other.m_size, m_size) == 0;
+            return m_data + m_size;
         }
 
-        bool operator!=(const String& other) const
+        bool empty() const
         {
-            return !(*this == other);
+            return m_size == 0 || m_data == nullptr;
         }
 
-        const_pointer cstr() const
-        {
-            return m_data ? m_data : "";
-        }
-
-        bool isempty() const
-        {
-            return m_size == 0;
-        }
-        size_t length() const
+        size_type size() const
         {
             return m_size;
         }
 
-        size_t capacity() const
+        size_type length() const
         {
-            return m_capacity;
+            return m_size;
         }
 
-    private:
-        char*                   m_data;
-        size_type               m_size;
-        size_type               m_capacity;
-        Memory::ArenaAllocator* m_arena;
+        const char* data() const
+        {
+            return m_data;
+        }
+        
+        const char* m_data;
+        size_type   m_size;
     };
+
 } // namespace ZEngine::Core::Container

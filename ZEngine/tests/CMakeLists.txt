@@ -6,8 +6,7 @@ set (TEST_SOURCES
     ThreadPool_test.cpp
     handleManager_test.cpp
     allocator_test.cpp
-    vec_test.cpp
-    stringview_test.cpp
+    array_test.cpp
     string_test.cpp
 )
 

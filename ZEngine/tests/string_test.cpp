@@ -20,141 +20,174 @@ protected:
     ArenaAllocator arena;
 };
 
-TEST_F(StringTest, Constructor)
+TEST_F(StringTest, DefaultConstructor)
 {
-    String str1(&arena);
-    EXPECT_TRUE(str1.isempty());
-    EXPECT_EQ(str1.length(), 0);
-    EXPECT_EQ(str1.capacity(), 0);
-    EXPECT_STREQ(str1.cstr(), "");
+    String str1(arena);
+    EXPECT_EQ(str1.size(), 0);
+    EXPECT_TRUE(str1.empty());
+    EXPECT_STREQ(str1.c_str(), "");
+    EXPECT_GE(str1.capacity(), 16); 
 
-    const char* str = "Hello, World!";
-    String      str2(&arena, str);
-    EXPECT_FALSE(str2.isempty());
-    EXPECT_EQ(str2.length(), strlen(str));
-    EXPECT_STREQ(str2.cstr(), str);
+    String str2(arena, nullptr);
 
-    String str3(&arena, nullptr);
-    EXPECT_TRUE(str3.isempty());
-    EXPECT_EQ(str3.length(), 0);
-    EXPECT_STREQ(str3.cstr(), "");
+    EXPECT_EQ(str2.size(), 0);
+    EXPECT_TRUE(str2.empty());
+    EXPECT_STREQ(str2.c_str(), "");
+    EXPECT_GE(str2.capacity(), 16);
 }
 
-TEST_F(StringTest, CopyConstructorAndAssignment)
+TEST_F(StringTest, AppendCString)
 {
-    String original1(&arena, "Test String");
-    String copy1(original1);
-    EXPECT_EQ(copy1.length(), original1.length());
-    EXPECT_STREQ(copy1.cstr(), original1.cstr());
-    EXPECT_GE(copy1.capacity(), copy1.length() + 1);
+    String str(arena);
 
-    String original2(&arena, "Test String");
-    String copy2(&arena);
-    copy2 = original2;
-    EXPECT_EQ(copy2.length(), original2.length());
-    EXPECT_STREQ(copy2.cstr(), original2.cstr());
+    str.append("Hello");
+    EXPECT_STREQ(str.c_str(), "Hello");
+    EXPECT_EQ(str.size(), 5);
 
-    const char* testStr = "Hello, World!";
-    String      str(&arena);
-    str = testStr;
-    EXPECT_EQ(str.length(), strlen(testStr));
-    EXPECT_STREQ(str.cstr(), testStr);
+    str.append(", World!");
+    EXPECT_STREQ(str.c_str(), "Hello, World!");
+    EXPECT_EQ(str.size(), 13);
 }
 
-TEST_F(StringTest, appendString)
+TEST_F(StringTest, AppendString)
 {
-    String str1(&arena, "Hello");
-    String str2(&arena, ", World!");
+    String str1(arena, "Hello");
+    String str2(arena, ", World!");
+
     str1.append(str2);
-    EXPECT_STREQ(str1.cstr(), "Hello, World!");
-    EXPECT_EQ(str1.length(), 13);
-
-    str1.append(", NO");
-    EXPECT_STREQ(str1.cstr(), "Hello, World!, NO");
-    EXPECT_EQ(str1.length(), 17);
-
-    String str3(&arena, "");
-    str1.append(str3);
-    EXPECT_STREQ(str1.cstr(), "Hello, World!, NO");
-    EXPECT_EQ(str1.length(), 17);
+    EXPECT_STREQ(str1.c_str(), "Hello, World!");
+    EXPECT_EQ(str1.size(), 13);
 }
 
-TEST_F(StringTest, Substring)
+TEST_F(StringTest, AppendChar)
 {
-    String str(&arena, "Hello, World!");
+    String str(arena, "Hello");
 
-    String sub1 = str.substring(0, 5);
-    EXPECT_STREQ(sub1.cstr(), "Hello");
+    str.append('!');
+    EXPECT_STREQ(str.c_str(), "Hello!");
+    EXPECT_EQ(str.size(), 6);
 
-    String sub2 = str.substring(7, 5);
-    EXPECT_STREQ(sub2.cstr(), "World");
+    str.append(' ');
+    str.append('W');
+    EXPECT_STREQ(str.c_str(), "Hello! W");
+    EXPECT_EQ(str.size(), 8);
+}
 
-    String sub3 = str.substring(7, 100);
-    EXPECT_STREQ(sub3.cstr(), "World!");
+TEST_F(StringTest, ElementAccess)
+{
+    String str(arena, "Hello");
 
-    String sub4 = str.substring(100, 5);
-    EXPECT_TRUE(sub4.isempty());
+    EXPECT_EQ(str[0], 'H');
+    EXPECT_EQ(str[1], 'e');
+    EXPECT_EQ(str[4], 'o');
+
+    str[0] = 'J';
+    EXPECT_STREQ(str.c_str(), "Jello");
 }
 
 TEST_F(StringTest, Clear)
 {
-    String str(&arena, "Hello, World!");
-    EXPECT_FALSE(str.isempty());
+    String str(arena, "Hello, World!");
+
+    EXPECT_FALSE(str.empty());
+    EXPECT_EQ(str.size(), 13);
 
     str.clear();
 
-    EXPECT_TRUE(str.isempty());
-    EXPECT_EQ(str.length(), 0);
-    EXPECT_STREQ(str.cstr(), "");
+    EXPECT_TRUE(str.empty());
+    EXPECT_EQ(str.size(), 0);
+    EXPECT_STREQ(str.c_str(), "");
 
-    EXPECT_GT(str.capacity(), 0);
+    size_t capacity = str.capacity();
+    str.clear();
+    EXPECT_EQ(str.capacity(), capacity);
 }
 
 TEST_F(StringTest, Reserve)
 {
-    String str(&arena);
+    String str(arena);
 
     str.reserve(50);
     EXPECT_GE(str.capacity(), 50);
-    EXPECT_TRUE(str.isempty());
 
-    str                        = "Hello";
-    size_t capacityAfterAssign = str.capacity();
+    str.append("Hello, World!");
+    EXPECT_STREQ(str.c_str(), "Hello, World!");
+    EXPECT_GE(str.capacity(), 50);
 
-    str.reserve(100);
-    EXPECT_GE(str.capacity(), 100);
-    EXPECT_STREQ(str.cstr(), "Hello");
-
-    str.reserve(10);
-    EXPECT_GE(str.capacity(), 100);
+    size_t capacity = str.capacity();
+    str.reserve(30);
+    EXPECT_EQ(str.capacity(), capacity);
 }
 
-TEST_F(StringTest, AccessOperator)
+
+TEST_F(StringTest, StringViewDefaultConstructor)
 {
-    String str(&arena, "Hello");
-
-    EXPECT_EQ(str[0], 'H');
-    EXPECT_EQ(str[4], 'o');
-
-    str[1] = 'a';
-    EXPECT_STREQ(str.cstr(), "Hallo");
+    StringView view;
+    
+    EXPECT_EQ(view.size(), 0);
+    EXPECT_TRUE(view.empty());
+    EXPECT_EQ(view.data(), nullptr);
 }
 
-TEST_F(StringTest, EqualityOperators)
+TEST_F(StringTest, StringViewFromCString)
 {
-    String str1(&arena, "Hello");
-    String str2(&arena, "Hello");
-    String str3(&arena, "World");
-
-    EXPECT_TRUE(str1 == str2);
-    EXPECT_FALSE(str1 == str3);
-
-    EXPECT_FALSE(str1 != str2);
-    EXPECT_TRUE(str1 != str3);
-
-    // Test with empty strings
-    String empty1(&arena);
-    String empty2(&arena);
-    EXPECT_TRUE(empty1 == empty2);
-    EXPECT_FALSE(empty1 != empty2);
+    const char* text = "Hello, World!";
+    StringView view(text);
+    
+    EXPECT_EQ(view.size(), 13);
+    EXPECT_FALSE(view.empty());
+    EXPECT_EQ(view.data(), text);
 }
+
+TEST_F(StringTest, StringViewFromString)
+{
+    String str(arena, "Hello, World!");
+    StringView view(str);
+    
+    EXPECT_EQ(view.size(), 13);
+    EXPECT_FALSE(view.empty());
+    EXPECT_EQ(view.data(), str.c_str());
+}
+
+TEST_F(StringTest, StringViewSubstring)
+{
+    const char* text = "Hello, World!";
+    StringView view(text, 5);
+    
+    EXPECT_EQ(view.size(), 5);
+    EXPECT_FALSE(view.empty());
+    
+    for (size_t i = 0; i < view.size(); ++i) {
+        EXPECT_EQ(view[i], text[i]);
+    }
+}
+
+TEST_F(StringTest, StringViewSet)
+{
+    StringView view;
+    const char* text = "Hello, World!";
+    
+    view.set(text);
+    EXPECT_EQ(view.size(), 13);
+    EXPECT_EQ(view.data(), text);
+    
+    String str(arena, "Another string");
+    view.set(str);
+    EXPECT_EQ(view.size(), 14);
+    EXPECT_EQ(view.data(), str.c_str());
+    
+    view.set("Short", 5);
+    EXPECT_EQ(view.size(), 5);
+    EXPECT_STREQ(view.data(), "Short");
+}
+
+TEST_F(StringTest, StringViewElementAccess)
+{
+    StringView view("Hello");
+    
+    EXPECT_EQ(view[0], 'H');
+    EXPECT_EQ(view[1], 'e');
+    EXPECT_EQ(view[4], 'o');
+}
+
+

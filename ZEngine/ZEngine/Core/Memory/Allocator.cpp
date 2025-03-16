@@ -43,7 +43,7 @@ namespace ZEngine::Core::Memory
 
     void* ArenaAllocator::Reallocate(void* old_memory, size_t old_size, size_t new_size, size_t alignment)
     {
-        assert(Helpers::is_power_of_two(alignment) && "Alignment should be power of 2");
+        ZENGINE_VALIDATE_ASSERT(Helpers::is_power_of_two(alignment), "Alignment should be power of 2")
 
         uint8_t* old_mem = reinterpret_cast<uint8_t*>(old_memory);
         if (old_mem == nullptr || old_size == 0)
@@ -108,12 +108,12 @@ namespace ZEngine::Core::Memory
 
         chk_size                 = Helpers::memory_align_size_t(chk_size, alignment);
 
-        assert(chk_size >= sizeof(PoolFreeNode) && "Chunk size is too small");
-        assert(size >= chk_size && "Backing buffer length is smaller than the chunk size");
+        ZENGINE_VALIDATE_ASSERT(chk_size >= sizeof(PoolFreeNode), "Chunk size is too small");
+        ZENGINE_VALIDATE_ASSERT(size >= chk_size, "Backing buffer length is smaller than the chunk size");
 
         memory = (uint8_t*) arena->Allocate(size, alignment);
 
-        assert(memory && "Failed to allocate memory");
+        ZENGINE_VALIDATE_ASSERT(memory, "Failed to allocate memory");
 
         total_size = size;
         chunk_size = chk_size;
