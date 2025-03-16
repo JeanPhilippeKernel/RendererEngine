@@ -25,7 +25,7 @@ namespace ZEngine::Core::Memory
         void*    Allocate(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
         void*    Allocate(size_t size, size_t alignment, const char* file, int line);
 
-        void*    Reallocate(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
+        void*    Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
         void     Clear();
 
         uint8_t* m_memory          = nullptr;

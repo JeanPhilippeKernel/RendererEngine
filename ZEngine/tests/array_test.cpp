@@ -22,7 +22,8 @@ protected:
 
 TEST_F(ArrayTest, InitialState)
 {
-    Array<int> array(allocator, 10, 0);
+    Array<int> array;
+    array.init(&allocator, 10, 0);
 
     EXPECT_EQ(array.size(), 0);
     EXPECT_EQ(array.capacity(), 10);
@@ -31,7 +32,8 @@ TEST_F(ArrayTest, InitialState)
 
 TEST_F(ArrayTest, PushBack)
 {
-    Array<int> array(allocator, 4, 0);
+    Array<int> array;
+    array.init(&allocator, 4, 0);
 
     array.push(1);
     array.push(2);
@@ -46,22 +48,24 @@ TEST_F(ArrayTest, PushBack)
 
 TEST_F(ArrayTest, AutoResize)
 {
-    Array<int> array(allocator, 2, 0);
+    Array<int> array;
+    array.init(&allocator, 2, 0);
 
     EXPECT_EQ(array.capacity(), 2);
 
     array.push(1);
     array.push(2);
-    array.push(3); // Should trigger resize
+    array.push(3);
 
     EXPECT_EQ(array.size(), 3);
-    EXPECT_EQ(array.capacity(), 4); // Should double from 2 to 4
+    EXPECT_EQ(array.capacity(), 4);
     EXPECT_EQ(array[2], 3);
 }
 
 TEST_F(ArrayTest, PopBack)
 {
-    Array<int> array(allocator, 4, 0);
+    Array<int> array;
+    array.init(&allocator, 4, 0);
 
     array.push(1);
     array.push(2);
@@ -82,7 +86,8 @@ TEST_F(ArrayTest, PopBack)
 
 TEST_F(ArrayTest, Clear)
 {
-    Array<int> array(allocator, 4, 0);
+    Array<int> array;
+    array.init(&allocator, 4, 0);
 
     array.push(1);
     array.push(2);
@@ -94,26 +99,27 @@ TEST_F(ArrayTest, Clear)
 
     EXPECT_EQ(array.size(), 0);
     EXPECT_TRUE(array.empty());
-    EXPECT_EQ(array.capacity(), 4); // Capacity should remain unchanged
+    EXPECT_EQ(array.capacity(), 4);
 }
 
 TEST_F(ArrayTest, Reserve)
 {
-    Array<int> array(allocator, 4, 0);
+    Array<int> array;
+    array.init(&allocator, 4, 0);
 
     EXPECT_EQ(array.capacity(), 4);
 
     array.reserve(8);
     EXPECT_EQ(array.capacity(), 8);
 
-    // Reserve to a smaller capacity should not change capacity
     array.reserve(6);
     EXPECT_EQ(array.capacity(), 8);
 }
 
 TEST_F(ArrayTest, FrontAndBack)
 {
-    Array<int> array(allocator, 4, 0);
+    Array<int> array;
+    array.init(&allocator, 4, 0);
 
     array.push(10);
     EXPECT_EQ(array.front(), 10);

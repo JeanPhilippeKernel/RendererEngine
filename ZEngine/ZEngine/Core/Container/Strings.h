@@ -2,8 +2,6 @@
 #include <Allocator.h>
 #include <MemoryOperations.h>
 
-using namespace ZEngine::Core::Memory;
-
 namespace ZEngine::Core::Container
 {
     struct String
@@ -17,14 +15,25 @@ namespace ZEngine::Core::Container
         using iterator        = char*;
         using const_iterator  = const char*;
 
-        String(Memory::ArenaAllocator& allocator, size_type initial_capacity = 16) : m_allocator(allocator), m_size(0), m_capacity(0), m_data(nullptr)
+        String() : m_allocator(nullptr), m_size(0), m_capacity(0), m_data(nullptr) {}
+
+        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity = 16)
         {
+            m_allocator = allocator;
+            m_size      = 0;
+            m_capacity  = 0;
+            m_data      = nullptr;
             reserve(initial_capacity);
             m_data[0] = '\0';
         }
 
-        String(Memory::ArenaAllocator& allocator, const char* str) : m_allocator(allocator), m_size(0), m_capacity(0), m_data(nullptr)
+        void init(Memory::ArenaAllocator* allocator, const char* str)
         {
+            m_allocator = allocator;
+            m_size      = 0;
+            m_capacity  = 0;
+            m_data      = nullptr;
+
             if (str)
             {
                 size_type len = Helpers::secure_strlen(str);
@@ -160,11 +169,11 @@ namespace ZEngine::Core::Container
             size_t old_alloc_size = m_capacity * sizeof(char);
             size_t new_alloc_size = new_capacity * sizeof(char);
 
-            m_data                = static_cast<pointer>(m_allocator.Reallocate(m_data, old_alloc_size, new_alloc_size, alignof(value_type)));
+            m_data                = static_cast<pointer>(m_allocator->Resize(m_data, old_alloc_size, new_alloc_size, alignof(value_type)));
             m_capacity            = new_capacity;
         }
 
-        Memory::ArenaAllocator& m_allocator;
+        Memory::ArenaAllocator* m_allocator;
         size_type               m_size;
         size_type               m_capacity;
         pointer                 m_data;
@@ -235,7 +244,7 @@ namespace ZEngine::Core::Container
         {
             return m_data;
         }
-        
+
         const char* m_data;
         size_type   m_size;
     };

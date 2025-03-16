@@ -21,8 +21,12 @@ namespace ZEngine::Core::Container
         using iterator        = T*;
         using const_iterator  = const T*;
 
-        Array(Memory::ArenaAllocator& allocator, size_type initial_capacity, size_type initial_size) : m_allocator(allocator), m_size(initial_size), m_capacity(0), m_data(nullptr)
+        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, size_type initial_size)
         {
+            m_allocator = allocator;
+            m_size      = initial_size;
+            m_capacity  = 0;
+            m_data      = nullptr;
             reserve(initial_capacity);
         }
 
@@ -168,11 +172,11 @@ namespace ZEngine::Core::Container
             size_t old_alloc_size = m_capacity * sizeof(T);
             size_t new_alloc_size = new_capacity * sizeof(T);
 
-            m_data                = static_cast<pointer>(m_allocator.Reallocate(m_data, old_alloc_size, new_alloc_size, alignof(value_type)));
+            m_data                = static_cast<pointer>(m_allocator->Resize(m_data, old_alloc_size, new_alloc_size, alignof(value_type)));
             m_capacity            = new_capacity;
         }
 
-        Memory::ArenaAllocator& m_allocator;
+        Memory::ArenaAllocator* m_allocator;
         size_type               m_size;
         size_type               m_capacity;
         pointer                 m_data;

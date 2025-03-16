@@ -22,13 +22,15 @@ protected:
 
 TEST_F(StringTest, DefaultConstructor)
 {
-    String str1(arena);
+    String str1;
+    str1.init(&arena);
     EXPECT_EQ(str1.size(), 0);
     EXPECT_TRUE(str1.empty());
     EXPECT_STREQ(str1.c_str(), "");
-    EXPECT_GE(str1.capacity(), 16); 
+    EXPECT_GE(str1.capacity(), 16);
 
-    String str2(arena, nullptr);
+    String str2;
+    str2.init(&arena, nullptr);
 
     EXPECT_EQ(str2.size(), 0);
     EXPECT_TRUE(str2.empty());
@@ -38,7 +40,8 @@ TEST_F(StringTest, DefaultConstructor)
 
 TEST_F(StringTest, AppendCString)
 {
-    String str(arena);
+    String str;
+    str.init(&arena);
 
     str.append("Hello");
     EXPECT_STREQ(str.c_str(), "Hello");
@@ -51,8 +54,10 @@ TEST_F(StringTest, AppendCString)
 
 TEST_F(StringTest, AppendString)
 {
-    String str1(arena, "Hello");
-    String str2(arena, ", World!");
+    String str1;
+    str1.init(&arena, "Hello");
+    String str2;
+    str2.init(&arena, ", World!");
 
     str1.append(str2);
     EXPECT_STREQ(str1.c_str(), "Hello, World!");
@@ -61,7 +66,8 @@ TEST_F(StringTest, AppendString)
 
 TEST_F(StringTest, AppendChar)
 {
-    String str(arena, "Hello");
+    String str;
+    str.init(&arena, "Hello");
 
     str.append('!');
     EXPECT_STREQ(str.c_str(), "Hello!");
@@ -75,7 +81,8 @@ TEST_F(StringTest, AppendChar)
 
 TEST_F(StringTest, ElementAccess)
 {
-    String str(arena, "Hello");
+    String str;
+    str.init(&arena, "Hello");
 
     EXPECT_EQ(str[0], 'H');
     EXPECT_EQ(str[1], 'e');
@@ -87,7 +94,8 @@ TEST_F(StringTest, ElementAccess)
 
 TEST_F(StringTest, Clear)
 {
-    String str(arena, "Hello, World!");
+    String str;
+    str.init(&arena, "Hello, World!");
 
     EXPECT_FALSE(str.empty());
     EXPECT_EQ(str.size(), 13);
@@ -105,7 +113,8 @@ TEST_F(StringTest, Clear)
 
 TEST_F(StringTest, Reserve)
 {
-    String str(arena);
+    String str;
+    str.init(&arena);
 
     str.reserve(50);
     EXPECT_GE(str.capacity(), 50);
@@ -119,11 +128,10 @@ TEST_F(StringTest, Reserve)
     EXPECT_EQ(str.capacity(), capacity);
 }
 
-
 TEST_F(StringTest, StringViewDefaultConstructor)
 {
     StringView view;
-    
+
     EXPECT_EQ(view.size(), 0);
     EXPECT_TRUE(view.empty());
     EXPECT_EQ(view.data(), nullptr);
@@ -132,8 +140,8 @@ TEST_F(StringTest, StringViewDefaultConstructor)
 TEST_F(StringTest, StringViewFromCString)
 {
     const char* text = "Hello, World!";
-    StringView view(text);
-    
+    StringView  view(text);
+
     EXPECT_EQ(view.size(), 13);
     EXPECT_FALSE(view.empty());
     EXPECT_EQ(view.data(), text);
@@ -141,9 +149,10 @@ TEST_F(StringTest, StringViewFromCString)
 
 TEST_F(StringTest, StringViewFromString)
 {
-    String str(arena, "Hello, World!");
+    String str;
+    str.init(&arena, "Hello, World!");
     StringView view(str);
-    
+
     EXPECT_EQ(view.size(), 13);
     EXPECT_FALSE(view.empty());
     EXPECT_EQ(view.data(), str.c_str());
@@ -152,30 +161,32 @@ TEST_F(StringTest, StringViewFromString)
 TEST_F(StringTest, StringViewSubstring)
 {
     const char* text = "Hello, World!";
-    StringView view(text, 5);
-    
+    StringView  view(text, 5);
+
     EXPECT_EQ(view.size(), 5);
     EXPECT_FALSE(view.empty());
-    
-    for (size_t i = 0; i < view.size(); ++i) {
+
+    for (size_t i = 0; i < view.size(); ++i)
+    {
         EXPECT_EQ(view[i], text[i]);
     }
 }
 
 TEST_F(StringTest, StringViewSet)
 {
-    StringView view;
+    StringView  view;
     const char* text = "Hello, World!";
-    
+
     view.set(text);
     EXPECT_EQ(view.size(), 13);
     EXPECT_EQ(view.data(), text);
-    
-    String str(arena, "Another string");
+
+    String str;
+    str.init(&arena, "Another string");
     view.set(str);
     EXPECT_EQ(view.size(), 14);
     EXPECT_EQ(view.data(), str.c_str());
-    
+
     view.set("Short", 5);
     EXPECT_EQ(view.size(), 5);
     EXPECT_STREQ(view.data(), "Short");
@@ -184,10 +195,8 @@ TEST_F(StringTest, StringViewSet)
 TEST_F(StringTest, StringViewElementAccess)
 {
     StringView view("Hello");
-    
+
     EXPECT_EQ(view[0], 'H');
     EXPECT_EQ(view[1], 'e');
     EXPECT_EQ(view[4], 'o');
 }
-
-

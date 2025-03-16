@@ -41,7 +41,7 @@ namespace ZEngine::Core::Memory
         return Allocate(size, alignment);
     }
 
-    void* ArenaAllocator::Reallocate(void* old_memory, size_t old_size, size_t new_size, size_t alignment)
+    void* ArenaAllocator::Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment)
     {
         ZENGINE_VALIDATE_ASSERT(Helpers::is_power_of_two(alignment), "Alignment should be power of 2")
 

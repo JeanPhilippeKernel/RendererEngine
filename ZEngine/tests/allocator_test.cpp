@@ -38,7 +38,7 @@ TEST(AllocatorTest, ArenaAllocate)
         EXPECT_EQ(*f, 987.0f);
         EXPECT_STREQ(str, "hellope");
 
-        str = reinterpret_cast<char*>(arena.Reallocate(str, 10, 16));
+        str = reinterpret_cast<char*>(arena.Resize(str, 10, 16));
         Helpers::secure_memmove(str + 7, 7, " world!", 7);
 
         EXPECT_STREQ(str, "hellope world!");
