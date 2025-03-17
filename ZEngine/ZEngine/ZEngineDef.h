@@ -39,13 +39,13 @@
         collection.shrink_to_fit();          \
     }
 
-#define ZENGINE_RESIZE_MEMORY(allocator, ptr, old_size, new_size, alignment) ((allocator)->Resize((ptr), (old_size), (new_size), (alignment)))
+#define ZResize(allocator, ptr, old_size, new_size, alignment) ((allocator)->Resize((ptr), (old_size), (new_size), (alignment)))
 
-#define ZENGINE_TYPE_ALIGNMENT(type)                                         ((alignof(type) < DEFAULT_ALIGNMENT) ? DEFAULT_ALIGNMENT : alignof(type))
+#define ZAlignof(type)                                         ((alignof(type) < DEFAULT_ALIGNMENT) ? DEFAULT_ALIGNMENT : alignof(type))
 
-#define SINGLE_ARG(...)                                                      __VA_ARGS__
+#define SINGLE_ARG(...)                                        __VA_ARGS__
 
-#define MAX_FILE_PATH_COUNT                                                  256
+#define MAX_FILE_PATH_COUNT                                    256
 
 /*
  * Allocator and Memory Macros
