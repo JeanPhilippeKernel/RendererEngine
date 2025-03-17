@@ -5,13 +5,14 @@
 #include <ZEngine/Windows/CoreWindow.h>
 #include <ZEngine/Windows/WindowConfiguration.h>
 #include <ZEngine/ZEngineDef.h>
+#include <ZEngine/Core/Memory/Allocator.h>
 
 namespace Tetragrama
 {
     class EditorWindow : public ZEngine::Windows::CoreWindow
     {
     public:
-        EditorWindow(const ZEngine::Windows::WindowConfiguration& configuration);
+        EditorWindow() {}
         virtual ~EditorWindow();
 
         uint32_t                                        GetHeight() const override;
@@ -25,7 +26,7 @@ namespace Tetragrama
         void*                                           GetNativeWindow() const override;
         virtual const ZEngine::Windows::WindowProperty& GetWindowProperty() const override;
 
-        virtual void                                    Initialize() override;
+        virtual void                                    Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const ZEngine::Windows::WindowConfiguration& cfg);
         virtual void                                    InitializeLayer() override;
         virtual void                                    Deinitialize() override;
         virtual void                                    PollEvent() override;

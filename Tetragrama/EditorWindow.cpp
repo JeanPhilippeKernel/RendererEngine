@@ -33,55 +33,6 @@ using namespace ZEngine::Rendering::Renderers;
 
 namespace Tetragrama
 {
-    EditorWindow::EditorWindow(const WindowConfiguration& configuration) : CoreWindow(configuration)
-    {
-        m_property.Height = configuration.Height;
-        m_property.Width  = configuration.Width;
-        m_property.Title  = configuration.Title;
-        m_property.VSync  = configuration.EnableVsync;
-
-        int glfw_init     = glfwInit();
-        if (glfw_init == GLFW_FALSE)
-        {
-            ZENGINE_CORE_CRITICAL("Unable to initialize glfw..")
-            ZENGINE_EXIT_FAILURE();
-        }
-
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-        glfwSetErrorCallback([](int error, const char* description) {
-            ZENGINE_CORE_CRITICAL("{}", description)
-            ZENGINE_EXIT_FAILURE()
-        });
-
-        m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
-
-        if (!m_native_window)
-        {
-            ZENGINE_CORE_CRITICAL("Failed to create GLFW Window")
-            ZENGINE_EXIT_FAILURE()
-        }
-
-        int window_width = 0, window_height = 0;
-        glfwGetWindowSize(m_native_window, &window_width, &window_height);
-        if ((window_width > 0) && (window_height > 0) && (m_property.Width != window_width) && (m_property.Height != window_height))
-        {
-            m_property.SetWidth(window_width);
-            m_property.SetHeight(window_height);
-        }
-
-#ifdef _WIN32
-        auto native_hwnd = glfwGetWin32Window(m_native_window);
-        m_property.Dpi   = GetDpiForWindow(native_hwnd);
-#endif // _WIN32
-
-        float x_scale, y_scale;
-        glfwGetWindowContentScale(m_native_window, &x_scale, &y_scale);
-        m_property.DpiScale = x_scale;
-
-        ZENGINE_CORE_INFO("Window created, Width = {0}, Height = {1}", m_property.Width, m_property.Height)
-    }
-
     uint32_t EditorWindow::GetWidth() const
     {
         return m_property.Width;
@@ -136,8 +87,59 @@ namespace Tetragrama
         return m_property;
     }
 
-    void EditorWindow::Initialize()
+    void EditorWindow::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const ZEngine::Windows::WindowConfiguration& cfg)
     {
+        m_configuration   = cfg;
+
+        m_property.Height = cfg.Height;
+        m_property.Width  = cfg.Width;
+        m_property.Title  = cfg.Title;
+        m_property.VSync  = cfg.EnableVsync;
+
+
+        m_layer_stack_ptr = ZPushStruct(arena, Layers::LayerStack);
+
+        int glfw_init = glfwInit();
+        if (glfw_init == GLFW_FALSE)
+        {
+            ZENGINE_CORE_CRITICAL("Unable to initialize glfw..")
+            ZENGINE_EXIT_FAILURE();
+        }
+
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+        glfwSetErrorCallback([](int error, const char* description) {
+            ZENGINE_CORE_CRITICAL("{}", description)
+            ZENGINE_EXIT_FAILURE()
+        });
+
+        m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
+
+        if (!m_native_window)
+        {
+            ZENGINE_CORE_CRITICAL("Failed to create GLFW Window")
+            ZENGINE_EXIT_FAILURE()
+        }
+
+        int window_width = 0, window_height = 0;
+        glfwGetWindowSize(m_native_window, &window_width, &window_height);
+        if ((window_width > 0) && (window_height > 0) && (m_property.Width != window_width) && (m_property.Height != window_height))
+        {
+            m_property.SetWidth(window_width);
+            m_property.SetHeight(window_height);
+        }
+
+#ifdef _WIN32
+        auto native_hwnd = glfwGetWin32Window(m_native_window);
+        m_property.Dpi   = GetDpiForWindow(native_hwnd);
+#endif // _WIN32
+
+        float x_scale, y_scale;
+        glfwGetWindowContentScale(m_native_window, &x_scale, &y_scale);
+        m_property.DpiScale = x_scale;
+
+        ZENGINE_CORE_INFO("Window created, Width = {0}, Height = {1}", m_property.Width, m_property.Height)
+
         for (const auto& layer : m_configuration.RenderingLayerCollection)
         {
             PushLayer(layer);
@@ -573,9 +575,11 @@ namespace Tetragrama
 
 namespace ZEngine::Windows
 {
-    CoreWindow* Create(const WindowConfiguration& configuration)
+    CoreWindow* Create(Core::Memory::ArenaAllocator* arena, const WindowConfiguration& cfg)
     {
-        auto core_window = new Tetragrama::EditorWindow(configuration);
+        auto core_window = ZPushStruct(arena, Tetragrama::EditorWindow);
+        new (core_window) Tetragrama::EditorWindow();
+        core_window->Initialize(arena, cfg);
         core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
         return core_window;
     }

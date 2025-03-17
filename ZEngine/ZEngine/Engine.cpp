@@ -11,13 +11,14 @@ namespace ZEngine
     static Helpers::WeakRef<Windows::CoreWindow>                 g_current_window    = nullptr;
     static Helpers::Scope<Rendering::Renderers::GraphicRenderer> g_renderer          = Helpers::CreateScope<Rendering::Renderers::GraphicRenderer>();
     static Helpers::Scope<Hardwares::VulkanDevice>               g_device            = Helpers::CreateScope<Hardwares::VulkanDevice>();
+    static ZEngine::Core::Memory::ArenaAllocator                 g_engine_arena      = {};
 
-    void                                                         Engine::Initialize(const EngineConfiguration& engine_configuration, const Helpers::Ref<ZEngine::Windows::CoreWindow>& window)
+    void                                                         Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const EngineConfiguration& engine_configuration, const Helpers::Ref<ZEngine::Windows::CoreWindow>& window)
     {
+        arena->CreateSubArena(ZMega(2), &g_engine_arena);
+
         g_current_window = window;
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
-
-        window->Initialize();
         g_device->Initialize(g_current_window);
         g_renderer->Initialize(g_device.get());
 

@@ -1,5 +1,6 @@
 #pragma once
 #include <Controllers/ICameraController.h>
+#include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Rendering/Cameras/PerspectiveCamera.h>
 #include <ZEngine/Windows/Inputs/IInputEventCallback.h>
 #include <mutex>
@@ -10,37 +11,9 @@ namespace Tetragrama::Controllers
     class PerspectiveCameraController : public ICameraController, public ZEngine::Windows::Inputs::IMouseEventCallback
     {
     public:
-        explicit PerspectiveCameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window) : ICameraController(window), m_perspective_camera(new ZEngine::Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far))
-        {
-            m_position        = {0.0f, 0.0f, 1.5f};
-            m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
-            m_process_event   = true;
-        }
-
-        explicit PerspectiveCameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window, ZEngine::Rendering::Cameras::PerspectiveCamera* const camera) : ICameraController(window), m_perspective_camera(camera)
-        {
-            m_position        = {0.0f, 0.0f, 1.5f};
-            m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
-            m_process_event   = true;
-        }
-
-        explicit PerspectiveCameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window, float aspect_ratio, ZEngine::Rendering::Cameras::PerspectiveCamera* const camera) : ICameraController(window, aspect_ratio), m_perspective_camera(camera)
-        {
-            m_position        = {0.0f, 0.0f, 1.5f};
-            m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
-            m_process_event   = true;
-        }
-
-        explicit PerspectiveCameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window, float aspect_ratio) : ICameraController(window, aspect_ratio), m_perspective_camera(new ZEngine::Rendering::Cameras::PerspectiveCamera(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far))
-        {
-            m_position        = {0.0f, 0.0f, 1.5f};
-            m_controller_type = CameraControllerType::PERSPECTIVE_CONTROLLER;
-            m_process_event   = true;
-        }
-
+        PerspectiveCameraController();
         virtual ~PerspectiveCameraController() = default;
 
-        void                                                             Initialize() override;
         void                                                             Update(ZEngine::Core::TimeStep) override;
         bool                                                             OnEvent(ZEngine::Core::CoreEvent&) override;
 
@@ -85,12 +58,12 @@ namespace Tetragrama::Controllers
         bool OnMouseButtonWheelMoved(ZEngine::Windows::Events::MouseButtonWheelEvent&) override;
 
     protected:
-        float                                                                 m_camera_fov{90.0f};
-        float                                                                 m_camera_near{1.f};
-        float                                                                 m_camera_far{1000.0f};
-        std::recursive_mutex                                                  m_event_mutex;
-        bool                                                                  m_process_event{true};
-        glm::vec3                                                             m_camera_target{0.0f, 0.0f, 0.0f};
-        ZEngine::Helpers::Ref<ZEngine::Rendering::Cameras::PerspectiveCamera> m_perspective_camera;
+        float                m_camera_fov                                            = 90.0f;
+        float                m_camera_near                                           = 1.f;
+        float                m_camera_far                                            = 1000.0f;
+        bool                 m_process_event                                         = true;
+        glm::vec3            m_camera_target                                         = {0.0f, 0.0f, 0.0f};
+        std::recursive_mutex m_event_mutex                                           = {};
+        ZRawPtr(ZEngine::Rendering::Cameras::PerspectiveCamera) m_perspective_camera = nullptr;
     };
 } // namespace Tetragrama::Controllers

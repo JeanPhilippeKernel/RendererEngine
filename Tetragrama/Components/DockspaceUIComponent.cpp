@@ -301,8 +301,8 @@ namespace Tetragrama::Components
 
             if (ImGui::Button("Save", ImVec2(80, 0)) && is_save_button_enabled)
             {
-                auto context                   = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-                context->CurrentScenePtr->Name = s_save_as_input_buffer;
+                auto context = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+                ZEngine::Helpers::secure_strcpy(context->CurrentScenePtr->Name, 50, s_save_as_input_buffer);
                 m_editor_serializer->Serialize(context->CurrentScenePtr);
 
                 m_open_save_scene_as          = false;
@@ -403,23 +403,23 @@ namespace Tetragrama::Components
         /*
          * Removing the WorkingSpace Path
          */
-        auto ws                           = context_ptr->ConfigurationPtr->WorkingSpacePath + "\\";
-        if (data.SerializedMeshesPath.find(ws) != std::string::npos)
-        {
-            data.SerializedMeshesPath.replace(data.SerializedMeshesPath.find(ws), ws.size(), "");
-        }
+        // auto ws                           = context_ptr->ConfigurationPtr->WorkingSpacePath + "\\";
+        //  if (data.SerializedMeshesPath.find(ws) != std::string::npos)
+        //{
+        //      data.SerializedMeshesPath.replace(data.SerializedMeshesPath.find(ws), ws.size(), "");
+        //  }
 
-        if (data.SerializedMaterialsPath.find(ws) != std::string::npos)
-        {
-            data.SerializedMaterialsPath.replace(data.SerializedMaterialsPath.find(ws), ws.size(), "");
-        }
+        // if (data.SerializedMaterialsPath.find(ws) != std::string::npos)
+        //{
+        //     data.SerializedMaterialsPath.replace(data.SerializedMaterialsPath.find(ws), ws.size(), "");
+        // }
 
-        if (data.SerializedModelPath.find(ws) != std::string::npos)
-        {
-            data.SerializedModelPath.replace(data.SerializedModelPath.find(ws), ws.size(), "");
-        }
+        // if (data.SerializedModelPath.find(ws) != std::string::npos)
+        //{
+        //     data.SerializedModelPath.replace(data.SerializedModelPath.find(ws), ws.size(), "");
+        // }
 
-        context_ptr->CurrentScenePtr->Push(data.SerializedMeshesPath, data.SerializedModelPath, data.SerializedMaterialsPath);
+        // context_ptr->CurrentScenePtr->Push(data.SerializedMeshesPath, data.SerializedModelPath, data.SerializedMaterialsPath);
     }
 
     void DockspaceUIComponent::OnAssetImporterProgress(void* const context, float value)
@@ -506,10 +506,11 @@ namespace Tetragrama::Components
 
     void DockspaceUIComponent::OnEditorSceneSerializerDeserializeComplete(void* const context, EditorScene&& scene)
     {
-        auto ctx                            = reinterpret_cast<EditorContext*>(context);
+        auto ctx = reinterpret_cast<EditorContext*>(context);
 
         // Todo : Ensure no data race on CurrentScenePtr
-        ctx->CurrentScenePtr->Name          = scene.Name;
+        ZEngine::Helpers::secure_strcpy(ctx->CurrentScenePtr->Name, 50, scene.Name);
+
         ctx->CurrentScenePtr->Data          = scene.Data;
         ctx->CurrentScenePtr->MeshFiles     = scene.MeshFiles;
         ctx->CurrentScenePtr->ModelFiles    = scene.ModelFiles;

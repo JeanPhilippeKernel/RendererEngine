@@ -43,6 +43,8 @@
 
 #define MAX_FILE_PATH_COUNT 256
 
+#define ZRawPtr(X)          X*
+
 /*
  * Allocator and Memory Macros
  */

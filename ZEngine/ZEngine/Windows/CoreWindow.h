@@ -5,6 +5,7 @@
 #include <Core/IInitializable.h>
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
+#include <Core/Memory/Allocator.h>
 #include <Core/TimeStep.h>
 #include <Helpers/IntrusivePtr.h>
 #include <Inputs/IInputEventCallback.h>
@@ -23,14 +24,14 @@ namespace ZEngine::Windows::Layers
 
 namespace ZEngine::Windows
 {
-    class CoreWindow : public Helpers::RefCounted, public Inputs::IKeyboardEventCallback, public Inputs::IMouseEventCallback, public Inputs::ITextInputEventCallback, public Inputs::IWindowEventCallback, public Core::IUpdatable, public Core::IRenderable, public Core::IEventable, public Core::IInitializable
+    class CoreWindow : public Helpers::RefCounted, public Inputs::IKeyboardEventCallback, public Inputs::IMouseEventCallback, public Inputs::ITextInputEventCallback, public Inputs::IWindowEventCallback, public Core::IUpdatable, public Core::IRenderable, public Core::IEventable
     {
 
     public:
         using EventCallbackFn = std::function<void(Core::CoreEvent&)>;
 
     public:
-        CoreWindow();
+        CoreWindow() {}
         CoreWindow(const WindowConfiguration& cfg);
         virtual ~CoreWindow();
 
@@ -63,12 +64,14 @@ namespace ZEngine::Windows
         virtual void                     PushLayer(const Helpers::Ref<Layers::Layer>& layer);
         virtual void                     PushLayer(Helpers::Ref<Layers::Layer>&& layer);
 
+        virtual void                     Deinitialize() {}
+
     protected:
-        Core::TimeStep                     m_delta_time;
-        WindowProperty                     m_property;
-        WindowConfiguration                m_configuration;
-        Helpers::Scope<Layers::LayerStack> m_layer_stack_ptr{nullptr};
+        Core::TimeStep      m_delta_time;
+        WindowProperty      m_property;
+        WindowConfiguration m_configuration;
+        ZRawPtr(Layers::LayerStack) m_layer_stack_ptr { nullptr };
     };
 
-    CoreWindow* Create(const WindowConfiguration&);
+    CoreWindow* Create(Core::Memory::ArenaAllocator* arena, const WindowConfiguration& cfg);
 } // namespace ZEngine::Windows

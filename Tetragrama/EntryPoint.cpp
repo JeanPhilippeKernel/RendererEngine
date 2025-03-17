@@ -1,8 +1,11 @@
 #include <pch.h>
 #include <CLI/CLI.hpp>
+#include <ZEngine/Core/Memory/MemoryManager.h>
 #include "Editor.h"
 
 #ifdef ZENGINE_PLATFORM
+
+using namespace ZEngine::Core::Memory;
 
 int applicationEntryPoint(int argc, char* argv[])
 {
@@ -14,12 +17,16 @@ int applicationEntryPoint(int argc, char* argv[])
 
     CLI11_PARSE(app, argc, argv);
 
-    Tetragrama::EditorConfiguration editor_config = {};
-    editor_config.ReadConfig(json_config_file);
+    MemoryConfiguration config = {.DefaultSize = ZMega(3)};
+    MemoryManager       manager;
+    manager.Initialize(config);
+    auto arena  = &(manager.ArenaAllocator);
 
-    auto editor = ZEngine::Helpers::CreateRef<Tetragrama::Editor>(editor_config);
-    editor->Initialize();
+    auto editor = ZPushStruct(arena, Tetragrama::Editor);
+    editor->Initialize(arena, json_config_file.c_str());
     editor->Run();
+
+    manager.Shutdowm();
 
     return 0;
 }

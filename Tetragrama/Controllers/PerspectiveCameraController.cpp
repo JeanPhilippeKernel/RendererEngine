@@ -14,15 +14,10 @@ using namespace Tetragrama::Inputs;
 
 namespace Tetragrama::Controllers
 {
-
-    void PerspectiveCameraController::Initialize()
-    {
-        m_process_event = true;
-    }
-
+    PerspectiveCameraController::PerspectiveCameraController() {}
     void PerspectiveCameraController::Update(Core::TimeStep dt)
     {
-        if (auto window = m_window.lock())
+        if (auto window = m_window)
         {
             if (!m_process_event)
             {
