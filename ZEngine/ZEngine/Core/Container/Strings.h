@@ -20,9 +20,8 @@ namespace ZEngine::Core::Container
         void init(Memory::ArenaAllocator* allocator, size_type initial_capacity = 16)
         {
             m_allocator = allocator;
-            m_size      = 0;
-            m_capacity  = 0;
-            m_data      = nullptr;
+            m_capacity = m_size = 0;
+            m_data              = nullptr;
             reserve(initial_capacity);
             m_data[0] = '\0';
         }
@@ -30,9 +29,8 @@ namespace ZEngine::Core::Container
         void init(Memory::ArenaAllocator* allocator, const char* str)
         {
             m_allocator = allocator;
-            m_size      = 0;
-            m_capacity  = 0;
-            m_data      = nullptr;
+            m_capacity = m_size = 0;
+            m_data              = nullptr;
 
             if (str)
             {
@@ -169,7 +167,7 @@ namespace ZEngine::Core::Container
             size_t old_alloc_size = m_capacity * sizeof(char);
             size_t new_alloc_size = new_capacity * sizeof(char);
 
-            m_data                = static_cast<pointer>(m_allocator->Resize(m_data, old_alloc_size, new_alloc_size, alignof(value_type)));
+            m_data                = static_cast<pointer>(ZENGINE_RESIZE_MEMORY(m_allocator, m_data, old_alloc_size, new_alloc_size, ZENGINE_TYPE_ALIGNMENT(value_type)));
             m_capacity            = new_capacity;
         }
 

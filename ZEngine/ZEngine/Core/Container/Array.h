@@ -107,10 +107,6 @@ namespace ZEngine::Core::Container
 
         void clear()
         {
-            for (size_type i = 0; i < m_size; ++i)
-            {
-                m_data[i].~T();
-            }
             m_size = 0;
         }
 
@@ -152,7 +148,6 @@ namespace ZEngine::Core::Container
         {
             ZENGINE_VALIDATE_ASSERT(m_size > 0, "Index out of range")
             --m_size;
-            m_data[m_size].~T();
         }
 
         ~Array()
@@ -171,8 +166,7 @@ namespace ZEngine::Core::Container
 
             size_t old_alloc_size = m_capacity * sizeof(T);
             size_t new_alloc_size = new_capacity * sizeof(T);
-
-            m_data                = static_cast<pointer>(m_allocator->Resize(m_data, old_alloc_size, new_alloc_size, alignof(value_type)));
+            m_data                = static_cast<pointer>(ZENGINE_RESIZE_MEMORY(m_allocator, m_data, old_alloc_size, new_alloc_size, ZENGINE_TYPE_ALIGNMENT(value_type)));
             m_capacity            = new_capacity;
         }
 
