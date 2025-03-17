@@ -39,9 +39,13 @@
         collection.shrink_to_fit();          \
     }
 
-#define SINGLE_ARG(...)     __VA_ARGS__
+#define ZResize(allocator, ptr, old_size, new_size, alignment) ((allocator)->Resize((ptr), (old_size), (new_size), (alignment)))
 
-#define MAX_FILE_PATH_COUNT 256
+#define ZAlignof(type)                                         ((alignof(type) < DEFAULT_ALIGNMENT) ? DEFAULT_ALIGNMENT : alignof(type))
+
+#define SINGLE_ARG(...)                                        __VA_ARGS__
+
+#define MAX_FILE_PATH_COUNT                                    256
 
 /*
  * Allocator and Memory Macros

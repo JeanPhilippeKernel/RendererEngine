@@ -1,5 +1,5 @@
 #pragma once
-#include <cassert>
+#include <ZEngineDef.h>
 #include <cstring>
 
 #ifdef __STDC_LIB_EXT1__
@@ -147,7 +147,7 @@ namespace ZEngine::Helpers
     {
         uintptr_t p, a, mod;
 
-        assert(is_power_of_two(align) && "Alignment should be power of two");
+        ZENGINE_VALIDATE_ASSERT(is_power_of_two(align), "Alignment should be power of two");
 
         p   = ptr;
         a   = static_cast<uintptr_t>(align);
@@ -163,7 +163,7 @@ namespace ZEngine::Helpers
     {
         size_t p, a, mod;
 
-        assert(is_power_of_two((uintptr_t) align) && "Alignment should be power of two");
+        ZENGINE_VALIDATE_ASSERT(is_power_of_two((uintptr_t) align), "Alignment should be power of two");
 
         p   = ptr;
         a   = align;
