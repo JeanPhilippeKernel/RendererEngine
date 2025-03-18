@@ -38,7 +38,7 @@ namespace Tetragrama
         return m_property.Width;
     }
 
-    std::string_view EditorWindow::GetTitle() const
+    ZEngine::Core::Container::StringView EditorWindow::GetTitle() const
     {
         return m_property.Title;
     }
@@ -48,10 +48,10 @@ namespace Tetragrama
         return m_property.IsMinimized;
     }
 
-    void EditorWindow::SetTitle(std::string_view title)
+    void EditorWindow::SetTitle(ZEngine::Core::Container::StringView title)
     {
-        m_property.Title = title;
-        glfwSetWindowTitle(m_native_window, m_property.Title.c_str());
+        m_property.Title = title.data();
+        glfwSetWindowTitle(m_native_window, m_property.Title);
     }
 
     bool EditorWindow::IsVSyncEnable() const
@@ -93,13 +93,10 @@ namespace Tetragrama
 
         m_property.Height = cfg.Height;
         m_property.Width  = cfg.Width;
-        m_property.Title  = cfg.Title;
+        m_property.Title  = cfg.Title.c_str();
         m_property.VSync  = cfg.EnableVsync;
 
-
-        m_layer_stack_ptr = ZPushStruct(arena, Layers::LayerStack);
-
-        int glfw_init = glfwInit();
+        int glfw_init     = glfwInit();
         if (glfw_init == GLFW_FALSE)
         {
             ZENGINE_CORE_CRITICAL("Unable to initialize glfw..")
@@ -113,7 +110,7 @@ namespace Tetragrama
             ZENGINE_EXIT_FAILURE()
         });
 
-        m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
+        m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title, NULL, NULL);
 
         if (!m_native_window)
         {
@@ -140,16 +137,22 @@ namespace Tetragrama
 
         ZENGINE_CORE_INFO("Window created, Width = {0}, Height = {1}", m_property.Width, m_property.Height)
 
-        for (const auto& layer : m_configuration.RenderingLayerCollection)
+        // Initialize in reverse order, so overlay layers can be initialize first
+        // this give us opportunity to initialize UI-like layers before graphic render-like layers
+
+        for (auto layer : m_configuration.OverlayLayerCollection)
         {
-            PushLayer(layer);
+            layer->ParentWindow = this;
+            layer->Initialize(arena);
         }
 
-        for (const auto& layer : m_configuration.OverlayLayerCollection)
+        for (auto layer : m_configuration.RenderingLayerCollection)
         {
-            PushOverlayLayer(layer);
+            layer->ParentWindow = this;
+            layer->Initialize(arena);
         }
-        InitializeLayer();
+
+        ZENGINE_CORE_INFO("Windows layers initialized")
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
@@ -170,27 +173,16 @@ namespace Tetragrama
         glfwMaximizeWindow(m_native_window);
     }
 
-    void EditorWindow::InitializeLayer()
-    {
-        auto& layer_stack = *m_layer_stack_ptr;
-
-        // Initialize in reverse order, so overlay layers can be initialize first
-        // this give us opportunity to initialize UI-like layers before graphic render-like layers
-        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
-        {
-            (*rlayer_it)->SetAttachedWindow(this);
-            (*rlayer_it)->Initialize();
-        }
-
-        ZENGINE_CORE_INFO("Windows layers initialized")
-    }
-
     void EditorWindow::Deinitialize()
     {
-        auto& layer_stack = *m_layer_stack_ptr;
-        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
+        for (auto layer : m_configuration.OverlayLayerCollection)
         {
-            (*rlayer_it)->Deinitialize();
+            layer->Deinitialize();
+        }
+
+        for (auto layer : m_configuration.RenderingLayerCollection)
+        {
+            layer->Deinitialize();
         }
     }
 
@@ -367,7 +359,12 @@ namespace Tetragrama
 
     void EditorWindow::Update(Core::TimeStep delta_time)
     {
-        for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
+        for (auto layer : m_configuration.RenderingLayerCollection)
+        {
+            layer->Update(delta_time);
+        }
+
+        for (auto layer : m_configuration.OverlayLayerCollection)
         {
             layer->Update(delta_time);
         }
@@ -375,7 +372,12 @@ namespace Tetragrama
 
     void EditorWindow::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
+        for (auto layer : m_configuration.RenderingLayerCollection)
+        {
+            layer->Render(renderer, command_buffer);
+        }
+
+        for (auto layer : m_configuration.OverlayLayerCollection)
         {
             layer->Render(renderer, command_buffer);
         }
@@ -577,10 +579,9 @@ namespace ZEngine::Windows
 {
     CoreWindow* Create(Core::Memory::ArenaAllocator* arena, const WindowConfiguration& cfg)
     {
-        auto core_window = ZPushStruct(arena, Tetragrama::EditorWindow);
-        new (core_window) Tetragrama::EditorWindow();
-        core_window->Initialize(arena, cfg);
+        auto core_window = ZPushStructCtor(arena, Tetragrama::EditorWindow);
         core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
+        core_window->Initialize(arena, cfg);
         return core_window;
     }
 } // namespace ZEngine::Windows

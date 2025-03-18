@@ -17,11 +17,14 @@ using namespace ZEngine::Helpers;
 namespace Tetragrama::Layers
 {
 
-    RenderLayer::RenderLayer(std::string_view name) : Layer(name) {}
+    RenderLayer::RenderLayer(const char* name) : Layer(name) {}
 
     RenderLayer::~RenderLayer() {}
 
-    void RenderLayer::Initialize() {}
+    void RenderLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
+    {
+        arena->CreateSubArena(ZMega(1), &LayerArena);
+    }
 
     void RenderLayer::Deinitialize() {}
 

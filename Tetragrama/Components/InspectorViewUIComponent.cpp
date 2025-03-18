@@ -19,12 +19,15 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    InspectorViewUIComponent::InspectorViewUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false)
-    {
-        m_node_flag = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding;
-    }
+    InspectorViewUIComponent::InspectorViewUIComponent() {}
 
     InspectorViewUIComponent::~InspectorViewUIComponent() {}
+
+    void InspectorViewUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
+    {
+        UIComponent::Initialize(parent, name, visibility, closed);
+        m_node_flag = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding;
+    }
 
     void              InspectorViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
@@ -64,7 +67,7 @@ namespace Tetragrama::Components
             m_recieved_unselected_request = false;
         }
 
-        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
         Helpers::DrawEntityControl("Name", m_scene_entity, m_node_flag, [this] {
             ImGui::Dummy(ImVec2(0, 3));

@@ -7,8 +7,13 @@ namespace Tetragrama::Components
     class AboutUIComponent : public UIComponent
     {
     public:
-        AboutUIComponent(std::string_view name = "AboutUIComponent", bool visibility = true) : UIComponent(name, visibility, true) {}
+        AboutUIComponent() {}
         virtual ~AboutUIComponent() = default;
+
+        void Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "AboutUIComponent", bool visibility = true, bool closed = false) override
+        {
+            UIComponent::Initialize(parent, name, visibility, closed);
+        }
 
         virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override
         {

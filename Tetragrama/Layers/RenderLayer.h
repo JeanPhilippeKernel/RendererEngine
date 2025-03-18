@@ -15,11 +15,11 @@ namespace Tetragrama::Layers
     class RenderLayer : public ZEngine::Windows::Layers::Layer
     {
     public:
-        RenderLayer(std::string_view name = "Rendering layer");
+        RenderLayer(const char* name = "Rendering layer");
 
         virtual ~RenderLayer();
 
-        virtual void Initialize() override;
+        virtual void Initialize(ZEngine::Core::Memory::ArenaAllocator* arena) override;
         virtual void Deinitialize() override;
         virtual void Update(ZEngine::Core::TimeStep dt) override;
 

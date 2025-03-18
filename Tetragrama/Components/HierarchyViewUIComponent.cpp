@@ -23,19 +23,22 @@ using namespace Tetragrama::Controllers;
 
 namespace Tetragrama::Components
 {
-    HierarchyViewUIComponent::HierarchyViewUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false)
-    {
-        m_node_flag = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth /* | ImGuiTreeNodeFlags_DefaultOpen*/;
-    }
+    HierarchyViewUIComponent::HierarchyViewUIComponent() {}
 
     HierarchyViewUIComponent::~HierarchyViewUIComponent() {}
+
+    void HierarchyViewUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
+    {
+        UIComponent::Initialize(parent, name, visibility, closed);
+        m_node_flag = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth /* | ImGuiTreeNodeFlags_DefaultOpen*/;
+    }
 
     void HierarchyViewUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
 
-        if (ParentLayer)
+        if (ParentLayer && ParentLayer->ParentWindow)
         {
-            auto window = ParentLayer->GetAttachedWindow();
+            auto window = ParentLayer->ParentWindow;
             if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_T, window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
@@ -58,8 +61,8 @@ namespace Tetragrama::Components
         auto ctx          = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
         auto render_scene = ctx->CurrentScenePtr->RenderScene;
 
-        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
-        if (ImGui::BeginPopupContextWindow(Name.c_str()))
+        ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
+        if (ImGui::BeginPopupContextWindow(Name))
         {
             if (ImGui::MenuItem("Create Empty"))
             {

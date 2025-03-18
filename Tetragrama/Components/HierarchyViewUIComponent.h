@@ -12,8 +12,10 @@ namespace Tetragrama::Components
     class HierarchyViewUIComponent : public UIComponent
     {
     public:
-        HierarchyViewUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Hierarchy", bool visibility = true);
+        HierarchyViewUIComponent();
         virtual ~HierarchyViewUIComponent();
+
+        void         Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Hierarchy", bool visibility = true, bool closed = false) override;
 
         void         Update(ZEngine::Core::TimeStep dt) override;
         virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;

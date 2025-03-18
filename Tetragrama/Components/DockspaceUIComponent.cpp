@@ -21,8 +21,14 @@ namespace Tetragrama::Components
     std::string DockspaceUIComponent::s_asset_importer_report_msg         = "";
     float       DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
 
-    DockspaceUIComponent::DockspaceUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false), m_asset_importer(CreateScope<Importers::AssimpImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>())
+    DockspaceUIComponent::DockspaceUIComponent() : m_asset_importer(CreateScope<Importers::AssimpImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>()) {}
+
+    DockspaceUIComponent::~DockspaceUIComponent() {}
+
+    void DockspaceUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
     {
+        UIComponent::Initialize(parent, name, visibility, closed);
+
         m_dockspace_node_flag          = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
         m_window_flags                 = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
@@ -58,8 +64,6 @@ namespace Tetragrama::Components
         m_asset_importer->SetOnErrorCallback(OnAssetImporterError);
     }
 
-    DockspaceUIComponent::~DockspaceUIComponent() {}
-
     void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
     void DockspaceUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
@@ -74,14 +78,14 @@ namespace Tetragrama::Components
         m_window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
-        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), m_window_flags);
+        ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), m_window_flags);
 
         ImGui::PopStyleVar(3);
 
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable)
         {
             // Dock space
-            const auto window_id = ImGui::GetID(Name.c_str());
+            const auto window_id = ImGui::GetID(Name);
             if (!ImGui::DockBuilderGetNode(window_id))
             {
                 // Reset current docking state
@@ -160,9 +164,9 @@ namespace Tetragrama::Components
         if (ImGui::Button("...", ImVec2(50, 0)) && is_import_button_enabled)
         {
             Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
-                if (ParentLayer)
+                if (ParentLayer && ParentLayer->ParentWindow)
                 {
-                    auto                          window = ParentLayer->GetAttachedWindow();
+                    auto                          window = ParentLayer->ParentWindow;
                     std::vector<std::string_view> filters{".obj", ".gltf"};
                     std::string                   filename = co_await window->OpenFileDialogAsync(filters);
 
@@ -527,9 +531,9 @@ namespace Tetragrama::Components
 
     std::future<void> DockspaceUIComponent::OnOpenSceneAsync()
     {
-        if (ParentLayer)
+        if (ParentLayer && ParentLayer->ParentWindow)
         {
-            auto                          window         = ParentLayer->GetAttachedWindow();
+            auto                          window         = ParentLayer->ParentWindow;
             std::vector<std::string_view> filters        = {".zescene"};
             std::string                   scene_filename = co_await window->OpenFileDialogAsync(filters);
 

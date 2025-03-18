@@ -11,7 +11,7 @@ namespace Tetragrama::Controllers
         m_process_event      = true;
         m_controller_type    = Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;
 
-        m_perspective_camera = ZPushStruct(arena, PerspectiveCamera);
+        m_perspective_camera = ZPushStructCtor(arena, PerspectiveCamera);
         m_perspective_camera->Initialize(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far, glm::radians(yaw_degree), glm::radians(pitch_degree));
         m_perspective_camera->SetDistance(distance);
 

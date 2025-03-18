@@ -17,14 +17,18 @@ using namespace ZEngine;
 
 namespace Tetragrama::Components
 {
-    SceneViewportUIComponent::SceneViewportUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false)
+    SceneViewportUIComponent::SceneViewportUIComponent() {}
+
+    SceneViewportUIComponent::~SceneViewportUIComponent() {}
+
+    void SceneViewportUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
     {
+        UIComponent::Initialize(parent, name, visibility, closed);
+
         // ImGuizmo configuration
         ImGuizmo::AllowAxisFlip(false);
         ImGuizmo::SetOrthographic(false);
     }
-
-    SceneViewportUIComponent::~SceneViewportUIComponent() {}
 
     void SceneViewportUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
@@ -78,7 +82,7 @@ namespace Tetragrama::Components
     void SceneViewportUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
+        ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
 
         auto viewport_offset            = ImGui::GetCursorPos();
         m_content_region_available_size = ImGui::GetContentRegionAvail();
