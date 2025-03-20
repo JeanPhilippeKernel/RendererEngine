@@ -10,8 +10,10 @@ namespace Tetragrama::Components
     class DockspaceUIComponent : public UIComponent
     {
     public:
-        DockspaceUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Dockspace", bool visibility = true);
+        DockspaceUIComponent();
         virtual ~DockspaceUIComponent();
+
+        void              Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Dockspace", bool visibility = true, bool closed = false) override;
 
         void              Update(ZEngine::Core::TimeStep dt) override;
         virtual void      Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;

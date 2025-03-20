@@ -1,6 +1,7 @@
 #pragma once
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <ZEngine/Windows/WindowConfiguration.h>
@@ -11,22 +12,22 @@ namespace Tetragrama
     class EditorWindow : public ZEngine::Windows::CoreWindow
     {
     public:
-        EditorWindow(const ZEngine::Windows::WindowConfiguration& configuration);
+        EditorWindow() {}
         virtual ~EditorWindow();
 
         uint32_t                                        GetHeight() const override;
         uint32_t                                        GetWidth() const override;
-        std::string_view                                GetTitle() const override;
+        ZEngine::Core::Container::StringView            GetTitle() const override;
         bool                                            IsMinimized() const override;
-        void                                            SetTitle(std::string_view title) override;
+        void                                            SetTitle(ZEngine::Core::Container::StringView title) override;
         bool                                            IsVSyncEnable() const override;
         void                                            SetVSync(bool value) override;
         void                                            SetCallbackFunction(const EventCallbackFn& callback) override;
         void*                                           GetNativeWindow() const override;
         virtual const ZEngine::Windows::WindowProperty& GetWindowProperty() const override;
 
-        virtual void                                    Initialize() override;
-        virtual void                                    InitializeLayer() override;
+        virtual void                                    Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const ZEngine::Windows::WindowConfiguration& cfg);
+
         virtual void                                    Deinitialize() override;
         virtual void                                    PollEvent() override;
         virtual float                                   GetTime() override;

@@ -6,18 +6,19 @@
 
 namespace ZEngine
 {
-    static bool                                                  s_request_terminate = false;
-    static std::shared_mutex                                     g_mutex             = {};
-    static Helpers::WeakRef<Windows::CoreWindow>                 g_current_window    = nullptr;
-    static Helpers::Scope<Rendering::Renderers::GraphicRenderer> g_renderer          = Helpers::CreateScope<Rendering::Renderers::GraphicRenderer>();
-    static Helpers::Scope<Hardwares::VulkanDevice>               g_device            = Helpers::CreateScope<Hardwares::VulkanDevice>();
+    static bool              s_request_terminate                                = false;
+    static std::shared_mutex g_mutex                                            = {};
+    static ZRawPtr(Windows::CoreWindow) g_current_window                        = nullptr;
+    static Helpers::Scope<Rendering::Renderers::GraphicRenderer> g_renderer     = Helpers::CreateScope<Rendering::Renderers::GraphicRenderer>();
+    static Helpers::Scope<Hardwares::VulkanDevice>               g_device       = Helpers::CreateScope<Hardwares::VulkanDevice>();
+    static ZEngine::Core::Memory::ArenaAllocator                 g_engine_arena = {};
 
-    void                                                         Engine::Initialize(const EngineConfiguration& engine_configuration, const Helpers::Ref<ZEngine::Windows::CoreWindow>& window)
+    void                                                         Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const EngineConfiguration& engine_configuration, ZRawPtr(ZEngine::Windows::CoreWindow) const window)
     {
+        arena->CreateSubArena(ZMega(2), &g_engine_arena);
+
         g_current_window = window;
         Logging::Logger::Initialize(engine_configuration.LoggerConfiguration);
-
-        window->Initialize();
         g_device->Initialize(g_current_window);
         g_renderer->Initialize(g_device.get());
 
@@ -27,9 +28,9 @@ namespace ZEngine
     void Engine::Deinitialize()
     {
         std::unique_lock l(g_mutex);
-        if (auto window = g_current_window.lock())
+        if (g_current_window)
         {
-            window->Deinitialize();
+            g_current_window->Deinitialize();
         }
         g_renderer->Deinitialize();
         g_renderer.reset();
@@ -56,24 +57,24 @@ namespace ZEngine
     void Engine::Run()
     {
         s_request_terminate = false;
-        while (auto window = g_current_window.lock())
+        while (g_current_window)
         {
             if (s_request_terminate)
             {
                 break;
             }
 
-            float dt = window->GetDeltaTime();
+            float dt = g_current_window->GetDeltaTime();
 
-            window->PollEvent();
+            g_current_window->PollEvent();
 
-            if (window->IsMinimized())
+            if (g_current_window->IsMinimized())
             {
                 continue;
             }
 
             /*On Update*/
-            window->Update(dt);
+            g_current_window->Update(dt);
 
             g_device->Update();
             if (g_renderer->EnqueuedResizeRequests.Size())
@@ -92,7 +93,7 @@ namespace ZEngine
             auto buffer = g_device->GetCommandBuffer();
             {
 
-                window->Render(g_renderer.get(), buffer);
+                g_current_window->Render(g_renderer.get(), buffer);
 
                 g_renderer->ImguiRenderer->DrawFrame(g_device->CurrentFrameIndex, buffer);
             }
@@ -109,6 +110,6 @@ namespace ZEngine
     Helpers::Ref<Windows::CoreWindow> Engine::GetWindow()
     {
         std::shared_lock l(g_mutex);
-        return g_current_window.lock();
+        return g_current_window;
     }
 } // namespace ZEngine

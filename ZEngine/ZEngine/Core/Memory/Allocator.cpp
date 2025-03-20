@@ -24,16 +24,14 @@ namespace ZEngine::Core::Memory
         uintptr_t offset       = Helpers::memory_align(current_ptr, alignment);
         offset                -= (uintptr_t) m_memory;
 
-        if ((offset + size) <= m_total_size)
-        {
-            void* ptr         = &m_memory[offset];
-            m_previous_offset = offset;
-            m_current_offset  = (offset + size);
+        assert((offset + size) <= m_total_size);
 
-            Helpers::secure_memset(ptr, 0, size, size);
-            return ptr;
-        }
-        return nullptr;
+        void* ptr         = &m_memory[offset];
+        m_previous_offset = offset;
+        m_current_offset  = (offset + size);
+
+        Helpers::secure_memset(ptr, 0, size, size);
+        return ptr;
     }
 
     void* ArenaAllocator::Allocate(size_t size, size_t alignment, const char* file, int line)
@@ -82,6 +80,13 @@ namespace ZEngine::Core::Memory
     {
         m_previous_offset = 0;
         m_current_offset  = 0;
+    }
+
+    void ArenaAllocator::CreateSubArena(size_t size, ArenaAllocator* out_arena)
+    {
+        out_arena->m_memory          = reinterpret_cast<uint8_t*>(Allocate(size));
+        out_arena->m_total_size      = size;
+        out_arena->m_previous_offset = out_arena->m_current_offset = m_previous_offset;
     }
 
     ArenaTemp BeginTempArena(ArenaAllocator* arena)

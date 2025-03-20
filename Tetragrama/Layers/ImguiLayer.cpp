@@ -17,6 +17,7 @@
 using namespace ZEngine;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Windows::Events;
+using namespace ZEngine::Core::Container;
 using namespace ZEngine::Helpers;
 using namespace Tetragrama::Messengers;
 
@@ -24,36 +25,54 @@ namespace Tetragrama::Layers
 {
     ImguiLayer::~ImguiLayer() {}
 
-    void ImguiLayer::Initialize()
+    void ImguiLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
     {
-        NodeHierarchies.reserve(10);
+        arena->CreateSubArena(ZMega(1), &LayerArena);
 
-        auto dockspace_cmp           = CreateRef<Components::DockspaceUIComponent>(this);
-        auto scene_cmp               = CreateRef<Components::SceneViewportUIComponent>(this);
-        auto editor_log_cmp          = CreateRef<Components::LogUIComponent>(this);
-        auto demo_cmp                = CreateRef<Components::DemoUIComponent>(this);
-        auto project_view_cmp        = CreateRef<Components::ProjectViewUIComponent>(this);
-        auto inspector_view_cmp      = CreateRef<Components::InspectorViewUIComponent>(this);
-        auto hierarchy_view_cmp      = CreateRef<Components::HierarchyViewUIComponent>(this);
+        NodeHierarchies.init(&LayerArena, 10, 0);
 
-        dockspace_cmp->Children      = {scene_cmp.get(), editor_log_cmp.get(), demo_cmp.get(), project_view_cmp.get(), inspector_view_cmp.get(), hierarchy_view_cmp.get()};
+        auto dockspace_cmp      = ZPushStructCtor(&LayerArena, Components::DockspaceUIComponent);
+        auto scene_cmp          = ZPushStructCtor(&LayerArena, Components::SceneViewportUIComponent);
+        auto editor_log_cmp     = ZPushStructCtor(&LayerArena, Components::LogUIComponent);
+        auto project_view_cmp   = ZPushStructCtor(&LayerArena, Components::ProjectViewUIComponent);
+        auto inspector_view_cmp = ZPushStructCtor(&LayerArena, Components::InspectorViewUIComponent);
+        auto hierarchy_view_cmp = ZPushStructCtor(&LayerArena, Components::HierarchyViewUIComponent);
+
+        auto demo_cmp           = ZPushStructCtor(&LayerArena, Components::DemoUIComponent);
+
+        dockspace_cmp->Initialize(this);
+        scene_cmp->Initialize(this);
+        editor_log_cmp->Initialize(this);
+        project_view_cmp->Initialize(this);
+        inspector_view_cmp->Initialize(this);
+        hierarchy_view_cmp->Initialize(this);
+        demo_cmp->Initialize(this);
+
+        dockspace_cmp->Children.init(&LayerArena, 8, 7);
+        dockspace_cmp->Children.push(scene_cmp);
+        dockspace_cmp->Children.push(editor_log_cmp);
+        dockspace_cmp->Children.push(demo_cmp);
+        dockspace_cmp->Children.push(project_view_cmp);
+        dockspace_cmp->Children.push(inspector_view_cmp);
+        dockspace_cmp->Children.push(hierarchy_view_cmp);
+
         dockspace_cmp->ChildrenCount = dockspace_cmp->Children.size();
 
-        AddUIComponent(dockspace_cmp.get(), -1, 0);
+        AddUIComponent(dockspace_cmp, -1, 0);
         /*
          *  Register Inspector Component
          */
-        IMessenger::Register<Components::UIComponent, GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>>(inspector_view_cmp.get(), EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, [=](void* const message) -> std::future<void> {
+        IMessenger::Register<Components::UIComponent, GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>>(inspector_view_cmp, EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, [=](void* const message) -> std::future<void> {
             auto message_ptr = reinterpret_cast<GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>*>(message);
             return inspector_view_cmp->SceneEntitySelectedMessageHandlerAsync(*message_ptr);
         });
 
-        IMessenger::Register<Components::UIComponent, EmptyMessage>(inspector_view_cmp.get(), EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, [=](void* const message) -> std::future<void> {
+        IMessenger::Register<Components::UIComponent, EmptyMessage>(inspector_view_cmp, EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, [=](void* const message) -> std::future<void> {
             auto message_ptr = reinterpret_cast<EmptyMessage*>(message);
             return inspector_view_cmp->SceneEntityUnSelectedMessageHandlerAsync(*message_ptr);
         });
 
-        IMessenger::Register<Components::UIComponent, EmptyMessage>(inspector_view_cmp.get(), EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, [=](void* const message) -> std::future<void> {
+        IMessenger::Register<Components::UIComponent, EmptyMessage>(inspector_view_cmp, EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, [=](void* const message) -> std::future<void> {
             auto message_ptr = reinterpret_cast<EmptyMessage*>(message);
             return inspector_view_cmp->SceneEntityDeletedMessageHandlerAsync(*message_ptr);
         });
@@ -62,7 +81,6 @@ namespace Tetragrama::Layers
     void ImguiLayer::Deinitialize()
     {
         NodeHierarchies.clear();
-        NodeHierarchies.shrink_to_fit();
         NodeUIComponents.clear();
     }
 
@@ -97,11 +115,17 @@ namespace Tetragrama::Layers
             NodeToRender.clear();
         }
 
-        std::vector<int> roots    = {};
-        std::vector<int> children = {};
-        std::vector<int> siblings = {};
+        auto       temp_arena = ZGetScratch(&LayerArena);
 
-        uint32_t         i        = 0;
+        Array<int> roots      = {};
+        Array<int> children   = {};
+        Array<int> siblings   = {};
+
+        roots.init(temp_arena.Arena, 1, 0);
+        children.init(temp_arena.Arena, 1, 0);
+        siblings.init(temp_arena.Arena, 1, 0);
+
+        uint32_t i = 0;
         for (auto& node : NodeHierarchies)
         {
             if (node.Parent == -1)
@@ -109,13 +133,13 @@ namespace Tetragrama::Layers
                 auto& cmp = NodeUIComponents[i];
                 if (cmp->IsVisible)
                 {
-                    roots.emplace_back(i);
+                    roots.push(i);
                     if (node.FirstChild != -1)
                     {
                         auto& fc = NodeUIComponents[node.FirstChild];
                         if (fc->IsVisible)
                         {
-                            children.emplace_back(node.FirstChild);
+                            children.push(node.FirstChild);
                         }
                     }
                 }
@@ -127,7 +151,7 @@ namespace Tetragrama::Layers
         {
             for (auto sibling = NodeHierarchies[ch].RightSibling; sibling != -1; sibling = NodeHierarchies[sibling].RightSibling)
             {
-                siblings.emplace_back(sibling);
+                siblings.push(sibling);
             }
         }
 
@@ -139,17 +163,17 @@ namespace Tetragrama::Layers
 
         for (auto r : roots)
         {
-            NodeToRender.emplace_back(r);
+            NodeToRender.push(r);
         }
 
         for (auto c : children)
         {
-            NodeToRender.emplace_back(c);
+            NodeToRender.push(c);
         }
 
         for (auto s : siblings)
         {
-            NodeToRender.emplace_back(s);
+            NodeToRender.push(s);
         }
 
         for (auto i : NodeToRender)
@@ -157,6 +181,8 @@ namespace Tetragrama::Layers
             auto& cmp = NodeUIComponents[i];
             cmp->Update(dt);
         }
+
+        ZReleaseScratch(temp_arena);
     }
 
     int ImguiLayer::AddNode(Components::UIComponent* cmp, int parent, int depth)
@@ -167,31 +193,33 @@ namespace Tetragrama::Layers
         }
 
         auto node = NodeHierarchies.size();
-        NodeHierarchies.emplace_back(NodeHierarchy{.Parent = parent});
+        NodeHierarchies.push(NodeHierarchy{.Parent = parent});
+
+        ArrayView<NodeHierarchy> nodes_view(NodeHierarchies.data(), NodeHierarchies.size());
         if (parent > -1)
         {
             int first = NodeHierarchies[parent].FirstChild;
             if (first == -1)
             {
-                NodeHierarchies[parent].FirstChild = node;
+                nodes_view[parent].FirstChild = node;
             }
             else
             {
                 int sibling = NodeHierarchies[first].RightSibling;
                 if (sibling == -1)
                 {
-                    NodeHierarchies[first].RightSibling = node;
+                    nodes_view[first].RightSibling = node;
                 }
                 else
                 {
                     for (sibling = first; NodeHierarchies[sibling].RightSibling != -1; sibling = NodeHierarchies[sibling].RightSibling)
                     {
                     }
-                    NodeHierarchies[sibling].RightSibling = node;
+                    nodes_view[sibling].RightSibling = node;
                 }
             }
         }
-        NodeHierarchies[node].DepthLevel = depth;
+        nodes_view[node].DepthLevel = depth;
         return node;
     }
 
@@ -284,7 +312,7 @@ namespace Tetragrama::Layers
     bool ImguiLayer::OnWindowClosed(WindowClosedEvent& event)
     {
         Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<WindowClosedEvent>(std::bind(&ZEngine::Windows::CoreWindow::OnWindowClosed, GetAttachedWindow().get(), std::placeholders::_1));
+        event_dispatcher.ForwardTo<WindowClosedEvent>(std::bind(&ZEngine::Windows::CoreWindow::OnWindowClosed, ParentWindow, std::placeholders::_1));
         return true;
     }
 

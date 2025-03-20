@@ -43,9 +43,9 @@ namespace Tetragrama::Serializers
 
             out.seekp(std::ios::beg);
 
-            size_t name_count = scene->Name.size();
+            size_t name_count = ZEngine::Helpers::secure_strlen(scene->Name);
             out.write(reinterpret_cast<const char*>(&name_count), sizeof(size_t));
-            out.write(scene->Name.data(), name_count + 1);
+            out.write(scene->Name, name_count + 1);
 
             SerializeStringArrayData(out, scene->MeshFiles);
             REPORT_PROGRESS(Context, 0.25f)
@@ -116,9 +116,7 @@ namespace Tetragrama::Serializers
 
             size_t name_count;
             in_stream.read(reinterpret_cast<char*>(&name_count), sizeof(size_t));
-
-            scene.Name.resize(name_count);
-            in_stream.read(scene.Name.data(), name_count + 1);
+            in_stream.read(scene.Name, name_count + 1);
 
             DeserializeStringArrayData(in_stream, scene.MeshFiles);
             REPORT_PROGRESS(Context, 0.25f)

@@ -28,6 +28,8 @@ namespace ZEngine::Core::Memory
         void*    Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
         void     Clear();
 
+        void     CreateSubArena(size_t size, ArenaAllocator* out_arena);
+
         uint8_t* m_memory          = nullptr;
         size_t   m_total_size      = 0;
         size_t   m_current_offset  = 0;

@@ -12,8 +12,10 @@ namespace Tetragrama::Components
     class InspectorViewUIComponent : public UIComponent
     {
     public:
-        InspectorViewUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Inspector", bool visibility = true);
+        InspectorViewUIComponent();
         virtual ~InspectorViewUIComponent();
+
+        void              Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Inspector", bool visibility = true, bool closed = false) override;
 
         void              Update(ZEngine::Core::TimeStep dt) override;
 

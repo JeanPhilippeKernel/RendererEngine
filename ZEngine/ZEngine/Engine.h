@@ -8,7 +8,7 @@ namespace ZEngine
 {
     struct Engine
     {
-        static void                              Initialize(const EngineConfiguration&, const Helpers::Ref<ZEngine::Windows::CoreWindow>&);
+        static void                              Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const EngineConfiguration&, ZRawPtr(ZEngine::Windows::CoreWindow) const);
         static void                              Run();
         static Helpers::Ref<Windows::CoreWindow> GetWindow();
         static void                              Deinitialize();

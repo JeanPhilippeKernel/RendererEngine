@@ -5,7 +5,9 @@ namespace Tetragrama::Controllers
 {
     struct EditorCameraController : public Controllers::PerspectiveCameraController
     {
-        EditorCameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window, double distance, float yaw_angle_degree, float pitch_angle_degree);
+        EditorCameraController()          = default;
         virtual ~EditorCameraController() = default;
+
+        void Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Windows::CoreWindow* window, double distance, float yaw_degree, float pitch_degree);
     };
 } // namespace Tetragrama::Controllers

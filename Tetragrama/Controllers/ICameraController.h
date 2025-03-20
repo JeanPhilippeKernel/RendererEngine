@@ -10,9 +10,6 @@ namespace Tetragrama::Controllers
     struct ICameraController : public IController
     {
         ICameraController() {}
-        ICameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window) : m_window(window) {}
-        ICameraController(const ZEngine::Helpers::Ref<ZEngine::Windows::CoreWindow>& window, float aspect_ratio, bool can_rotate = false) : m_aspect_ratio(aspect_ratio), m_can_rotate(can_rotate), m_window(window) {}
-
         virtual ~ICameraController()                                                                                    = default;
 
         virtual glm::vec3                                                        GetPosition() const                    = 0;
@@ -77,14 +74,14 @@ namespace Tetragrama::Controllers
         }
 
     protected:
-        glm::vec3                                               m_position{0.0f, 0.0f, 10.0f};
-        float                                                   m_rotation_angle{0.0f};
-        float                                                   m_zoom_factor{1.0f};
-        float                                                   m_move_speed{0.05f};
-        float                                                   m_rotation_speed{0.05f};
-        float                                                   m_aspect_ratio{0.0f};
-        bool                                                    m_can_rotate{false};
-        CameraControllerType                                    m_controller_type{CameraControllerType::UNDEFINED};
-        ZEngine::Helpers::WeakRef<ZEngine::Windows::CoreWindow> m_window;
+        glm::vec3            m_position{0.0f, 0.0f, 10.0f};
+        float                m_rotation_angle{0.0f};
+        float                m_zoom_factor{1.0f};
+        float                m_move_speed{0.05f};
+        float                m_rotation_speed{0.05f};
+        float                m_aspect_ratio{0.0f};
+        bool                 m_can_rotate{false};
+        CameraControllerType m_controller_type{CameraControllerType::UNDEFINED};
+        ZRawPtr(ZEngine::Windows::CoreWindow) m_window = nullptr;
     };
 } // namespace Tetragrama::Controllers

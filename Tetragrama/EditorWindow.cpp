@@ -33,61 +33,12 @@ using namespace ZEngine::Rendering::Renderers;
 
 namespace Tetragrama
 {
-    EditorWindow::EditorWindow(const WindowConfiguration& configuration) : CoreWindow(configuration)
-    {
-        m_property.Height = configuration.Height;
-        m_property.Width  = configuration.Width;
-        m_property.Title  = configuration.Title;
-        m_property.VSync  = configuration.EnableVsync;
-
-        int glfw_init     = glfwInit();
-        if (glfw_init == GLFW_FALSE)
-        {
-            ZENGINE_CORE_CRITICAL("Unable to initialize glfw..")
-            ZENGINE_EXIT_FAILURE();
-        }
-
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-        glfwSetErrorCallback([](int error, const char* description) {
-            ZENGINE_CORE_CRITICAL("{}", description)
-            ZENGINE_EXIT_FAILURE()
-        });
-
-        m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title.c_str(), NULL, NULL);
-
-        if (!m_native_window)
-        {
-            ZENGINE_CORE_CRITICAL("Failed to create GLFW Window")
-            ZENGINE_EXIT_FAILURE()
-        }
-
-        int window_width = 0, window_height = 0;
-        glfwGetWindowSize(m_native_window, &window_width, &window_height);
-        if ((window_width > 0) && (window_height > 0) && (m_property.Width != window_width) && (m_property.Height != window_height))
-        {
-            m_property.SetWidth(window_width);
-            m_property.SetHeight(window_height);
-        }
-
-#ifdef _WIN32
-        auto native_hwnd = glfwGetWin32Window(m_native_window);
-        m_property.Dpi   = GetDpiForWindow(native_hwnd);
-#endif // _WIN32
-
-        float x_scale, y_scale;
-        glfwGetWindowContentScale(m_native_window, &x_scale, &y_scale);
-        m_property.DpiScale = x_scale;
-
-        ZENGINE_CORE_INFO("Window created, Width = {0}, Height = {1}", m_property.Width, m_property.Height)
-    }
-
     uint32_t EditorWindow::GetWidth() const
     {
         return m_property.Width;
     }
 
-    std::string_view EditorWindow::GetTitle() const
+    ZEngine::Core::Container::StringView EditorWindow::GetTitle() const
     {
         return m_property.Title;
     }
@@ -97,10 +48,10 @@ namespace Tetragrama
         return m_property.IsMinimized;
     }
 
-    void EditorWindow::SetTitle(std::string_view title)
+    void EditorWindow::SetTitle(ZEngine::Core::Container::StringView title)
     {
-        m_property.Title = title;
-        glfwSetWindowTitle(m_native_window, m_property.Title.c_str());
+        m_property.Title = title.data();
+        glfwSetWindowTitle(m_native_window, m_property.Title);
     }
 
     bool EditorWindow::IsVSyncEnable() const
@@ -136,18 +87,72 @@ namespace Tetragrama
         return m_property;
     }
 
-    void EditorWindow::Initialize()
+    void EditorWindow::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const ZEngine::Windows::WindowConfiguration& cfg)
     {
-        for (const auto& layer : m_configuration.RenderingLayerCollection)
+        m_configuration   = cfg;
+
+        m_property.Height = cfg.Height;
+        m_property.Width  = cfg.Width;
+        m_property.Title  = cfg.Title.c_str();
+        m_property.VSync  = cfg.EnableVsync;
+
+        int glfw_init     = glfwInit();
+        if (glfw_init == GLFW_FALSE)
         {
-            PushLayer(layer);
+            ZENGINE_CORE_CRITICAL("Unable to initialize glfw..")
+            ZENGINE_EXIT_FAILURE();
         }
 
-        for (const auto& layer : m_configuration.OverlayLayerCollection)
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+        glfwSetErrorCallback([](int error, const char* description) {
+            ZENGINE_CORE_CRITICAL("{}", description)
+            ZENGINE_EXIT_FAILURE()
+        });
+
+        m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title, NULL, NULL);
+
+        if (!m_native_window)
         {
-            PushOverlayLayer(layer);
+            ZENGINE_CORE_CRITICAL("Failed to create GLFW Window")
+            ZENGINE_EXIT_FAILURE()
         }
-        InitializeLayer();
+
+        int window_width = 0, window_height = 0;
+        glfwGetWindowSize(m_native_window, &window_width, &window_height);
+        if ((window_width > 0) && (window_height > 0) && (m_property.Width != window_width) && (m_property.Height != window_height))
+        {
+            m_property.SetWidth(window_width);
+            m_property.SetHeight(window_height);
+        }
+
+#ifdef _WIN32
+        auto native_hwnd = glfwGetWin32Window(m_native_window);
+        m_property.Dpi   = GetDpiForWindow(native_hwnd);
+#endif // _WIN32
+
+        float x_scale, y_scale;
+        glfwGetWindowContentScale(m_native_window, &x_scale, &y_scale);
+        m_property.DpiScale = x_scale;
+
+        ZENGINE_CORE_INFO("Window created, Width = {0}, Height = {1}", m_property.Width, m_property.Height)
+
+        // Initialize in reverse order, so overlay layers can be initialize first
+        // this give us opportunity to initialize UI-like layers before graphic render-like layers
+
+        for (auto layer : m_configuration.OverlayLayerCollection)
+        {
+            layer->ParentWindow = this;
+            layer->Initialize(arena);
+        }
+
+        for (auto layer : m_configuration.RenderingLayerCollection)
+        {
+            layer->ParentWindow = this;
+            layer->Initialize(arena);
+        }
+
+        ZENGINE_CORE_INFO("Windows layers initialized")
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
@@ -168,27 +173,16 @@ namespace Tetragrama
         glfwMaximizeWindow(m_native_window);
     }
 
-    void EditorWindow::InitializeLayer()
-    {
-        auto& layer_stack = *m_layer_stack_ptr;
-
-        // Initialize in reverse order, so overlay layers can be initialize first
-        // this give us opportunity to initialize UI-like layers before graphic render-like layers
-        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
-        {
-            (*rlayer_it)->SetAttachedWindow(this);
-            (*rlayer_it)->Initialize();
-        }
-
-        ZENGINE_CORE_INFO("Windows layers initialized")
-    }
-
     void EditorWindow::Deinitialize()
     {
-        auto& layer_stack = *m_layer_stack_ptr;
-        for (auto rlayer_it = std::rbegin(layer_stack); rlayer_it != std::rend(layer_stack); ++rlayer_it)
+        for (auto layer : m_configuration.OverlayLayerCollection)
         {
-            (*rlayer_it)->Deinitialize();
+            layer->Deinitialize();
+        }
+
+        for (auto layer : m_configuration.RenderingLayerCollection)
+        {
+            layer->Deinitialize();
         }
     }
 
@@ -365,7 +359,12 @@ namespace Tetragrama
 
     void EditorWindow::Update(Core::TimeStep delta_time)
     {
-        for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
+        for (auto layer : m_configuration.RenderingLayerCollection)
+        {
+            layer->Update(delta_time);
+        }
+
+        for (auto layer : m_configuration.OverlayLayerCollection)
         {
             layer->Update(delta_time);
         }
@@ -373,7 +372,12 @@ namespace Tetragrama
 
     void EditorWindow::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        for (const Ref<Layers::Layer>& layer : *m_layer_stack_ptr)
+        for (auto layer : m_configuration.RenderingLayerCollection)
+        {
+            layer->Render(renderer, command_buffer);
+        }
+
+        for (auto layer : m_configuration.OverlayLayerCollection)
         {
             layer->Render(renderer, command_buffer);
         }
@@ -573,10 +577,11 @@ namespace Tetragrama
 
 namespace ZEngine::Windows
 {
-    CoreWindow* Create(const WindowConfiguration& configuration)
+    CoreWindow* Create(Core::Memory::ArenaAllocator* arena, const WindowConfiguration& cfg)
     {
-        auto core_window = new Tetragrama::EditorWindow(configuration);
+        auto core_window = ZPushStructCtor(arena, Tetragrama::EditorWindow);
         core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
+        core_window->Initialize(arena, cfg);
         return core_window;
     }
 } // namespace ZEngine::Windows

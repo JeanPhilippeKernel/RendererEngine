@@ -12,8 +12,10 @@ namespace Tetragrama::Components
     class SceneViewportUIComponent : public UIComponent
     {
     public:
-        SceneViewportUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Scene", bool visibility = true);
+        SceneViewportUIComponent();
         virtual ~SceneViewportUIComponent();
+
+        void         Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Scene", bool visibility = true, bool closed = false) override;
 
         void         Update(ZEngine::Core::TimeStep dt) override;
         virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;

@@ -39,13 +39,11 @@
         collection.shrink_to_fit();          \
     }
 
-#define ZResize(allocator, ptr, old_size, new_size, alignment) ((allocator)->Resize((ptr), (old_size), (new_size), (alignment)))
+#define SINGLE_ARG(...)     __VA_ARGS__
 
-#define ZAlignof(type)                                         ((alignof(type) < DEFAULT_ALIGNMENT) ? DEFAULT_ALIGNMENT : alignof(type))
+#define MAX_FILE_PATH_COUNT 256
 
-#define SINGLE_ARG(...)                                        __VA_ARGS__
-
-#define MAX_FILE_PATH_COUNT                                    256
+#define ZRawPtr(X)          X*
 
 /*
  * Allocator and Memory Macros
@@ -64,4 +62,11 @@
 #define ZPushString(arena, count)      ZPushArray(arena, char, count)
 #define ZPushStruct(arena, type)       ZPushArray(arena, type, 1)
 
-#define ZPushDynamicArray(pool, type)  ((type*) (pool)->Allocate(__FILE__, __LINE__))
+#ifdef __cplusplus
+#define ZPushStructCtor(arena, type) (new (ZPushStruct(arena, type)) type())
+#endif
+
+#define ZPushDynamicArray(pool, type)                          ((type*) (pool)->Allocate(__FILE__, __LINE__))
+
+#define ZResize(allocator, ptr, old_size, new_size, alignment) ((allocator)->Resize((ptr), (old_size), (new_size), (alignment)))
+#define ZAlignof(type)                                         ((alignof(type) < DEFAULT_ALIGNMENT) ? DEFAULT_ALIGNMENT : alignof(type))
