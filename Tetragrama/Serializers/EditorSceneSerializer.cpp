@@ -22,12 +22,12 @@ namespace Tetragrama::Serializers
 
         ThreadPoolHelper::Submit([this, scene] {
             std::unique_lock l(m_mutex);
-            m_is_serializing = true;
+            m_is_serializing.store(true, std::memory_order_release);
             Arena.Clear();
 
             if (m_default_output.empty())
             {
-                m_is_serializing = false;
+                m_is_serializing.store(false, std::memory_order_release);
                 return;
             }
 
@@ -77,7 +77,7 @@ namespace Tetragrama::Serializers
                 m_complete_callback(Context);
             }
 
-            m_is_serializing = false;
+            m_is_serializing.store(false, std::memory_order_release);
         });
     }
 
@@ -86,7 +86,7 @@ namespace Tetragrama::Serializers
         ThreadPoolHelper::Submit([this, scene_filename = std::string(filename)] {
             std::unique_lock l(m_mutex);
 
-            m_is_deserializing = true;
+            m_is_deserializing.store(true, std::memory_order_release);
             Arena.Clear();
 
             EditorScene scene = {};
@@ -99,7 +99,7 @@ namespace Tetragrama::Serializers
                     m_deserialize_complete_callback(Context, std::move(scene));
                 }
 
-                m_is_deserializing = false;
+                m_is_deserializing.store(false, std::memory_order_release);
                 return;
             }
 
@@ -111,7 +111,7 @@ namespace Tetragrama::Serializers
                 {
                     m_error_callback(Context, "Error: Unable to open file for reading.");
                 }
-                m_is_deserializing = false;
+                m_is_deserializing.store(false, std::memory_order_release);
                 return;
             }
 
@@ -205,7 +205,7 @@ namespace Tetragrama::Serializers
                 m_deserialize_complete_callback(Context, std::move(scene));
             }
 
-            m_is_deserializing = false;
+            m_is_deserializing.store(false, std::memory_order_release);
         });
     }
 } // namespace Tetragrama::Serializers

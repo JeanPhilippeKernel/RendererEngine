@@ -88,8 +88,7 @@ namespace Tetragrama::Importers
 
         virtual bool IsImporting()
         {
-            std::lock_guard l(m_mutex);
-            return m_is_importing;
+            return m_is_importing.load(std::memory_order_acquire);
         }
 
         virtual std::future<void> ImportAsync(std::string_view filename, ImportConfiguration config = {})                                                                                        = 0;

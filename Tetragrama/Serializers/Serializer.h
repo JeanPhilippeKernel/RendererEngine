@@ -78,8 +78,7 @@ namespace Tetragrama::Serializers
 
         virtual bool IsSerializing()
         {
-            std::lock_guard l(m_mutex);
-            return m_is_serializing;
+            return m_is_serializing.load(std::memory_order_acquire);
         }
 
         virtual void Serialize(ZRawPtr(TSerializerData) const data) = 0;

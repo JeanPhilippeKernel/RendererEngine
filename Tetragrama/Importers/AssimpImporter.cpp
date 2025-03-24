@@ -27,10 +27,9 @@ namespace Tetragrama::Importers
     std::future<void> AssimpImporter::ImportAsync(std::string_view filename, ImportConfiguration config)
     {
         ThreadPoolHelper::Submit([this, path = std::string(filename.data()), config] {
-            {
-                std::unique_lock l(m_mutex);
-                m_is_importing = true;
-            }
+            std::unique_lock l(m_mutex);
+            Arena.Clear();
+            m_is_importing.store(true, std::memory_order_release);
 
             Assimp::Importer importer{};
             importer.SetProgressHandler(&m_progress_handler);
@@ -67,10 +66,7 @@ namespace Tetragrama::Importers
             importer.SetProgressHandler(nullptr);
             importer.FreeScene();
 
-            {
-                std::unique_lock l(m_mutex);
-                m_is_importing = false;
-            }
+            m_is_importing.store(false, std::memory_order_release);
         });
 
         co_return;
