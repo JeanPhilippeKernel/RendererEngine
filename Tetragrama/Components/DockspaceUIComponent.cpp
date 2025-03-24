@@ -322,7 +322,7 @@ namespace Tetragrama::Components
 
             if (ImGui::Button("Save", ImVec2(80, 0)) && is_save_button_enabled)
             {
-                auto context = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+                auto context                   = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
                 context->CurrentScenePtr->Name = s_save_as_input_buffer;
                 m_editor_serializer->Serialize(context->CurrentScenePtr);
 
