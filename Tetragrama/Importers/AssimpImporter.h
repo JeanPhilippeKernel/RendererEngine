@@ -24,7 +24,9 @@ namespace Tetragrama::Importers
         AssimpImporter();
         virtual ~AssimpImporter();
 
-        std::future<void> ImportAsync(std::string_view filename, ImportConfiguration config = {}) override;
+        virtual std::future<void> ImportAsync(std::string_view filename, ImportConfiguration config = {}) override;
+        virtual void              SerializeImporterData(ZEngine::Core::Memory::ArenaAllocator* arena, ImporterData& data, const ImportConfiguration&) override;
+        virtual ImporterData      DeserializeImporterData(ZEngine::Core::Memory::ArenaAllocator* arena, std::string_view model_path, std::string_view mesh_path, std::string_view material_path) override;
 
     private:
         uint32_t              m_flags;

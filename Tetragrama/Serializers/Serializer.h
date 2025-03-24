@@ -1,5 +1,5 @@
 #pragma once
-#include <Helpers/IntrusivePtr.h>
+#include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngineDef.h>
 #include <atomic>
 #include <future>
@@ -17,9 +17,8 @@
 namespace Tetragrama::Serializers
 {
     template <typename TSerializerData>
-    struct Serializer : public ZEngine::Helpers::RefCounted
+    struct Serializer
     {
-    protected:
         typedef void (*on_serializer_complete_fn)(void* const);
         typedef void (*on_serializer_deserialize_complete_fn)(void* const, TSerializerData&& data);
         typedef void (*on_serializer_progress_fn)(void* const, float progress);
@@ -37,10 +36,15 @@ namespace Tetragrama::Serializers
         std::atomic_bool                      m_is_deserializing{false};
         std::string                           m_default_output;
 
-    public:
-        virtual ~Serializer() = default;
+        virtual ~Serializer()                         = default;
 
-        void*        Context  = nullptr;
+        ZEngine::Core::Memory::ArenaAllocator Arena   = {};
+        void*                                 Context = nullptr;
+
+        void                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
+        {
+            arena->CreateSubArena(ZMega(1), &Arena);
+        }
 
         virtual void SetOnCompleteCallback(on_serializer_complete_fn callback)
         {
@@ -74,11 +78,10 @@ namespace Tetragrama::Serializers
 
         virtual bool IsSerializing()
         {
-            std::lock_guard l(m_mutex);
-            return m_is_serializing;
+            return m_is_serializing.load(std::memory_order_acquire);
         }
 
-        virtual void Serialize(const ZEngine::Helpers::Ref<TSerializerData>& data) = 0;
-        virtual void Deserialize(std::string_view filename)                        = 0;
+        virtual void Serialize(ZRawPtr(TSerializerData) const data) = 0;
+        virtual void Deserialize(std::string_view filename)         = 0;
     };
 } // namespace Tetragrama::Serializers

@@ -58,6 +58,6 @@ namespace Tetragrama::Layers
         auto ctx    = reinterpret_cast<EditorContext*>(ParentContext);
         auto camera = ctx->CameraControllerPtr->GetCamera();
         auto data   = ctx->CurrentScenePtr->RenderScene->GetRawData();
-        renderer->DrawScene(command_buffer, camera.get(), data.get());
+        renderer->DrawScene(command_buffer, camera, data.get());
     }
 } // namespace Tetragrama::Layers

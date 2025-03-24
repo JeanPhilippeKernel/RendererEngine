@@ -103,7 +103,7 @@ namespace Tetragrama::Controllers
         }
     }
 
-    const Ref<Rendering::Cameras::Camera> PerspectiveCameraController::GetCamera() const
+    ZRawPtr(ZEngine::Rendering::Cameras::Camera) PerspectiveCameraController::GetCamera() const
     {
         return m_perspective_camera;
     }

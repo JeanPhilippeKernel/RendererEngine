@@ -21,7 +21,7 @@ namespace Tetragrama::Components
     std::string DockspaceUIComponent::s_asset_importer_report_msg         = "";
     float       DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
 
-    DockspaceUIComponent::DockspaceUIComponent() : m_asset_importer(CreateScope<Importers::AssimpImporter>()), m_editor_serializer(CreateScope<Serializers::EditorSceneSerializer>()) {}
+    DockspaceUIComponent::DockspaceUIComponent() {}
 
     DockspaceUIComponent::~DockspaceUIComponent() {}
 
@@ -29,16 +29,33 @@ namespace Tetragrama::Components
     {
         UIComponent::Initialize(parent, name, visibility, closed);
 
-        m_dockspace_node_flag          = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
-        m_window_flags                 = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+        m_asset_importer    = ZPushStructCtor(&(parent->LayerArena), Importers::AssimpImporter);
+        m_editor_serializer = ZPushStructCtor(&(parent->LayerArena), Serializers::EditorSceneSerializer);
 
-        auto context                   = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        m_editor_serializer->Context   = context;
-        m_asset_importer->Context      = context;
+        m_editor_serializer->Initialize(&(parent->LayerArena));
+        m_asset_importer->Initialize(&(parent->LayerArena));
 
-        const auto& editor_config      = *context->ConfigurationPtr;
+        m_editor_serializer->AssetImporter = m_asset_importer;
 
-        m_default_import_configuration = {.OutputModelFilePath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath), .OutputMeshFilePath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath), .OutputTextureFilesPath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.DefaultImportTexturePath), .OutputMaterialsPath = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath)};
+        m_dockspace_node_flag              = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
+        m_window_flags                     = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+
+        auto context                       = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        m_editor_serializer->Context       = context;
+        m_asset_importer->Context          = context;
+
+        const auto& editor_config          = *context->ConfigurationPtr;
+
+        auto        o_model_fpath          = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath);
+        auto        o_mesh_fpath           = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath);
+        auto        o_texture_fpath        = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.DefaultImportTexturePath);
+        auto        o_material_fpath       = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath);
+
+        m_default_import_configuration     = {};
+        m_default_import_configuration.OutputModelFilePath.init(&(parent->LayerArena), o_model_fpath.c_str());
+        m_default_import_configuration.OutputMeshFilePath.init(&(parent->LayerArena), o_mesh_fpath.c_str());
+        m_default_import_configuration.OutputTextureFilesPath.init(&(parent->LayerArena), o_texture_fpath.c_str());
+        m_default_import_configuration.OutputMaterialsPath.init(&(parent->LayerArena), o_material_fpath.c_str());
 
 #ifdef _WIN32
         std::replace(m_default_import_configuration.OutputModelFilePath.begin(), m_default_import_configuration.OutputModelFilePath.end(), '/', '\\');
@@ -305,8 +322,8 @@ namespace Tetragrama::Components
 
             if (ImGui::Button("Save", ImVec2(80, 0)) && is_save_button_enabled)
             {
-                auto context = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-                ZEngine::Helpers::secure_strcpy(context->CurrentScenePtr->Name, 50, s_save_as_input_buffer);
+                auto context                   = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+                context->CurrentScenePtr->Name = s_save_as_input_buffer;
                 m_editor_serializer->Serialize(context->CurrentScenePtr);
 
                 m_open_save_scene_as          = false;
@@ -422,7 +439,7 @@ namespace Tetragrama::Components
         //{
         //     data.SerializedModelPath.replace(data.SerializedModelPath.find(ws), ws.size(), "");
         // }
-
+        //
         // context_ptr->CurrentScenePtr->Push(data.SerializedMeshesPath, data.SerializedModelPath, data.SerializedMaterialsPath);
     }
 
@@ -513,8 +530,9 @@ namespace Tetragrama::Components
         auto ctx = reinterpret_cast<EditorContext*>(context);
 
         // Todo : Ensure no data race on CurrentScenePtr
-        ZEngine::Helpers::secure_strcpy(ctx->CurrentScenePtr->Name, 50, scene.Name);
+        ZEngine::Helpers::secure_strcpy(ctx->ConfigurationPtr->ActiveSceneName, ZEngine::Helpers::secure_strlen(scene.Name), scene.Name);
 
+        ctx->CurrentScenePtr->Name          = ctx->ConfigurationPtr->ActiveSceneName;
         ctx->CurrentScenePtr->Data          = scene.Data;
         ctx->CurrentScenePtr->MeshFiles     = scene.MeshFiles;
         ctx->CurrentScenePtr->ModelFiles    = scene.ModelFiles;
@@ -552,11 +570,11 @@ namespace Tetragrama::Components
     {
         if (!filename.empty())
         {
-            auto parent_path                     = std::filesystem::path(filename).parent_path().string();
-            auto asset_name                      = fs::path(filename).filename().replace_extension().string();
-            auto import_config                   = m_default_import_configuration;
-            import_config.AssetFilename          = asset_name;
-            import_config.InputBaseAssetFilePath = parent_path;
+            auto parent_path   = std::filesystem::path(filename).parent_path().string();
+            auto asset_name    = fs::path(filename).filename().replace_extension().string();
+            auto import_config = m_default_import_configuration;
+            import_config.AssetFilename.init(&(ParentLayer->LayerArena), asset_name.c_str());
+            import_config.InputBaseAssetFilePath.init(&(ParentLayer->LayerArena), parent_path.c_str());
             co_await m_asset_importer->ImportAsync(filename, import_config);
         }
         co_return;

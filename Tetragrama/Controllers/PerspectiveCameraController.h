@@ -14,30 +14,30 @@ namespace Tetragrama::Controllers
         PerspectiveCameraController();
         virtual ~PerspectiveCameraController() = default;
 
-        void                                                             Update(ZEngine::Core::TimeStep) override;
-        bool                                                             OnEvent(ZEngine::Core::CoreEvent&) override;
+        void Update(ZEngine::Core::TimeStep) override;
+        bool OnEvent(ZEngine::Core::CoreEvent&) override;
 
-        const ZEngine::Helpers::Ref<ZEngine::Rendering::Cameras::Camera> GetCamera() const override;
+        ZRawPtr(ZEngine::Rendering::Cameras::Camera) GetCamera() const override;
 
-        void                                                             UpdateProjectionMatrix() override;
+        void              UpdateProjectionMatrix() override;
 
-        virtual glm::vec3                                                GetPosition() const override;
-        virtual void                                                     SetPosition(const glm::vec3& position) override;
+        virtual glm::vec3 GetPosition() const override;
+        virtual void      SetPosition(const glm::vec3& position) override;
 
-        virtual float                                                    GetFieldOfView() const;
-        virtual void                                                     SetFieldOfView(float rad_fov);
+        virtual float     GetFieldOfView() const;
+        virtual void      SetFieldOfView(float rad_fov);
 
-        virtual float                                                    GetNear() const;
-        virtual void                                                     SetNear(float value);
+        virtual float     GetNear() const;
+        virtual void      SetNear(float value);
 
-        virtual float                                                    GetFar() const;
-        virtual void                                                     SetFar(float value);
+        virtual float     GetFar() const;
+        virtual void      SetFar(float value);
 
-        void                                                             SetViewport(float width, float height);
-        void                                                             SetTarget(const glm::vec3& target);
+        void              SetViewport(float width, float height);
+        void              SetTarget(const glm::vec3& target);
 
-        virtual void                                                     ResumeEventProcessing();
-        virtual void                                                     PauseEventProcessing();
+        virtual void      ResumeEventProcessing();
+        virtual void      PauseEventProcessing();
 
     public:
         bool OnMouseButtonPressed(ZEngine::Windows::Events::MouseButtonPressedEvent&) override
