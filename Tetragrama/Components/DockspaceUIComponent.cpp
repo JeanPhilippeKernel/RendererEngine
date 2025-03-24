@@ -322,8 +322,8 @@ namespace Tetragrama::Components
 
             if (ImGui::Button("Save", ImVec2(80, 0)) && is_save_button_enabled)
             {
-                auto context                   = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-                context->CurrentScenePtr->Name = s_save_as_input_buffer;
+                auto context = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+                ZEngine::Helpers::secure_strcpy(context->CurrentScenePtr->Name, 50, s_save_as_input_buffer);
                 m_editor_serializer->Serialize(context->CurrentScenePtr);
 
                 m_open_save_scene_as          = false;
