@@ -133,6 +133,11 @@ namespace ZEngine::Core::Container
             return m_size;
         }
 
+        pointer data()
+        {
+            return m_data;
+        }
+
         size_type length() const
         {
             return m_size;

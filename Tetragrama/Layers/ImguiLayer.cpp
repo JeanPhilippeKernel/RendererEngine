@@ -27,7 +27,7 @@ namespace Tetragrama::Layers
 
     void ImguiLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(1), &LayerArena);
+        arena->CreateSubArena(ZMega(5), &LayerArena);
 
         NodeHierarchies.init(&LayerArena, 10, 0);
 

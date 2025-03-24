@@ -8,7 +8,7 @@
 
 namespace Tetragrama::Controllers
 {
-    struct IController : public ZEngine::Core::IUpdatable, public ZEngine::Core::IEventable, public ZEngine::Helpers::RefCounted
+    struct IController : public ZEngine::Core::IUpdatable, public ZEngine::Core::IEventable
     {
         IController()  = default;
         ~IController() = default;

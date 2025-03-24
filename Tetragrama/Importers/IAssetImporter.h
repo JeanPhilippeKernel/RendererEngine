@@ -2,10 +2,12 @@
 #include <Helpers/IntrusivePtr.h>
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/Core/Container/Array.h>
+#include <ZEngine/Core/Container/Strings.h>
+#include <ZEngine/Core/Memory/Allocator.h>
 #include <atomic>
 #include <future>
 #include <mutex>
-#include <string>
 
 #define REPORT_LOG(ctx, msg)          \
     {                                 \
@@ -23,25 +25,24 @@ namespace Tetragrama::Importers
         uint32_t                                 VertexOffset            = 0;
         uint32_t                                 IndexOffset             = 0;
         ZEngine::Rendering::Scenes::SceneRawData Scene                   = {};
-        std::string                              Name                    = {};
-        std::string                              SerializedMeshesPath    = {};
-        std::string                              SerializedMaterialsPath = {};
-        std::string                              SerializedModelPath     = {};
+        ZEngine::Core::Container::String         Name                    = {};
+        ZEngine::Core::Container::String         SerializedMeshesPath    = {};
+        ZEngine::Core::Container::String         SerializedMaterialsPath = {};
+        ZEngine::Core::Container::String         SerializedModelPath     = {};
     };
 
     struct ImportConfiguration
     {
-        std::string AssetFilename;
-        std::string InputBaseAssetFilePath;
-        std::string OutputModelFilePath;
-        std::string OutputMeshFilePath;
-        std::string OutputTextureFilesPath;
-        std::string OutputMaterialsPath;
+        ZEngine::Core::Container::String AssetFilename;
+        ZEngine::Core::Container::String InputBaseAssetFilePath;
+        ZEngine::Core::Container::String OutputModelFilePath;
+        ZEngine::Core::Container::String OutputMeshFilePath;
+        ZEngine::Core::Container::String OutputTextureFilesPath;
+        ZEngine::Core::Container::String OutputMaterialsPath;
     };
 
-    struct IAssetImporter : public ZEngine::Helpers::RefCounted
+    struct IAssetImporter
     {
-    protected:
         typedef void (*on_import_complete_fn)(void* const, ImporterData&& result);
         typedef void (*on_import_progress_fn)(void* const, float progress);
         typedef void (*on_import_error_fn)(void* const, std::string_view error_message);
@@ -55,10 +56,15 @@ namespace Tetragrama::Importers
         std::mutex            m_mutex;
         std::atomic_bool      m_is_importing{false};
 
-    public:
-        virtual ~IAssetImporter() = default;
+        virtual ~IAssetImporter()                     = default;
 
-        void*        Context      = nullptr;
+        ZEngine::Core::Memory::ArenaAllocator Arena   = {};
+        void*                                 Context = nullptr;
+
+        void                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
+        {
+            arena->CreateSubArena(ZMega(1), &Arena);
+        }
 
         virtual void SetOnCompleteCallback(on_import_complete_fn callback)
         {
@@ -86,10 +92,9 @@ namespace Tetragrama::Importers
             return m_is_importing;
         }
 
-        virtual std::future<void> ImportAsync(std::string_view filename, ImportConfiguration config = {}) = 0;
-
-        static void               SerializeImporterData(ImporterData& data, const ImportConfiguration&);
-        static ImporterData       DeserializeImporterData(std::string_view model_path, std::string_view mesh_path, std::string_view material_path);
+        virtual std::future<void> ImportAsync(std::string_view filename, ImportConfiguration config = {})                                                                                        = 0;
+        virtual void              SerializeImporterData(ZEngine::Core::Memory::ArenaAllocator* arena, ImporterData& data, const ImportConfiguration&)                                            = 0;
+        virtual ImporterData      DeserializeImporterData(ZEngine::Core::Memory::ArenaAllocator* arena, std::string_view model_path, std::string_view mesh_path, std::string_view material_path) = 0;
     };
 
 } // namespace Tetragrama::Importers

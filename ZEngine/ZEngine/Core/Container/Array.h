@@ -21,7 +21,7 @@ namespace ZEngine::Core::Container
         using iterator        = T*;
         using const_iterator  = const T*;
 
-        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, size_type initial_size)
+        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, size_type initial_size = 0U)
         {
             m_allocator = allocator;
             m_size      = initial_size;
@@ -31,6 +31,12 @@ namespace ZEngine::Core::Container
         }
 
         const_reference operator[](size_type index) const
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_size, "Index out of range")
+            return m_data[index];
+        }
+
+        reference operator[](size_t index)
         {
             ZENGINE_VALIDATE_ASSERT(index < m_size, "Index out of range")
             return m_data[index];
@@ -180,6 +186,7 @@ namespace ZEngine::Core::Container
     struct ArrayView
     {
         ArrayView(T* data, size_t size) : m_data(data), m_size(size) {}
+        ArrayView(Array<T>& arr) : m_data(arr.data()), m_size(arr.size()) {}
 
         void set(T* data, size_t size)
         {
@@ -192,10 +199,21 @@ namespace ZEngine::Core::Container
             ZENGINE_VALIDATE_ASSERT(index < m_size, "Index out of range")
             return m_data[index];
         }
+
         const T& operator[](size_t index) const
         {
             ZENGINE_VALIDATE_ASSERT(index < m_size, "Index out of range")
             return m_data[index];
+        }
+
+        size_t size() const
+        {
+            return m_size;
+        }
+
+        T* data() const
+        {
+            return m_data;
         }
 
         T*     m_data;

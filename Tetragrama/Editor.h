@@ -2,40 +2,49 @@
 #include <EditorCameraController.h>
 #include <Layers/ImguiLayer.h>
 #include <Layers/RenderLayer.h>
+#include <ZEngine/Core/Container/Array.h>
+#include <ZEngine/Core/Container/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Windows/CoreWindow.h>
-#include <vector>
 
 namespace Tetragrama::Serializers
 {
-    class EditorSceneSerializer;
+    struct EditorSceneSerializer;
 } // namespace Tetragrama::Serializers
 
 namespace Tetragrama
 {
-    class EditorScene : public ZEngine::Helpers::RefCounted
+    class EditorScene
     {
+        template <typename T>
+        using Array      = ZEngine::Core::Container::Array<T>;
+        using String     = ZEngine::Core::Container::String;
+        using StringView = ZEngine::Core::Container::StringView;
+
     public:
         struct Model;
 
-        EditorScene()                                                 = default;
+        EditorScene() = default;
 
-        char                         Name[50]                         = {0};
-        std::vector<std::string>     MeshFiles                        = {};
-        std::vector<std::string>     ModelFiles                       = {};
-        std::vector<std::string>     MaterialFiles                    = {};
-        std::map<std::string, Model> Data                             = {};
+        void                         Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* scene_name = "");
+        void                         Push(ZEngine::Core::Memory::ArenaAllocator* arena, const char* mesh, const char* model, const char* material);
+        bool                         HasPendingChange() const;
+
+        const char*                  Name                             = "";
+        Array<String>                MeshFiles                        = {};
+        Array<String>                ModelFiles                       = {};
+        Array<String>                MaterialFiles                    = {};
+
+        Array<String>                Hashes                           = {};
+        std::map<const char*, Model> Data                             = {};
 
         ZRawPtr(ZEngine::Rendering::Scenes::GraphicScene) RenderScene = nullptr;
 
-        void Push(std::string_view mesh, std::string_view model, std::string_view material);
-        bool HasPendingChange() const;
-
     private:
         std::atomic_bool m_has_pending_change;
-        friend class Serializers::EditorSceneSerializer;
+        friend struct Serializers::EditorSceneSerializer;
     };
 
     struct EditorScene::Model
