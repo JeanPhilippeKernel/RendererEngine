@@ -527,11 +527,12 @@ namespace Tetragrama::Components
 
     void DockspaceUIComponent::OnEditorSceneSerializerDeserializeComplete(void* const context, EditorScene&& scene)
     {
-        auto ctx                            = reinterpret_cast<EditorContext*>(context);
+        auto ctx = reinterpret_cast<EditorContext*>(context);
 
         // Todo : Ensure no data race on CurrentScenePtr
-        ctx->CurrentScenePtr->Name          = scene.Name;
+        ZEngine::Helpers::secure_strcpy(ctx->ConfigurationPtr->ActiveSceneName, ZEngine::Helpers::secure_strlen(scene.Name), scene.Name);
 
+        ctx->CurrentScenePtr->Name          = ctx->ConfigurationPtr->ActiveSceneName;
         ctx->CurrentScenePtr->Data          = scene.Data;
         ctx->CurrentScenePtr->MeshFiles     = scene.MeshFiles;
         ctx->CurrentScenePtr->ModelFiles    = scene.ModelFiles;

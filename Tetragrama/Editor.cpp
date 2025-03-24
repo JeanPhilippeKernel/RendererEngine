@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 
 using namespace ZEngine;
+using namespace ZEngine::Core::Container;
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Helpers;
 using namespace Tetragrama::Layers;

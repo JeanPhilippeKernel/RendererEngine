@@ -18,29 +18,24 @@ namespace Tetragrama
 {
     class EditorScene
     {
-        template <typename T>
-        using Array      = ZEngine::Core::Container::Array<T>;
-        using String     = ZEngine::Core::Container::String;
-        using StringView = ZEngine::Core::Container::StringView;
-
     public:
         struct Model;
 
         EditorScene() = default;
 
-        void                         Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* scene_name = "");
-        void                         Push(ZEngine::Core::Memory::ArenaAllocator* arena, const char* mesh, const char* model, const char* material);
-        bool                         HasPendingChange() const;
+        void                                                              Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* scene_name = "");
+        void                                                              Push(ZEngine::Core::Memory::ArenaAllocator* arena, const char* mesh, const char* model, const char* material);
+        bool                                                              HasPendingChange() const;
 
-        const char*                  Name                             = "";
-        Array<String>                MeshFiles                        = {};
-        Array<String>                ModelFiles                       = {};
-        Array<String>                MaterialFiles                    = {};
+        const char*                                                       Name          = "";
+        ZEngine::Core::Container::Array<ZEngine::Core::Container::String> MeshFiles     = {};
+        ZEngine::Core::Container::Array<ZEngine::Core::Container::String> ModelFiles    = {};
+        ZEngine::Core::Container::Array<ZEngine::Core::Container::String> MaterialFiles = {};
 
-        Array<String>                Hashes                           = {};
-        std::map<const char*, Model> Data                             = {};
+        ZEngine::Core::Container::Array<ZEngine::Core::Container::String> Hashes        = {};
+        std::map<const char*, Model>                                      Data          = {};
 
-        ZRawPtr(ZEngine::Rendering::Scenes::GraphicScene) RenderScene = nullptr;
+        ZRawPtr(ZEngine::Rendering::Scenes::GraphicScene) RenderScene                   = nullptr;
 
     private:
         std::atomic_bool m_has_pending_change;
