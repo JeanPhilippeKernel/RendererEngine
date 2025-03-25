@@ -83,7 +83,7 @@ namespace ZEngine::Core::Containers
             if (m_size >= m_capacity * 0.75)
             {
                 reserve(m_capacity ? m_capacity * 2 : 8);
-                index = hash(key); // Recompute after reserve
+                index = hash(key);
             }
 
             Node* new_node     = static_cast<Node*>(ZAlloc(m_allocator, sizeof(Node), ZAlignof(Node)));
@@ -147,13 +147,7 @@ namespace ZEngine::Core::Containers
         {
             for (size_t i = 0; i < m_capacity; ++i)
             {
-                Node* current = m_data[i].head;
-                while (current)
-                {
-                    Node* next = current->next;
-                    // Optionally free current node here
-                    current    = next;
-                }
+                Node* current  = m_data[i].head;
                 m_data[i].head = nullptr;
             }
             m_size = 0;
@@ -176,7 +170,7 @@ namespace ZEngine::Core::Containers
                 {
                     Node*  next            = current->next;
 
-                    size_t new_index       = hash(current->key); // Now uses new m_capacity
+                    size_t new_index       = hash(current->key);
                     current->next          = m_data[new_index].head;
                     m_data[new_index].head = current;
 
