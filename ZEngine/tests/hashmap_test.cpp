@@ -1,4 +1,5 @@
 #include <Core/Containers/HashMap.h>
+#include <Core/Containers/Strings.h>
 #include <gtest/gtest.h>
 #include <string>
 
@@ -121,14 +122,20 @@ TEST_F(HashMapTest, Resize)
 
 TEST_F(HashMapTest, OverwriteValue)
 {
-    HashMap<int, int> map;
+    HashMap<int, String> map;
     map.init(&allocator, 10, 0);
 
-    map.insert(1, 10);
-    EXPECT_EQ(map[1], 10);
+    String str1;
+    str1.init(&allocator, "first");
 
-    map.insert(1, 20);
-    EXPECT_EQ(map[1], 20);
+    String str2;
+    str2.init(&allocator, "updated");
+
+    map.insert(1, str1);
+    EXPECT_STREQ(map[1].c_str(), str1.c_str());
+
+    map.insert(1, str2);
+    EXPECT_STREQ(map[1].c_str(), str2.c_str());
 }
 
 TEST_F(HashMapTest, CollisionHandling)
