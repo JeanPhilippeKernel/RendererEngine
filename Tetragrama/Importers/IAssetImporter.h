@@ -2,8 +2,8 @@
 #include <Helpers/IntrusivePtr.h>
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Scenes/GraphicScene.h>
-#include <ZEngine/Core/Container/Array.h>
-#include <ZEngine/Core/Container/Strings.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <atomic>
 #include <future>
@@ -25,20 +25,20 @@ namespace Tetragrama::Importers
         uint32_t                                 VertexOffset            = 0;
         uint32_t                                 IndexOffset             = 0;
         ZEngine::Rendering::Scenes::SceneRawData Scene                   = {};
-        ZEngine::Core::Container::String         Name                    = {};
-        ZEngine::Core::Container::String         SerializedMeshesPath    = {};
-        ZEngine::Core::Container::String         SerializedMaterialsPath = {};
-        ZEngine::Core::Container::String         SerializedModelPath     = {};
+        ZEngine::Core::Containers::String        Name                    = {};
+        ZEngine::Core::Containers::String        SerializedMeshesPath    = {};
+        ZEngine::Core::Containers::String        SerializedMaterialsPath = {};
+        ZEngine::Core::Containers::String        SerializedModelPath     = {};
     };
 
     struct ImportConfiguration
     {
-        ZEngine::Core::Container::String AssetFilename;
-        ZEngine::Core::Container::String InputBaseAssetFilePath;
-        ZEngine::Core::Container::String OutputModelFilePath;
-        ZEngine::Core::Container::String OutputMeshFilePath;
-        ZEngine::Core::Container::String OutputTextureFilesPath;
-        ZEngine::Core::Container::String OutputMaterialsPath;
+        ZEngine::Core::Containers::String AssetFilename;
+        ZEngine::Core::Containers::String InputBaseAssetFilePath;
+        ZEngine::Core::Containers::String OutputModelFilePath;
+        ZEngine::Core::Containers::String OutputMeshFilePath;
+        ZEngine::Core::Containers::String OutputTextureFilesPath;
+        ZEngine::Core::Containers::String OutputMaterialsPath;
     };
 
     struct IAssetImporter

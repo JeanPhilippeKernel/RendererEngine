@@ -6,7 +6,7 @@
 
 using namespace ZEngine::Core::Memory;
 
-namespace ZEngine::Core::Container
+namespace ZEngine::Core::Containers
 {
 
     template <typename T>
@@ -219,4 +219,4 @@ namespace ZEngine::Core::Container
         T*     m_data;
         size_t m_size;
     };
-} // namespace ZEngine::Core::Container
+} // namespace ZEngine::Core::Containers

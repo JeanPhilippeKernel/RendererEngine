@@ -17,7 +17,7 @@
 using namespace ZEngine;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Windows::Events;
-using namespace ZEngine::Core::Container;
+using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Helpers;
 using namespace Tetragrama::Messengers;
 

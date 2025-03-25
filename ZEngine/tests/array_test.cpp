@@ -1,7 +1,7 @@
-#include <Core/Container/Array.h>
+#include <Core/Containers/Array.h>
 #include <gtest/gtest.h>
 
-using namespace ZEngine::Core::Container;
+using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Memory;
 
 class ArrayTest : public ::testing::Test

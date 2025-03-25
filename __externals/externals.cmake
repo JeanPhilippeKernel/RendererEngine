@@ -6,6 +6,7 @@ set(EXTERNAL_INCLUDE_DIRS
 	${EXTERNAL_DIR}/glm/glm
 	${EXTERNAL_DIR}/imgui/src
 	${EXTERNAL_DIR}/tlsf/src
+	${EXTERNAL_DIR}/rapidhash/src
 	${EXTERNAL_DIR}/spdlog/include
 	${EXTERNAL_DIR}/glfw/include
 	${EXTERNAL_DIR}/entt
@@ -55,4 +56,5 @@ target_link_libraries(imported::External_libs INTERFACE
 	glslang  SPIRV
 	SPIRV-Tools
 	tlsf
+	rapidhash
 )

@@ -2,7 +2,7 @@
 #include <Allocator.h>
 #include <MemoryOperations.h>
 
-namespace ZEngine::Core::Container
+namespace ZEngine::Core::Containers
 {
     struct String
     {
@@ -252,4 +252,4 @@ namespace ZEngine::Core::Container
         size_type   m_size;
     };
 
-} // namespace ZEngine::Core::Container
+} // namespace ZEngine::Core::Containers

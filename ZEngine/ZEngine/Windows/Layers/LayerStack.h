@@ -1,6 +1,6 @@
 // #pragma once
 // #include <Helpers/IntrusivePtr.h>
-// #include <Core/Container/Array.h>
+// #include <Core/Containers/Array.h>
 // #include <Layers/Layer.h>
 //
 // namespace ZEngine::Windows::Layers
@@ -10,7 +10,7 @@
 //     struct LayerStack
 //     {
 //         template <typename T>
-//         using Array  = Core::Container::Array<T>;
+//         using Array  = Core::Containers::Array<T>;
 //
 //         LayerStack() = default;
 //         ~LayerStack();

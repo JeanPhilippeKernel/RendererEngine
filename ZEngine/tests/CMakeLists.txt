@@ -8,6 +8,7 @@ set (TEST_SOURCES
     allocator_test.cpp
     array_test.cpp
     string_test.cpp
+    hashmap_test.cpp
 )
 
 add_executable(ZEngineTests ${TEST_SOURCES})

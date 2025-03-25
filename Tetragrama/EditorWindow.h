@@ -17,9 +17,9 @@ namespace Tetragrama
 
         uint32_t                                        GetHeight() const override;
         uint32_t                                        GetWidth() const override;
-        ZEngine::Core::Container::StringView            GetTitle() const override;
+        ZEngine::Core::Containers::StringView           GetTitle() const override;
         bool                                            IsMinimized() const override;
-        void                                            SetTitle(ZEngine::Core::Container::StringView title) override;
+        void                                            SetTitle(ZEngine::Core::Containers::StringView title) override;
         bool                                            IsVSyncEnable() const override;
         void                                            SetVSync(bool value) override;
         void                                            SetCallbackFunction(const EventCallbackFn& callback) override;
