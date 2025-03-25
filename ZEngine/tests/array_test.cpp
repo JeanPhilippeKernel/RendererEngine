@@ -23,7 +23,7 @@ protected:
 TEST_F(ArrayTest, InitialState)
 {
     Array<int> array;
-    array.init(&allocator, 10, 0);
+    array.init(&allocator, 10);
 
     EXPECT_EQ(array.size(), 0);
     EXPECT_EQ(array.capacity(), 10);
@@ -33,7 +33,7 @@ TEST_F(ArrayTest, InitialState)
 TEST_F(ArrayTest, PushBack)
 {
     Array<int> array;
-    array.init(&allocator, 4, 0);
+    array.init(&allocator, 4);
 
     array.push(1);
     array.push(2);
@@ -49,7 +49,7 @@ TEST_F(ArrayTest, PushBack)
 TEST_F(ArrayTest, AutoResize)
 {
     Array<int> array;
-    array.init(&allocator, 2, 0);
+    array.init(&allocator, 2);
 
     EXPECT_EQ(array.capacity(), 2);
 
@@ -65,7 +65,7 @@ TEST_F(ArrayTest, AutoResize)
 TEST_F(ArrayTest, PopBack)
 {
     Array<int> array;
-    array.init(&allocator, 4, 0);
+    array.init(&allocator, 4);
 
     array.push(1);
     array.push(2);
@@ -87,7 +87,7 @@ TEST_F(ArrayTest, PopBack)
 TEST_F(ArrayTest, Clear)
 {
     Array<int> array;
-    array.init(&allocator, 4, 0);
+    array.init(&allocator, 4);
 
     array.push(1);
     array.push(2);
@@ -105,7 +105,7 @@ TEST_F(ArrayTest, Clear)
 TEST_F(ArrayTest, Reserve)
 {
     Array<int> array;
-    array.init(&allocator, 4, 0);
+    array.init(&allocator, 4);
 
     EXPECT_EQ(array.capacity(), 4);
 
@@ -119,7 +119,7 @@ TEST_F(ArrayTest, Reserve)
 TEST_F(ArrayTest, FrontAndBack)
 {
     Array<int> array;
-    array.init(&allocator, 4, 0);
+    array.init(&allocator, 4);
 
     array.push(10);
     EXPECT_EQ(array.front(), 10);

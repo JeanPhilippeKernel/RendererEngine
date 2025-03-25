@@ -49,8 +49,8 @@ namespace Tetragrama
         std::string                  title       = fmt::format("{0} - Active Scene : {1}", Context->ConfigurationPtr->ProjectName, Context->CurrentScenePtr->Name);
         Windows::WindowConfiguration window_conf = {.EnableVsync = true};
         window_conf.Title.init(&(Context->Arena), title.c_str());
-        window_conf.RenderingLayerCollection.init(&(Context->Arena), 1, 0);
-        window_conf.OverlayLayerCollection.init(&(Context->Arena), 1, 0);
+        window_conf.RenderingLayerCollection.init(&(Context->Arena), 1);
+        window_conf.OverlayLayerCollection.init(&(Context->Arena), 1);
 
         window_conf.RenderingLayerCollection.push(CanvasLayer);
         window_conf.OverlayLayerCollection.push(UILayer);
@@ -74,10 +74,10 @@ namespace Tetragrama
         RenderScene                  = ZPushStructCtor(arena, ZEngine::Rendering::Scenes::GraphicScene);
         RenderScene->IsDrawDataDirty = true;
 
-        MeshFiles.init(arena, 1, 0);
-        ModelFiles.init(arena, 1, 0);
-        MaterialFiles.init(arena, 1, 0);
-        Hashes.init(arena, 1, 0);
+        MeshFiles.init(arena, 1);
+        ModelFiles.init(arena, 1);
+        MaterialFiles.init(arena, 1);
+        Hashes.init(arena, 1);
     }
 
     void EditorScene::Push(ZEngine::Core::Memory::ArenaAllocator* arena, const char* mesh, const char* model, const char* material)
