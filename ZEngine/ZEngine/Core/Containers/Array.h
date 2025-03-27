@@ -2,8 +2,6 @@
 #include <Allocator.h>
 #include <type_traits>
 
-// using span ?
-
 using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::Core::Containers

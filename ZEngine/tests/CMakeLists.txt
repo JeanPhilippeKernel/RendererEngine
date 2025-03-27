@@ -9,6 +9,7 @@ set (TEST_SOURCES
     array_test.cpp
     string_test.cpp
     hashmap_test.cpp
+    initializerlist_test.cpp
 )
 
 add_executable(ZEngineTests ${TEST_SOURCES})

@@ -1,0 +1,84 @@
+#include <Core/Containers/Array.h>
+#include <Core/Containers/InitializerList.h>
+#include <Core/Containers/Strings.h>
+#include <gtest/gtest.h>
+
+using namespace ZEngine::Core::Containers;
+using namespace ZEngine::Core::Memory;
+
+class InitializerListTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        arena.Initialize(512);
+    }
+
+    void TearDown() override
+    {
+        arena.Shutdown();
+    }
+
+    ArenaAllocator arena;
+};
+
+TEST_F(InitializerListTest, WithArray)
+{
+    Array<int> array;
+    array.init(&arena, 4);
+    array.push(1);
+    array.push(2);
+    array.push(3);
+    array.push(4);
+
+    InitializerList<int> list(array.data(), array.size());
+
+    EXPECT_EQ(list.size(), 4);
+    EXPECT_EQ(list.data()[0], 1);
+    EXPECT_EQ(*(list.begin() + 2), 3);
+
+    int total = 0;
+    for (int val : list)
+    {
+        total += val;
+    }
+
+    EXPECT_EQ(total, 10);
+}
+
+TEST_F(InitializerListTest, WithStrings)
+{
+    Array<String> str_array;
+    str_array.init(&arena, 3);
+    str_array.push(String());
+    str_array.push(String());
+    str_array.push(String());
+
+    str_array[0].init(&arena, "Alpha");
+    str_array[1].init(&arena, "Beta");
+    str_array[2].init(&arena, "Gamma");
+
+    InitializerList<String> list(str_array.data(), str_array.size());
+
+    EXPECT_EQ(list.size(), 3);
+    EXPECT_STREQ(list.data()[0].c_str(), "Alpha");
+    EXPECT_STREQ(list.data()[2].c_str(), "Gamma");
+
+    std::string result;
+    for (const auto& str : list)
+        result += str.c_str();
+
+    EXPECT_EQ(result, "AlphaBetaGamma");
+}
+
+TEST_F(InitializerListTest, EmptyFromArray)
+{
+    Array<int> empty_array;
+    empty_array.init(&arena, 0);
+
+    InitializerList<int> list(empty_array.data(), empty_array.size());
+
+    EXPECT_EQ(list.size(), 0);
+    EXPECT_TRUE(list.empty());
+    EXPECT_EQ(list.begin(), list.end());
+}

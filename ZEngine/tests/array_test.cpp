@@ -131,3 +131,22 @@ TEST_F(ArrayTest, FrontAndBack)
     EXPECT_EQ(array.front(), 10);
     EXPECT_EQ(array.back(), 30);
 }
+
+TEST_F(ArrayTest, ArrayViewWrap)
+{
+    Array<int> array;
+    array.init(&allocator, 4);
+    array.push(10);
+    array.push(20);
+    array.push(30);
+
+    ArrayView<int> view(array);
+
+    EXPECT_EQ(view.size(), array.size());
+    EXPECT_EQ(view[0], 10);
+    EXPECT_EQ(view[1], 20);
+    EXPECT_EQ(view[2], 30);
+
+    view[1] = 99;
+    EXPECT_EQ(array[1], 99);
+}
