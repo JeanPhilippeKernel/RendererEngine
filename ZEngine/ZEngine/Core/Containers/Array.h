@@ -1,6 +1,8 @@
 #pragma once
 #include <Allocator.h>
+#include <InitializerList.h>
 #include <type_traits>
+
 
 using namespace ZEngine::Core::Memory;
 
@@ -26,6 +28,18 @@ namespace ZEngine::Core::Containers
             m_capacity  = 0;
             m_data      = nullptr;
             reserve(initial_capacity);
+        }
+
+        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, const InitializerList<T>& list)
+        {
+            // Initialize the basic array structure
+            init(allocator, std::max(initial_capacity, list.size()));
+
+            // Add all elements from the initializer list
+            for (const auto& item : list)
+            {
+                push(item);
+            }
         }
 
         const_reference operator[](size_type index) const

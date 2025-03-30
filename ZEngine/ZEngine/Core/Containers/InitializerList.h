@@ -64,10 +64,19 @@ namespace ZEngine::Core::Containers
         pointer   m_data;
     };
 
-    template <typename T, size_t N>
-    InitializerList<T> make_initializer_list(T (&arr)[N])
+    template <typename T, typename... Args>
+    InitializerList<T> make_initializer_list(Memory::ArenaAllocator* allocator, T first, Args... args)
     {
-        return InitializerList<T>(arr, N);
+        size_t count  = sizeof...(args) + 1;
+
+        T*     buffer = static_cast<T*>(ZAlloc(allocator, count * sizeof(T), ZAlignof(T)));
+
+        buffer[0]     = first;
+
+        size_t i      = 1;
+        ((buffer[i++] = static_cast<T>(args)), ...);
+
+        return InitializerList<T>(buffer, count);
     }
 
 } // namespace ZEngine::Core::Containers

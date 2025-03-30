@@ -33,11 +33,7 @@ TEST_F(ArrayTest, InitialState)
 TEST_F(ArrayTest, PushBack)
 {
     Array<int> array;
-    array.init(&allocator, 4);
-
-    array.push(1);
-    array.push(2);
-    array.push(3);
+    array.init(&allocator, 4, make_initializer_list(&allocator, 1, 2, 3));
 
     EXPECT_EQ(array.size(), 3);
     EXPECT_FALSE(array.empty());
@@ -65,11 +61,7 @@ TEST_F(ArrayTest, AutoResize)
 TEST_F(ArrayTest, PopBack)
 {
     Array<int> array;
-    array.init(&allocator, 4);
-
-    array.push(1);
-    array.push(2);
-    array.push(3);
+    array.init(&allocator, 4, make_initializer_list(&allocator, 1, 2, 3));
 
     EXPECT_EQ(array.size(), 3);
 
@@ -87,11 +79,7 @@ TEST_F(ArrayTest, PopBack)
 TEST_F(ArrayTest, Clear)
 {
     Array<int> array;
-    array.init(&allocator, 4);
-
-    array.push(1);
-    array.push(2);
-    array.push(3);
+    array.init(&allocator, 4, make_initializer_list(&allocator, 1, 2, 3));
 
     EXPECT_EQ(array.size(), 3);
 
@@ -135,10 +123,7 @@ TEST_F(ArrayTest, FrontAndBack)
 TEST_F(ArrayTest, ArrayViewWrap)
 {
     Array<int> array;
-    array.init(&allocator, 4);
-    array.push(10);
-    array.push(20);
-    array.push(30);
+    array.init(&allocator, 4, make_initializer_list(&allocator, 10, 20, 30));
 
     ArrayView<int> view(array);
 

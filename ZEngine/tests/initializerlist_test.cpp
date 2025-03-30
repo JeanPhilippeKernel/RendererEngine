@@ -25,11 +25,7 @@ protected:
 TEST_F(InitializerListTest, WithArray)
 {
     Array<int> array;
-    array.init(&arena, 4);
-    array.push(1);
-    array.push(2);
-    array.push(3);
-    array.push(4);
+    array.init(&arena, 4, make_initializer_list(&arena, 1, 2, 3, 4));
 
     InitializerList<int> list(array.data(), array.size());
 
@@ -50,9 +46,7 @@ TEST_F(InitializerListTest, WithStrings)
 {
     Array<String> str_array;
     str_array.init(&arena, 3);
-    str_array.push(String());
-    str_array.push(String());
-    str_array.push(String());
+    str_array.init(&arena, 3, make_initializer_list(&arena, String(), String(), String()));
 
     str_array[0].init(&arena, "Alpha");
     str_array[1].init(&arena, "Beta");
