@@ -155,3 +155,109 @@ TEST_F(HashMapTest, CollisionHandling)
     EXPECT_EQ(map[3], 30);
     EXPECT_EQ(map[5], 50);
 }
+
+TEST_F(HashMapTest, ViewIteration)
+{
+    HashMap<int, int> map;
+    map.init(&allocator, 8, 0);
+
+    map.insert(10, 100);
+    map.insert(20, 200);
+    map.insert(30, 300);
+
+    std::unordered_map<int, int> expected = {
+        {10, 100},
+        {20, 200},
+        {30, 300}
+    };
+
+    auto view = map.view();
+    for (auto [key, value] : view)
+    {
+        auto it = expected.find(key);
+        ASSERT_NE(it, expected.end());
+        EXPECT_EQ(value, it->second);
+        expected.erase(it);
+    }
+
+    EXPECT_TRUE(expected.empty());
+}
+
+TEST_F(HashMapTest, UserDefinedStructViewIterations)
+{
+    struct Person
+    {
+        String name;
+        int    age;
+
+        bool   operator==(const Person& other) const
+        {
+            return name == other.name && age == other.age;
+        }
+    };
+
+    HashMap<Person, String> map;
+    map.init(&allocator, 8, 0);
+
+    String str1;
+    str1.init(&allocator, "Alice");
+    String str2;
+    str2.init(&allocator, "Bob");
+    String str3;
+    str3.init(&allocator, "Carol");
+    String str4;
+    str4.init(&allocator, "Engineer");
+    String str5;
+    str5.init(&allocator, "Designer");
+    String str6;
+    str6.init(&allocator, "Artist");
+
+    Person alice{str1, 30};
+    Person bob{str2, 25};
+    Person carol{str3, 28};
+
+    map.insert(alice, str4);
+    map.insert(bob, str5);
+    map.insert(carol, str6);
+
+    EXPECT_TRUE(map.contains(alice));
+    EXPECT_TRUE(map.contains(bob));
+
+    EXPECT_EQ(map[alice], str4);
+    EXPECT_EQ(map[bob], str5);
+
+    struct ExpectedEntry
+    {
+        Person key;
+        String value;
+        bool   matched = false;
+    };
+
+    ExpectedEntry expected[] = {
+        {alice, str4},
+        {  bob, str5},
+        {carol, str6}
+    };
+
+    size_t matched_count = 0;
+
+    auto   view          = map.view();
+    for (auto [key, value] : view)
+    {
+        bool found = false;
+        for (auto& entry : expected)
+        {
+            if (!entry.matched && entry.key == key)
+            {
+                EXPECT_EQ(value, entry.value);
+                entry.matched = true;
+                found         = true;
+                matched_count++;
+                break;
+            }
+        }
+        ASSERT_TRUE(found);
+    }
+
+    EXPECT_EQ(matched_count, 3);
+}

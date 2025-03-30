@@ -103,6 +103,38 @@ namespace ZEngine::Core::Containers
             return m_data[index];
         }
 
+        bool operator==(const String& other) const
+        {
+            if (m_size != other.m_size)
+                return false;
+            return Helpers::secure_strcmp(m_data, other.m_data) == 0;
+        }
+
+        bool operator!=(const String& other) const
+        {
+            return !(*this == other);
+        }
+
+        bool operator<(const String& other) const
+        {
+            return Helpers::secure_strcmp(m_data, other.m_data) < 0;
+        }
+
+        bool operator>(const String& other) const
+        {
+            return Helpers::secure_strcmp(m_data, other.m_data) > 0;
+        }
+
+        bool operator<=(const String& other) const
+        {
+            return !(*this > other);
+        }
+
+        bool operator>=(const String& other) const
+        {
+            return !(*this < other);
+        }
+
         iterator begin()
         {
             return m_data;

@@ -200,6 +200,85 @@ namespace ZEngine::Core::Containers
         size_t                  m_size      = 0;
         size_t                  m_capacity  = 0;
         KeyValue*               m_data      = nullptr;
+
+        struct HashMapView
+        {
+            struct Iterator
+            {
+                using KeyValuePair = std::pair<const K&, V&>;
+
+                Iterator(HashMap* map, size_t index, Node* node) : m_map(map), m_index(index), m_current_node(node) {}
+
+                KeyValuePair operator*() const
+                {
+                    return KeyValuePair(m_current_node->key, m_current_node->value);
+                }
+
+                Iterator& operator++()
+                {
+                    if (m_current_node->next)
+                    {
+                        m_current_node = m_current_node->next;
+                    }
+                    else
+                    {
+                        m_current_node = nullptr;
+                        m_index++;
+
+                        while (m_index < m_map->m_capacity)
+                        {
+                            if (m_map->m_data[m_index].head)
+                            {
+                                m_current_node = m_map->m_data[m_index].head;
+                                break;
+                            }
+                            m_index++;
+                        }
+                    }
+                    return *this;
+                }
+
+                bool operator!=(const Iterator& other) const
+                {
+                    return m_current_node != other.m_current_node;
+                }
+
+                bool operator==(const Iterator& other) const
+                {
+                    return m_current_node == other.m_current_node;
+                }
+
+                HashMap* m_map;
+                size_t   m_index;
+                Node*    m_current_node;
+            };
+
+            HashMapView(HashMap* map) : m_map(map) {}
+
+            Iterator begin()
+            {
+                for (size_t i = 0; i < m_map->m_capacity; ++i)
+                {
+                    if (m_map->m_data[i].head)
+                    {
+                        return Iterator(m_map, i, m_map->m_data[i].head);
+                    }
+                }
+                return end();
+            }
+
+            Iterator end()
+            {
+                return Iterator(m_map, m_map->m_capacity, nullptr);
+            }
+
+            HashMap* m_map;
+        };
+
+        HashMapView view()
+        {
+            return HashMapView(this);
+        }
     };
 
 } // namespace ZEngine::Core::Containers

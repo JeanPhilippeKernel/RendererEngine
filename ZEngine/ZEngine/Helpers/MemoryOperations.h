@@ -123,6 +123,26 @@ namespace ZEngine::Helpers
 #endif
     }
 
+    inline int secure_strcmp(const char* str1, const char* str2)
+    {
+        if (!str1 || !str2)
+        {
+            return MEMORY_OP_FAILURE;
+        }
+
+#if SECURE_C11_FUNCTIONS_AVAILABLE
+        // There is no secure C11 version of strcmp, so we fall back to manual comparison
+#endif
+
+        while (*str1 && (*str1 == *str2))
+        {
+            ++str1;
+            ++str2;
+        }
+
+        return static_cast<unsigned char>(*str1) - static_cast<unsigned char>(*str2);
+    }
+
     inline int secure_memcmp(const void* ptr1, size_t ptr1Size, const void* ptr2, size_t ptr2Size, size_t num)
     {
         if (!ptr1 || !ptr2)
