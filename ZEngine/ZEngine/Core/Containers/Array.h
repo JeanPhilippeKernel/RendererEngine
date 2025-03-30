@@ -31,10 +31,7 @@ namespace ZEngine::Core::Containers
 
         void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, const InitializerList<T>& list)
         {
-            // Initialize the basic array structure
             init(allocator, std::max(initial_capacity, list.size()));
-
-            // Add all elements from the initializer list
             for (const auto& item : list)
             {
                 push(item);
