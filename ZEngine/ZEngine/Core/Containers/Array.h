@@ -3,7 +3,6 @@
 #include <InitializerList.h>
 #include <type_traits>
 
-
 using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::Core::Containers
