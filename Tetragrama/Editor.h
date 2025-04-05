@@ -72,7 +72,7 @@ namespace Tetragrama
 
     struct Editor
     {
-        ~Editor();
+        ~Editor() {}
 
         ZRawPtr(EditorContext) Context               = nullptr;
         ZRawPtr(Layers::ImguiLayer) UILayer          = nullptr;
@@ -80,6 +80,7 @@ namespace Tetragrama
         ZRawPtr(ZEngine::Windows::CoreWindow) Window = nullptr;
 
         void Initialize(ZEngine::Core::Memory::ArenaAllocator*, const char*);
+        void Dispose();
         void Run();
     };
 

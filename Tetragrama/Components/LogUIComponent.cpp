@@ -16,7 +16,7 @@ namespace Tetragrama::Components
     void LogUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
     {
         UIComponent::Initialize(parent, name, visibility, closed);
-        // Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
+        Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
     }
 
     void LogUIComponent::Update(ZEngine::Core::TimeStep dt) {}

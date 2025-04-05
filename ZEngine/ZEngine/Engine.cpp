@@ -13,7 +13,7 @@ namespace ZEngine
     static ZRawPtr(Hardwares::VulkanDevice) g_device                 = nullptr;
     static ZEngine::Core::Memory::ArenaAllocator g_engine_arena      = {};
 
-    void                                         Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const EngineConfiguration& engine_configuration, ZRawPtr(ZEngine::Windows::CoreWindow) const window)
+    void                                         Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZRawPtr(ZEngine::Windows::CoreWindow) const window)
     {
         g_current_window = window;
 
@@ -22,7 +22,6 @@ namespace ZEngine
         g_device   = ZPushStructCtor(&g_engine_arena, Hardwares::VulkanDevice);
         g_renderer = ZPushStructCtor(&g_engine_arena, Rendering::Renderers::GraphicRenderer);
 
-        Logging::Logger::Initialize(&g_engine_arena, engine_configuration.LoggerConfiguration);
         g_device->Initialize(&g_engine_arena, window);
         g_renderer->Initialize(g_device);
 
@@ -44,8 +43,6 @@ namespace ZEngine
     void Engine::Dispose()
     {
         s_request_terminate = false;
-
-        Logging::Logger::Dispose();
         g_device->Dispose();
 
         ZENGINE_CORE_INFO("Engine destroyed")

@@ -15,11 +15,6 @@ using namespace Tetragrama::Controllers;
 
 namespace Tetragrama
 {
-    Editor::~Editor()
-    {
-        ZEngine::Engine::Dispose();
-    }
-
     void Editor::Initialize(ArenaAllocator* arena, const char* file)
     {
         Context = ZPushStruct(arena, EditorContext);
@@ -59,7 +54,12 @@ namespace Tetragrama
 
         Context->CameraControllerPtr->Initialize(&(Context->Arena), Window, 150.0, 0.f, 45.f);
 
-        ZEngine::Engine::Initialize(arena, {}, Window);
+        ZEngine::Engine::Initialize(arena, Window);
+    }
+
+    void Editor::Dispose()
+    {
+        ZEngine::Engine::Dispose();
     }
 
     void Editor::Run()
