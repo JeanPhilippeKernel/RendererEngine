@@ -4,6 +4,7 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Windows/Inputs/IDevice.h>
 #include <ZEngine/Windows/Inputs/KeyCode.h>
 
 #ifdef _WIN32
@@ -153,6 +154,11 @@ namespace Tetragrama
         }
 
         ZENGINE_CORE_INFO("Windows layers initialized")
+
+        // Initialize Devices (Keyboard, Mouse)
+        ZEngine::Windows::Inputs::IDevice::Initialize(arena);
+
+        ZENGINE_CORE_INFO("Device initialized")
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
