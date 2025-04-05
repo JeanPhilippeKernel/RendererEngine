@@ -11,27 +11,26 @@ namespace ZEngine::Hardwares
 
 namespace ZEngine::Rendering::Textures
 {
-    struct Texture : public Helpers::RefCounted
+    struct Texture
     {
         Texture() = default;
-        Texture(const Specifications::TextureSpecification& spec, const Helpers::Ref<Hardwares::Image2DBuffer>& buffer);
-        Texture(Specifications::TextureSpecification&& spec, Helpers::Ref<Hardwares::Image2DBuffer>&& buffer);
         ~Texture();
 
-        bool                                   IsDepthTexture = false;
-        uint32_t                               Width          = 1;
-        uint32_t                               Height         = 1;
-        uint32_t                               BytePerPixel   = 0;
-        VkDeviceSize                           BufferSize     = 0;
-        Specifications::TextureSpecification   Specification  = {};
-        Helpers::Ref<Hardwares::Image2DBuffer> ImageBuffer;
+        void                                 Initialize(const Specifications::TextureSpecification& spec, Hardwares::Image2DBuffer* const buffer);
 
-        void                                   Dispose();
+        bool                                 IsDepthTexture = false;
+        uint32_t                             Width          = 1;
+        uint32_t                             Height         = 1;
+        uint32_t                             BytePerPixel   = 0;
+        VkDeviceSize                         BufferSize     = 0;
+        Specifications::TextureSpecification Specification  = {};
+        Hardwares::Image2DBuffer*            ImageBuffer    = nullptr;
+
+        void                                 Dispose();
     };
 
-    using TextureRef           = Helpers::Ref<Texture>;
-    using TextureHandle        = Helpers::Handle<TextureRef>;
-    using TextureHandleManager = Helpers::HandleManager<TextureRef>;
+    using TextureHandle        = Helpers::Handle<Texture>;
+    using TextureHandleManager = Helpers::HandleManager<Texture>;
 
     /*
      * To do : Should be deprecated
@@ -44,14 +43,11 @@ namespace ZEngine::Rendering::Textures
 namespace ZEngine::Helpers
 {
     template <>
-    inline void HandleManager<Helpers::Ref<Rendering::Textures::Texture>>::Dispose()
+    inline void HandleManager<Rendering::Textures::Texture>::Dispose()
     {
         for (size_t i = 0; i < m_count; ++i)
         {
-            if (m_data[i].Data)
-            {
-                m_data[i].Data->Dispose();
-            }
+            m_memory[i].Dispose();
         }
     }
 } // namespace ZEngine::Helpers

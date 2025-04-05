@@ -8,12 +8,12 @@ namespace ZEngine
 {
     struct Engine
     {
-        static void                              Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const EngineConfiguration&, ZRawPtr(ZEngine::Windows::CoreWindow) const);
-        static void                              Run();
-        static Helpers::Ref<Windows::CoreWindow> GetWindow();
-        static void                              Deinitialize();
-        static void                              Dispose();
-        static bool                              OnEngineClosed(Event::EngineClosedEvent&);
+        static void                 Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const EngineConfiguration&, ZRawPtr(ZEngine::Windows::CoreWindow) const);
+        static void                 Run();
+        static Windows::CoreWindow* GetWindow();
+        static void                 Deinitialize();
+        static void                 Dispose();
+        static bool                 OnEngineClosed(Event::EngineClosedEvent&);
 
     private:
         Engine()              = delete;

@@ -22,7 +22,7 @@ namespace ZEngine::Rendering::Renderers
     struct UpdateTextureRequest
     {
         Textures::TextureHandle Handle;
-        Textures::TextureRef    Texture;
+        Textures::Texture*      Texture;
     };
 
     struct TextureFileRequest
@@ -44,16 +44,16 @@ namespace ZEngine::Rendering::Renderers
         GraphicRenderer();
         ~GraphicRenderer();
 
-        const std::string_view                  FrameDepthRenderTargetName = "g_frame_depth_render_target";
-        const std::string_view                  FrameColorRenderTargetName = "g_frame_color_render_target";
-        Hardwares::UniformBufferSetHandle       SceneCameraBufferHandle    = {};
-        Textures::TextureHandle                 FrameColorRenderTarget     = {};
-        Textures::TextureHandle                 FrameDepthRenderTarget     = {};
-        Hardwares::VulkanDevice*                Device                     = nullptr;
-        Helpers::Ref<ImGUIRenderer>             ImguiRenderer              = nullptr;
-        Helpers::Scope<RenderGraph>             RenderGraph                = nullptr;
-        Helpers::Ref<AsyncResourceLoader>       AsyncLoader                = nullptr;
-        Helpers::ThreadSafeQueue<ResizeRequest> EnqueuedResizeRequests     = {};
+        const std::string_view            FrameDepthRenderTargetName   = "g_frame_depth_render_target";
+        const std::string_view            FrameColorRenderTargetName   = "g_frame_color_render_target";
+        Hardwares::UniformBufferSetHandle SceneCameraBufferHandle      = {};
+        Textures::TextureHandle           FrameColorRenderTarget       = {};
+        Textures::TextureHandle           FrameDepthRenderTarget       = {};
+        Hardwares::VulkanDevice*          Device                       = nullptr;
+        ZRawPtr(Renderers::ImGUIRenderer) ImguiRenderer                = nullptr;
+        ZRawPtr(Renderers::RenderGraph) RenderGraph                    = nullptr;
+        ZRawPtr(Renderers::AsyncResourceLoader) AsyncLoader            = nullptr;
+        Helpers::ThreadSafeQueue<ResizeRequest> EnqueuedResizeRequests = {};
 
         void                                    Initialize(Hardwares::VulkanDevice* device);
         void                                    Deinitialize();
@@ -61,15 +61,13 @@ namespace ZEngine::Rendering::Renderers
         void                                    DrawScene(Hardwares::CommandBuffer* const command_buffer, Cameras::Camera* const camera, Scenes::SceneRawData* const scene);
         Textures::TextureHandle                 GetFrameOutput();
 
-        Helpers::Ref<RenderPasses::RenderPass>  CreateRenderPass(const Specifications::RenderPassSpecification& spec);
-        Helpers::Ref<Textures::Texture>         CreateTexture(const Specifications::TextureSpecification& spec);
-        Helpers::Ref<Textures::Texture>         CreateTexture(uint32_t width, uint32_t height);
-        Helpers::Ref<Textures::Texture>         CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a);
-
-    private:
+        ZRawPtr(RenderPasses::RenderPass) CreateRenderPass(const Specifications::RenderPassSpecification& spec);
+        Textures::TextureHandle CreateTexture(const Specifications::TextureSpecification& spec);
+        Textures::TextureHandle CreateTexture(uint32_t width, uint32_t height);
+        Textures::TextureHandle CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a);
     };
 
-    struct AsyncResourceLoader : public Helpers::RefCounted
+    struct AsyncResourceLoader
     {
         GraphicRenderer*        Renderer = nullptr;
 

@@ -1,4 +1,6 @@
 #include <pch.h>
+#include <Core/Container/Array.h>
+#include <Core/Memory/Allocator.h>
 #include <Logging/Logger.h>
 #include <Logging/LoggerDefinition.h>
 #include <fmt/format.h>
@@ -7,16 +9,21 @@
 #include <spdlog/details/thread_pool.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 
+using namespace ZEngine::Core::Memory;
+
 namespace ZEngine::Logging
 {
-    static std::atomic_uint32_t                               g_cookie                     = 0;
-    spdlog::sink_ptr                                          Logger::s_sink               = nullptr;
-    std::recursive_mutex                                      Logger::s_mutex              = {};
-    std::vector<std::shared_ptr<spdlog::logger>>              Logger::s_logger_collection  = {};
-    std::vector<std::pair<uint32_t, Logger::LogEventHandler>> Logger::s_log_event_handlers = {};
+    static std::atomic_uint32_t                                                          g_cookie             = 0;
+    static spdlog::sink_ptr                                                              s_sink               = nullptr;
+    static std::recursive_mutex                                                          s_mutex              = {};
+    static ZEngine::Core::Container::Array<std::shared_ptr<spdlog::logger>>              s_logger_collection  = {};
+    static ZEngine::Core::Container::Array<std::pair<uint32_t, Logger::LogEventHandler>> s_log_event_handlers = {};
 
-    void                                                      Logger::Initialize(const LoggerConfiguration& configuration)
+    void                                                                                 Logger::Initialize(void* arena, const LoggerConfiguration& configuration)
     {
+        s_logger_collection.init(reinterpret_cast<ArenaAllocator*>(arena), 1);
+        s_log_event_handlers.init(reinterpret_cast<ArenaAllocator*>(arena), 3);
+
         const auto current_directoy   = std::filesystem::current_path();
         const auto log_directory      = fmt::format("{0}/{1}", current_directoy.string(), configuration.OutputDirectory);
         auto       log_directory_path = std::filesystem::path(log_directory);
@@ -34,11 +41,121 @@ namespace ZEngine::Logging
         spdlog::flush_every(std::chrono::duration_cast<std::chrono::seconds>(configuration.PeriodicFlush));
 
         s_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(fmt::format("{0}/{1}", configuration.OutputDirectory, configuration.LogFilename), 1024 * 1024, 5, false);
-        s_logger_collection.emplace_back(std::make_shared<spdlog::async_logger>(configuration.EngineLoggerName, s_sink, spdlog::thread_pool()));
+        s_logger_collection.push(std::make_shared<spdlog::async_logger>(configuration.EngineLoggerName, s_sink, spdlog::thread_pool()));
 
         for (auto& logger : s_logger_collection)
         {
             spdlog::register_logger(logger);
+        }
+    }
+
+    void Logger::Info(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->info(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{
+                .Color = {0.0f, 1.0f, 0.0f, 1.0f},
+                  .Message = msg
+            });
+        }
+    }
+
+    void Logger::Trace(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->trace(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{
+                .Color = {0.5f, 0.5f, 0.5f, 1.0f},
+                  .Message = msg
+            });
+        }
+    }
+
+    void Logger::Warn(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->warn(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{
+                .Color = {1.0f, 0.5f, 0.0f, 1.0f},
+                  .Message = msg
+            });
+        }
+    }
+
+    void Logger::Error(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->error(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{
+                .Color = {1.0f, 0.0f, 0.0f, 1.0f},
+                  .Message = msg
+            });
+        }
+    }
+
+    void Logger::Critical(std::string msg)
+    {
+        for (auto& logger : s_logger_collection)
+        {
+            logger->critical(msg);
+        }
+
+        decltype(s_log_event_handlers) handlers;
+        {
+            std::unique_lock l(s_mutex);
+            handlers = s_log_event_handlers;
+        }
+
+        for (const auto& handler : handlers)
+        {
+            handler.second(LogMessage{
+                .Color = {1.0f, 0.0f, 1.0f, 1.0f},
+                  .Message = msg
+            });
         }
     }
 
@@ -52,17 +169,13 @@ namespace ZEngine::Logging
 
     void Logger::Dispose()
     {
-        s_log_event_handlers.clear();
-        s_log_event_handlers.shrink_to_fit();
-
         Flush();
-
+        s_log_event_handlers.clear();
         s_logger_collection.clear();
-        s_logger_collection.shrink_to_fit();
     }
 
     void Logger::AddEventHandler(LogEventHandler handler)
     {
-        s_log_event_handlers.emplace_back(g_cookie++, handler);
+        s_log_event_handlers.push(std::make_pair(g_cookie++, handler));
     }
 } // namespace ZEngine::Logging

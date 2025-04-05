@@ -27,9 +27,10 @@ namespace Tetragrama::Layers
 
     void ImguiLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(5), &LayerArena);
+        arena->CreateSubArena(ZMega(10), &LayerArena);
 
         NodeHierarchies.init(&LayerArena, 10, 0);
+        NodeToRender.init(&LayerArena, 10);
 
         auto dockspace_cmp      = ZPushStructCtor(&LayerArena, Components::DockspaceUIComponent);
         auto scene_cmp          = ZPushStructCtor(&LayerArena, Components::SceneViewportUIComponent);
@@ -158,7 +159,6 @@ namespace Tetragrama::Layers
         int size = roots.size() + children.size() + siblings.size();
         if (NodeToRender.capacity() < size)
         {
-            NodeToRender.reserve(size);
         }
 
         for (auto r : roots)

@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Renderers
     struct InitialPass : public IRenderGraphCallbackPass
     {
         virtual void Setup(std::string_view name, RenderGraph* const graph) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
+        virtual void Compile(RenderPasses::RenderPass** pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
         virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
 
@@ -29,7 +29,7 @@ namespace ZEngine::Rendering::Renderers
     struct DepthPrePass : public IRenderGraphCallbackPass
     {
         virtual void Setup(std::string_view name, RenderGraph* const graph) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
+        virtual void Compile(RenderPasses::RenderPass** pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
         virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
     };
@@ -37,7 +37,7 @@ namespace ZEngine::Rendering::Renderers
     struct SkyboxPass : public IRenderGraphCallbackPass
     {
         virtual void Setup(std::string_view name, RenderGraph* const graph) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
+        virtual void Compile(RenderPasses::RenderPass** pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
         virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
 
@@ -54,7 +54,7 @@ namespace ZEngine::Rendering::Renderers
     struct GridPass : public IRenderGraphCallbackPass
     {
         virtual void Setup(std::string_view name, RenderGraph* const graph) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
+        virtual void Compile(RenderPasses::RenderPass** pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
         virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
 
@@ -68,7 +68,7 @@ namespace ZEngine::Rendering::Renderers
     struct GbufferPass : public IRenderGraphCallbackPass
     {
         virtual void Setup(std::string_view name, RenderGraph* const graph) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
+        virtual void Compile(RenderPasses::RenderPass** pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
         virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
     };
@@ -76,7 +76,7 @@ namespace ZEngine::Rendering::Renderers
     struct LightingPass : public IRenderGraphCallbackPass
     {
         virtual void Setup(std::string_view name, RenderGraph* const graph) override;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
+        virtual void Compile(RenderPasses::RenderPass** pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene) override;
         virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene_data, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
     };

@@ -17,7 +17,7 @@ int applicationEntryPoint(int argc, char* argv[])
 
     CLI11_PARSE(app, argc, argv);
 
-    MemoryConfiguration config = {.DefaultSize = ZMega(15)};
+    MemoryConfiguration config = {.DefaultSize = ZGiga(1)};
     MemoryManager       manager;
     manager.Initialize(config);
     auto arena  = &(manager.ArenaAllocator);
@@ -26,6 +26,7 @@ int applicationEntryPoint(int argc, char* argv[])
     editor->Initialize(arena, json_config_file.c_str());
     editor->Run();
 
+    editor->~Editor();
     manager.Shutdowm();
 
     return 0;

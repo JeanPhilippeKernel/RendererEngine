@@ -16,7 +16,7 @@ namespace ZEngine::Rendering::Primitives
         Undefined,
     };
 
-    struct Fence : public Helpers::RefCounted
+    struct Fence
     {
         Fence(Hardwares::VulkanDevice* const device, bool as_signaled = false);
         ~Fence();

@@ -17,14 +17,14 @@ namespace Tetragrama
 {
     Editor::~Editor()
     {
-        // ZEngine::Engine::Dispose();
+        ZEngine::Engine::Dispose();
     }
 
     void Editor::Initialize(ArenaAllocator* arena, const char* file)
     {
         Context = ZPushStruct(arena, EditorContext);
 
-        arena->CreateSubArena(ZMega(10), &(Context->Arena));
+        arena->CreateSubArena(ZMega(50), &(Context->Arena));
 
         Context->ConfigurationPtr    = ZPushStructCtor(&(Context->Arena), EditorConfiguration);
         Context->CameraControllerPtr = ZPushStructCtor(&(Context->Arena), EditorCameraController);
@@ -59,12 +59,12 @@ namespace Tetragrama
 
         Context->CameraControllerPtr->Initialize(&(Context->Arena), Window, 150.0, 0.f, 45.f);
 
-        // ZEngine::Engine::Initialize(arena, {}, Window);
+        ZEngine::Engine::Initialize(arena, {}, Window);
     }
 
     void Editor::Run()
     {
-        // ZEngine::Engine::Run();
+        ZEngine::Engine::Run();
     }
 
     void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* name)

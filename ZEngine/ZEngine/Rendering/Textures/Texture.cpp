@@ -4,17 +4,10 @@
 
 namespace ZEngine::Rendering::Textures
 {
-    Texture::Texture(const Specifications::TextureSpecification& spec, const Helpers::Ref<Hardwares::Image2DBuffer>& buffer) : Specification(spec), ImageBuffer(buffer)
+    void Texture::Initialize(const Specifications::TextureSpecification& spec, Hardwares::Image2DBuffer* const buffer)
     {
-        Width          = spec.Width;
-        Height         = spec.Height;
-        BytePerPixel   = spec.BytePerPixel;
-        BufferSize     = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
-        IsDepthTexture = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
-    }
-
-    Texture::Texture(Specifications::TextureSpecification&& spec, Helpers::Ref<Hardwares::Image2DBuffer>&& buffer) : Specification(std::move(spec)), ImageBuffer(std::move(buffer))
-    {
+        Specification  = spec;
+        ImageBuffer    = buffer;
         Width          = spec.Width;
         Height         = spec.Height;
         BytePerPixel   = spec.BytePerPixel;

@@ -72,25 +72,25 @@ namespace ZEngine::Rendering::Renderers
         std::vector<RenderGraphRenderPassInputOutputInfo> Outputs;
     };
 
-    struct IRenderGraphCallbackPass : public Helpers::RefCounted
+    struct IRenderGraphCallbackPass
     {
         virtual void Setup(std::string_view name, RenderGraph* const graph)                                                                                                                                                                                   = 0;
-        virtual void Compile(Helpers::Ref<RenderPasses::RenderPass>& pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene)                                                                                                            = 0;
+        virtual void Compile(RenderPasses::RenderPass** const pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene)                                                                                                                   = 0;
         virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph)                                              = 0;
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) = 0;
     };
 
     struct RenderGraphNode
     {
-        bool                                    Enabled      = true;
-        RenderGraphRenderPassCreation           Creation     = {};
-        std::unordered_set<std::string>         EdgeNodes    = {};
-        Helpers::Ref<RenderPasses::RenderPass>  Handle       = nullptr;
-        Helpers::Ref<Buffers::FramebufferVNext> Framebuffer  = nullptr;
-        Helpers::Ref<IRenderGraphCallbackPass>  CallbackPass = nullptr;
+        bool                            Enabled        = true;
+        RenderGraphRenderPassCreation   Creation       = {};
+        std::unordered_set<std::string> EdgeNodes      = {};
+        ZRawPtr(RenderPasses::RenderPass) Handle       = nullptr;
+        ZRawPtr(Buffers::FramebufferVNext) Framebuffer = nullptr;
+        ZRawPtr(IRenderGraphCallbackPass) CallbackPass = nullptr;
     };
 
-    class RenderGraph : public Helpers::RefCounted
+    class RenderGraph
     {
     public:
         RenderGraph(GraphicRenderer* renderer) : Renderer(renderer), Builder(Helpers::CreateRef<RenderGraphBuilder>(*this)) {}
@@ -115,7 +115,7 @@ namespace ZEngine::Rendering::Renderers
         Hardwares::UniformBufferSetHandle             GetBufferUniformSet(std::string_view);
         Hardwares::IndirectBufferSetHandle            GetIndirectBufferSet(std::string_view);
         RenderGraphNode&                              GetNode(std::string_view);
-        void                                          AddCallbackPass(std::string_view pass_name, const Helpers::Ref<IRenderGraphCallbackPass>& pass_callback, bool enabled = true);
+        void                                          AddCallbackPass(std::string_view pass_name, IRenderGraphCallbackPass* const pass_callback, bool enabled = true);
 
     private:
         std::vector<std::string>                   m_sorted_nodes;

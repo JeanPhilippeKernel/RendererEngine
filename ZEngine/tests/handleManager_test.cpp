@@ -7,7 +7,7 @@ class HandleManagerTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        manager = std::make_unique<ZEngine::Helpers::HandleManager<int*>>(10);
+        manager = std::make_unique<ZEngine::Helpers::HandleManager<int*>>();
     }
 
     void TearDown() override
@@ -108,7 +108,7 @@ TEST_F(HandleManagerTest, ReuseSlot)
 
 TEST_F(HandleManagerTest, ConcurrentAccess)
 {
-    manager                                         = std::make_unique<ZEngine::Helpers::HandleManager<int*>>(40);
+    manager                                         = std::make_unique<ZEngine::Helpers::HandleManager<int*>>();
     const int                numThreads             = 4;
     const int                numOperationsPerThread = 10;
     std::vector<std::thread> threads;

@@ -15,7 +15,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         if (Specification.SwapchainAsRenderTarget)
         {
             Specification.PipelineSpecification.Attachment = m_device->SwapchainAttachment; // Todo : Can potential Dispose() issue
-            Pipeline                                       = CreateRef<Pipelines::GraphicPipeline>(m_device, std::move(Specification.PipelineSpecification));
+            Pipeline                                       = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline, m_device, std::move(Specification.PipelineSpecification));
         }
         else
         {
@@ -25,7 +25,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             uint32_t color_map_index                                         = 0;
             for (const auto& handle : Specification.Inputs)
             {
-                const auto& texture                                                 = device->GlobalTextures->Access(handle);
+                const auto& texture                                                 = device->GlobalTextures.Access(handle);
 
                 bool        is_depth_texture                                        = texture->IsDepthTexture;
                 ImageLayout initial_layout                                          = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
@@ -45,7 +45,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
             for (const auto& handle : Specification.ExternalOutputs)
             {
-                const auto& texture                                                 = device->GlobalTextures->Access(handle);
+                auto        texture                                                 = device->GlobalTextures.Access(handle);
                 auto&       output_spec                                             = texture->Specification;
                 bool        is_depth_image_format                                   = (output_spec.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
                 ImageLayout initial_layout                                          = (output_spec.LoadOp == LoadOperation::CLEAR) ? ImageLayout::UNDEFINED : is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
@@ -63,9 +63,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            Attachment                                     = CreateRef<RenderPasses::Attachment>(m_device, attachment_specification);
+            Attachment                                     = ZPushStructCtorArgs(m_device->Arena, RenderPasses::Attachment, m_device, attachment_specification);
+
             Specification.PipelineSpecification.Attachment = Attachment; // Todo : Can potential Dispose() issue
-            Pipeline                                       = CreateRef<Pipelines::GraphicPipeline>(m_device, std::move(Specification.PipelineSpecification));
+            Pipeline                                       = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline, m_device, std::move(Specification.PipelineSpecification));
 
             UpdateRenderTargets();
             UpdateInputBinding();
@@ -81,7 +82,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         for (auto& handle : Specification.ExternalOutputs)
         {
-            m_device->GlobalTextures->Remove(handle);
+            m_device->GlobalTextures.Remove(handle);
         }
 
         Pipeline->Dispose();
@@ -134,14 +135,14 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         auto        shader             = Pipeline->GetShader();
         auto        descriptor_set_map = shader->GetDescriptorSetMap();
         auto        frame_count        = m_device->SwapchainImageCount;
-        auto&       ubo_buf            = m_device->UniformBufferSetManager.Access(handle);
+        auto        ubo_buf            = m_device->UniformBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
             auto  set      = descriptor_set_map.at(spec.Set)[i];
             auto& buf      = ubo_buf->At(i);
-            auto& buf_info = buf.GetDescriptorBufferInfo();
+            auto& buf_info = buf->GetDescriptorBufferInfo();
 
             ZENGINE_VALIDATE_ASSERT((buf_info.buffer), "UniformBuffer can't be null")
 
@@ -165,14 +166,14 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         auto        shader             = Pipeline->GetShader();
         auto        descriptor_set_map = shader->GetDescriptorSetMap();
         auto        frame_count        = m_device->SwapchainImageCount;
-        auto&       sbo_buf            = m_device->StorageBufferSetManager.Access(handle);
+        auto        sbo_buf            = m_device->StorageBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
             auto  set      = descriptor_set_map.at(spec.Set)[i];
             auto& buf      = sbo_buf->At(i);
-            auto& buf_info = buf.GetDescriptorBufferInfo();
+            auto& buf_info = buf->GetDescriptorBufferInfo();
 
             ZENGINE_VALIDATE_ASSERT((buf_info.buffer), "StorageBuffer can't be null")
 
@@ -197,7 +198,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         auto        shader             = Pipeline->GetShader();
         auto        descriptor_set_map = shader->GetDescriptorSetMap();
         auto        frame_count        = m_device->SwapchainImageCount;
-        auto&       tex_buf            = m_device->GlobalTextures->Access(handle);
+        auto        tex_buf            = m_device->GlobalTextures.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
@@ -252,7 +253,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         uint32_t height = 0;
         for (const auto& input : Specification.Inputs)
         {
-            auto texture = m_device->GlobalTextures->Access(input);
+            auto texture = m_device->GlobalTextures.Access(input);
 
             if (width == 0)
             {
@@ -277,7 +278,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         for (const auto& output : Specification.ExternalOutputs)
         {
-            auto texture = m_device->GlobalTextures->Access(output);
+            auto texture = m_device->GlobalTextures.Access(output);
 
             if (width == 0)
             {
@@ -304,7 +305,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderAreaHeight = height;
     }
 
-    Ref<Renderers::RenderPasses::Attachment> RenderPass::GetAttachment() const
+    ZRawPtr(Renderers::RenderPasses::Attachment) RenderPass::GetAttachment() const
     {
         return Specification.SwapchainAsRenderTarget ? m_device->SwapchainAttachment : Attachment;
     }
