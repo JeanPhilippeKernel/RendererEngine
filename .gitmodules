@@ -64,3 +64,6 @@
 [submodule "__externals/CLI11"]
 	path = __externals/CLI11
 	url = https://github.com/CLIUtils/CLI11
+[submodule "__externals/rapidhash/src"]
+	path = __externals/rapidhash/src
+	url = https://github.com/Nicoshev/rapidhash

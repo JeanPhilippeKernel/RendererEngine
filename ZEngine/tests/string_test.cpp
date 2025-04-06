@@ -1,7 +1,7 @@
-#include <Core/Container/Strings.h>
+#include <Core/Containers/Strings.h>
 #include <gtest/gtest.h>
 
-using namespace ZEngine::Core::Container;
+using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Memory;
 
 class StringTest : public ::testing::Test

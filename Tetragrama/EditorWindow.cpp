@@ -38,7 +38,7 @@ namespace Tetragrama
         return m_property.Width;
     }
 
-    ZEngine::Core::Container::StringView EditorWindow::GetTitle() const
+    ZEngine::Core::Containers::StringView EditorWindow::GetTitle() const
     {
         return m_property.Title;
     }
@@ -48,7 +48,7 @@ namespace Tetragrama
         return m_property.IsMinimized;
     }
 
-    void EditorWindow::SetTitle(ZEngine::Core::Container::StringView title)
+    void EditorWindow::SetTitle(ZEngine::Core::Containers::StringView title)
     {
         m_property.Title = title.data();
         glfwSetWindowTitle(m_native_window, m_property.Title);

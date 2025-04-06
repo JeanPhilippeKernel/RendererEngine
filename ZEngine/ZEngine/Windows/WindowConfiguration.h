@@ -1,6 +1,6 @@
 #pragma once
-#include <Core/Container/Array.h>
-#include <Core/Container/Strings.h>
+#include <Core/Containers/Array.h>
+#include <Core/Containers/Strings.h>
 #include <Helpers/IntrusivePtr.h>
 
 namespace ZEngine::Windows::Layers
@@ -12,13 +12,13 @@ namespace ZEngine::Windows
 {
     struct WindowConfiguration
     {
-        uint32_t                                       Width       = 1500;
-        uint32_t                                       Height      = 800;
-        bool                                           EnableVsync = true;
-        Core::Container::String                        Title;
+        uint32_t                                        Width       = 1500;
+        uint32_t                                        Height      = 800;
+        bool                                            EnableVsync = true;
+        Core::Containers::String                        Title;
 
-        Core::Container::Array<ZRawPtr(Layers::Layer)> RenderingLayerCollection;
-        Core::Container::Array<ZRawPtr(Layers::Layer)> OverlayLayerCollection;
+        Core::Containers::Array<ZRawPtr(Layers::Layer)> RenderingLayerCollection;
+        Core::Containers::Array<ZRawPtr(Layers::Layer)> OverlayLayerCollection;
     };
 
 } // namespace ZEngine::Windows

@@ -58,6 +58,7 @@ if (NOT LAUNCHER_ONLY)
 	add_subdirectory (${EXTERNAL_DIR}/gtest)
 	add_subdirectory (${EXTERNAL_DIR}/VulkanMemoryAllocator)
 	add_subdirectory (${EXTERNAL_DIR}/tlsf)
+	add_subdirectory (${EXTERNAL_DIR}/rapidhash)
 	add_subdirectory (${EXTERNAL_DIR}/CLI11)
 
 	set (CMAKE_PREFIX_PATH
