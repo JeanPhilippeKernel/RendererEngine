@@ -391,13 +391,11 @@ namespace ZEngine::Rendering::Renderers
                 auto temp_handle        = Renderer->Device->GlobalTextures.Create();
                 auto texture_to_dispose = Renderer->Device->GlobalTextures.Access(resource.ResourceInfo.TextureHandle);
                 Renderer->Device->GlobalTextures.Update(temp_handle, *texture_to_dispose);
-                Renderer->Device->GlobalTextures.Remove(temp_handle);
 
+                Renderer->Device->GlobalTextures.Remove(resource.ResourceInfo.TextureHandle);
                 resource.ResourceInfo.TextureSpec.Width  = width;
                 resource.ResourceInfo.TextureSpec.Height = height;
-                auto tex_handle                          = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
-                Renderer->Device->GlobalTextures.Update(resource.ResourceInfo.TextureHandle, *Renderer->Device->GlobalTextures.Access(tex_handle));
-                Renderer->Device->GlobalTextures.Remove(tex_handle);
+                resource.ResourceInfo.TextureHandle      = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
 
                 if ((output.Name == Renderer->FrameColorRenderTargetName) || (output.Name == Renderer->FrameDepthRenderTargetName))
                 {
