@@ -1,5 +1,5 @@
 #pragma once
-#include <Core/Container/Array.h>
+#include <Core/Containers/Array.h>
 #include <Core/Memory/Allocator.h>
 #include <MemoryOperations.h>
 #include <ZEngineDef.h>
@@ -34,13 +34,13 @@ namespace ZEngine::Helpers
     template <typename T>
     class HandleManager
     {
-        uint32_t                        m_count           = 0;
-        uint32_t                        m_head            = 0;
-        uint32_t                        m_free_slot_index = 0;
-        Core::Container::Array<T>       m_memory          = {};
-        Core::Container::Array<uint8_t> m_free_slot       = {};
+        uint32_t                         m_count           = 0;
+        uint32_t                         m_head            = 0;
+        uint32_t                         m_free_slot_index = 0;
+        Core::Containers::Array<T>       m_memory          = {};
+        Core::Containers::Array<uint8_t> m_free_slot       = {};
 
-        mutable std::shared_mutex       m_mutex;
+        mutable std::shared_mutex        m_mutex;
 
     public:
         void Initialize(Core::Memory::ArenaAllocator* arena, uint32_t count = 0)

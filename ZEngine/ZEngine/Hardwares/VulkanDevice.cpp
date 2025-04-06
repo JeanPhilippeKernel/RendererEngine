@@ -21,7 +21,7 @@ using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering;
 using namespace ZEngine::Rendering::Buffers;
 using namespace ZEngine::Rendering::Specifications;
-using namespace ZEngine::Core::Container;
+using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Hardwares
 {
