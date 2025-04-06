@@ -391,7 +391,9 @@ namespace ZEngine::Rendering::Renderers
                 auto temp_handle        = Renderer->Device->GlobalTextures.Create();
                 auto texture_to_dispose = Renderer->Device->GlobalTextures.Access(resource.ResourceInfo.TextureHandle);
                 Renderer->Device->GlobalTextures.Update(temp_handle, *texture_to_dispose);
+                Renderer->Device->TextureHandleToDispose.Enqueue(temp_handle);
 
+                // We invalidate ResourceInfo.TextureHandle, so it can be recycle for another texture allocation
                 Renderer->Device->GlobalTextures.Remove(resource.ResourceInfo.TextureHandle);
                 resource.ResourceInfo.TextureSpec.Width  = width;
                 resource.ResourceInfo.TextureSpec.Height = height;

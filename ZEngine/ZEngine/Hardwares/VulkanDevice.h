@@ -696,6 +696,7 @@ namespace ZEngine::Hardwares
         std::set<WriteDescriptorSetRequestKey>                            WriteBindlessDescriptorSetRequests = {};
         Rendering::Textures::TextureHandleManager                         GlobalTextures                     = {};
         Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>      TextureHandleToUpdates             = {};
+        Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>      TextureHandleToDispose             = {};
         Helpers::HandleManager<VertexBufferSet>                           VertexBufferSetManager             = {};
         Helpers::HandleManager<StorageBufferSet>                          StorageBufferSetManager            = {};
         Helpers::HandleManager<IndirectBufferSet>                         IndirectBufferSetManager           = {};

@@ -459,6 +459,14 @@ namespace ZEngine::Hardwares
 
             vkUpdateDescriptorSets(LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
         }
+
+        Textures::TextureHandle tex_to_dispose = {};
+        if (TextureHandleToDispose.Pop(tex_to_dispose))
+        {
+            auto texture = GlobalTextures.Access(tex_to_dispose);
+            texture->Dispose();
+            GlobalTextures.Remove(tex_to_dispose);
+        }
     }
 
     void VulkanDevice::Dispose()
