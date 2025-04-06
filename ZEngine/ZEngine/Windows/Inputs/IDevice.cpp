@@ -3,5 +3,6 @@
 
 namespace ZEngine::Windows::Inputs
 {
-    std::unordered_map<std::string, Helpers::Ref<IDevice>> IDevice::m_devices;
-}
+    std::map<const char*, ZRawPtr(IDevice)> IDevice::Devices = {};
+    Core::Memory::ArenaAllocator*           IDevice::Arena   = nullptr;
+} // namespace ZEngine::Windows::Inputs

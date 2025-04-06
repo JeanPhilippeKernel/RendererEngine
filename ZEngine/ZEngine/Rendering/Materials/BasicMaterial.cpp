@@ -9,15 +9,15 @@ namespace ZEngine::Rendering::Materials
     BasicMaterial::BasicMaterial() : ShaderMaterial(Shaders::ShaderBuiltInType::BASIC)
     {
         m_material_name = typeid(*this).name();
-        m_texture.reset(Textures::CreateTexture(1, 1));
+        // m_texture.reset(Textures::CreateTexture(1, 1));
     }
 
-    void BasicMaterial::SetTexture(const Ref<Textures::Texture>& texture)
+    void BasicMaterial::SetTexture(const Textures::Texture* texture)
     {
-        m_texture = texture;
+        // m_texture = texture;
     }
 
-    Ref<Textures::Texture> BasicMaterial::GetTexture() const
+    Textures::Texture* BasicMaterial::GetTexture() const
     {
         return m_texture;
     }

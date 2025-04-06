@@ -10,7 +10,7 @@ namespace ZEngine::Hardwares
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
-    struct Attachment : public Helpers::RefCounted
+    struct Attachment
     {
         Attachment(Hardwares::VulkanDevice* device, const Specifications::AttachmentSpecification& spec);
         ~Attachment();

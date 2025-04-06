@@ -260,12 +260,12 @@ namespace ZEngine::Rendering::Scenes
         SceneData->IndirectDataDrawBufferHandle = device->CreateStorageBufferSet();
         SceneData->IndirectBufferHandle         = device->CreateIndirectBufferSet();
 
-        auto& transform_buf                     = device->StorageBufferSetManager.Access(SceneData->TransformBufferHandle);
-        auto& vert_buf                          = device->StorageBufferSetManager.Access(SceneData->VertexBufferHandle);
-        auto& ind_buf                           = device->StorageBufferSetManager.Access(SceneData->IndexBufferHandle);
-        auto& material_buf                      = device->StorageBufferSetManager.Access(SceneData->MaterialBufferHandle);
-        auto& indirect_datadraw_buf             = device->StorageBufferSetManager.Access(SceneData->IndirectDataDrawBufferHandle);
-        auto& indirect_buf                      = device->IndirectBufferSetManager.Access(SceneData->IndirectBufferHandle);
+        auto transform_buf                      = device->StorageBufferSetManager.Access(SceneData->TransformBufferHandle);
+        auto vert_buf                           = device->StorageBufferSetManager.Access(SceneData->VertexBufferHandle);
+        auto ind_buf                            = device->StorageBufferSetManager.Access(SceneData->IndexBufferHandle);
+        auto material_buf                       = device->StorageBufferSetManager.Access(SceneData->MaterialBufferHandle);
+        auto indirect_datadraw_buf              = device->StorageBufferSetManager.Access(SceneData->IndirectDataDrawBufferHandle);
+        auto indirect_buf                       = device->IndirectBufferSetManager.Access(SceneData->IndirectBufferHandle);
 
         for (unsigned i = 0; i < device->SwapchainImageCount; ++i)
         {

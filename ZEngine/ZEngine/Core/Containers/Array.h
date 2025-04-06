@@ -20,6 +20,15 @@ namespace ZEngine::Core::Containers
         using iterator        = T*;
         using const_iterator  = const T*;
 
+        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, size_type initial_size)
+        {
+            m_allocator = allocator;
+            m_size      = initial_size;
+            m_capacity  = 0;
+            m_data      = nullptr;
+            reserve(std::max(initial_capacity, initial_size));
+        }
+
         void init(Memory::ArenaAllocator* allocator, size_type initial_capacity)
         {
             m_allocator = allocator;

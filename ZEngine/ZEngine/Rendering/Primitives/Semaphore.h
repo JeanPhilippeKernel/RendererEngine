@@ -16,7 +16,7 @@ namespace ZEngine::Rendering::Primitives
         Undefined,
     };
 
-    struct Semaphore : public Helpers::RefCounted
+    struct Semaphore
     {
         Semaphore(Hardwares::VulkanDevice* const device);
         ~Semaphore();

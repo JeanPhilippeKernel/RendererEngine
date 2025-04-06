@@ -11,13 +11,14 @@ using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering;
 using namespace ZEngine::Rendering::Textures;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers
 {
     void ImGUIRenderer::Initialize(GraphicRenderer* renderer)
     {
         m_renderer          = renderer;
-        auto current_window = renderer->Device->CurrentWindow;
+        auto current_window = renderer->Device->CurrentWindow->GetNativeWindow();
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -50,7 +51,7 @@ namespace ZEngine::Rendering::Renderers
 
         io.FontDefault          = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f);
 
-        ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window->GetNativeWindow()), false);
+        ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window), false);
 
         m_vertex_buffer_handle = renderer->Device->CreateVertexBufferSet();
         m_index_buffer_handle  = renderer->Device->CreateIndexBufferSet();
@@ -91,31 +92,36 @@ namespace ZEngine::Rendering::Renderers
         unsigned char* pixels;
         int            width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        size_t                               upload_size        = width * height * 4 * sizeof(char);
+        size_t                               upload_size   = width * height * 4 * sizeof(char);
 
-        Specifications::TextureSpecification font_tex_spec      = {};
-        font_tex_spec.Width                                     = width;
-        font_tex_spec.Height                                    = height;
-        font_tex_spec.Data                                      = pixels;
-        font_tex_spec.Format                                    = Specifications::ImageFormat::R8G8B8A8_UNORM;
-        auto font_texture                                       = renderer->CreateTexture(font_tex_spec);
-        auto font_tex_handle                                    = renderer->Device->GlobalTextures->Add(font_texture);
+        Specifications::TextureSpecification font_tex_spec = {};
+        font_tex_spec.Width                                = width;
+        font_tex_spec.Height                               = height;
+        font_tex_spec.Data                                 = pixels;
+        font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
+        auto font_tex_handle                               = renderer->CreateTexture(font_tex_spec);
+        auto font_texture                                  = renderer->Device->GlobalTextures.Access(font_tex_handle);
 
-        io.Fonts->TexID                                         = (ImTextureID) font_tex_handle.Index;
+        io.Fonts->TexID                                    = (ImTextureID) font_tex_handle.Index;
 
-        auto                              font_image_info       = font_texture->ImageBuffer->GetDescriptorImageInfo();
-        uint32_t                          frame_count           = renderer->Device->SwapchainImageCount;
-        auto                              shader                = m_ui_pass->Pipeline->GetShader();
-        auto                              descriptor_set_map    = shader->GetDescriptorSetMap();
-        std::vector<VkWriteDescriptorSet> write_descriptor_sets = {};
+        auto                        font_image_info        = font_texture->ImageBuffer->GetDescriptorImageInfo();
+        uint32_t                    frame_count            = renderer->Device->SwapchainImageCount;
+        auto                        shader                 = m_ui_pass->Pipeline->GetShader();
+        auto                        descriptor_set_map     = shader->GetDescriptorSetMap();
+
+        auto                        scratch                = ZGetScratch(renderer->Device->Arena);
+        Array<VkWriteDescriptorSet> write_descriptor_sets  = {};
+        write_descriptor_sets.init(scratch.Arena, frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
             auto set = descriptor_set_map.at(0)[i];
-            write_descriptor_sets.push_back(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
+            write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
         }
 
         vkUpdateDescriptorSets(renderer->Device->LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
+
+        ZReleaseScratch(scratch);
     }
 
     void ImGUIRenderer::Deinitialize()
@@ -219,8 +225,8 @@ namespace ZEngine::Rendering::Renderers
             index_data_ptr += cmd_list->IdxBuffer.Size;
         }
 
-        auto& vertex_buffer = m_renderer->Device->VertexBufferSetManager.Access(m_vertex_buffer_handle);
-        auto& index_buffer  = m_renderer->Device->IndexBufferSetManager.Access(m_index_buffer_handle);
+        auto vertex_buffer = m_renderer->Device->VertexBufferSetManager.Access(m_vertex_buffer_handle);
+        auto index_buffer  = m_renderer->Device->IndexBufferSetManager.Access(m_index_buffer_handle);
 
         vertex_buffer->SetData<ImDrawVert>(frame_index, vertex_data);
         index_buffer->SetData<ImDrawIdx>(frame_index, index_data);
@@ -229,8 +235,8 @@ namespace ZEngine::Rendering::Renderers
         auto current_framebuffer = device->SwapchainFramebuffers[device->CurrentFrameIndex];
 
         command_buffer->BeginRenderPass(m_ui_pass, current_framebuffer);
-        command_buffer->BindVertexBuffer(vertex_buffer->At(frame_index));
-        command_buffer->BindIndexBuffer(index_buffer->At(frame_index), sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+        command_buffer->BindVertexBuffer(*vertex_buffer->At(frame_index));
+        command_buffer->BindIndexBuffer(*index_buffer->At(frame_index), sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 
         // Setup scale and translation:
         // Our visible imgui space lies from draw_data->DisplayPps (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single
