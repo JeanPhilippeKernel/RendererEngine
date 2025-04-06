@@ -68,6 +68,6 @@
 #endif
 
 #define ZPushDynamicArray(pool, type)                          ((type*) (pool)->Allocate(__FILE__, __LINE__))
-
+#define ZAlloc(allocator, size, alignment)                     ((allocator)->Allocate((size), (alignment)))
 #define ZResize(allocator, ptr, old_size, new_size, alignment) ((allocator)->Resize((ptr), (old_size), (new_size), (alignment)))
 #define ZAlignof(type)                                         ((alignof(type) < DEFAULT_ALIGNMENT) ? DEFAULT_ALIGNMENT : alignof(type))

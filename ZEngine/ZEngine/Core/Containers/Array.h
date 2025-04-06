@@ -1,12 +1,11 @@
 #pragma once
 #include <Allocator.h>
+#include <InitializerList.h>
 #include <type_traits>
-
-// using span ?
 
 using namespace ZEngine::Core::Memory;
 
-namespace ZEngine::Core::Container
+namespace ZEngine::Core::Containers
 {
 
     template <typename T>
@@ -21,13 +20,22 @@ namespace ZEngine::Core::Container
         using iterator        = T*;
         using const_iterator  = const T*;
 
-        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, size_type initial_size = 0U)
+        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity)
         {
             m_allocator = allocator;
-            m_size      = initial_size;
+            m_size      = 0;
             m_capacity  = 0;
             m_data      = nullptr;
             reserve(initial_capacity);
+        }
+
+        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, const InitializerList<T>& list)
+        {
+            init(allocator, std::max(initial_capacity, list.size()));
+            for (const auto& item : list)
+            {
+                push(item);
+            }
         }
 
         const_reference operator[](size_type index) const
@@ -219,4 +227,4 @@ namespace ZEngine::Core::Container
         T*     m_data;
         size_t m_size;
     };
-} // namespace ZEngine::Core::Container
+} // namespace ZEngine::Core::Containers

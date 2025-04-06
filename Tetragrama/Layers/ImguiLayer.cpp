@@ -17,7 +17,7 @@
 using namespace ZEngine;
 using namespace ZEngine::Rendering::Renderers;
 using namespace ZEngine::Windows::Events;
-using namespace ZEngine::Core::Container;
+using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Helpers;
 using namespace Tetragrama::Messengers;
 
@@ -28,7 +28,7 @@ namespace Tetragrama::Layers
     void ImguiLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
     {
         arena->CreateSubArena(ZMega(10), &LayerArena);
-
+      
         NodeHierarchies.init(&LayerArena, 10, 0);
         NodeToRender.init(&LayerArena, 10);
 
@@ -49,7 +49,7 @@ namespace Tetragrama::Layers
         hierarchy_view_cmp->Initialize(this);
         demo_cmp->Initialize(this);
 
-        dockspace_cmp->Children.init(&LayerArena, 8, 7);
+        dockspace_cmp->Children.init(&LayerArena, 8);
         dockspace_cmp->Children.push(scene_cmp);
         dockspace_cmp->Children.push(editor_log_cmp);
         dockspace_cmp->Children.push(demo_cmp);
@@ -122,9 +122,9 @@ namespace Tetragrama::Layers
         Array<int> children   = {};
         Array<int> siblings   = {};
 
-        roots.init(temp_arena.Arena, 1, 0);
-        children.init(temp_arena.Arena, 1, 0);
-        siblings.init(temp_arena.Arena, 1, 0);
+        roots.init(temp_arena.Arena, 1);
+        children.init(temp_arena.Arena, 1);
+        siblings.init(temp_arena.Arena, 1);
 
         uint32_t i = 0;
         for (auto& node : NodeHierarchies)

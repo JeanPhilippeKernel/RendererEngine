@@ -2,18 +2,18 @@
 #include <SerializerCommonHelper.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 
-using namespace ZEngine::Core::Container;
+using namespace ZEngine::Core::Containers;
 
 namespace Tetragrama::Helpers
 {
-    void SerializeStringData(std::ostream& os, ZEngine::Core::Container::StringView str)
+    void SerializeStringData(std::ostream& os, ZEngine::Core::Containers::StringView str)
     {
         size_t f_count = str.size();
         os.write(reinterpret_cast<const char*>(&f_count), sizeof(size_t));
         os.write(str.data(), f_count + 1);
     }
 
-    void DeserializeStringData(ZEngine::Core::Memory::ArenaAllocator* Arena, std::istream& in, ZEngine::Core::Container::String& d)
+    void DeserializeStringData(ZEngine::Core::Memory::ArenaAllocator* Arena, std::istream& in, ZEngine::Core::Containers::String& d)
     {
         size_t v_count;
         in.read(reinterpret_cast<char*>(&v_count), sizeof(size_t));
@@ -22,7 +22,7 @@ namespace Tetragrama::Helpers
         in.read(d.data(), v_count + 1);
     }
 
-    void SerializeStringArrayData(std::ostream& os, ZEngine::Core::Container::ArrayView<ZEngine::Core::Container::String> str_view)
+    void SerializeStringArrayData(std::ostream& os, ZEngine::Core::Containers::ArrayView<ZEngine::Core::Containers::String> str_view)
     {
         size_t count = str_view.size();
         os.write(reinterpret_cast<const char*>(&count), sizeof(size_t));
@@ -49,7 +49,7 @@ namespace Tetragrama::Helpers
         os.write(reinterpret_cast<const char*>(flat_data.data()), sizeof(uint32_t) * flat_data.size());
     }
 
-    void DeserializeStringArrayData(ZEngine::Core::Memory::ArenaAllocator* Arena, std::istream& in, ZEngine::Core::Container::Array<ZEngine::Core::Container::String>& data)
+    void DeserializeStringArrayData(ZEngine::Core::Memory::ArenaAllocator* Arena, std::istream& in, ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String>& data)
     {
         size_t data_count;
         in.read(reinterpret_cast<char*>(&data_count), sizeof(size_t));

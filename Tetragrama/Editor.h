@@ -2,8 +2,8 @@
 #include <EditorCameraController.h>
 #include <Layers/ImguiLayer.h>
 #include <Layers/RenderLayer.h>
-#include <ZEngine/Core/Container/Array.h>
-#include <ZEngine/Core/Container/Strings.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
@@ -23,19 +23,19 @@ namespace Tetragrama
 
         EditorScene() = default;
 
-        void                                                              Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* scene_name = "");
-        void                                                              Push(ZEngine::Core::Memory::ArenaAllocator* arena, const char* mesh, const char* model, const char* material);
-        bool                                                              HasPendingChange() const;
+        void                                                                Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* scene_name = "");
+        void                                                                Push(ZEngine::Core::Memory::ArenaAllocator* arena, const char* mesh, const char* model, const char* material);
+        bool                                                                HasPendingChange() const;
 
-        const char*                                                       Name          = "";
-        ZEngine::Core::Container::Array<ZEngine::Core::Container::String> MeshFiles     = {};
-        ZEngine::Core::Container::Array<ZEngine::Core::Container::String> ModelFiles    = {};
-        ZEngine::Core::Container::Array<ZEngine::Core::Container::String> MaterialFiles = {};
+        const char*                                                         Name          = "";
+        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> MeshFiles     = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> ModelFiles    = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> MaterialFiles = {};
 
-        ZEngine::Core::Container::Array<ZEngine::Core::Container::String> Hashes        = {};
-        std::map<const char*, Model>                                      Data          = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> Hashes        = {};
+        std::map<const char*, Model>                                        Data          = {};
 
-        ZRawPtr(ZEngine::Rendering::Scenes::GraphicScene) RenderScene                   = nullptr;
+        ZRawPtr(ZEngine::Rendering::Scenes::GraphicScene) RenderScene                     = nullptr;
 
     private:
         std::atomic_bool m_has_pending_change;

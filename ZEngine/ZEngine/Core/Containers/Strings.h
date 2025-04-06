@@ -2,7 +2,7 @@
 #include <Allocator.h>
 #include <MemoryOperations.h>
 
-namespace ZEngine::Core::Container
+namespace ZEngine::Core::Containers
 {
     struct String
     {
@@ -101,6 +101,38 @@ namespace ZEngine::Core::Container
         {
             ZENGINE_VALIDATE_ASSERT(index < m_size, "Index out of range");
             return m_data[index];
+        }
+
+        bool operator==(const String& other) const
+        {
+            if (m_size != other.m_size)
+                return false;
+            return Helpers::secure_strcmp(m_data, other.m_data) == 0;
+        }
+
+        bool operator!=(const String& other) const
+        {
+            return !(*this == other);
+        }
+
+        bool operator<(const String& other) const
+        {
+            return Helpers::secure_strcmp(m_data, other.m_data) < 0;
+        }
+
+        bool operator>(const String& other) const
+        {
+            return Helpers::secure_strcmp(m_data, other.m_data) > 0;
+        }
+
+        bool operator<=(const String& other) const
+        {
+            return !(*this > other);
+        }
+
+        bool operator>=(const String& other) const
+        {
+            return !(*this < other);
         }
 
         iterator begin()
@@ -252,4 +284,4 @@ namespace ZEngine::Core::Container
         size_type   m_size;
     };
 
-} // namespace ZEngine::Core::Container
+} // namespace ZEngine::Core::Containers

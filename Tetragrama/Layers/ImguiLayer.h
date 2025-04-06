@@ -1,7 +1,7 @@
 #pragma once
 #include <UIComponent.h>
-#include <ZEngine/Core/Container/Array.h>
-#include <ZEngine/Core/Container/Strings.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Windows/Inputs/IInputEventCallback.h>
 #include <ZEngine/Windows/Layers/Layer.h>
@@ -28,8 +28,8 @@ namespace Tetragrama::Layers
         ImguiLayer(const char* name = "ImGUI Layer") : Layer(name) {}
         virtual ~ImguiLayer();
 
-        ZEngine::Core::Container::Array<NodeHierarchy>       NodeHierarchies  = {};
-        ZEngine::Core::Container::Array<uint32_t>            NodeToRender     = {};
+        ZEngine::Core::Containers::Array<NodeHierarchy>      NodeHierarchies  = {};
+        ZEngine::Core::Containers::Array<uint32_t>           NodeToRender     = {};
         std::map<uint32_t, ZRawPtr(Components::UIComponent)> NodeUIComponents = {};
 
         virtual void                                         Initialize(ZEngine::Core::Memory::ArenaAllocator* arena) override;
