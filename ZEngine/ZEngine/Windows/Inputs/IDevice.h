@@ -38,15 +38,9 @@ namespace ZEngine::Windows::Inputs
             return reinterpret_cast<T*>(pair.first->second);
         }
 
-        virtual bool IsKeyPressed(ZENGINE_KEYCODE key, Windows::CoreWindow* const window) const
-        {
-            return false;
-        }
+        virtual bool        IsKeyPressed(ZENGINE_KEYCODE key, Windows::CoreWindow* const window) const  = 0;
 
-        virtual bool IsKeyReleased(ZENGINE_KEYCODE key, Windows::CoreWindow* const window) const
-        {
-            return false;
-        }
+        virtual bool        IsKeyReleased(ZENGINE_KEYCODE key, Windows::CoreWindow* const window) const = 0;
 
         virtual const char* GetName() const
         {

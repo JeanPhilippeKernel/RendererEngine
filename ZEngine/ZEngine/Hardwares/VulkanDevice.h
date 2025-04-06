@@ -560,7 +560,8 @@ namespace ZEngine::Hardwares
         ~CommandBuffer();
 
         Rendering::QueueType              QueueType;
-        Hardwares::VulkanDevice*          Device = nullptr;
+        Hardwares::VulkanDevice*          Device     = nullptr;
+        Core::Memory::ArenaAllocator      LocalArena = {};
 
         void                              Create();
         void                              Free();

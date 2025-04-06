@@ -155,10 +155,10 @@ namespace Tetragrama
 
         ZENGINE_CORE_INFO("Windows layers initialized")
 
-        // Initialize Devices (Keyboard, Mouse)
+        // Initialize Input Devices (Keyboard, Mouse)
         ZEngine::Windows::Inputs::IDevice::Initialize(arena);
 
-        ZENGINE_CORE_INFO("Device initialized")
+        ZENGINE_CORE_INFO("Input devices initialized")
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 

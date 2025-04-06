@@ -448,16 +448,21 @@ namespace ZEngine::Hardwares
                 TextureHandleToUpdates.Enqueue(tex_handle);
                 return;
             }
-            const auto&                       image_info            = texture->ImageBuffer->GetDescriptorImageInfo();
-            std::vector<VkWriteDescriptorSet> write_descriptor_sets = {};
-            write_descriptor_sets.reserve(WriteBindlessDescriptorSetRequests.size());
+            const auto& image_info = texture->ImageBuffer->GetDescriptorImageInfo();
 
-            for (auto& req : WriteBindlessDescriptorSetRequests)
+            auto        scratch    = ZGetScratch(Arena);
             {
-                write_descriptor_sets.push_back(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = req.DstSet, .dstBinding = req.Binding, .dstArrayElement = (uint32_t) tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-            }
+                Array<VkWriteDescriptorSet> write_descriptor_sets = {};
+                write_descriptor_sets.init(scratch.Arena, WriteBindlessDescriptorSetRequests.size());
 
-            vkUpdateDescriptorSets(LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
+                for (auto& req : WriteBindlessDescriptorSetRequests)
+                {
+                    write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = req.DstSet, .dstBinding = req.Binding, .dstArrayElement = (uint32_t) tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
+                }
+
+                vkUpdateDescriptorSets(LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
+            }
+            ZReleaseScratch(scratch);
         }
 
         Textures::TextureHandle tex_to_dispose = {};
@@ -1342,6 +1347,7 @@ namespace ZEngine::Hardwares
      */
     CommandBuffer::CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool one_time_usage) : Device(device), QueueType(type), m_command_pool(command_pool)
     {
+        Device->Arena->CreateSubArena(ZKilo(120), &LocalArena);
         Create();
     }
 
@@ -1466,15 +1472,17 @@ namespace ZEngine::Hardwares
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        const auto&               render_pass_spec = render_pass->Specification;
-        const uint32_t            width            = render_pass->GetRenderAreaWidth();
-        const uint32_t            height           = render_pass->GetRenderAreaHeight();
+        const auto&         render_pass_spec = render_pass->Specification;
+        const uint32_t      width            = render_pass->GetRenderAreaWidth();
+        const uint32_t      height           = render_pass->GetRenderAreaHeight();
 
-        std::vector<VkClearValue> clear_values     = {};
+        auto                scratch          = ZGetScratch(&LocalArena);
 
+        Array<VkClearValue> clear_values     = {};
+        clear_values.init(scratch.Arena, 5);
         if (render_pass_spec.SwapchainAsRenderTarget)
         {
-            clear_values.push_back(m_clear_value[0]);
+            clear_values.push(m_clear_value[0]);
         }
         else
         {
@@ -1484,10 +1492,10 @@ namespace ZEngine::Hardwares
                 auto texture = Device->GlobalTextures.Access(handle);
                 if (texture->IsDepthTexture)
                 {
-                    clear_values.push_back(m_clear_value[1]);
+                    clear_values.push(m_clear_value[1]);
                     continue;
                 }
-                clear_values.push_back(m_clear_value[0]);
+                clear_values.push(m_clear_value[0]);
             }
 
             for (const auto& handle : spec.ExternalOutputs)
@@ -1496,10 +1504,10 @@ namespace ZEngine::Hardwares
 
                 if (texture->IsDepthTexture)
                 {
-                    clear_values.push_back(m_clear_value[1]);
+                    clear_values.push(m_clear_value[1]);
                     continue;
                 }
-                clear_values.push_back(m_clear_value[0]);
+                clear_values.push(m_clear_value[0]);
             }
         }
 
@@ -1532,6 +1540,8 @@ namespace ZEngine::Hardwares
         vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass->Pipeline->GetHandle());
 
         m_active_render_pass = render_pass;
+
+        ZReleaseScratch(scratch);
     }
 
     void CommandBuffer::EndRenderPass()
@@ -1550,18 +1560,21 @@ namespace ZEngine::Hardwares
 
         if (auto render_pass = m_active_render_pass)
         {
-            auto                         pipeline           = render_pass->Pipeline;
-            auto                         pipeline_layout    = pipeline->GetPipelineLayout();
-            auto                         shader             = pipeline->GetShader();
-            const auto&                  descriptor_set_map = shader->GetDescriptorSetMap();
+            auto                   pipeline           = render_pass->Pipeline;
+            auto                   pipeline_layout    = pipeline->GetPipelineLayout();
+            auto                   shader             = pipeline->GetShader();
+            const auto&            descriptor_set_map = shader->GetDescriptorSetMap();
 
-            std::vector<VkDescriptorSet> frame_sets         = {};
+            auto                   scratch            = ZGetScratch(&LocalArena);
+            Array<VkDescriptorSet> frame_sets         = {};
+            frame_sets.init(scratch.Arena, 5);
             for (auto& [_, sets] : descriptor_set_map)
             {
-                frame_sets.emplace_back(sets[frame_index]);
+                frame_sets.push(sets[frame_index]);
             }
 
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, frame_sets.size(), frame_sets.data(), 0, nullptr);
+            ZReleaseScratch(scratch);
         }
     }
 
