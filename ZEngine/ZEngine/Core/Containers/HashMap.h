@@ -111,6 +111,24 @@ namespace ZEngine::Core::Containers
             return nullptr;
         }
 
+        size_t count(const K& key)
+        {
+            size_t count   = 0;
+            size_t index   = hash(key);
+            Node*  current = m_data[index].head;
+
+            while (current)
+            {
+                if (current->key == key)
+                {
+                    count++;
+                    break;
+                }
+                current = current->next;
+            }
+            return count;
+        }
+
         void remove(const K& key)
         {
             size_t index   = hash(key);
@@ -159,7 +177,6 @@ namespace ZEngine::Core::Containers
 
             m_data                 = static_cast<KeyValue*>(ZAlloc(m_allocator, new_capacity * sizeof(KeyValue), ZAlignof(KeyValue)));
             Helpers::secure_memset(m_data, 0, new_capacity * sizeof(KeyValue), m_capacity);
-
             m_capacity = new_capacity;
 
             for (size_t i = 0; i < old_capacity; ++i)

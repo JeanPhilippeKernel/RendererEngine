@@ -14,10 +14,9 @@
 #include <Rendering/Specifications/TextureSpecification.h>
 #include <Rendering/Textures/Texture.h>
 #include <Core/Containers/Array.h>
+#include <Core/Containers/HashMap.h>
 #include <Core/Containers/Strings.h>
 #include <Core/Memory/Allocator.h>
-
-#include <map>
 #include <vector>
 #include <set>
 // clang-format on
@@ -750,19 +749,19 @@ namespace ZEngine::Hardwares
         void                                                               DirtyCollector();
 
     private:
-        VulkanLayer                             m_layer               = {};
-        CommandBufferManager                    m_buffer_manager      = {};
-        std::map<Rendering::QueueType, VkQueue> m_queue_map           = {};
-        Helpers::HandleManager<DirtyResource>   m_dirty_resources     = {};
-        Helpers::HandleManager<BufferView>      m_dirty_buffers       = {};
-        Helpers::HandleManager<BufferImage>     m_dirty_buffer_images = {};
-        VkDebugUtilsMessengerEXT                m_debug_messenger{VK_NULL_HANDLE};
-        PFN_vkCreateDebugUtilsMessengerEXT      __createDebugMessengerPtr{VK_NULL_HANDLE};
-        PFN_vkDestroyDebugUtilsMessengerEXT     __destroyDebugMessengerPtr{VK_NULL_HANDLE};
-        void                                    __cleanupDirtyResource();
-        void                                    __cleanupBufferDirtyResource();
-        void                                    __cleanupBufferImageDirtyResource();
-        static VKAPI_ATTR VkBool32 VKAPI_CALL   __debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
+        VulkanLayer                                              m_layer               = {};
+        CommandBufferManager                                     m_buffer_manager      = {};
+        Core::Containers::HashMap<Rendering::QueueType, VkQueue> m_queue_map           = {};
+        Helpers::HandleManager<DirtyResource>                    m_dirty_resources     = {};
+        Helpers::HandleManager<BufferView>                       m_dirty_buffers       = {};
+        Helpers::HandleManager<BufferImage>                      m_dirty_buffer_images = {};
+        VkDebugUtilsMessengerEXT                                 m_debug_messenger{VK_NULL_HANDLE};
+        PFN_vkCreateDebugUtilsMessengerEXT                       __createDebugMessengerPtr{VK_NULL_HANDLE};
+        PFN_vkDestroyDebugUtilsMessengerEXT                      __destroyDebugMessengerPtr{VK_NULL_HANDLE};
+        void                                                     __cleanupDirtyResource();
+        void                                                     __cleanupBufferDirtyResource();
+        void                                                     __cleanupBufferImageDirtyResource();
+        static VKAPI_ATTR VkBool32 VKAPI_CALL                    __debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
     };
 } // namespace ZEngine::Hardwares
 

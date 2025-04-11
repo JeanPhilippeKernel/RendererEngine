@@ -39,6 +39,7 @@ namespace ZEngine::Hardwares
         m_dirty_resources.Initialize(arena, 300);
         m_dirty_buffers.Initialize(arena, 500);
         m_dirty_buffer_images.Initialize(arena, 300);
+        m_queue_map.init(arena, 4);
 
         /*Create Vulkan Instance*/
         VkApplicationInfo    app_info             = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pNext = VK_NULL_HANDLE, .pApplicationName = ApplicationName.data(), .applicationVersion = 1, .pEngineName = EngineName.data(), .engineVersion = 1, .apiVersion = VK_API_VERSION_1_3};
@@ -289,14 +290,16 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice) == VK_SUCCESS, "Failed to create GPU logical device")
 
         /*Create Vulkan Graphic Queue*/
-        m_queue_map[Rendering::QueueType::GRAPHIC_QUEUE] = VK_NULL_HANDLE;
-        vkGetDeviceQueue(LogicalDevice, GraphicFamilyIndex, 0, &(m_queue_map[Rendering::QueueType::GRAPHIC_QUEUE]));
+        VkQueue graphic_queue = VK_NULL_HANDLE;
+        vkGetDeviceQueue(LogicalDevice, GraphicFamilyIndex, 0, &graphic_queue);
+        m_queue_map.insert(Rendering::QueueType::GRAPHIC_QUEUE, std::move(graphic_queue));
 
         /*Create Vulkan Transfer Queue*/
         if (HasSeperateTransfertQueueFamily)
         {
-            m_queue_map[Rendering::QueueType::TRANSFER_QUEUE] = VK_NULL_HANDLE;
-            vkGetDeviceQueue(LogicalDevice, TransferFamilyIndex, 0, &(m_queue_map[Rendering::QueueType::TRANSFER_QUEUE]));
+            VkQueue transfer_queue = VK_NULL_HANDLE;
+            vkGetDeviceQueue(LogicalDevice, TransferFamilyIndex, 0, &transfer_queue);
+            m_queue_map.insert(Rendering::QueueType::TRANSFER_QUEUE, std::move(transfer_queue));
         }
 
         /* Surface format selection */

@@ -32,7 +32,7 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::Initialize(Hardwares::VulkanDevice* device)
     {
         Device                       = device;
-        RenderGraph                  = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph, this);
+        RenderGraph                  = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
         AsyncLoader                  = ZPushStructCtor(Device->Arena, AsyncResourceLoader);
         ImguiRenderer                = ZPushStructCtor(Device->Arena, ImGUIRenderer);
         /*
@@ -62,6 +62,7 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Subsystems initialization
          */
+        RenderGraph->Initialize(Device->Arena, this);
         AsyncLoader->Initialize(this);
         ImguiRenderer->Initialize(this);
         /*
