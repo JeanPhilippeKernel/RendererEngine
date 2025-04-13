@@ -11,7 +11,6 @@
 #include <Helpers/IntrusivePtr.h>
 #include <Inputs/IInputEventCallback.h>
 #include <Layers/Layer.h>
-#include <Layers/LayerStack.h>
 #include <WindowConfiguration.h>
 #include <WindowProperty.h>
 #include <future>
