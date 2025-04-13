@@ -116,12 +116,11 @@ namespace ZEngine::Hardwares
             }
         }
 
-        auto additional_extension_layer_name_collection = window->GetRequiredExtensionLayers();
-        if (!additional_extension_layer_name_collection.empty())
+        if (!window->RequiredExtensionLayers.empty())
         {
-            for (const auto& extension : additional_extension_layer_name_collection)
+            for (const auto& extension : window->RequiredExtensionLayers)
             {
-                enabled_extension_layer_name_collection.push(extension.c_str());
+                enabled_extension_layer_name_collection.push(extension);
             }
         }
 
