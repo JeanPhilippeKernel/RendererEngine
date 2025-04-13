@@ -13,13 +13,11 @@ namespace ZEngine::Core::Maths
         Vec2()  = default;
         Vec2(float x, float y) : x(x), y(y) {}
 
-        // Unary
         Vec2 operator-() const
         {
             return Vec2(-x, -y);
         }
 
-        // Binary arithmetic
         Vec2 operator+(const Vec2& rhs) const
         {
             return Vec2(x + rhs.x, y + rhs.y);
@@ -37,7 +35,6 @@ namespace ZEngine::Core::Maths
             return Vec2(x / rhs.x, y / rhs.y);
         }
 
-        // Scalar arithmetic
         Vec2 operator*(float scalar) const
         {
             return Vec2(x * scalar, y * scalar);
@@ -47,7 +44,6 @@ namespace ZEngine::Core::Maths
             return Vec2(x / scalar, y / scalar);
         }
 
-        // Compound assignment
         Vec2& operator+=(const Vec2& rhs)
         {
             x += rhs.x;
@@ -73,7 +69,6 @@ namespace ZEngine::Core::Maths
             return *this;
         }
 
-        // Comparison
         bool operator==(const Vec2& rhs) const
         {
             return x == rhs.x && y == rhs.y;
@@ -83,7 +78,6 @@ namespace ZEngine::Core::Maths
             return !(*this == rhs);
         }
 
-        // Length and normalization
         float length() const
         {
             return std::sqrt(x * x + y * y);
@@ -109,13 +103,11 @@ namespace ZEngine::Core::Maths
             }
         }
 
-        // Dot product
         static float dot(const Vec2& a, const Vec2& b)
         {
             return a.x * b.x + a.y * b.y;
         }
 
-        // Perpendicular (2D cross)
         static float cross(const Vec2& a, const Vec2& b)
         {
             return a.x * b.y - a.y * b.x;

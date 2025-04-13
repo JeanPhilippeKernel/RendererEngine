@@ -3,7 +3,6 @@
 
 using namespace ZEngine::Core::Maths;
 
-
 TEST(Vec2Test, ConstructorAndAccess)
 {
     Vec2 v(1.0f, 2.0f);

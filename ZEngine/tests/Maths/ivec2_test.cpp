@@ -3,7 +3,6 @@
 
 using namespace ZEngine::Core::Maths;
 
-
 TEST(IVec2Test, ConstructorAndAccess)
 {
     IVec2 v(1, 2);
@@ -51,19 +50,19 @@ TEST(IVec2Test, ScalarDivision)
 
 TEST(IVec2Test, DotProduct)
 {
-    IVec2  a(1, 2);
-    IVec2  b(3, 4);
+    IVec2 a(1, 2);
+    IVec2 b(3, 4);
 
-    int dot = IVec2::dot(a, b);
+    int   dot = IVec2::dot(a, b);
     EXPECT_FLOAT_EQ(dot, 11);
 }
 
 TEST(IVec2Test, CrossProduct2D)
 {
-    IVec2  a(1, 2);
-    IVec2  b(3, 4);
+    IVec2 a(1, 2);
+    IVec2 b(3, 4);
 
-    int cross = IVec2::cross(a, b);
+    int   cross = IVec2::cross(a, b);
     EXPECT_FLOAT_EQ(cross, -2);
 }
 
