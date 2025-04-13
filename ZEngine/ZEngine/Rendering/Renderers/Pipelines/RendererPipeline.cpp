@@ -1,29 +1,30 @@
 #include <pch.h>
 #include <Hardwares/VulkanDevice.h>
-#include <Managers/ShaderManager.h>
 #include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
-    GraphicPipeline::GraphicPipeline(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec) : m_device(device), m_pipeline_specification(std::move(spec))
+    void GraphicPipeline::Initialize(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec)
     {
-        m_shader = ZEngine::Managers::ShaderManager::Get(m_device, m_pipeline_specification.ShaderSpecification);
-    }
+        Device             = device;
+        Specification      = std::move(spec);
+        auto shader_handle = Device->CompileShader(Specification.ShaderSpecification);
+        if (!shader_handle)
+        {
+            ZENGINE_CORE_ERROR("")
+            return;
+        }
 
-    Specifications::GraphicRendererPipelineSpecification& GraphicPipeline::GetSpecification()
-    {
-        return m_pipeline_specification;
-    }
-
-    void GraphicPipeline::SetSpecification(Specifications::GraphicRendererPipelineSpecification& spec)
-    {
-        m_pipeline_specification = std::move(spec);
+        Shader = Device->ShaderManager.Access(shader_handle);
     }
 
     void GraphicPipeline::Bake()
     {
+
+        auto                             scratch                                = ZGetScratch(Device->Arena);
         /*Pipeline fixed states*/
         /*
          * Dynamic State
@@ -52,11 +53,20 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Vertex Input
          */
-        std::vector<VkVertexInputBindingDescription> vertex_input_bindings      = {};
-        std::transform(m_pipeline_specification.VertexInputBindingSpecifications.begin(), m_pipeline_specification.VertexInputBindingSpecifications.end(), std::back_inserter(vertex_input_bindings), [](const Specifications::VertexInputBindingSpecification& input) { return VkVertexInputBindingDescription{.binding = input.Binding, .stride = input.Stride, .inputRate = (VkVertexInputRate) input.Rate}; });
+        Array<VkVertexInputBindingDescription> vertex_input_bindings            = {};
+        vertex_input_bindings.init(scratch.Arena, 5, Specification.VertexInputBindingSpecifications.size());
+        for (unsigned i = 0; i < Specification.VertexInputBindingSpecifications.size(); ++i)
+        {
+            auto& input = Specification.VertexInputBindingSpecifications[i];
+            vertex_input_bindings.push(VkVertexInputBindingDescription{.binding = input.Binding, .stride = input.Stride, .inputRate = (VkVertexInputRate) input.Rate});
+        }
 
-        std::vector<VkVertexInputAttributeDescription> vertex_input_attributes = {};
-        std::transform(m_pipeline_specification.VertexInputAttributeSpecifications.begin(), m_pipeline_specification.VertexInputAttributeSpecifications.end(), std::back_inserter(vertex_input_attributes), [](const Specifications::VertexInputAttributeSpecification& input) { return VkVertexInputAttributeDescription{.location = input.Location, .binding = input.Binding, .format = Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(input.Format)], .offset = input.Offset}; });
+        Array<VkVertexInputAttributeDescription> vertex_input_attributes = {};
+        for (unsigned i = 0; i < Specification.VertexInputAttributeSpecifications.size(); ++i)
+        {
+            auto& input = Specification.VertexInputAttributeSpecifications[i];
+            vertex_input_attributes.push(VkVertexInputAttributeDescription{.location = input.Location, .binding = input.Binding, .format = Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(input.Format)], .offset = input.Offset});
+        }
 
         VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info   = {};
         vertex_input_state_create_info.sType                                  = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -94,29 +104,30 @@ namespace ZEngine::Rendering::Renderers::Pipelines
          */
         VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {};
         depth_stencil_state_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        depth_stencil_state_create_info.stencilTestEnable                     = m_pipeline_specification.EnableStencilTest ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.stencilTestEnable                     = Specification.EnableStencilTest ? VK_TRUE : VK_FALSE;
         depth_stencil_state_create_info.front                                 = {};
         depth_stencil_state_create_info.back                                  = {};
-        depth_stencil_state_create_info.depthTestEnable                       = m_pipeline_specification.EnableDepthTest ? VK_TRUE : VK_FALSE;
-        depth_stencil_state_create_info.depthCompareOp                        = VkCompareOp(m_pipeline_specification.DepthCompareOp);
-        depth_stencil_state_create_info.depthWriteEnable                      = m_pipeline_specification.EnableDepthWrite ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.depthTestEnable                       = Specification.EnableDepthTest ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.depthCompareOp                        = VkCompareOp(Specification.DepthCompareOp);
+        depth_stencil_state_create_info.depthWriteEnable                      = Specification.EnableDepthWrite ? VK_TRUE : VK_FALSE;
         depth_stencil_state_create_info.minDepthBounds                        = 0.0f;
         depth_stencil_state_create_info.maxDepthBounds                        = 1.0f;
         /*
          * Color blend state and attachment
          */
-        ZENGINE_VALIDATE_ASSERT(m_pipeline_specification.Attachment, "Attachment can't be null")
+        ZENGINE_VALIDATE_ASSERT(Specification.Attachment, "Attachment can't be null")
 
-        uint32_t                                         attachment_count = m_pipeline_specification.Attachment->GetColorAttachmentCount();
-        std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachment_states{attachment_count};
+        uint32_t                                   attachment_count = Specification.Attachment->GetColorAttachmentCount();
+        Array<VkPipelineColorBlendAttachmentState> color_blend_attachment_states{};
+        color_blend_attachment_states.init(scratch.Arena, attachment_count, attachment_count);
         for (uint32_t i = 0; i < attachment_count; ++i)
         {
             color_blend_attachment_states[i].colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            color_blend_attachment_states[i].blendEnable         = m_pipeline_specification.EnableBlending ? VK_TRUE : VK_FALSE;
+            color_blend_attachment_states[i].blendEnable         = Specification.EnableBlending ? VK_TRUE : VK_FALSE;
             color_blend_attachment_states[i].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
             color_blend_attachment_states[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             color_blend_attachment_states[i].colorBlendOp        = VK_BLEND_OP_ADD;
-            color_blend_attachment_states[i].srcAlphaBlendFactor = m_pipeline_specification.EnableBlending ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE;
+            color_blend_attachment_states[i].srcAlphaBlendFactor = Specification.EnableBlending ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE;
             color_blend_attachment_states[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
             color_blend_attachment_states[i].alphaBlendOp        = VK_BLEND_OP_ADD;
         }
@@ -136,8 +147,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Pipeline layout
          */
-        const auto                 descriptor_set_layout_collection       = m_shader->GetDescriptorSetLayout();
-        const auto&                push_constant_collection               = m_shader->GetPushConstants();
+        auto&                      descriptor_set_layout_collection       = Shader->SetLayouts;
+        const auto&                push_constant_collection               = Shader->PushConstants;
         VkPipelineLayoutCreateInfo pipeline_layout_create_info            = {};
         pipeline_layout_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipeline_layout_create_info.setLayoutCount                        = descriptor_set_layout_collection.size(); // Optional
@@ -146,11 +157,11 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         pipeline_layout_create_info.pPushConstantRanges                   = push_constant_collection.data();
         pipeline_layout_create_info.flags                                 = 0;
         pipeline_layout_create_info.pNext                                 = nullptr;
-        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(m_device->LogicalDevice, &(pipeline_layout_create_info), nullptr, &m_pipeline_layout) == VK_SUCCESS, "Failed to create pipeline layout")
+        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(Device->LogicalDevice, &(pipeline_layout_create_info), nullptr, &Layout) == VK_SUCCESS, "Failed to create pipeline layout")
         /*
          * Graphic Pipeline Creation
          */
-        const auto&                  shader_create_info_collection = m_shader->GetStageCreateInfoCollection();
+        const auto&                  shader_create_info_collection = Shader->ShaderCreateInfos;
         VkGraphicsPipelineCreateInfo graphic_pipeline_create_info  = {};
         graphic_pipeline_create_info.sType                         = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
         graphic_pipeline_create_info.stageCount                    = shader_create_info_collection.size();
@@ -160,42 +171,28 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.pViewportState                = &(viewport_state_create_info);
         graphic_pipeline_create_info.pRasterizationState           = &(rasterization_create_info);
         graphic_pipeline_create_info.pMultisampleState             = &(multisample_state_create_info);
-        graphic_pipeline_create_info.pDepthStencilState            = m_pipeline_specification.EnableDepthTest ? &(depth_stencil_state_create_info) : nullptr;
+        graphic_pipeline_create_info.pDepthStencilState            = Specification.EnableDepthTest ? &(depth_stencil_state_create_info) : nullptr;
         graphic_pipeline_create_info.pColorBlendState              = &(color_blend_state_create_info);
         graphic_pipeline_create_info.pDynamicState                 = &(dynamic_state_create_info);
-        graphic_pipeline_create_info.layout                        = m_pipeline_layout;
-        graphic_pipeline_create_info.renderPass                    = m_pipeline_specification.Attachment->GetHandle();
+        graphic_pipeline_create_info.layout                        = Layout;
+        graphic_pipeline_create_info.renderPass                    = Specification.Attachment->GetHandle();
         graphic_pipeline_create_info.subpass                       = 0;
         graphic_pipeline_create_info.basePipelineHandle            = VK_NULL_HANDLE; // Optional
         graphic_pipeline_create_info.basePipelineIndex             = -1;             // Optional
         graphic_pipeline_create_info.flags                         = 0;              // Optional
         graphic_pipeline_create_info.pNext                         = nullptr;        // Optional
-        ZENGINE_VALIDATE_ASSERT(vkCreateGraphicsPipelines(m_device->LogicalDevice, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &m_pipeline_handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
+        ZENGINE_VALIDATE_ASSERT(vkCreateGraphicsPipelines(Device->LogicalDevice, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &Handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
+
+        ZReleaseScratch(scratch);
     }
 
     void GraphicPipeline::Dispose()
     {
-        m_shader->Dispose();
+        Shader->Dispose();
 
-        m_device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, m_pipeline_layout);
-        m_device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, m_pipeline_handle);
-        m_pipeline_layout = VK_NULL_HANDLE;
-        m_pipeline_handle = VK_NULL_HANDLE;
+        Device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, Layout);
+        Device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, Handle);
+        Layout = VK_NULL_HANDLE;
+        Handle = VK_NULL_HANDLE;
     }
-
-    VkPipeline GraphicPipeline::GetHandle() const
-    {
-        return m_pipeline_handle;
-    }
-
-    VkPipelineLayout GraphicPipeline::GetPipelineLayout() const
-    {
-        return m_pipeline_layout;
-    }
-
-    Ref<Shaders::Shader> GraphicPipeline::GetShader() const
-    {
-        return m_shader;
-    }
-
 } // namespace ZEngine::Rendering::Renderers::Pipelines

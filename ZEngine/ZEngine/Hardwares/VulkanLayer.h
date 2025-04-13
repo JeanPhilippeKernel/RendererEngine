@@ -1,27 +1,22 @@
 #pragma once
+#include <Core/Containers/Array.h>
+#include <Core/Memory/Allocator.h>
 #include <vulkan/vulkan.h>
-#include <vector>
 
 namespace ZEngine::Hardwares
 {
     struct LayerProperty
     {
-        LayerProperty()  = default;
-        ~LayerProperty() = default;
-
-        VkLayerProperties                  Properties;
-        std::vector<VkExtensionProperties> ExtensionCollection;
-        std::vector<VkExtensionProperties> DeviceExtensionCollection;
+        VkLayerProperties                              Properties;
+        Core::Containers::Array<VkExtensionProperties> ExtensionCollection;
+        Core::Containers::Array<VkExtensionProperties> DeviceExtensionCollection;
     };
 
-    class VulkanLayer
+    struct VulkanLayer
     {
-    public:
-        VulkanLayer()  = default;
-        ~VulkanLayer() = default;
-
-        std::vector<LayerProperty> GetInstanceLayerProperties();
-        VkResult                   GetExtensionProperties(LayerProperty& layer_property, const VkPhysicalDevice* physical_device = nullptr);
-        VkResult                   GetDeviceExtensionProperties(const VkPhysicalDevice* physical_device);
+        Core::Containers::Array<LayerProperty> InstanceLayers;
+        void                                   QueryInstanceLayerProperties(Core::Memory::ArenaAllocator* arena);
+        VkResult                               GetExtensionProperties(Core::Memory::ArenaAllocator* arena, LayerProperty& layer_property, const VkPhysicalDevice* physical_device = nullptr);
+        VkResult                               GetDeviceExtensionProperties(const VkPhysicalDevice* physical_device);
     };
 } // namespace ZEngine::Hardwares

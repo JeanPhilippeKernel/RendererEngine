@@ -106,8 +106,8 @@ namespace ZEngine::Rendering::Renderers
 
         auto                        font_image_info        = font_texture->ImageBuffer->GetDescriptorImageInfo();
         uint32_t                    frame_count            = renderer->Device->SwapchainImageCount;
-        auto                        shader                 = m_ui_pass->Pipeline->GetShader();
-        auto                        descriptor_set_map     = shader->GetDescriptorSetMap();
+        auto                        shader                 = m_ui_pass->Pipeline->Shader;
+        auto&                       descriptor_set_map     = shader->DescriptorSetMap;
 
         auto                        scratch                = ZGetScratch(renderer->Device->Arena);
         Array<VkWriteDescriptorSet> write_descriptor_sets  = {};
@@ -115,7 +115,7 @@ namespace ZEngine::Rendering::Renderers
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto set = descriptor_set_map.at(0)[i];
+            auto set = descriptor_set_map[0][i];
             write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
         }
 

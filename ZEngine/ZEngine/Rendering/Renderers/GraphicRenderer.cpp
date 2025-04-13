@@ -123,7 +123,9 @@ namespace ZEngine::Rendering::Renderers
 
     ZRawPtr(RenderPasses::RenderPass) GraphicRenderer::CreateRenderPass(const Specifications::RenderPassSpecification& spec)
     {
-        return ZPushStructCtorArgs(Device->Arena, RenderPasses::RenderPass, Device, spec);
+        auto pass = ZPushStructCtorArgs(Device->Arena, RenderPasses::RenderPass);
+        pass->Initialize(Device, spec);
+        return pass;
     }
 
     Textures::TextureHandle GraphicRenderer::CreateTexture(const Specifications::TextureSpecification& spec)

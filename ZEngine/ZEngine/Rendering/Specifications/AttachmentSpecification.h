@@ -1,17 +1,17 @@
 #pragma once
+#include <Core/Containers/Array.h>
+#include <Core/Containers/HashMap.h>
 #include <Rendering/Specifications/FormatSpecification.h>
 #include <vulkan/vulkan.h>
-#include <map>
-#include <vector>
 
 namespace ZEngine::Rendering::Specifications
 {
 
     struct SubPassSpecification
     {
-        std::vector<VkAttachmentReference> ColorAttachementReferences;
-        VkAttachmentReference              DepthStencilAttachementReference;
-        VkSubpassDescription               SubpassDescription;
+        VkAttachmentReference                          DepthStencilAttachementReference;
+        VkSubpassDescription                           SubpassDescription;
+        Core::Containers::Array<VkAttachmentReference> ColorAttachementReferences;
     };
 
     struct ColorAttachment
@@ -26,11 +26,11 @@ namespace ZEngine::Rendering::Specifications
 
     struct AttachmentSpecification
     {
-        std::map<uint32_t, ColorAttachment>     ColorsMap;
-        std::map<uint32_t, VkSubpassDependency> DependenciesMap;
-        PipelineBindPoint                       BindPoint;
-        std::vector<VkAttachmentDescription>    ColorAttachements;
-        std::vector<SubPassSpecification>       SubpassSpecifications;
-        std::vector<VkSubpassDependency>        SubpassDependencies;
+        PipelineBindPoint                                        BindPoint;
+        Core::Containers::HashMap<uint32_t, ColorAttachment>     ColorsMap;
+        Core::Containers::HashMap<uint32_t, VkSubpassDependency> DependenciesMap;
+        Core::Containers::Array<VkAttachmentDescription>         ColorAttachements;
+        Core::Containers::Array<SubPassSpecification>            SubpassSpecifications;
+        Core::Containers::Array<VkSubpassDependency>             SubpassDependencies;
     };
 } // namespace ZEngine::Rendering::Specifications

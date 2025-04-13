@@ -116,6 +116,7 @@ namespace ZEngine::Rendering::Renderers
         Renderer          = renderer;
         Builder           = ZPushStructCtorArgs(arena, RenderGraphBuilder, *this);
         RenderPassBuilder = ZPushStructCtorArgs(arena, RenderPasses::RenderPassBuilder);
+        RenderPassBuilder->Initialize(arena);
         m_sorted_nodes.init(arena, 7);
         m_node.init(arena, 7);
         m_resource_map.init(arena, 10);
@@ -412,7 +413,7 @@ namespace ZEngine::Rendering::Renderers
                 {
                     Renderer->Device->TextureHandleToUpdates.Enqueue(resource.ResourceInfo.TextureHandle);
                 }
-                pass_spec.ExternalOutputs.emplace_back(resource.ResourceInfo.TextureHandle);
+                pass_spec.ExternalOutputs.push(resource.ResourceInfo.TextureHandle);
             }
 
             for (auto& input : node.Creation.Inputs)
@@ -421,7 +422,7 @@ namespace ZEngine::Rendering::Renderers
 
                 if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::ATTACHMENT)
                 {
-                    pass_spec.Inputs.push_back(resource.ResourceInfo.TextureHandle);
+                    pass_spec.Inputs.push(resource.ResourceInfo.TextureHandle);
                 }
                 /*
                  * The resource is an attachment from a RenderPass output, but the current node consumes it as Image for sampling operation

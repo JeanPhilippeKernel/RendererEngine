@@ -1,31 +1,34 @@
 #pragma once
+#include <Core/Containers/Array.h>
+#include <Core/Containers/HashMap.h>
+#include <Core/Memory/Allocator.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
 #include <ZEngineDef.h>
-#include <map>
-#include <string>
 
 namespace ZEngine::Rendering::Shaders
 {
-    class Shader : public Helpers::RefCounted
+    struct Shader
     {
-    public:
-        Shader(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec);
+        Shader();
         ~Shader();
 
-        const std::vector<VkPipelineShaderStageCreateInfo>&                                GetStageCreateInfoCollection() const;
-        const std::map<uint32_t, std::vector<Specifications::LayoutBindingSpecification>>& GetLayoutBindingSetMap() const;
-        const std::vector<VkDescriptorSetLayoutBinding>&                                   GetLayoutBindingCollection() = delete;
-        const Specifications::ShaderSpecification&                                         GetSpecification() const     = delete;
-        Specifications::ShaderSpecification                                                GetSpecification()           = delete;
-        Specifications::LayoutBindingSpecification                                         GetLayoutBindingSpecification(std::string_view name) const;
-        std::vector<VkDescriptorSetLayout>                                                 GetDescriptorSetLayout() const;
-        std::vector<Specifications::LayoutBindingSpecification>                            GetLayoutBindingSpecificationCollection() const;
-        const std::map<uint32_t, std::vector<VkDescriptorSet>>&                            GetDescriptorSetMap() const;
-        std::map<uint32_t, std::vector<VkDescriptorSet>>&                                  GetDescriptorSetMap();
-        VkDescriptorPool                                                                   GetDescriptorPool() const;
-        const std::vector<VkPushConstantRange>&                                            GetPushConstants() const;
-        void                                                                               Dispose();
+        void                                                                                                     Initialize(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec);
+        void                                                                                                     Dispose();
+        Specifications::LayoutBindingSpecification                                                               GetLayoutBindingSpecification(const char* name);
+
+        VkDescriptorPool                                                                                         m_descriptor_pool             = VK_NULL_HANDLE;
+        Specifications::ShaderSpecification                                                                      m_specification               = {};
+        Core::Memory::ArenaAllocator                                                                             LocalArena                    = {};
+
+        Core::Containers::Array<Specifications::PushConstantSpecification>                                       PushConstantSpecifications    = {};
+        Core::Containers::Array<VkPipelineShaderStageCreateInfo>                                                 ShaderCreateInfos             = {};
+        Core::Containers::Array<VkDescriptorSetLayout>                                                           SetLayouts                    = {};
+        Core::Containers::Array<Specifications::LayoutBindingSpecification>                                      LayoutBindingSpections        = {};
+        Core::Containers::Array<VkPushConstantRange>                                                             PushConstants                 = {};
+        Core::Containers::HashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                            DescriptorSetMap              = {}; //<set, vec<descriptorSet>>
+        Core::Containers::HashMap<uint32_t, VkDescriptorSetLayout>                                               DescriptorSetLayoutMap        = {}; // <set, layout>
+        Core::Containers::HashMap<uint32_t, Core::Containers::Array<Specifications::LayoutBindingSpecification>> LayoutBindingSpecificationMap = {};
 
     private:
         void CreateModule();
@@ -33,17 +36,7 @@ namespace ZEngine::Rendering::Shaders
         void CreatePushConstantRange();
 
     private:
-        Specifications::ShaderSpecification                                         m_specification;
-        std::vector<VkDescriptorSetLayoutBinding>                                   m_layout_binding_collection;
-        std::vector<VkShaderModule>                                                 m_shader_module_collection;
-        std::vector<VkPipelineShaderStageCreateInfo>                                m_shader_create_info_collection;
-        std::map<uint32_t, std::vector<Specifications::LayoutBindingSpecification>> m_layout_binding_specification_map;
-        std::map<uint32_t, VkDescriptorSetLayout>                                   m_descriptor_set_layout_map; // <set, layout>
-        std::map<uint32_t, std::vector<VkDescriptorSet>>                            m_descriptor_set_map;        //<set, vec<descriptorSet>>
-        std::vector<Specifications::PushConstantSpecification>                      m_push_constant_specification_collection;
-        std::vector<VkPushConstantRange>                                            m_push_constant_collection;
-        VkDescriptorPool                                                            m_descriptor_pool{VK_NULL_HANDLE};
-        Hardwares::VulkanDevice*                                                    m_device{nullptr};
+        Hardwares::VulkanDevice* m_device{nullptr};
     };
 
     Shader* CreateShader(const char* filename, bool defer_program_creation = false);
