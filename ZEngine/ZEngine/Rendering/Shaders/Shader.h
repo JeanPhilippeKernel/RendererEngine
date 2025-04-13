@@ -23,6 +23,7 @@ namespace ZEngine::Rendering::Shaders
 
         Core::Containers::Array<Specifications::PushConstantSpecification>                                       PushConstantSpecifications    = {};
         Core::Containers::Array<VkPipelineShaderStageCreateInfo>                                                 ShaderCreateInfos             = {};
+        Core::Containers::Array<VkShaderModule>                                                                  ShaderModules                 = {};
         Core::Containers::Array<VkDescriptorSetLayout>                                                           SetLayouts                    = {};
         Core::Containers::Array<Specifications::LayoutBindingSpecification>                                      LayoutBindingSpections        = {};
         Core::Containers::Array<VkPushConstantRange>                                                             PushConstants                 = {};
@@ -41,3 +42,15 @@ namespace ZEngine::Rendering::Shaders
 
     Shader* CreateShader(const char* filename, bool defer_program_creation = false);
 } // namespace ZEngine::Rendering::Shaders
+
+namespace ZEngine::Helpers
+{
+    template <>
+    inline void HandleManager<Rendering::Shaders::Shader>::Dispose()
+    {
+        for (size_t i = 0; i < m_count; ++i)
+        {
+            m_memory[i].Dispose();
+        }
+    }
+} // namespace ZEngine::Helpers

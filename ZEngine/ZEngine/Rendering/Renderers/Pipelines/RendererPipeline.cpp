@@ -54,7 +54,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
          * Vertex Input
          */
         Array<VkVertexInputBindingDescription> vertex_input_bindings            = {};
-        vertex_input_bindings.init(scratch.Arena, 5, Specification.VertexInputBindingSpecifications.size());
+        vertex_input_bindings.init(scratch.Arena, 5);
         for (unsigned i = 0; i < Specification.VertexInputBindingSpecifications.size(); ++i)
         {
             auto& input = Specification.VertexInputBindingSpecifications[i];
@@ -62,6 +62,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         }
 
         Array<VkVertexInputAttributeDescription> vertex_input_attributes = {};
+        vertex_input_attributes.init(scratch.Arena, 5);
         for (unsigned i = 0; i < Specification.VertexInputAttributeSpecifications.size(); ++i)
         {
             auto& input = Specification.VertexInputAttributeSpecifications[i];
@@ -147,40 +148,37 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         /*
          * Pipeline layout
          */
-        auto&                      descriptor_set_layout_collection       = Shader->SetLayouts;
-        const auto&                push_constant_collection               = Shader->PushConstants;
         VkPipelineLayoutCreateInfo pipeline_layout_create_info            = {};
         pipeline_layout_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipeline_layout_create_info.setLayoutCount                        = descriptor_set_layout_collection.size(); // Optional
-        pipeline_layout_create_info.pSetLayouts                           = descriptor_set_layout_collection.data(); // Optional
-        pipeline_layout_create_info.pushConstantRangeCount                = push_constant_collection.size();
-        pipeline_layout_create_info.pPushConstantRanges                   = push_constant_collection.data();
+        pipeline_layout_create_info.setLayoutCount                        = Shader->SetLayouts.size(); // Optional
+        pipeline_layout_create_info.pSetLayouts                           = Shader->SetLayouts.data(); // Optional
+        pipeline_layout_create_info.pushConstantRangeCount                = Shader->PushConstants.size();
+        pipeline_layout_create_info.pPushConstantRanges                   = Shader->PushConstants.data();
         pipeline_layout_create_info.flags                                 = 0;
         pipeline_layout_create_info.pNext                                 = nullptr;
         ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(Device->LogicalDevice, &(pipeline_layout_create_info), nullptr, &Layout) == VK_SUCCESS, "Failed to create pipeline layout")
         /*
          * Graphic Pipeline Creation
          */
-        const auto&                  shader_create_info_collection = Shader->ShaderCreateInfos;
-        VkGraphicsPipelineCreateInfo graphic_pipeline_create_info  = {};
-        graphic_pipeline_create_info.sType                         = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        graphic_pipeline_create_info.stageCount                    = shader_create_info_collection.size();
-        graphic_pipeline_create_info.pStages                       = shader_create_info_collection.data();
-        graphic_pipeline_create_info.pVertexInputState             = &(vertex_input_state_create_info);
-        graphic_pipeline_create_info.pInputAssemblyState           = &(input_assembly_state_create_info);
-        graphic_pipeline_create_info.pViewportState                = &(viewport_state_create_info);
-        graphic_pipeline_create_info.pRasterizationState           = &(rasterization_create_info);
-        graphic_pipeline_create_info.pMultisampleState             = &(multisample_state_create_info);
-        graphic_pipeline_create_info.pDepthStencilState            = Specification.EnableDepthTest ? &(depth_stencil_state_create_info) : nullptr;
-        graphic_pipeline_create_info.pColorBlendState              = &(color_blend_state_create_info);
-        graphic_pipeline_create_info.pDynamicState                 = &(dynamic_state_create_info);
-        graphic_pipeline_create_info.layout                        = Layout;
-        graphic_pipeline_create_info.renderPass                    = Specification.Attachment->GetHandle();
-        graphic_pipeline_create_info.subpass                       = 0;
-        graphic_pipeline_create_info.basePipelineHandle            = VK_NULL_HANDLE; // Optional
-        graphic_pipeline_create_info.basePipelineIndex             = -1;             // Optional
-        graphic_pipeline_create_info.flags                         = 0;              // Optional
-        graphic_pipeline_create_info.pNext                         = nullptr;        // Optional
+        VkGraphicsPipelineCreateInfo graphic_pipeline_create_info = {};
+        graphic_pipeline_create_info.sType                        = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        graphic_pipeline_create_info.stageCount                   = Shader->ShaderCreateInfos.size();
+        graphic_pipeline_create_info.pStages                      = Shader->ShaderCreateInfos.data();
+        graphic_pipeline_create_info.pVertexInputState            = &(vertex_input_state_create_info);
+        graphic_pipeline_create_info.pInputAssemblyState          = &(input_assembly_state_create_info);
+        graphic_pipeline_create_info.pViewportState               = &(viewport_state_create_info);
+        graphic_pipeline_create_info.pRasterizationState          = &(rasterization_create_info);
+        graphic_pipeline_create_info.pMultisampleState            = &(multisample_state_create_info);
+        graphic_pipeline_create_info.pDepthStencilState           = Specification.EnableDepthTest ? &(depth_stencil_state_create_info) : nullptr;
+        graphic_pipeline_create_info.pColorBlendState             = &(color_blend_state_create_info);
+        graphic_pipeline_create_info.pDynamicState                = &(dynamic_state_create_info);
+        graphic_pipeline_create_info.layout                       = Layout;
+        graphic_pipeline_create_info.renderPass                   = Specification.Attachment->GetHandle();
+        graphic_pipeline_create_info.subpass                      = 0;
+        graphic_pipeline_create_info.basePipelineHandle           = VK_NULL_HANDLE; // Optional
+        graphic_pipeline_create_info.basePipelineIndex            = -1;             // Optional
+        graphic_pipeline_create_info.flags                        = 0;              // Optional
+        graphic_pipeline_create_info.pNext                        = nullptr;        // Optional
         ZENGINE_VALIDATE_ASSERT(vkCreateGraphicsPipelines(Device->LogicalDevice, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &Handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
 
         ZReleaseScratch(scratch);

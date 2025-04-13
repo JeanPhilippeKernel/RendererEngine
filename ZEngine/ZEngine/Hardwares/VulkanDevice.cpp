@@ -45,8 +45,8 @@ namespace ZEngine::Hardwares
         DirtyResources.Initialize(arena, 300);
         DirtyBuffers.Initialize(arena, 500);
         DirtyBufferImages.Initialize(arena, 300);
-
-        // m_queue_map.init(arena, 4);
+        ShaderCaches.init(arena, 10);
+        m_queue_map.init(arena, 4);
 
         m_layer.QueryInstanceLayerProperties(arena);
 
@@ -299,14 +299,14 @@ namespace ZEngine::Hardwares
         /*Create Vulkan Graphic Queue*/
         VkQueue graphic_queue = VK_NULL_HANDLE;
         vkGetDeviceQueue(LogicalDevice, GraphicFamilyIndex, 0, &graphic_queue);
-        m_queue_map.emplace(Rendering::QueueType::GRAPHIC_QUEUE, std::move(graphic_queue));
+        m_queue_map.insert(Rendering::QueueType::GRAPHIC_QUEUE, std::move(graphic_queue));
 
         /*Create Vulkan Transfer Queue*/
         if (HasSeperateTransfertQueueFamily)
         {
             VkQueue transfer_queue = VK_NULL_HANDLE;
             vkGetDeviceQueue(LogicalDevice, TransferFamilyIndex, 0, &transfer_queue);
-            m_queue_map.emplace(Rendering::QueueType::TRANSFER_QUEUE, std::move(transfer_queue));
+            m_queue_map.insert(Rendering::QueueType::TRANSFER_QUEUE, std::move(transfer_queue));
         }
 
         /* Surface format selection */
@@ -423,6 +423,7 @@ namespace ZEngine::Hardwares
         IndirectBufferSetManager.Dispose();
         IndexBufferSetManager.Dispose();
         UniformBufferSetManager.Dispose();
+        ShaderManager.Dispose();
 
         EnqueuedCommandbuffers.clear();
         SwapchainSignalFences.clear();
@@ -1363,8 +1364,13 @@ namespace ZEngine::Hardwares
         const char* vertex_name_part   = "_vertex.spv";
         const char* fragment_name_part = "_fragment.spv";
 
-        auto        handle             = ShaderManager.Create();
-        auto        shader             = ShaderManager.Access(handle);
+        if (ShaderCaches.contains(spec.Name))
+        {
+            return ShaderCaches[spec.Name];
+        }
+
+        auto handle = ShaderManager.Create();
+        auto shader = ShaderManager.Access(handle);
 
         if (shader)
         {

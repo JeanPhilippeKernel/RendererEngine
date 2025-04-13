@@ -30,8 +30,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         {
             Specifications::AttachmentSpecification attachment_specification = {};
             attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
+            attachment_specification.ColorAttachements.init(device->Arena, 4);
+            attachment_specification.SubpassSpecifications.init(device->Arena, 4);
+            attachment_specification.ColorsMap.init(device->Arena, 4);
+            attachment_specification.DependenciesMap.init(device->Arena, 4);
+            attachment_specification.SubpassDependencies.init(device->Arena, 4);
 
-            uint32_t color_map_index                                         = 0;
+            uint32_t color_map_index = 0;
             for (const auto& handle : Specification.Inputs)
             {
                 const auto& texture                                                 = device->GlobalTextures.Access(handle);
@@ -451,24 +456,41 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Textures::TextureHandle& target)
     {
+        if (m_spec.ExternalOutputs.capacity() <= 0)
+        {
+            m_spec.ExternalOutputs.init(Arena, 4);
+        }
+
         m_spec.ExternalOutputs.push(target);
         return *this;
     }
 
     RenderPassBuilder& RenderPassBuilder::AddRenderTarget(const Specifications::TextureSpecification& target_spec)
     {
+        if (m_spec.Outputs.capacity() <= 0)
+        {
+            m_spec.Outputs.init(Arena, 4);
+        }
         m_spec.Outputs.push(target_spec);
         return *this;
     }
 
     RenderPassBuilder& RenderPassBuilder::AddInputAttachment(const Textures::TextureHandle& input)
     {
+        if (m_spec.Inputs.capacity() <= 0)
+        {
+            m_spec.Inputs.init(Arena, 4);
+        }
         m_spec.Inputs.push(input);
         return *this;
     }
 
     RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Textures::TextureHandle& input)
     {
+        if (m_spec.InputTextures.capacity() <= 0)
+        {
+            m_spec.InputTextures.init(Arena, 4);
+        }
         m_spec.InputTextures[key.data()] = input;
         return *this;
     }
