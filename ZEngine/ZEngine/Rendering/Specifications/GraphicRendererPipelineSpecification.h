@@ -1,5 +1,5 @@
 #pragma once
-#include <Helpers/IntrusivePtr.h>
+#include <Core/Containers/Array.h>
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
@@ -23,16 +23,16 @@ namespace ZEngine::Rendering::Specifications
 
     struct GraphicRendererPipelineSpecification
     {
-        bool                                           EnableBlending                     = false;
-        bool                                           EnableDepthTest                    = false;
-        bool                                           EnableDepthWrite                   = true;
-        uint32_t                                       DepthCompareOp                     = VK_COMPARE_OP_LESS_OR_EQUAL;
-        bool                                           EnableStencilTest                  = false;
-        const char*                                    DebugName                          = {};
-        ShaderSpecification                            ShaderSpecification                = {};
-        Rendering::Buffers::FramebufferVNext*          TargetFrameBuffer                  = {};
-        Renderers::RenderPasses::Attachment*           Attachment                         = {};
-        std::vector<VertexInputBindingSpecification>   VertexInputBindingSpecifications   = {};
-        std::vector<VertexInputAttributeSpecification> VertexInputAttributeSpecifications = {};
+        bool                                                       EnableBlending                     = false;
+        bool                                                       EnableDepthTest                    = false;
+        bool                                                       EnableDepthWrite                   = true;
+        uint32_t                                                   DepthCompareOp                     = VK_COMPARE_OP_LESS_OR_EQUAL;
+        bool                                                       EnableStencilTest                  = false;
+        const char*                                                DebugName                          = {};
+        ShaderSpecification                                        ShaderSpecification                = {};
+        Rendering::Buffers::FramebufferVNext*                      TargetFrameBuffer                  = {};
+        Renderers::RenderPasses::Attachment*                       Attachment                         = {};
+        Core::Containers::Array<VertexInputBindingSpecification>   VertexInputBindingSpecifications   = {};
+        Core::Containers::Array<VertexInputAttributeSpecification> VertexInputAttributeSpecifications = {};
     };
 } // namespace ZEngine::Rendering::Specifications

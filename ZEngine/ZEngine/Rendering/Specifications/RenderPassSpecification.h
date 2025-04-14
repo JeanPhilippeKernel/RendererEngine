@@ -1,21 +1,20 @@
 #pragma once
-#include <Helpers/IntrusivePtr.h>
+#include <Core/Containers/Array.h>
+#include <Core/Containers/HashMap.h>
 #include <Rendering/Specifications/GraphicRendererPipelineSpecification.h>
 #include <Rendering/Specifications/TextureSpecification.h>
 #include <Rendering/Textures/Texture.h>
-#include <unordered_map>
-#include <vector>
 
 namespace ZEngine::Rendering::Specifications
 {
     struct RenderPassSpecification
     {
-        const char*                                              DebugName               = {};
-        bool                                                     SwapchainAsRenderTarget = false;
-        Specifications::GraphicRendererPipelineSpecification     PipelineSpecification   = {};
-        std::vector<Textures::TextureHandle>                     Inputs                  = {};
-        std::unordered_map<std::string, Textures::TextureHandle> InputTextures           = {};
-        std::vector<Specifications::TextureSpecification>        Outputs                 = {};
-        std::vector<Textures::TextureHandle>                     ExternalOutputs         = {};
+        const char*                                                     DebugName               = {};
+        bool                                                            SwapchainAsRenderTarget = false;
+        Specifications::GraphicRendererPipelineSpecification            PipelineSpecification   = {};
+        Core::Containers::Array<Textures::TextureHandle>                Inputs                  = {};
+        Core::Containers::HashMap<const char*, Textures::TextureHandle> InputTextures           = {};
+        Core::Containers::Array<Specifications::TextureSpecification>   Outputs                 = {};
+        Core::Containers::Array<Textures::TextureHandle>                ExternalOutputs         = {};
     };
 } // namespace ZEngine::Rendering::Specifications

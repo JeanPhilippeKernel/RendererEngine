@@ -44,8 +44,8 @@ namespace ZEngine::Rendering::Renderers
         GraphicRenderer();
         ~GraphicRenderer();
 
-        const std::string_view            FrameDepthRenderTargetName   = "g_frame_depth_render_target";
-        const std::string_view            FrameColorRenderTargetName   = "g_frame_color_render_target";
+        const char*                       FrameDepthRenderTargetName   = "g_frame_depth_render_target";
+        const char*                       FrameColorRenderTargetName   = "g_frame_color_render_target";
         Hardwares::UniformBufferSetHandle SceneCameraBufferHandle      = {};
         Textures::TextureHandle           FrameColorRenderTarget       = {};
         Textures::TextureHandle           FrameDepthRenderTarget       = {};

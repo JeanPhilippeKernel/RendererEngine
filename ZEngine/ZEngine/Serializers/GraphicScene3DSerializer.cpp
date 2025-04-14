@@ -1,7 +1,6 @@
 #include <pch.h>
 #include <Core/Coroutine.h>
 #include <Helpers/MeshHelper.h>
-#include <Managers/TextureManager.h>
 #include <Rendering/Components/CameraComponent.h>
 #include <Rendering/Components/GeometryComponent.h>
 #include <Rendering/Components/LightComponent.h>

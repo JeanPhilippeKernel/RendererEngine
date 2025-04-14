@@ -38,7 +38,6 @@ namespace Tetragrama
         virtual std::future<std::string>                OpenFileDialogAsync(std::span<std::string_view> type_filters = {}) override;
 
         virtual bool                                    CreateSurface(void* instance, void** out_window_surface) override;
-        virtual std::vector<std::string>                GetRequiredExtensionLayers() override;
 
     public:
         bool OnEvent(ZEngine::Core::CoreEvent& event) override;

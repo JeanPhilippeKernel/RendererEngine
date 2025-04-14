@@ -2,134 +2,132 @@
 #include <GraphicRenderer.h>
 #include <Rendering/Renderers/RenderGraph.h>
 
+using namespace ZEngine::Core::Containers;
+
 using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Hardwares::StorageBufferSetHandle& buffer)
+    RenderGraphResource& RenderGraphBuilder::AttachBuffer(const char* name, const Hardwares::StorageBufferSetHandle& buffer)
     {
-        std::string resource_name(name);
-
-        m_graph.m_resource_map[resource_name].Name                                = name.data();
-        m_graph.m_resource_map[resource_name].Type                                = RenderGraphResourceType::BUFFER_SET;
-        m_graph.m_resource_map[resource_name].ResourceInfo.StorageBufferSetHandle = buffer;
-        m_graph.m_resource_map[resource_name].ResourceInfo.External               = true;
-        return m_graph.m_resource_map[resource_name];
+        m_graph.m_resource_map[name].Name                                = name;
+        m_graph.m_resource_map[name].Type                                = RenderGraphResourceType::BUFFER_SET;
+        m_graph.m_resource_map[name].ResourceInfo.StorageBufferSetHandle = buffer;
+        m_graph.m_resource_map[name].ResourceInfo.External               = true;
+        return m_graph.m_resource_map[name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::AttachBuffer(std::string_view name, const Hardwares::UniformBufferSetHandle& buffer)
+    RenderGraphResource& RenderGraphBuilder::AttachBuffer(const char* name, const Hardwares::UniformBufferSetHandle& buffer)
     {
-        std::string resource_name(name);
-
-        m_graph.m_resource_map[resource_name].Name                                = name.data();
-        m_graph.m_resource_map[resource_name].Type                                = RenderGraphResourceType::BUFFER_SET;
-        m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = buffer;
-        m_graph.m_resource_map[resource_name].ResourceInfo.External               = true;
-        return m_graph.m_resource_map[resource_name];
+        m_graph.m_resource_map[name].Name                                = name;
+        m_graph.m_resource_map[name].Type                                = RenderGraphResourceType::BUFFER_SET;
+        m_graph.m_resource_map[name].ResourceInfo.UniformBufferSetHandle = buffer;
+        m_graph.m_resource_map[name].ResourceInfo.External               = true;
+        return m_graph.m_resource_map[name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::AttachTexture(std::string_view name, const Textures::TextureHandle& handle)
+    RenderGraphResource& RenderGraphBuilder::AttachTexture(const char* name, const Textures::TextureHandle& handle)
     {
-        std::string resource_name(name);
-
-        auto        texture                                              = m_graph.Renderer->Device->GlobalTextures.Access(handle);
-        m_graph.m_resource_map[resource_name].Name                       = name.data();
-        m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::TEXTURE;
-        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = handle;
-        m_graph.m_resource_map[resource_name].ResourceInfo.TextureSpec   = texture->Specification;
-        m_graph.m_resource_map[resource_name].ResourceInfo.External      = true;
-        return m_graph.m_resource_map[resource_name];
+        auto texture                                            = m_graph.Renderer->Device->GlobalTextures.Access(handle);
+        m_graph.m_resource_map[name].Name                       = name;
+        m_graph.m_resource_map[name].Type                       = RenderGraphResourceType::TEXTURE;
+        m_graph.m_resource_map[name].ResourceInfo.TextureHandle = handle;
+        m_graph.m_resource_map[name].ResourceInfo.TextureSpec   = texture->Specification;
+        m_graph.m_resource_map[name].ResourceInfo.External      = true;
+        return m_graph.m_resource_map[name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::AttachRenderTarget(std::string_view name, const Textures::TextureHandle& handle)
+    RenderGraphResource& RenderGraphBuilder::AttachRenderTarget(const char* name, const Textures::TextureHandle& handle)
     {
-        std::string resource_name(name);
-
-        auto        texture                                              = m_graph.Renderer->Device->GlobalTextures.Access(handle);
-        m_graph.m_resource_map[resource_name].Name                       = name.data();
-        m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::ATTACHMENT;
-        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = handle;
-        m_graph.m_resource_map[resource_name].ResourceInfo.TextureSpec   = texture->Specification;
-        m_graph.m_resource_map[resource_name].ResourceInfo.External      = true;
-        return m_graph.m_resource_map[resource_name];
+        auto texture                                            = m_graph.Renderer->Device->GlobalTextures.Access(handle);
+        m_graph.m_resource_map[name].Name                       = name;
+        m_graph.m_resource_map[name].Type                       = RenderGraphResourceType::ATTACHMENT;
+        m_graph.m_resource_map[name].ResourceInfo.TextureHandle = handle;
+        m_graph.m_resource_map[name].ResourceInfo.TextureSpec   = texture->Specification;
+        m_graph.m_resource_map[name].ResourceInfo.External      = true;
+        return m_graph.m_resource_map[name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::CreateTexture(std::string_view name, const Specifications::TextureSpecification& spec)
+    RenderGraphResource& RenderGraphBuilder::CreateTexture(const char* name, const Specifications::TextureSpecification& spec)
     {
-        std::string resource_name(name);
-        m_graph.m_resource_map[resource_name].Name                     = name.data();
-        m_graph.m_resource_map[resource_name].Type                     = RenderGraphResourceType::TEXTURE;
-        m_graph.m_resource_map[resource_name].ResourceInfo.TextureSpec = spec;
-        return m_graph.m_resource_map[resource_name];
+        m_graph.m_resource_map[name].Name                     = name;
+        m_graph.m_resource_map[name].Type                     = RenderGraphResourceType::TEXTURE;
+        m_graph.m_resource_map[name].ResourceInfo.TextureSpec = spec;
+        return m_graph.m_resource_map[name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::CreateTexture(std::string_view name, std::string_view filename)
+    RenderGraphResource& RenderGraphBuilder::CreateTexture(const char* name, const char* filename)
     {
-        std::string resource_name(name);
-
-        m_graph.m_resource_map[resource_name].Name                       = name.data();
-        m_graph.m_resource_map[resource_name].Type                       = RenderGraphResourceType::TEXTURE;
-        m_graph.m_resource_map[resource_name].ResourceInfo.TextureHandle = m_graph.Renderer->AsyncLoader->LoadTextureFile(filename);
-        return m_graph.m_resource_map[resource_name];
+        m_graph.m_resource_map[name].Name                       = name;
+        m_graph.m_resource_map[name].Type                       = RenderGraphResourceType::TEXTURE;
+        m_graph.m_resource_map[name].ResourceInfo.TextureHandle = m_graph.Renderer->AsyncLoader->LoadTextureFile(filename);
+        return m_graph.m_resource_map[name];
     }
 
-    RenderGraphResource& RenderGraphBuilder::CreateRenderTarget(std::string_view name, const Specifications::TextureSpecification& spec)
+    RenderGraphResource& RenderGraphBuilder::CreateRenderTarget(const char* name, const Specifications::TextureSpecification& spec)
     {
-        std::string resource_name(name);
-
-        m_graph.m_resource_map[resource_name].Name                     = name.data();
-        m_graph.m_resource_map[resource_name].Type                     = RenderGraphResourceType::ATTACHMENT;
-        m_graph.m_resource_map[resource_name].ResourceInfo.TextureSpec = spec;
-        return m_graph.m_resource_map[resource_name];
+        m_graph.m_resource_map[name].Name                     = name;
+        m_graph.m_resource_map[name].Type                     = RenderGraphResourceType::ATTACHMENT;
+        m_graph.m_resource_map[name].ResourceInfo.TextureSpec = spec;
+        return m_graph.m_resource_map[name];
     }
 
     void RenderGraphBuilder::CreateRenderPassNode(const RenderGraphRenderPassCreation& creation)
     {
-        std::string name(creation.Name);
-
-        m_graph.m_node[name].Creation = creation;
-        for (auto& output : m_graph.m_node[name].Creation.Outputs)
+        m_graph.m_node[creation.Name].Creation = creation;
+        for (auto& output : m_graph.m_node[creation.Name].Creation.Outputs)
         {
             if (output.Type == RenderGraphResourceType::ATTACHMENT)
             {
                 RenderGraphResource& resource = m_graph.m_resource_map[output.Name];
-                resource.ProducerNodeName     = name;
+                resource.ProducerNodeName     = creation.Name;
             }
         }
     }
 
-    RenderGraphResource& RenderGraphBuilder::CreateBufferSet(std::string_view name, BufferSetCreationType type)
+    RenderGraphResource& RenderGraphBuilder::CreateBufferSet(const char* name, BufferSetCreationType type)
     {
-        std::string resource_name(name);
-
-        m_graph.m_resource_map[resource_name].Name = name.data();
-        m_graph.m_resource_map[resource_name].Type = RenderGraphResourceType::BUFFER_SET;
+        m_graph.m_resource_map[name].Name = name;
+        m_graph.m_resource_map[name].Type = RenderGraphResourceType::BUFFER_SET;
         switch (type)
         {
             case BufferSetCreationType::INDIRECT:
-                m_graph.m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle = m_graph.Renderer->Device->CreateIndirectBufferSet();
+                m_graph.m_resource_map[name].ResourceInfo.IndirectBufferSetHandle = m_graph.Renderer->Device->CreateIndirectBufferSet();
                 break;
             case BufferSetCreationType::UNIFORM:
-                m_graph.m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle = m_graph.Renderer->Device->CreateUniformBufferSet();
+                m_graph.m_resource_map[name].ResourceInfo.UniformBufferSetHandle = m_graph.Renderer->Device->CreateUniformBufferSet();
                 break;
             case BufferSetCreationType::STORAGE:
-                m_graph.m_resource_map[resource_name].ResourceInfo.StorageBufferSetHandle = m_graph.Renderer->Device->CreateStorageBufferSet();
+                m_graph.m_resource_map[name].ResourceInfo.StorageBufferSetHandle = m_graph.Renderer->Device->CreateStorageBufferSet();
                 break;
             case BufferSetCreationType::INDEX:
-                m_graph.m_resource_map[resource_name].ResourceInfo.IndexBufferSetHandle = m_graph.Renderer->Device->CreateIndexBufferSet();
+                m_graph.m_resource_map[name].ResourceInfo.IndexBufferSetHandle = m_graph.Renderer->Device->CreateIndexBufferSet();
                 break;
             case BufferSetCreationType::VERTEX:
-                m_graph.m_resource_map[resource_name].ResourceInfo.VertexBufferSetHandle = m_graph.Renderer->Device->CreateVertexBufferSet();
+                m_graph.m_resource_map[name].ResourceInfo.VertexBufferSetHandle = m_graph.Renderer->Device->CreateVertexBufferSet();
                 break;
         }
-        m_graph.m_resource_map[resource_name].ResourceInfo.External = false;
-        return m_graph.m_resource_map[resource_name];
+        m_graph.m_resource_map[name].ResourceInfo.External = false;
+        return m_graph.m_resource_map[name];
+    }
+
+    void RenderGraph::Initialize(Core::Memory::ArenaAllocator* arena, GraphicRenderer* renderer)
+    {
+        Renderer          = renderer;
+        Builder           = ZPushStructCtorArgs(arena, RenderGraphBuilder, *this);
+        RenderPassBuilder = ZPushStructCtorArgs(arena, RenderPasses::RenderPassBuilder);
+        RenderPassBuilder->Initialize(arena);
+        m_sorted_nodes.init(arena, 7);
+        m_node.init(arena, 7);
+        m_resource_map.init(arena, 10);
     }
 
     void RenderGraph::Setup()
     {
-        for (auto& [name, node] : m_node)
+        auto node_view = m_node.view();
+        for (auto [name, node] : node_view)
         {
+            node.EdgeNodes.init(Renderer->Device->Arena, 5);
             node.CallbackPass->Setup(name, this);
         }
     }
@@ -141,15 +139,16 @@ namespace ZEngine::Rendering::Renderers
         {
             ZENGINE_VALIDATE_ASSERT(!m_sorted_nodes.empty(), "Sorted nodes can't be empty")
 
-            for (std::string_view name : m_sorted_nodes)
+            for (const char* name : m_sorted_nodes)
             {
-                auto& node = m_node[name.data()];
+                auto& node = m_node[name];
                 node.CallbackPass->Compile(&(node.Handle), this, scene);
             }
             return;
         }
 
-        for (auto& pass : m_node)
+        auto node_view = m_node.view();
+        for (auto pass : node_view)
         {
             for (uint32_t i = 0; i < pass.second.Creation.Inputs.size(); ++i)
             {
@@ -159,7 +158,7 @@ namespace ZEngine::Rendering::Renderers
                     if (m_node.count(resource.ProducerNodeName))
                     {
                         RenderGraphNode& producer_node = m_node[resource.ProducerNodeName];
-                        producer_node.EdgeNodes.insert(pass.first);
+                        producer_node.EdgeNodes.push(pass.first);
                     }
                 }
             }
@@ -170,27 +169,33 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Topological Sorting
          */
-        std::vector<std::string>        sorted_nodes  = {};
-        std::map<std::string, uint32_t> visited_nodes = {};
-        std::vector<std::string>        stack         = {};
+        auto                           scratch       = ZGetScratch(Renderer->Device->Arena);
 
-        for (auto& node : m_node)
+        Array<const char*>             sorted_nodes  = {};
+        HashMap<const char*, uint32_t> visited_nodes = {};
+        Array<const char*>             stack         = {};
+
+        sorted_nodes.init(scratch.Arena, 6);
+        stack.init(scratch.Arena, 6);
+        visited_nodes.init(scratch.Arena, 6);
+
+        for (auto node : node_view)
         {
-            stack.emplace_back(node.first);
+            stack.push(node.first);
             while (!stack.empty())
             {
                 auto& node_name = stack.back();
                 if (visited_nodes[node_name] == 2)
                 {
-                    stack.pop_back();
+                    stack.pop();
                     continue;
                 }
 
                 if (visited_nodes[node_name] == 1)
                 {
                     visited_nodes[node_name] = 2;
-                    sorted_nodes.push_back(node_name);
-                    stack.pop_back();
+                    sorted_nodes.push(node_name);
+                    stack.pop();
                     continue;
                 }
 
@@ -201,27 +206,32 @@ namespace ZEngine::Rendering::Renderers
                     continue;
                 }
 
-                for (auto& edge : graph_node.EdgeNodes)
+                for (auto edge : graph_node.EdgeNodes)
                 {
                     if (!visited_nodes.contains(edge))
                     {
-                        stack.emplace_back(edge);
+                        stack.push(edge);
                     }
                 }
             }
         }
 
-        for (auto rbegin = sorted_nodes.rbegin(); rbegin != sorted_nodes.rend(); ++rbegin)
+        auto begin = sorted_nodes.begin();
+        auto end   = std::prev(sorted_nodes.end());
+        while (end >= begin)
         {
-            m_sorted_nodes.push_back(*rbegin);
+            m_sorted_nodes.push(*end);
+            end = std::prev(end);
         }
+
+        ZReleaseScratch(scratch);
 
         /*
          * Reading sorting graph node in reverse order and Create resource and RenderPass Node
          */
-        for (std::string_view node_name : m_sorted_nodes)
+        for (const char* node_name : m_sorted_nodes)
         {
-            auto& node = m_node[node_name.data()];
+            auto& node = m_node[node_name];
 
             RenderPassBuilder->SetName(node.Creation.Name);
 
@@ -261,9 +271,9 @@ namespace ZEngine::Rendering::Renderers
             node.CallbackPass->Compile(&(node.Handle), this, scene);
         }
 
-        for (std::string_view name : m_sorted_nodes)
+        for (const char* name : m_sorted_nodes)
         {
-            auto&                                         node             = m_node[name.data()];
+            auto&                                         node             = m_node[name];
             Specifications::FrameBufferSpecificationVNext framebuffer_spec = {.Width = node.Handle->RenderAreaWidth, .Height = node.Handle->RenderAreaHeight, .RenderTargets = node.Handle->RenderTargets, .Attachment = node.Handle->Attachment};
             node.Framebuffer                                               = ZPushStructCtorArgs(Renderer->Device->Arena, Buffers::FramebufferVNext, Renderer->Device, framebuffer_spec);
         }
@@ -403,7 +413,7 @@ namespace ZEngine::Rendering::Renderers
                 {
                     Renderer->Device->TextureHandleToUpdates.Enqueue(resource.ResourceInfo.TextureHandle);
                 }
-                pass_spec.ExternalOutputs.emplace_back(resource.ResourceInfo.TextureHandle);
+                pass_spec.ExternalOutputs.push(resource.ResourceInfo.TextureHandle);
             }
 
             for (auto& input : node.Creation.Inputs)
@@ -412,7 +422,7 @@ namespace ZEngine::Rendering::Renderers
 
                 if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::ATTACHMENT)
                 {
-                    pass_spec.Inputs.push_back(resource.ResourceInfo.TextureHandle);
+                    pass_spec.Inputs.push(resource.ResourceInfo.TextureHandle);
                 }
                 /*
                  * The resource is an attachment from a RenderPass output, but the current node consumes it as Image for sampling operation
@@ -440,7 +450,8 @@ namespace ZEngine::Rendering::Renderers
             node.Framebuffer->Dispose();
         }
 
-        for (auto& resource : m_resource_map)
+        auto resource_view = m_resource_map.view();
+        for (auto resource : resource_view)
         {
             auto& value = m_resource_map[resource.first];
             if (value.ResourceInfo.External)
@@ -450,61 +461,42 @@ namespace ZEngine::Rendering::Renderers
 
             if (value.Type == RenderGraphResourceType::ATTACHMENT || value.Type == RenderGraphResourceType::TEXTURE)
             {
-                if (value.ResourceInfo.TextureHandle)
-                {
-                    Renderer->Device->GlobalTextures.Remove(value.ResourceInfo.TextureHandle);
-                }
+                Renderer->Device->GlobalTextures.Remove(value.ResourceInfo.TextureHandle);
             }
             else if (value.Type == RenderGraphResourceType::BUFFER_SET)
             {
-                if (value.ResourceInfo.StorageBufferSetHandle)
-                {
-                    Renderer->Device->StorageBufferSetManager.Remove(value.ResourceInfo.StorageBufferSetHandle);
-                }
-                else if (value.ResourceInfo.UniformBufferSetHandle)
-                {
-                    Renderer->Device->UniformBufferSetManager.Remove(value.ResourceInfo.UniformBufferSetHandle);
-                }
-                else if (value.ResourceInfo.IndirectBufferSetHandle)
-                {
-                    Renderer->Device->IndirectBufferSetManager.Remove(value.ResourceInfo.IndirectBufferSetHandle);
-                }
-                else if (value.ResourceInfo.VertexBufferSetHandle)
-                {
-                    Renderer->Device->VertexBufferSetManager.Remove(value.ResourceInfo.VertexBufferSetHandle);
-                }
-                else if (value.ResourceInfo.IndexBufferSetHandle)
-                {
-                    Renderer->Device->IndexBufferSetManager.Remove(value.ResourceInfo.IndexBufferSetHandle);
-                }
+                // We are safe to call Remove(...) even if Handle is invalid
+                Renderer->Device->StorageBufferSetManager.Remove(value.ResourceInfo.StorageBufferSetHandle);
+                Renderer->Device->UniformBufferSetManager.Remove(value.ResourceInfo.UniformBufferSetHandle);
+                Renderer->Device->IndirectBufferSetManager.Remove(value.ResourceInfo.IndirectBufferSetHandle);
+                Renderer->Device->VertexBufferSetManager.Remove(value.ResourceInfo.VertexBufferSetHandle);
+                Renderer->Device->IndexBufferSetManager.Remove(value.ResourceInfo.IndexBufferSetHandle);
             }
         }
     }
 
-    RenderGraphResource& RenderGraph::GetResource(std::string_view name)
+    RenderGraphResource& RenderGraph::GetResource(const char* name)
     {
-        std::string resource_name(name);
-        if (!m_resource_map.contains(resource_name))
+        if (!m_resource_map.contains(name))
         {
-            m_resource_map[resource_name].Name = name.data();
+            m_resource_map[name].Name = name;
         }
-        return m_resource_map[resource_name];
+        return m_resource_map[name];
     }
 
-    Textures::TextureHandle RenderGraph::GetRenderTarget(std::string_view name)
+    Textures::TextureHandle RenderGraph::GetRenderTarget(const char* name)
     {
         Textures::TextureHandle output = {};
-        std::string             resource_name(name);
-        if (!m_resource_map.contains(resource_name))
+        if (!m_resource_map.contains(name))
         {
-            m_resource_map[resource_name].Name = name.data();
+            m_resource_map[name].Name = name;
         }
-        if (m_resource_map[resource_name].Type != RenderGraphResourceType::ATTACHMENT)
+        if (m_resource_map[name].Type != RenderGraphResourceType::ATTACHMENT)
         {
-            ZENGINE_CORE_WARN("{} isn't a valid Attachement Resource", name.data())
+            ZENGINE_CORE_WARN("{} isn't a valid Attachement Resource", name)
         }
 
-        auto handle = m_resource_map[resource_name].ResourceInfo.TextureHandle;
+        auto handle = m_resource_map[name].ResourceInfo.TextureHandle;
         if (handle.Valid())
         {
             output = handle;
@@ -512,21 +504,20 @@ namespace ZEngine::Rendering::Renderers
         return output;
     }
 
-    Textures::TextureHandle RenderGraph::GetTexture(std::string_view name)
+    Textures::TextureHandle RenderGraph::GetTexture(const char* name)
     {
         Textures::TextureHandle output = {};
 
-        std::string             resource_name(name);
-        if (!m_resource_map.contains(resource_name))
+        if (!m_resource_map.contains(name))
         {
-            m_resource_map[resource_name].Name = name.data();
+            m_resource_map[name].Name = name;
         }
-        if (m_resource_map[resource_name].Type != RenderGraphResourceType::TEXTURE)
+        if (m_resource_map[name].Type != RenderGraphResourceType::TEXTURE)
         {
-            ZENGINE_CORE_WARN("{} isn't a valid Texture Resource", name.data())
+            ZENGINE_CORE_WARN("{} isn't a valid Texture Resource", name)
         }
 
-        auto handle = m_resource_map[resource_name].ResourceInfo.TextureHandle;
+        auto handle = m_resource_map[name].ResourceInfo.TextureHandle;
         if (handle.Valid())
         {
             output = handle;
@@ -534,69 +525,60 @@ namespace ZEngine::Rendering::Renderers
         return output;
     }
 
-    Hardwares::StorageBufferSetHandle RenderGraph::GetStorageBufferSet(std::string_view name)
+    Hardwares::StorageBufferSetHandle RenderGraph::GetStorageBufferSet(const char* name)
     {
-        std::string resource_name(name);
-        if (!m_resource_map.contains(resource_name))
+        if (!m_resource_map.contains(name))
         {
-            m_resource_map[resource_name].Name = name.data();
+            m_resource_map[name].Name = name;
         }
-        return m_resource_map[resource_name].ResourceInfo.StorageBufferSetHandle;
+        return m_resource_map[name].ResourceInfo.StorageBufferSetHandle;
     }
 
-    Hardwares::VertexBufferSetHandle RenderGraph::GetVertexBufferSet(std::string_view name)
+    Hardwares::VertexBufferSetHandle RenderGraph::GetVertexBufferSet(const char* name)
     {
-        std::string resource_name(name);
-        if (!m_resource_map.contains(resource_name))
+        if (!m_resource_map.contains(name))
         {
-            m_resource_map[resource_name].Name = name.data();
+            m_resource_map[name].Name = name;
         }
-        return m_resource_map[resource_name].ResourceInfo.VertexBufferSetHandle;
+        return m_resource_map[name].ResourceInfo.VertexBufferSetHandle;
     }
 
-    Hardwares::IndexBufferSetHandle RenderGraph::GetIndexBufferSet(std::string_view name)
+    Hardwares::IndexBufferSetHandle RenderGraph::GetIndexBufferSet(const char* name)
     {
-        std::string resource_name(name);
-        if (!m_resource_map.contains(resource_name))
+        if (!m_resource_map.contains(name))
         {
-            m_resource_map[resource_name].Name = name.data();
+            m_resource_map[name].Name = name;
         }
-        return m_resource_map[resource_name].ResourceInfo.IndexBufferSetHandle;
+        return m_resource_map[name].ResourceInfo.IndexBufferSetHandle;
     }
 
-    Hardwares::UniformBufferSetHandle RenderGraph::GetBufferUniformSet(std::string_view name)
+    Hardwares::UniformBufferSetHandle RenderGraph::GetBufferUniformSet(const char* name)
     {
-        std::string resource_name(name);
-        if (!m_resource_map.contains(resource_name))
+        if (!m_resource_map.contains(name))
         {
-            m_resource_map[resource_name].Name = name.data();
+            m_resource_map[name].Name = name;
         }
-        return m_resource_map[resource_name].ResourceInfo.UniformBufferSetHandle;
+        return m_resource_map[name].ResourceInfo.UniformBufferSetHandle;
     }
 
-    Hardwares::IndirectBufferSetHandle RenderGraph::GetIndirectBufferSet(std::string_view name)
+    Hardwares::IndirectBufferSetHandle RenderGraph::GetIndirectBufferSet(const char* name)
     {
-        std::string resource_name(name);
-        if (!m_resource_map.contains(resource_name))
+        if (!m_resource_map.contains(name))
         {
-            m_resource_map[resource_name].Name = name.data();
+            m_resource_map[name].Name = name;
         }
-        return m_resource_map[resource_name].ResourceInfo.IndirectBufferSetHandle;
+        return m_resource_map[name].ResourceInfo.IndirectBufferSetHandle;
     }
 
-    RenderGraphNode& RenderGraph::GetNode(std::string_view name)
+    RenderGraphNode& RenderGraph::GetNode(const char* name)
     {
-        auto pass_name = name.data();
-
-        ZENGINE_VALIDATE_ASSERT(m_node.contains(pass_name), "Node Pass should be created first")
-        return m_node[pass_name];
+        ZENGINE_VALIDATE_ASSERT(m_node.contains(name), "Node Pass should be created first")
+        return m_node[name];
     }
 
-    void RenderGraph::AddCallbackPass(std::string_view pass_name, IRenderGraphCallbackPass* const pass_callback, bool enabled)
+    void RenderGraph::AddCallbackPass(const char* pass_name, IRenderGraphCallbackPass* const pass_callback, bool enabled)
     {
-        std::string resource_name(pass_name);
-
-        m_node[resource_name].Enabled      = enabled;
-        m_node[resource_name].CallbackPass = pass_callback;
+        m_node[pass_name].Enabled      = enabled;
+        m_node[pass_name].CallbackPass = pass_callback;
     }
 } // namespace ZEngine::Rendering::Renderers

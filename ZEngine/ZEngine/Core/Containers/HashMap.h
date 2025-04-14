@@ -1,63 +1,100 @@
 #pragma once
 #include <Allocator.h>
-#include <MemoryOperations.h>
+#include <Array.h>
 #include <rapidhash.h>
 
 using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::Core::Containers
 {
+    enum class EntryState
+    {
+        Empty,
+        Occupied,
+        DELETED
+    };
+
+    template <typename K, typename V>
+    struct HashEntry
+    {
+        K          key;
+        V          value;
+        EntryState state = EntryState::Empty;
+    };
+
     template <typename K, typename V>
     struct HashMap
     {
-        struct Node
-        {
-            K     key;
-            V     value;
-            Node* next = nullptr;
-        };
+        using Entry     = HashEntry<K, V>;
+        using size_type = size_t;
 
-        struct KeyValue
-        {
-            Node* head = nullptr;
-        };
-
-        void init(Memory::ArenaAllocator* allocator, size_t initial_capacity, size_t initial_size = 0U)
+        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, size_t initial_size = 0U)
         {
             m_allocator = allocator;
-            m_size      = initial_size;
-            m_capacity  = 0;
-            m_data      = nullptr;
-            reserve(initial_capacity);
+            m_entries.init(allocator, initial_capacity, initial_size);
+            for (size_type i = 0; i < initial_capacity; ++i)
+            {
+                m_entries.push({});
+            }
+            m_size = initial_size;
         }
 
         void insert(const K& key, const V& value)
         {
-            if (m_size >= m_capacity * 0.75)
+            if ((m_size + 1) > m_entries.size() * 0.75)
             {
-                reserve(m_capacity ? m_capacity * 2 : 8);
+                rehash(m_entries.size() * 2);
             }
 
-            size_t index   = hash(key);
-            Node*  current = m_data[index].head;
-
-            while (current)
+            size_type index = probe_for_insert(key);
+            if (m_entries[index].state != EntryState::Occupied)
             {
-                if (current->key == key)
-                {
-                    current->value = value;
-                    return;
-                }
-                current = current->next;
+                m_entries[index].key   = key;
+                m_entries[index].value = value;
+                m_entries[index].state = EntryState::Occupied;
+                ++m_size;
             }
 
-            Node* new_node     = static_cast<Node*>(ZAlloc(m_allocator, sizeof(Node), ZAlignof(Node)));
-            new_node->key      = key;
-            new_node->value    = value;
-            new_node->next     = m_data[index].head;
-            m_data[index].head = new_node;
+            m_entries[index].value = value;
+        }
 
-            ++m_size;
+        V& operator[](const K& key)
+        {
+            if ((m_size + 1) > m_entries.size() * 0.75)
+            {
+                rehash(m_entries.size() * 2);
+            }
+
+            size_type index = probe_for_insert(key);
+            if (m_entries[index].state != EntryState::Occupied)
+            {
+                m_entries[index].key   = key;
+                m_entries[index].value = V{};
+                m_entries[index].state = EntryState::Occupied;
+                ++m_size;
+            }
+
+            return m_entries[index].value;
+        }
+
+        V* find(const K& key)
+        {
+            size_type index = probe_for_key(key);
+            if (index != size_type(-1) && m_entries[index].state == EntryState::Occupied)
+            {
+                return &m_entries[index].value;
+            }
+            return nullptr;
+        }
+
+        void remove(const K& key)
+        {
+            size_type index = probe_for_key(key);
+            if (index != size_type(-1) && m_entries[index].state == EntryState::Occupied)
+            {
+                m_entries[index].state = EntryState::DELETED;
+                --m_size;
+            }
         }
 
         bool contains(const K& key)
@@ -65,211 +102,145 @@ namespace ZEngine::Core::Containers
             return find(key) != nullptr;
         }
 
-        V& operator[](const K& key)
+        size_t count(const K& key)
         {
-            size_t index   = hash(key);
-            Node*  current = m_data[index].head;
-
-            while (current)
-            {
-                if (current->key == key)
-                {
-                    return current->value;
-                }
-                current = current->next;
-            }
-
-            if (m_size >= m_capacity * 0.75)
-            {
-                reserve(m_capacity ? m_capacity * 2 : 8);
-                index = hash(key);
-            }
-
-            Node* new_node     = static_cast<Node*>(ZAlloc(m_allocator, sizeof(Node), ZAlignof(Node)));
-            new_node->key      = key;
-            new_node->value    = V{};
-            new_node->next     = m_data[index].head;
-            m_data[index].head = new_node;
-
-            ++m_size;
-            return new_node->value;
-        }
-
-        V* find(const K& key)
-        {
-            size_t index   = hash(key);
-            Node*  current = m_data[index].head;
-
-            while (current)
-            {
-                if (current->key == key)
-                {
-                    return &current->value;
-                }
-                current = current->next;
-            }
-            return nullptr;
-        }
-
-        void remove(const K& key)
-        {
-            size_t index   = hash(key);
-            Node*  current = m_data[index].head;
-            Node*  prev    = nullptr;
-
-            while (current)
-            {
-                if (current->key == key)
-                {
-                    if (prev)
-                        prev->next = current->next;
-                    else
-                        m_data[index].head = current->next;
-                    --m_size;
-                    return;
-                }
-                prev    = current;
-                current = current->next;
-            }
-        }
-
-        ~HashMap()
-        {
-            clear();
-            if (m_data)
-            {
-                m_data = nullptr;
-            }
+            size_type index = probe_for_key(key);
+            return (index != size_type(-1) && m_entries[index].state == EntryState::Occupied) ? 1 : 0;
         }
 
         void clear()
         {
-            for (size_t i = 0; i < m_capacity; ++i)
+            for (auto& entry : m_entries)
             {
-                Node* current  = m_data[i].head;
-                m_data[i].head = nullptr;
+                entry.state = EntryState::Empty;
             }
             m_size = 0;
         }
 
-        void reserve(size_t new_capacity)
-        {
-            KeyValue* old_data     = m_data;
-            size_t    old_capacity = m_capacity;
-
-            m_data                 = static_cast<KeyValue*>(ZAlloc(m_allocator, new_capacity * sizeof(KeyValue), ZAlignof(KeyValue)));
-            Helpers::secure_memset(m_data, 0, new_capacity * sizeof(KeyValue), m_capacity);
-
-            m_capacity = new_capacity;
-
-            for (size_t i = 0; i < old_capacity; ++i)
-            {
-                Node* current = old_data[i].head;
-                while (current)
-                {
-                    Node*  next            = current->next;
-
-                    size_t new_index       = hash(current->key);
-                    current->next          = m_data[new_index].head;
-                    m_data[new_index].head = current;
-
-                    current                = next;
-                }
-            }
-        }
-
-        size_t size() const
+        size_type size() const
         {
             return m_size;
         }
-        size_t capacity() const
+        size_type capacity() const
         {
-            return m_capacity;
+            return m_entries.size();
         }
         bool empty() const
         {
             return m_size == 0;
         }
 
-        size_t hash(const K& key) const
+    private:
+        size_type probe_for_insert(const K& key)
         {
-            return rapidhash(&key, sizeof(K)) % m_capacity;
+            size_type index = hash(key) % m_entries.size();
+            size_type start = index;
+            while (m_entries[index].state == EntryState::Occupied && !(m_entries[index].key == key))
+            {
+                index = (index + 1) % m_entries.size();
+            }
+            return index;
         }
 
-        Memory::ArenaAllocator* m_allocator = nullptr;
-        size_t                  m_size      = 0;
-        size_t                  m_capacity  = 0;
-        KeyValue*               m_data      = nullptr;
+        size_type probe_for_key(const K& key)
+        {
+            size_type index = hash(key) % m_entries.size();
+            size_type start = index;
+            while (m_entries[index].state != EntryState::Empty)
+            {
+                if (m_entries[index].state == EntryState::Occupied && m_entries[index].key == key)
+                {
+                    return index;
+                }
+                index = (index + 1) % m_entries.size();
+                if (index == start)
+                    break;
+            }
+            return size_type(-1);
+        }
+
+        void rehash(size_type new_capacity)
+        {
+            Array<Entry> old_entries = m_entries;
+            m_entries.init(m_allocator, new_capacity);
+            for (size_type i = 0; i < new_capacity; ++i)
+            {
+                m_entries.push({});
+            }
+
+            m_size = 0;
+            for (const auto& entry : old_entries)
+            {
+                if (entry.state == EntryState::Occupied)
+                {
+                    insert(entry.key, entry.value);
+                }
+            }
+        }
+
+        size_type hash(const K& key) const
+        {
+            return rapidhash(&key, sizeof(K)) % m_entries.size();
+        }
+
+    public:
+        struct Iterator
+        {
+            struct KeyValuePair
+            {
+                const K& first;
+                V&       second;
+
+                KeyValuePair(const K& k, V& v) : first(k), second(v) {}
+            };
+
+            Iterator(Array<Entry>& entries, size_type index) : m_entries(entries), m_index(index)
+            {
+                advance_to_valid();
+            }
+
+            KeyValuePair operator*() const
+            {
+                return KeyValuePair(m_entries[m_index].key, m_entries[m_index].value);
+            }
+
+            Iterator& operator++()
+            {
+                ++m_index;
+                advance_to_valid();
+                return *this;
+            }
+
+            bool operator!=(const Iterator& other) const
+            {
+                return m_index != other.m_index;
+            }
+
+        private:
+            void advance_to_valid()
+            {
+                while (m_index < m_entries.size() && m_entries[m_index].state != EntryState::Occupied)
+                {
+                    ++m_index;
+                }
+            }
+
+            Array<Entry>& m_entries;
+            size_type     m_index;
+        };
 
         struct HashMapView
         {
-            struct Iterator
-            {
-                using KeyValuePair = std::pair<const K&, V&>;
-
-                Iterator(HashMap* map, size_t index, Node* node) : m_map(map), m_index(index), m_current_node(node) {}
-
-                KeyValuePair operator*() const
-                {
-                    return KeyValuePair(m_current_node->key, m_current_node->value);
-                }
-
-                Iterator& operator++()
-                {
-                    if (m_current_node->next)
-                    {
-                        m_current_node = m_current_node->next;
-                    }
-                    else
-                    {
-                        m_current_node = nullptr;
-                        m_index++;
-
-                        while (m_index < m_map->m_capacity)
-                        {
-                            if (m_map->m_data[m_index].head)
-                            {
-                                m_current_node = m_map->m_data[m_index].head;
-                                break;
-                            }
-                            m_index++;
-                        }
-                    }
-                    return *this;
-                }
-
-                bool operator!=(const Iterator& other) const
-                {
-                    return m_current_node != other.m_current_node;
-                }
-
-                bool operator==(const Iterator& other) const
-                {
-                    return m_current_node == other.m_current_node;
-                }
-
-                HashMap* m_map;
-                size_t   m_index;
-                Node*    m_current_node;
-            };
-
             HashMapView(HashMap* map) : m_map(map) {}
 
             Iterator begin()
             {
-                for (size_t i = 0; i < m_map->m_capacity; ++i)
-                {
-                    if (m_map->m_data[i].head)
-                    {
-                        return Iterator(m_map, i, m_map->m_data[i].head);
-                    }
-                }
-                return end();
+                return Iterator(m_map->m_entries, 0);
             }
 
             Iterator end()
             {
-                return Iterator(m_map, m_map->m_capacity, nullptr);
+                return Iterator(m_map->m_entries, m_map->m_entries.size());
             }
 
             HashMap* m_map;
@@ -279,6 +250,10 @@ namespace ZEngine::Core::Containers
         {
             return HashMapView(this);
         }
-    };
 
+    private:
+        Memory::ArenaAllocator* m_allocator = nullptr;
+        Array<Entry>            m_entries;
+        size_type               m_size = 0;
+    };
 } // namespace ZEngine::Core::Containers

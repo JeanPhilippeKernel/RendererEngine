@@ -127,6 +127,14 @@ namespace Tetragrama
             m_property.SetHeight(window_height);
         }
 
+        uint32_t     count                  = 0;
+        const char** extensions_layer_names = glfwGetRequiredInstanceExtensions(&count);
+        RequiredExtensionLayers.init(arena, count, count);
+        for (unsigned i = 0; i < count; ++i)
+        {
+            RequiredExtensionLayers[i] = extensions_layer_names[i];
+        }
+
 #ifdef _WIN32
         auto native_hwnd = glfwGetWin32Window(m_native_window);
         m_property.Dpi   = GetDpiForWindow(native_hwnd);
@@ -432,19 +440,6 @@ namespace Tetragrama
         VkSurfaceKHR* pSurface   = reinterpret_cast<VkSurfaceKHR*>(out_window_surface);
         VkResult      result     = glfwCreateWindowSurface(vkInstance, m_native_window, nullptr, pSurface);
         return (result == VK_SUCCESS);
-    }
-
-    std::vector<std::string> EditorWindow::GetRequiredExtensionLayers()
-    {
-        uint32_t                 count                  = 0;
-        const char**             extensions_layer_names = glfwGetRequiredInstanceExtensions(&count);
-        std::vector<std::string> outputs(count);
-
-        for (unsigned i = 0; i < count; ++i)
-        {
-            outputs[i] = extensions_layer_names[i];
-        }
-        return outputs;
     }
 
     EditorWindow::~EditorWindow()

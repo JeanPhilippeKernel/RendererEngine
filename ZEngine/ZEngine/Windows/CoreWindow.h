@@ -1,4 +1,5 @@
 #pragma once
+#include <Core/Containers/Array.h>
 #include <Core/Containers/Strings.h>
 #include <Core/CoreEvent.h>
 #include <Core/EventDispatcher.h>
@@ -11,7 +12,6 @@
 #include <Helpers/IntrusivePtr.h>
 #include <Inputs/IInputEventCallback.h>
 #include <Layers/Layer.h>
-#include <Layers/LayerStack.h>
 #include <WindowConfiguration.h>
 #include <WindowProperty.h>
 #include <future>
@@ -20,12 +20,11 @@
 namespace ZEngine::Windows::Layers
 {
     class Layer;
-    // class LayerStack;
 } // namespace ZEngine::Windows::Layers
 
 namespace ZEngine::Windows
 {
-    class CoreWindow : public Helpers::RefCounted, public Inputs::IKeyboardEventCallback, public Inputs::IMouseEventCallback, public Inputs::ITextInputEventCallback, public Inputs::IWindowEventCallback, public Core::IUpdatable, public Core::IRenderable, public Core::IEventable
+    class CoreWindow : public Inputs::IKeyboardEventCallback, public Inputs::IMouseEventCallback, public Inputs::ITextInputEventCallback, public Inputs::IWindowEventCallback, public Core::IUpdatable, public Core::IRenderable, public Core::IEventable
     {
 
     public:
@@ -35,6 +34,8 @@ namespace ZEngine::Windows
         CoreWindow() {}
         CoreWindow(const WindowConfiguration& cfg);
         virtual ~CoreWindow();
+
+        Core::Containers::Array<const char*> RequiredExtensionLayers                                            = {};
 
         virtual uint32_t                     GetHeight() const                                                  = 0;
         virtual uint32_t                     GetWidth() const                                                   = 0;
@@ -48,7 +49,6 @@ namespace ZEngine::Windows
         virtual const WindowProperty&        GetWindowProperty() const                                          = 0;
 
         virtual bool                         CreateSurface(void* instance, void** out_window_surface)           = 0;
-        virtual std::vector<std::string>     GetRequiredExtensionLayers()                                       = 0;
         virtual void*                        GetNativeWindow() const                                            = 0;
 
         virtual std::future<std::string>     OpenFileDialogAsync(std::span<std::string_view> type_filters = {}) = 0;

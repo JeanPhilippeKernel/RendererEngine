@@ -55,8 +55,8 @@ namespace ZEngine::Rendering::Specifications
     {
         uint32_t    OverloadMaxSet   = 1;
         uint32_t    OverloadPoolSize = 0;
-        std::string VertexFilename   = {};
-        std::string FragmentFilename = {};
-        std::string Name             = {};
+        const char* VertexFilename   = {};
+        const char* FragmentFilename = {};
+        const char* Name             = {};
     };
 } // namespace ZEngine::Rendering::Specifications

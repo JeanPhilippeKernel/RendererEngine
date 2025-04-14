@@ -30,24 +30,32 @@ namespace ZEngine::Hardwares
         Arena         = arena;
         CurrentWindow = window;
 
+        DefaultDepthFormats.init(Arena, 3);
+        DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT);
+        DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT_S8_UINT);
+        DefaultDepthFormats.push(VK_FORMAT_D24_UNORM_S8_UINT);
+
         GlobalTextures.Initialize(arena, 600);
+        ShaderManager.Initialize(arena, 300);
         VertexBufferSetManager.Initialize(arena, 300);
         StorageBufferSetManager.Initialize(arena, 300);
         IndirectBufferSetManager.Initialize(arena, 300);
         IndexBufferSetManager.Initialize(arena, 300);
         UniformBufferSetManager.Initialize(arena, 300);
-        m_dirty_resources.Initialize(arena, 300);
-        m_dirty_buffers.Initialize(arena, 500);
-        m_dirty_buffer_images.Initialize(arena, 300);
+        DirtyResources.Initialize(arena, 300);
+        DirtyBuffers.Initialize(arena, 500);
+        DirtyBufferImages.Initialize(arena, 300);
+        ShaderCaches.init(arena, 10);
+        m_queue_map.init(arena, 4);
+
+        m_layer.QueryInstanceLayerProperties(arena);
 
         /*Create Vulkan Instance*/
-        VkApplicationInfo    app_info             = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pNext = VK_NULL_HANDLE, .pApplicationName = ApplicationName.data(), .applicationVersion = 1, .pEngineName = EngineName.data(), .engineVersion = 1, .apiVersion = VK_API_VERSION_1_3};
+        VkApplicationInfo    app_info             = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pNext = VK_NULL_HANDLE, .pApplicationName = ApplicationName, .applicationVersion = 1, .pEngineName = EngineName, .engineVersion = 1, .apiVersion = VK_API_VERSION_1_3};
 
         VkInstanceCreateInfo instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = VK_NULL_HANDLE, .flags = 0, .pApplicationInfo = &app_info};
 
         auto                 scratch              = ZGetScratch(Arena);
-
-        auto                 layer_properties     = m_layer.GetInstanceLayerProperties();
 
         Array<const char*>   enabled_layer_name_collection;
         Array<LayerProperty> selected_layer_property_collection;
@@ -65,8 +73,8 @@ namespace ZEngine::Hardwares
 
         for (const char* layer_name : validation_layer_name_collection)
         {
-            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
-            if (find_it == std::end(layer_properties))
+            auto find_it = std::find_if(std::begin(m_layer.InstanceLayers), std::end(m_layer.InstanceLayers), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
+            if (find_it == std::end(m_layer.InstanceLayers))
             {
                 continue;
             }
@@ -83,8 +91,8 @@ namespace ZEngine::Hardwares
         synchronization_layer_collection.push("VK_LAYER_KHRONOS_synchronization2");
         for (const char* layer_name : synchronization_layer_collection)
         {
-            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
-            if (find_it == std::end(layer_properties))
+            auto find_it = std::find_if(std::begin(m_layer.InstanceLayers), std::end(m_layer.InstanceLayers), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
+            if (find_it == std::end(m_layer.InstanceLayers))
             {
                 continue;
             }
@@ -108,12 +116,11 @@ namespace ZEngine::Hardwares
             }
         }
 
-        auto additional_extension_layer_name_collection = window->GetRequiredExtensionLayers();
-        if (!additional_extension_layer_name_collection.empty())
+        if (!window->RequiredExtensionLayers.empty())
         {
-            for (const auto& extension : additional_extension_layer_name_collection)
+            for (const auto& extension : window->RequiredExtensionLayers)
             {
-                enabled_extension_layer_name_collection.push(extension.c_str());
+                enabled_extension_layer_name_collection.push(extension);
             }
         }
 
@@ -191,7 +198,7 @@ namespace ZEngine::Hardwares
 
         for (LayerProperty& layer : selected_layer_property_collection)
         {
-            m_layer.GetExtensionProperties(layer, &PhysicalDevice);
+            m_layer.GetExtensionProperties(scratch.Arena, layer, &PhysicalDevice);
 
             if (!layer.DeviceExtensionCollection.empty())
             {
@@ -289,14 +296,16 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice) == VK_SUCCESS, "Failed to create GPU logical device")
 
         /*Create Vulkan Graphic Queue*/
-        m_queue_map[Rendering::QueueType::GRAPHIC_QUEUE] = VK_NULL_HANDLE;
-        vkGetDeviceQueue(LogicalDevice, GraphicFamilyIndex, 0, &(m_queue_map[Rendering::QueueType::GRAPHIC_QUEUE]));
+        VkQueue graphic_queue = VK_NULL_HANDLE;
+        vkGetDeviceQueue(LogicalDevice, GraphicFamilyIndex, 0, &graphic_queue);
+        m_queue_map.insert(Rendering::QueueType::GRAPHIC_QUEUE, std::move(graphic_queue));
 
         /*Create Vulkan Transfer Queue*/
         if (HasSeperateTransfertQueueFamily)
         {
-            m_queue_map[Rendering::QueueType::TRANSFER_QUEUE] = VK_NULL_HANDLE;
-            vkGetDeviceQueue(LogicalDevice, TransferFamilyIndex, 0, &(m_queue_map[Rendering::QueueType::TRANSFER_QUEUE]));
+            VkQueue transfer_queue = VK_NULL_HANDLE;
+            vkGetDeviceQueue(LogicalDevice, TransferFamilyIndex, 0, &transfer_queue);
+            m_queue_map.insert(Rendering::QueueType::TRANSFER_QUEUE, std::move(transfer_queue));
         }
 
         /* Surface format selection */
@@ -370,16 +379,17 @@ namespace ZEngine::Hardwares
          * Creating Swapchain
          */
         Specifications::AttachmentSpecification attachment_specification = {.BindPoint = Specifications::PipelineBindPoint::GRAPHIC};
-        attachment_specification.ColorsMap[0]                            = {};
-        attachment_specification.ColorsMap[0].Format                     = ImageFormat::FORMAT_FROM_DEVICE;
-        attachment_specification.ColorsMap[0].Load                       = LoadOperation::CLEAR;
-        attachment_specification.ColorsMap[0].Store                      = StoreOperation::STORE;
-        attachment_specification.ColorsMap[0].Initial                    = ImageLayout::UNDEFINED;
-        attachment_specification.ColorsMap[0].Final                      = ImageLayout::PRESENT_SRC;
-        attachment_specification.ColorsMap[0].ReferenceLayout            = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-        SwapchainAttachment                                              = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::Attachment, this, attachment_specification);
-        PreviousFrameIndex                                               = 0;
-        CurrentFrameIndex                                                = 0;
+        attachment_specification.ColorsMap.init(Arena, 2);
+        attachment_specification.ColorsMap[0]                 = {};
+        attachment_specification.ColorsMap[0].Format          = ImageFormat::FORMAT_FROM_DEVICE;
+        attachment_specification.ColorsMap[0].Load            = LoadOperation::CLEAR;
+        attachment_specification.ColorsMap[0].Store           = StoreOperation::STORE;
+        attachment_specification.ColorsMap[0].Initial         = ImageLayout::UNDEFINED;
+        attachment_specification.ColorsMap[0].Final           = ImageLayout::PRESENT_SRC;
+        attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+        SwapchainAttachment                                   = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::Attachment, this, attachment_specification);
+        PreviousFrameIndex                                    = 0;
+        CurrentFrameIndex                                     = 0;
 
         SwapchainRenderCompleteSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
         SwapchainAcquiredSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
@@ -412,6 +422,7 @@ namespace ZEngine::Hardwares
         IndirectBufferSetManager.Dispose();
         IndexBufferSetManager.Dispose();
         UniformBufferSetManager.Dispose();
+        ShaderManager.Dispose();
 
         EnqueuedCommandbuffers.clear();
         SwapchainSignalFences.clear();
@@ -536,7 +547,7 @@ namespace ZEngine::Hardwares
     {
         if (handle)
         {
-            m_dirty_resources.Add({.FrameIndex = CurrentFrameIndex, .Handle = handle, .Type = resource_type});
+            DirtyResources.Add({.FrameIndex = CurrentFrameIndex, .Handle = handle, .Type = resource_type});
         }
     }
 
@@ -544,18 +555,18 @@ namespace ZEngine::Hardwares
     {
         if (resource.Handle)
         {
-            m_dirty_resources.Add(resource);
+            DirtyResources.Add(resource);
         }
     }
 
     void VulkanDevice::EnqueueBufferForDeletion(BufferView& buffer)
     {
-        m_dirty_buffers.Add(buffer);
+        DirtyBuffers.Add(buffer);
     }
 
     void VulkanDevice::EnqueueBufferImageForDeletion(BufferImage& buffer)
     {
-        m_dirty_buffer_images.Add(buffer);
+        DirtyBufferImages.Add(buffer);
     }
 
     void VulkanDevice::QueueWait(Rendering::QueueType type)
@@ -615,17 +626,17 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::__cleanupDirtyResource()
     {
-        size_t dirty_resource_count = m_dirty_resources.Head();
+        size_t dirty_resource_count = DirtyResources.Head();
         for (size_t i = 0; i < dirty_resource_count; ++i)
         {
-            auto handle = m_dirty_resources.ToHandle(i);
+            auto handle = DirtyResources.ToHandle(i);
 
             if (!handle)
             {
                 continue;
             }
 
-            DirtyResource& res_handle = m_dirty_resources[handle];
+            DirtyResource& res_handle = DirtyResources[handle];
             switch (res_handle.Type)
             {
                 case Rendering::DeviceResourceType::SAMPLER:
@@ -675,47 +686,47 @@ namespace ZEngine::Hardwares
                 }
             }
 
-            m_dirty_resources.Remove(handle);
+            DirtyResources.Remove(handle);
         }
     }
 
     void VulkanDevice::__cleanupBufferDirtyResource()
     {
-        size_t dirty_buffer_count = m_dirty_buffers.Head();
+        size_t dirty_buffer_count = DirtyBuffers.Head();
         for (size_t i = 0; i < dirty_buffer_count; ++i)
         {
-            auto handle = m_dirty_buffers.ToHandle(i);
+            auto handle = DirtyBuffers.ToHandle(i);
 
             if (!handle)
             {
                 continue;
             }
 
-            BufferView& buffer = m_dirty_buffers[handle];
+            BufferView& buffer = DirtyBuffers[handle];
             vmaDestroyBuffer(VmaAllocator, buffer.Handle, buffer.Allocation);
-            m_dirty_buffers.Remove(handle);
+            DirtyBuffers.Remove(handle);
         }
     }
 
     void VulkanDevice::__cleanupBufferImageDirtyResource()
     {
-        size_t dirty_buffer_image_count = m_dirty_buffer_images.Head();
+        size_t dirty_buffer_image_count = DirtyBufferImages.Head();
         for (size_t i = 0; i < dirty_buffer_image_count; ++i)
         {
-            auto handle = m_dirty_buffer_images.ToHandle(i);
+            auto handle = DirtyBufferImages.ToHandle(i);
 
             if (!handle)
             {
                 continue;
             }
 
-            BufferImage& buffer = m_dirty_buffer_images[handle];
+            BufferImage& buffer = DirtyBufferImages[handle];
 
             vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
             vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
             vmaDestroyImage(VmaAllocator, buffer.Handle, buffer.Allocation);
 
-            m_dirty_buffer_images.Remove(handle);
+            DirtyBufferImages.Remove(handle);
         }
     }
 
@@ -826,7 +837,7 @@ namespace ZEngine::Hardwares
         return sampler;
     }
 
-    VkFormat VulkanDevice::FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags)
+    VkFormat VulkanDevice::FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags)
     {
         VkFormat supported_format = VK_FORMAT_UNDEFINED;
         for (uint32_t i = 0; i < format_collection.size(); ++i)
@@ -859,7 +870,7 @@ namespace ZEngine::Hardwares
 
     VkFormat VulkanDevice::FindDepthFormat()
     {
-        return FindSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        return FindSupportedFormat(ArrayView<VkFormat>{DefaultDepthFormats}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
     }
 
     VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count)
@@ -885,7 +896,7 @@ namespace ZEngine::Hardwares
         return image_view;
     }
 
-    VkFramebuffer VulkanDevice::CreateFramebuffer(const std::vector<VkImageView>& attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number)
+    VkFramebuffer VulkanDevice::CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number)
     {
         VkFramebuffer           framebuffer{VK_NULL_HANDLE};
         VkFramebufferCreateInfo framebuffer_create_info = {};
@@ -1043,8 +1054,12 @@ namespace ZEngine::Hardwares
 
         for (int i = 0; i < SwapchainImageCount; ++i)
         {
-            SwapchainImageViews[i]   = CreateImageView(SwapchainImages[i], SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
-            SwapchainFramebuffers[i] = CreateFramebuffer({SwapchainImageViews[i]}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
+            SwapchainImageViews[i] = CreateImageView(SwapchainImages[i], SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+
+            Array<VkImageView> fb_images_views;
+            fb_images_views.init(scratch.Arena, 1);
+            fb_images_views.push(SwapchainImageViews[i]);
+            SwapchainFramebuffers[i] = CreateFramebuffer(ArrayView{fb_images_views}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
         }
 
         ZReleaseScratch(scratch);
@@ -1218,19 +1233,19 @@ namespace ZEngine::Hardwares
                 break;
             }
 
-            if (m_dirty_resources.CanRemove())
+            if (DirtyResources.CanRemove())
             {
-                uint32_t dirty_resource_count = m_dirty_resources.Head();
+                uint32_t dirty_resource_count = DirtyResources.Head();
                 for (uint32_t i = 0; i < dirty_resource_count; ++i)
                 {
-                    auto handle = m_dirty_resources.ToHandle(i);
+                    auto handle = DirtyResources.ToHandle(i);
 
                     if (!handle)
                     {
                         continue;
                     }
 
-                    DirtyResource& res_handle = m_dirty_resources[handle];
+                    DirtyResource& res_handle = DirtyResources[handle];
                     if (res_handle.FrameIndex == CurrentFrameIndex)
                     {
                         switch (res_handle.Type)
@@ -1282,47 +1297,47 @@ namespace ZEngine::Hardwares
                             }
                         }
 
-                        m_dirty_resources.Remove(handle);
+                        DirtyResources.Remove(handle);
                     }
                 }
             }
 
-            if (m_dirty_buffers.CanRemove())
+            if (DirtyBuffers.CanRemove())
             {
-                uint32_t dirty_buffer_count = m_dirty_buffers.Head();
+                uint32_t dirty_buffer_count = DirtyBuffers.Head();
                 for (uint32_t i = 0; i < dirty_buffer_count; ++i)
                 {
-                    auto handle = m_dirty_buffers.ToHandle(i);
+                    auto handle = DirtyBuffers.ToHandle(i);
 
                     if (!handle)
                     {
                         continue;
                     }
 
-                    BufferView& buffer = m_dirty_buffers[handle];
+                    BufferView& buffer = DirtyBuffers[handle];
                     if (buffer && buffer.FrameIndex == CurrentFrameIndex)
                     {
                         vmaDestroyBuffer(VmaAllocator, buffer.Handle, buffer.Allocation);
                         buffer.Handle     = VK_NULL_HANDLE;
                         buffer.Allocation = VK_NULL_HANDLE;
-                        m_dirty_buffers.Remove(handle);
+                        DirtyBuffers.Remove(handle);
                     }
                 }
             }
 
-            if (m_dirty_buffer_images.CanRemove())
+            if (DirtyBufferImages.CanRemove())
             {
-                uint32_t dirty_buffer_image_count = m_dirty_buffer_images.Head();
+                uint32_t dirty_buffer_image_count = DirtyBufferImages.Head();
                 for (uint32_t i = 0; i < dirty_buffer_image_count; ++i)
                 {
-                    auto handle = m_dirty_buffer_images.ToHandle(i);
+                    auto handle = DirtyBufferImages.ToHandle(i);
 
                     if (!handle)
                     {
                         continue;
                     }
 
-                    BufferImage& buffer = m_dirty_buffer_images[handle];
+                    BufferImage& buffer = DirtyBufferImages[handle];
 
                     if (buffer && buffer.FrameIndex == CurrentFrameIndex)
                     {
@@ -1331,7 +1346,7 @@ namespace ZEngine::Hardwares
                         vmaDestroyImage(VmaAllocator, buffer.Handle, buffer.Allocation);
                         buffer.Handle     = VK_NULL_HANDLE;
                         buffer.Allocation = VK_NULL_HANDLE;
-                        m_dirty_buffer_images.Remove(handle);
+                        DirtyBufferImages.Remove(handle);
                     }
                 }
             }
@@ -1340,6 +1355,40 @@ namespace ZEngine::Hardwares
         }
 
         ZENGINE_CORE_INFO("[*] Dirty Resource Collector stopped...")
+    }
+
+    Helpers::Handle<Rendering::Shaders::Shader> VulkanDevice::CompileShader(Rendering::Specifications::ShaderSpecification& spec)
+    {
+        const char* base_dir           = "Shaders/Cache/";
+        const char* vertex_name_part   = "_vertex.spv";
+        const char* fragment_name_part = "_fragment.spv";
+
+        if (ShaderCaches.contains(spec.Name))
+        {
+            return ShaderCaches[spec.Name];
+        }
+
+        auto handle = ShaderManager.Create();
+        auto shader = ShaderManager.Access(handle);
+
+        if (shader)
+        {
+            auto vertex_file   = fmt::format("{}{}{}", base_dir, spec.Name, vertex_name_part);
+            auto fragment_file = fmt::format("{}{}{}", base_dir, spec.Name, fragment_name_part);
+
+            if (std::filesystem::exists(vertex_file))
+            {
+                spec.VertexFilename = vertex_file.c_str();
+            }
+
+            if (std::filesystem::exists(fragment_file))
+            {
+                spec.FragmentFilename = fragment_file.c_str();
+            }
+
+            shader->Initialize(this, spec);
+        }
+        return handle;
     }
 
     /*
@@ -1537,7 +1586,7 @@ namespace ZEngine::Hardwares
         scissor.extent   = {width, height};
         vkCmdSetScissor(m_command_buffer, 0, 1, &scissor);
 
-        vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass->Pipeline->GetHandle());
+        vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass->Pipeline->Handle);
 
         m_active_render_pass = render_pass;
 
@@ -1561,14 +1610,16 @@ namespace ZEngine::Hardwares
         if (auto render_pass = m_active_render_pass)
         {
             auto                   pipeline           = render_pass->Pipeline;
-            auto                   pipeline_layout    = pipeline->GetPipelineLayout();
-            auto                   shader             = pipeline->GetShader();
-            const auto&            descriptor_set_map = shader->GetDescriptorSetMap();
+            auto                   pipeline_layout    = pipeline->Layout;
+            auto                   shader             = pipeline->Shader;
+            auto&                  descriptor_set_map = shader->DescriptorSetMap;
 
             auto                   scratch            = ZGetScratch(&LocalArena);
             Array<VkDescriptorSet> frame_sets         = {};
             frame_sets.init(scratch.Arena, 5);
-            for (auto& [_, sets] : descriptor_set_map)
+
+            auto descriptor_set_map_view = descriptor_set_map.view();
+            for (auto [_, sets] : descriptor_set_map_view)
             {
                 frame_sets.push(sets[frame_index]);
             }
@@ -1584,7 +1635,7 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(descriptor != nullptr, "DescriptorSet can't be null")
         if (auto render_pass = m_active_render_pass)
         {
-            auto            pipeline_layout = render_pass->Pipeline->GetPipelineLayout();
+            auto            pipeline_layout = render_pass->Pipeline->Layout;
             VkDescriptorSet desc_set[1]     = {descriptor};
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, desc_set, 0, nullptr);
         }
@@ -1685,7 +1736,7 @@ namespace ZEngine::Hardwares
 
         if (auto render_pass = m_active_render_pass)
         {
-            auto pipeline_layout = render_pass->Pipeline->GetPipelineLayout();
+            auto pipeline_layout = render_pass->Pipeline->Layout;
             vkCmdPushConstants(m_command_buffer, pipeline_layout, stage_flags, offset, size, data);
         }
     }

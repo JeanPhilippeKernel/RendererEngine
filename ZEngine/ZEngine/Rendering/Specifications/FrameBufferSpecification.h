@@ -1,7 +1,7 @@
 #pragma once
+#include <Core/Containers/Array.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 #include <Rendering/Textures/Texture.h>
-#include <map>
 
 namespace ZEngine::Rendering::Specifications
 {
@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Specifications
         uint32_t                             Width              = 1;
         uint32_t                             Height             = 1;
         uint32_t                             Layers             = 1;
-        std::vector<uint32_t>                RenderTargets      = {};
+        Core::Containers::Array<uint32_t>    RenderTargets      = {};
         Renderers::RenderPasses::Attachment* Attachment         = {};
     };
 
