@@ -1,66 +1,11 @@
 #pragma once
-#include <Allocator.h>
 #include <cmath>
-
-using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::Core::Maths
 {
-    template <typename T, size_t N>
-    class Vector
+    template <typename T, size_t N, typename Derived>
+    struct Vector
     {
-    public:
-        void init(ArenaAllocator* allocator)
-        {
-            m_allocator = allocator;
-            m_data      = static_cast<T*>(ZAlloc(m_allocator, sizeof(T) * N, ZAlignof(T)));
-        }
-
-        void init(ArenaAllocator* allocator, T x, T y)
-        {
-            ZENGINE_VALIDATE_ASSERT(N == 2, "This init overload is only valid for 2D vectors.");
-            init(allocator);
-            m_data[0] = x;
-            m_data[1] = y;
-        }
-
-        void init(ArenaAllocator* allocator, T x, T y, T z)
-        {
-            ZENGINE_VALIDATE_ASSERT(N == 3, "This init overload is only valid for 3D vectors.");
-            init(allocator);
-            m_data[0] = x;
-            m_data[1] = y;
-            m_data[2] = z;
-        }
-
-        void init(ArenaAllocator* allocator, T x, T y, T z, T w)
-        {
-            ZENGINE_VALIDATE_ASSERT(N == 4, "This init overload is only valid for 4D vectors.");
-            init(allocator);
-            m_data[0] = x;
-            m_data[1] = y;
-            m_data[2] = z;
-            m_data[3] = w;
-        }
-        T& x()
-        {
-            return m_data[0];
-        }
-        T& y()
-        {
-            return m_data[1];
-        }
-        T& z()
-        {
-            ZENGINE_VALIDATE_ASSERT(N > 2, "Z is only valid for 3D vectors.");
-            return m_data[2];
-        }
-        T& w()
-        {
-            ZENGINE_VALIDATE_ASSERT(N > 3, "W is only valid for 4D vectors.");
-            return m_data[3];
-        }
-
         T& operator[](size_t index)
         {
             ZENGINE_VALIDATE_ASSERT(index < N, "Index out of range");
@@ -91,7 +36,7 @@ namespace ZEngine::Core::Maths
             }
         }
 
-        bool operator==(const Vector<T, N>& other) const
+        bool operator==(const Derived& other) const
         {
             for (size_t i = 0; i < N; ++i)
             {
@@ -101,12 +46,12 @@ namespace ZEngine::Core::Maths
             return true;
         }
 
-        bool operator!=(const Vector<T, N>& other) const
+        bool operator!=(const Derived& other) const
         {
             return !(*this == other);
         }
 
-        bool operator>(const Vector<T, N>& other) const
+        bool operator>(const Derived& other) const
         {
             for (size_t i = 0; i < N; ++i)
             {
@@ -118,7 +63,7 @@ namespace ZEngine::Core::Maths
             return false;
         }
 
-        bool operator<(const Vector<T, N>& other) const
+        bool operator<(const Derived& other) const
         {
             for (size_t i = 0; i < N; ++i)
             {
@@ -130,7 +75,7 @@ namespace ZEngine::Core::Maths
             return false;
         }
 
-        Vector<T, N>& operator+=(const Vector<T, N>& other)
+        Derived& operator+=(const Derived& other)
         {
             for (size_t i = 0; i < N; ++i)
             {
@@ -139,7 +84,7 @@ namespace ZEngine::Core::Maths
             return *this;
         }
 
-        Vector<T, N>& operator-=(const Vector<T, N>& other)
+        Derived& operator-=(const Derived& other)
         {
             for (size_t i = 0; i < N; ++i)
             {
@@ -148,10 +93,9 @@ namespace ZEngine::Core::Maths
             return *this;
         }
 
-        Vector<T, N> operator*(T scalar) const
+        Derived operator*(T scalar) const
         {
-            Vector<T, N> result;
-            result.init(m_allocator);
+            Derived result;
             for (size_t i = 0; i < N; ++i)
             {
                 result[i] = m_data[i] * scalar;
@@ -159,10 +103,9 @@ namespace ZEngine::Core::Maths
             return result;
         }
 
-        Vector<T, N> operator/(T scalar) const
+        Derived operator/(T scalar) const
         {
-            Vector<T, N> result;
-            result.init(m_allocator);
+            Derived result;
             for (size_t i = 0; i < N; ++i)
             {
                 result[i] = m_data[i] / scalar;
@@ -170,7 +113,7 @@ namespace ZEngine::Core::Maths
             return result;
         }
 
-        Vector<T, N>& operator*=(T scalar)
+        Derived& operator*=(T scalar)
         {
             for (size_t i = 0; i < N; ++i)
             {
@@ -179,7 +122,7 @@ namespace ZEngine::Core::Maths
             return *this;
         }
 
-        Vector<T, N>& operator/=(T scalar)
+        Derived& operator/=(T scalar)
         {
             for (size_t i = 0; i < N; ++i)
             {
@@ -187,10 +130,9 @@ namespace ZEngine::Core::Maths
             }
             return *this;
         }
-        Vector<T, N> operator+(const Vector<T, N>& other) const
+        Derived operator+(const Derived& other) const
         {
-            Vector<T, N> result;
-            result.init(m_allocator);
+            Derived result;
             for (size_t i = 0; i < N; ++i)
             {
                 result[i] = m_data[i] + other[i];
@@ -198,10 +140,10 @@ namespace ZEngine::Core::Maths
             return result;
         }
 
-        Vector<T, N> operator-(const Vector<T, N>& other) const
+        Derived operator-(const Derived& other) const
         {
-            Vector<T, N> result;
-            result.init(m_allocator);
+            Derived result;
+
             for (size_t i = 0; i < N; ++i)
             {
                 result[i] = m_data[i] - other[i];
@@ -209,10 +151,9 @@ namespace ZEngine::Core::Maths
             return result;
         }
 
-        Vector<T, N> operator*(const Vector<T, N>& other) const
+        Derived operator*(const Derived& other) const
         {
-            Vector<T, N> result;
-            result.init(m_allocator);
+            Derived result;
             for (size_t i = 0; i < N; ++i)
             {
                 result[i] = m_data[i] * other[i];
@@ -220,7 +161,7 @@ namespace ZEngine::Core::Maths
             return result;
         }
 
-        T dot(const Vector<T, N>& other) const
+        T dot(const Derived& other) const
         {
             T result = T();
             for (size_t i = 0; i < N; ++i)
@@ -232,14 +173,14 @@ namespace ZEngine::Core::Maths
 
         T magnitude() const
         {
-            return std::sqrt(dot(*this));
+            const Derived& self = static_cast<const Derived&>(*this);
+            return std::sqrt(self.dot(self));
         }
 
-        Vector<T, N> normalized() const
+        Derived normalized() const
         {
-            Vector<T, N> result;
-            result.init(m_allocator);
-            T len = magnitude();
+            Derived result;
+            T       len = magnitude();
             for (size_t i = 0; i < N; ++i)
             {
                 result[i] = m_data[i] / len;
@@ -247,17 +188,16 @@ namespace ZEngine::Core::Maths
             return result;
         }
 
-        T cross2d(const Vector<T, N>& other) const
+        T cross2d(const Derived& other) const
         {
             ZENGINE_VALIDATE_ASSERT(N == 2, "cross2d() is only defined for 2D vectors.");
             return (m_data[0] * other[1]) - (m_data[1] * other[0]);
         }
 
-        Vector<T, N> cross3d(const Vector<T, N>& other) const
+        Derived cross3d(const Derived& other) const
         {
             ZENGINE_VALIDATE_ASSERT(N == 3, "cross3d() is only defined for 3D vectors.");
-            Vector<T, N> result;
-            result.init(m_allocator);
+            Derived result;
 
             result[0] = m_data[1] * other[2] - m_data[2] * other[1];
             result[1] = m_data[2] * other[0] - m_data[0] * other[2];
@@ -265,17 +205,61 @@ namespace ZEngine::Core::Maths
             return result;
         }
 
-        T* data()
+        T m_data[N];
+    };
+
+    template <typename T>
+    struct Vec2 : public Vector<T, 2, Vec2<T>>
+    {
+        using Base = Vector<T, 2, Vec2<T>>;
+
+        Vec2()     = default;
+        Vec2(T x_, T y_)
         {
-            return m_data;
-        }
-        const T* data() const
-        {
-            return m_data;
+            x = x_;
+            y = y_;
         }
 
-    private:
-        ArenaAllocator* m_allocator = nullptr;
-        T*              m_data      = nullptr;
+        T& x = Base::m_data[0];
+        T& y = Base::m_data[1];
     };
+
+    template <typename T>
+    struct Vec3 : public Vector<T, 3, Vec3<T>>
+    {
+        using Base = Vector<T, 3, Vec3<T>>;
+
+        Vec3()     = default;
+        Vec3(T x_, T y_, T z_)
+        {
+            x = x_;
+            y = y_;
+            z = z_;
+        }
+
+        T& x = Base::m_data[0];
+        T& y = Base::m_data[1];
+        T& z = Base::m_data[2];
+    };
+
+    template <typename T>
+    struct Vec4 : public Vector<T, 4, Vec4<T>>
+    {
+        using Base = Vector<T, 4, Vec4<T>>;
+
+        Vec4()     = default;
+        Vec4(T x_, T y_, T z_, T w_)
+        {
+            x = x_;
+            y = y_;
+            z = z_;
+            w = w_;
+        }
+
+        T& x = Base::m_data[0];
+        T& y = Base::m_data[1];
+        T& z = Base::m_data[2];
+        T& w = Base::m_data[3];
+    };
+
 } // namespace ZEngine::Core::Maths
