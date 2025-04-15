@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngineDef.h>
 #include <cmath>
 
 namespace ZEngine::Core::Maths
