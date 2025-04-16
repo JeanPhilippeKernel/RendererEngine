@@ -5,7 +5,7 @@
 namespace ZEngine::Core::Maths
 {
     template <typename T, size_t N, typename Derived>
-    struct Vector
+    struct Vec
     {
         T& operator[](size_t index)
         {
@@ -210,9 +210,9 @@ namespace ZEngine::Core::Maths
     };
 
     template <typename T>
-    struct Vec2 : public Vector<T, 2, Vec2<T>>
+    struct Vec2 : public Vec<T, 2, Vec2<T>>
     {
-        using Base = Vector<T, 2, Vec2<T>>;
+        using Base = Vec<T, 2, Vec2<T>>;
 
         Vec2()     = default;
         Vec2(T x_, T y_)
@@ -226,9 +226,9 @@ namespace ZEngine::Core::Maths
     };
 
     template <typename T>
-    struct Vec3 : public Vector<T, 3, Vec3<T>>
+    struct Vec3 : public Vec<T, 3, Vec3<T>>
     {
-        using Base = Vector<T, 3, Vec3<T>>;
+        using Base = Vec<T, 3, Vec3<T>>;
 
         Vec3()     = default;
         Vec3(T x_, T y_, T z_)
@@ -244,9 +244,9 @@ namespace ZEngine::Core::Maths
     };
 
     template <typename T>
-    struct Vec4 : public Vector<T, 4, Vec4<T>>
+    struct Vec4 : public Vec<T, 4, Vec4<T>>
     {
-        using Base = Vector<T, 4, Vec4<T>>;
+        using Base = Vec<T, 4, Vec4<T>>;
 
         Vec4()     = default;
         Vec4(T x_, T y_, T z_, T w_)
