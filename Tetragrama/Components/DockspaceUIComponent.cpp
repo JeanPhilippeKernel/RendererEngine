@@ -53,18 +53,7 @@ namespace Tetragrama::Components
         m_default_import_configuration.OutputMaterialsPath.init(&(parent->LayerArena), editor_config.SceneDataPath.c_str());
         m_default_import_configuration.OutputTextureFilesPath.init(&(parent->LayerArena), editor_config.DefaultImportTexturePath.c_str());
 
-#ifdef _WIN32
-        std::replace(m_default_import_configuration.OutputModelFilePath.begin(), m_default_import_configuration.OutputModelFilePath.end(), '/', '\\');
-        std::replace(m_default_import_configuration.OutputMeshFilePath.begin(), m_default_import_configuration.OutputMeshFilePath.end(), '/', '\\');
-        std::replace(m_default_import_configuration.OutputTextureFilesPath.begin(), m_default_import_configuration.OutputTextureFilesPath.end(), '/', '\\');
-        std::replace(m_default_import_configuration.OutputMaterialsPath.begin(), m_default_import_configuration.OutputMaterialsPath.end(), '/', '\\');
-#endif // _WIN32
-
-        auto editor_serializer_default_output = fmt::format("{0}/{1}", editor_config.WorkingSpacePath.c_str(), editor_config.ScenePath.c_str());
-
-#ifdef _WIN32
-        std::replace(editor_serializer_default_output.begin(), editor_serializer_default_output.end(), '/', '\\');
-#endif // _WIN32
+        auto editor_serializer_default_output = fmt::format("{0}{1}{2}", editor_config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, editor_config.ScenePath.c_str());
 
         m_editor_serializer->SetDefaultOutput(editor_serializer_default_output);
         m_editor_serializer->SetOnProgressCallback(OnEditorSceneSerializerProgress);
@@ -539,9 +528,6 @@ namespace Tetragrama::Components
 
             if (!scene_filename.empty())
             {
-#ifdef _WIN32
-                std::replace(scene_filename.begin(), scene_filename.end(), '/', '\\'); // Todo : Move this replace into an helper function....
-#endif
                 m_editor_serializer->Deserialize(scene_filename);
             }
         }
