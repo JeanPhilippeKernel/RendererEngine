@@ -143,21 +143,21 @@ namespace Tetragrama::Serializers
 
                 int      i          = 0;
 
-                while (hash[i] != ':' && hash[i] != '\0')
+                while (i < hash.size() && hash[i] != ':')
                 {
                     indices[0] = indices[0] * 10 + (hash[i] - '0');
                     i++;
                 }
                 i++; // Skip the colon
 
-                while (hash[i] != ':' && hash[i] != '\0')
+                while (i < hash.size() && hash[i] != ':')
                 {
                     indices[1] = indices[1] * 10 + (hash[i] - '0');
                     i++;
                 }
                 i++;
 
-                while (hash[i] != '\0')
+                while (i < hash.size() && hash[i] != '\0')
                 {
                     indices[2] = indices[2] * 10 + (hash[i] - '0');
                     i++;
@@ -176,9 +176,9 @@ namespace Tetragrama::Serializers
             std::vector<ZEngine::Rendering::Scenes::SceneRawData> scene_data;
             for (auto& [_, model] : scene.Data)
             {
-                auto mesh_path     = fmt::format("{0}/{1}", config.WorkingSpacePath, scene.MeshFiles[model.MeshFileIndex].c_str());
-                auto model_path    = fmt::format("{0}/{1}", config.WorkingSpacePath, scene.ModelFiles[model.ModelPathIndex].c_str());
-                auto material_path = fmt::format("{0}/{1}", config.WorkingSpacePath, scene.MaterialFiles[model.MaterialPathIndex].c_str());
+                auto mesh_path     = fmt::format("{0}/{1}/{2}", config.WorkingSpacePath.c_str(), config.SceneDataPath.c_str(), scene.MeshFiles[model.MeshFileIndex].c_str());
+                auto model_path    = fmt::format("{0}/{1}/{2}", config.WorkingSpacePath.c_str(), config.SceneDataPath.c_str(), scene.ModelFiles[model.ModelPathIndex].c_str());
+                auto material_path = fmt::format("{0}/{1}/{2}", config.WorkingSpacePath.c_str(), config.SceneDataPath.c_str(), scene.MaterialFiles[model.MaterialPathIndex].c_str());
 
 #ifdef _WIN32
                 std::replace(model_path.begin(), model_path.end(), '/', '\\');

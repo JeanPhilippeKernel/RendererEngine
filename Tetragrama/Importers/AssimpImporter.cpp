@@ -319,7 +319,8 @@ namespace Tetragrama::Importers
 
         if (!config.OutputMeshFilePath.empty())
         {
-            std::string   fullname_path = fmt::format("{0}/{1}.zemeshes", config.OutputMeshFilePath.c_str(), config.AssetFilename.c_str());
+            std::string   output_mesh_file = fmt::format("{}.zemeshes", config.AssetFilename.c_str());
+            std::string   fullname_path    = fmt::format("{0}/{1}/{2}", config.OutputWorkingSpacePath.c_str(), config.OutputMeshFilePath.c_str(), output_mesh_file.c_str());
             std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
 
             if (out.is_open())
@@ -340,7 +341,7 @@ namespace Tetragrama::Importers
             }
             out.close();
 
-            importer_data.SerializedMeshesPath.init(arena, fullname_path.c_str());
+            importer_data.SerializedMeshesPath.init(arena, output_mesh_file.c_str());
         }
 
         if (!config.OutputMaterialsPath.empty() && !config.OutputTextureFilesPath.empty())
@@ -348,7 +349,7 @@ namespace Tetragrama::Importers
             /*
              * Normalize file naming
              */
-            auto dst_dir            = fmt::format("{0}/{1}", config.OutputTextureFilesPath.c_str(), config.AssetFilename.c_str());
+            auto dst_dir            = fmt::format("{0}/{1}/{2}", config.OutputWorkingSpacePath.c_str(), config.OutputTextureFilesPath.c_str(), config.AssetFilename.c_str());
 
             auto create_base_dir_fn = [](std::string_view filename) -> void {
                 auto            base_dir = fs::absolute(filename).parent_path();
@@ -455,7 +456,8 @@ namespace Tetragrama::Importers
                 out.close();
             }
 
-            std::string   fullname_path = fmt::format("{0}/{1}.zematerials", config.OutputMaterialsPath.c_str(), config.AssetFilename.c_str());
+            std::string   output_material_file = fmt::format("{}.zematerials", config.AssetFilename.c_str());
+            std::string   fullname_path        = fmt::format("{0}/{1}/{2}", config.OutputWorkingSpacePath.c_str(), config.OutputMaterialsPath.c_str(), output_material_file.c_str());
             std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
 
             if (out.is_open())
@@ -479,12 +481,13 @@ namespace Tetragrama::Importers
             }
             out.close();
 
-            importer_data.SerializedMaterialsPath.init(arena, fullname_path.c_str());
+            importer_data.SerializedMaterialsPath.init(arena, output_material_file.c_str());
         }
 
         if (!config.OutputModelFilePath.empty())
         {
-            std::string   fullname_path = fmt::format("{0}/{1}.zemodel", config.OutputModelFilePath.c_str(), config.AssetFilename.c_str());
+            std::string   output_model_file = fmt::format("{}.zemodel", config.AssetFilename.c_str());
+            std::string   fullname_path     = fmt::format("{0}/{1}/{2}", config.OutputWorkingSpacePath.c_str(), config.OutputModelFilePath.c_str(), output_model_file.c_str());
             std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
 
             if (out.is_open())
@@ -514,7 +517,7 @@ namespace Tetragrama::Importers
 
             out.close();
 
-            importer_data.SerializedModelPath.init(arena, fullname_path.c_str());
+            importer_data.SerializedModelPath.init(arena, output_model_file.c_str());
         }
     }
 
@@ -566,7 +569,7 @@ namespace Tetragrama::Importers
                 deserialized_data.Scene.MaterialFiles.resize(mat_file_count);
 
                 Array<String> textures = {};
-                textures.init(arena, 5);
+                textures.init(arena, 5, 5);
                 for (auto& mat_file : deserialized_data.Scene.MaterialFiles)
                 {
                     Tetragrama::Helpers::DeserializeStringData(arena, in, textures[0]);
