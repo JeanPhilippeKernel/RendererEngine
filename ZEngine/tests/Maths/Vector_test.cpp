@@ -90,11 +90,11 @@ TEST(VectorTest, Cross2D)
 {
     Vec2f a(1.0f, 2.0f);
     Vec2f b(3.0f, 4.0f);
-    EXPECT_FLOAT_EQ(a.cross2d(b), -2.0f);
+    EXPECT_FLOAT_EQ(cross2d(a, b), -2.0f);
 
     IVec2 c(2, 3);
     IVec2 d(4, 5);
-    EXPECT_EQ(c.cross2d(d), -2);
+    EXPECT_EQ(cross2d(c, d), -2);
 }
 
 TEST(VectorTest, Cross3D)
@@ -102,7 +102,7 @@ TEST(VectorTest, Cross3D)
     Vec3f a(1.0f, 0.0f, 0.0f);
     Vec3f b(0.0f, 1.0f, 0.0f);
 
-    Vec3f result = a.cross3d(b);
+    Vec3f result = cross3d(a, b);
     EXPECT_FLOAT_EQ(result.x, 0.0f);
     EXPECT_FLOAT_EQ(result.y, 0.0f);
     EXPECT_FLOAT_EQ(result.z, 1.0f);
@@ -135,19 +135,19 @@ TEST(VectorTest, DotProduct)
     Vec2f a(1.0f, 2.0f);
     Vec2f b(3.0f, 4.0f);
 
-    float result = a.dot(b);
+    float result = dot(a, b);
     EXPECT_FLOAT_EQ(result, 11.0f);
 
     IVec2 ia(2, 3);
     IVec2 ib(4, 5);
-    int   iresult = ia.dot(ib);
+    int   iresult = dot(ia, ib);
     EXPECT_EQ(iresult, 23);
 }
 
 TEST(VectorTest, Normalized)
 {
     Vec2f v(3.0f, 4.0f);
-    Vec2f n = v.normalized();
+    Vec2f n = v.normalize();
 
     EXPECT_NEAR(n.x, 0.6f, 1e-5f);
     EXPECT_NEAR(n.y, 0.8f, 1e-5f);

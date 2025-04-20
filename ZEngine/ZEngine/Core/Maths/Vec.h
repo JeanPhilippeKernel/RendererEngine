@@ -31,10 +31,7 @@ namespace ZEngine::Core::Maths
                 constexpr T epsilon = static_cast<T>(1e-6);
                 return std::fabs(a - b) < epsilon;
             }
-            else
-            {
-                return a == b;
-            }
+            return a == b;
         }
 
         bool operator==(const Derived& other) const
@@ -162,23 +159,13 @@ namespace ZEngine::Core::Maths
             return result;
         }
 
-        T dot(const Derived& other) const
-        {
-            T result = T();
-            for (size_t i = 0; i < N; ++i)
-            {
-                result += m_data[i] * other[i];
-            }
-            return result;
-        }
-
         T magnitude() const
         {
             const Derived& self = static_cast<const Derived&>(*this);
-            return std::sqrt(self.dot(self));
+            return std::sqrt(dot(self, self));
         }
 
-        Derived normalized() const
+        Derived normalize() const
         {
             Derived result;
             T       len = magnitude();
@@ -186,23 +173,6 @@ namespace ZEngine::Core::Maths
             {
                 result[i] = m_data[i] / len;
             }
-            return result;
-        }
-
-        T cross2d(const Derived& other) const
-        {
-            ZENGINE_VALIDATE_ASSERT(N == 2, "cross2d() is only defined for 2D vectors.");
-            return (m_data[0] * other[1]) - (m_data[1] * other[0]);
-        }
-
-        Derived cross3d(const Derived& other) const
-        {
-            ZENGINE_VALIDATE_ASSERT(N == 3, "cross3d() is only defined for 3D vectors.");
-            Derived result;
-
-            result[0] = m_data[1] * other[2] - m_data[2] * other[1];
-            result[1] = m_data[2] * other[0] - m_data[0] * other[2];
-            result[2] = m_data[0] * other[1] - m_data[1] * other[0];
             return result;
         }
 
@@ -262,5 +232,28 @@ namespace ZEngine::Core::Maths
         T& z = Base::m_data[2];
         T& w = Base::m_data[3];
     };
+
+    template <typename T>
+    inline Vec3<T> cross3d(const Vec3<T>& a, const Vec3<T>& b)
+    {
+        return Vec3<T>{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+    }
+
+    template <typename T>
+    inline T cross2d(const Vec2<T>& a, const Vec2<T>& b)
+    {
+        return (a.x * b.y) - (a.y * b.x);
+    }
+
+    template <typename T, size_t N, typename Derived>
+    inline T dot(const Vec<T, N, Derived>& a, const Vec<T, N, Derived>& b)
+    {
+        T result = T();
+        for (size_t i = 0; i < N; ++i)
+        {
+            result += a[i] * b[i];
+        }
+        return result;
+    }
 
 } // namespace ZEngine::Core::Maths
