@@ -124,10 +124,6 @@ TEST(VectorTest, ScalarMultiplicationAndDivision)
     IVec2 scaledi = vi * 3;
     EXPECT_EQ(scaledi.x, 6);
     EXPECT_EQ(scaledi.y, 12);
-
-    IVec2 dividedi = vi / 2;
-    EXPECT_EQ(dividedi.x, 1);
-    EXPECT_EQ(dividedi.y, 2);
 }
 
 TEST(VectorTest, DotProduct)

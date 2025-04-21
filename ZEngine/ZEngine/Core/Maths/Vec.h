@@ -1,10 +1,11 @@
 #pragma once
 #include <ZEngineDef.h>
 #include <cmath>
+#include <type_traits>
 
 namespace ZEngine::Core::Maths
 {
-    template <typename T, size_t N>
+    template <typename T, size_t N, typename = std::enable_if_t<std::is_arithmetic_v<T> && (N >= 1)>>
     struct Vec
     {
         T& operator[](size_t index)
@@ -18,14 +19,15 @@ namespace ZEngine::Core::Maths
             ZENGINE_VALIDATE_ASSERT(index < N, "Index out of range");
             return (&x)[index];
         }
-        static bool IsEqual(const T& a, const T& b)
+        static bool IsEqual(const T& a, const T& b, T tolerance = std::numeric_limits<T>::epsilon())
         {
             if constexpr (std::is_floating_point_v<T>)
             {
-                return std::fabs(a - b) < std::numeric_limits<T>::epsilon();
+                return std::fabs(a - b) <= tolerance * std::max(std::fabs(a), std::fabs(b));
             }
             return a == b;
         }
+
         static bool IsEqual(const Vec& a, const Vec& b)
         {
             for (size_t i = 0; i < N; ++i)
@@ -74,7 +76,8 @@ namespace ZEngine::Core::Maths
         }
         Vec2 operator/(T scalar) const
         {
-            return Vec2(x / scalar, y / scalar);
+            scalar = 1.0f / scalar;
+            return Vec2(x * scalar, y * scalar);
         }
 
         bool operator==(const Vec2& other) const
@@ -103,8 +106,9 @@ namespace ZEngine::Core::Maths
         }
         Vec2& operator/=(T scalar)
         {
-            x /= scalar;
-            y /= scalar;
+            scalar  = 1.0f / scalar;
+            x      *= scalar;
+            y      *= scalar;
             return *this;
         }
 
@@ -173,7 +177,8 @@ namespace ZEngine::Core::Maths
         }
         Vec3 operator/(T scalar) const
         {
-            return Vec3(x / scalar, y / scalar, z / scalar);
+            scalar = 1.0f / scalar;
+            return Vec3(x * scalar, y * scalar, z * scalar);
         }
 
         Vec3& operator+=(const Vec3& other)
@@ -199,9 +204,10 @@ namespace ZEngine::Core::Maths
         }
         Vec3& operator/=(T scalar)
         {
-            x /= scalar;
-            y /= scalar;
-            z /= scalar;
+            scalar  = 1.0f / scalar;
+            x      *= scalar;
+            y      *= scalar;
+            z      *= scalar;
             return *this;
         }
 
@@ -272,7 +278,8 @@ namespace ZEngine::Core::Maths
         }
         Vec4 operator/(T scalar) const
         {
-            return Vec4(x / scalar, y / scalar, z / scalar, w / scalar);
+            scalar = 1.0f / scalar;
+            return Vec4(x * scalar, y * scalar, z * scalar, w * scalar);
         }
 
         Vec4& operator+=(const Vec4& other)
@@ -301,10 +308,11 @@ namespace ZEngine::Core::Maths
         }
         Vec4& operator/=(T scalar)
         {
-            x /= scalar;
-            y /= scalar;
-            z /= scalar;
-            w /= scalar;
+            scalar  = 1.0f / scalar;
+            x      *= scalar;
+            y      *= scalar;
+            z      *= scalar;
+            w      *= scalar;
             return *this;
         }
 
