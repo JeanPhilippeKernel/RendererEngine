@@ -4,203 +4,131 @@
 
 namespace ZEngine::Core::Maths
 {
-    template <typename T, size_t N, typename Derived>
+    template <typename T, size_t N>
     struct Vec
     {
         T& operator[](size_t index)
         {
             ZENGINE_VALIDATE_ASSERT(index < N, "Index out of range");
-            return m_data[index];
+            return (&x)[index];
         }
 
         const T& operator[](size_t index) const
         {
             ZENGINE_VALIDATE_ASSERT(index < N, "Index out of range");
-            return m_data[index];
+            return (&x)[index];
         }
-
-        size_t size() const
-        {
-            return N;
-        }
-
-        static bool IsEqual(T a, T b)
+        static bool IsEqual(const T& a, const T& b)
         {
             if constexpr (std::is_floating_point_v<T>)
             {
-                constexpr T epsilon = static_cast<T>(1e-6);
-                return std::fabs(a - b) < epsilon;
+                return std::fabs(a - b) < std::numeric_limits<T>::epsilon();
             }
             return a == b;
         }
-
-        bool operator==(const Derived& other) const
+        static bool IsEqual(const Vec& a, const Vec& b)
         {
             for (size_t i = 0; i < N; ++i)
             {
-                if (!IsEqual(m_data[i], other.m_data[i]))
+                if (!IsEqual(a[i], b[i]))
+                {
                     return false;
+                }
             }
             return true;
         }
 
-        bool operator!=(const Derived& other) const
-        {
-            return !(*this == other);
-        }
-
-        bool operator>(const Derived& other) const
-        {
-            for (size_t i = 0; i < N; ++i)
-            {
-                if (m_data[i] > other.m_data[i])
-                    return true;
-                if (m_data[i] < other.m_data[i])
-                    return false;
-            }
-            return false;
-        }
-
-        bool operator<(const Derived& other) const
-        {
-            for (size_t i = 0; i < N; ++i)
-            {
-                if (m_data[i] < other.m_data[i])
-                    return true;
-                if (m_data[i] > other.m_data[i])
-                    return false;
-            }
-            return false;
-        }
-
-        Derived& operator+=(const Derived& other)
-        {
-            for (size_t i = 0; i < N; ++i)
-            {
-                m_data[i] += other[i];
-            }
-            return *this;
-        }
-
-        Derived& operator-=(const Derived& other)
-        {
-            for (size_t i = 0; i < N; ++i)
-            {
-                m_data[i] -= other[i];
-            }
-            return *this;
-        }
-
-        Derived operator*(T scalar) const
-        {
-            Derived result;
-            for (size_t i = 0; i < N; ++i)
-            {
-                result[i] = m_data[i] * scalar;
-            }
-            return result;
-        }
-
-        Derived operator/(T scalar) const
-        {
-            Derived result;
-            for (size_t i = 0; i < N; ++i)
-            {
-                result[i] = m_data[i] / scalar;
-            }
-            return result;
-        }
-
-        Derived& operator*=(T scalar)
-        {
-            for (size_t i = 0; i < N; ++i)
-            {
-                m_data[i] *= scalar;
-            }
-            return *this;
-        }
-
-        Derived& operator/=(T scalar)
-        {
-            for (size_t i = 0; i < N; ++i)
-            {
-                m_data[i] /= scalar;
-            }
-            return *this;
-        }
-        Derived operator+(const Derived& other) const
-        {
-            Derived result;
-            for (size_t i = 0; i < N; ++i)
-            {
-                result[i] = m_data[i] + other[i];
-            }
-            return result;
-        }
-
-        Derived operator-(const Derived& other) const
-        {
-            Derived result;
-
-            for (size_t i = 0; i < N; ++i)
-            {
-                result[i] = m_data[i] - other[i];
-            }
-            return result;
-        }
-
-        Derived operator*(const Derived& other) const
-        {
-            Derived result;
-            for (size_t i = 0; i < N; ++i)
-            {
-                result[i] = m_data[i] * other[i];
-            }
-            return result;
-        }
-
-        T magnitude() const
-        {
-            const Derived& self = static_cast<const Derived&>(*this);
-            return std::sqrt(dot(self, self));
-        }
-
-        Derived normalize() const
-        {
-            Derived result;
-            T       len = magnitude();
-            for (size_t i = 0; i < N; ++i)
-            {
-                result[i] = m_data[i] / len;
-            }
-            return result;
-        }
-
-        T m_data[N];
+        T x, y, z, w;
     };
 
     template <typename T>
-    struct Vec2 : public Vec<T, 2, Vec2<T>>
+    struct Vec2 : public Vec<T, 2>
     {
-        using Base = Vec<T, 2, Vec2<T>>;
 
-        Vec2()     = default;
+        using Vec<T, 2>::x;
+        using Vec<T, 2>::y;
+
+        Vec2() = default;
         Vec2(T x_, T y_)
         {
             x = x_;
             y = y_;
         }
 
-        T& x = Base::m_data[0];
-        T& y = Base::m_data[1];
+        bool operator!=(const Vec2& other) const
+        {
+            return !(*this == other);
+        }
+
+        Vec2 operator+(const Vec2& other) const
+        {
+            return Vec2(x + other.x, y + other.y);
+        }
+        Vec2 operator-(const Vec2& other) const
+        {
+            return Vec2(x - other.x, y - other.y);
+        }
+        Vec2 operator*(T scalar) const
+        {
+            return Vec2(x * scalar, y * scalar);
+        }
+        Vec2 operator/(T scalar) const
+        {
+            return Vec2(x / scalar, y / scalar);
+        }
+
+        bool operator==(const Vec2& other) const
+        {
+            auto& base = Vec<T, 2>::IsEqual;
+            return base(x, other.x) && base(y, other.y);
+        }
+
+        Vec2& operator+=(const Vec2& other)
+        {
+            x += other.x;
+            y += other.y;
+            return *this;
+        }
+        Vec2& operator-=(const Vec2& other)
+        {
+            x -= other.x;
+            y -= other.y;
+            return *this;
+        }
+        Vec2& operator*=(T scalar)
+        {
+            x *= scalar;
+            y *= scalar;
+            return *this;
+        }
+        Vec2& operator/=(T scalar)
+        {
+            x /= scalar;
+            y /= scalar;
+            return *this;
+        }
+
+        T magnitude() const
+        {
+            return std::sqrt(x * x + y * y);
+        }
+
+        Vec2 normalize() const
+        {
+            T len = magnitude();
+            ZENGINE_VALIDATE_ASSERT(len != 0, "Cannot normalize zero vector");
+            return *this / len;
+        }
     };
 
     template <typename T>
-    struct Vec3 : public Vec<T, 3, Vec3<T>>
+    struct Vec3 : public Vec<T, 3>
     {
-        using Base = Vec<T, 3, Vec3<T>>;
+        using Vec<T, 3>::x;
+        using Vec<T, 3>::y;
+        using Vec<T, 3>::z;
 
-        Vec3()     = default;
+        Vec3() = default;
         Vec3(T x_, T y_, T z_)
         {
             x = x_;
@@ -208,17 +136,97 @@ namespace ZEngine::Core::Maths
             z = z_;
         }
 
-        T& x = Base::m_data[0];
-        T& y = Base::m_data[1];
-        T& z = Base::m_data[2];
+        T& operator[](size_t index)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < 3, "Index out of range");
+            return (&x)[index];
+        }
+
+        const T& operator[](size_t index) const
+        {
+            ZENGINE_VALIDATE_ASSERT(index < 3, "Index out of range");
+            return (&x)[index];
+        }
+
+        bool operator==(const Vec3& other) const
+        {
+            auto& base = Vec<T, 3>::IsEqual;
+            return base(x, other.x) && base(y, other.y) && base(z, other.z);
+        }
+
+        bool operator!=(const Vec3& other) const
+        {
+            return !(*this == other);
+        }
+
+        Vec3 operator+(const Vec3& other) const
+        {
+            return Vec3(x + other.x, y + other.y, z + other.z);
+        }
+        Vec3 operator-(const Vec3& other) const
+        {
+            return Vec3(x - other.x, y - other.y, z - other.z);
+        }
+        Vec3 operator*(T scalar) const
+        {
+            return Vec3(x * scalar, y * scalar, z * scalar);
+        }
+        Vec3 operator/(T scalar) const
+        {
+            return Vec3(x / scalar, y / scalar, z / scalar);
+        }
+
+        Vec3& operator+=(const Vec3& other)
+        {
+            x += other.x;
+            y += other.y;
+            z += other.z;
+            return *this;
+        }
+        Vec3& operator-=(const Vec3& other)
+        {
+            x -= other.x;
+            y -= other.y;
+            z -= other.z;
+            return *this;
+        }
+        Vec3& operator*=(T scalar)
+        {
+            x *= scalar;
+            y *= scalar;
+            z *= scalar;
+            return *this;
+        }
+        Vec3& operator/=(T scalar)
+        {
+            x /= scalar;
+            y /= scalar;
+            z /= scalar;
+            return *this;
+        }
+
+        T magnitude() const
+        {
+            return std::sqrt(x * x + y * y + z * z);
+        }
+
+        Vec3 normalize() const
+        {
+            T len = magnitude();
+            ZENGINE_VALIDATE_ASSERT(len != 0, "Cannot normalize zero vector");
+            return *this / len;
+        }
     };
 
     template <typename T>
-    struct Vec4 : public Vec<T, 4, Vec4<T>>
+    struct Vec4 : public Vec<T, 4>
     {
-        using Base = Vec<T, 4, Vec4<T>>;
+        using Vec<T, 4>::x;
+        using Vec<T, 4>::y;
+        using Vec<T, 4>::z;
+        using Vec<T, 4>::w;
 
-        Vec4()     = default;
+        Vec4() = default;
         Vec4(T x_, T y_, T z_, T w_)
         {
             x = x_;
@@ -227,10 +235,90 @@ namespace ZEngine::Core::Maths
             w = w_;
         }
 
-        T& x = Base::m_data[0];
-        T& y = Base::m_data[1];
-        T& z = Base::m_data[2];
-        T& w = Base::m_data[3];
+        T& operator[](size_t index)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < 4, "Index out of range");
+            return (&x)[index];
+        }
+
+        const T& operator[](size_t index) const
+        {
+            ZENGINE_VALIDATE_ASSERT(index < 4, "Index out of range");
+            return (&x)[index];
+        }
+
+        bool operator==(const Vec4& other) const
+        {
+            auto& base = Vec<T, 4>::IsEqual;
+            return base(x, other.x) && base(y, other.y) && base(z, other.z) && base(w, other.w);
+        }
+
+        bool operator!=(const Vec4& other) const
+        {
+            return !(*this == other);
+        }
+
+        Vec4 operator+(const Vec4& other) const
+        {
+            return Vec4(x + other.x, y + other.y, z + other.z, w + other.w);
+        }
+        Vec4 operator-(const Vec4& other) const
+        {
+            return Vec4(x - other.x, y - other.y, z - other.z, w - other.w);
+        }
+        Vec4 operator*(T scalar) const
+        {
+            return Vec4(x * scalar, y * scalar, z * scalar, w * scalar);
+        }
+        Vec4 operator/(T scalar) const
+        {
+            return Vec4(x / scalar, y / scalar, z / scalar, w / scalar);
+        }
+
+        Vec4& operator+=(const Vec4& other)
+        {
+            x += other.x;
+            y += other.y;
+            z += other.z;
+            w += other.w;
+            return *this;
+        }
+        Vec4& operator-=(const Vec4& other)
+        {
+            x -= other.x;
+            y -= other.y;
+            z -= other.z;
+            w -= other.w;
+            return *this;
+        }
+        Vec4& operator*=(T scalar)
+        {
+            x *= scalar;
+            y *= scalar;
+            z *= scalar;
+            w *= scalar;
+            return *this;
+        }
+        Vec4& operator/=(T scalar)
+        {
+            x /= scalar;
+            y /= scalar;
+            z /= scalar;
+            w /= scalar;
+            return *this;
+        }
+
+        T magnitude() const
+        {
+            return std::sqrt(x * x + y * y + z * z + w * w);
+        }
+
+        Vec4 normalize() const
+        {
+            T len = magnitude();
+            ZENGINE_VALIDATE_ASSERT(len != 0, "Cannot normalize zero vector");
+            return *this / len;
+        }
     };
 
     template <typename T>
@@ -245,8 +333,8 @@ namespace ZEngine::Core::Maths
         return (a.x * b.y) - (a.y * b.x);
     }
 
-    template <typename T, size_t N, typename Derived>
-    inline T dot(const Vec<T, N, Derived>& a, const Vec<T, N, Derived>& b)
+    template <typename T, size_t N>
+    inline T dot(const Vec<T, N>& a, const Vec<T, N>& b)
     {
         T result = T();
         for (size_t i = 0; i < N; ++i)
