@@ -6,6 +6,8 @@
 #include <nlohmann/json.hpp>
 
 using namespace ZEngine;
+using namespace ZEngine::Core::Containers;
+using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Helpers;
 using namespace Tetragrama::Layers;
 using namespace Tetragrama::Messengers;
@@ -13,43 +15,51 @@ using namespace Tetragrama::Controllers;
 
 namespace Tetragrama
 {
-    Editor::Editor(const EditorConfiguration& config)
+    void Editor::Initialize(ArenaAllocator* arena, const char* file)
     {
-        Configuration = config;
-        Context       = CreateRef<EditorContext>();
-        CurrentScene  = CreateRef<EditorScene>();
-        UILayer       = CreateRef<ImguiLayer>();
-        CanvasLayer   = CreateRef<RenderLayer>();
-    }
+        Context = ZPushStruct(arena, EditorContext);
 
-    Editor::~Editor()
-    {
-        UILayer.reset();
-        CanvasLayer.reset();
-        m_window.reset();
-        ZEngine::Engine::Dispose();
-    }
+        arena->CreateSubArena(ZMega(50), &(Context->Arena));
 
-    void Editor::Initialize()
-    {
-        if (!Configuration.ActiveSceneName.empty())
+        Context->ConfigurationPtr    = ZPushStructCtor(&(Context->Arena), EditorConfiguration);
+        Context->CameraControllerPtr = ZPushStructCtor(&(Context->Arena), EditorCameraController);
+        UILayer                      = ZPushStructCtor(&(Context->Arena), ImguiLayer);
+        CanvasLayer                  = ZPushStructCtor(&(Context->Arena), RenderLayer);
+
+        Context->CurrentScenePtr     = ZPushStructCtor(&(Context->Arena), EditorScene);
+
+        if (Helpers::secure_strlen(file))
         {
-            CurrentScene->Name = Configuration.ActiveSceneName;
+            Context->ConfigurationPtr->ReadConfig(arena, file);
+
+            if (!Context->ConfigurationPtr->ActiveSceneName.empty())
+            {
+                Context->CurrentScenePtr->Initialize(&(Context->Arena), Context->ConfigurationPtr->ActiveSceneName.c_str());
+            }
         }
 
-        Context->ConfigurationPtr                              = &Configuration;
-        Context->CurrentScenePtr                               = CurrentScene.get();
-        Context->CurrentScenePtr->RenderScene->IsDrawDataDirty = true;
+        UILayer->ParentContext                   = reinterpret_cast<void*>(Context);
+        CanvasLayer->ParentContext               = reinterpret_cast<void*>(Context);
 
-        UILayer->ParentContext                                 = reinterpret_cast<void*>(Context.get());
-        CanvasLayer->ParentContext                             = reinterpret_cast<void*>(Context.get());
+        std::string                  title       = fmt::format("{0} - Active Scene : {1}", Context->ConfigurationPtr->ProjectName.c_str(), Context->CurrentScenePtr->Name);
+        Windows::WindowConfiguration window_conf = {.EnableVsync = true};
+        window_conf.Title.init(&(Context->Arena), title.c_str());
+        window_conf.RenderingLayerCollection.init(&(Context->Arena), 1);
+        window_conf.OverlayLayerCollection.init(&(Context->Arena), 1);
 
-        std::string title                                      = fmt::format("{0} - Active Scene : {1}", Configuration.ProjectName, CurrentScene->Name);
-        m_window.reset(ZEngine::Windows::Create({.EnableVsync = true, .Title = title, .RenderingLayerCollection = {CanvasLayer}, .OverlayLayerCollection = {UILayer}}));
-        CameraController             = CreateRef<EditorCameraController>(m_window, 150.0, 0.f, 45.f);
-        Context->CameraControllerPtr = CameraController.get();
+        window_conf.RenderingLayerCollection.push(CanvasLayer);
+        window_conf.OverlayLayerCollection.push(UILayer);
 
-        ZEngine::Engine::Initialize({}, m_window);
+        Window = ZEngine::Windows::Create(&(Context->Arena), window_conf);
+
+        Context->CameraControllerPtr->Initialize(&(Context->Arena), Window, 150.0, 0.f, 45.f);
+
+        ZEngine::Engine::Initialize(arena, Window);
+    }
+
+    void Editor::Dispose()
+    {
+        ZEngine::Engine::Dispose();
     }
 
     void Editor::Run()
@@ -57,22 +67,48 @@ namespace Tetragrama
         ZEngine::Engine::Run();
     }
 
-    void EditorScene::Push(std::string_view mesh, std::string_view model, std::string_view material)
+    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* name)
+    {
+        Name                         = name;
+
+        RenderScene                  = ZPushStructCtor(arena, ZEngine::Rendering::Scenes::GraphicScene);
+        RenderScene->IsDrawDataDirty = true;
+
+        MeshFiles.init(arena, 1);
+        ModelFiles.init(arena, 1);
+        MaterialFiles.init(arena, 1);
+        Hashes.init(arena, 1);
+    }
+
+    void EditorScene::Push(ZEngine::Core::Memory::ArenaAllocator* arena, const char* mesh, const char* model, const char* material)
     {
         uint16_t mesh_file_id     = MeshFiles.size();
         uint16_t model_file_id    = ModelFiles.size();
         uint16_t material_file_id = MaterialFiles.size();
 
-        MeshFiles.emplace_back(mesh);
-        ModelFiles.emplace_back(model);
-        MaterialFiles.emplace_back(material);
+        String   mesh_file        = {};
+        String   model_file       = {};
+        String   mat_file         = {};
+
+        mesh_file.init(arena, mesh);
+        model_file.init(arena, model);
+        mat_file.init(arena, material);
+
+        MeshFiles.push(mesh_file);
+        ModelFiles.push(model_file);
+        MaterialFiles.push(mat_file);
 
         std::stringstream ss;
         ss << mesh_file_id << ":" << model_file_id << ":" << material_file_id;
-        auto hash            = ss.str();
-        Data[hash]           = {.MeshFileIndex = mesh_file_id, .ModelPathIndex = model_file_id, .MaterialPathIndex = material_file_id};
+        auto   hash     = ss.str();
 
-        m_has_pending_change = true;
+        String hash_str = {};
+        hash_str.init(arena, hash.c_str());
+        Hashes.push(hash_str);
+
+        Data[hash_str.c_str()] = {.MeshFileIndex = mesh_file_id, .ModelPathIndex = model_file_id, .MaterialPathIndex = material_file_id};
+
+        m_has_pending_change   = true;
     }
 
     bool EditorScene::HasPendingChange() const
@@ -80,9 +116,9 @@ namespace Tetragrama
         return m_has_pending_change;
     }
 
-    void EditorConfiguration::ReadConfig(std::string_view file)
+    void EditorConfiguration::ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file)
     {
-        std::ifstream  f(file.data());
+        std::ifstream  f(file);
         nlohmann::json config             = nlohmann::json::parse(f);
         std::string    root_project_dir   = std::filesystem::path(file).parent_path().string();
 
@@ -120,12 +156,12 @@ namespace Tetragrama
             config["workingSpace"] = root_project_dir;
         }
 
-        ProjectName              = config["projectName"];
-        WorkingSpacePath         = config["workingSpace"];
-        DefaultImportTexturePath = config["defaultImportDir"]["textureDir"];
-        DefaultImportSoundPath   = config["defaultImportDir"]["soundDir"];
-        ScenePath                = config["sceneDir"];
-        SceneDataPath            = config["sceneDataDir"];
+        ProjectName.init(arena, config["projectName"].get<std::string>().c_str());
+        WorkingSpacePath.init(arena, config["workingSpace"].get<std::string>().c_str());
+        DefaultImportTexturePath.init(arena, config["defaultImportDir"]["textureDir"].get<std::string>().c_str());
+        DefaultImportSoundPath.init(arena, config["defaultImportDir"]["soundDir"].get<std::string>().c_str());
+        ScenePath.init(arena, config["sceneDir"].get<std::string>().c_str());
+        SceneDataPath.init(arena, config["sceneDataDir"].get<std::string>().c_str());
 
         /*
          * Retreiving the Active Scene
@@ -137,7 +173,7 @@ namespace Tetragrama
             {
                 continue;
             }
-            ActiveSceneName = scene["name"];
+            ActiveSceneName.init(arena, scene["name"].get<std::string>().c_str());
             break;
         }
     }

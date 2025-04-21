@@ -8,14 +8,17 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    ProjectViewUIComponent::ProjectViewUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false)
-    {
-        auto context        = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        m_assets_directory  = context->ConfigurationPtr->WorkingSpacePath;
-        m_current_directory = m_assets_directory;
-    }
+    ProjectViewUIComponent::ProjectViewUIComponent() {}
 
     ProjectViewUIComponent::~ProjectViewUIComponent() {}
+
+    void ProjectViewUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
+    {
+        UIComponent::Initialize(parent, name, visibility, closed);
+        auto context        = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        m_assets_directory  = context->ConfigurationPtr->WorkingSpacePath.c_str();
+        m_current_directory = m_assets_directory;
+    }
 
     void ProjectViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
@@ -32,7 +35,7 @@ namespace Tetragrama::Components
             m_textures_loaded = true;
         }
 
-        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
         ImVec2 current_win_size = ImGui::GetContentRegionAvail();

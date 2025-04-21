@@ -31,14 +31,14 @@ namespace ZEngine::Rendering::Materials
         m_shininess = value;
     }
 
-    void StandardMaterial::SetSpecularMap(const Ref<Textures::Texture>& texture)
+    void StandardMaterial::SetSpecularMap(const Textures::Texture* texture)
     {
-        m_specular_map = texture;
+        // m_specular_map = texture;
     }
 
-    void StandardMaterial::SetDiffuseMap(const Ref<Textures::Texture>& texture)
+    void StandardMaterial::SetDiffuseMap(const Textures::Texture* texture)
     {
-        m_diffuse_map = texture;
+        // m_diffuse_map = texture;
     }
 
     float StandardMaterial::GetTileFactor() const
@@ -61,12 +61,12 @@ namespace ZEngine::Rendering::Materials
         return m_specular_tint_color;
     }
 
-    Ref<Textures::Texture> StandardMaterial::GetSpecularMap() const
+    Textures::Texture* StandardMaterial::GetSpecularMap() const
     {
         return m_specular_map;
     }
 
-    Ref<Textures::Texture> StandardMaterial::GetDiffuseMap() const
+    Textures::Texture* StandardMaterial::GetDiffuseMap() const
     {
         return m_diffuse_map;
     }

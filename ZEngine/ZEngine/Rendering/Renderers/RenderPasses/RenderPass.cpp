@@ -9,23 +9,37 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
-    RenderPass::RenderPass(Hardwares::VulkanDevice* device, const RenderPassSpecification& specification) : m_device(device), Specification(specification)
+    RenderPass::~RenderPass()
     {
+        Dispose();
+    }
+
+    void RenderPass::Initialize(Hardwares::VulkanDevice* device, const Specifications::RenderPassSpecification& specification)
+    {
+        m_device      = device;
+        Specification = specification;
+        RenderTargets.init(device->Arena, 4);
 
         if (Specification.SwapchainAsRenderTarget)
         {
             Specification.PipelineSpecification.Attachment = m_device->SwapchainAttachment; // Todo : Can potential Dispose() issue
-            Pipeline                                       = CreateRef<Pipelines::GraphicPipeline>(m_device, std::move(Specification.PipelineSpecification));
+            Pipeline                                       = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);
+            Pipeline->Initialize(m_device, std::move(Specification.PipelineSpecification));
         }
         else
         {
             Specifications::AttachmentSpecification attachment_specification = {};
             attachment_specification.BindPoint                               = PipelineBindPoint::GRAPHIC;
+            attachment_specification.ColorAttachements.init(device->Arena, 4);
+            attachment_specification.SubpassSpecifications.init(device->Arena, 4);
+            attachment_specification.ColorsMap.init(device->Arena, 4);
+            attachment_specification.DependenciesMap.init(device->Arena, 4);
+            attachment_specification.SubpassDependencies.init(device->Arena, 4);
 
-            uint32_t color_map_index                                         = 0;
+            uint32_t color_map_index = 0;
             for (const auto& handle : Specification.Inputs)
             {
-                const auto& texture                                                 = device->GlobalTextures->Access(handle);
+                const auto& texture                                                 = device->GlobalTextures.Access(handle);
 
                 bool        is_depth_texture                                        = texture->IsDepthTexture;
                 ImageLayout initial_layout                                          = is_depth_texture ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
@@ -45,7 +59,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
             for (const auto& handle : Specification.ExternalOutputs)
             {
-                const auto& texture                                                 = device->GlobalTextures->Access(handle);
+                auto        texture                                                 = device->GlobalTextures.Access(handle);
                 auto&       output_spec                                             = texture->Specification;
                 bool        is_depth_image_format                                   = (output_spec.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
                 ImageLayout initial_layout                                          = (output_spec.LoadOp == LoadOperation::CLEAR) ? ImageLayout::UNDEFINED : is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
@@ -63,25 +77,22 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            Attachment                                     = CreateRef<RenderPasses::Attachment>(m_device, attachment_specification);
+            Attachment                                     = ZPushStructCtorArgs(m_device->Arena, RenderPasses::Attachment, m_device, attachment_specification);
+
             Specification.PipelineSpecification.Attachment = Attachment; // Todo : Can potential Dispose() issue
-            Pipeline                                       = CreateRef<Pipelines::GraphicPipeline>(m_device, std::move(Specification.PipelineSpecification));
+            Pipeline                                       = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);
+            Pipeline->Initialize(m_device, std::move(Specification.PipelineSpecification));
 
             UpdateRenderTargets();
             UpdateInputBinding();
         }
     }
 
-    RenderPass::~RenderPass()
-    {
-        Dispose();
-    }
-
     void RenderPass::Dispose()
     {
         for (auto& handle : Specification.ExternalOutputs)
         {
-            m_device->GlobalTextures->Remove(handle);
+            m_device->GlobalTextures.Remove(handle);
         }
 
         Pipeline->Dispose();
@@ -99,7 +110,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     bool RenderPass::Verify()
     {
-        const auto& m_layout_bindings = Pipeline->GetShader()->GetLayoutBindingSpecificationCollection();
+        const auto& m_layout_bindings = Pipeline->Shader->LayoutBindingSpections;
 
         if (Inputs.size() != m_layout_bindings.size())
         {
@@ -131,17 +142,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
 
         const auto& spec               = validity_output.second;
-        auto        shader             = Pipeline->GetShader();
-        auto        descriptor_set_map = shader->GetDescriptorSetMap();
+        auto        shader             = Pipeline->Shader;
+        auto        descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
-        auto&       ubo_buf            = m_device->UniformBufferSetManager.Access(handle);
+        auto        ubo_buf            = m_device->UniformBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set      = descriptor_set_map.at(spec.Set)[i];
+            auto  set      = descriptor_set_map[spec.Set][i];
             auto& buf      = ubo_buf->At(i);
-            auto& buf_info = buf.GetDescriptorBufferInfo();
+            auto& buf_info = buf->GetDescriptorBufferInfo();
 
             ZENGINE_VALIDATE_ASSERT((buf_info.buffer), "UniformBuffer can't be null")
 
@@ -162,17 +173,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
 
         const auto& spec               = validity_output.second;
-        auto        shader             = Pipeline->GetShader();
-        auto        descriptor_set_map = shader->GetDescriptorSetMap();
+        auto        shader             = Pipeline->Shader;
+        auto        descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
-        auto&       sbo_buf            = m_device->StorageBufferSetManager.Access(handle);
+        auto        sbo_buf            = m_device->StorageBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set      = descriptor_set_map.at(spec.Set)[i];
+            auto  set      = descriptor_set_map[spec.Set][i];
             auto& buf      = sbo_buf->At(i);
-            auto& buf_info = buf.GetDescriptorBufferInfo();
+            auto& buf_info = buf->GetDescriptorBufferInfo();
 
             ZENGINE_VALIDATE_ASSERT((buf_info.buffer), "StorageBuffer can't be null")
 
@@ -194,15 +205,15 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         const auto& spec               = validity_output.second;
 
-        auto        shader             = Pipeline->GetShader();
-        auto        descriptor_set_map = shader->GetDescriptorSetMap();
+        auto        shader             = Pipeline->Shader;
+        auto        descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
-        auto&       tex_buf            = m_device->GlobalTextures->Access(handle);
+        auto        tex_buf            = m_device->GlobalTextures.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set        = descriptor_set_map.at(spec.Set)[i];
+            auto  set        = descriptor_set_map[spec.Set][i];
             auto& image_info = tex_buf->ImageBuffer->GetDescriptorImageInfo();
 
             write_reqs[i]    = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr};
@@ -221,13 +232,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
         const auto& binding_spec       = validity_output.second;
 
-        auto        shader             = Pipeline->GetShader();
-        auto        descriptor_set_map = shader->GetDescriptorSetMap();
+        auto        shader             = Pipeline->Shader;
+        auto        descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto                                    set  = descriptor_set_map.at(binding_spec.Set)[i];
+            auto                                    set  = descriptor_set_map[binding_spec.Set][i];
             Hardwares::WriteDescriptorSetRequestKey key  = {.Binding = binding_spec.Binding, .DstSet = set};
             auto&                                   reqs = m_device->WriteBindlessDescriptorSetRequests;
             reqs.insert(key);
@@ -238,7 +249,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     void RenderPass::UpdateInputBinding()
     {
-        for (auto& [binding_name, texture] : Specification.InputTextures)
+        auto view = Specification.InputTextures.view();
+        for (auto [binding_name, texture] : view)
         {
             SetInput(binding_name, texture);
         }
@@ -252,7 +264,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         uint32_t height = 0;
         for (const auto& input : Specification.Inputs)
         {
-            auto texture = m_device->GlobalTextures->Access(input);
+            auto texture = m_device->GlobalTextures.Access(input);
 
             if (width == 0)
             {
@@ -272,12 +284,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 ZENGINE_VALIDATE_ASSERT(height == texture->Height, "Render Target Height is invalid for Framebuffer creation")
             }
 
-            RenderTargets.emplace_back(input.Index);
+            RenderTargets.push(input.Index);
         }
 
         for (const auto& output : Specification.ExternalOutputs)
         {
-            auto texture = m_device->GlobalTextures->Access(output);
+            auto texture = m_device->GlobalTextures.Access(output);
 
             if (width == 0)
             {
@@ -297,14 +309,14 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 ZENGINE_VALIDATE_ASSERT(height == texture->Height, "Render Target Height is invalid for Framebuffer creation")
             }
 
-            RenderTargets.emplace_back(output.Index);
+            RenderTargets.push(output.Index);
         }
 
         RenderAreaWidth  = width;
         RenderAreaHeight = height;
     }
 
-    Ref<Renderers::RenderPasses::Attachment> RenderPass::GetAttachment() const
+    ZRawPtr(Renderers::RenderPasses::Attachment) RenderPass::GetAttachment() const
     {
         return Specification.SwapchainAsRenderTarget ? m_device->SwapchainAttachment : Attachment;
     }
@@ -322,8 +334,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     std::pair<bool, Specifications::LayoutBindingSpecification> RenderPass::ValidateInput(std::string_view key)
     {
         bool        valid{true};
-        const auto& shader       = Pipeline->GetShader();
-        auto        binding_spec = shader->GetLayoutBindingSpecification(key);
+        const auto& shader       = Pipeline->Shader;
+        auto        binding_spec = shader->GetLayoutBindingSpecification(key.data());
         if ((binding_spec.Set == 0xFFFFFFFF) && (binding_spec.Binding == 0xFFFFFFFF))
         {
             ZENGINE_CORE_ERROR("Shader input not found : {}", key.data())
@@ -335,6 +347,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     /*
      * RenderPassBuilder
      */
+    void RenderPassBuilder::Initialize(Core::Memory::ArenaAllocator* arena)
+    {
+        Arena = arena;
+    }
+
     RenderPassBuilder& RenderPassBuilder::SetName(std::string_view name)
     {
         m_spec.DebugName = name.data();
@@ -385,7 +402,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::SetInputBindingCount(uint32_t count)
     {
-        m_spec.PipelineSpecification.VertexInputBindingSpecifications.resize(count);
+        m_spec.PipelineSpecification.VertexInputBindingSpecifications.init(Arena, count, count);
         return *this;
     }
 
@@ -403,7 +420,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::SetInputAttributeCount(uint32_t count)
     {
-        m_spec.PipelineSpecification.VertexInputAttributeSpecifications.resize(count);
+        m_spec.PipelineSpecification.VertexInputAttributeSpecifications.init(Arena, count, count);
         return *this;
     }
 
@@ -439,24 +456,41 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Textures::TextureHandle& target)
     {
-        m_spec.ExternalOutputs.push_back(target);
+        if (m_spec.ExternalOutputs.capacity() <= 0)
+        {
+            m_spec.ExternalOutputs.init(Arena, 4);
+        }
+
+        m_spec.ExternalOutputs.push(target);
         return *this;
     }
 
     RenderPassBuilder& RenderPassBuilder::AddRenderTarget(const Specifications::TextureSpecification& target_spec)
     {
-        m_spec.Outputs.push_back(target_spec);
+        if (m_spec.Outputs.capacity() <= 0)
+        {
+            m_spec.Outputs.init(Arena, 4);
+        }
+        m_spec.Outputs.push(target_spec);
         return *this;
     }
 
     RenderPassBuilder& RenderPassBuilder::AddInputAttachment(const Textures::TextureHandle& input)
     {
-        m_spec.Inputs.push_back(input);
+        if (m_spec.Inputs.capacity() <= 0)
+        {
+            m_spec.Inputs.init(Arena, 4);
+        }
+        m_spec.Inputs.push(input);
         return *this;
     }
 
     RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Textures::TextureHandle& input)
     {
+        if (m_spec.InputTextures.capacity() <= 0)
+        {
+            m_spec.InputTextures.init(Arena, 4);
+        }
         m_spec.InputTextures[key.data()] = input;
         return *this;
     }

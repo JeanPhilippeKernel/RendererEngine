@@ -7,25 +7,20 @@
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
-    struct GraphicPipeline : public Helpers::RefCounted
+    struct GraphicPipeline
     {
     public:
-        GraphicPipeline(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec);
-        ~GraphicPipeline() = default;
+        GraphicPipeline() {}
+        ~GraphicPipeline() {}
 
-        Specifications::GraphicRendererPipelineSpecification& GetSpecification();
-        void                                                  SetSpecification(Specifications::GraphicRendererPipelineSpecification& spec);
-        void                                                  Bake();
-        void                                                  Dispose();
-        VkPipeline                                            GetHandle() const;
-        VkPipelineLayout                                      GetPipelineLayout() const;
-        Helpers::Ref<Shaders::Shader>                         GetShader() const;
+        Specifications::GraphicRendererPipelineSpecification Specification = {};
+        Shaders::Shader*                                     Shader        = nullptr;
+        Hardwares::VulkanDevice*                             Device        = nullptr;
+        VkPipeline                                           Handle        = VK_NULL_HANDLE;
+        VkPipelineLayout                                     Layout        = VK_NULL_HANDLE;
 
-    protected:
-        VkPipeline                                           m_pipeline_handle{VK_NULL_HANDLE};
-        VkPipelineLayout                                     m_pipeline_layout{VK_NULL_HANDLE};
-        Specifications::GraphicRendererPipelineSpecification m_pipeline_specification;
-        Helpers::Ref<Shaders::Shader>                        m_shader;
-        Hardwares::VulkanDevice*                             m_device{nullptr};
+        void                                                 Initialize(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec);
+        void                                                 Bake();
+        void                                                 Dispose();
     };
 } // namespace ZEngine::Rendering::Renderers::Pipelines

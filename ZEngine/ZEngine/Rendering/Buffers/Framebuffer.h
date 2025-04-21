@@ -1,8 +1,6 @@
 #pragma once
 #include <Rendering/Specifications/FrameBufferSpecification.h>
 #include <vulkan/vulkan.h>
-#include <vector>
-
 namespace ZEngine::Hardwares
 {
     struct VulkanDevice;
@@ -10,7 +8,7 @@ namespace ZEngine::Hardwares
 
 namespace ZEngine::Rendering::Buffers
 {
-    struct FramebufferVNext : public Helpers::RefCounted
+    struct FramebufferVNext
     {
         FramebufferVNext(Hardwares::VulkanDevice* device, const Specifications::FrameBufferSpecificationVNext&);
         FramebufferVNext(Hardwares::VulkanDevice* device, Specifications::FrameBufferSpecificationVNext&&);

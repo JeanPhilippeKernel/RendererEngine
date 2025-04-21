@@ -7,9 +7,10 @@ namespace ZEngine::Rendering::Cameras
     class PerspectiveCamera : public Camera
     {
     public:
-        PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far);
-        PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad, float pitch_rad);
+        PerspectiveCamera()          = default;
         virtual ~PerspectiveCamera() = default;
+
+        virtual void                    Initialize(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad = 0.0f, float pitch_rad = 0.0f);
 
         virtual void                    SetTarget(const glm::vec3& target);
         virtual void                    SetPosition(const glm::vec3& position);

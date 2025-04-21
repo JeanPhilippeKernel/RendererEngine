@@ -2,6 +2,7 @@
 #include <Rendering/Shaders/ShaderEnums.h>
 #include <vulkan/vulkan.h>
 #include <string>
+#include <vector>
 
 namespace ZEngine::Rendering::Shaders
 {

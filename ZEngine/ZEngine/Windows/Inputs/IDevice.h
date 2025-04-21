@@ -1,49 +1,50 @@
 #pragma once
+#include <Core/Memory/Allocator.h>
 #include <CoreWindow.h>
 #include <KeyCode.h>
 #include <algorithm>
-#include <memory>
-#include <string>
+#include <map>
 #include <type_traits>
-#include <unordered_map>
 
 namespace ZEngine::Windows::Inputs
 {
 
-    struct IDevice : public Helpers::RefCounted
+    struct IDevice
     {
-    public:
+        IDevice(const char* name = "abstract_device") : m_name(name) {}
         virtual ~IDevice() = default;
+        const char*                                    m_name;
+        static Core::Memory::ArenaAllocator*           Arena;
+        static std::map<const char*, ZRawPtr(IDevice)> Devices;
+
+        static void                                    Initialize(Core::Memory::ArenaAllocator* arena)
+        {
+            Arena = arena;
+        }
 
         template <typename T, typename = std::enable_if_t<std::is_base_of_v<IDevice, T>>>
         static const T* As() noexcept
         {
-
             const std::type_info& type = typeid(T);
-            auto                  it   = m_devices.find(std::string(type.name()));
+            auto                  it   = Devices.find(type.name());
 
-            if (it != std::end(m_devices))
+            if (it != std::end(Devices))
             {
-                return reinterpret_cast<T*>(it->second.get());
+                return reinterpret_cast<T*>(it->second);
             }
 
-            Helpers::Ref<IDevice> device_ptr = Helpers::CreateRef<T>();
-
-            auto                  pair       = m_devices.emplace(std::make_pair(std::string(type.name()), std::move(device_ptr)));
-            return reinterpret_cast<T*>(pair.first->second.get());
+            IDevice* device = ZPushStructCtor(Arena, T);
+            auto     pair   = Devices.emplace(std::make_pair(type.name(), device));
+            return reinterpret_cast<T*>(pair.first->second);
         }
 
-        virtual bool             IsKeyPressed(ZENGINE_KEYCODE key, const Helpers::Ref<Windows::CoreWindow>& window) const  = 0;
-        virtual bool             IsKeyReleased(ZENGINE_KEYCODE key, const Helpers::Ref<Windows::CoreWindow>& window) const = 0;
+        virtual bool        IsKeyPressed(ZENGINE_KEYCODE key, Windows::CoreWindow* const window) const  = 0;
 
-        virtual std::string_view GetName() const
+        virtual bool        IsKeyReleased(ZENGINE_KEYCODE key, Windows::CoreWindow* const window) const = 0;
+
+        virtual const char* GetName() const
         {
             return m_name;
         }
-
-    protected:
-        IDevice(std::string_view name = "abstract_device") : m_name(name) {}
-        static std::unordered_map<std::string, Helpers::Ref<IDevice>> m_devices;
-        std::string                                                   m_name;
     };
 } // namespace ZEngine::Windows::Inputs

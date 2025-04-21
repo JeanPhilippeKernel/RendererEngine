@@ -15,6 +15,14 @@
 #error "Platform not supported!"
 #endif
 
+#ifdef _MSC_VER
+#define PLATFORM_OS_BACKSLASH '\\'
+#elif defined(__APPLE__) || defined(__linux__)
+#define PLATFORM_OS_BACKSLASH '/'
+#else
+#define PLATFORM_OS_BACKSLASH
+#endif
+
 #define ZENGINE_VALIDATE_ASSERT(condition, message) \
     {                                               \
         if (!(condition))                           \
@@ -42,3 +50,32 @@
 #define SINGLE_ARG(...)     __VA_ARGS__
 
 #define MAX_FILE_PATH_COUNT 256
+
+#define ZRawPtr(X)          X*
+
+/*
+ * Allocator and Memory Macros
+ */
+#ifndef DEFAULT_ALIGNMENT
+#define DEFAULT_ALIGNMENT (2 * sizeof(void*))
+#endif // !DEFAULT_ALIGNMENT
+
+#define ZKilo(size)                    (size * 1024)
+#define ZMega(size)                    (ZKilo(size) * 1024)
+#define ZGiga(size)                    (ZMega(size) * 1024)
+
+#define ZPush(allocator, type, size)   ((type*) (allocator)->Allocate(size, DEFAULT_ALIGNMENT, __FILE__, __LINE__))
+
+#define ZPushArray(arena, type, count) ZPush(arena, type, (sizeof(type) * count))
+#define ZPushString(arena, count)      ZPushArray(arena, char, count)
+#define ZPushStruct(arena, type)       ZPushArray(arena, type, 1)
+
+#ifdef __cplusplus
+#define ZPushStructCtor(arena, type)          (new (ZPushStruct(arena, type)) type())
+#define ZPushStructCtorArgs(arena, type, ...) (new (ZPushStruct(arena, type)) type(__VA_ARGS__))
+#endif
+
+#define ZPushDynamicArray(pool, type)                          ((type*) (pool)->Allocate(__FILE__, __LINE__))
+#define ZAlloc(allocator, size, alignment)                     ((allocator)->Allocate((size), (alignment)))
+#define ZResize(allocator, ptr, old_size, new_size, alignment) ((allocator)->Resize((ptr), (old_size), (new_size), (alignment)))
+#define ZAlignof(type)                                         ((alignof(type) < DEFAULT_ALIGNMENT) ? DEFAULT_ALIGNMENT : alignof(type))

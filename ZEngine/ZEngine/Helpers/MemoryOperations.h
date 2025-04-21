@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngineDef.h>
 #include <cstring>
 
 #ifdef __STDC_LIB_EXT1__
@@ -122,6 +123,26 @@ namespace ZEngine::Helpers
 #endif
     }
 
+    inline int secure_strcmp(const char* str1, const char* str2)
+    {
+        if (!str1 || !str2)
+        {
+            return MEMORY_OP_FAILURE;
+        }
+
+#if SECURE_C11_FUNCTIONS_AVAILABLE
+        // There is no secure C11 version of strcmp, so we fall back to manual comparison
+#endif
+
+        while (*str1 && (*str1 == *str2))
+        {
+            ++str1;
+            ++str2;
+        }
+
+        return static_cast<unsigned char>(*str1) - static_cast<unsigned char>(*str2);
+    }
+
     inline int secure_memcmp(const void* ptr1, size_t ptr1Size, const void* ptr2, size_t ptr2Size, size_t num)
     {
         if (!ptr1 || !ptr2)
@@ -135,6 +156,43 @@ namespace ZEngine::Helpers
         }
 
         return std::memcmp(ptr1, ptr2, num);
+    }
+
+    inline bool is_power_of_two(uintptr_t x)
+    {
+        return (x & (x - 1)) == 0;
+    }
+
+    inline uintptr_t memory_align(uintptr_t ptr, size_t align)
+    {
+        uintptr_t p, a, mod;
+
+        ZENGINE_VALIDATE_ASSERT(is_power_of_two(align), "Alignment should be power of two");
+
+        p   = ptr;
+        a   = static_cast<uintptr_t>(align);
+        mod = p & (a - 1);
+        if (mod != 0)
+        {
+            p += a - mod;
+        }
+        return p;
+    }
+
+    inline size_t memory_align_size_t(size_t ptr, size_t align)
+    {
+        size_t p, a, mod;
+
+        ZENGINE_VALIDATE_ASSERT(is_power_of_two((uintptr_t) align), "Alignment should be power of two");
+
+        p   = ptr;
+        a   = align;
+        mod = p & (a - 1);
+        if (mod != 0)
+        {
+            p += a - mod;
+        }
+        return p;
     }
 
 } // namespace ZEngine::Helpers

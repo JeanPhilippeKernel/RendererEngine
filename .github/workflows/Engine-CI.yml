@@ -1,8 +1,8 @@
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ master, develop, arena-integration ]
   pull_request:
-    branches: [ master, develop ]
+    branches: [ master, develop, arena-integration ]
 
 jobs:
   clang-format:

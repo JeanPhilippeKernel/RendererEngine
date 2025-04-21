@@ -1,11 +1,8 @@
-set (TEST_SOURCES
-    bitmap_test.cpp
-    IntrusivePtr_test.cpp
-    IntrusiveWeakPtr_test.cpp
-    MemoryOperation_test.cpp
-    ThreadPool_test.cpp
-    handleManager_test.cpp
-)
+file ( GLOB TEST_SOURCES 
+            Memory/*.cpp
+            Containers/*.cpp
+            Maths/*.cpp
+            Misc/*.cpp)
 
 add_executable(ZEngineTests ${TEST_SOURCES})
 

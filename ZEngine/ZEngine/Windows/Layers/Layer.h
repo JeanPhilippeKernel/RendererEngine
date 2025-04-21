@@ -1,10 +1,9 @@
 #pragma once
 #include <Core/IEventable.h>
-#include <Core/IInitializable.h>
 #include <Core/IRenderable.h>
 #include <Core/IUpdatable.h>
+#include <Core/Memory/Allocator.h>
 #include <Windows/CoreWindow.h>
-#include <string>
 
 namespace ZEngine::Windows
 {
@@ -14,36 +13,21 @@ namespace ZEngine::Windows
 namespace ZEngine::Windows::Layers
 {
 
-    class Layer : public Core::IInitializable, public Core::IUpdatable, public Core::IEventable, public Core::IRenderable, public Helpers::RefCounted
+    struct Layer : public Core::IUpdatable, public Core::IEventable, public Core::IRenderable
     {
-
-    public:
-        Layer(std::string_view name = "default_layer") : m_name(name) {}
-
-        virtual ~Layer()               = default;
-
-        void*            ParentContext = nullptr;
-
-        std::string_view GetName() const
+        Layer(const char* name = "default_layer")
         {
-            return m_name;
+            Name = name;
         }
 
-        void SetAttachedWindow(const Helpers::Ref<Windows::CoreWindow>& window)
-        {
-            m_window = window;
-        }
+        virtual ~Layer()                                                                      = default;
 
-        Helpers::Ref<ZEngine::Windows::CoreWindow> GetAttachedWindow() const
-        {
-            if (!m_window.expired())
-                return m_window.lock();
+        virtual void                          Initialize(Core::Memory::ArenaAllocator* arena) = 0;
+        virtual void                          Deinitialize() {};
 
-            return nullptr;
-        }
-
-    protected:
-        std::string                                    m_name;
-        Helpers::WeakRef<ZEngine::Windows::CoreWindow> m_window;
+        ZEngine::Core::Memory::ArenaAllocator LayerArena    = {};
+        const char*                           Name          = nullptr;
+        void*                                 ParentContext = nullptr;
+        ZRawPtr(ZEngine::Windows::CoreWindow) ParentWindow  = nullptr;
     };
 } // namespace ZEngine::Windows::Layers

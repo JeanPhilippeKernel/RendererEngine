@@ -10,8 +10,10 @@ namespace Tetragrama::Components
     class DockspaceUIComponent : public UIComponent
     {
     public:
-        DockspaceUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Dockspace", bool visibility = true);
+        DockspaceUIComponent();
         virtual ~DockspaceUIComponent();
+
+        void              Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Dockspace", bool visibility = true, bool closed = false) override;
 
         void              Update(ZEngine::Core::TimeStep dt) override;
         virtual void      Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
@@ -53,16 +55,16 @@ namespace Tetragrama::Components
         static float       s_editor_scene_serializer_progress;
 
     private:
-        bool                                                        m_open_asset_importer{false};
-        bool                                                        m_open_exit{false};
-        bool                                                        m_pending_shutdown{false};
-        bool                                                        m_open_save_scene{false};
-        bool                                                        m_open_save_scene_as{false};
-        bool                                                        m_request_save_scene_ui_close{false};
-        ImGuiDockNodeFlags                                          m_dockspace_node_flag;
-        ImGuiWindowFlags                                            m_window_flags;
-        Importers::ImportConfiguration                              m_default_import_configuration;
-        ZEngine::Helpers::Scope<Importers::IAssetImporter>          m_asset_importer;
-        ZEngine::Helpers::Scope<Serializers::EditorSceneSerializer> m_editor_serializer;
+        bool                           m_open_asset_importer{false};
+        bool                           m_open_exit{false};
+        bool                           m_pending_shutdown{false};
+        bool                           m_open_save_scene{false};
+        bool                           m_open_save_scene_as{false};
+        bool                           m_request_save_scene_ui_close{false};
+        ImGuiDockNodeFlags             m_dockspace_node_flag;
+        ImGuiWindowFlags               m_window_flags;
+        Importers::ImportConfiguration m_default_import_configuration;
+        ZRawPtr(Importers::IAssetImporter) m_asset_importer;
+        ZRawPtr(Serializers::EditorSceneSerializer) m_editor_serializer;
     };
 } // namespace Tetragrama::Components

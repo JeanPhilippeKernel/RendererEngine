@@ -1,25 +1,42 @@
 #include <pch.h>
 #include <CLI/CLI.hpp>
+#include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/EngineConfiguration.h>
+#include <ZEngine/Logging/Logger.h>
 #include "Editor.h"
 
 #ifdef ZENGINE_PLATFORM
+
+using namespace ZEngine;
+using namespace ZEngine::Logging;
+using namespace ZEngine::Core::Memory;
 
 int applicationEntryPoint(int argc, char* argv[])
 {
     CLI::App app{"ZEngine Editor"};
     argv = app.ensure_utf8(argv);
 
-    std::string json_config_file{""};
-    app.add_option("--projectConfigFile", json_config_file, "The project config file");
+    std::string editor_cfg_file{""};
+    app.add_option("--projectConfigFile", editor_cfg_file, "The project config file");
 
     CLI11_PARSE(app, argc, argv);
 
-    Tetragrama::EditorConfiguration editor_config = {};
-    editor_config.ReadConfig(json_config_file);
+    MemoryManager       manager = {};
+    MemoryConfiguration config  = {.DefaultSize = ZGiga(1)};
+    manager.Initialize(config);
+    auto                arena      = &(manager.ArenaAllocator);
 
-    auto editor = ZEngine::Helpers::CreateRef<Tetragrama::Editor>(editor_config);
-    editor->Initialize();
+    LoggerConfiguration logger_cfg = {};
+    Logger::Initialize(arena, logger_cfg);
+
+    auto editor = ZPushStruct(arena, Tetragrama::Editor);
+    editor->Initialize(arena, editor_cfg_file.c_str());
     editor->Run();
+
+    editor->Dispose();
+    Logger::Dispose();
+
+    manager.Shutdowm();
 
     return 0;
 }

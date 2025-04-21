@@ -21,55 +21,89 @@ using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering;
 using namespace ZEngine::Rendering::Buffers;
 using namespace ZEngine::Rendering::Specifications;
+using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Hardwares
 {
-    void VulkanDevice::Initialize(const Ref<Windows::CoreWindow>& window)
+    void VulkanDevice::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window)
     {
-        CurrentWindow                                   = window.get();
+        Arena         = arena;
+        CurrentWindow = window;
+
+        DefaultDepthFormats.init(Arena, 3);
+        DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT);
+        DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT_S8_UINT);
+        DefaultDepthFormats.push(VK_FORMAT_D24_UNORM_S8_UINT);
+
+        GlobalTextures.Initialize(arena, 600);
+        ShaderManager.Initialize(arena, 300);
+        VertexBufferSetManager.Initialize(arena, 300);
+        StorageBufferSetManager.Initialize(arena, 300);
+        IndirectBufferSetManager.Initialize(arena, 300);
+        IndexBufferSetManager.Initialize(arena, 300);
+        UniformBufferSetManager.Initialize(arena, 300);
+        DirtyResources.Initialize(arena, 300);
+        DirtyBuffers.Initialize(arena, 500);
+        DirtyBufferImages.Initialize(arena, 300);
+        ShaderCaches.init(arena, 10);
+        m_queue_map.init(arena, 4);
+
+        m_layer.QueryInstanceLayerProperties(arena);
 
         /*Create Vulkan Instance*/
-        VkApplicationInfo          app_info             = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pNext = VK_NULL_HANDLE, .pApplicationName = ApplicationName.data(), .applicationVersion = 1, .pEngineName = EngineName.data(), .engineVersion = 1, .apiVersion = VK_API_VERSION_1_3};
+        VkApplicationInfo    app_info             = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pNext = VK_NULL_HANDLE, .pApplicationName = ApplicationName, .applicationVersion = 1, .pEngineName = EngineName, .engineVersion = 1, .apiVersion = VK_API_VERSION_1_3};
 
-        VkInstanceCreateInfo       instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = VK_NULL_HANDLE, .flags = 0, .pApplicationInfo = &app_info};
+        VkInstanceCreateInfo instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = VK_NULL_HANDLE, .flags = 0, .pApplicationInfo = &app_info};
 
-        auto                       layer_properties     = m_layer.GetInstanceLayerProperties();
+        auto                 scratch              = ZGetScratch(Arena);
 
-        std::vector<const char*>   enabled_layer_name_collection;
-        std::vector<LayerProperty> selected_layer_property_collection;
+        Array<const char*>   enabled_layer_name_collection;
+        Array<LayerProperty> selected_layer_property_collection;
+        enabled_layer_name_collection.init(scratch.Arena, 10);
+        selected_layer_property_collection.init(scratch.Arena, 4);
 
 #ifdef ENABLE_VULKAN_VALIDATION_LAYER
-        std::unordered_set<std::string> validation_layer_name_collection = {"VK_LAYER_LUNARG_api_dump", "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_screenshot"};
 
-        for (std::string_view layer_name : validation_layer_name_collection)
+        Array<const char*> validation_layer_name_collection;
+        validation_layer_name_collection.init(scratch.Arena, 4);
+        validation_layer_name_collection.push("VK_LAYER_LUNARG_api_dump");
+        validation_layer_name_collection.push("VK_LAYER_KHRONOS_validation");
+        validation_layer_name_collection.push("VK_LAYER_LUNARG_monitor");
+        validation_layer_name_collection.push("VK_LAYER_LUNARG_screenshot");
+
+        for (const char* layer_name : validation_layer_name_collection)
         {
-            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
-            if (find_it == std::end(layer_properties))
+            auto find_it = std::find_if(std::begin(m_layer.InstanceLayers), std::end(m_layer.InstanceLayers), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
+            if (find_it == std::end(m_layer.InstanceLayers))
             {
                 continue;
             }
 
-            enabled_layer_name_collection.push_back(find_it->Properties.layerName);
-            selected_layer_property_collection.push_back(*find_it);
+            enabled_layer_name_collection.push(find_it->Properties.layerName);
+            selected_layer_property_collection.push(*find_it);
         }
 #endif
 
 #ifdef ENABLE_VULKAN_SYNCHRONIZATION_LAYER
-        std::unordered_set<std::string> synchronization_layer_collection = {"VK_LAYER_KHRONOS_synchronization2"};
-        for (std::string_view layer_name : synchronization_layer_collection)
+
+        Array<const char*> synchronization_layer_collection;
+        synchronization_layer_collection.init(scratch.Arena, 1);
+        synchronization_layer_collection.push("VK_LAYER_KHRONOS_synchronization2");
+        for (const char* layer_name : synchronization_layer_collection)
         {
-            auto find_it = std::find_if(std::begin(layer_properties), std::end(layer_properties), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
-            if (find_it == std::end(layer_properties))
+            auto find_it = std::find_if(std::begin(m_layer.InstanceLayers), std::end(m_layer.InstanceLayers), [&](const LayerProperty& layer_property) { return std::string_view(layer_property.Properties.layerName) == layer_name; });
+            if (find_it == std::end(m_layer.InstanceLayers))
             {
                 continue;
             }
 
-            enabled_layer_name_collection.push_back(find_it->Properties.layerName);
-            selected_layer_property_collection.push_back(*find_it);
+            enabled_layer_name_collection.push(find_it->Properties.layerName);
+            selected_layer_property_collection.push(*find_it);
         }
 #endif
 
-        std::vector<const char*> enabled_extension_layer_name_collection;
+        Array<const char*> enabled_extension_layer_name_collection;
+        enabled_extension_layer_name_collection.init(scratch.Arena, 5);
 
         for (const LayerProperty& layer : selected_layer_property_collection)
         {
@@ -78,16 +112,15 @@ namespace ZEngine::Hardwares
                 if (std::string_view(extension.extensionName) == "VK_EXT_validation_features" || std::string_view(extension.extensionName) == "VK_EXT_layer_settings")
                     continue;
                 else
-                    enabled_extension_layer_name_collection.push_back(extension.extensionName);
+                    enabled_extension_layer_name_collection.push(extension.extensionName);
             }
         }
 
-        auto additional_extension_layer_name_collection = window->GetRequiredExtensionLayers();
-        if (!additional_extension_layer_name_collection.empty())
+        if (!window->RequiredExtensionLayers.empty())
         {
-            for (const auto& extension : additional_extension_layer_name_collection)
+            for (const auto& extension : window->RequiredExtensionLayers)
             {
-                enabled_extension_layer_name_collection.push_back(extension.c_str());
+                enabled_extension_layer_name_collection.push(extension);
             }
         }
 
@@ -134,7 +167,8 @@ namespace ZEngine::Hardwares
         uint32_t gpu_device_count{0};
         vkEnumeratePhysicalDevices(Instance, &gpu_device_count, nullptr);
 
-        std::vector<VkPhysicalDevice> physical_device_collection(gpu_device_count);
+        Array<VkPhysicalDevice> physical_device_collection;
+        physical_device_collection.init(scratch.Arena, gpu_device_count, gpu_device_count);
         vkEnumeratePhysicalDevices(Instance, &gpu_device_count, physical_device_collection.data());
 
         for (VkPhysicalDevice physical_device : physical_device_collection)
@@ -154,19 +188,24 @@ namespace ZEngine::Hardwares
             }
         }
 
-        std::vector<const char*> requested_device_enabled_layer_name_collection   = {};
-        std::vector<const char*> requested_device_extension_layer_name_collection = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME};
+        Array<const char*> requested_device_enabled_layer_name_collection;
+        Array<const char*> requested_device_extension_layer_name_collection;
+        requested_device_enabled_layer_name_collection.init(scratch.Arena, 5);
+        requested_device_extension_layer_name_collection.init(scratch.Arena, 2);
+
+        requested_device_extension_layer_name_collection.push(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        requested_device_extension_layer_name_collection.push(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME);
 
         for (LayerProperty& layer : selected_layer_property_collection)
         {
-            m_layer.GetExtensionProperties(layer, &PhysicalDevice);
+            m_layer.GetExtensionProperties(scratch.Arena, layer, &PhysicalDevice);
 
             if (!layer.DeviceExtensionCollection.empty())
             {
-                requested_device_enabled_layer_name_collection.push_back(layer.Properties.layerName);
+                requested_device_enabled_layer_name_collection.push(layer.Properties.layerName);
                 for (const auto& extension_property : layer.DeviceExtensionCollection)
                 {
-                    requested_device_extension_layer_name_collection.push_back(extension_property.extensionName);
+                    requested_device_extension_layer_name_collection.push(extension_property.extensionName);
                 }
             }
         }
@@ -174,8 +213,8 @@ namespace ZEngine::Hardwares
         uint32_t physical_device_queue_family_count{0};
         vkGetPhysicalDeviceQueueFamilyProperties(PhysicalDevice, &physical_device_queue_family_count, nullptr);
 
-        std::vector<VkQueueFamilyProperties> physical_device_queue_family_collection;
-        physical_device_queue_family_collection.resize(physical_device_queue_family_count);
+        Array<VkQueueFamilyProperties> physical_device_queue_family_collection;
+        physical_device_queue_family_collection.init(scratch.Arena, physical_device_queue_family_count, physical_device_queue_family_count);
         vkGetPhysicalDeviceQueueFamilyProperties(PhysicalDevice, &physical_device_queue_family_count, physical_device_queue_family_collection.data());
 
         uint32_t                queue_family_index      = 0;
@@ -210,14 +249,15 @@ namespace ZEngine::Hardwares
             }
         }
 
-        HasSeperateTransfertQueueFamily                                   = GraphicFamilyIndex != TransferFamilyIndex;
+        HasSeperateTransfertQueueFamily                             = GraphicFamilyIndex != TransferFamilyIndex;
 
-        const float                          queue_prorities[]            = {1.0f};
-        auto                                 family_index_collection      = std::set{GraphicFamilyIndex, TransferFamilyIndex};
-        std::vector<VkDeviceQueueCreateInfo> queue_create_info_collection = {};
+        const float                    queue_prorities[]            = {1.0f};
+        auto                           family_index_collection      = std::set{GraphicFamilyIndex, TransferFamilyIndex};
+        Array<VkDeviceQueueCreateInfo> queue_create_info_collection = {};
+        queue_create_info_collection.init(scratch.Arena, family_index_collection.size());
         for (uint32_t queue_family_index : family_index_collection)
         {
-            VkDeviceQueueCreateInfo& queue_create_info = queue_create_info_collection.emplace_back();
+            VkDeviceQueueCreateInfo& queue_create_info = queue_create_info_collection.push_use(VkDeviceQueueCreateInfo{});
             queue_create_info.sType                    = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
             queue_create_info.pQueuePriorities         = queue_prorities;
             queue_create_info.queueFamilyIndex         = queue_family_index;
@@ -256,23 +296,25 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice) == VK_SUCCESS, "Failed to create GPU logical device")
 
         /*Create Vulkan Graphic Queue*/
-        m_queue_map[Rendering::QueueType::GRAPHIC_QUEUE] = VK_NULL_HANDLE;
-        vkGetDeviceQueue(LogicalDevice, GraphicFamilyIndex, 0, &(m_queue_map[Rendering::QueueType::GRAPHIC_QUEUE]));
+        VkQueue graphic_queue = VK_NULL_HANDLE;
+        vkGetDeviceQueue(LogicalDevice, GraphicFamilyIndex, 0, &graphic_queue);
+        m_queue_map.insert(Rendering::QueueType::GRAPHIC_QUEUE, std::move(graphic_queue));
 
         /*Create Vulkan Transfer Queue*/
         if (HasSeperateTransfertQueueFamily)
         {
-            m_queue_map[Rendering::QueueType::TRANSFER_QUEUE] = VK_NULL_HANDLE;
-            vkGetDeviceQueue(LogicalDevice, TransferFamilyIndex, 0, &(m_queue_map[Rendering::QueueType::TRANSFER_QUEUE]));
+            VkQueue transfer_queue = VK_NULL_HANDLE;
+            vkGetDeviceQueue(LogicalDevice, TransferFamilyIndex, 0, &transfer_queue);
+            m_queue_map.insert(Rendering::QueueType::TRANSFER_QUEUE, std::move(transfer_queue));
         }
 
         /* Surface format selection */
-        uint32_t                        format_count    = 0;
-        std::vector<VkSurfaceFormatKHR> surface_formats = {};
+        uint32_t                  format_count    = 0;
+        Array<VkSurfaceFormatKHR> surface_formats = {};
         vkGetPhysicalDeviceSurfaceFormatsKHR(PhysicalDevice, Surface, &format_count, nullptr);
         if (format_count != 0)
         {
-            surface_formats.resize(format_count);
+            surface_formats.init(scratch.Arena, format_count, format_count);
             vkGetPhysicalDeviceSurfaceFormatsKHR(PhysicalDevice, Surface, &format_count, surface_formats.data());
 
             for (const VkSurfaceFormatKHR& format_khr : surface_formats)
@@ -288,12 +330,12 @@ namespace ZEngine::Hardwares
         }
 
         /* Present Mode selection */
-        uint32_t                      present_mode_count = 0;
-        std::vector<VkPresentModeKHR> present_modes      = {};
+        uint32_t                present_mode_count = 0;
+        Array<VkPresentModeKHR> present_modes      = {};
         vkGetPhysicalDeviceSurfacePresentModesKHR(PhysicalDevice, Surface, &present_mode_count, nullptr);
         if (present_mode_count != 0)
         {
-            present_modes.resize(present_mode_count);
+            present_modes.init(scratch.Arena, present_mode_count, present_mode_count);
             vkGetPhysicalDeviceSurfacePresentModesKHR(PhysicalDevice, Surface, &present_mode_count, present_modes.data());
 
             if (window->IsVSyncEnable())
@@ -322,6 +364,8 @@ namespace ZEngine::Hardwares
             }
         }
 
+        ZReleaseScratch(scratch);
+
         /*
          * Creating VMA Allocators
          */
@@ -329,31 +373,33 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vmaCreateAllocator(&vma_allocator_create_info, &VmaAllocator) == VK_SUCCESS, "Failed to create VMA Allocator")
 
         m_buffer_manager.Initialize(this);
-        EnqueuedCommandbuffers.resize(m_buffer_manager.TotalCommandBufferCount);
+        EnqueuedCommandbuffers.init(Arena, m_buffer_manager.TotalCommandBufferCount, m_buffer_manager.TotalCommandBufferCount);
 
         /*
          * Creating Swapchain
          */
         Specifications::AttachmentSpecification attachment_specification = {.BindPoint = Specifications::PipelineBindPoint::GRAPHIC};
-        attachment_specification.ColorsMap[0]                            = {};
-        attachment_specification.ColorsMap[0].Format                     = ImageFormat::FORMAT_FROM_DEVICE;
-        attachment_specification.ColorsMap[0].Load                       = LoadOperation::CLEAR;
-        attachment_specification.ColorsMap[0].Store                      = StoreOperation::STORE;
-        attachment_specification.ColorsMap[0].Initial                    = ImageLayout::UNDEFINED;
-        attachment_specification.ColorsMap[0].Final                      = ImageLayout::PRESENT_SRC;
-        attachment_specification.ColorsMap[0].ReferenceLayout            = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-        SwapchainAttachment                                              = CreateRef<Rendering::Renderers::RenderPasses::Attachment>(this, attachment_specification);
-        PreviousFrameIndex                                               = 0;
-        CurrentFrameIndex                                                = 0;
+        attachment_specification.ColorsMap.init(Arena, 2);
+        attachment_specification.ColorsMap[0]                 = {};
+        attachment_specification.ColorsMap[0].Format          = ImageFormat::FORMAT_FROM_DEVICE;
+        attachment_specification.ColorsMap[0].Load            = LoadOperation::CLEAR;
+        attachment_specification.ColorsMap[0].Store           = StoreOperation::STORE;
+        attachment_specification.ColorsMap[0].Initial         = ImageLayout::UNDEFINED;
+        attachment_specification.ColorsMap[0].Final           = ImageLayout::PRESENT_SRC;
+        attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+        SwapchainAttachment                                   = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::Attachment, this, attachment_specification);
+        PreviousFrameIndex                                    = 0;
+        CurrentFrameIndex                                     = 0;
 
-        SwapchainRenderCompleteSemaphores.resize(SwapchainImageCount);
-        SwapchainAcquiredSemaphores.resize(SwapchainImageCount);
-        SwapchainSignalFences.resize(SwapchainImageCount);
+        SwapchainRenderCompleteSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
+        SwapchainAcquiredSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
+        SwapchainSignalFences.init(Arena, SwapchainImageCount, SwapchainImageCount);
+
         for (int i = 0; i < SwapchainImageCount; ++i)
         {
-            SwapchainAcquiredSemaphores[i]       = CreateRef<Primitives::Semaphore>(this);
-            SwapchainRenderCompleteSemaphores[i] = CreateRef<Primitives::Semaphore>(this);
-            SwapchainSignalFences[i]             = CreateRef<Primitives::Fence>(this, true);
+            SwapchainAcquiredSemaphores[i]       = ZPushStructCtorArgs(Arena, Primitives::Semaphore, this);
+            SwapchainRenderCompleteSemaphores[i] = ZPushStructCtorArgs(Arena, Primitives::Semaphore, this);
+            SwapchainSignalFences[i]             = ZPushStructCtorArgs(Arena, Primitives::Fence, this, true);
         }
         CreateSwapchain();
 
@@ -369,23 +415,25 @@ namespace ZEngine::Hardwares
         }
         DirtyCollectorCond.notify_one();
 
-        GlobalTextures->Dispose();
+        GlobalTextures.Dispose();
 
         VertexBufferSetManager.Dispose();
         StorageBufferSetManager.Dispose();
         IndirectBufferSetManager.Dispose();
         IndexBufferSetManager.Dispose();
         UniformBufferSetManager.Dispose();
+        ShaderManager.Dispose();
 
-        ZENGINE_CLEAR_STD_VECTOR(EnqueuedCommandbuffers)
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainSignalFences)
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainAcquiredSemaphores)
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainRenderCompleteSemaphores)
+        EnqueuedCommandbuffers.clear();
+        SwapchainSignalFences.clear();
+        SwapchainAcquiredSemaphores.clear();
+        SwapchainRenderCompleteSemaphores.clear();
 
         DisposeSwapchain();
         SwapchainAttachment->Dispose();
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainImageViews)
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainFramebuffers)
+
+        SwapchainFramebuffers.clear();
+        SwapchainImageViews.clear();
 
         m_buffer_manager.Deinitialize();
 
@@ -404,23 +452,36 @@ namespace ZEngine::Hardwares
         if (TextureHandleToUpdates.Pop(tex_handle))
         {
 
-            auto& texture = GlobalTextures->Access(tex_handle);
+            auto texture = GlobalTextures.Access(tex_handle);
 
             if (!texture)
             {
                 TextureHandleToUpdates.Enqueue(tex_handle);
                 return;
             }
-            const auto&                       image_info            = texture->ImageBuffer->GetDescriptorImageInfo();
-            std::vector<VkWriteDescriptorSet> write_descriptor_sets = {};
-            write_descriptor_sets.reserve(WriteBindlessDescriptorSetRequests.size());
+            const auto& image_info = texture->ImageBuffer->GetDescriptorImageInfo();
 
-            for (auto& req : WriteBindlessDescriptorSetRequests)
+            auto        scratch    = ZGetScratch(Arena);
             {
-                write_descriptor_sets.push_back(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = req.DstSet, .dstBinding = req.Binding, .dstArrayElement = (uint32_t) tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-            }
+                Array<VkWriteDescriptorSet> write_descriptor_sets = {};
+                write_descriptor_sets.init(scratch.Arena, WriteBindlessDescriptorSetRequests.size());
 
-            vkUpdateDescriptorSets(LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
+                for (auto& req : WriteBindlessDescriptorSetRequests)
+                {
+                    write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = req.DstSet, .dstBinding = req.Binding, .dstArrayElement = (uint32_t) tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
+                }
+
+                vkUpdateDescriptorSets(LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
+            }
+            ZReleaseScratch(scratch);
+        }
+
+        Textures::TextureHandle tex_to_dispose = {};
+        if (TextureHandleToDispose.Pop(tex_to_dispose))
+        {
+            auto texture = GlobalTextures.Access(tex_to_dispose);
+            texture->Dispose();
+            GlobalTextures.Remove(tex_to_dispose);
         }
     }
 
@@ -486,7 +547,7 @@ namespace ZEngine::Hardwares
     {
         if (handle)
         {
-            m_dirty_resources.Add({.FrameIndex = CurrentFrameIndex, .Handle = handle, .Type = resource_type});
+            DirtyResources.Add({.FrameIndex = CurrentFrameIndex, .Handle = handle, .Type = resource_type});
         }
     }
 
@@ -494,18 +555,18 @@ namespace ZEngine::Hardwares
     {
         if (resource.Handle)
         {
-            m_dirty_resources.Add(resource);
+            DirtyResources.Add(resource);
         }
     }
 
     void VulkanDevice::EnqueueBufferForDeletion(BufferView& buffer)
     {
-        m_dirty_buffers.Add(buffer);
+        DirtyBuffers.Add(buffer);
     }
 
     void VulkanDevice::EnqueueBufferImageForDeletion(BufferImage& buffer)
     {
-        m_dirty_buffer_images.Add(buffer);
+        DirtyBufferImages.Add(buffer);
     }
 
     void VulkanDevice::QueueWait(Rendering::QueueType type)
@@ -565,17 +626,17 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::__cleanupDirtyResource()
     {
-        size_t dirty_resource_count = m_dirty_resources.Head();
+        size_t dirty_resource_count = DirtyResources.Head();
         for (size_t i = 0; i < dirty_resource_count; ++i)
         {
-            auto handle = m_dirty_resources.ToHandle(i);
+            auto handle = DirtyResources.ToHandle(i);
 
             if (!handle)
             {
                 continue;
             }
 
-            DirtyResource& res_handle = m_dirty_resources[handle];
+            DirtyResource& res_handle = DirtyResources[handle];
             switch (res_handle.Type)
             {
                 case Rendering::DeviceResourceType::SAMPLER:
@@ -625,47 +686,47 @@ namespace ZEngine::Hardwares
                 }
             }
 
-            m_dirty_resources.Remove(handle);
+            DirtyResources.Remove(handle);
         }
     }
 
     void VulkanDevice::__cleanupBufferDirtyResource()
     {
-        size_t dirty_buffer_count = m_dirty_buffers.Head();
+        size_t dirty_buffer_count = DirtyBuffers.Head();
         for (size_t i = 0; i < dirty_buffer_count; ++i)
         {
-            auto handle = m_dirty_buffers.ToHandle(i);
+            auto handle = DirtyBuffers.ToHandle(i);
 
             if (!handle)
             {
                 continue;
             }
 
-            BufferView& buffer = m_dirty_buffers[handle];
+            BufferView& buffer = DirtyBuffers[handle];
             vmaDestroyBuffer(VmaAllocator, buffer.Handle, buffer.Allocation);
-            m_dirty_buffers.Remove(handle);
+            DirtyBuffers.Remove(handle);
         }
     }
 
     void VulkanDevice::__cleanupBufferImageDirtyResource()
     {
-        size_t dirty_buffer_image_count = m_dirty_buffer_images.Head();
+        size_t dirty_buffer_image_count = DirtyBufferImages.Head();
         for (size_t i = 0; i < dirty_buffer_image_count; ++i)
         {
-            auto handle = m_dirty_buffer_images.ToHandle(i);
+            auto handle = DirtyBufferImages.ToHandle(i);
 
             if (!handle)
             {
                 continue;
             }
 
-            BufferImage& buffer = m_dirty_buffer_images[handle];
+            BufferImage& buffer = DirtyBufferImages[handle];
 
             vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
             vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
             vmaDestroyImage(VmaAllocator, buffer.Handle, buffer.Allocation);
 
-            m_dirty_buffer_images.Remove(handle);
+            DirtyBufferImages.Remove(handle);
         }
     }
 
@@ -776,7 +837,7 @@ namespace ZEngine::Hardwares
         return sampler;
     }
 
-    VkFormat VulkanDevice::FindSupportedFormat(const std::vector<VkFormat>& format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags)
+    VkFormat VulkanDevice::FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags)
     {
         VkFormat supported_format = VK_FORMAT_UNDEFINED;
         for (uint32_t i = 0; i < format_collection.size(); ++i)
@@ -809,7 +870,7 @@ namespace ZEngine::Hardwares
 
     VkFormat VulkanDevice::FindDepthFormat()
     {
-        return FindSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        return FindSupportedFormat(ArrayView<VkFormat>{DefaultDepthFormats}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
     }
 
     VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count)
@@ -835,7 +896,7 @@ namespace ZEngine::Hardwares
         return image_view;
     }
 
-    VkFramebuffer VulkanDevice::CreateFramebuffer(const std::vector<VkImageView>& attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number)
+    VkFramebuffer VulkanDevice::CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number)
     {
         VkFramebuffer           framebuffer{VK_NULL_HANDLE};
         VkFramebufferCreateInfo framebuffer_create_info = {};
@@ -854,11 +915,13 @@ namespace ZEngine::Hardwares
 
     VertexBufferSetHandle VulkanDevice::CreateVertexBufferSet()
     {
-        auto handle = VertexBufferSetManager.Create();
-        if (handle)
+        auto handle     = VertexBufferSetManager.Create();
+        auto buffer_set = VertexBufferSetManager.Access(handle);
+        buffer_set->set.init(Arena, SwapchainImageCount, SwapchainImageCount);
+
+        for (unsigned i = 0; i < SwapchainImageCount; ++i)
         {
-            auto& buffer = VertexBufferSetManager.Access(handle);
-            buffer       = CreateRef<VertexBufferSet>(this, SwapchainImageCount);
+            buffer_set->set[i] = ZPushStructCtorArgs(Arena, VertexBuffer, this);
         }
 
         return handle;
@@ -867,10 +930,12 @@ namespace ZEngine::Hardwares
     StorageBufferSetHandle VulkanDevice::CreateStorageBufferSet()
     {
         auto handle = StorageBufferSetManager.Create();
-        if (handle)
+        auto buffer = StorageBufferSetManager.Access(handle);
+        buffer->set.init(Arena, SwapchainImageCount, SwapchainImageCount);
+
+        for (unsigned i = 0; i < SwapchainImageCount; ++i)
         {
-            auto& buffer = StorageBufferSetManager.Access(handle);
-            buffer       = CreateRef<StorageBufferSet>(this, SwapchainImageCount);
+            buffer->set[i] = ZPushStructCtorArgs(Arena, StorageBuffer, this);
         }
         return handle;
     }
@@ -878,33 +943,42 @@ namespace ZEngine::Hardwares
     IndirectBufferSetHandle VulkanDevice::CreateIndirectBufferSet()
     {
         auto handle = IndirectBufferSetManager.Create();
-        if (handle)
+        auto buffer = IndirectBufferSetManager.Access(handle);
+        buffer->set.init(Arena, SwapchainImageCount, SwapchainImageCount);
+
+        for (unsigned i = 0; i < SwapchainImageCount; ++i)
         {
-            auto& buffer = IndirectBufferSetManager.Access(handle);
-            buffer       = CreateRef<IndirectBufferSet>(this, SwapchainImageCount);
+            buffer->set[i] = ZPushStructCtorArgs(Arena, IndirectBuffer, this);
         }
+
         return handle;
     }
 
     IndexBufferSetHandle VulkanDevice::CreateIndexBufferSet()
     {
         auto handle = IndexBufferSetManager.Create();
-        if (handle)
+        auto buffer = IndexBufferSetManager.Access(handle);
+        buffer->set.init(Arena, SwapchainImageCount, SwapchainImageCount);
+
+        for (unsigned i = 0; i < SwapchainImageCount; ++i)
         {
-            auto& buffer = IndexBufferSetManager.Access(handle);
-            buffer       = CreateRef<IndexBufferSet>(this, SwapchainImageCount);
+            buffer->set[i] = ZPushStructCtorArgs(Arena, IndexBuffer, this);
         }
+
         return handle;
     }
 
     UniformBufferSetHandle VulkanDevice::CreateUniformBufferSet()
     {
         auto handle = UniformBufferSetManager.Create();
-        if (handle)
+        auto buffer = UniformBufferSetManager.Access(handle);
+        buffer->set.init(Arena, SwapchainImageCount, SwapchainImageCount);
+
+        for (unsigned i = 0; i < SwapchainImageCount; ++i)
         {
-            auto& buffer = UniformBufferSetManager.Access(handle);
-            buffer       = CreateRef<UniformBufferSet>(this, SwapchainImageCount);
+            buffer->set[i] = ZPushStructCtorArgs(Arena, UniformBuffer, this);
         }
+
         return handle;
     }
 
@@ -924,8 +998,21 @@ namespace ZEngine::Hardwares
                                 .imageArrayLayers = 1, .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, .preTransform = capabilities.currentTransform, .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, .presentMode = PresentMode, .clipped = VK_TRUE
         };
 
-        std::vector<uint32_t> family_indice = {};
-        family_indice.resize(HasSeperateTransfertQueueFamily ? 2 : 1);
+        if (SwapchainImageViews.capacity() <= 0)
+        {
+            SwapchainImageViews.init(Arena, SwapchainImageCount, SwapchainImageCount);
+        }
+
+        if (SwapchainFramebuffers.capacity() <= 0)
+        {
+            SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
+        }
+
+        auto            scratch             = ZGetScratch(Arena);
+
+        Array<uint32_t> family_indice       = {};
+        uint32_t        family_indice_count = HasSeperateTransfertQueueFamily ? 2 : 1;
+        family_indice.init(scratch.Arena, family_indice_count, family_indice_count);
         family_indice[0] = GraphicFamilyIndex;
         if (HasSeperateTransfertQueueFamily)
         {
@@ -939,8 +1026,8 @@ namespace ZEngine::Hardwares
 
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &SwapchainImageCount, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
 
-        std::vector<VkImage> SwapchainImages = {};
-        SwapchainImages.resize(SwapchainImageCount);
+        Array<VkImage> SwapchainImages = {};
+        SwapchainImages.init(scratch.Arena, SwapchainImageCount, SwapchainImageCount);
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &SwapchainImageCount, SwapchainImages.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
 
         /*Transition Image from Undefined to Present_src*/
@@ -965,14 +1052,17 @@ namespace ZEngine::Hardwares
         }
         EnqueueInstantCommandBuffer(command_buffer);
 
-        SwapchainImageViews.resize(SwapchainImageCount);
-        SwapchainFramebuffers.resize(SwapchainImageCount);
-
         for (int i = 0; i < SwapchainImageCount; ++i)
         {
-            SwapchainImageViews[i]   = CreateImageView(SwapchainImages[i], SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
-            SwapchainFramebuffers[i] = CreateFramebuffer({SwapchainImageViews[i]}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
+            SwapchainImageViews[i] = CreateImageView(SwapchainImages[i], SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+
+            Array<VkImageView> fb_images_views;
+            fb_images_views.init(scratch.Arena, 1);
+            fb_images_views.push(SwapchainImageViews[i]);
+            SwapchainFramebuffers[i] = CreateFramebuffer(ArrayView{fb_images_views}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
         }
+
+        ZReleaseScratch(scratch);
     }
 
     void VulkanDevice::ResizeSwapchain()
@@ -1003,15 +1093,16 @@ namespace ZEngine::Hardwares
             }
         }
 
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainImageViews)
-        ZENGINE_CLEAR_STD_VECTOR(SwapchainFramebuffers)
+        // We don't call .clear() because we want to reuse the allocated space
+        // SwapchainImageViews.clear();
+        // SwapchainFramebuffers.clear();
 
         ZENGINE_DESTROY_VULKAN_HANDLE(LogicalDevice, vkDestroySwapchainKHR, SwapchainHandle, nullptr)
     }
 
     void VulkanDevice::NewFrame()
     {
-        Primitives::Fence* signal_fence = SwapchainSignalFences[CurrentFrameIndex].get();
+        Primitives::Fence* signal_fence = SwapchainSignalFences[CurrentFrameIndex];
         if (!signal_fence->IsSignaled())
         {
             if (!signal_fence->Wait(UINT64_MAX))
@@ -1021,7 +1112,7 @@ namespace ZEngine::Hardwares
         }
 
         signal_fence->Reset();
-        Primitives::Semaphore* acquired_semaphore = SwapchainAcquiredSemaphores[CurrentFrameIndex].get();
+        Primitives::Semaphore* acquired_semaphore = SwapchainAcquiredSemaphores[CurrentFrameIndex];
         ZENGINE_VALIDATE_ASSERT(acquired_semaphore->GetState() != Primitives::SemaphoreState::Submitted, "")
 
         VkResult acquire_image_result = vkAcquireNextImageKHR(LogicalDevice, SwapchainHandle, UINT64_MAX, acquired_semaphore->GetHandle(), VK_NULL_HANDLE, &SwapchainImageIndex);
@@ -1037,15 +1128,18 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::Present()
     {
-        Primitives::Semaphore*       acquired_semaphore        = SwapchainAcquiredSemaphores[CurrentFrameIndex].get();
-        Primitives::Semaphore*       render_complete_semaphore = SwapchainRenderCompleteSemaphores[CurrentFrameIndex].get();
-        Primitives::Fence*           signal_fence              = SwapchainSignalFences[CurrentFrameIndex].get();
+        Primitives::Semaphore* acquired_semaphore        = SwapchainAcquiredSemaphores[CurrentFrameIndex];
+        Primitives::Semaphore* render_complete_semaphore = SwapchainRenderCompleteSemaphores[CurrentFrameIndex];
+        Primitives::Fence*     signal_fence              = SwapchainSignalFences[CurrentFrameIndex];
 
-        std::vector<VkCommandBuffer> buffer(EnqueuedCommandbufferIndex);
+        auto                   scratch                   = ZGetScratch(Arena);
+
+        Array<VkCommandBuffer> buffer;
+        buffer.init(scratch.Arena, EnqueuedCommandbufferIndex);
         for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
         {
             EnqueuedCommandbuffers[i]->End();
-            buffer[i] = EnqueuedCommandbuffers[i]->GetHandle();
+            buffer.push(EnqueuedCommandbuffers[i]->GetHandle());
         }
 
         ZENGINE_VALIDATE_ASSERT(render_complete_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
@@ -1059,6 +1153,8 @@ namespace ZEngine::Hardwares
 
         auto                 submit              = vkQueueSubmit(queue, 1, &(submit_info), signal_fence->GetHandle());
         ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
+
+        ZReleaseScratch(scratch);
 
         for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
         {
@@ -1137,109 +1233,121 @@ namespace ZEngine::Hardwares
                 break;
             }
 
-            uint32_t dirty_resource_count = m_dirty_resources.Head();
-            for (uint32_t i = 0; i < dirty_resource_count; ++i)
+            if (DirtyResources.CanRemove())
             {
-                auto handle = m_dirty_resources.ToHandle(i);
-
-                if (!handle)
+                uint32_t dirty_resource_count = DirtyResources.Head();
+                for (uint32_t i = 0; i < dirty_resource_count; ++i)
                 {
-                    continue;
-                }
+                    auto handle = DirtyResources.ToHandle(i);
 
-                DirtyResource& res_handle = m_dirty_resources[handle];
-                if (res_handle.FrameIndex == CurrentFrameIndex)
-                {
-                    switch (res_handle.Type)
+                    if (!handle)
                     {
-                        case Rendering::DeviceResourceType::SAMPLER:
-                            vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::FRAMEBUFFER:
-                            vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::IMAGEVIEW:
-                            vkDestroyImageView(LogicalDevice, reinterpret_cast<VkImageView>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::IMAGE:
-                            vkDestroyImage(LogicalDevice, reinterpret_cast<VkImage>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::RENDERPASS:
-                            vkDestroyRenderPass(LogicalDevice, reinterpret_cast<VkRenderPass>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::BUFFERMEMORY:
-                            vkFreeMemory(LogicalDevice, reinterpret_cast<VkDeviceMemory>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::BUFFER:
-                            vkDestroyBuffer(LogicalDevice, reinterpret_cast<VkBuffer>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::PIPELINE_LAYOUT:
-                            vkDestroyPipelineLayout(LogicalDevice, reinterpret_cast<VkPipelineLayout>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::PIPELINE:
-                            vkDestroyPipeline(LogicalDevice, reinterpret_cast<VkPipeline>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
-                            vkDestroyDescriptorSetLayout(LogicalDevice, reinterpret_cast<VkDescriptorSetLayout>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::DESCRIPTORPOOL:
-                            vkDestroyDescriptorPool(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::SEMAPHORE:
-                            vkDestroySemaphore(LogicalDevice, reinterpret_cast<VkSemaphore>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::FENCE:
-                            vkDestroyFence(LogicalDevice, reinterpret_cast<VkFence>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::DESCRIPTORSET:
-                        {
-                            auto ds = reinterpret_cast<VkDescriptorSet>(res_handle.Handle);
-                            vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Data1), 1, &ds);
-                            break;
-                        }
+                        continue;
                     }
 
-                    m_dirty_resources.Remove(handle);
+                    DirtyResource& res_handle = DirtyResources[handle];
+                    if (res_handle.FrameIndex == CurrentFrameIndex)
+                    {
+                        switch (res_handle.Type)
+                        {
+                            case Rendering::DeviceResourceType::SAMPLER:
+                                vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::FRAMEBUFFER:
+                                vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::IMAGEVIEW:
+                                vkDestroyImageView(LogicalDevice, reinterpret_cast<VkImageView>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::IMAGE:
+                                vkDestroyImage(LogicalDevice, reinterpret_cast<VkImage>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::RENDERPASS:
+                                vkDestroyRenderPass(LogicalDevice, reinterpret_cast<VkRenderPass>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::BUFFERMEMORY:
+                                vkFreeMemory(LogicalDevice, reinterpret_cast<VkDeviceMemory>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::BUFFER:
+                                vkDestroyBuffer(LogicalDevice, reinterpret_cast<VkBuffer>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::PIPELINE_LAYOUT:
+                                vkDestroyPipelineLayout(LogicalDevice, reinterpret_cast<VkPipelineLayout>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::PIPELINE:
+                                vkDestroyPipeline(LogicalDevice, reinterpret_cast<VkPipeline>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
+                                vkDestroyDescriptorSetLayout(LogicalDevice, reinterpret_cast<VkDescriptorSetLayout>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::DESCRIPTORPOOL:
+                                vkDestroyDescriptorPool(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::SEMAPHORE:
+                                vkDestroySemaphore(LogicalDevice, reinterpret_cast<VkSemaphore>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::FENCE:
+                                vkDestroyFence(LogicalDevice, reinterpret_cast<VkFence>(res_handle.Handle), nullptr);
+                                break;
+                            case Rendering::DeviceResourceType::DESCRIPTORSET:
+                            {
+                                auto ds = reinterpret_cast<VkDescriptorSet>(res_handle.Handle);
+                                vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Data1), 1, &ds);
+                                break;
+                            }
+                        }
+
+                        DirtyResources.Remove(handle);
+                    }
                 }
             }
 
-            uint32_t dirty_buffer_count = m_dirty_buffers.Head();
-            for (uint32_t i = 0; i < dirty_buffer_count; ++i)
+            if (DirtyBuffers.CanRemove())
             {
-                auto handle = m_dirty_buffers.ToHandle(i);
-
-                if (!handle)
+                uint32_t dirty_buffer_count = DirtyBuffers.Head();
+                for (uint32_t i = 0; i < dirty_buffer_count; ++i)
                 {
-                    continue;
-                }
+                    auto handle = DirtyBuffers.ToHandle(i);
 
-                BufferView& buffer = m_dirty_buffers[handle];
-                if (buffer.FrameIndex == CurrentFrameIndex)
-                {
-                    vmaDestroyBuffer(VmaAllocator, buffer.Handle, buffer.Allocation);
-                    m_dirty_buffers.Remove(handle);
+                    if (!handle)
+                    {
+                        continue;
+                    }
+
+                    BufferView& buffer = DirtyBuffers[handle];
+                    if (buffer && buffer.FrameIndex == CurrentFrameIndex)
+                    {
+                        vmaDestroyBuffer(VmaAllocator, buffer.Handle, buffer.Allocation);
+                        buffer.Handle     = VK_NULL_HANDLE;
+                        buffer.Allocation = VK_NULL_HANDLE;
+                        DirtyBuffers.Remove(handle);
+                    }
                 }
             }
 
-            uint32_t dirty_buffer_image_count = m_dirty_buffer_images.Head();
-            for (uint32_t i = 0; i < dirty_buffer_image_count; ++i)
+            if (DirtyBufferImages.CanRemove())
             {
-                auto handle = m_dirty_buffer_images.ToHandle(i);
-
-                if (!handle)
+                uint32_t dirty_buffer_image_count = DirtyBufferImages.Head();
+                for (uint32_t i = 0; i < dirty_buffer_image_count; ++i)
                 {
-                    continue;
-                }
+                    auto handle = DirtyBufferImages.ToHandle(i);
 
-                BufferImage& buffer = m_dirty_buffer_images[handle];
+                    if (!handle)
+                    {
+                        continue;
+                    }
 
-                if (buffer.FrameIndex == CurrentFrameIndex)
-                {
-                    vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
-                    vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
-                    vmaDestroyImage(VmaAllocator, buffer.Handle, buffer.Allocation);
+                    BufferImage& buffer = DirtyBufferImages[handle];
 
-                    m_dirty_buffer_images.Remove(handle);
+                    if (buffer && buffer.FrameIndex == CurrentFrameIndex)
+                    {
+                        vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
+                        vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
+                        vmaDestroyImage(VmaAllocator, buffer.Handle, buffer.Allocation);
+                        buffer.Handle     = VK_NULL_HANDLE;
+                        buffer.Allocation = VK_NULL_HANDLE;
+                        DirtyBufferImages.Remove(handle);
+                    }
                 }
             }
 
@@ -1249,11 +1357,46 @@ namespace ZEngine::Hardwares
         ZENGINE_CORE_INFO("[*] Dirty Resource Collector stopped...")
     }
 
+    Helpers::Handle<Rendering::Shaders::Shader> VulkanDevice::CompileShader(Rendering::Specifications::ShaderSpecification& spec)
+    {
+        const char* base_dir           = "Shaders/Cache/";
+        const char* vertex_name_part   = "_vertex.spv";
+        const char* fragment_name_part = "_fragment.spv";
+
+        if (ShaderCaches.contains(spec.Name))
+        {
+            return ShaderCaches[spec.Name];
+        }
+
+        auto handle = ShaderManager.Create();
+        auto shader = ShaderManager.Access(handle);
+
+        if (shader)
+        {
+            auto vertex_file   = fmt::format("{}{}{}", base_dir, spec.Name, vertex_name_part);
+            auto fragment_file = fmt::format("{}{}{}", base_dir, spec.Name, fragment_name_part);
+
+            if (std::filesystem::exists(vertex_file))
+            {
+                spec.VertexFilename = vertex_file.c_str();
+            }
+
+            if (std::filesystem::exists(fragment_file))
+            {
+                spec.FragmentFilename = fragment_file.c_str();
+            }
+
+            shader->Initialize(this, spec);
+        }
+        return handle;
+    }
+
     /*
      * CommandBufferManager impl
      */
     CommandBuffer::CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool one_time_usage) : Device(device), QueueType(type), m_command_pool(command_pool)
     {
+        Device->Arena->CreateSubArena(ZKilo(120), &LocalArena);
         Create();
     }
 
@@ -1345,22 +1488,22 @@ namespace ZEngine::Hardwares
 
     Primitives::Semaphore* CommandBuffer::GetSignalSemaphore() const
     {
-        return m_signal_semaphore.get();
+        return m_signal_semaphore;
     }
 
-    void CommandBuffer::SetSignalFence(const Ref<Primitives::Fence>& semaphore)
+    void CommandBuffer::SetSignalFence(Primitives::Fence* const semaphore)
     {
         m_signal_fence = semaphore;
     }
 
-    void CommandBuffer::SetSignalSemaphore(const Ref<Primitives::Semaphore>& semaphore)
+    void CommandBuffer::SetSignalSemaphore(Primitives::Semaphore* const semaphore)
     {
         m_signal_semaphore = semaphore;
     }
 
     Primitives::Fence* CommandBuffer::GetSignalFence()
     {
-        return m_signal_fence.get();
+        return m_signal_fence;
     }
 
     void CommandBuffer::ClearColor(float r, float g, float b, float a)
@@ -1374,44 +1517,46 @@ namespace ZEngine::Hardwares
         m_clear_value[1].depthStencil.stencil = stencil;
     }
 
-    void CommandBuffer::BeginRenderPass(const Ref<Renderers::RenderPasses::RenderPass>& render_pass, VkFramebuffer framebuffer)
+    void CommandBuffer::BeginRenderPass(Rendering::Renderers::RenderPasses::RenderPass* const render_pass, VkFramebuffer framebuffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        const auto&               render_pass_spec = render_pass->Specification;
-        const uint32_t            width            = render_pass->GetRenderAreaWidth();
-        const uint32_t            height           = render_pass->GetRenderAreaHeight();
+        const auto&         render_pass_spec = render_pass->Specification;
+        const uint32_t      width            = render_pass->GetRenderAreaWidth();
+        const uint32_t      height           = render_pass->GetRenderAreaHeight();
 
-        std::vector<VkClearValue> clear_values     = {};
+        auto                scratch          = ZGetScratch(&LocalArena);
 
+        Array<VkClearValue> clear_values     = {};
+        clear_values.init(scratch.Arena, 5);
         if (render_pass_spec.SwapchainAsRenderTarget)
         {
-            clear_values.push_back(m_clear_value[0]);
+            clear_values.push(m_clear_value[0]);
         }
         else
         {
             auto& spec = render_pass->Specification;
             for (const auto& handle : spec.Inputs)
             {
-                auto texture = Device->GlobalTextures->Access(handle);
+                auto texture = Device->GlobalTextures.Access(handle);
                 if (texture->IsDepthTexture)
                 {
-                    clear_values.push_back(m_clear_value[1]);
+                    clear_values.push(m_clear_value[1]);
                     continue;
                 }
-                clear_values.push_back(m_clear_value[0]);
+                clear_values.push(m_clear_value[0]);
             }
 
             for (const auto& handle : spec.ExternalOutputs)
             {
-                auto texture = Device->GlobalTextures->Access(handle);
+                auto texture = Device->GlobalTextures.Access(handle);
 
                 if (texture->IsDepthTexture)
                 {
-                    clear_values.push_back(m_clear_value[1]);
+                    clear_values.push(m_clear_value[1]);
                     continue;
                 }
-                clear_values.push_back(m_clear_value[0]);
+                clear_values.push(m_clear_value[0]);
             }
         }
 
@@ -1441,18 +1586,20 @@ namespace ZEngine::Hardwares
         scissor.extent   = {width, height};
         vkCmdSetScissor(m_command_buffer, 0, 1, &scissor);
 
-        vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass->Pipeline->GetHandle());
+        vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass->Pipeline->Handle);
 
         m_active_render_pass = render_pass;
+
+        ZReleaseScratch(scratch);
     }
 
     void CommandBuffer::EndRenderPass()
     {
-        if (auto render_pass = m_active_render_pass.lock())
+        if (m_active_render_pass)
         {
             ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
             vkCmdEndRenderPass(m_command_buffer);
-            m_active_render_pass.reset();
+            m_active_render_pass = nullptr;
         }
     }
 
@@ -1460,20 +1607,25 @@ namespace ZEngine::Hardwares
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        if (auto render_pass = m_active_render_pass.lock())
+        if (auto render_pass = m_active_render_pass)
         {
-            auto                         pipeline           = render_pass->Pipeline;
-            auto                         pipeline_layout    = pipeline->GetPipelineLayout();
-            auto                         shader             = pipeline->GetShader();
-            const auto&                  descriptor_set_map = shader->GetDescriptorSetMap();
+            auto                   pipeline           = render_pass->Pipeline;
+            auto                   pipeline_layout    = pipeline->Layout;
+            auto                   shader             = pipeline->Shader;
+            auto&                  descriptor_set_map = shader->DescriptorSetMap;
 
-            std::vector<VkDescriptorSet> frame_sets         = {};
-            for (auto& [_, sets] : descriptor_set_map)
+            auto                   scratch            = ZGetScratch(&LocalArena);
+            Array<VkDescriptorSet> frame_sets         = {};
+            frame_sets.init(scratch.Arena, 5);
+
+            auto descriptor_set_map_view = descriptor_set_map.view();
+            for (auto [_, sets] : descriptor_set_map_view)
             {
-                frame_sets.emplace_back(sets[frame_index]);
+                frame_sets.push(sets[frame_index]);
             }
 
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, frame_sets.size(), frame_sets.data(), 0, nullptr);
+            ZReleaseScratch(scratch);
         }
     }
 
@@ -1481,9 +1633,9 @@ namespace ZEngine::Hardwares
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
         ZENGINE_VALIDATE_ASSERT(descriptor != nullptr, "DescriptorSet can't be null")
-        if (auto render_pass = m_active_render_pass.lock())
+        if (auto render_pass = m_active_render_pass)
         {
-            auto            pipeline_layout = render_pass->Pipeline->GetPipelineLayout();
+            auto            pipeline_layout = render_pass->Pipeline->Layout;
             VkDescriptorSet desc_set[1]     = {descriptor};
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, desc_set, 0, nullptr);
         }
@@ -1549,14 +1701,16 @@ namespace ZEngine::Hardwares
         vkCmdCopyBufferToImage(m_command_buffer, source.Handle, destination.Handle, new_layout, 1, &buffer_image_copy);
     }
 
-    void CommandBuffer::BindVertexBuffer(const Hardwares::VertexBuffer& buffer)
+    void CommandBuffer::BindVertexBuffer(Hardwares::VertexBuffer& buffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        if (buffer.GetNativeBufferHandle())
+        void* handle = buffer.GetNativeBufferHandle();
+
+        if (handle)
         {
             VkDeviceSize vertex_offset[1]  = {0};
-            VkBuffer     vertex_buffers[1] = {reinterpret_cast<VkBuffer>(buffer.GetNativeBufferHandle())};
+            VkBuffer     vertex_buffers[1] = {reinterpret_cast<VkBuffer>(handle)};
             vkCmdBindVertexBuffers(m_command_buffer, 0, 1, vertex_buffers, vertex_offset);
         }
     }
@@ -1580,9 +1734,9 @@ namespace ZEngine::Hardwares
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        if (auto render_pass = m_active_render_pass.lock())
+        if (auto render_pass = m_active_render_pass)
         {
-            auto pipeline_layout = render_pass->Pipeline->GetPipelineLayout();
+            auto pipeline_layout = render_pass->Pipeline->Layout;
             vkCmdPushConstants(m_command_buffer, pipeline_layout, stage_flags, offset, size, data);
         }
     }
@@ -1592,55 +1746,55 @@ namespace ZEngine::Hardwares
         Device                  = device;
         m_total_pool_count      = swapchain_image_count * thread_count;
         TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
-        m_instant_fence         = CreateRef<Primitives::Fence>(device);
-        m_instant_semaphore     = CreateRef<Primitives::Semaphore>(device);
+        m_instant_fence         = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, device);
+        m_instant_semaphore     = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, device);
 
-        CommandPools.resize(m_total_pool_count, nullptr);
+        CommandPools.init(Device->Arena, m_total_pool_count, m_total_pool_count);
         for (int i = 0; i < m_total_pool_count; ++i)
         {
-            CommandPools[i] = CreateRef<Rendering::Pools::CommandPool>(device, Rendering::QueueType::GRAPHIC_QUEUE);
+            CommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, device, Rendering::QueueType::GRAPHIC_QUEUE);
         }
 
-        CommandBuffers.resize(TotalCommandBufferCount, nullptr);
+        CommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
         for (int i = 0; i < TotalCommandBufferCount; ++i)
         {
             int   pool_index  = GetPoolFromIndex(Rendering::QueueType::GRAPHIC_QUEUE, i);
-            auto& pool        = CommandPools.at(pool_index);
-            CommandBuffers[i] = CreateRef<CommandBuffer>(device, pool->Handle, pool->QueueType, /*(i % MaxBufferPerPool) == 0 ? false : true */ false);
+            auto& pool        = CommandPools[pool_index];
+            CommandBuffers[i] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, device, pool->Handle, pool->QueueType, /*(i % MaxBufferPerPool) == 0 ? false : true */ false);
         }
 
         if (Device->HasSeperateTransfertQueueFamily)
         {
-            TransferCommandPools.resize(m_total_pool_count, nullptr);
+            TransferCommandPools.init(Device->Arena, m_total_pool_count, m_total_pool_count);
             for (int i = 0; i < m_total_pool_count; ++i)
             {
-                TransferCommandPools[i] = CreateRef<Rendering::Pools::CommandPool>(device, Rendering::QueueType::TRANSFER_QUEUE);
+                TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, device, Rendering::QueueType::TRANSFER_QUEUE);
             }
 
-            TransferCommandBuffers.resize(TotalCommandBufferCount, nullptr);
+            TransferCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
             for (int i = 0; i < TotalCommandBufferCount; ++i)
             {
                 int   pool_index          = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
-                auto& pool                = TransferCommandPools.at(pool_index);
-                TransferCommandBuffers[i] = CreateRef<CommandBuffer>(device, pool->Handle, pool->QueueType, true);
+                auto& pool                = TransferCommandPools[pool_index];
+                TransferCommandBuffers[i] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, device, pool->Handle, pool->QueueType, true);
             }
         }
     }
 
     void CommandBufferManager::Deinitialize()
     {
-        m_instant_semaphore.reset();
-        m_instant_fence.reset();
-        ZENGINE_CLEAR_STD_VECTOR(CommandBuffers)
-        ZENGINE_CLEAR_STD_VECTOR(TransferCommandBuffers)
+        m_instant_semaphore = nullptr;
+        m_instant_fence     = nullptr;
+        CommandBuffers.clear();
+        TransferCommandBuffers.clear();
 
-        ZENGINE_CLEAR_STD_VECTOR(CommandPools)
-        ZENGINE_CLEAR_STD_VECTOR(TransferCommandPools)
+        CommandPools.clear();
+        TransferCommandPools.clear();
     }
 
     CommandBuffer* CommandBufferManager::GetCommandBuffer(uint8_t frame_index, bool begin)
     {
-        CommandBuffer* buffer = CommandBuffers[frame_index * MaxBufferPerPool].get();
+        CommandBuffer* buffer = CommandBuffers[frame_index * MaxBufferPerPool];
 
         if (begin)
         {
@@ -1652,7 +1806,7 @@ namespace ZEngine::Hardwares
 
     CommandBuffer* CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin)
     {
-        CommandBuffer*   buffer = (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[frame_index].get() : CommandBuffers[(frame_index * MaxBufferPerPool) + 1].get();
+        CommandBuffer*   buffer = (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[frame_index] : CommandBuffers[(frame_index * MaxBufferPerPool) + 1];
 
         std::unique_lock l(m_instant_command_mutex);
         m_cond.wait(l, [this] { return m_instant_semaphore->GetState() == Primitives::SemaphoreState::Idle; });
@@ -1670,7 +1824,7 @@ namespace ZEngine::Hardwares
     {
         buffer->End();
         auto flag = buffer->QueueType == QueueType::GRAPHIC_QUEUE ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
-        device->QueueSubmit(flag, buffer, m_instant_semaphore.get(), m_instant_fence.get());
+        device->QueueSubmit(flag, buffer, m_instant_semaphore, m_instant_fence);
         {
             std::unique_lock l(m_instant_command_mutex);
             m_executing_instant_command = false;
@@ -1681,7 +1835,7 @@ namespace ZEngine::Hardwares
 
     Rendering::Pools::CommandPool* CommandBufferManager::GetCommandPool(Rendering::QueueType type, uint8_t frame_index)
     {
-        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandPools[frame_index].get() : CommandPools[frame_index].get();
+        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandPools[frame_index] : CommandPools[frame_index];
     }
 
     int CommandBufferManager::GetPoolFromIndex(Rendering::QueueType type, uint8_t index)

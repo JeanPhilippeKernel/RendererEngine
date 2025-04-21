@@ -1,4 +1,5 @@
 #pragma once
+#include <Core/Containers/Array.h>
 #include <Helpers/IntrusivePtr.h>
 #include <Rendering/Buffers/Framebuffer.h>
 #include <Rendering/Renderers/Pipelines/RendererPipeline.h>
@@ -7,7 +8,6 @@
 #include <vulkan/vulkan.h>
 #include <set>
 #include <unordered_set>
-#include <vector>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
@@ -21,30 +21,32 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         TEXTURE
     };
 
-    struct RenderPass : public Helpers::RefCounted
+    struct RenderPass
     {
-        RenderPass(Hardwares::VulkanDevice* device, const Specifications::RenderPassSpecification& specification);
+        RenderPass() {}
         ~RenderPass();
 
-        uint32_t                                          RenderAreaWidth  = 0;
-        uint32_t                                          RenderAreaHeight = 0;
-        Specifications::RenderPassSpecification           Specification    = {};
-        std::set<std::string>                             Inputs           = {};
-        std::vector<uint32_t>                             RenderTargets    = {};
-        Helpers::Ref<Renderers::RenderPasses::Attachment> Attachment       = {nullptr};
-        Helpers::Ref<Pipelines::GraphicPipeline>          Pipeline         = {nullptr};
-        void                                              Dispose();
-        void                                              Bake();
-        bool                                              Verify();
-        void                                              SetInput(std::string_view key_name, const Hardwares::UniformBufferSetHandle& buffer);
-        void                                              SetInput(std::string_view key_name, const Hardwares::StorageBufferSetHandle& buffer);
-        void                                              SetInput(std::string_view key_name, const Textures::TextureHandle& texture);
-        void                                              SetBindlessInput(std::string_view key_name);
-        void                                              UpdateInputBinding();
-        Helpers::Ref<Renderers::RenderPasses::Attachment> GetAttachment() const;
-        void                                              UpdateRenderTargets();
-        uint32_t                                          GetRenderAreaWidth() const;
-        uint32_t                                          GetRenderAreaHeight() const;
+        uint32_t                                RenderAreaWidth  = 0;
+        uint32_t                                RenderAreaHeight = 0;
+        Specifications::RenderPassSpecification Specification    = {};
+        std::set<std::string>                   Inputs           = {};
+        Core::Containers::Array<uint32_t>       RenderTargets    = {};
+        Renderers::RenderPasses::Attachment*    Attachment       = {nullptr};
+        Pipelines::GraphicPipeline*             Pipeline         = {nullptr};
+
+        void                                    Initialize(Hardwares::VulkanDevice* device, const Specifications::RenderPassSpecification& specification);
+        void                                    Dispose();
+        void                                    Bake();
+        bool                                    Verify();
+        void                                    SetInput(std::string_view key_name, const Hardwares::UniformBufferSetHandle& buffer);
+        void                                    SetInput(std::string_view key_name, const Hardwares::StorageBufferSetHandle& buffer);
+        void                                    SetInput(std::string_view key_name, const Textures::TextureHandle& texture);
+        void                                    SetBindlessInput(std::string_view key_name);
+        void                                    UpdateInputBinding();
+        ZRawPtr(Renderers::RenderPasses::Attachment) GetAttachment() const;
+        void     UpdateRenderTargets();
+        uint32_t GetRenderAreaWidth() const;
+        uint32_t GetRenderAreaHeight() const;
 
     private:
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
@@ -54,8 +56,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Hardwares::VulkanDevice* m_device;
     };
 
-    struct RenderPassBuilder : public Helpers::RefCounted
+    struct RenderPassBuilder
     {
+        Core::Memory::ArenaAllocator*           Arena = nullptr;
+
+        void                                    Initialize(Core::Memory::ArenaAllocator* arena);
+
         RenderPassBuilder&                      SetName(std::string_view name);
         RenderPassBuilder&                      SetPipelineName(std::string_view name);
         RenderPassBuilder&                      EnablePipelineBlending(bool value);

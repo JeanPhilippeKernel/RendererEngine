@@ -9,12 +9,15 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    LogUIComponent::LogUIComponent(Layers::ImguiLayer* parent, std::string_view name, bool visibility) : UIComponent(parent, name, visibility, false)
-    {
-        Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
-    }
+    LogUIComponent::LogUIComponent() {}
 
     LogUIComponent::~LogUIComponent() {}
+
+    void LogUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
+    {
+        UIComponent::Initialize(parent, name, visibility, closed);
+        Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
+    }
 
     void LogUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
@@ -29,7 +32,7 @@ namespace Tetragrama::Components
 
     void LogUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        ImGui::Begin(Name.c_str(), (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
         static const char* items[]      = {"All", "info", "error", "warn", "critical", "trace"};
         static int         current_item = 0;

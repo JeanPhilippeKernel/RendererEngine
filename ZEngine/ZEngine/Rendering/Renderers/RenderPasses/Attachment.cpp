@@ -1,3 +1,4 @@
+#include <Core/Containers/Array.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 #include <ZEngineDef.h>
@@ -5,6 +6,7 @@
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering::Specifications;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
@@ -12,18 +14,25 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         ZENGINE_VALIDATE_ASSERT(!spec.ColorsMap.empty(), "Color attachments can't be empty")
 
-        VkSubpassDescription                 subpass_description                   = {};
-        std::vector<VkAttachmentDescription> attachment_description_collection     = {};
-        VkAttachmentReference                depth_attachment_reference            = {.attachment = VK_ATTACHMENT_UNUSED, .layout = VK_IMAGE_LAYOUT_UNDEFINED};
-        std::vector<VkAttachmentReference>   color_attachment_reference_collection = {};
-        std::vector<VkSubpassDependency>     subpass_dependency_collection         = {};
+        auto                           scratch                               = ZGetScratch(device->Arena);
 
-        for (int i = 0; i < spec.ColorsMap.size(); ++i)
+        VkSubpassDescription           subpass_description                   = {};
+        VkAttachmentReference          depth_attachment_reference            = {.attachment = VK_ATTACHMENT_UNUSED, .layout = VK_IMAGE_LAYOUT_UNDEFINED};
+
+        Array<VkAttachmentDescription> attachment_description_collection     = {};
+        Array<VkAttachmentReference>   color_attachment_reference_collection = {};
+        Array<VkSubpassDependency>     subpass_dependency_collection         = {};
+
+        attachment_description_collection.init(scratch.Arena, 5);
+        color_attachment_reference_collection.init(scratch.Arena, 5);
+        subpass_dependency_collection.init(scratch.Arena, 5);
+
+        for (uint32_t i = 0; i < m_specification.ColorsMap.size(); ++i)
         {
-            const auto& color        = spec.ColorsMap.at(i);
+            auto&    color        = m_specification.ColorsMap[i];
 
             // Determine the right Image format
-            VkFormat    color_format = VK_FORMAT_UNDEFINED;
+            VkFormat color_format = VK_FORMAT_UNDEFINED;
             if (color.Format == ImageFormat::FORMAT_FROM_DEVICE)
             {
                 color_format = m_device->SurfaceFormat.format;
@@ -51,7 +60,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             reference.attachment                = i;
             reference.layout                    = ImageLayoutMap[static_cast<uint32_t>(color.ReferenceLayout)];
 
-            attachment_description_collection.emplace_back(description);
+            attachment_description_collection.push(description);
 
             // VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL = 1000117000,
             // VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL = 1000117001,
@@ -66,14 +75,14 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             }
             else
             {
-                color_attachment_reference_collection.emplace_back(reference);
+                color_attachment_reference_collection.push(reference);
                 m_color_attachment_count++;
             }
         }
 
         for (int i = 0; i < spec.DependenciesMap.size(); ++i)
         {
-            subpass_dependency_collection.push_back(spec.DependenciesMap.at(i));
+            subpass_dependency_collection.push(m_specification.DependenciesMap[i]);
         }
 
         subpass_description.colorAttachmentCount       = color_attachment_reference_collection.size();
@@ -89,6 +98,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         render_pass_create_info.pDependencies          = subpass_dependency_collection.data();
 
         ZENGINE_VALIDATE_ASSERT(vkCreateRenderPass(m_device->LogicalDevice, &render_pass_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create render pass")
+
+        ZReleaseScratch(scratch);
     }
 
     Attachment::~Attachment()

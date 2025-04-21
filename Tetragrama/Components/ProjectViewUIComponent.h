@@ -26,8 +26,10 @@ namespace Tetragrama::Components
     class ProjectViewUIComponent : public UIComponent
     {
     public:
-        ProjectViewUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "Project", bool visibility = true);
+        ProjectViewUIComponent();
         virtual ~ProjectViewUIComponent();
+
+        void                  Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Project", bool visibility = true, bool closed = false) override;
 
         void                  Update(ZEngine::Core::TimeStep dt) override;
 

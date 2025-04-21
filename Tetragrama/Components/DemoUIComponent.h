@@ -7,8 +7,13 @@ namespace Tetragrama::Components
     class DemoUIComponent : public UIComponent
     {
     public:
-        DemoUIComponent(Layers::ImguiLayer* parent = nullptr, std::string_view name = "DemoUIComponent", bool visibility = true) : UIComponent(parent, name, visibility, true) {}
+        DemoUIComponent() {}
         virtual ~DemoUIComponent() = default;
+
+        void Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "DemoUIComponent", bool visibility = true, bool closed = false) override
+        {
+            UIComponent::Initialize(parent, name, visibility, closed);
+        }
 
         virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override
         {

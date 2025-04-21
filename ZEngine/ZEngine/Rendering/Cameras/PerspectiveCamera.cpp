@@ -4,17 +4,16 @@
 
 namespace ZEngine::Rendering::Cameras
 {
-
-    PerspectiveCamera::PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far) : PerspectiveCamera(field_of_view, aspect_ratio, clip_near, clip_far, 0, 0) {}
-
-    PerspectiveCamera::PerspectiveCamera(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad, float pitch_rad) : m_yaw_angle(yaw_rad), m_pitch_angle(pitch_rad)
+    void PerspectiveCamera::Initialize(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad, float pitch_rad)
     {
-        Fov         = glm::radians(field_of_view);
-        AspectRatio = aspect_ratio;
-        ClipNear    = clip_near;
-        ClipFar     = clip_far;
-        Target      = {0.f, 0.f, 0.f};
-        Type        = CameraType::PERSPECTIVE;
+        Fov           = glm::radians(field_of_view);
+        AspectRatio   = aspect_ratio;
+        ClipNear      = clip_near;
+        ClipFar       = clip_far;
+        Target        = {0.f, 0.f, 0.f};
+        Type          = CameraType::PERSPECTIVE;
+        m_yaw_angle   = yaw_rad;
+        m_pitch_angle = pitch_rad;
     }
 
     void PerspectiveCamera::SetTarget(const glm::vec3& target)
