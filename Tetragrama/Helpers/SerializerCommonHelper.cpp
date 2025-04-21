@@ -2,6 +2,8 @@
 #include <SerializerCommonHelper.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 
+#define DEFAULT_STR_BUFFER 256
+
 using namespace ZEngine::Core::Containers;
 
 namespace Tetragrama::Helpers
@@ -16,10 +18,11 @@ namespace Tetragrama::Helpers
     void DeserializeStringData(ZEngine::Core::Memory::ArenaAllocator* Arena, std::istream& in, ZEngine::Core::Containers::String& d)
     {
         size_t v_count;
+        char   buf[DEFAULT_STR_BUFFER] = {0};
         in.read(reinterpret_cast<char*>(&v_count), sizeof(size_t));
+        in.read(buf, v_count + 1);
 
-        d.init(Arena, v_count + 2);
-        in.read(d.data(), v_count + 1);
+        d.init(Arena, buf);
     }
 
     void SerializeStringArrayData(std::ostream& os, ZEngine::Core::Containers::ArrayView<ZEngine::Core::Containers::String> str_view)
@@ -58,11 +61,12 @@ namespace Tetragrama::Helpers
         for (int i = 0; i < data_count; ++i)
         {
             size_t v_count;
+            char   buf[DEFAULT_STR_BUFFER] = {0};
             in.read(reinterpret_cast<char*>(&v_count), sizeof(size_t));
+            in.read(buf, v_count + 1);
 
             String v;
-            v.init(Arena, v_count + 2);
-            in.read(v.data(), v_count + 1);
+            v.init(Arena, buf);
             data.push(v);
         }
     }

@@ -30,18 +30,18 @@ namespace Tetragrama
 
         if (Helpers::secure_strlen(file))
         {
-            Context->ConfigurationPtr->ReadConfig(file);
+            Context->ConfigurationPtr->ReadConfig(arena, file);
 
-            if (Helpers::secure_strlen(Context->ConfigurationPtr->ActiveSceneName))
+            if (!Context->ConfigurationPtr->ActiveSceneName.empty())
             {
-                Context->CurrentScenePtr->Initialize(&(Context->Arena), Context->ConfigurationPtr->ActiveSceneName);
+                Context->CurrentScenePtr->Initialize(&(Context->Arena), Context->ConfigurationPtr->ActiveSceneName.c_str());
             }
         }
 
         UILayer->ParentContext                   = reinterpret_cast<void*>(Context);
         CanvasLayer->ParentContext               = reinterpret_cast<void*>(Context);
 
-        std::string                  title       = fmt::format("{0} - Active Scene : {1}", Context->ConfigurationPtr->ProjectName, Context->CurrentScenePtr->Name);
+        std::string                  title       = fmt::format("{0} - Active Scene : {1}", Context->ConfigurationPtr->ProjectName.c_str(), Context->CurrentScenePtr->Name);
         Windows::WindowConfiguration window_conf = {.EnableVsync = true};
         window_conf.Title.init(&(Context->Arena), title.c_str());
         window_conf.RenderingLayerCollection.init(&(Context->Arena), 1);
@@ -116,9 +116,9 @@ namespace Tetragrama
         return m_has_pending_change;
     }
 
-    void EditorConfiguration::ReadConfig(std::string_view file)
+    void EditorConfiguration::ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file)
     {
-        std::ifstream  f(file.data());
+        std::ifstream  f(file);
         nlohmann::json config             = nlohmann::json::parse(f);
         std::string    root_project_dir   = std::filesystem::path(file).parent_path().string();
 
@@ -156,13 +156,12 @@ namespace Tetragrama
             config["workingSpace"] = root_project_dir;
         }
 
-        Helpers::secure_strcpy(ProjectName, 50, config["projectName"].get<std::string>().c_str());
-
-        Helpers::secure_strcpy(WorkingSpacePath, MAX_FILE_PATH_COUNT, config["workingSpace"].get<std::string>().c_str());
-        Helpers::secure_strcpy(DefaultImportTexturePath, MAX_FILE_PATH_COUNT, config["defaultImportDir"]["textureDir"].get<std::string>().c_str());
-        Helpers::secure_strcpy(DefaultImportSoundPath, MAX_FILE_PATH_COUNT, config["defaultImportDir"]["soundDir"].get<std::string>().c_str());
-        Helpers::secure_strcpy(ScenePath, MAX_FILE_PATH_COUNT, config["sceneDir"].get<std::string>().c_str());
-        Helpers::secure_strcpy(SceneDataPath, MAX_FILE_PATH_COUNT, config["sceneDataDir"].get<std::string>().c_str());
+        ProjectName.init(arena, config["projectName"].get<std::string>().c_str());
+        WorkingSpacePath.init(arena, config["workingSpace"].get<std::string>().c_str());
+        DefaultImportTexturePath.init(arena, config["defaultImportDir"]["textureDir"].get<std::string>().c_str());
+        DefaultImportSoundPath.init(arena, config["defaultImportDir"]["soundDir"].get<std::string>().c_str());
+        ScenePath.init(arena, config["sceneDir"].get<std::string>().c_str());
+        SceneDataPath.init(arena, config["sceneDataDir"].get<std::string>().c_str());
 
         /*
          * Retreiving the Active Scene
@@ -174,7 +173,7 @@ namespace Tetragrama
             {
                 continue;
             }
-            Helpers::secure_strcpy(ActiveSceneName, 50, scene["name"].get<std::string>().c_str());
+            ActiveSceneName.init(arena, scene["name"].get<std::string>().c_str());
             break;
         }
     }

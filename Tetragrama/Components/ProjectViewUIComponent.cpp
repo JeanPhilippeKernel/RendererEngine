@@ -16,7 +16,7 @@ namespace Tetragrama::Components
     {
         UIComponent::Initialize(parent, name, visibility, closed);
         auto context        = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        m_assets_directory  = context->ConfigurationPtr->WorkingSpacePath;
+        m_assets_directory  = context->ConfigurationPtr->WorkingSpacePath.c_str();
         m_current_directory = m_assets_directory;
     }
 

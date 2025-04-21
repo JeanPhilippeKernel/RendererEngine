@@ -319,7 +319,8 @@ namespace Tetragrama::Importers
 
         if (!config.OutputMeshFilePath.empty())
         {
-            std::string   fullname_path = fmt::format("{0}/{1}.zemeshes", config.OutputMeshFilePath.c_str(), config.AssetFilename.c_str());
+            std::string   output_mesh_file = fmt::format("{}.zemeshes", config.AssetFilename.c_str());
+            std::string   fullname_path    = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputMeshFilePath.c_str(), PLATFORM_OS_BACKSLASH, output_mesh_file.c_str());
             std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
 
             if (out.is_open())
@@ -340,7 +341,7 @@ namespace Tetragrama::Importers
             }
             out.close();
 
-            importer_data.SerializedMeshesPath.init(arena, fullname_path.c_str());
+            importer_data.SerializedMeshesPath.init(arena, output_mesh_file.c_str());
         }
 
         if (!config.OutputMaterialsPath.empty() && !config.OutputTextureFilesPath.empty())
@@ -348,7 +349,7 @@ namespace Tetragrama::Importers
             /*
              * Normalize file naming
              */
-            auto dst_dir            = fmt::format("{0}/{1}", config.OutputTextureFilesPath.c_str(), config.AssetFilename.c_str());
+            auto dst_dir            = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetFilename.c_str());
 
             auto create_base_dir_fn = [](std::string_view filename) -> void {
                 auto            base_dir = fs::absolute(filename).parent_path();
@@ -360,71 +361,90 @@ namespace Tetragrama::Importers
                 }
             };
 
-            std::vector<std::string> src_tex_files = {};
-            std::vector<std::string> dst_tex_files = {};
+            auto          scratch       = ZGetScratch(arena);
+            Array<String> src_tex_files = {};
+            Array<String> dst_tex_files = {};
+            src_tex_files.init(scratch.Arena, 10);
+            dst_tex_files.init(scratch.Arena, 10);
+
             for (auto& mat_file : importer_data.Scene.MaterialFiles)
             {
                 if (!std::string_view(mat_file.AlbedoTexture).empty())
                 {
-                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath.c_str(), mat_file.AlbedoTexture);
-                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.AlbedoTexture);
+                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.AlbedoTexture);
+                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.AlbedoTexture);
                     create_base_dir_fn(dst_file);
 
                     ZEngine::Helpers::secure_strcpy(mat_file.AlbedoTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
 
-                    src_tex_files.emplace_back(src_file);
-                    dst_tex_files.emplace_back(dst_file);
+                    auto& sf = src_tex_files.push_use({});
+                    auto& df = dst_tex_files.push_use({});
+
+                    sf.init(scratch.Arena, src_file.c_str());
+                    df.init(scratch.Arena, dst_file.c_str());
                 }
 
                 if (!std::string_view(mat_file.EmissiveTexture).empty())
                 {
-                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath.c_str(), mat_file.EmissiveTexture);
-                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.EmissiveTexture);
+                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.EmissiveTexture);
+                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.EmissiveTexture);
 
                     create_base_dir_fn(dst_file);
 
                     ZEngine::Helpers::secure_strcpy(mat_file.EmissiveTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
 
-                    src_tex_files.emplace_back(src_file);
-                    dst_tex_files.emplace_back(dst_file);
+                    auto& sf = src_tex_files.push_use({});
+                    auto& df = dst_tex_files.push_use({});
+
+                    sf.init(scratch.Arena, src_file.c_str());
+                    df.init(scratch.Arena, dst_file.c_str());
                 }
 
                 if (!std::string_view(mat_file.NormalTexture).empty())
                 {
-                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath.c_str(), mat_file.NormalTexture);
-                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.NormalTexture);
+                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.NormalTexture);
+                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.NormalTexture);
 
                     create_base_dir_fn(dst_file);
                     ZEngine::Helpers::secure_strcpy(mat_file.NormalTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
 
-                    src_tex_files.emplace_back(src_file);
-                    dst_tex_files.emplace_back(dst_file);
+                    auto& sf = src_tex_files.push_use({});
+                    auto& df = dst_tex_files.push_use({});
+
+                    sf.init(scratch.Arena, src_file.c_str());
+                    df.init(scratch.Arena, dst_file.c_str());
                 }
 
                 if (!std::string_view(mat_file.OpacityTexture).empty())
                 {
-                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath.c_str(), mat_file.OpacityTexture);
-                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.OpacityTexture);
+                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.OpacityTexture);
+                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.OpacityTexture);
 
                     create_base_dir_fn(dst_file);
 
                     ZEngine::Helpers::secure_strcpy(mat_file.OpacityTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
 
-                    src_tex_files.emplace_back(src_file);
-                    dst_tex_files.emplace_back(dst_file);
+                    auto& sf = src_tex_files.push_use({});
+                    auto& df = dst_tex_files.push_use({});
+
+                    sf.init(scratch.Arena, src_file.c_str());
+                    df.init(scratch.Arena, dst_file.c_str());
                 }
 
                 if (!std::string_view(mat_file.SpecularTexture).empty())
                 {
-                    auto src_file = fmt::format("{0}/{1}", config.InputBaseAssetFilePath.c_str(), mat_file.SpecularTexture);
-                    auto dst_file = fmt::format("{0}/{1}", dst_dir, mat_file.SpecularTexture);
+                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.SpecularTexture);
+                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.SpecularTexture);
 
                     create_base_dir_fn(dst_file);
 
                     ZEngine::Helpers::secure_strcpy(mat_file.SpecularTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
 
-                    src_tex_files.emplace_back(src_file);
-                    dst_tex_files.emplace_back(dst_file);
+                    auto& sf = src_tex_files.push_use({});
+                    auto& df = dst_tex_files.push_use({});
+
+                    sf.init(scratch.Arena, src_file.c_str());
+                    df.init(scratch.Arena, dst_file.c_str());
                 }
             }
             /*
@@ -436,8 +456,8 @@ namespace Tetragrama::Importers
             ZENGINE_VALIDATE_ASSERT(src_tex_files.size() == dst_tex_files.size(), "source files count can't be diff of destination files count")
             for (int i = 0; i < src_tex_files.size(); ++i)
             {
-                auto          src = fs::absolute(src_tex_files[i]);
-                auto          dst = fs::absolute(dst_tex_files[i]);
+                auto          src = fs::absolute(src_tex_files[i].c_str());
+                auto          dst = fs::absolute(dst_tex_files[i].c_str());
 
                 std::ifstream in(src.c_str(), std::ios::binary);
                 std::ofstream out(dst.c_str(), std::ios::binary);
@@ -455,7 +475,10 @@ namespace Tetragrama::Importers
                 out.close();
             }
 
-            std::string   fullname_path = fmt::format("{0}/{1}.zematerials", config.OutputMaterialsPath.c_str(), config.AssetFilename.c_str());
+            ZReleaseScratch(scratch);
+
+            std::string   output_material_file = fmt::format("{}.zematerials", config.AssetFilename.c_str());
+            std::string   fullname_path        = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputMaterialsPath.c_str(), PLATFORM_OS_BACKSLASH, output_material_file.c_str());
             std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
 
             if (out.is_open())
@@ -479,12 +502,13 @@ namespace Tetragrama::Importers
             }
             out.close();
 
-            importer_data.SerializedMaterialsPath.init(arena, fullname_path.c_str());
+            importer_data.SerializedMaterialsPath.init(arena, output_material_file.c_str());
         }
 
         if (!config.OutputModelFilePath.empty())
         {
-            std::string   fullname_path = fmt::format("{0}/{1}.zemodel", config.OutputModelFilePath.c_str(), config.AssetFilename.c_str());
+            std::string   output_model_file = fmt::format("{}.zemodel", config.AssetFilename.c_str());
+            std::string   fullname_path     = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputModelFilePath.c_str(), PLATFORM_OS_BACKSLASH, output_model_file.c_str());
             std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
 
             if (out.is_open())
@@ -514,7 +538,7 @@ namespace Tetragrama::Importers
 
             out.close();
 
-            importer_data.SerializedModelPath.init(arena, fullname_path.c_str());
+            importer_data.SerializedModelPath.init(arena, output_model_file.c_str());
         }
     }
 
@@ -566,7 +590,7 @@ namespace Tetragrama::Importers
                 deserialized_data.Scene.MaterialFiles.resize(mat_file_count);
 
                 Array<String> textures = {};
-                textures.init(arena, 5);
+                textures.init(arena, 5, 5);
                 for (auto& mat_file : deserialized_data.Scene.MaterialFiles)
                 {
                     Tetragrama::Helpers::DeserializeStringData(arena, in, textures[0]);

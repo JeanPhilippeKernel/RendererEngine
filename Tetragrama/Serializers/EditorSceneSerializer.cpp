@@ -31,7 +31,7 @@ namespace Tetragrama::Serializers
                 return;
             }
 
-            auto          full_scenename = fmt::format("{0}/{1}.zescene", m_default_output, scene->Name);
+            auto          full_scenename = fmt::format("{0}{1}{2}.zescene", m_default_output, PLATFORM_OS_BACKSLASH, scene->Name);
             std::ofstream out(full_scenename, std::ios::binary | std::ios::trunc | std::ios::out);
             if (!out.is_open())
             {
@@ -143,21 +143,21 @@ namespace Tetragrama::Serializers
 
                 int      i          = 0;
 
-                while (hash[i] != ':' && hash[i] != '\0')
+                while (i < hash.size() && hash[i] != ':')
                 {
                     indices[0] = indices[0] * 10 + (hash[i] - '0');
                     i++;
                 }
                 i++; // Skip the colon
 
-                while (hash[i] != ':' && hash[i] != '\0')
+                while (i < hash.size() && hash[i] != ':')
                 {
                     indices[1] = indices[1] * 10 + (hash[i] - '0');
                     i++;
                 }
                 i++;
 
-                while (hash[i] != '\0')
+                while (i < hash.size() && hash[i] != '\0')
                 {
                     indices[2] = indices[2] * 10 + (hash[i] - '0');
                     i++;
@@ -176,17 +176,11 @@ namespace Tetragrama::Serializers
             std::vector<ZEngine::Rendering::Scenes::SceneRawData> scene_data;
             for (auto& [_, model] : scene.Data)
             {
-                auto mesh_path     = fmt::format("{0}/{1}", config.WorkingSpacePath, scene.MeshFiles[model.MeshFileIndex].c_str());
-                auto model_path    = fmt::format("{0}/{1}", config.WorkingSpacePath, scene.ModelFiles[model.ModelPathIndex].c_str());
-                auto material_path = fmt::format("{0}/{1}", config.WorkingSpacePath, scene.MaterialFiles[model.MaterialPathIndex].c_str());
+                auto mesh_path     = fmt::format("{0}{1}{2}{3}{4}", config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.SceneDataPath.c_str(), PLATFORM_OS_BACKSLASH, scene.MeshFiles[model.MeshFileIndex].c_str());
+                auto model_path    = fmt::format("{0}{1}{2}{3}{4}", config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.SceneDataPath.c_str(), PLATFORM_OS_BACKSLASH, scene.ModelFiles[model.ModelPathIndex].c_str());
+                auto material_path = fmt::format("{0}{1}{2}{3}{4}", config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.SceneDataPath.c_str(), PLATFORM_OS_BACKSLASH, scene.MaterialFiles[model.MaterialPathIndex].c_str());
 
-#ifdef _WIN32
-                std::replace(model_path.begin(), model_path.end(), '/', '\\');
-                std::replace(mesh_path.begin(), mesh_path.end(), '/', '\\');
-                std::replace(material_path.begin(), material_path.end(), '/', '\\');
-#endif // _WIN32
-
-                auto import_data = AssetImporter->DeserializeImporterData(&Arena, model_path, mesh_path, material_path);
+                auto import_data   = AssetImporter->DeserializeImporterData(&Arena, model_path, mesh_path, material_path);
                 scene_data.push_back(import_data.Scene);
             }
 

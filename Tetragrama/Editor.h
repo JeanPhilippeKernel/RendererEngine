@@ -51,15 +51,15 @@ namespace Tetragrama
 
     struct EditorConfiguration
     {
-        char WorkingSpacePath[MAX_FILE_PATH_COUNT]         = {0};
-        char DefaultImportTexturePath[MAX_FILE_PATH_COUNT] = {0};
-        char DefaultImportSoundPath[MAX_FILE_PATH_COUNT]   = {0};
-        char ScenePath[MAX_FILE_PATH_COUNT]                = {0};
-        char SceneDataPath[MAX_FILE_PATH_COUNT]            = {0};
-        char ProjectName[50]                               = {0};
-        char ActiveSceneName[50]                           = {0};
+        ZEngine::Core::Containers::String WorkingSpacePath         = {};
+        ZEngine::Core::Containers::String DefaultImportTexturePath = {};
+        ZEngine::Core::Containers::String DefaultImportSoundPath   = {};
+        ZEngine::Core::Containers::String ScenePath                = {};
+        ZEngine::Core::Containers::String SceneDataPath            = {};
+        ZEngine::Core::Containers::String ProjectName              = {};
+        ZEngine::Core::Containers::String ActiveSceneName          = {};
 
-        void ReadConfig(std::string_view file);
+        void                              ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };
 
     struct EditorContext

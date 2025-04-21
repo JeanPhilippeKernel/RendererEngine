@@ -15,6 +15,14 @@
 #error "Platform not supported!"
 #endif
 
+#ifdef _MSC_VER
+#define PLATFORM_OS_BACKSLASH '\\'
+#elif defined(__APPLE__) || defined(__linux__)
+#define PLATFORM_OS_BACKSLASH '/'
+#else
+#define PLATFORM_OS_BACKSLASH
+#endif
+
 #define ZENGINE_VALIDATE_ASSERT(condition, message) \
     {                                               \
         if (!(condition))                           \

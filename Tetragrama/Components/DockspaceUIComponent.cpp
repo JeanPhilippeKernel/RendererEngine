@@ -46,29 +46,14 @@ namespace Tetragrama::Components
 
         const auto& editor_config          = *context->ConfigurationPtr;
 
-        auto        o_model_fpath          = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath);
-        auto        o_mesh_fpath           = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath);
-        auto        o_texture_fpath        = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.DefaultImportTexturePath);
-        auto        o_material_fpath       = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.SceneDataPath);
-
         m_default_import_configuration     = {};
-        m_default_import_configuration.OutputModelFilePath.init(&(parent->LayerArena), o_model_fpath.c_str());
-        m_default_import_configuration.OutputMeshFilePath.init(&(parent->LayerArena), o_mesh_fpath.c_str());
-        m_default_import_configuration.OutputTextureFilesPath.init(&(parent->LayerArena), o_texture_fpath.c_str());
-        m_default_import_configuration.OutputMaterialsPath.init(&(parent->LayerArena), o_material_fpath.c_str());
+        m_default_import_configuration.OutputWorkingSpacePath.init(&(parent->LayerArena), editor_config.WorkingSpacePath.c_str());
+        m_default_import_configuration.OutputModelFilePath.init(&(parent->LayerArena), editor_config.SceneDataPath.c_str());
+        m_default_import_configuration.OutputMeshFilePath.init(&(parent->LayerArena), editor_config.SceneDataPath.c_str());
+        m_default_import_configuration.OutputMaterialsPath.init(&(parent->LayerArena), editor_config.SceneDataPath.c_str());
+        m_default_import_configuration.OutputTextureFilesPath.init(&(parent->LayerArena), editor_config.DefaultImportTexturePath.c_str());
 
-#ifdef _WIN32
-        std::replace(m_default_import_configuration.OutputModelFilePath.begin(), m_default_import_configuration.OutputModelFilePath.end(), '/', '\\');
-        std::replace(m_default_import_configuration.OutputMeshFilePath.begin(), m_default_import_configuration.OutputMeshFilePath.end(), '/', '\\');
-        std::replace(m_default_import_configuration.OutputTextureFilesPath.begin(), m_default_import_configuration.OutputTextureFilesPath.end(), '/', '\\');
-        std::replace(m_default_import_configuration.OutputMaterialsPath.begin(), m_default_import_configuration.OutputMaterialsPath.end(), '/', '\\');
-#endif // _WIN32
-
-        auto editor_serializer_default_output = fmt::format("{0}/{1}", editor_config.WorkingSpacePath, editor_config.ScenePath);
-
-#ifdef _WIN32
-        std::replace(editor_serializer_default_output.begin(), editor_serializer_default_output.end(), '/', '\\');
-#endif // _WIN32
+        auto editor_serializer_default_output = fmt::format("{0}{1}{2}", editor_config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, editor_config.ScenePath.c_str());
 
         m_editor_serializer->SetDefaultOutput(editor_serializer_default_output);
         m_editor_serializer->SetOnProgressCallback(OnEditorSceneSerializerProgress);
@@ -424,23 +409,7 @@ namespace Tetragrama::Components
         /*
          * Removing the WorkingSpace Path
          */
-        // auto ws                           = context_ptr->ConfigurationPtr->WorkingSpacePath + "\\";
-        //  if (data.SerializedMeshesPath.find(ws) != std::string::npos)
-        //{
-        //      data.SerializedMeshesPath.replace(data.SerializedMeshesPath.find(ws), ws.size(), "");
-        //  }
-
-        // if (data.SerializedMaterialsPath.find(ws) != std::string::npos)
-        //{
-        //     data.SerializedMaterialsPath.replace(data.SerializedMaterialsPath.find(ws), ws.size(), "");
-        // }
-
-        // if (data.SerializedModelPath.find(ws) != std::string::npos)
-        //{
-        //     data.SerializedModelPath.replace(data.SerializedModelPath.find(ws), ws.size(), "");
-        // }
-        //
-        // context_ptr->CurrentScenePtr->Push(data.SerializedMeshesPath, data.SerializedModelPath, data.SerializedMaterialsPath);
+        context_ptr->CurrentScenePtr->Push(&(context_ptr->Arena), data.SerializedMeshesPath.c_str(), data.SerializedModelPath.c_str(), data.SerializedMaterialsPath.c_str());
     }
 
     void DockspaceUIComponent::OnAssetImporterProgress(void* const context, float value)
@@ -530,9 +499,11 @@ namespace Tetragrama::Components
         auto ctx = reinterpret_cast<EditorContext*>(context);
 
         // Todo : Ensure no data race on CurrentScenePtr
-        ZEngine::Helpers::secure_strcpy(ctx->ConfigurationPtr->ActiveSceneName, ZEngine::Helpers::secure_strlen(scene.Name), scene.Name);
+        ctx->ConfigurationPtr->ActiveSceneName.reserve(ZEngine::Helpers::secure_strlen(scene.Name));
+        ctx->ConfigurationPtr->ActiveSceneName.clear();
+        ctx->ConfigurationPtr->ActiveSceneName.append(scene.Name);
 
-        ctx->CurrentScenePtr->Name          = ctx->ConfigurationPtr->ActiveSceneName;
+        ctx->CurrentScenePtr->Name          = ctx->ConfigurationPtr->ActiveSceneName.c_str();
         ctx->CurrentScenePtr->Data          = scene.Data;
         ctx->CurrentScenePtr->MeshFiles     = scene.MeshFiles;
         ctx->CurrentScenePtr->ModelFiles    = scene.ModelFiles;
@@ -557,9 +528,6 @@ namespace Tetragrama::Components
 
             if (!scene_filename.empty())
             {
-#ifdef _WIN32
-                std::replace(scene_filename.begin(), scene_filename.end(), '/', '\\'); // Todo : Move this replace into an helper function....
-#endif
                 m_editor_serializer->Deserialize(scene_filename);
             }
         }

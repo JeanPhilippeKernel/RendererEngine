@@ -35,6 +35,7 @@ namespace Tetragrama::Importers
     {
         ZEngine::Core::Containers::String AssetFilename;
         ZEngine::Core::Containers::String InputBaseAssetFilePath;
+        ZEngine::Core::Containers::String OutputWorkingSpacePath;
         ZEngine::Core::Containers::String OutputModelFilePath;
         ZEngine::Core::Containers::String OutputMeshFilePath;
         ZEngine::Core::Containers::String OutputTextureFilesPath;
