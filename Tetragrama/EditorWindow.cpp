@@ -337,37 +337,33 @@ namespace Tetragrama
     void EditorWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
-        if (property)
+        if (!property)
         {
-            switch (action)
-            {
-                case GLFW_PRESS:
-                {
-                    KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
-                    property->CallbackFn(e);
-                    break;
-                }
+            return;
+        }
 
-                case GLFW_RELEASE:
-                {
-                    KeyReleasedEvent e{static_cast<Inputs::GlfwKeyCode>(key)};
-                    property->CallbackFn(e);
-                    break;
-                }
+        if (action == GLFW_PRESS)
+        {
+            KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
+            property->CallbackFn(e);
+        }
 
-                case GLFW_REPEAT:
-                {
-                    KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
-                    property->CallbackFn(e);
-                    break;
-                }
-            }
+        if (action == GLFW_RELEASE)
+        {
+            KeyReleasedEvent e{static_cast<Inputs::GlfwKeyCode>(key)};
+            property->CallbackFn(e);
+        }
 
-            if (key == GLFW_KEY_ESCAPE)
-            {
-                WindowClosedEvent e;
-                property->CallbackFn(e);
-            }
+        if (action == GLFW_REPEAT)
+        {
+            KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
+            property->CallbackFn(e);
+        }
+
+        if (key == GLFW_KEY_ESCAPE)
+        {
+            WindowClosedEvent e;
+            property->CallbackFn(e);
         }
     }
 

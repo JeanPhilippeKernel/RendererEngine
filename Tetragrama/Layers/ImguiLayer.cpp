@@ -11,6 +11,7 @@
 #include <Messenger.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
+#include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 #include <fmt/format.h>
 #include <imgui.h>
 
@@ -30,16 +31,30 @@ namespace Tetragrama::Layers
         arena->CreateSubArena(ZMega(10), &LayerArena);
 
         NodeHierarchies.init(&LayerArena, 10, 0);
+        NodeUIComponents.init(&LayerArena, 10, 0);
         NodeToRender.init(&LayerArena, 10);
+        KeyEntries.init(&LayerArena, 10, 0);
 
-        auto dockspace_cmp      = ZPushStructCtor(&LayerArena, Components::DockspaceUIComponent);
-        auto scene_cmp          = ZPushStructCtor(&LayerArena, Components::SceneViewportUIComponent);
-        auto editor_log_cmp     = ZPushStructCtor(&LayerArena, Components::LogUIComponent);
-        auto project_view_cmp   = ZPushStructCtor(&LayerArena, Components::ProjectViewUIComponent);
-        auto inspector_view_cmp = ZPushStructCtor(&LayerArena, Components::InspectorViewUIComponent);
-        auto hierarchy_view_cmp = ZPushStructCtor(&LayerArena, Components::HierarchyViewUIComponent);
+        KeyEntries[ZENGINE_KEY_SPACE]        = ImGuiKey_Space;
+        KeyEntries[ZENGINE_KEY_BACKSPACE]    = ImGuiKey_Backspace;
+        KeyEntries[ZENGINE_KEY_RIGHT]        = ImGuiKey_RightArrow;
+        KeyEntries[ZENGINE_KEY_LEFT]         = ImGuiKey_LeftArrow;
+        KeyEntries[ZENGINE_KEY_DOWN]         = ImGuiKey_DownArrow;
+        KeyEntries[ZENGINE_KEY_UP]           = ImGuiKey_UpArrow;
+        KeyEntries[ZENGINE_KEY_DELETE]       = ImGuiKey_Delete;
+        KeyEntries[ZENGINE_KEY_ENTER]        = ImGuiKey_Enter;
+        KeyEntries[ZENGINE_KEY_MOUSE_LEFT]   = ImGuiKey_MouseLeft;
+        KeyEntries[ZENGINE_KEY_MOUSE_RIGHT]  = ImGuiKey_MouseRight;
+        KeyEntries[ZENGINE_KEY_MOUSE_MIDDLE] = ImGuiKey_MouseMiddle;
 
-        auto demo_cmp           = ZPushStructCtor(&LayerArena, Components::DemoUIComponent);
+        auto dockspace_cmp                   = ZPushStructCtor(&LayerArena, Components::DockspaceUIComponent);
+        auto scene_cmp                       = ZPushStructCtor(&LayerArena, Components::SceneViewportUIComponent);
+        auto editor_log_cmp                  = ZPushStructCtor(&LayerArena, Components::LogUIComponent);
+        auto project_view_cmp                = ZPushStructCtor(&LayerArena, Components::ProjectViewUIComponent);
+        auto inspector_view_cmp              = ZPushStructCtor(&LayerArena, Components::InspectorViewUIComponent);
+        auto hierarchy_view_cmp              = ZPushStructCtor(&LayerArena, Components::HierarchyViewUIComponent);
+
+        auto demo_cmp                        = ZPushStructCtor(&LayerArena, Components::DemoUIComponent);
 
         dockspace_cmp->Initialize(this);
         scene_cmp->Initialize(this);
@@ -244,29 +259,35 @@ namespace Tetragrama::Layers
 
     bool ImguiLayer::OnKeyPressed(KeyPressedEvent& e)
     {
-        ImGuiIO& io                       = ImGui::GetIO();
-        io.KeysDown[(int) e.GetKeyCode()] = true;
+        ImGuiIO& io = ImGui::GetIO();
+        if (KeyEntries.contains(e.GetKeyCode()))
+        {
+            io.AddKeyEvent((ImGuiKey) KeyEntries[e.GetKeyCode()], true);
+        }
         return false;
     }
 
     bool ImguiLayer::OnKeyReleased(KeyReleasedEvent& e)
     {
-        ImGuiIO& io                       = ImGui::GetIO();
-        io.KeysDown[(int) e.GetKeyCode()] = false;
+        ImGuiIO& io = ImGui::GetIO();
+        if (KeyEntries.contains(e.GetKeyCode()))
+        {
+            io.AddKeyEvent((ImGuiKey) KeyEntries[e.GetKeyCode()], false);
+        }
         return false;
     }
 
     bool ImguiLayer::OnMouseButtonPressed(MouseButtonPressedEvent& e)
     {
-        ImGuiIO& io                            = ImGui::GetIO();
-        io.MouseDown[(uint32_t) e.GetButton()] = true;
+        ImGuiIO& io = ImGui::GetIO();
+        io.AddMouseButtonEvent((int) e.GetButton(), true);
         return false;
     }
 
     bool ImguiLayer::OnMouseButtonReleased(MouseButtonReleasedEvent& e)
     {
-        ImGuiIO& io                       = ImGui::GetIO();
-        io.MouseDown[(int) e.GetButton()] = false;
+        ImGuiIO& io = ImGui::GetIO();
+        io.AddMouseButtonEvent((int) e.GetButton(), false);
         return false;
     }
 

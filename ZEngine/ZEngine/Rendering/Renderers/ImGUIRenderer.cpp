@@ -40,7 +40,7 @@ namespace ZEngine::Rendering::Renderers
             io.IniFilename = default_layout_ini.data();
         }
 
-        // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags         |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags         |= ImGuiConfigFlags_DockingEnable;
         io.ConfigFlags         |= ImGuiConfigFlags_ViewportsEnable;
 
