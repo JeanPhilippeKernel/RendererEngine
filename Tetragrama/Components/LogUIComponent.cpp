@@ -1,79 +1,16 @@
 #include <pch.h>
 #include <Helpers/MemoryOperations.h>
 #include <LogUIComponent.h>
+#include <SearchPatternAlgorithm.h>
+#include <ZEngine/Core/Containers/Array.h>
 #include <imgui.h>
 
 using namespace ZEngine::Logging;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::Containers;
 
 namespace Tetragrama::Components
 {
-    // KMP Preprocessing: builds the partial match table (prefix function)
-    void buildKMPTable(const char* pattern, int* lps)
-    {
-        int m  = std::strlen(pattern);
-        int j  = 0; // length of previous longest prefix suffix
-
-        lps[0] = 0; // lps[0] is always 0
-        for (int i = 1; i < m; ++i)
-        {
-            while (j > 0 && std::tolower(pattern[i]) != std::tolower(pattern[j]))
-            {
-                j = lps[j - 1];
-            }
-            if (std::tolower(pattern[i]) == std::tolower(pattern[j]))
-            {
-                ++j;
-            }
-            lps[i] = j;
-        }
-    }
-
-    bool KMPSearch(const char* text, const char* pattern)
-    {
-        int n = std::strlen(text);
-        int m = std::strlen(pattern);
-
-        // Edge case: empty pattern
-        if (m == 0)
-            return true;
-
-        int* lps = new int[m]; // longest prefix suffix table
-        buildKMPTable(pattern, lps);
-
-        int i = 0; // index for text[]
-        int j = 0; // index for pattern[]
-
-        while (i < n)
-        {
-            if (std::tolower(text[i]) == std::tolower(pattern[j]))
-            {
-                ++i;
-                ++j;
-            }
-
-            if (j == m)
-            { // found a match
-                delete[] lps;
-                return true;
-            }
-            else if (i < n && std::tolower(text[i]) != std::tolower(pattern[j]))
-            {
-                if (j != 0)
-                {
-                    j = lps[j - 1];
-                }
-                else
-                {
-                    ++i;
-                }
-            }
-        }
-
-        delete[] lps;
-        return false; // no match found
-    }
-
     LogUIComponent::LogUIComponent() {}
 
     LogUIComponent::~LogUIComponent()
@@ -84,7 +21,9 @@ namespace Tetragrama::Components
     void LogUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
     {
         UIComponent::Initialize(parent, name, visibility, closed);
-        m_log_queue.init(&(parent->LayerArena), m_maxCount, m_maxCount);
+
+        parent->LayerArena.CreateSubArena(ZMega(1), &m_local_arena);
+        m_log_queue.init(&(m_local_arena), m_maxCount, m_maxCount);
         m_handler_cookie = Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
     }
 
@@ -97,10 +36,24 @@ namespace Tetragrama::Components
 
     void LogUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
+        static const char* items[]                    = {"All", "info", "error", "warn", "critical", "trace"};
+        static int         current_item               = 0;
+
+        auto               scratch                    = ZGetScratch(&m_local_arena);
+
+        char               search_buffer_tolower[256] = {0};
+        if (auto len = secure_strlen(m_search_buffer))
+        {
+            for (unsigned i = 0; i < len; ++i)
+            {
+                search_buffer_tolower[i] = ::tolower(m_search_buffer[i]);
+            }
+        }
+
         ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
-        static const char* items[]      = {"All", "info", "error", "warn", "critical", "trace"};
-        static int         current_item = 0;
+        ImGui::SetNextItemWidth(150);
+        ImGui::InputTextWithHint("##Search", "Search logs...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
 
         ImGui::SameLine();
         ImGui::SetNextItemWidth(70);
@@ -118,33 +71,22 @@ namespace Tetragrama::Components
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("Clear"))
-        {
-            ClearLog();
-            m_search_buffer[0] = '\0';
-        }
-
-        ImGui::SameLine();
         if (m_is_copy_button_pressed = ImGui::Button("Copy"))
         {
             ImGui::LogToClipboard();
         }
 
         ImGui::SameLine();
-        ImGui::InputTextWithHint("##Search", "Search logs...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
-        ImGui::Separator();
-
-        char search_buffer_tolower[256] = {0};
-        if (auto len = secure_strlen(m_search_buffer))
+        if (ImGui::Button("Clear"))
         {
-            for (unsigned i = 0; i < len; ++i)
-            {
-                search_buffer_tolower[i] = ::tolower(m_search_buffer[i]);
-            }
+            ClearLog();
+            m_search_buffer[0] = '\0';
         }
 
+        ImGui::Separator();
+
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-        if (ImGui::BeginTable("log_table", 1, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY))
+        if (ImGui::BeginTable("#log_table", 1, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY))
         {
             auto count = m_currentCount.load(std::memory_order_acquire);
             for (unsigned i = 0; i < count; ++i)
@@ -164,7 +106,7 @@ namespace Tetragrama::Components
                 if (secure_strlen(search_buffer_tolower) > 0)
                 {
 
-                    if (!KMPSearch(message.Message.c_str(), search_buffer_tolower))
+                    if (!Helpers::KMPSearch(scratch.Arena, message.Message.c_str(), search_buffer_tolower))
                     {
                         continue;
                     }
@@ -190,6 +132,8 @@ namespace Tetragrama::Components
         ImGui::PopStyleVar();
 
         ImGui::End();
+
+        ZReleaseScratch(scratch);
     }
 
     void LogUIComponent::OnLog(ZEngine::Logging::LogMessage message)
