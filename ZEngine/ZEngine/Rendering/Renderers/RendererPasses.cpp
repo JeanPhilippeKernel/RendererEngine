@@ -4,20 +4,24 @@
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;
+using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers
 {
     void InitialPass::Setup(std::string_view name, RenderGraph* const graph)
     {
-        auto& builder                           = graph->Builder;
-        auto& renderer                          = graph->Renderer;
+        auto& builder  = graph->Builder;
+        auto& renderer = graph->Renderer;
+        auto  arena    = renderer->Device->Arena;
+
+        m_vertex_data.init(arena, 3, make_initializer_list(arena, 0.0f, 0.0f, 0.0f));
 
         auto& vb_res                            = builder->CreateBufferSet("initial_vertex_buffer", BufferSetCreationType::VERTEX);
         m_vb_handle                             = vb_res.ResourceInfo.VertexBufferSetHandle;
         RenderGraphRenderPassCreation pass_node = {.Name = name.data()};
 
-        pass_node.Inputs.init(graph->Renderer->Device->Arena, 1);
-        pass_node.Outputs.init(graph->Renderer->Device->Arena, 2);
+        pass_node.Inputs.init(arena, 1);
+        pass_node.Outputs.init(arena, 2);
         pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = renderer->FrameDepthRenderTargetName});
         pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = renderer->FrameColorRenderTargetName});
 
@@ -128,9 +132,14 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(std::string_view name, RenderGraph* const graph)
     {
-        auto& builder                               = graph->Builder;
-        auto& renderer                              = graph->Renderer;
-        auto  env_map_res                           = builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
+        auto& builder  = graph->Builder;
+        auto& renderer = graph->Renderer;
+        auto  arena    = renderer->Device->Arena;
+
+        m_index_data.init(arena, 36, make_initializer_list<uint16_t>(arena, 0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 5, 4, 7, 7, 6, 5, 4, 0, 3, 3, 7, 4, 3, 2, 6, 6, 7, 3, 4, 5, 1, 1, 0, 4));
+        m_vertex_data.init(arena, 24, make_initializer_list(arena, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f));
+
+        auto env_map_res                            = builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
 
         m_env_map                                   = env_map_res.ResourceInfo.TextureHandle;
         m_vb_handle                                 = renderer->Device->CreateVertexBufferSet();
@@ -199,8 +208,13 @@ namespace ZEngine::Rendering::Renderers
 
     void GridPass::Setup(std::string_view name, RenderGraph* const graph)
     {
-        auto& builder                             = graph->Builder;
-        auto& renderer                            = graph->Renderer;
+        auto& builder  = graph->Builder;
+        auto& renderer = graph->Renderer;
+        auto  arena    = renderer->Device->Arena;
+
+        m_index_data.init(arena, 6, make_initializer_list<uint16_t>(arena, 0, 1, 2, 2, 3, 0));
+        m_vertex_data.init(arena, 12, make_initializer_list<float>(arena, -1.0f, 0.0f, -1.0f, 1.0f, 0.0f, -1.0f, 1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f));
+
         m_vb_handle                               = renderer->Device->CreateVertexBufferSet();
         m_ib_handle                               = renderer->Device->CreateIndexBufferSet();
 

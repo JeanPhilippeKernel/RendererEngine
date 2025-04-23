@@ -204,10 +204,15 @@ namespace ZEngine::Rendering::Renderers
             return;
         }
 
-        std::vector<ImDrawVert> vertex_data(vertex_count);
-        std::vector<ImDrawIdx>  index_data(index_count);
+        auto              scratch     = ZGetScratch(m_renderer->Device->Arena);
 
-        ImDrawVert*             vertex_data_ptr = vertex_data.data();
+        Array<ImDrawVert> vertex_data = {};
+        Array<ImDrawIdx>  index_data  = {};
+
+        vertex_data.init(scratch.Arena, vertex_count, vertex_count);
+        index_data.init(scratch.Arena, index_count, index_count);
+
+        ImDrawVert* vertex_data_ptr = vertex_data.data();
         for (int n = 0; n < draw_data->CmdListsCount; ++n)
         {
             const ImDrawList* cmd_list  = draw_data->CmdLists[n];
@@ -230,6 +235,8 @@ namespace ZEngine::Rendering::Renderers
 
         vertex_buffer->SetData<ImDrawVert>(frame_index, vertex_data);
         index_buffer->SetData<ImDrawIdx>(frame_index, index_data);
+
+        ZReleaseScratch(scratch);
 
         auto device              = m_renderer->Device;
         auto current_framebuffer = device->SwapchainFramebuffers[device->CurrentFrameIndex];

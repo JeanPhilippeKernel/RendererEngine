@@ -1,6 +1,6 @@
 #pragma once
 #include <UIComponent.h>
-#include <string>
+#include <ZEngine/Core/Memory/Allocator.h>
 
 namespace Tetragrama::Components
 {
@@ -29,34 +29,35 @@ namespace Tetragrama::Components
         ProjectViewUIComponent();
         virtual ~ProjectViewUIComponent();
 
-        void                  Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Project", bool visibility = true, bool closed = false) override;
+        void         Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Project", bool visibility = true, bool closed = false) override;
 
-        void                  Update(ZEngine::Core::TimeStep dt) override;
+        void         Update(ZEngine::Core::TimeStep dt) override;
 
-        virtual void          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
+        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
         // Render Panes
-        void                  RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
-        void                  RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, std::string_view searchTerm);
-        void                  RenderDirectoryNode(const std::filesystem::path& directory);
-        void                  RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry);
-        void                  RenderBackButton();
-        void                  RenderTreeBrowser();
+        void         RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
+        void         RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const char* searchTerm);
+        void         RenderDirectoryNode(const std::filesystem::path& directory);
+        void         RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry);
+        void         RenderBackButton();
+        void         RenderTreeBrowser();
 
         // Popup helpers
-        void                  RenderContextMenu(ContextMenuType type, const std::filesystem::path& targetPath);
-        void                  RenderPopUpMenu();
-        void                  HandleCreateFolderPopup(const std::filesystem::path& path);
-        void                  HandleCreateFilePopup(const std::filesystem::path& path);
+        void         RenderContextMenu(ContextMenuType type, const std::filesystem::path& targetPath);
+        void         RenderPopUpMenu();
+        void         HandleCreateFolderPopup(const std::filesystem::path& path);
+        void         HandleCreateFilePopup(const std::filesystem::path& path);
 
-        void                  HandleRenameFolderPopup(const std::filesystem::path& path);
-        void                  HandleDeleteFolderPopup(const std::filesystem::path& path);
-        void                  HandleRenameFilePopup(const std::filesystem::path& path);
-        void                  HandleDeleteFilePopup(const std::filesystem::path& path);
+        void         HandleRenameFolderPopup(const std::filesystem::path& path);
+        void         HandleDeleteFolderPopup(const std::filesystem::path& path);
+        void         HandleRenameFilePopup(const std::filesystem::path& path);
+        void         HandleDeleteFilePopup(const std::filesystem::path& path);
 
-        std::filesystem::path MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base);
+        void         MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base, char* output);
 
     private:
+        ZEngine::Core::Memory::ArenaAllocator       m_local_arena = {};
         std::filesystem::path                       m_assets_directory;
         std::filesystem::path                       m_current_directory;
         PopupType                                   m_active_popup = PopupType::None;
