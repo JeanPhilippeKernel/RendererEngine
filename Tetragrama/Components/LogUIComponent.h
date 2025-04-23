@@ -1,7 +1,8 @@
 #pragma once
 #include <UIComponent.h>
+#include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Logging/Logger.h>
-#include <string>
+#include <atomic>
 
 namespace Tetragrama::Components
 {
@@ -20,15 +21,16 @@ namespace Tetragrama::Components
 
         void         ClearLog();
 
-        std::string  GetMessageType(const ZEngine::Logging::LogMessage& message);
+        const char*  GetMessageType(const ZEngine::Logging::LogMessage& message);
 
     private:
-        uint32_t                                  m_maxCount{1024};
-        uint32_t                                  m_currentCount{0};
-        bool                                      m_auto_scroll{true};
-        bool                                      m_is_copy_button_pressed{false};
-        std::vector<ZEngine::Logging::LogMessage> m_log_queue;
-        std::mutex                                m_mutex;
-        char                                      m_search_buffer[256] = "";
+        bool                                                           m_auto_scroll            = true;
+        bool                                                           m_is_copy_button_pressed = false;
+        char                                                           m_search_buffer[256]     = "";
+        uint32_t                                                       m_maxCount               = 1024;
+        uint32_t                                                       m_handler_cookie         = 0;
+        std::atomic_uint                                               m_currentCount           = 0;
+        ZEngine::Core::Memory::ArenaAllocator                          m_local_arena            = {};
+        ZEngine::Core::Containers::Array<ZEngine::Logging::LogMessage> m_log_queue              = {};
     };
 } // namespace Tetragrama::Components

@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <Core/Containers/Array.h>
+#include <Core/Containers/HashMap.h>
 #include <Core/Memory/Allocator.h>
 #include <Logging/Logger.h>
 #include <Logging/LoggerDefinition.h>
@@ -13,13 +14,13 @@ using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::Logging
 {
-    static std::atomic_uint32_t                                                           g_cookie             = 0;
-    static spdlog::sink_ptr                                                               s_sink               = nullptr;
-    static std::recursive_mutex                                                           s_mutex              = {};
-    static ZEngine::Core::Containers::Array<std::shared_ptr<spdlog::logger>>              s_logger_collection  = {};
-    static ZEngine::Core::Containers::Array<std::pair<uint32_t, Logger::LogEventHandler>> s_log_event_handlers = {};
+    static std::atomic_uint32_t                                                  g_cookie             = 0;
+    static spdlog::sink_ptr                                                      s_sink               = nullptr;
+    static std::recursive_mutex                                                  s_mutex              = {};
+    static ZEngine::Core::Containers::Array<std::shared_ptr<spdlog::logger>>     s_logger_collection  = {};
+    static ZEngine::Core::Containers::HashMap<uint32_t, Logger::LogEventHandler> s_log_event_handlers = {};
 
-    void                                                                                  Logger::Initialize(void* arena, const LoggerConfiguration& configuration)
+    void                                                                         Logger::Initialize(void* arena, const LoggerConfiguration& configuration)
     {
         s_logger_collection.init(reinterpret_cast<ArenaAllocator*>(arena), 1);
         s_log_event_handlers.init(reinterpret_cast<ArenaAllocator*>(arena), 3);
@@ -62,7 +63,8 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        for (const auto& handler : handlers)
+        auto handlers_view = handlers.view();
+        for (const auto& handler : handlers_view)
         {
             handler.second(LogMessage{
                 .Color = {0.0f, 1.0f, 0.0f, 1.0f},
@@ -84,7 +86,8 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        for (const auto& handler : handlers)
+        auto handlers_view = handlers.view();
+        for (const auto& handler : handlers_view)
         {
             handler.second(LogMessage{
                 .Color = {0.5f, 0.5f, 0.5f, 1.0f},
@@ -106,7 +109,8 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        for (const auto& handler : handlers)
+        auto handlers_view = handlers.view();
+        for (const auto& handler : handlers_view)
         {
             handler.second(LogMessage{
                 .Color = {1.0f, 0.5f, 0.0f, 1.0f},
@@ -128,7 +132,8 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        for (const auto& handler : handlers)
+        auto handlers_view = handlers.view();
+        for (const auto& handler : handlers_view)
         {
             handler.second(LogMessage{
                 .Color = {1.0f, 0.0f, 0.0f, 1.0f},
@@ -150,7 +155,8 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        for (const auto& handler : handlers)
+        auto handlers_view = handlers.view();
+        for (const auto& handler : handlers_view)
         {
             handler.second(LogMessage{
                 .Color = {1.0f, 0.0f, 1.0f, 1.0f},
@@ -174,8 +180,16 @@ namespace ZEngine::Logging
         s_logger_collection.clear();
     }
 
-    void Logger::AddEventHandler(LogEventHandler handler)
+    uint32_t Logger::AddEventHandler(LogEventHandler handler)
     {
-        s_log_event_handlers.push(std::make_pair(g_cookie++, handler));
+        uint32_t cookie = g_cookie++;
+        s_log_event_handlers.insert(cookie, handler);
+        return cookie;
+    }
+
+    void Logger::RemoveEventHandler(uint32_t cookie)
+    {
+        std::unique_lock l(s_mutex);
+        s_log_event_handlers.remove(cookie);
     }
 } // namespace ZEngine::Logging
