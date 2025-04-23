@@ -21,12 +21,12 @@ Before building, make sure your setup is correct :
 ### Setup Window machine
 
 - Install Visual Studio 2022 Community or Professional, make sure to add "Desktop development with C++".
+    - Install MSVC v143 - VS 2022 C++ x64/x86 build tools and Windows 10/11 SDK.
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
 - Install [Python](https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe)
 - Install [CMake](https://cmake.org/download/) 3.20 or later.
 - Install [DOTNET SDK 8](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) as a VS Build Tool component (if using a standalone implementation, you might need to create a symlink between your custom installation location and the expected location: `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Sdks\Microsoft.NET.Sdk\Sdk`)
 - Install [LLVM](https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe)
-- Install MSVC v143 - VS 2022 C++ x64/x86 build tools and Windows 10/11 SDK as a VS Build Tool component.
 
 
 ### Setup macOS machine
