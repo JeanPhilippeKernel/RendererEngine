@@ -62,17 +62,18 @@ namespace Tetragrama::Components
             RenderPopUpMenu();
 
             RenderBackButton();
+
             ImGui::SameLine();
+            ImGui::SetNextItemWidth(300);
             ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
+
             ImGui::SameLine();
-
             ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-
             char relative_path[MAX_FILE_PATH_COUNT] = {0};
             MakeRelative(m_current_directory, m_assets_directory.parent_path(), relative_path);
             ImGui::Text(relative_path);
-
             ImGui::PopFont();
+
             ImGui::Separator();
 
             RenderContentBrowser(renderer);
