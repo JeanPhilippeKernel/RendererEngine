@@ -1,9 +1,9 @@
 #pragma once
+#include <Core/Containers/Array.h>
 #include <RenderGraph.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/Scenes/GraphicScene.h>
 #include <ZEngineDef.h>
-#include <vector>
 
 #define WRITE_BUFFERS_ONCE(frame_index, body)          \
     if (!m_write_once_control.contains(frame_index))   \
@@ -22,7 +22,7 @@ namespace ZEngine::Rendering::Renderers
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
 
     private:
-        const std::vector<float>         m_vertex_data = {0.0, 0.0, 0.0};
+        Core::Containers::Array<float>   m_vertex_data = {};
         Hardwares::VertexBufferSetHandle m_vb_handle   = {};
     };
 
@@ -42,13 +42,11 @@ namespace ZEngine::Rendering::Renderers
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
 
     private:
-        Hardwares::VertexBufferSetHandle m_vb_handle   = {};
-        Hardwares::IndexBufferSetHandle  m_ib_handle   = {};
-        Textures::TextureHandle          m_env_map     = {};
-        const std::vector<uint16_t>      m_index_data  = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 5, 4, 7, 7, 6, 5, 4, 0, 3, 3, 7, 4, 3, 2, 6, 6, 7, 3, 4, 5, 1, 1, 0, 4};
-        const std::vector<float>         m_vertex_data = {
-            -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
-        };
+        Hardwares::VertexBufferSetHandle  m_vb_handle   = {};
+        Hardwares::IndexBufferSetHandle   m_ib_handle   = {};
+        Textures::TextureHandle           m_env_map     = {};
+        Core::Containers::Array<uint16_t> m_index_data  = {};
+        Core::Containers::Array<float>    m_vertex_data = {};
     };
 
     struct GridPass : public IRenderGraphCallbackPass
@@ -59,10 +57,10 @@ namespace ZEngine::Rendering::Renderers
         virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) override;
 
     private:
-        const std::vector<uint16_t>      m_index_data  = {0, 1, 2, 2, 3, 0};
-        const std::vector<float>         m_vertex_data = {-1.0, 0.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 0.0, 1.0};
-        Hardwares::VertexBufferSetHandle m_vb_handle   = {};
-        Hardwares::IndexBufferSetHandle  m_ib_handle   = {};
+        Core::Containers::Array<uint16_t> m_index_data  = {};
+        Core::Containers::Array<float>    m_vertex_data = {};
+        Hardwares::VertexBufferSetHandle  m_vb_handle   = {};
+        Hardwares::IndexBufferSetHandle   m_ib_handle   = {};
     };
 
     struct GbufferPass : public IRenderGraphCallbackPass

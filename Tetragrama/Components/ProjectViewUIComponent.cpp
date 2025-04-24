@@ -1,7 +1,8 @@
 #include <pch.h>
 #include <Editor.h>
-#include <Helpers/MemoryOperations.h>
+#include <Helpers/SearchPatternAlgorithm.h>
 #include <ProjectViewUIComponent.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <imgui.h>
 
 using namespace ZEngine::Helpers;
@@ -15,6 +16,7 @@ namespace Tetragrama::Components
     void ProjectViewUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
     {
         UIComponent::Initialize(parent, name, visibility, closed);
+        parent->LayerArena.CreateSubArena(ZMega(1), &m_local_arena);
         auto context        = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
         m_assets_directory  = context->ConfigurationPtr->WorkingSpacePath.c_str();
         m_current_directory = m_assets_directory;
@@ -60,14 +62,18 @@ namespace Tetragrama::Components
             RenderPopUpMenu();
 
             RenderBackButton();
-            ImGui::SameLine();
-            ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
-            ImGui::SameLine();
 
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(300);
+            ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
+
+            ImGui::SameLine();
             ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-            auto relative_path = MakeRelative(m_current_directory, m_assets_directory.parent_path());
-            ImGui::Text(relative_path.string().c_str());
+            char relative_path[MAX_FILE_PATH_COUNT] = {0};
+            MakeRelative(m_current_directory, m_assets_directory.parent_path(), relative_path);
+            ImGui::Text(relative_path);
             ImGui::PopFont();
+
             ImGui::Separator();
 
             RenderContentBrowser(renderer);
@@ -88,11 +94,15 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginTable("GridTable", columnCount))
         {
-            if (secure_strlen(m_search_buffer) > 0)
+            if (auto len = secure_strlen(m_search_buffer))
             {
-                std::string searchTerm = m_search_buffer;
-                std::transform(searchTerm.begin(), searchTerm.end(), searchTerm.begin(), ::tolower);
-                RenderFilteredContent(renderer, searchTerm);
+                char search_term_lower[256] = {0};
+                for (unsigned i = 0; i < len; ++i)
+                {
+                    search_term_lower[i] = ::tolower(m_search_buffer[i]);
+                }
+
+                RenderFilteredContent(renderer, search_term_lower);
             }
             else
             {
@@ -162,22 +172,25 @@ namespace Tetragrama::Components
         ImGui::PopID();
     }
 
-    void ProjectViewUIComponent::RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, std::string_view searchTerm)
+    void ProjectViewUIComponent::RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const char* searchTerm)
     {
+        auto scratch = ZGetScratch(&m_local_arena);
+
         for (const auto& entry : std::filesystem::recursive_directory_iterator(m_assets_directory))
         {
             if (entry.is_regular_file() || entry.is_directory())
             {
                 std::string nameLower = entry.path().filename().string();
-                std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
 
-                if (nameLower.find(searchTerm) != std::string::npos)
+                if (Helpers::KMPSearch(scratch.Arena, nameLower.c_str(), searchTerm))
                 {
                     ImGui::TableNextColumn();
                     RenderContentTile(renderer, entry);
                 }
             }
         }
+
+        ZReleaseScratch(scratch);
     }
 
     void ProjectViewUIComponent::RenderTreeBrowser()
@@ -682,7 +695,7 @@ namespace Tetragrama::Components
         }
     }
 
-    std::filesystem::path ProjectViewUIComponent::MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base)
+    void ProjectViewUIComponent::MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base, char* output)
     {
         auto path_itr = path.begin();
         auto base_itr = base.begin();
@@ -706,7 +719,25 @@ namespace Tetragrama::Components
             ++path_itr;
         }
 
-        return result;
+        // Formatted
+        auto path_str   = result.string();
+        auto c_path_str = path_str.c_str();
+
+        while (*c_path_str)
+        {
+            if (*c_path_str == PLATFORM_OS_BACKSLASH)
+            {
+                *output++ = ' ';
+                *output++ = '>';
+                *output++ = ' ';
+            }
+            else
+            {
+                *output++ = *c_path_str;
+            }
+
+            c_path_str++;
+        }
     }
 
 } // namespace Tetragrama::Components
