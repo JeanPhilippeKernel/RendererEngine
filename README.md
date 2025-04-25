@@ -29,7 +29,6 @@ Before building, make sure your setup is correct :
 - Install [LLVM](https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe)
 
 
-
 ### Setup macOS machine
 
 - Install Xcode from the App Store.
