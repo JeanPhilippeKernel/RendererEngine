@@ -61,12 +61,72 @@ namespace Panzerfaust.ViewModels
 
             MessageBus.Current.Listen<(string, ProjectViewModel)>().Subscribe(OnReceiveMessage);
         }
+        private int[] BuildKMPTable(string pattern)
+        {
+            int j = 0; // Position in the pattern
 
-        private static Func<ProjectViewModel, bool> CreateFilterPredicate(string searchTerm)
+            int m = pattern.Length;
+            int[] lps = new int[m]; // longest prefix which is also a suffix
+
+            lps[0] = 0;
+            for (int i = 1; i < m; i++)
+            {
+                while (j > 0 && char.ToLower(pattern[i]) != char.ToLower(pattern[j]))
+                {
+                    j = lps[j - 1];
+                }
+                if (char.ToLower(pattern[i]) == char.ToLower(pattern[j]))
+                {
+                    j++;
+                }
+                lps[i] = j;
+            }
+            return lps;
+        }
+
+        private bool KMPSearch(string searchText, string pattern)
+        {
+
+            int j;
+            int[] lps;
+            
+            // Edge cases
+            if (string.IsNullOrEmpty(pattern))
+                return true;
+
+            if (string.IsNullOrEmpty(searchText))
+                return false;
+
+            if (pattern.Length > searchText.Length)
+                return false;
+
+            j = 0;
+            lps = BuildKMPTable(pattern);
+
+            for (int i = 0; i < searchText.Length; i++)
+            {
+                while (j > 0 && char.ToLower(searchText[i]) != char.ToLower(pattern[j]))
+                {
+                    j = lps[j - 1];
+                }
+                if (char.ToLower(searchText[i]) == char.ToLower(pattern[j]))
+                {
+                    j++;
+                }
+                if (j == pattern.Length)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private Func<ProjectViewModel, bool> CreateFilterPredicate(string searchTerm)
         {
             return string.IsNullOrWhiteSpace(searchTerm)
                 ? _ => true
-                : p => p.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
+                : p => KMPSearch(p.Name, searchTerm);
         }
 
         private void OnReceiveMessage((string, ProjectViewModel) message)
