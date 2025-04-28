@@ -46,7 +46,7 @@
         <TextBlock Grid.Row="0" Text="Projects" Margin="30, 30, 0, 0" FontSize="25"/>
         <StackPanel Orientation="Vertical" Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
           <Button Content="New project" HorizontalAlignment="Right" Background="Green" Margin="0, 20, 5, 20" FontSize="15" CornerRadius="6" Command="{Binding CreateProjectCommand}"/>
-          <TextBox Watermark="Search..." BorderBrush="Transparent" BorderThickness="0" Foreground="White" MinWidth="200" Width="210" HorizontalAlignment="Right" Margin="0, 5, 5, 5" CornerRadius="6"/>
+          <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Watermark="Search..." BorderBrush="Transparent" BorderThickness="0" Foreground="White" MinWidth="200" Width="210" HorizontalAlignment="Right" Margin="0, 5, 5, 5" CornerRadius="6"/>
           <ProgressBar Foreground="WhiteSmoke" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
           <DataGrid VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
                     IsReadOnly="True"
@@ -54,7 +54,7 @@
                     CanUserSortColumns="False" 
                     VerticalScrollBarVisibility="Auto"
                     CanUserResizeColumns="False" 
-                    BorderThickness="0" BorderBrush="Gray" ItemsSource="{Binding Projects}" SelectionMode="Single">
+                    BorderThickness="0" BorderBrush="Gray" ItemsSource="{Binding FilteredProjects}" SelectionMode="Single">
             <DataGrid.Columns>
               <DataGridTextColumn Header="NAME" Width="*" MinWidth="256" Binding="{Binding Name, Mode=OneWay}"/>
               <DataGridTextColumn Header="PATH" Width="*" MinWidth="256" Binding="{Binding Path, Mode=OneWay}"/>
