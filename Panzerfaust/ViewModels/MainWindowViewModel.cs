@@ -41,7 +41,6 @@ namespace Panzerfaust.ViewModels
         public MainWindowViewModel()
         {
             var filterPredicate = this.WhenAnyValue(x => x.SearchText)
-                .Throttle(TimeSpan.FromMilliseconds(300), RxApp.MainThreadScheduler)
                 .Select(searchText => CreateFilterPredicate(searchText.Trim()))
                 .DistinctUntilChanged();
 
@@ -61,7 +60,7 @@ namespace Panzerfaust.ViewModels
 
             MessageBus.Current.Listen<(string, ProjectViewModel)>().Subscribe(OnReceiveMessage);
         }
-        private int[] BuildKMPTable(string pattern)
+        private static int[] BuildKMPTable(string pattern)
         {
             int j = 0; // Position in the pattern
 
@@ -84,7 +83,7 @@ namespace Panzerfaust.ViewModels
             return lps;
         }
 
-        private bool KMPSearch(string searchText, string pattern)
+        private static bool KMPSearch(string searchText, string pattern)
         {
 
             int j;
