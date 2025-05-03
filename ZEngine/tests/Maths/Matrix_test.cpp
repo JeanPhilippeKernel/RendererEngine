@@ -69,3 +69,46 @@ TEST(MatrixTest, RowAndColumnAccessFloat)
     EXPECT_NEAR(col[1], 6.0f, EPSILON);
     EXPECT_NEAR(col[2], 9.0f, EPSILON);
 }
+
+TEST(MatrixTest, Identity)
+{
+    Mat2f I2 = identity<Mat2f>();
+    Mat3f I3 = identity<Mat3f>();
+    Mat4f I4 = identity<Mat4f>();
+
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            EXPECT_NEAR(I2[i][j], (i == j ? 1.0f : 0.0f), EPSILON);
+
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            EXPECT_NEAR(I3[i][j], (i == j ? 1.0f : 0.0f), EPSILON);
+
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            EXPECT_NEAR(I4[i][j], (i == j ? 1.0f : 0.0f), EPSILON);
+}
+
+TEST(MatrixTest, Inverse)
+{
+    Mat2f m2(4.0f, 7.0f, 2.0f, 6.0f);
+    Mat2f inv2              = m2.inverse();
+    Mat2f shouldBeIdentity2 = m2 * inv2;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            EXPECT_NEAR(shouldBeIdentity2[i][j], (i == j ? 1.0f : 0.0f), EPSILON);
+
+    Mat3f m3(1, 2, 3, 0, 1, 4, 5, 6, 0);
+    Mat3f inv3              = m3.inverse();
+    Mat3f shouldBeIdentity3 = m3 * inv3;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            EXPECT_NEAR(shouldBeIdentity3[i][j], (i == j ? 1.0f : 0.0f), EPSILON);
+
+    Mat4f m4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+    Mat4f inv4              = m4.inverse();
+    Mat4f shouldBeIdentity4 = m4 * inv4;
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            EXPECT_NEAR(shouldBeIdentity4[i][j], (i == j ? 1.0f : 0.0f), EPSILON);
+}
