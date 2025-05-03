@@ -1,4 +1,4 @@
-#include <Core/Maths/typedefs.h>
+#include <Core/Maths/Matrix.h>
 #include <gtest/gtest.h>
 
 using namespace ZEngine::Core::Maths;
@@ -51,6 +51,9 @@ TEST(MatrixTest, DeterminantFloat)
 
     Mat3f m3(1, 2, 3, 0, 1, 4, 5, 6, 0);
     EXPECT_NEAR(m3.determinant(), 1.0f, EPSILON);
+
+    Mat4f m4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+    EXPECT_NEAR(m4.determinant(), 1.0f, EPSILON);
 }
 
 TEST(MatrixTest, RowAndColumnAccessFloat)

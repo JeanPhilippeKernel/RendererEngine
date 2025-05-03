@@ -1,8 +1,4 @@
-
-
-#include <ZEngineDef.h>
 #include <cstddef>
-#include <type_traits>
 #include "Vec.h"
 
 namespace ZEngine::Core::Maths
@@ -354,6 +350,20 @@ namespace ZEngine::Core::Maths
             }
             return *this;
         }
+
+        T determinant() const
+        {
+            const T* m   = this->m_data;
+
+            T        det = m[0] * (m[5] * (m[10] * m[15] - m[11] * m[14]) - m[6] * (m[9] * m[15] - m[11] * m[13]) + m[7] * (m[9] * m[14] - m[10] * m[13])) - m[1] * (m[4] * (m[10] * m[15] - m[11] * m[14]) - m[6] * (m[8] * m[15] - m[11] * m[12]) + m[7] * (m[8] * m[14] - m[10] * m[12])) + m[2] * (m[4] * (m[9] * m[15] - m[11] * m[13]) - m[5] * (m[8] * m[15] - m[11] * m[12]) + m[7] * (m[8] * m[13] - m[9] * m[12])) - m[3] * (m[4] * (m[9] * m[14] - m[10] * m[13]) - m[5] * (m[8] * m[14] - m[10] * m[12]) + m[6] * (m[8] * m[13] - m[9] * m[12]));
+
+            return det;
+        }
     };
+
+    using IMat2 = Mat2<int>;
+    using Mat2f = Mat2<float>;
+    using Mat3f = Mat3<float>;
+    using Mat4f = Mat4<float>;
 
 } // namespace ZEngine::Core::Maths
