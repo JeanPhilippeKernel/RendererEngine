@@ -180,8 +180,8 @@ namespace Tetragrama::Serializers
                 auto model_path    = fmt::format("{0}{1}{2}{3}{4}", config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.SceneDataPath.c_str(), PLATFORM_OS_BACKSLASH, scene.ModelFiles[model.ModelPathIndex].c_str());
                 auto material_path = fmt::format("{0}{1}{2}{3}{4}", config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.SceneDataPath.c_str(), PLATFORM_OS_BACKSLASH, scene.MaterialFiles[model.MaterialPathIndex].c_str());
 
-                auto import_data   = AssetImporter->DeserializeImporterData(&Arena, model_path, mesh_path, material_path);
-                scene_data.push_back(import_data.Scene);
+                // auto import_data   = AssetImporter->DeserializeImporterData(&Arena, model_path, mesh_path, material_path);
+                //  scene_data.push_back(import_data.Scene);
             }
 
             scene.RenderScene->SceneData->Vertices.clear();

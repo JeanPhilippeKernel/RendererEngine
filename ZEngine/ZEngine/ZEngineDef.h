@@ -50,6 +50,7 @@
 #define SINGLE_ARG(...)     __VA_ARGS__
 
 #define MAX_FILE_PATH_COUNT 256
+#define DEFAULT_STR_BUFFER  256
 
 #define ZRawPtr(X)          X*
 
@@ -79,3 +80,9 @@
 #define ZAlloc(allocator, size, alignment)                     ((allocator)->Allocate((size), (alignment)))
 #define ZResize(allocator, ptr, old_size, new_size, alignment) ((allocator)->Resize((ptr), (old_size), (new_size), (alignment)))
 #define ZAlignof(type)                                         ((alignof(type) < DEFAULT_ALIGNMENT) ? DEFAULT_ALIGNMENT : alignof(type))
+
+/*
+ *
+ */
+#define ASSET_FILE_MAGIC                                       0x5A454E47 // 'ZENG'
+#define ASSET_FILE_VERSION                                     1

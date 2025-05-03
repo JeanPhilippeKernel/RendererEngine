@@ -1,4 +1,5 @@
 #pragma once
+#include <AssetTypes.h>
 #include <Helpers/IntrusivePtr.h>
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Scenes/GraphicScene.h>
@@ -19,32 +20,21 @@
 
 namespace Tetragrama::Importers
 {
-    struct ImporterData
-    {
-        /* Meshes Properties*/
-        uint32_t                                 VertexOffset            = 0;
-        uint32_t                                 IndexOffset             = 0;
-        ZEngine::Rendering::Scenes::SceneRawData Scene                   = {};
-        ZEngine::Core::Containers::String        Name                    = {};
-        ZEngine::Core::Containers::String        SerializedMeshesPath    = {};
-        ZEngine::Core::Containers::String        SerializedMaterialsPath = {};
-        ZEngine::Core::Containers::String        SerializedModelPath     = {};
-    };
+    int AddNode(AssetNodeHierarchy& hierarchy, int parent, int depth);
 
     struct ImportConfiguration
     {
-        ZEngine::Core::Containers::String AssetFilename;
+        ZEngine::Core::Containers::String AssetName;
+        ZEngine::Core::Containers::String OutputAssetFile;
+        ZEngine::Core::Containers::String OutputAssetsPath;
         ZEngine::Core::Containers::String InputBaseAssetFilePath;
         ZEngine::Core::Containers::String OutputWorkingSpacePath;
-        ZEngine::Core::Containers::String OutputModelFilePath;
-        ZEngine::Core::Containers::String OutputMeshFilePath;
         ZEngine::Core::Containers::String OutputTextureFilesPath;
-        ZEngine::Core::Containers::String OutputMaterialsPath;
     };
 
     struct IAssetImporter
     {
-        typedef void (*on_import_complete_fn)(void* const, ImporterData&& result);
+        typedef void (*on_import_complete_fn)(void* const, const char* result);
         typedef void (*on_import_progress_fn)(void* const, float progress);
         typedef void (*on_import_error_fn)(void* const, std::string_view error_message);
         typedef void (*on_import_log_fn)(void* const, std::string_view log_message);
@@ -64,7 +54,7 @@ namespace Tetragrama::Importers
 
         void                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
         {
-            arena->CreateSubArena(ZMega(1), &Arena);
+            arena->CreateSubArena(ZMega(5), &Arena);
         }
 
         virtual void SetOnCompleteCallback(on_import_complete_fn callback)
@@ -92,9 +82,7 @@ namespace Tetragrama::Importers
             return m_is_importing.load(std::memory_order_acquire);
         }
 
-        virtual std::future<void> ImportAsync(std::string_view filename, ImportConfiguration config = {})                                                                                        = 0;
-        virtual void              SerializeImporterData(ZEngine::Core::Memory::ArenaAllocator* arena, ImporterData& data, const ImportConfiguration&)                                            = 0;
-        virtual ImporterData      DeserializeImporterData(ZEngine::Core::Memory::ArenaAllocator* arena, std::string_view model_path, std::string_view mesh_path, std::string_view material_path) = 0;
+        virtual std::future<void> ImportAsync(const char* filename, ImportConfiguration& config) = 0;
     };
 
 } // namespace Tetragrama::Importers

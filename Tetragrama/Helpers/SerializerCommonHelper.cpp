@@ -2,8 +2,6 @@
 #include <SerializerCommonHelper.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 
-#define DEFAULT_STR_BUFFER 256
-
 using namespace ZEngine::Core::Containers;
 
 namespace Tetragrama::Helpers
@@ -37,11 +35,13 @@ namespace Tetragrama::Helpers
         }
     }
 
-    void SerializeMapData(std::ostream& os, const std::unordered_map<uint32_t, uint32_t>& data)
+    void SerializeMapData(std::ostream& os, ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>& data)
     {
         std::vector<uint32_t> flat_data = {};
         flat_data.reserve(data.size() * 2);
-        for (auto d : data)
+
+        auto view = data.view();
+        for (auto d : view)
         {
             flat_data.push_back(d.first);
             flat_data.push_back(d.second);
@@ -71,18 +71,18 @@ namespace Tetragrama::Helpers
         }
     }
 
-    void DeserializeMapData(ZEngine::Core::Memory::ArenaAllocator* Arena, std::istream& in, std::unordered_map<uint32_t, uint32_t>& data)
+    void DeserializeMapData(ZEngine::Core::Memory::ArenaAllocator* Arena, std::istream& in, ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>& data)
     {
         size_t data_count;
         in.read(reinterpret_cast<char*>(&data_count), sizeof(size_t));
+        data.init(Arena, data_count);
 
-        std::vector<uint32_t> flat_data = {};
-        flat_data.resize(data_count);
-        in.read(reinterpret_cast<char*>(flat_data.data()), sizeof(uint32_t) * data_count);
+        uint32_t buf[DEFAULT_STR_BUFFER] = {0};
+        in.read(reinterpret_cast<char*>(buf), sizeof(uint32_t) * data_count);
 
         for (int i = 0; i < data_count; i += 2)
         {
-            data[flat_data[i]] = flat_data[i + 1];
+            data[buf[i]] = buf[i + 1];
         }
     }
 } // namespace Tetragrama::Helpers

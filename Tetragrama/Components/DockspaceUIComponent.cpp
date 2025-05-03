@@ -29,31 +29,26 @@ namespace Tetragrama::Components
     {
         UIComponent::Initialize(parent, name, visibility, closed);
 
+        parent->LayerArena.CreateSubArena(ZMega(10), &LocalArena);
+
         m_asset_importer    = ZPushStructCtor(&(parent->LayerArena), Importers::AssimpImporter);
         m_editor_serializer = ZPushStructCtor(&(parent->LayerArena), Serializers::EditorSceneSerializer);
 
         m_editor_serializer->Initialize(&(parent->LayerArena));
         m_asset_importer->Initialize(&(parent->LayerArena));
 
-        m_editor_serializer->AssetImporter = m_asset_importer;
+        m_editor_serializer->AssetImporter           = m_asset_importer;
 
-        m_dockspace_node_flag              = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
-        m_window_flags                     = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+        m_dockspace_node_flag                        = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
+        m_window_flags                               = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
-        auto context                       = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        m_editor_serializer->Context       = context;
-        m_asset_importer->Context          = context;
+        auto context                                 = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        m_editor_serializer->Context                 = context;
+        m_asset_importer->Context                    = context;
 
-        const auto& editor_config          = *context->ConfigurationPtr;
+        const auto& editor_config                    = *context->ConfigurationPtr;
 
-        m_default_import_configuration     = {};
-        m_default_import_configuration.OutputWorkingSpacePath.init(&(parent->LayerArena), editor_config.WorkingSpacePath.c_str());
-        m_default_import_configuration.OutputModelFilePath.init(&(parent->LayerArena), editor_config.SceneDataPath.c_str());
-        m_default_import_configuration.OutputMeshFilePath.init(&(parent->LayerArena), editor_config.SceneDataPath.c_str());
-        m_default_import_configuration.OutputMaterialsPath.init(&(parent->LayerArena), editor_config.SceneDataPath.c_str());
-        m_default_import_configuration.OutputTextureFilesPath.init(&(parent->LayerArena), editor_config.DefaultImportTexturePath.c_str());
-
-        auto editor_serializer_default_output = fmt::format("{0}{1}{2}", editor_config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, editor_config.ScenePath.c_str());
+        auto        editor_serializer_default_output = fmt::format("{0}{1}{2}", editor_config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, editor_config.ScenePath.c_str());
 
         m_editor_serializer->SetDefaultOutput(editor_serializer_default_output);
         m_editor_serializer->SetOnProgressCallback(OnEditorSceneSerializerProgress);
@@ -195,7 +190,7 @@ namespace Tetragrama::Components
 
         if (ImGui::Button("Launch", ImVec2(80, 0)) && is_import_button_enabled)
         {
-            Helpers::UIDispatcher::RunAsync([this] { OnImportAssetAsync(s_asset_importer_input_buffer); });
+            OnImportAssetAsync(s_asset_importer_input_buffer);
         }
 
         if (!is_import_button_enabled || std::string_view(s_asset_importer_input_buffer).empty())
@@ -400,16 +395,10 @@ namespace Tetragrama::Components
         ZEngine::Helpers::secure_memset(s_save_as_input_buffer, 0, IM_ARRAYSIZE(s_save_as_input_buffer), IM_ARRAYSIZE(s_save_as_input_buffer));
     }
 
-    void DockspaceUIComponent::OnAssetImporterComplete(void* const context, Importers::ImporterData&& data)
+    void DockspaceUIComponent::OnAssetImporterComplete(void* const context, const char* result)
     {
         s_asset_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
         s_asset_importer_report_msg       = "Completed";
-
-        auto context_ptr                  = reinterpret_cast<EditorContext*>(context);
-        /*
-         * Removing the WorkingSpace Path
-         */
-        context_ptr->CurrentScenePtr->Push(&(context_ptr->Arena), data.SerializedMeshesPath.c_str(), data.SerializedModelPath.c_str(), data.SerializedMaterialsPath.c_str());
     }
 
     void DockspaceUIComponent::OnAssetImporterProgress(void* const context, float value)
@@ -534,18 +523,31 @@ namespace Tetragrama::Components
         co_return;
     }
 
-    std::future<void> DockspaceUIComponent::OnImportAssetAsync(std::string_view filename)
+    std::future<void> DockspaceUIComponent::OnImportAssetAsync(const char* filename)
     {
-        if (!filename.empty())
+        if (ZEngine::Helpers::secure_strlen(filename) == 0)
         {
-            auto parent_path   = std::filesystem::path(filename).parent_path().string();
-            auto asset_name    = fs::path(filename).filename().replace_extension().string();
-            auto import_config = m_default_import_configuration;
-            import_config.AssetFilename.init(&(ParentLayer->LayerArena), asset_name.c_str());
-            import_config.InputBaseAssetFilePath.init(&(ParentLayer->LayerArena), parent_path.c_str());
-            co_await m_asset_importer->ImportAsync(filename, import_config);
+            co_return;
         }
-        co_return;
+
+        LocalArena.Clear();
+
+        auto                           context           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        auto                           arena             = &LocalArena;
+        const auto&                    editor_config     = *context->ConfigurationPtr;
+        auto                           parent_path       = std::filesystem::path(filename).parent_path().string();
+        auto                           asset_name        = fs::path(filename).filename().replace_extension().string();
+        auto                           output_asset_file = fmt::format("{}.zeasset", asset_name.c_str());
+
+        Importers::ImportConfiguration config            = {};
+        config.OutputWorkingSpacePath.init(arena, editor_config.WorkingSpacePath.c_str());
+        config.OutputTextureFilesPath.init(arena, editor_config.DefaultImportTexturePath.c_str());
+        config.OutputAssetsPath.init(arena, editor_config.SceneDataPath.c_str());
+        config.AssetName.init(arena, asset_name.c_str());
+        config.OutputAssetFile.init(arena, output_asset_file.c_str());
+        config.InputBaseAssetFilePath.init(arena, parent_path.c_str());
+
+        co_await m_asset_importer->ImportAsync(filename, config);
     }
 
     std::future<void> DockspaceUIComponent::OnExitAsync()
