@@ -20,8 +20,8 @@ namespace ZEngine::Core::Maths
         return Mat4f(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
     }
 
-    // add inverse 
-    // add transpose 
+    // add inverse
+    // add transpose
     // cos, sine, radian
     // min
     // clamp
