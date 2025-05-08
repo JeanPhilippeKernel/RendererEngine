@@ -62,9 +62,9 @@ namespace ZEngine::Core::Maths
         Matrix<T, R, C> operator+(Matrix<T, R, C>& other)
         {
             Matrix<T, R, C> result{};
-            for (size_t i = 0; i < R; ++i)
+            for (size_t j = 0; j < C; ++j)
             {
-                for (size_t j = 0; j < C; j++)
+                for (size_t i = 0; i < R; i++)
                 {
                     result[i][j] = other[i][j] + (*this)[i][j];
                 }
@@ -75,9 +75,9 @@ namespace ZEngine::Core::Maths
         Matrix<T, R, C> operator-(Matrix<T, R, C>& other)
         {
             Matrix<T, R, C> result{};
-            for (size_t i = 0; i < R; ++i)
+            for (size_t j = 0; j < C; ++j)
             {
-                for (size_t j = 0; j < C; j++)
+                for (size_t i = 0; i < R; i++)
                 {
                     result[i][j] = (*this)[i][j] - other[i][j];
                 }
@@ -92,8 +92,7 @@ namespace ZEngine::Core::Maths
 
         Mat2()
         {
-            for (size_t i = 0; i < 4; ++i)
-                this->m_data[i] = 0;
+            std::memset(this->m_data, 0, sizeof(this->m_data));
         }
 
         Mat2(T m00, T m01, T m10, T m11)
@@ -181,7 +180,7 @@ namespace ZEngine::Core::Maths
             }
             return *this;
         }
-        Mat2 inverse()
+        Mat2 Inverse()
         {
             T det = this->determinant();
             ZENGINE_VALIDATE_ASSERT(det != 0, "Matrix is singular and cannot be inverted");
@@ -198,8 +197,7 @@ namespace ZEngine::Core::Maths
 
         Mat3()
         {
-            for (size_t i = 0; i < 9; ++i)
-                this->m_data[i] = 0;
+            std::memset(this->m_data, 0, sizeof(this->m_data));
         }
 
         Mat3(T m00, T m01, T m02, T m10, T m11, T m12, T m20, T m21, T m22)
@@ -292,7 +290,7 @@ namespace ZEngine::Core::Maths
             return *this;
         }
 
-        Mat3 inverse()
+        Mat3 Inverse()
         {
             T det = this->determinant();
             ZENGINE_VALIDATE_ASSERT(det != 0, "Matrix is singular and cannot be inverted");
@@ -318,8 +316,7 @@ namespace ZEngine::Core::Maths
 
         Mat4()
         {
-            for (size_t i = 0; i < 16; ++i)
-                this->m_data[i] = 0;
+            std::memset(this->m_data, 0, sizeof(this->m_data));
         }
 
         Mat4(T m00, T m01, T m02, T m03, T m10, T m11, T m12, T m13, T m20, T m21, T m22, T m23, T m30, T m31, T m32, T m33)
@@ -423,7 +420,7 @@ namespace ZEngine::Core::Maths
                 this->m_data[2] * (this->m_data[4] * (this->m_data[9] * this->m_data[15] - this->m_data[11] * this->m_data[13]) - this->m_data[5] * (this->m_data[8] * this->m_data[15] - this->m_data[11] * this->m_data[12]) + this->m_data[7] * (this->m_data[8] * this->m_data[13] - this->m_data[9] * this->m_data[12])) -
                 this->m_data[3] * (this->m_data[4] * (this->m_data[9] * this->m_data[14] - this->m_data[10] * this->m_data[13]) - this->m_data[5] * (this->m_data[8] * this->m_data[14] - this->m_data[10] * this->m_data[12]) + this->m_data[6] * (this->m_data[8] * this->m_data[13] - this->m_data[9] * this->m_data[12])));
         }
-        Mat4<T> inverse() const
+        Mat4<T> Inverse() const
         {
             const T* m   = this->m_data;
 
@@ -483,22 +480,22 @@ namespace ZEngine::Core::Maths
     using Mat4f = Mat4<float>;
 
     template <typename T>
-    T identity();
+    T Identity();
 
     template <>
-    inline Mat2f identity<Mat2f>()
+    inline Mat2f Identity<Mat2f>()
     {
         return Mat2f(1, 0, 0, 1);
     }
 
     template <>
-    inline Mat3f identity<Mat3f>()
+    inline Mat3f Identity<Mat3f>()
     {
         return Mat3f(1, 0, 0, 0, 1, 0, 0, 0, 1);
     }
 
     template <>
-    inline Mat4f identity<Mat4f>()
+    inline Mat4f Identity<Mat4f>()
     {
         return Mat4f(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
     }
@@ -507,9 +504,9 @@ namespace ZEngine::Core::Maths
     Matrix<T, R, C> operator*(const Matrix<T, R, K>& a, const Matrix<T, K, C>& b)
     {
         Matrix<T, R, C> result{};
-        for (size_t i = 0; i < R; ++i)
+        for (size_t j = 0; j < C; ++j)
         {
-            for (size_t j = 0; j < C; ++j)
+            for (size_t i = 0; i < R; ++i)
             {
                 T sum = T{};
                 for (size_t k = 0; k < K; ++k)
