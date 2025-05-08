@@ -37,28 +37,6 @@ namespace ZEngine::Core::Maths
             return RowProxy{const_cast<T*>(&m_data[row * C])};
         }
 
-        Vec<T, C> getRow(size_t row) const
-        {
-            ZENGINE_VALIDATE_ASSERT(row < R, "Row index out of range");
-            Vec<T, C> result;
-            for (size_t i = 0; i < C; ++i)
-            {
-                result[i] = this->m_data[row * C + i];
-            }
-            return result;
-        }
-
-        Vec<T, R> getColumn(size_t col) const
-        {
-            ZENGINE_VALIDATE_ASSERT(col < C, "Column index out of range");
-            Vec<T, R> result;
-            for (size_t i = 0; i < R; ++i)
-            {
-                result[i] = this->m_data[i * C + col];
-            }
-            return result;
-        }
-
         Matrix<T, R, C> operator+(Matrix<T, R, C>& other)
         {
             Matrix<T, R, C> result{};

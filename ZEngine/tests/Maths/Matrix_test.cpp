@@ -56,20 +56,6 @@ TEST(MatrixTest, DeterminantFloat)
     EXPECT_NEAR(m4.determinant(), 1.0f, EPSILON);
 }
 
-TEST(MatrixTest, RowAndColumnAccessFloat)
-{
-    Mat3f m3(1, 2, 3, 4, 5, 6, 7, 8, 9);
-
-    auto  row = m3.getRow(1);
-    EXPECT_NEAR(row[0], 4.0f, EPSILON);
-    EXPECT_NEAR(row[2], 6.0f, EPSILON);
-
-    auto col = m3.getColumn(2);
-    EXPECT_NEAR(col[0], 3.0f, EPSILON);
-    EXPECT_NEAR(col[1], 6.0f, EPSILON);
-    EXPECT_NEAR(col[2], 9.0f, EPSILON);
-}
-
 TEST(MatrixTest, Identity)
 {
     Mat2f I2 = Identity<Mat2f>();
