@@ -6,35 +6,18 @@ namespace ZEngine::Core::Maths
     template <typename T, size_t R, size_t C, typename = std::enable_if_t<std::is_arithmetic_v<T> && (R >= 1) && (C >= 1)>>
     struct Matrix
     {
-        T m_data[R * C];
+        T  m_data[R * C];
 
-        struct RowProxy
+        T& operator()(size_t row, size_t col)
         {
-            T* row_data;
-
-            T& operator[](size_t col)
-            {
-                ZENGINE_VALIDATE_ASSERT(col < C, "Column index out of range");
-                return row_data[col];
-            }
-
-            const T& operator[](size_t col) const
-            {
-                ZENGINE_VALIDATE_ASSERT(col < C, "Column index out of range");
-                return row_data[col];
-            }
-        };
-
-        RowProxy operator[](size_t row)
-        {
-            ZENGINE_VALIDATE_ASSERT(row < R, "Row index out of range");
-            return RowProxy{&m_data[row * C]};
+            ZENGINE_VALIDATE_ASSERT(row < R && col < C, "Index out of range");
+            return m_data[row * C + col];
         }
 
-        const RowProxy operator[](size_t row) const
+        const T& operator()(size_t row, size_t col) const
         {
-            ZENGINE_VALIDATE_ASSERT(row < R, "Row index out of range");
-            return RowProxy{const_cast<T*>(&m_data[row * C])};
+            ZENGINE_VALIDATE_ASSERT(row < R && col < C, "Index out of range");
+            return m_data[row * C + col];
         }
 
         Matrix<T, R, C> operator+(Matrix<T, R, C>& other)
@@ -489,9 +472,9 @@ namespace ZEngine::Core::Maths
                 T sum = T{};
                 for (size_t k = 0; k < K; ++k)
                 {
-                    sum += a[i][k] * b[k][j];
+                    sum += a(i, k) * b(k, j);
                 }
-                result[i][j] = sum;
+                result(i, j) = sum;
             }
         }
         return result;
