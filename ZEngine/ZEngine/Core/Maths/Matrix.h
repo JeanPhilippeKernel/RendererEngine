@@ -1,6 +1,6 @@
+#include <Helpers/MemoryOperations.h>
 #include <cstddef>
 #include "Vec.h"
-#include <Helpers/MemoryOperations.h>
 
 using namespace ZEngine::Helpers;
 namespace ZEngine::Core::Maths
