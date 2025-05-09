@@ -1,6 +1,8 @@
 #include <cstddef>
 #include "Vec.h"
+#include <Helpers/MemoryOperations.h>
 
+using namespace ZEngine::Helpers;
 namespace ZEngine::Core::Maths
 {
     template <typename T, size_t R, size_t C, typename = std::enable_if_t<std::is_arithmetic_v<T> && (R >= 1) && (C >= 1)>>
@@ -53,7 +55,7 @@ namespace ZEngine::Core::Maths
 
         Mat2()
         {
-            memset(this->m_data, 0, sizeof(this->m_data));
+            secure_memset(this->m_data, 0, sizeof(T) * 4, sizeof(T) * 4);
         }
 
         Mat2(T m00, T m01, T m10, T m11)
@@ -158,7 +160,7 @@ namespace ZEngine::Core::Maths
 
         Mat3()
         {
-            memset(this->m_data, 0, sizeof(this->m_data));
+            secure_memset(this->m_data, 0, sizeof(T) * 9, sizeof(T) * 9);
         }
 
         Mat3(T m00, T m01, T m02, T m10, T m11, T m12, T m20, T m21, T m22)
@@ -277,7 +279,7 @@ namespace ZEngine::Core::Maths
 
         Mat4()
         {
-            memset(this->m_data, 0, sizeof(this->m_data));
+            secure_memset(this->m_data, 0, sizeof(T) * 16, sizeof(T) * 16);
         }
 
         Mat4(T m00, T m01, T m02, T m03, T m10, T m11, T m12, T m13, T m20, T m21, T m22, T m23, T m30, T m31, T m32, T m33)
