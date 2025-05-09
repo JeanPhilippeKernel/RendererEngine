@@ -47,13 +47,13 @@ TEST(MatrixTest, ArithmeticOpsFloat)
 TEST(MatrixTest, DeterminantFloat)
 {
     Mat2f m2(1.0f, 2.0f, 3.0f, 4.0f);
-    EXPECT_NEAR(m2.determinant(), -2.0f, EPSILON);
+    EXPECT_NEAR(m2.Determinant(), -2.0f, EPSILON);
 
     Mat3f m3(1, 2, 3, 0, 1, 4, 5, 6, 0);
-    EXPECT_NEAR(m3.determinant(), 1.0f, EPSILON);
+    EXPECT_NEAR(m3.Determinant(), 1.0f, EPSILON);
 
     Mat4f m4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
-    EXPECT_NEAR(m4.determinant(), 1.0f, EPSILON);
+    EXPECT_NEAR(m4.Determinant(), 1.0f, EPSILON);
 }
 
 TEST(MatrixTest, Identity)

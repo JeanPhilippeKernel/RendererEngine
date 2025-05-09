@@ -29,7 +29,7 @@ namespace ZEngine::Core::Maths
             {
                 for (size_t i = 0; i < R; i++)
                 {
-                    result[i][j] = other[i][j] + (*this)[i][j];
+                    result(i, j) = other(i, j) + (*this)(i, j);
                 }
             }
             return result;
@@ -42,7 +42,7 @@ namespace ZEngine::Core::Maths
             {
                 for (size_t i = 0; i < R; i++)
                 {
-                    result[i][j] = (*this)[i][j] - other[i][j];
+                    result(i, j) = (*this)(i, j) - other(i, j);
                 }
             }
             return result;
@@ -72,7 +72,7 @@ namespace ZEngine::Core::Maths
                 this->m_data[i] = other.m_data[i];
         }
 
-        T determinant() const
+        T Determinant() const
         {
             return this->m_data[0] * this->m_data[3] - this->m_data[1] * this->m_data[2];
         }
@@ -145,7 +145,7 @@ namespace ZEngine::Core::Maths
         }
         Mat2 Inverse()
         {
-            T det = this->determinant();
+            T det = this->Determinant();
             ZENGINE_VALIDATE_ASSERT(det != 0, "Matrix is singular and cannot be inverted");
 
             T invDet = 1 / det;
@@ -182,7 +182,7 @@ namespace ZEngine::Core::Maths
                 this->m_data[i] = other.m_data[i];
         }
 
-        T determinant() const
+        T Determinant() const
         {
             return this->m_data[0] * (this->m_data[4] * this->m_data[8] - this->m_data[5] * this->m_data[7]) - this->m_data[1] * (this->m_data[3] * this->m_data[8] - this->m_data[5] * this->m_data[6]) + this->m_data[2] * (this->m_data[3] * this->m_data[7] - this->m_data[4] * this->m_data[6]);
         }
@@ -255,7 +255,7 @@ namespace ZEngine::Core::Maths
 
         Mat3 Inverse()
         {
-            T det = this->determinant();
+            T det = this->Determinant();
             ZENGINE_VALIDATE_ASSERT(det != 0, "Matrix is singular and cannot be inverted");
 
             T invDet = 1 / det;
@@ -375,7 +375,7 @@ namespace ZEngine::Core::Maths
             return *this;
         }
 
-        T determinant() const
+        T Determinant() const
         {
             return (
                 this->m_data[0] * (this->m_data[5] * (this->m_data[10] * this->m_data[15] - this->m_data[11] * this->m_data[14]) - this->m_data[6] * (this->m_data[9] * this->m_data[15] - this->m_data[11] * this->m_data[13]) + this->m_data[7] * (this->m_data[9] * this->m_data[14] - this->m_data[10] * this->m_data[13])) -
