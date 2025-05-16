@@ -72,32 +72,32 @@ namespace Tetragrama::Managers
     };
 
     template <>
-    inline static Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, AssetManager::AssetHandle>(AssetManager::AssetHandle)
+    inline Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, AssetManager::AssetHandle>(AssetManager::AssetHandle key)
     {
     }
 
     template <>
-    inline static Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, AssetManager::AssetHandle>(AssetManager::AssetHandle)
+    inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, AssetManager::AssetHandle>(AssetManager::AssetHandle)
     {
     }
 
     template <>
-    inline static Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, AssetManager::AssetHandle>(AssetManager::AssetHandle)
+    inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, AssetManager::AssetHandle>(AssetManager::AssetHandle)
     {
     }
 
     template <>
-    inline static Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, uuids::uuid>(uuids::uuid)
+    inline Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, uuids::uuid>(uuids::uuid)
     {
     }
 
     template <>
-    inline static Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, uuids::uuid>(uuids::uuid)
+    inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, uuids::uuid>(uuids::uuid)
     {
     }
 
     template <>
-    inline static Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, uuids::uuid>(uuids::uuid)
+    inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, uuids::uuid>(uuids::uuid)
     {
     }
 } // namespace Tetragrama::Managers
