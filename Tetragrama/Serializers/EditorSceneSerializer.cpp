@@ -20,7 +20,7 @@ namespace Tetragrama::Serializers
             return;
         }
 
-        ThreadPoolHelper::Submit([this, scene] {
+        ThreadPoolHelper::Submit([this, scene = scene] {
             std::unique_lock l(m_mutex);
             m_is_serializing.store(true, std::memory_order_release);
             Arena.Clear();
@@ -45,30 +45,26 @@ namespace Tetragrama::Serializers
 
             out.seekp(std::ios::beg);
 
-            size_t name_count = ZEngine::Helpers::secure_strlen(scene->Name);
-            out.write(reinterpret_cast<const char*>(&name_count), sizeof(size_t));
-            out.write(scene->Name, name_count + 1);
+            WriteBinary(out, ZESCENE_MAGIC);
+            WriteBinary(out, SCENE_FILE_VERSION);
 
-            SerializeStringArrayData(out, ArrayView<String>(scene->MeshFiles));
-            REPORT_PROGRESS(Context, 0.25f)
-
-            SerializeStringArrayData(out, ArrayView<String>(scene->ModelFiles));
-            REPORT_PROGRESS(Context, 0.5f)
-
-            SerializeStringArrayData(out, ArrayView<String>(scene->MaterialFiles));
-            REPORT_PROGRESS(Context, 0.75f)
-
-            Array<String> hashes = {};
-            hashes.init(&Arena, scene->Data.size());
-
-            for (auto& [k, _] : scene->Data)
+            WriteBinary(out, scene->AssetFiles.size());
+            for (auto& file : scene->AssetFiles)
             {
-                String s;
-                s.init(&Arena, k);
-                hashes.push(s);
+                WriteBinary(out, file.Type);
+                WriteBinary(out, file.Hash);
+                WriteBinaryString(out, file.Path);
+                WriteBinaryString(out, file.RootPath);
             }
-            SerializeStringArrayData(out, ArrayView<String>(hashes));
-            REPORT_PROGRESS(Context, 1.f)
+
+            WriteBinaryString(out, scene->Name);
+            WriteBinaryArray(out, ArrayView{scene->Names});
+            WriteBinaryArray(out, ArrayView{scene->Hierarchies});
+            WriteBinaryArray(out, ArrayView{scene->LocalTransforms});
+            WriteBinaryArray(out, ArrayView{scene->GlobalTransforms});
+
+            WriteBinaryHashMap(out, scene->NodeMeshes);
+            WriteBinaryHashMap(out, scene->NodeNames);
 
             out.close();
 
@@ -90,7 +86,6 @@ namespace Tetragrama::Serializers
             Arena.Clear();
 
             EditorScene scene = {};
-            scene.Initialize(&Arena);
 
             if (scene_filename.empty())
             {
@@ -115,84 +110,56 @@ namespace Tetragrama::Serializers
                 return;
             }
 
-            in_stream.seekg(0, std::ios::beg);
+            in_stream.seekg(std::ios::beg);
 
-            String name = {};
-            size_t name_count;
-            in_stream.read(reinterpret_cast<char*>(&name_count), sizeof(size_t));
-            name.init(&Arena, name_count + 1);
-            in_stream.read(name.data(), name_count + 1);
+            REPORT_LOG(Context, "Reading checksum information...")
 
-            scene.Name = name.data();
+            uint32_t scene_magic;
+            uint32_t scene_version;
+            ReadBinary(in_stream, scene_magic);
+            ReadBinary(in_stream, scene_version);
 
-            DeserializeStringArrayData(&Arena, in_stream, scene.MeshFiles);
-            REPORT_PROGRESS(Context, 0.25f)
-
-            DeserializeStringArrayData(&Arena, in_stream, scene.ModelFiles);
-            REPORT_PROGRESS(Context, 0.5f)
-
-            DeserializeStringArrayData(&Arena, in_stream, scene.MaterialFiles);
-            REPORT_PROGRESS(Context, 0.75f)
-
-            Array<String> hashes = {};
-            DeserializeStringArrayData(&Arena, in_stream, hashes);
-
-            for (auto& hash : hashes)
+            if (scene_magic != ZESCENE_MAGIC && scene_version != SCENE_FILE_VERSION)
             {
-                uint16_t indices[3] = {0};
-
-                int      i          = 0;
-
-                while (i < hash.size() && hash[i] != ':')
+                in_stream.close();
+                if (m_error_callback)
                 {
-                    indices[0] = indices[0] * 10 + (hash[i] - '0');
-                    i++;
+                    m_error_callback(Context, "Error: Invalid scene file, unknown format");
                 }
-                i++; // Skip the colon
-
-                while (i < hash.size() && hash[i] != ':')
-                {
-                    indices[1] = indices[1] * 10 + (hash[i] - '0');
-                    i++;
-                }
-                i++;
-
-                while (i < hash.size() && hash[i] != '\0')
-                {
-                    indices[2] = indices[2] * 10 + (hash[i] - '0');
-                    i++;
-                }
-
-                scene.Data[hash.c_str()] = {.MeshFileIndex = indices[0], .ModelPathIndex = indices[1], .MaterialPathIndex = indices[2]};
+                m_is_deserializing.store(false, std::memory_order_release);
+                return;
             }
 
-            REPORT_PROGRESS(Context, 1.f)
+            REPORT_LOG(Context, "Extracting scene asset files...")
 
-            in_stream.close();
+            size_t asset_file_count;
+            ReadBinary(in_stream, asset_file_count);
+            scene.AssetFiles.init(&Arena, asset_file_count);
 
-            auto                                                  ctx    = reinterpret_cast<EditorContext*>(Context);
-            const auto&                                           config = *ctx->ConfigurationPtr;
-
-            std::vector<ZEngine::Rendering::Scenes::SceneRawData> scene_data;
-            for (auto& [_, model] : scene.Data)
+            for (int i = 0; i < asset_file_count; ++i)
             {
-                auto mesh_path     = fmt::format("{0}{1}{2}{3}{4}", config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.SceneDataPath.c_str(), PLATFORM_OS_BACKSLASH, scene.MeshFiles[model.MeshFileIndex].c_str());
-                auto model_path    = fmt::format("{0}{1}{2}{3}{4}", config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.SceneDataPath.c_str(), PLATFORM_OS_BACKSLASH, scene.ModelFiles[model.ModelPathIndex].c_str());
-                auto material_path = fmt::format("{0}{1}{2}{3}{4}", config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.SceneDataPath.c_str(), PLATFORM_OS_BACKSLASH, scene.MaterialFiles[model.MaterialPathIndex].c_str());
-
-                // auto import_data   = AssetImporter->DeserializeImporterData(&Arena, model_path, mesh_path, material_path);
-                //  scene_data.push_back(import_data.Scene);
+                auto& file = scene.AssetFiles.push_use({});
+                ReadBinary(in_stream, file.Type);
+                ReadBinary(in_stream, file.Hash);
+                ReadBinaryString(&Arena, in_stream, file.Path);
+                ReadBinaryString(&Arena, in_stream, file.RootPath);
             }
 
-            scene.RenderScene->SceneData->Vertices.clear();
-            scene.RenderScene->SceneData->Indices.clear();
-            scene.RenderScene->SceneData->Materials.clear();
-            scene.RenderScene->SceneData->MaterialFiles.clear();
-            scene.RenderScene->SceneData->DrawData.clear();
+            REPORT_LOG(Context, "Extracting scene name...")
 
-            scene.RenderScene->SetRootNodeName(scene.Name);
-            scene.RenderScene->Merge(scene_data);
-            scene.RenderScene->IsDrawDataDirty = true;
+            char buf[DEFAULT_STR_BUFFER] = {0};
+            ReadBinaryCString(&Arena, in_stream, buf);
+            scene.Name = buf;
+
+            REPORT_LOG(Context, "Extracting scene's hierarchies info...")
+
+            ReadBinaryArray(&Arena, in_stream, scene.Names);
+            ReadBinaryArray(&Arena, in_stream, scene.Hierarchies);
+            ReadBinaryArray(&Arena, in_stream, scene.LocalTransforms);
+            ReadBinaryArray(&Arena, in_stream, scene.GlobalTransforms);
+
+            ReadHashMap(&Arena, in_stream, scene.NodeMeshes);
+            ReadHashMap(&Arena, in_stream, scene.NodeNames);
 
             if (m_deserialize_complete_callback)
             {

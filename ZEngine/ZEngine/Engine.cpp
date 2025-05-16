@@ -17,7 +17,7 @@ namespace ZEngine
     {
         g_current_window = window;
 
-        arena->CreateSubArena(ZMega(800), &g_engine_arena);
+        arena->CreateSubArena(ZGiga(1), &g_engine_arena);
 
         g_device   = ZPushStructCtor(&g_engine_arena, Hardwares::VulkanDevice);
         g_renderer = ZPushStructCtor(&g_engine_arena, Rendering::Renderers::GraphicRenderer);

@@ -189,6 +189,7 @@ namespace ZEngine::Core::Containers
         {
             if (m_data)
             {
+                Helpers::secure_memset(m_data, 0, m_capacity, m_capacity);
                 m_size    = 0;
                 m_data[0] = '\0';
             }

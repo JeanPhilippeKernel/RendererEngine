@@ -21,8 +21,6 @@ namespace Tetragrama::Components
         virtual void                          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
         void                                  RenderMenuBar();
-        void                                  RenderSaveScene();
-        void                                  RenderSaveSceneAs();
         void                                  ResetSaveAsBuffers();
         void                                  RenderExitPopup();
 
@@ -31,7 +29,7 @@ namespace Tetragrama::Components
          */
         void                                  RenderImporter();
         void                                  ResetImporterBuffers();
-        static void                           OnAssetImporterComplete(void* const context, const char* result);
+        static void                           OnAssetImporterComplete(void* const context, ZEngine::Core::Containers::ArrayView<Importers::AssetImporterOutput> result);
         static void                           OnAssetImporterProgress(void* const, float value);
         static void                           OnAssetImporterError(void* const, std::string_view);
         static void                           OnAssetImporterLog(void* const, std::string_view);
@@ -39,10 +37,14 @@ namespace Tetragrama::Components
         /*
          * Editor Scene Funcs
          */
+        void                                  RenderLoadScene();
+        void                                  RenderSaveScene();
+        void                                  RenderSaveSceneAs();
         static void                           OnEditorSceneSerializerProgress(void* const, float value);
         static void                           OnEditorSceneSerializerComplete(void* const);
         static void                           OnEditorSceneSerializerDeserializeComplete(void* const, EditorScene&&);
         static void                           OnEditorSceneSerializerError(void* const, std::string_view);
+        static void                           OnEditorSceneSerializerLog(void* const, std::string_view);
 
         std::future<void>                     OnNewSceneAsync();
         std::future<void>                     OnOpenSceneAsync();

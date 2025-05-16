@@ -1,4 +1,5 @@
 #pragma once
+#include <Helpers/NodeHierarchyHelper.h>
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/HashMap.h>
 #include <ZEngine/Core/Containers/Strings.h>
@@ -7,6 +8,14 @@
 
 namespace Tetragrama::Importers
 {
+    enum AssetFileType : uint8_t
+    {
+        UNKNOWN = 0,
+        MESH,
+        MATERIAL,
+        TEXTURES
+    };
+
     struct AssetSubMesh
     {
         uuids::uuid MaterialUUID         = {};
@@ -31,18 +40,19 @@ namespace Tetragrama::Importers
 
     struct AssetMaterial
     {
-        uuids::uuid MaterialUUID      = {};
-        uuids::uuid AlbedoTexUUID     = {};
-        uuids::uuid EmissiveTexUUID   = {};
-        uuids::uuid NormalTexUUID     = {};
-        uuids::uuid OpacityTexUUID    = {};
-        uuids::uuid SpecularTexUUID   = {};
-        float       AmbientColor[4]   = {0};
-        float       AlbedoColor[4]    = {0};
-        float       EmissiveColor[4]  = {0};
-        float       RoughnessColor[4] = {0};
-        float       SpecularColor[4]  = {0};
-        float       Factors[4]        = {0};
+        ZEngine::Core::Containers::String Name              = {};
+        uuids::uuid                       MaterialUUID      = {};
+        uuids::uuid                       AlbedoTexUUID     = {};
+        uuids::uuid                       EmissiveTexUUID   = {};
+        uuids::uuid                       NormalTexUUID     = {};
+        uuids::uuid                       OpacityTexUUID    = {};
+        uuids::uuid                       SpecularTexUUID   = {};
+        float                             AmbientColor[4]   = {0};
+        float                             AlbedoColor[4]    = {0};
+        float                             EmissiveColor[4]  = {0};
+        float                             RoughnessColor[4] = {0};
+        float                             SpecularColor[4]  = {0};
+        float                             Factors[4]        = {0};
     };
 
     struct AssetTexture
@@ -51,18 +61,10 @@ namespace Tetragrama::Importers
         ZEngine::Core::Containers::String Path        = {};
     };
 
-    struct NodeHierarchy
-    {
-        int Parent       = -1;
-        int FirstChild   = -1;
-        int RightSibling = -1;
-        int DepthLevel   = -1;
-    };
-
     struct AssetNodeHierarchy
     {
         uuids::uuid                                                         MeshUUID         = {};
-        ZEngine::Core::Containers::Array<NodeHierarchy>                     Hierarchies      = {};
+        ZEngine::Core::Containers::Array<Helpers::NodeHierarchy>            Hierarchies      = {};
         ZEngine::Core::Containers::Array<glm::mat4>                         LocalTransforms  = {};
         ZEngine::Core::Containers::Array<glm::mat4>                         GlobalTransforms = {};
         ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> Names            = {};

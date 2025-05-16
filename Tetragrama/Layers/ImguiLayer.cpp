@@ -28,7 +28,7 @@ namespace Tetragrama::Layers
 
     void ImguiLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(30), &LayerArena);
+        arena->CreateSubArena(ZMega(200), &LayerArena);
 
         NodeHierarchies.init(&LayerArena, 10, 0);
         NodeUIComponents.init(&LayerArena, 10, 0);
@@ -209,9 +209,9 @@ namespace Tetragrama::Layers
         }
 
         auto node = NodeHierarchies.size();
-        NodeHierarchies.push(NodeHierarchy{.Parent = parent});
+        NodeHierarchies.push(Helpers::NodeHierarchy{.Parent = parent});
 
-        ArrayView<NodeHierarchy> nodes_view(NodeHierarchies.data(), NodeHierarchies.size());
+        ArrayView<Helpers::NodeHierarchy> nodes_view(NodeHierarchies.data(), NodeHierarchies.size());
         if (parent > -1)
         {
             int first = NodeHierarchies[parent].FirstChild;

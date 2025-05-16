@@ -84,5 +84,13 @@
 /*
  *
  */
-#define ASSET_FILE_MAGIC                                       0x5A454E47 // 'ZENG'
-#define ASSET_FILE_VERSION                                     1
+#define MAKE_MAGIC(a, b, c, d)                                 ((uint32_t) (a) << 24 | (uint32_t) (b) << 16 | (uint32_t) (c) << 8 | (uint32_t) (d))
+#define MAKE_VERSION(major, minor, patch)                      (((uint32_t) (major) << 16) | ((uint32_t) (minor) << 8) | ((uint32_t) (patch)))
+
+#define ZEASSET_MAGIC                                          MAKE_MAGIC('Z', 'A', 'S', 'T')
+#define ZEMESH_MAGIC                                           MAKE_MAGIC('Z', 'M', 'S', 'H')
+#define ZEMATERIAL_MAGIC                                       MAKE_MAGIC('Z', 'M', 'A', 'T')
+#define ZETEXTURES_MAGIC                                       MAKE_MAGIC('Z', 'T', 'E', 'X')
+#define ZESCENE_MAGIC                                          MAKE_MAGIC('Z', 'S', 'C', 'N')
+#define ASSET_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
+#define SCENE_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)

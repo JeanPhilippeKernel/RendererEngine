@@ -18,33 +18,39 @@ namespace Tetragrama::Helpers
     void DeserializeMapData(ZEngine::Core::Memory::ArenaAllocator*, std::istream&, ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>&);
 
     template <typename T>
-    void WriteBinary(std::ostream& writer, const T& data)
+    static void WriteBinary(std::ostream& writer, const T& data)
     {
         writer.write(reinterpret_cast<const char*>(&data), sizeof(T));
     }
 
     template <typename T, typename = std::enable_if_t<std::is_same_v<T, const char*> || std::is_same_v<T, ZEngine::Core::Containers::String>>>
-    void WriteBinaryString(std::ostream& writer, const T& str)
+    static void WriteBinaryString(std::ostream& writer, const T& str)
     {
         if constexpr (std::is_same_v<T, ZEngine::Core::Containers::String>)
 
         {
             size_t count = str.size();
             writer.write(reinterpret_cast<const char*>(&count), sizeof(size_t));
-            writer.write(str.c_str(), count + 1);
+            if (count > 0)
+            {
+                writer.write(str.c_str(), count + 1);
+            }
         }
         else if constexpr (std::is_same_v<T, const char*>)
 
         {
             size_t count = ZEngine::Helpers::secure_strlen(str);
-
             writer.write(reinterpret_cast<const char*>(&count), sizeof(size_t));
-            writer.write(str, count + 1);
+
+            if (count > 0)
+            {
+                writer.write(str, count);
+            }
         }
     }
 
     template <typename T>
-    void WriteBinaryArray(std::ostream& writer, ZEngine::Core::Containers::ArrayView<T> arr)
+    static void WriteBinaryArray(std::ostream& writer, ZEngine::Core::Containers::ArrayView<T> arr)
     {
         size_t count = arr.size();
         writer.write(reinterpret_cast<const char*>(&count), sizeof(size_t));
@@ -60,14 +66,17 @@ namespace Tetragrama::Helpers
 
         else
         {
-            writer.write(reinterpret_cast<const char*>(arr.data()), sizeof(T) * count);
+            if (count > 0)
+            {
+                writer.write(reinterpret_cast<const char*>(arr.data()), sizeof(T) * count);
+            }
         }
     }
 
     template <class T, class U>
-    void WriteBinaryHashMap(std::ostream& writer, ZEngine::Core::Containers::HashMap<T, U>& map)
+    static void WriteBinaryHashMap(std::ostream& writer, ZEngine::Core::Containers::HashMap<T, U>& map)
     {
-        uint32_t size = static_cast<uint32_t>(map.size());
+        size_t size = map.size();
         WriteBinary(writer, size);
 
         auto view = map.view();
@@ -79,31 +88,39 @@ namespace Tetragrama::Helpers
     }
 
     template <typename T>
-    void ReadBinary(std::istream& in, T& value)
+    static void ReadBinary(std::istream& in, T& value)
     {
         in.read(reinterpret_cast<char*>(&value), sizeof(T));
     }
 
-    template <typename T, typename = std::enable_if_t<std::is_same_v<T, ZEngine::Core::Containers::String>>>
-    void ReadBinaryString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, T& str)
+    static void ReadBinaryString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::String& str)
     {
-        uint32_t size;
-        ReadBinary(in, size);
-        if constexpr (std::is_same_v<T, ZEngine::Core::Containers::String>)
+        size_t size                    = 0;
+        char   buf[DEFAULT_STR_BUFFER] = {0};
+        in.read(reinterpret_cast<char*>(&size), sizeof(size_t));
 
+        if (size > 0)
         {
-            char buf[DEFAULT_STR_BUFFER] = {0};
-            in.read(reinterpret_cast<char*>(&size), sizeof(size_t));
             in.read(buf, size + 1);
-
             str.init(arena, buf);
         }
     }
 
-    template <typename T>
-    void ReadBinaryArray(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::Array<T>& arr)
+    static void ReadBinaryCString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, char* str)
     {
-        uint32_t size;
+        size_t size = 0;
+        in.read(reinterpret_cast<char*>(&size), sizeof(size_t));
+
+        if (size > 0)
+        {
+            in.read(str, size);
+        }
+    }
+
+    template <typename T>
+    static void ReadBinaryArray(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::Array<T>& arr)
+    {
+        size_t size = 0;
         ReadBinary(in, size);
         arr.init(arena, size, size);
 
@@ -126,10 +143,11 @@ namespace Tetragrama::Helpers
     }
 
     template <class T, class U>
-    void ReadHashMap(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::HashMap<T, U>& map)
+    static void ReadHashMap(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::HashMap<T, U>& map)
     {
-        uint32_t size;
+        size_t size = 0;
         ReadBinary(in, size);
+        map.init(arena, size);
 
         for (uint32_t i = 0; i < size; ++i)
         {

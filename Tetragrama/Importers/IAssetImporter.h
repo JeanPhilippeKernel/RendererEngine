@@ -32,57 +32,49 @@ namespace Tetragrama::Importers
         ZEngine::Core::Containers::String OutputTextureFilesPath;
     };
 
+    struct AssetImporterOutput
+    {
+        AssetFileType Type     = AssetFileType::UNKNOWN;
+        std::string   Path     = "";
+        std::string   RootPath = "";
+    };
+
     struct IAssetImporter
     {
-        typedef void (*on_import_complete_fn)(void* const, const char* result);
+        typedef void (*on_import_complete_fn)(void* const, ZEngine::Core::Containers::ArrayView<AssetImporterOutput> result);
         typedef void (*on_import_progress_fn)(void* const, float progress);
         typedef void (*on_import_error_fn)(void* const, std::string_view error_message);
         typedef void (*on_import_log_fn)(void* const, std::string_view log_message);
 
-        on_import_complete_fn m_complete_callback{nullptr};
-        on_import_progress_fn m_progress_callback{nullptr};
-        on_import_error_fn    m_error_callback{nullptr};
-        on_import_log_fn      m_log_callback{nullptr};
+        on_import_complete_fn                 m_complete_callback = nullptr;
+        on_import_progress_fn                 m_progress_callback = nullptr;
+        on_import_error_fn                    m_error_callback    = nullptr;
+        on_import_log_fn                      m_log_callback      = nullptr;
 
-        std::mutex            m_mutex;
-        std::atomic_bool      m_is_importing{false};
+        std::mutex                            m_mutex;
+        std::atomic_bool                      m_is_importing = false;
 
-        virtual ~IAssetImporter()                     = default;
+        ZEngine::Core::Memory::ArenaAllocator Arena          = {};
+        void*                                 Context        = nullptr;
 
-        ZEngine::Core::Memory::ArenaAllocator Arena   = {};
-        void*                                 Context = nullptr;
+        virtual ~IAssetImporter() {}
 
-        void                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
-        {
-            arena->CreateSubArena(ZMega(5), &Arena);
-        }
+        void                       Initialize(ZEngine::Core::Memory::ArenaAllocator* arena);
 
-        virtual void SetOnCompleteCallback(on_import_complete_fn callback)
-        {
-            m_complete_callback = callback;
-        }
+        virtual void               SetOnCompleteCallback(on_import_complete_fn callback);
+        virtual void               SetOnProgressCallback(on_import_progress_fn callback);
+        virtual void               SetOnErrorCallback(on_import_error_fn callback);
+        virtual void               SetOnLogCallback(on_import_log_fn callback);
+        virtual bool               IsImporting();
 
-        virtual void SetOnProgressCallback(on_import_progress_fn callback)
-        {
-            m_progress_callback = callback;
-        }
+        virtual std::future<void>  ImportAsync(const char* filename, ImportConfiguration& config) = 0;
 
-        virtual void SetOnErrorCallback(on_import_error_fn callback)
-        {
-            m_error_callback = callback;
-        }
+        static AssetImporterOutput SerializeMeshAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, AssetMesh& data, AssetNodeHierarchy& hierarchies, const ImportConfiguration&);
+        static AssetImporterOutput SerializeMaterialAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, AssetMaterial& data, const ImportConfiguration&);
+        static AssetImporterOutput SerializeTextureAssetFiles(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Core::Containers::ArrayView<AssetTexture> data, const ImportConfiguration&);
 
-        virtual void SetOnLogCallback(on_import_log_fn callback)
-        {
-            m_log_callback = callback;
-        }
-
-        virtual bool IsImporting()
-        {
-            return m_is_importing.load(std::memory_order_acquire);
-        }
-
-        virtual std::future<void> ImportAsync(const char* filename, ImportConfiguration& config) = 0;
+        static void                DeserializeMeshAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh&, AssetNodeHierarchy&);
+        static void                DeserializeMaterialAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial&);
+        static void                DeserializeTextureAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file, ZEngine::Core::Containers::Array<AssetTexture>&);
     };
-
 } // namespace Tetragrama::Importers

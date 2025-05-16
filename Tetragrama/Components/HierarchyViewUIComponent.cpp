@@ -13,6 +13,7 @@
 #include <glm/glm.hpp>
 #include <gtc/type_ptr.hpp>
 #include <imgui.h>
+#include <stack>
 
 using namespace ZEngine;
 using namespace ZEngine::Helpers;
@@ -58,15 +59,15 @@ namespace Tetragrama::Components
 
     void HierarchyViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        auto ctx          = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        auto render_scene = ctx->CurrentScenePtr->RenderScene;
+        auto ctx           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        auto current_scene = ctx->CurrentScenePtr;
 
         ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
         if (ImGui::BeginPopupContextWindow(Name))
         {
             if (ImGui::MenuItem("Create Empty"))
             {
-                render_scene->CreateEntityAsync();
+                current_scene->CreateSceneNode();
             }
             ImGui::EndPopup();
         }
@@ -76,8 +77,8 @@ namespace Tetragrama::Components
         // 0 means left buttom
         if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
         {
-            m_selected_node_identifier = -1;
-            Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, Messengers::EmptyMessage{});
+            ctx->SelectedSceneNode.store(-1, std::memory_order_release);
+            // Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, Messengers::EmptyMessage{});
         }
 
         RenderGuizmo();
@@ -87,27 +88,38 @@ namespace Tetragrama::Components
 
     void HierarchyViewUIComponent::RenderTreeNodes()
     {
-        auto ctx          = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        auto render_scene = ctx->CurrentScenePtr->RenderScene;
+        auto ctx           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        auto current_scene = ctx->CurrentScenePtr;
 
-        auto root_nodes   = render_scene->GetRootSceneNodes();
-
-        for (int node : root_nodes)
+        if (current_scene->IsDirty())
         {
-            RenderSceneNodeTree(node);
+            return;
+        }
+
+        for (int i = 0; i < (int) current_scene->Hierarchies.size(); ++i)
+        {
+            if (!current_scene->IsSceneNodeDeleted(i) && current_scene->Hierarchies[i].Parent == -1)
+            {
+                RenderNode(current_scene, i, ctx->SelectedSceneNode);
+            }
         }
     }
 
     void HierarchyViewUIComponent::RenderGuizmo()
     {
-        if (m_selected_node_identifier <= -1)
+        auto ctx           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        auto current_scene = ctx->CurrentScenePtr;
+
+        if (current_scene->IsDirty())
         {
             return;
         }
 
-        // auto entity_wrapper = GraphicScene::GetSceneNodeEntityWrapper(m_selected_node_identifier);
-        auto ctx          = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        auto render_scene = ctx->CurrentScenePtr->RenderScene;
+        int selected_node = ctx->SelectedSceneNode.load(std::memory_order_acquire);
+        if (selected_node == -1)
+        {
+            return;
+        }
 
         if (auto active_editor_camera = ctx->CameraControllerPtr)
         {
@@ -115,9 +127,9 @@ namespace Tetragrama::Components
             const auto camera_projection  = camera->GetPerspectiveMatrix();
             const auto camera_view_matrix = camera->GetViewMatrix();
 
-            auto&      global_transform   = render_scene->GetSceneNodeGlobalTransform(m_selected_node_identifier);
+            auto&      global_transform   = current_scene->GlobalTransforms[selected_node];
             auto       initial_transform  = global_transform;
-            auto&      local_transform    = render_scene->GetSceneNodeLocalTransform(m_selected_node_identifier);
+            auto&      local_transform    = current_scene->LocalTransforms[selected_node];
 
             if (camera && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, Engine::GetWindow()))
             {
@@ -140,7 +152,7 @@ namespace Tetragrama::Components
 
             auto delta_transform = glm::inverse(initial_transform) * global_transform;
             local_transform      = local_transform * delta_transform;
-            render_scene->MarkSceneNodeAsChanged(m_selected_node_identifier);
+            // current_scene->MarkSceneNodeAsChanged(m_selected_node_identifier);
 
             if (ImGuizmo::IsUsing())
             {
@@ -154,72 +166,139 @@ namespace Tetragrama::Components
         }
     }
 
-    void HierarchyViewUIComponent::RenderSceneNodeTree(int node_identifier)
+    void HierarchyViewUIComponent::RenderNode(EditorScene* scene, int root_id, std::atomic_int& selected_node)
     {
-        if (node_identifier < 0)
+        struct StackEntry
         {
-            return;
-        }
+            int  node_id;
+            bool open;
+        };
 
-        auto        ctx                     = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        auto        render_scene            = ctx->CurrentScenePtr->RenderScene;
+        std::stack<StackEntry> stack;
+        stack.push({root_id, false});
 
-        const auto& node_hierarchy          = render_scene->GetSceneNodeHierarchy(node_identifier);
-        auto        node_name               = render_scene->GetSceneNodeName(node_identifier);
-        auto        node_identifier_string  = fmt::format("SceneNode_{0}", node_identifier);
-        auto        flags                   = (node_hierarchy.FirstChild < 0) ? (ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | m_node_flag) : m_node_flag;
-        flags                              |= (m_selected_node_identifier == node_identifier) ? ImGuiTreeNodeFlags_Selected : 0;
-        auto label                          = (!node_name.empty()) ? std::string(node_name) : fmt::format("Node_{0}", node_identifier);
-        bool is_node_opened                 = ImGui::TreeNodeEx(node_identifier_string.c_str(), flags, "%s", label.c_str());
-
-        if (ImGui::IsItemClicked())
+        while (!stack.empty())
         {
-            m_selected_node_identifier = node_identifier;
+            auto entry = stack.top();
+            stack.pop();
 
-            auto entity                = render_scene->GetSceneNodeEntityWrapper(m_selected_node_identifier);
-            Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::GenericMessage<SceneEntity>>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, Messengers::GenericMessage<SceneEntity>{std::move(entity)});
-        }
+            // Handle manual TreePop marker
+            if (entry.node_id == -1)
+            {
+                ImGui::TreePop();
+                continue;
+            }
 
-        if (is_node_opened)
-        {
-            /*
-             * Popup features
-             */
-            bool request_entity_removal = false;
-            if (ImGui::BeginPopupContextItem(node_identifier_string.c_str()))
+            if (scene->IsSceneNodeDeleted(entry.node_id))
+            {
+                continue;
+            }
+            const auto&        node         = scene->Hierarchies[entry.node_id];
+
+            auto               name_id      = scene->NodeNames[entry.node_id];
+
+            bool               is_selected  = (selected_node == entry.node_id);
+            bool               has_children = (node.FirstChild != -1);
+
+            ImGuiTreeNodeFlags flags        = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanFullWidth;
+            if (!has_children)
+                flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+            if (is_selected)
+                flags |= ImGuiTreeNodeFlags_Selected;
+
+            auto node_id = fmt::format("SceneNode_{0}", entry.node_id);
+            bool open    = ImGui::TreeNodeEx(node_id.c_str(), flags, "%s", scene->Names[name_id].c_str());
+
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+            {
+                selected_node.store(entry.node_id, std::memory_order_release);
+            }
+
+            // === Drag source ===
+            if (ImGui::BeginDragDropSource())
+            {
+                ImGui::SetDragDropPayload("NODE_DRAG", &entry.node_id, sizeof(int));
+                ImGui::EndDragDropSource();
+            }
+
+            // === Drop target ===
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("NODE_DRAG"))
+                {
+                    int dragged_id = *(const int*) payload->Data;
+                    if (dragged_id != entry.node_id && !scene->IsSceneNodeDeleted(dragged_id))
+                    {
+                        // prevent making it a child of itself or its descendants
+                        int  test          = entry.node_id;
+                        bool is_descendant = false;
+                        while (test != -1)
+                        {
+                            if (test == dragged_id)
+                            {
+                                is_descendant = true;
+                                break;
+                            }
+                            test = scene->Hierarchies[test].Parent;
+                        }
+
+                        if (!is_descendant)
+                        {
+                            scene->ReparentNode(dragged_id, entry.node_id);
+                        }
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            if (ImGui::BeginPopupContextItem(node_id.c_str()))
             {
                 if (ImGui::MenuItem("Create Empty child"))
                 {
-                    render_scene->CreateEntityAsync("Empty Entity", m_selected_node_identifier, node_hierarchy.DepthLevel + 1);
+                    scene->CreateSceneNode(entry.node_id, node.DepthLevel + 1);
                 }
 
                 if (ImGui::MenuItem("Rename"))
                 {
                 }
+
                 if (ImGui::MenuItem("Delete"))
                 {
-                    Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, Messengers::EmptyMessage{});
-                    request_entity_removal = true;
+                    scene->RemoveSceneNode(entry.node_id);
                 }
                 ImGui::EndPopup();
             }
 
-            if (request_entity_removal)
+            if (open && has_children)
             {
-                render_scene->RemoveNodeAsync(node_identifier);
-            }
+                // Push TreePop manually
+                stack.push({-1, 0}); // Marker for TreePop
 
-            if (node_hierarchy.FirstChild > -1)
-            {
-                auto sibling_scene_node_collection = render_scene->GetSceneNodeSiblingCollection(node_hierarchy.FirstChild);
-                // We consider first child as sibling node
-                sibling_scene_node_collection.emplace(std::begin(sibling_scene_node_collection), node_hierarchy.FirstChild);
-                for (auto sibling_identifier : sibling_scene_node_collection)
+                // Push children in reverse order
+                auto                                  scratch = ZGetScratch(&ParentLayer->LayerArena);
+                ZEngine::Core::Containers::Array<int> children;
+                children.init(scratch.Arena, 5);
+
+                for (int child = node.FirstChild; child != -1; child = scene->Hierarchies[child].RightSibling)
                 {
-                    RenderSceneNodeTree(sibling_identifier);
+                    if (!scene->IsSceneNodeDeleted(child))
+                    {
+                        children.push(child);
+                    }
                 }
+
+                for (int i = static_cast<int>(children.size()) - 1; i >= 0; --i)
+                {
+                    stack.push({children[i], false});
+                }
+
+                ZReleaseScratch(scratch);
             }
-            ImGui::TreePop();
+            else if (!has_children && !(flags & ImGuiTreeNodeFlags_NoTreePushOnOpen))
+            {
+                // Only pop if not marked as Leaf
+                ImGui::TreePop();
+            }
         }
     }
 } // namespace Tetragrama::Components

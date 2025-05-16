@@ -2,7 +2,6 @@
 #include <AssimpImporter.h>
 #include <Core/Coroutine.h>
 #include <Helpers/MemoryOperations.h>
-#include <Helpers/SerializerCommonHelper.h>
 #include <Helpers/ThreadPool.h>
 #include <assimp/postprocess.h>
 #include <fmt/format.h>
@@ -50,20 +49,38 @@ namespace Tetragrama::Importers
                 std::mt19937          generator(rd());
                 uuid_random_generator gen(&generator);
 
-                AssetFile             asset = {};
-                asset.Name                  = config.AssetName.c_str();
-                ExtractMeshes(&Arena, scene, gen, asset.Mesh);
-                ExtractMaterials(&Arena, scene, gen, asset.Materials, asset.Hierarchy);
-                ExtractTextures(&Arena, scene, gen, asset.Materials, asset.Textures);
+                AssetMesh             mesh        = {};
+                AssetNodeHierarchy    hierarchies = {};
+                Array<AssetMaterial>  materials   = {};
+                Array<AssetTexture>   textures    = {};
 
-                CreateHierachy(&Arena, scene, asset.Hierarchy, asset.Mesh, asset.Materials);
-                CopyTextureFiles(&Arena, asset.Textures, config);
-                SerializeAssetFile(&Arena, asset, config);
+                ExtractMeshes(&Arena, scene, gen, mesh);
+                ExtractMaterials(&Arena, scene, gen, materials, hierarchies);
+                ExtractTextures(&Arena, scene, gen, materials, textures);
+
+                CreateHierachy(&Arena, scene, hierarchies, mesh, materials);
+                CopyTextureFiles(&Arena, textures, config);
+
+                Array<AssetImporterOutput> outputs = {};
+                outputs.init(&Arena, 100);
+
+                auto out_m = SerializeMeshAssetFile(&Arena, mesh, hierarchies, config);
+                outputs.push(out_m);
+
+                for (unsigned i = 0; i < materials.size(); ++i)
+                {
+                    auto& material = materials[i];
+                    auto  out_mat  = SerializeMaterialAssetFile(&Arena, material, config);
+                    outputs.push(out_mat);
+                }
+
+                auto out_tex = SerializeTextureAssetFiles(&Arena, ArrayView{textures}, config);
+                outputs.push(out_tex);
 
                 auto result = fmt::format("{0}{1}{2}", config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
                 if (m_complete_callback)
                 {
-                    m_complete_callback(Context, result.c_str());
+                    m_complete_callback(Context, ArrayView{outputs});
                 }
             }
 
@@ -186,7 +203,15 @@ namespace Tetragrama::Importers
 
             material.MaterialUUID      = generator();
 
-            model.MaterialNames[m].init(arena, (mat_name.C_Str() ? mat_name.C_Str() : "<unamed material>"));
+            {
+                std::stringstream ss;
+                ss << material.MaterialUUID;
+                auto mat_uuid = ss.str();
+                material.Name.init(arena, (mat_name.C_Str() ? mat_name.C_Str() : mat_uuid.c_str()));
+                ss.clear();
+            }
+
+            model.MaterialNames[m].init(arena, material.Name.c_str());
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_AMBIENT, &color) == AI_SUCCESS)
             {
@@ -386,109 +411,6 @@ namespace Tetragrama::Importers
         }
     }
 
-    void AssimpImporter::SerializeAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, AssetFile& asset, const ImportConfiguration& config)
-    {
-        REPORT_LOG(Context, "Serializing asset...")
-
-        if (config.OutputAssetFile.empty())
-        {
-            REPORT_LOG(Context, "Empty output asset file...")
-            return;
-        }
-
-        std::string   fullname_path = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
-        std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
-
-        if (!out.is_open())
-        {
-            auto message = fmt::format("failed to open {}", config.OutputAssetFile.c_str());
-            REPORT_LOG(Context, message.c_str())
-            out.close();
-            return;
-        }
-
-        out.seekp(std::ios::beg);
-        /*
-         *  Magic Headers
-         */
-        WriteBinary(out, ASSET_FILE_MAGIC);
-        WriteBinary(out, ASSET_FILE_VERSION);
-
-        /*
-         * Asset Name
-         */
-        WriteBinaryString(out, ZEngine::Helpers::secure_strlen(asset.Name) > 0 ? asset.Name : "");
-
-        /*
-         * Asset Mesh
-         */
-        WriteBinary(out, asset.Mesh.MeshUUID);
-        WriteBinaryArray(out, ArrayView{asset.Mesh.Vertices});
-        WriteBinaryArray(out, ArrayView{asset.Mesh.Indices});
-        WriteBinaryArray(out, ArrayView{asset.Mesh.SubMeshes});
-
-        /*
-         * Asset Materials
-         */
-        uint32_t material_count = (uint32_t) asset.Materials.size();
-        WriteBinary(out, material_count);
-
-        for (const auto& material : asset.Materials)
-        {
-            WriteBinary(out, material.MaterialUUID);
-            WriteBinary(out, material.AlbedoTexUUID);
-            WriteBinary(out, material.EmissiveTexUUID);
-            WriteBinary(out, material.NormalTexUUID);
-            WriteBinary(out, material.OpacityTexUUID);
-            WriteBinary(out, material.SpecularTexUUID);
-            out.write(reinterpret_cast<const char*>(material.AmbientColor), sizeof(material.AmbientColor));
-            out.write(reinterpret_cast<const char*>(material.AlbedoColor), sizeof(material.AlbedoColor));
-            out.write(reinterpret_cast<const char*>(material.EmissiveColor), sizeof(material.EmissiveColor));
-            out.write(reinterpret_cast<const char*>(material.RoughnessColor), sizeof(material.RoughnessColor));
-            out.write(reinterpret_cast<const char*>(material.SpecularColor), sizeof(material.SpecularColor));
-            out.write(reinterpret_cast<const char*>(material.Factors), sizeof(material.Factors));
-        }
-
-        /*
-         * Asset Textures
-         */
-        uint32_t texture_count = (uint32_t) asset.Textures.size();
-        WriteBinary(out, texture_count);
-        for (const auto& tex : asset.Textures)
-        {
-            WriteBinary(out, tex.TextureUUID);
-            WriteBinaryString(out, tex.Path);
-        }
-
-        /*
-         * Asset AssetNodeHierarchy
-         */
-        WriteBinary(out, asset.Hierarchy.MeshUUID);
-        WriteBinaryArray(out, ArrayView{asset.Hierarchy.Hierarchies});
-        WriteBinaryArray(out, ArrayView{asset.Hierarchy.LocalTransforms});
-        WriteBinaryArray(out, ArrayView{asset.Hierarchy.GlobalTransforms});
-
-        uint32_t name_count = static_cast<uint32_t>(asset.Hierarchy.Names.size());
-        WriteBinary(out, name_count);
-        for (const auto& name : asset.Hierarchy.Names)
-        {
-            WriteBinaryString(out, name);
-        }
-
-        uint32_t material_name_count = static_cast<uint32_t>(asset.Hierarchy.MaterialNames.size());
-        WriteBinary(out, material_name_count);
-        for (const auto& name : asset.Hierarchy.MaterialNames)
-        {
-            WriteBinaryString(out, name);
-        }
-
-        WriteBinaryHashMap(out, asset.Hierarchy.NodeNames);
-        WriteBinaryHashMap(out, asset.Hierarchy.NodeMeshes);
-        WriteBinaryHashMap(out, asset.Hierarchy.NodeMaterials);
-
-        out.close();
-    }
-
     void AssimpImporter::CopyTextureFiles(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Core::Containers::Array<AssetTexture>& textures, const ImportConfiguration& config)
     {
         /*
@@ -570,8 +492,6 @@ namespace Tetragrama::Importers
             tex.Path.append(new_path.c_str());
         }
     }
-
-    void      AssimpImporter::DeserializeAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file) {}
 
     glm::mat4 AssimpImporter::ConvertToMat4(const aiMatrix4x4& m)
     {

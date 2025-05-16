@@ -15,11 +15,15 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    ImVec4      DockspaceUIComponent::s_asset_importer_report_msg_color   = {1, 1, 1, 1};
-    char        DockspaceUIComponent::s_asset_importer_input_buffer[1024] = {0};
-    char        DockspaceUIComponent::s_save_as_input_buffer[1024]        = {0};
-    std::string DockspaceUIComponent::s_asset_importer_report_msg         = "";
-    float       DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
+    ImVec4        DockspaceUIComponent::s_asset_importer_report_msg_color   = {1, 1, 1, 1};
+    char          DockspaceUIComponent::s_asset_importer_input_buffer[1024] = {0};
+    char          DockspaceUIComponent::s_save_as_input_buffer[1024]        = {0};
+    std::string   DockspaceUIComponent::s_asset_importer_report_msg         = "";
+    float         DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
+
+    static bool   s_is_scene_loading                                        = false;
+    static char   s_scene_serializer_log[DEFAULT_STR_BUFFER]                = {0};
+    static ImVec4 s_scene_serializer_log_color                              = {1, 1, 1, 1};
 
     DockspaceUIComponent::DockspaceUIComponent() {}
 
@@ -37,8 +41,6 @@ namespace Tetragrama::Components
         m_editor_serializer->Initialize(&(parent->LayerArena));
         m_asset_importer->Initialize(&(parent->LayerArena));
 
-        m_editor_serializer->AssetImporter           = m_asset_importer;
-
         m_dockspace_node_flag                        = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
         m_window_flags                               = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
@@ -52,7 +54,9 @@ namespace Tetragrama::Components
 
         m_editor_serializer->SetDefaultOutput(editor_serializer_default_output);
         m_editor_serializer->SetOnProgressCallback(OnEditorSceneSerializerProgress);
+        m_editor_serializer->SetOnCompleteCallback(OnEditorSceneSerializerComplete);
         m_editor_serializer->SetOnDeserializeCompleteCallback(OnEditorSceneSerializerDeserializeComplete);
+        m_editor_serializer->SetOnLogCallback(OnEditorSceneSerializerLog);
         m_editor_serializer->SetOnErrorCallback(OnEditorSceneSerializerError);
 
         m_asset_importer->SetOnCompleteCallback(OnAssetImporterComplete);
@@ -113,19 +117,22 @@ namespace Tetragrama::Components
         }
 
         RenderMenuBar();
+
+        RenderLoadScene();
+        RenderSaveScene();
+        RenderSaveSceneAs();
+
         RenderImporter();
 
         RenderExitPopup();
-        RenderSaveScene();
-        RenderSaveSceneAs();
 
         ImGui::End();
 
         auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        if (ctx->CurrentScenePtr && ctx->CurrentScenePtr->RenderScene->IsDrawDataDirty)
-        {
-            ctx->CurrentScenePtr->RenderScene->InitOrResetDrawBuffer(renderer->Device, renderer->RenderGraph, renderer->AsyncLoader);
-        }
+        // if (ctx->CurrentScenePtr && ctx->CurrentScenePtr->RenderScene->IsDrawDataDirty)
+        //{
+        //     ctx->CurrentScenePtr->RenderScene->InitOrResetDrawBuffer(renderer->Device, renderer->RenderGraph, renderer->AsyncLoader);
+        // }
     }
 
     void DockspaceUIComponent::RenderImporter()
@@ -140,84 +147,117 @@ namespace Tetragrama::Components
             return;
         }
 
+        const char* str_id = "Model Importer";
+        ImGui::OpenPopup(str_id);
         ImVec2 center = ImGui::GetMainViewport()->GetCenter();
         ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
         ImGui::SetNextWindowSize(ImVec2(700, 100), ImGuiCond_Always);
 
-        if (!ImGui::Begin("Model Importer", NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse))
+        bool is_import_button_enabled = !m_asset_importer->IsImporting();
+
+        if (ImGui::BeginPopupModal(str_id, NULL, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::End();
+            ImGui::PushItemWidth(620);
+            ImGui::InputText("##ModelImporterUI", s_asset_importer_input_buffer, IM_ARRAYSIZE(s_asset_importer_input_buffer), ImGuiInputTextFlags_ReadOnly);
+            ImGui::PopItemWidth();
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("...", ImVec2(50, 0)) && is_import_button_enabled)
+            {
+                Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
+                    if (ParentLayer && ParentLayer->ParentWindow)
+                    {
+                        auto                          window = ParentLayer->ParentWindow;
+                        std::vector<std::string_view> filters{".obj", ".gltf"};
+                        std::string                   filename = co_await window->OpenFileDialogAsync(filters);
+
+                        if (!filename.empty())
+                        {
+                            ZEngine::Helpers::secure_memset(s_asset_importer_input_buffer, 0, IM_ARRAYSIZE(s_asset_importer_input_buffer), IM_ARRAYSIZE(s_asset_importer_input_buffer));
+                            ZEngine::Helpers::secure_memcpy(s_asset_importer_input_buffer, IM_ARRAYSIZE(s_asset_importer_input_buffer), filename.c_str(), filename.size());
+                        }
+                    }
+                });
+            }
+
+            ImGui::Separator();
+
+            ImGui::SetCursorPosX(ImGui::GetWindowSize().x - 180);
+            ImGui::SetCursorPosY(ImGui::GetWindowSize().y - ImGui::GetFrameHeightWithSpacing() - 5);
+
+            if (!is_import_button_enabled || std::string_view(s_asset_importer_input_buffer).empty())
+            {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.5f, 0.5f, 1.0f)); // Grayed out color
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+            }
+
+            if (ImGui::Button("Launch", ImVec2(80, 0)) && is_import_button_enabled)
+            {
+                OnImportAssetAsync(s_asset_importer_input_buffer);
+            }
+
+            if (!is_import_button_enabled || std::string_view(s_asset_importer_input_buffer).empty())
+            {
+                ImGui::PopStyleColor(3); // Pop the grayed out color
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Close", ImVec2(80, 0)))
+            {
+                if (m_asset_importer->IsImporting())
+                {
+                    ZENGINE_CORE_WARN("Import in progress : {}", s_asset_importer_input_buffer)
+                }
+                else
+                {
+                    m_open_asset_importer = false;
+                    ResetImporterBuffers();
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+
+            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+            ImGui::SetCursorPos(ImVec2(10, ImGui::GetWindowSize().y - 30));
+            ImGui::TextColored(s_asset_importer_report_msg_color, s_asset_importer_report_msg.c_str());
+            ImGui::PopFont();
+
+            ImGui::EndPopup();
+        }
+    }
+
+    void DockspaceUIComponent::RenderLoadScene()
+    {
+        if (!s_is_scene_loading)
+        {
             return;
         }
 
-        bool is_import_button_enabled = !m_asset_importer->IsImporting();
+        const char* str_id = "Loading Scene";
+        ImGui::OpenPopup(str_id);
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(700, 100), ImGuiCond_Always);
 
-        ImGui::PushItemWidth(620);
-        ImGui::InputText("##ModelImporterUI", s_asset_importer_input_buffer, IM_ARRAYSIZE(s_asset_importer_input_buffer), ImGuiInputTextFlags_ReadOnly);
-        ImGui::PopItemWidth();
-
-        ImGui::SameLine();
-
-        if (ImGui::Button("...", ImVec2(50, 0)) && is_import_button_enabled)
+        if (ImGui::BeginPopupModal(str_id, NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
         {
-            Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
-                if (ParentLayer && ParentLayer->ParentWindow)
-                {
-                    auto                          window = ParentLayer->ParentWindow;
-                    std::vector<std::string_view> filters{".obj", ".gltf"};
-                    std::string                   filename = co_await window->OpenFileDialogAsync(filters);
+            // Calculate position for the progress bar
+            ImVec2 wind_size        = ImGui::GetWindowSize();
+            ImVec2 reg_available    = ImGui::GetContentRegionAvail();
+            ImVec2 progress_bar_pos = ImVec2((wind_size.x - reg_available.x) * 0.5f, (wind_size.y - reg_available.y));
 
-                    if (!filename.empty())
-                    {
-                        ZEngine::Helpers::secure_memset(s_asset_importer_input_buffer, 0, IM_ARRAYSIZE(s_asset_importer_input_buffer), IM_ARRAYSIZE(s_asset_importer_input_buffer));
-                        ZEngine::Helpers::secure_memcpy(s_asset_importer_input_buffer, IM_ARRAYSIZE(s_asset_importer_input_buffer), filename.c_str(), filename.size());
-                    }
-                }
-            });
+            // Display the progress bar
+            ImGui::SetCursorPos(progress_bar_pos);
+            ImGui::ProgressBar(s_editor_scene_serializer_progress, ImVec2(reg_available.x, 20.0f), " ");
+
+            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+            ImGui::SetCursorPos(ImVec2(10, wind_size.y - 30));
+            ImGui::TextColored(s_scene_serializer_log_color, s_scene_serializer_log);
+            ImGui::PopFont();
+
+            ImGui::EndPopup();
         }
-
-        ImGui::Separator();
-
-        ImGui::SetCursorPosX(ImGui::GetWindowSize().x - 180);
-        ImGui::SetCursorPosY(ImGui::GetWindowSize().y - ImGui::GetFrameHeightWithSpacing() - 5);
-
-        if (!is_import_button_enabled || std::string_view(s_asset_importer_input_buffer).empty())
-        {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.5f, 0.5f, 1.0f)); // Grayed out color
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-        }
-
-        if (ImGui::Button("Launch", ImVec2(80, 0)) && is_import_button_enabled)
-        {
-            OnImportAssetAsync(s_asset_importer_input_buffer);
-        }
-
-        if (!is_import_button_enabled || std::string_view(s_asset_importer_input_buffer).empty())
-        {
-            ImGui::PopStyleColor(3); // Pop the grayed out color
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button("Close", ImVec2(80, 0)))
-        {
-            if (m_asset_importer->IsImporting())
-            {
-                ZENGINE_CORE_WARN("Import in progress : {}", s_asset_importer_input_buffer)
-            }
-            else
-            {
-                m_open_asset_importer = false;
-                ResetImporterBuffers();
-            }
-        }
-
-        ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-        ImGui::SetCursorPos(ImVec2(10, ImGui::GetWindowSize().y - 30));
-        ImGui::TextColored(s_asset_importer_report_msg_color, s_asset_importer_report_msg.c_str());
-        ImGui::PopFont();
-
-        ImGui::End();
     }
 
     void DockspaceUIComponent::RenderSaveScene()
@@ -395,8 +435,15 @@ namespace Tetragrama::Components
         ZEngine::Helpers::secure_memset(s_save_as_input_buffer, 0, IM_ARRAYSIZE(s_save_as_input_buffer), IM_ARRAYSIZE(s_save_as_input_buffer));
     }
 
-    void DockspaceUIComponent::OnAssetImporterComplete(void* const context, const char* result)
+    void DockspaceUIComponent::OnAssetImporterComplete(void* const context, ZEngine::Core::Containers::ArrayView<Importers::AssetImporterOutput> result)
     {
+        auto ctx = reinterpret_cast<EditorContext*>(context);
+
+        for (unsigned i = 0; i < result.size(); ++i)
+        {
+            ctx->CurrentScenePtr->PushAssetFile(result[i]);
+        }
+
         s_asset_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
         s_asset_importer_report_msg       = "Completed";
     }
@@ -416,6 +463,11 @@ namespace Tetragrama::Components
     void DockspaceUIComponent::OnEditorSceneSerializerError(void* const, std::string_view msg)
     {
         ZENGINE_CORE_ERROR("{}", msg)
+    }
+
+    void DockspaceUIComponent::OnEditorSceneSerializerLog(void* const, std::string_view msg)
+    {
+        ZEngine::Helpers::secure_strcpy(s_scene_serializer_log, DEFAULT_STR_BUFFER, msg.data());
     }
 
     void DockspaceUIComponent::OnAssetImporterLog(void* const, std::string_view msg)
@@ -481,25 +533,37 @@ namespace Tetragrama::Components
         s_editor_scene_serializer_progress = value;
     }
 
-    void DockspaceUIComponent::OnEditorSceneSerializerComplete(void* const) {}
+    void DockspaceUIComponent::OnEditorSceneSerializerComplete(void* const context)
+    {
+        auto ctx = reinterpret_cast<EditorContext*>(context);
+        ctx->CurrentScenePtr->HasPendingChanges.store(false, std::memory_order_release);
+    }
 
     void DockspaceUIComponent::OnEditorSceneSerializerDeserializeComplete(void* const context, EditorScene&& scene)
     {
         auto ctx = reinterpret_cast<EditorContext*>(context);
 
         // Todo : Ensure no data race on CurrentScenePtr
-        ctx->ConfigurationPtr->ActiveSceneName.reserve(ZEngine::Helpers::secure_strlen(scene.Name));
         ctx->ConfigurationPtr->ActiveSceneName.clear();
         ctx->ConfigurationPtr->ActiveSceneName.append(scene.Name);
 
-        ctx->CurrentScenePtr->Name          = ctx->ConfigurationPtr->ActiveSceneName.c_str();
-        ctx->CurrentScenePtr->Data          = scene.Data;
-        ctx->CurrentScenePtr->MeshFiles     = scene.MeshFiles;
-        ctx->CurrentScenePtr->ModelFiles    = scene.ModelFiles;
-        ctx->CurrentScenePtr->MaterialFiles = scene.MaterialFiles;
-        ctx->CurrentScenePtr->RenderScene   = scene.RenderScene;
+        ctx->CurrentScenePtr->MarkDirty(true);
+        ctx->SelectedSceneNode.store(-1, std::memory_order_release);
+        ctx->CurrentScenePtr->Reset();
+        ctx->CurrentScenePtr->ExtractAsync(scene);
 
-        ZENGINE_CORE_INFO("Scene {} deserialized successfully", ctx->CurrentScenePtr->Name)
+        ctx->CurrentScenePtr->Name = ctx->ConfigurationPtr->ActiveSceneName.c_str();
+
+        ctx->CurrentScenePtr->MarkDirty(false);
+
+        {
+            auto msg = fmt::format("Scene {} deserialized successfully", ctx->CurrentScenePtr->Name);
+            ZEngine::Helpers::secure_strcpy(s_scene_serializer_log, DEFAULT_STR_BUFFER, msg.data());
+
+            ZENGINE_CORE_INFO(msg.c_str())
+        }
+
+        s_is_scene_loading = false;
     }
 
     std::future<void> DockspaceUIComponent::OnNewSceneAsync()
@@ -517,6 +581,7 @@ namespace Tetragrama::Components
 
             if (!scene_filename.empty())
             {
+                s_is_scene_loading = true;
                 m_editor_serializer->Deserialize(scene_filename);
             }
         }
@@ -537,7 +602,7 @@ namespace Tetragrama::Components
         const auto&                    editor_config     = *context->ConfigurationPtr;
         auto                           parent_path       = std::filesystem::path(filename).parent_path().string();
         auto                           asset_name        = fs::path(filename).filename().replace_extension().string();
-        auto                           output_asset_file = fmt::format("{}.zeasset", asset_name.c_str());
+        auto                           output_asset_file = fmt::format("{}.zemesh", asset_name.c_str());
 
         Importers::ImportConfiguration config            = {};
         config.OutputWorkingSpacePath.init(arena, editor_config.WorkingSpacePath.c_str());

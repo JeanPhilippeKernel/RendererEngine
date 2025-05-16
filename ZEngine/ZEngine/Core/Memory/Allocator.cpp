@@ -4,7 +4,7 @@
 
 namespace ZEngine::Core::Memory
 {
-    void ArenaAllocator::Initialize(size_t size)
+    void ArenaAllocator::Initialize(uint64_t size)
     {
         m_memory          = (uint8_t*) malloc(size);
         m_total_size      = size;
