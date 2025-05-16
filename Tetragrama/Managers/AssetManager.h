@@ -74,30 +74,66 @@ namespace Tetragrama::Managers
     template <>
     inline Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, AssetManager::AssetHandle>(AssetManager::AssetHandle key)
     {
+        uint32_t index = ReadAssetHandleIndex(key);
+        if (index < Instance()->Meshes.size())
+        {
+            return &Instance()->Meshes[index];
+        }
+        return nullptr;
     }
 
     template <>
-    inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, AssetManager::AssetHandle>(AssetManager::AssetHandle)
+    inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, AssetManager::AssetHandle>(AssetManager::AssetHandle key)
     {
+        uint32_t index = ReadAssetHandleIndex(key);
+        if (index < Instance()->Materials.size())
+        {
+            return &Instance()->Materials[index];
+        }
+        return nullptr;
     }
 
     template <>
-    inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, AssetManager::AssetHandle>(AssetManager::AssetHandle)
+    inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, AssetManager::AssetHandle>(AssetManager::AssetHandle key)
     {
+        uint32_t index = ReadAssetHandleIndex(key);
+        if (index < Instance()->Textures.size())
+        {
+            return &Instance()->Textures[index];
+        }
+        return nullptr;
     }
 
     template <>
-    inline Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, uuids::uuid>(uuids::uuid)
+    inline Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, uuids::uuid>(uuids::uuid id)
     {
+        if (Instance()->UUIDToHandle.contains(id))
+        {
+            auto& handle = Instance()->UUIDToHandle[id];
+            return GetAsset<Importers::AssetMesh, AssetHandle>(handle);
+        }
+        return nullptr;
     }
 
     template <>
-    inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, uuids::uuid>(uuids::uuid)
+    inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, uuids::uuid>(uuids::uuid id)
     {
+        if (Instance()->UUIDToHandle.contains(id))
+        {
+            auto& handle = Instance()->UUIDToHandle[id];
+            return GetAsset<Importers::AssetMaterial, AssetHandle>(handle);
+        }
+        return nullptr;
     }
 
     template <>
-    inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, uuids::uuid>(uuids::uuid)
+    inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, uuids::uuid>(uuids::uuid id)
     {
+        if (Instance()->UUIDToHandle.contains(id))
+        {
+            auto& handle = Instance()->UUIDToHandle[id];
+            return GetAsset<Importers::AssetTexture, AssetHandle>(handle);
+        }
+        return nullptr;
     }
 } // namespace Tetragrama::Managers

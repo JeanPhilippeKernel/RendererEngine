@@ -560,7 +560,7 @@ namespace Tetragrama::Components
             auto msg = fmt::format("Scene {} deserialized successfully", ctx->CurrentScenePtr->Name);
             ZEngine::Helpers::secure_strcpy(s_scene_serializer_log, DEFAULT_STR_BUFFER, msg.data());
 
-            ZENGINE_CORE_INFO(msg.c_str())
+            ZENGINE_CORE_INFO("{}", msg.c_str())
         }
 
         s_is_scene_loading = false;
