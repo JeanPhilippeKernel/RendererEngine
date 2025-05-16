@@ -19,7 +19,7 @@ namespace ZEngine::Core::Memory
     {
         ~ArenaAllocator() {};
 
-        void     Initialize(size_t size);
+        void     Initialize(uint64_t size);
         void     Shutdown();
 
         void*    Allocate(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
