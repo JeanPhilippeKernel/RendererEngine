@@ -75,6 +75,17 @@ namespace Tetragrama::Importers
         ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>              NodeMaterials     = {};
     };
 
+    struct AssetNodeRef
+    {
+        uint32_t AssetNodeHandle    = 0xFFFFFFFF;
+        int      NodeHierarchyIndex = -1;
+
+        bool     IsValid() const
+        {
+            return (AssetNodeHandle != 0xFFFFFFFF) && (NodeHierarchyIndex != -1);
+        }
+    };
+
     struct AssetFile
     {
         const char*                                     Name      = nullptr;

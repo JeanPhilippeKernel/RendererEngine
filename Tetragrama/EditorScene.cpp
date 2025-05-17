@@ -44,15 +44,12 @@ namespace Tetragrama
             return -1;
         }
 
-        int                    node_id = static_cast<int>(Hierarchies.size());
+        int                      node_id  = static_cast<int>(Hierarchies.size());
 
         // Create new node
-        Helpers::NodeHierarchy new_node;
-        new_node.Parent       = parent;
-        new_node.DepthLevel   = depth;
-        new_node.FirstChild   = -1;
-        new_node.LastChild    = -1;
-        new_node.RightSibling = -1;
+        EditorSceneNodeHierarchy new_node = {};
+        new_node.Parent                   = parent;
+        new_node.DepthLevel               = depth;
 
         Hierarchies.push(new_node);
         LocalTransforms.push(glm::mat4(1.0f));
@@ -268,7 +265,8 @@ namespace Tetragrama
         LocalTransforms.push(glm::mat4(1.0f));
         GlobalTransforms.push(glm::mat4(1.0f));
 
-        Hierarchies.push(EditorSceneNodeHierarchy{.Parent = -1, .FirstChild = -1, .DepthLevel = 0});
+        auto& node      = Hierarchies.push_use(EditorSceneNodeHierarchy{});
+        node.DepthLevel = 0;
         NodeMeshes.insert(0, uuids::uuid{});
     }
 

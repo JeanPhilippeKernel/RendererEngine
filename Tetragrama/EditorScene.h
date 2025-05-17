@@ -25,10 +25,16 @@ namespace Tetragrama
         ZEngine::Core::Containers::String RootPath = {};
     };
 
+    struct EditorSceneNodeHierarchy : public Helpers::NodeHierarchy
+    {
+        /*
+         * NodeRef serves as a mapping between Scene NodeHierarchy & Asset NodeHierarchy
+         */
+        Importers::AssetNodeRef NodeRef = {};
+    };
+
     struct EditorScene
     {
-        using EditorSceneNodeHierarchy = Helpers::NodeHierarchy;
-
         void                                                                Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* scene_name = "");
 
         bool                                                                HasPendingChange() const;
