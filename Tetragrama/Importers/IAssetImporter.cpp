@@ -120,6 +120,7 @@ namespace Tetragrama::Importers
         /*
          * Asset AssetNodeHierarchy
          */
+        WriteBinary(out, hierarchies.NodeHierarchyUUID);
         WriteBinary(out, hierarchies.MeshUUID);
         WriteBinaryArray(out, ArrayView{hierarchies.Hierarchies});
         WriteBinaryArray(out, ArrayView{hierarchies.LocalTransforms});
@@ -271,6 +272,7 @@ namespace Tetragrama::Importers
         /*
          * Asset AssetNodeHierarchy
          */
+        ReadBinary(in, hierarchies.NodeHierarchyUUID);
         ReadBinary(in, hierarchies.MeshUUID);
         ReadBinaryArray(arena, in, hierarchies.Hierarchies);
         ReadBinaryArray(arena, in, hierarchies.LocalTransforms);

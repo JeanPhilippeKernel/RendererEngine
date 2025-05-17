@@ -58,7 +58,7 @@ namespace Tetragrama::Importers
                 ExtractMaterials(&Arena, scene, gen, materials, hierarchies);
                 ExtractTextures(&Arena, scene, gen, materials, textures);
 
-                CreateHierachy(&Arena, scene, hierarchies, mesh, materials);
+                CreateHierachy(&Arena, scene, gen, hierarchies, mesh, materials);
                 CopyTextureFiles(&Arena, textures, config);
 
                 Array<AssetImporterOutput> outputs = {};
@@ -354,14 +354,15 @@ namespace Tetragrama::Importers
         }
     }
 
-    void AssimpImporter::CreateHierachy(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, AssetNodeHierarchy& AssetNode, AssetMesh& asset_mesh, ZEngine::Core::Containers::Array<AssetMaterial>& materials)
+    void AssimpImporter::CreateHierachy(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetNodeHierarchy& AssetNode, AssetMesh& asset_mesh, ZEngine::Core::Containers::Array<AssetMaterial>& materials)
     {
         if (!scene || !(scene->mRootNode))
         {
             return;
         }
 
-        AssetNode.MeshUUID = asset_mesh.MeshUUID;
+        AssetNode.NodeHierarchyUUID = generator();
+        AssetNode.MeshUUID          = asset_mesh.MeshUUID;
 
         AssetNode.Hierarchies.init(arena, 10);
         AssetNode.LocalTransforms.init(arena, 10);

@@ -16,17 +16,17 @@ namespace Tetragrama::Managers
         return s_Instance;
     }
 
-    inline AssetManager::AssetHandle AssetManager::CreateHandle(uint32_t id, AssetType at)
+    AssetManager::AssetHandle AssetManager::CreateHandle(uint32_t id, AssetType at)
     {
         return ((uint32_t(at) & 0xF) << 28) | (id & 0x0FFFFFFF);
     }
 
-    inline uint32_t AssetManager::ReadAssetHandleIndex(AssetHandle h)
+    uint32_t AssetManager::ReadAssetHandleIndex(AssetHandle h)
     {
         return (h & 0x0FFFFFFF);
     }
 
-    inline AssetType AssetManager::ReadAssetHandleType(AssetHandle h)
+    AssetType AssetManager::ReadAssetHandleType(AssetHandle h)
     {
         return AssetType((h >> 28) & 0xF);
     }
@@ -146,8 +146,9 @@ namespace Tetragrama::Managers
             AssetNodeHierarchy hierarchies = {};
             if (pendings_asset_node_hierarchies.Pop(hierarchies))
             {
-                auto& h    = NodeHierarchies.push_use({});
-                h.MeshUUID = hierarchies.MeshUUID;
+                auto  asset_id = NodeHierarchies.size();
+                auto& h        = NodeHierarchies.push_use({});
+                h.MeshUUID     = hierarchies.MeshUUID;
 
                 h.Hierarchies.init(&(s_Instance->Arena), hierarchies.Hierarchies.size());
                 h.LocalTransforms.init(&(s_Instance->Arena), hierarchies.LocalTransforms.size());
@@ -191,9 +192,8 @@ namespace Tetragrama::Managers
                 {
                     h.NodeMaterials.insert(k, v);
                 }
-                // Todo(kernel) : need to figure how to store this
-                //
-                // RegisterAsset(AssetType::MESH_HIERARCHY, h.MeshUUID, asset_id);
+
+                RegisterAsset(AssetType::MESH_HIERARCHY, h.NodeHierarchyUUID, asset_id);
                 continue;
             }
 

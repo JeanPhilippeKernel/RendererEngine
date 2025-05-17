@@ -63,15 +63,16 @@ namespace Tetragrama::Importers
 
     struct AssetNodeHierarchy
     {
-        uuids::uuid                                                         MeshUUID         = {};
-        ZEngine::Core::Containers::Array<Helpers::NodeHierarchy>            Hierarchies      = {};
-        ZEngine::Core::Containers::Array<glm::mat4>                         LocalTransforms  = {};
-        ZEngine::Core::Containers::Array<glm::mat4>                         GlobalTransforms = {};
-        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> Names            = {};
-        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> MaterialNames    = {};
-        ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>              NodeNames        = {};
-        ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>              NodeMeshes       = {};
-        ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>              NodeMaterials    = {};
+        uuids::uuid                                                         NodeHierarchyUUID = {};
+        uuids::uuid                                                         MeshUUID          = {};
+        ZEngine::Core::Containers::Array<Helpers::NodeHierarchy>            Hierarchies       = {};
+        ZEngine::Core::Containers::Array<glm::mat4>                         LocalTransforms   = {};
+        ZEngine::Core::Containers::Array<glm::mat4>                         GlobalTransforms  = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> Names             = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> MaterialNames     = {};
+        ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>              NodeNames         = {};
+        ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>              NodeMeshes        = {};
+        ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>              NodeMaterials     = {};
     };
 
     struct AssetFile

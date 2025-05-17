@@ -38,7 +38,7 @@ namespace Tetragrama::Importers
         void      ExtractMeshes(ZEngine::Core::Memory::ArenaAllocator*, const aiScene*, uuids::uuid_random_generator&, AssetMesh&);
         void      ExtractMaterials(ZEngine::Core::Memory::ArenaAllocator*, const aiScene*, uuids::uuid_random_generator&, ZEngine::Core::Containers::Array<AssetMaterial>&, AssetNodeHierarchy&);
         void      ExtractTextures(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene*, uuids::uuid_random_generator&, ZEngine::Core::Containers::Array<AssetMaterial>&, ZEngine::Core::Containers::Array<AssetTexture>&);
-        void      CreateHierachy(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene*, AssetNodeHierarchy&, AssetMesh&, ZEngine::Core::Containers::Array<AssetMaterial>&);
+        void      CreateHierachy(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene*, uuids::uuid_random_generator&, AssetNodeHierarchy&, AssetMesh&, ZEngine::Core::Containers::Array<AssetMaterial>&);
 
         void      TraverseNode(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene*, const aiNode*, AssetNodeHierarchy&, AssetMesh&, ZEngine::Core::Containers::Array<AssetMaterial>&, int parent_node_id, int depth_level);
         glm::mat4 ConvertToMat4(const aiMatrix4x4& m);

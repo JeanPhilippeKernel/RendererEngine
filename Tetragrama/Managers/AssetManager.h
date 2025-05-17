@@ -48,9 +48,9 @@ namespace Tetragrama::Managers
 
         static AssetManager*                                                                         Instance();
 
-        static inline AssetHandle                                                                    CreateHandle(uint32_t, AssetType);
-        static inline uint32_t                                                                       ReadAssetHandleIndex(AssetHandle);
-        static inline AssetType                                                                      ReadAssetHandleType(AssetHandle);
+        static AssetHandle                                                                           CreateHandle(uint32_t, AssetType);
+        static uint32_t                                                                              ReadAssetHandleIndex(AssetHandle);
+        static AssetType                                                                             ReadAssetHandleType(AssetHandle);
 
         static void                                                                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena);
         static void                                                                                  Run();
