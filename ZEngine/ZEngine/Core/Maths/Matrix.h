@@ -35,7 +35,7 @@ namespace ZEngine::Core::Maths
             return result;
         }
 
-        Matrix<T, R, C> operator-(Matrix<T, R, C>& other)
+        Matrix<T, R, C> operator-(Matrix<T, R, C>& other) const
         {
             Matrix<T, R, C> result{};
             for (size_t j = 0; j < C; ++j)
