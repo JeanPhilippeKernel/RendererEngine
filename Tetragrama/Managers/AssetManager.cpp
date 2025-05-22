@@ -104,11 +104,6 @@ namespace Tetragrama::Managers
                 break;
             }
 
-            if (auto shutdown = s_Instance->RequestShutdown.load(std::memory_order_acquire))
-            {
-                break;
-            }
-
             auto&            mut                             = s_Instance->Mut;
             auto&            cond                            = s_Instance->Cond;
             auto&            pendings_asset_files            = s_Instance->PendingAssetFiles;
@@ -118,7 +113,12 @@ namespace Tetragrama::Managers
             auto&            pendings_asset_textures         = s_Instance->PendingAssetTextures;
 
             std::unique_lock l(mut);
-            cond.wait(l, [&] { return !pendings_asset_files.Empty() || !pendings_asset_meshes.Empty() || !pendings_asset_node_hierarchies.Empty() || !pendings_asset_materials.Empty() || !pendings_asset_textures.Empty(); });
+            cond.wait(l, [&] { return (true == s_Instance->RequestShutdown.load(std::memory_order_acquire)) || !pendings_asset_files.Empty() || !pendings_asset_meshes.Empty() || !pendings_asset_node_hierarchies.Empty() || !pendings_asset_materials.Empty() || !pendings_asset_textures.Empty(); });
+
+            if (auto shutdown = s_Instance->RequestShutdown.load(std::memory_order_acquire))
+            {
+                break;
+            }
 
             AssetMesh mesh = {};
             if (pendings_asset_meshes.Pop(mesh))
