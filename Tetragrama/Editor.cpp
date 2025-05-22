@@ -64,6 +64,7 @@ namespace Tetragrama
     void Editor::Dispose()
     {
         Engine::Dispose();
+        AssetManager::Shutdown();
     }
 
     void Editor::Run()
