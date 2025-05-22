@@ -1,5 +1,8 @@
 #pragma once
+#include <AssetManager.h>
 #include <EditorCameraController.h>
+#include <EditorScene.h>
+#include <Helpers/NodeHierarchyHelper.h>
 #include <Layers/ImguiLayer.h>
 #include <Layers/RenderLayer.h>
 #include <ZEngine/Core/Containers/Array.h>
@@ -16,38 +19,6 @@ namespace Tetragrama::Serializers
 
 namespace Tetragrama
 {
-    class EditorScene
-    {
-    public:
-        struct Model;
-
-        EditorScene() = default;
-
-        void                                                                Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* scene_name = "");
-        void                                                                Push(ZEngine::Core::Memory::ArenaAllocator* arena, const char* mesh, const char* model, const char* material);
-        bool                                                                HasPendingChange() const;
-
-        const char*                                                         Name          = "";
-        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> MeshFiles     = {};
-        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> ModelFiles    = {};
-        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> MaterialFiles = {};
-
-        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> Hashes        = {};
-        std::map<const char*, Model>                                        Data          = {};
-
-        ZRawPtr(ZEngine::Rendering::Scenes::GraphicScene) RenderScene                     = nullptr;
-
-    private:
-        std::atomic_bool m_has_pending_change;
-        friend struct Serializers::EditorSceneSerializer;
-    };
-
-    struct EditorScene::Model
-    {
-        uint16_t MeshFileIndex     = 0xFFFF;
-        uint16_t ModelPathIndex    = 0xFFFF;
-        uint16_t MaterialPathIndex = 0xFFFF;
-    };
 
     struct EditorConfiguration
     {
@@ -65,9 +36,11 @@ namespace Tetragrama
     struct EditorContext
     {
         ZEngine::Core::Memory::ArenaAllocator Arena                      = {};
+        std::atomic_int                       SelectedSceneNode          = -1;
         ZRawPtr(EditorConfiguration) ConfigurationPtr                    = nullptr;
         ZRawPtr(EditorScene) CurrentScenePtr                             = nullptr;
         ZRawPtr(Controllers::EditorCameraController) CameraControllerPtr = nullptr;
+        ZRawPtr(Managers::AssetManager) AssetManagerPtr                  = nullptr;
     };
 
     struct Editor

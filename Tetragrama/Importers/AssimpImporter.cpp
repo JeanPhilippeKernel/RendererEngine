@@ -2,7 +2,6 @@
 #include <AssimpImporter.h>
 #include <Core/Coroutine.h>
 #include <Helpers/MemoryOperations.h>
-#include <Helpers/SerializerCommonHelper.h>
 #include <Helpers/ThreadPool.h>
 #include <assimp/postprocess.h>
 #include <fmt/format.h>
@@ -12,6 +11,7 @@ using namespace Tetragrama::Helpers;
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Core::Containers;
+using namespace uuids;
 
 namespace fs = std::filesystem;
 
@@ -24,11 +24,11 @@ namespace Tetragrama::Importers
 
     AssimpImporter::~AssimpImporter() {}
 
-    std::future<void> AssimpImporter::ImportAsync(std::string_view filename, ImportConfiguration config)
+    std::future<void> AssimpImporter::ImportAsync(const char* filename, ImportConfiguration& config)
     {
-        ThreadPoolHelper::Submit([this, path = std::string(filename.data()), config] {
+        ThreadPoolHelper::Submit([this, path = filename, config] {
             std::unique_lock l(m_mutex);
-            Arena.Clear();
+
             m_is_importing.store(true, std::memory_order_release);
 
             Assimp::Importer importer{};
@@ -45,21 +45,42 @@ namespace Tetragrama::Importers
             }
             else
             {
-                ImporterData import_data = {};
+                std::random_device    rd;
+                std::mt19937          generator(rd());
+                uuid_random_generator gen(&generator);
 
-                ExtractMeshes(scene, import_data);
-                ExtractMaterials(scene, import_data);
-                ExtractTextures(scene, import_data);
-                CreateHierachyScene(scene, import_data);
-                /*
-                 * Serialization of ImporterData
-                 */
-                REPORT_LOG(Context, "Serializing model...")
-                SerializeImporterData(&Arena, import_data, config);
+                AssetMesh             mesh        = {};
+                AssetNodeHierarchy    hierarchies = {};
+                Array<AssetMaterial>  materials   = {};
+                Array<AssetTexture>   textures    = {};
 
+                ExtractMeshes(&Arena, scene, gen, mesh);
+                ExtractMaterials(&Arena, scene, gen, materials, hierarchies);
+                ExtractTextures(&Arena, scene, gen, materials, textures);
+
+                CreateHierachy(&Arena, scene, gen, hierarchies, mesh, materials);
+                CopyTextureFiles(&Arena, textures, config);
+
+                Array<AssetImporterOutput> outputs = {};
+                outputs.init(&Arena, 100);
+
+                auto out_m = SerializeMeshAssetFile(&Arena, mesh, hierarchies, config);
+                outputs.push(out_m);
+
+                for (unsigned i = 0; i < materials.size(); ++i)
+                {
+                    auto& material = materials[i];
+                    auto  out_mat  = SerializeMaterialAssetFile(&Arena, material, config);
+                    outputs.push(out_mat);
+                }
+
+                auto out_tex = SerializeTextureAssetFiles(&Arena, ArrayView{textures}, config);
+                outputs.push(out_tex);
+
+                auto result = fmt::format("{0}{1}{2}", config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
                 if (m_complete_callback)
                 {
-                    m_complete_callback(Context, std::move(import_data));
+                    m_complete_callback(Context, ArrayView{outputs});
                 }
             }
 
@@ -67,25 +88,42 @@ namespace Tetragrama::Importers
             importer.FreeScene();
 
             m_is_importing.store(false, std::memory_order_release);
+
+            Arena.Clear();
         });
 
         co_return;
     }
 
-    void AssimpImporter::ExtractMeshes(const aiScene* scene, ImporterData& importer_data)
+    void AssimpImporter::ExtractMeshes(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetMesh& mesh)
     {
         if ((!scene) || (!scene->HasMeshes()))
         {
             return;
         }
 
-        uint32_t number_of_meshes = scene->mNumMeshes;
-        importer_data.Scene.Meshes.reserve(number_of_meshes);
+        unsigned int t_vertices = 0;
+        unsigned int t_indices  = 0;
+        unsigned int t_meshes   = scene->mNumMeshes;
 
-        for (uint32_t m = 0; m < number_of_meshes; ++m)
+        for (unsigned int i = 0; i < t_meshes; ++i)
         {
+            aiMesh* mesh  = scene->mMeshes[i];
+            t_vertices   += mesh->mNumVertices;
+            t_indices    += mesh->mNumFaces * 3; // assuming triangulated
+        }
 
-            REPORT_LOG(Context, fmt::format("Extrating Meshes : {0}/{1} ", (m + 1), number_of_meshes).c_str())
+        mesh.MeshUUID = generator();
+        mesh.SubMeshes.init(arena, t_meshes);
+        mesh.Vertices.init(arena, t_vertices);
+        mesh.Indices.init(arena, t_indices);
+
+        uint32_t VertexOffset = 0;
+        uint32_t IndexOffset  = 0;
+
+        for (uint32_t m = 0; m < t_meshes; ++m)
+        {
+            REPORT_LOG(Context, fmt::format("Extrating Meshes : {0}/{1} ", (m + 1), t_meshes).c_str())
 
             aiMesh*  ai_mesh = scene->mMeshes[m];
 
@@ -98,16 +136,16 @@ namespace Tetragrama::Importers
                 const aiVector3D normal   = ai_mesh->mNormals[v];
                 const aiVector3D texture  = ai_mesh->HasTextureCoords(0) ? ai_mesh->mTextureCoords[0][v] : aiVector3D{};
 
-                importer_data.Scene.Vertices.push_back(position.x);
-                importer_data.Scene.Vertices.push_back(position.y);
-                importer_data.Scene.Vertices.push_back(position.z);
+                mesh.Vertices.push(position.x);
+                mesh.Vertices.push(position.y);
+                mesh.Vertices.push(position.z);
 
-                importer_data.Scene.Vertices.push_back(normal.x);
-                importer_data.Scene.Vertices.push_back(normal.y);
-                importer_data.Scene.Vertices.push_back(normal.z);
+                mesh.Vertices.push(normal.x);
+                mesh.Vertices.push(normal.y);
+                mesh.Vertices.push(normal.z);
 
-                importer_data.Scene.Vertices.push_back(texture.x);
-                importer_data.Scene.Vertices.push_back(texture.y);
+                mesh.Vertices.push(texture.x);
+                mesh.Vertices.push(texture.y);
 
                 vertex_count++;
             }
@@ -120,30 +158,30 @@ namespace Tetragrama::Importers
 
                 for (int fidx = 0; fidx < ai_face.mNumIndices; ++fidx)
                 {
-                    importer_data.Scene.Indices.push_back(ai_face.mIndices[fidx]);
+                    mesh.Indices.push(ai_face.mIndices[fidx]);
 
                     index_count++;
                 }
             }
 
-            MeshVNext& mesh             = importer_data.Scene.Meshes.emplace_back();
-            mesh.VertexCount            = vertex_count;
-            mesh.VertexOffset           = importer_data.VertexOffset;
-            mesh.VertexUnitStreamSize   = sizeof(float) * (3 + 3 + 2) /*pos-cmp + normal-cmp + tex-cmp*/;
-            mesh.StreamOffset           = (mesh.VertexUnitStreamSize * mesh.VertexOffset);
-            mesh.IndexOffset            = importer_data.IndexOffset;
-            mesh.IndexCount             = index_count;
-            mesh.IndexUnitStreamSize    = sizeof(uint32_t);
-            mesh.IndexStreamOffset      = (mesh.IndexUnitStreamSize * mesh.IndexOffset);
-            mesh.TotalByteSize          = (mesh.VertexCount * mesh.VertexUnitStreamSize) + (mesh.IndexCount * mesh.IndexUnitStreamSize);
+            auto& subMesh                 = mesh.SubMeshes.push_use({});
+            subMesh.VertexCount           = vertex_count;
+            subMesh.VertexOffset          = VertexOffset;
+            subMesh.VertexUnitStreamSize  = sizeof(float) * (3 + 3 + 2) /*pos-cmp + normal-cmp + tex-cmp*/;
+            subMesh.StreamOffset          = (subMesh.VertexUnitStreamSize * subMesh.VertexOffset);
+            subMesh.IndexOffset           = IndexOffset;
+            subMesh.IndexCount            = index_count;
+            subMesh.IndexUnitStreamSize   = sizeof(uint32_t);
+            subMesh.IndexStreamOffset     = (subMesh.IndexUnitStreamSize * subMesh.IndexOffset);
+            subMesh.TotalByteSize         = (subMesh.VertexCount * subMesh.VertexUnitStreamSize) + (subMesh.IndexCount * subMesh.IndexUnitStreamSize);
 
             /* Computing offset data */
-            importer_data.VertexOffset += ai_mesh->mNumVertices;
-            importer_data.IndexOffset  += index_count;
+            VertexOffset                 += ai_mesh->mNumVertices;
+            IndexOffset                  += index_count;
         }
     }
 
-    void AssimpImporter::ExtractMaterials(const aiScene* scene, ImporterData& importer_data)
+    void AssimpImporter::ExtractMaterials(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, ZEngine::Core::Containers::Array<AssetMaterial>& materials, AssetNodeHierarchy& model)
     {
         if (!scene)
         {
@@ -151,43 +189,64 @@ namespace Tetragrama::Importers
         }
 
         uint32_t number_of_materials = scene->mNumMaterials;
-        importer_data.Scene.Materials.resize(number_of_materials);
-        importer_data.Scene.MaterialFiles.resize(number_of_materials);
-        importer_data.Scene.MaterialNames.resize(number_of_materials);
+        materials.init(arena, number_of_materials, number_of_materials);
+        model.MaterialNames.init(arena, number_of_materials, number_of_materials);
 
         for (uint32_t m = 0; m < number_of_materials; ++m)
         {
             REPORT_LOG(Context, fmt::format("Extrating materials : {0}/{1}", (m + 1), number_of_materials).c_str())
 
-            aiColor4D     color;
-            aiMaterial*   ai_material            = scene->mMaterials[m];
-            aiString      mat_name               = ai_material->GetName();
-            MeshMaterial& material               = importer_data.Scene.Materials[m];
+            aiColor4D      color;
+            aiMaterial*    ai_material = scene->mMaterials[m];
+            aiString       mat_name    = ai_material->GetName();
+            AssetMaterial& material    = materials[m];
 
-            importer_data.Scene.MaterialNames[m] = (mat_name.C_Str() ? std::string(mat_name.C_Str()) : std::string("<unamed material>"));
+            material.MaterialUUID      = generator();
+
+            {
+                std::stringstream ss;
+                ss << material.MaterialUUID;
+                auto mat_uuid = ss.str();
+                material.Name.init(arena, (mat_name.C_Str() ? mat_name.C_Str() : mat_uuid.c_str()));
+                ss.clear();
+            }
+
+            model.MaterialNames[m].init(arena, material.Name.c_str());
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_AMBIENT, &color) == AI_SUCCESS)
             {
-                material.AmbientColor   = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
-                material.AmbientColor.w = glm::min(material.AmbientColor.w, 1.0f);
+                material.AmbientColor[0] = color.r;
+                material.AmbientColor[1] = color.g;
+                material.AmbientColor[2] = color.b;
+                material.AmbientColor[3] = color.a;
+                material.AmbientColor[3] = glm::min(material.AmbientColor[3], 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_DIFFUSE, &color) == AI_SUCCESS)
             {
-                material.AlbedoColor   = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
-                material.AlbedoColor.w = std::min(material.AlbedoColor.w, 1.0f);
+                material.AlbedoColor[0] = color.r;
+                material.AlbedoColor[1] = color.g;
+                material.AlbedoColor[2] = color.b;
+                material.AlbedoColor[3] = color.a;
+                material.AlbedoColor[3] = glm::min(material.AlbedoColor[3], 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_SPECULAR, &color) == AI_SUCCESS)
             {
-                material.SpecularColor   = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
-                material.SpecularColor.w = std::min(material.SpecularColor.w, 1.0f);
+                material.SpecularColor[0] = color.r;
+                material.SpecularColor[1] = color.g;
+                material.SpecularColor[2] = color.b;
+                material.SpecularColor[3] = color.a;
+                material.SpecularColor[3] = glm::min(material.SpecularColor[3], 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_EMISSIVE, &color) == AI_SUCCESS)
             {
-                material.EmissiveColor   = ZEngine::Rendering::gpuvec4{color.r, color.g, color.b, color.a};
-                material.EmissiveColor.w = std::min(material.EmissiveColor.w, 1.0f);
+                material.EmissiveColor[0] = color.r;
+                material.EmissiveColor[1] = color.g;
+                material.EmissiveColor[2] = color.b;
+                material.EmissiveColor[3] = color.a;
+                material.EmissiveColor[3] = glm::min(material.EmissiveColor[3], 1.0f);
             }
 
             float       opacity              = 1.0f;
@@ -195,27 +254,27 @@ namespace Tetragrama::Importers
 
             if (aiGetMaterialFloat(ai_material, AI_MATKEY_OPACITY, &opacity) == AI_SUCCESS)
             {
-                material.Factors.x = glm::clamp(1.f - opacity, 0.0f, 1.0f);
-                if (material.Factors.x >= (1.0f - opaqueness_threshold))
+                material.Factors[0] = glm::clamp(1.f - opacity, 0.0f, 1.0f);
+                if (material.Factors[0] >= (1.0f - opaqueness_threshold))
                 {
-                    material.Factors.x = 0.0f;
+                    material.Factors[0] = 0.0f;
                 }
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_TRANSPARENT, &color) == AI_SUCCESS)
             {
                 const float component_as_opacity = std::max(std::max(color.r, color.g), color.b);
-                material.Factors.x               = glm::clamp(component_as_opacity, 0.0f, 1.0f);
-                if (material.Factors.x >= (1.0f - opaqueness_threshold))
+                material.Factors[0]              = glm::clamp(component_as_opacity, 0.0f, 1.0f);
+                if (material.Factors[0] >= (1.0f - opaqueness_threshold))
                 {
-                    material.Factors.x = 0.0f;
+                    material.Factors[0] = 0.0f;
                 }
-                material.Factors.z = 0.5f;
+                material.Factors[2] = 0.5f;
             }
         }
     }
 
-    void AssimpImporter::ExtractTextures(const aiScene* scene, ImporterData& importer_data)
+    void AssimpImporter::ExtractTextures(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, ZEngine::Core::Containers::Array<AssetMaterial>& materials, ZEngine::Core::Containers::Array<AssetTexture>& textures)
     {
         if (!scene)
         {
@@ -231,418 +290,208 @@ namespace Tetragrama::Importers
         uint32_t         texture_flags       = 0;
 
         uint32_t         number_of_materials = scene->mNumMaterials;
+
+        textures.init(arena, number_of_materials);
+
         for (uint32_t m = 0; m < number_of_materials; ++m)
         {
             REPORT_LOG(Context, fmt::format("Extrating Material's textures:  {0}/{1} materials", (m + 1), number_of_materials).c_str())
 
-            aiMaterial* ai_material = scene->mMaterials[m];
+            aiMaterial*    ai_material = scene->mMaterials[m];
+            AssetMaterial& material    = materials[m];
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_DIFFUSE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                secure_strcpy(importer_data.Scene.MaterialFiles[m].AlbedoTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
+                AssetTexture& texture  = textures.push_use({});
+                texture.TextureUUID    = generator();
+                material.AlbedoTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
             }
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_SPECULAR, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                secure_strcpy(importer_data.Scene.MaterialFiles[m].SpecularTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
+                AssetTexture& texture    = textures.push_use({});
+                texture.TextureUUID      = generator();
+                material.SpecularTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
             }
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_EMISSIVE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                secure_strcpy(importer_data.Scene.MaterialFiles[m].EmissiveTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
+                AssetTexture& texture    = textures.push_use({});
+                texture.TextureUUID      = generator();
+                material.EmissiveTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
             }
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_NORMALS, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                secure_strcpy(importer_data.Scene.MaterialFiles[m].NormalTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
+                AssetTexture& texture  = textures.push_use({});
+                texture.TextureUUID    = generator();
+                material.NormalTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
             }
 
-            if (importer_data.Scene.Materials[m].NormalMap == 0xFFFFFFFF)
+            if (material.NormalTexUUID.is_nil())
             {
                 if (aiGetMaterialTexture(ai_material, aiTextureType_HEIGHT, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
                 {
-                    secure_strcpy(importer_data.Scene.MaterialFiles[m].NormalTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
+                    AssetTexture& texture  = textures.push_use({});
+                    texture.TextureUUID    = generator();
+                    material.NormalTexUUID = texture.TextureUUID;
+                    texture.Path.init(arena, texture_filename.C_Str());
                 }
             }
 
             if (aiGetMaterialTexture(ai_material, aiTextureType_OPACITY, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
             {
-                secure_strcpy(importer_data.Scene.MaterialFiles[m].OpacityTexture, MAX_FILE_PATH_COUNT, texture_filename.C_Str());
-                importer_data.Scene.Materials[m].Factors.z = 0.5f;
+                AssetTexture& texture   = textures.push_use({});
+                texture.TextureUUID     = generator();
+                material.OpacityTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
+                material.Factors[2] = 0.5f;
             }
         }
     }
 
-    void AssimpImporter::CreateHierachyScene(const aiScene* scene, ImporterData& importer_data)
+    void AssimpImporter::CreateHierachy(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetNodeHierarchy& AssetNode, AssetMesh& asset_mesh, ZEngine::Core::Containers::Array<AssetMaterial>& materials)
     {
         if (!scene || !(scene->mRootNode))
         {
             return;
         }
 
-        TraverseNode(scene, &(importer_data.Scene), scene->mRootNode, -1, 0);
+        AssetNode.NodeHierarchyUUID = generator();
+        AssetNode.MeshUUID          = asset_mesh.MeshUUID;
+
+        AssetNode.Hierarchies.init(arena, 10);
+        AssetNode.LocalTransforms.init(arena, 10);
+        AssetNode.GlobalTransforms.init(arena, 10);
+        AssetNode.Names.init(arena, 10);
+        AssetNode.NodeNames.init(arena, 10);
+        AssetNode.NodeMeshes.init(arena, 10);
+        AssetNode.NodeMaterials.init(arena, 10);
+
+        TraverseNode(arena, scene, scene->mRootNode, AssetNode, asset_mesh, materials, -1, 0);
     }
 
-    void AssimpImporter::TraverseNode(const aiScene* ai_scene, SceneRawData* const scene, const aiNode* node, int parent_node_id, int depth_level)
+    void AssimpImporter::TraverseNode(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* ai_scene, const aiNode* node, AssetNodeHierarchy& hierarchy, AssetMesh& asset_mesh, ZEngine::Core::Containers::Array<AssetMaterial>& materials, int parent_node_id, int depth_level)
     {
-        auto node_id              = scene->AddNode(parent_node_id, depth_level);
-        scene->NodeNames[node_id] = scene->Names.size();
-        scene->Names.push_back(node->mName.C_Str() ? std::string(node->mName.C_Str()) : std::string{"<unamed node>"});
+        auto node_id                 = AddNode(hierarchy, parent_node_id, depth_level);
+        hierarchy.NodeNames[node_id] = hierarchy.Names.size();
+        auto& name                   = hierarchy.Names.push_use({});
+        name.init(arena, node->mName.C_Str() ? node->mName.C_Str() : "<unamed node>");
 
-        scene->GlobalTransforms[node_id] = glm::mat4(1.0f);
-        scene->LocalTransforms[node_id]  = ConvertToMat4(node->mTransformation);
+        hierarchy.GlobalTransforms[node_id] = glm::mat4(1.0f);
+        hierarchy.LocalTransforms[node_id]  = ConvertToMat4(node->mTransformation);
 
         for (uint32_t i = 0; i < node->mNumMeshes; ++i)
         {
-            auto     sub_node_id          = scene->AddNode(node_id, depth_level + 1);
-            uint32_t mesh                 = node->mMeshes[i];
-            aiString mesh_name            = ai_scene->mMeshes[mesh]->mName;
+            auto     sub_node_id             = AddNode(hierarchy, node_id, depth_level + 1);
+            uint32_t mesh                    = node->mMeshes[i];
+            uint32_t material_id             = ai_scene->mMeshes[mesh]->mMaterialIndex;
 
-            scene->NodeNames[sub_node_id] = scene->Names.size();
-            scene->Names.push_back(mesh_name.C_Str() ? std::string(mesh_name.C_Str()) : std::string{"<unamed node>"});
+            hierarchy.NodeNames[sub_node_id] = hierarchy.Names.size();
+            auto&    n                       = hierarchy.Names.push_use({});
+            aiString mesh_name               = ai_scene->mMeshes[mesh]->mName;
+            n.init(arena, mesh_name.C_Str() ? mesh_name.C_Str() : "<unamed node>");
 
-            scene->NodeMeshes[sub_node_id]       = mesh;
-            scene->NodeMaterials[sub_node_id]    = ai_scene->mMeshes[mesh]->mMaterialIndex;
-            scene->GlobalTransforms[sub_node_id] = glm::mat4(1.0f);
-            scene->LocalTransforms[sub_node_id]  = glm::mat4(1.0f);
+            hierarchy.NodeMeshes[sub_node_id]       = mesh;
+            hierarchy.NodeMaterials[sub_node_id]    = material_id;
+            hierarchy.GlobalTransforms[sub_node_id] = glm::mat4(1.0f);
+            hierarchy.LocalTransforms[sub_node_id]  = glm::mat4(1.0f);
+
+            auto& asset_mat                         = materials[material_id];
+            auto& sub_mesh                          = asset_mesh.SubMeshes[mesh];
+            sub_mesh.MaterialUUID                   = asset_mat.MaterialUUID;
         }
 
         for (uint32_t child = 0; child < node->mNumChildren; ++child)
         {
-            TraverseNode(ai_scene, scene, node->mChildren[child], node_id, (depth_level + 1));
+            TraverseNode(arena, ai_scene, node->mChildren[child], hierarchy, asset_mesh, materials, node_id, (depth_level + 1));
         }
     }
 
-    void AssimpImporter::SerializeImporterData(ZEngine::Core::Memory::ArenaAllocator* arena, ImporterData& importer_data, const ImportConfiguration& config)
+    void AssimpImporter::CopyTextureFiles(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Core::Containers::Array<AssetTexture>& textures, const ImportConfiguration& config)
     {
-        importer_data.Name = config.AssetFilename;
+        /*
+         * Normalize file naming
+         */
+        auto dst_dir               = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetName.c_str());
 
-        if (!config.OutputMeshFilePath.empty())
-        {
-            std::string   output_mesh_file = fmt::format("{}.zemeshes", config.AssetFilename.c_str());
-            std::string   fullname_path    = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputMeshFilePath.c_str(), PLATFORM_OS_BACKSLASH, output_mesh_file.c_str());
-            std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
+        auto CreateBaseDirectoryFn = [](std::string_view filename) -> void {
+            auto            base_dir = fs::absolute(filename).parent_path();
 
-            if (out.is_open())
+            std::error_code err      = {};
+            if (!fs::exists(base_dir))
             {
-                out.seekp(std::ios::beg);
-
-                size_t mesh_count = importer_data.Scene.Meshes.size();
-                out.write(reinterpret_cast<const char*>(&mesh_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.Meshes.data()), sizeof(ZEngine::Rendering::Meshes::MeshVNext) * mesh_count);
-
-                size_t indices_count = importer_data.Scene.Indices.size();
-                out.write(reinterpret_cast<const char*>(&indices_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.Indices.data()), sizeof(uint32_t) * indices_count);
-
-                size_t vertice_count = importer_data.Scene.Vertices.size();
-                out.write(reinterpret_cast<const char*>(&vertice_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.Vertices.data()), sizeof(float) * vertice_count);
+                fs::create_directories(base_dir, err);
             }
-            out.close();
+        };
 
-            importer_data.SerializedMeshesPath.init(arena, output_mesh_file.c_str());
+        auto          scratch       = ZGetScratch(arena);
+        Array<String> src_tex_files = {};
+        Array<String> dst_tex_files = {};
+        src_tex_files.init(scratch.Arena, textures.size());
+        dst_tex_files.init(scratch.Arena, textures.size());
+
+        for (auto& tex : textures)
+        {
+            if (tex.Path.empty())
+            {
+                continue;
+            }
+
+            auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+            auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+
+            CreateBaseDirectoryFn(dst_file);
+
+            auto& sf = src_tex_files.push_use({});
+            auto& df = dst_tex_files.push_use({});
+
+            sf.init(scratch.Arena, src_file.c_str());
+            df.init(scratch.Arena, dst_file.c_str());
         }
+        /*
+         * Texture files processing
+         *  (1) Ensuring Scene sub-dir is created
+         *  (2) Copying files to destination
+         */
 
-        if (!config.OutputMaterialsPath.empty() && !config.OutputTextureFilesPath.empty())
+        ZENGINE_VALIDATE_ASSERT(src_tex_files.size() == dst_tex_files.size(), "source files count can't be diff of destination files count")
+        for (int i = 0; i < src_tex_files.size(); ++i)
         {
-            /*
-             * Normalize file naming
-             */
-            auto dst_dir            = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetFilename.c_str());
+            auto          src = fs::absolute(src_tex_files[i].c_str());
+            auto          dst = fs::absolute(dst_tex_files[i].c_str());
 
-            auto create_base_dir_fn = [](std::string_view filename) -> void {
-                auto            base_dir = fs::absolute(filename).parent_path();
+            std::ifstream in(src.c_str(), std::ios::binary);
+            std::ofstream out(dst.c_str(), std::ios::binary);
 
-                std::error_code err      = {};
-                if (!fs::exists(base_dir))
-                {
-                    fs::create_directories(base_dir, err);
-                }
-            };
-
-            auto          scratch       = ZGetScratch(arena);
-            Array<String> src_tex_files = {};
-            Array<String> dst_tex_files = {};
-            src_tex_files.init(scratch.Arena, 10);
-            dst_tex_files.init(scratch.Arena, 10);
-
-            for (auto& mat_file : importer_data.Scene.MaterialFiles)
+            if (!in.is_open() || !out.is_open())
             {
-                if (!std::string_view(mat_file.AlbedoTexture).empty())
-                {
-                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.AlbedoTexture);
-                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.AlbedoTexture);
-                    create_base_dir_fn(dst_file);
-
-                    ZEngine::Helpers::secure_strcpy(mat_file.AlbedoTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
-
-                    auto& sf = src_tex_files.push_use({});
-                    auto& df = dst_tex_files.push_use({});
-
-                    sf.init(scratch.Arena, src_file.c_str());
-                    df.init(scratch.Arena, dst_file.c_str());
-                }
-
-                if (!std::string_view(mat_file.EmissiveTexture).empty())
-                {
-                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.EmissiveTexture);
-                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.EmissiveTexture);
-
-                    create_base_dir_fn(dst_file);
-
-                    ZEngine::Helpers::secure_strcpy(mat_file.EmissiveTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
-
-                    auto& sf = src_tex_files.push_use({});
-                    auto& df = dst_tex_files.push_use({});
-
-                    sf.init(scratch.Arena, src_file.c_str());
-                    df.init(scratch.Arena, dst_file.c_str());
-                }
-
-                if (!std::string_view(mat_file.NormalTexture).empty())
-                {
-                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.NormalTexture);
-                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.NormalTexture);
-
-                    create_base_dir_fn(dst_file);
-                    ZEngine::Helpers::secure_strcpy(mat_file.NormalTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
-
-                    auto& sf = src_tex_files.push_use({});
-                    auto& df = dst_tex_files.push_use({});
-
-                    sf.init(scratch.Arena, src_file.c_str());
-                    df.init(scratch.Arena, dst_file.c_str());
-                }
-
-                if (!std::string_view(mat_file.OpacityTexture).empty())
-                {
-                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.OpacityTexture);
-                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.OpacityTexture);
-
-                    create_base_dir_fn(dst_file);
-
-                    ZEngine::Helpers::secure_strcpy(mat_file.OpacityTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
-
-                    auto& sf = src_tex_files.push_use({});
-                    auto& df = dst_tex_files.push_use({});
-
-                    sf.init(scratch.Arena, src_file.c_str());
-                    df.init(scratch.Arena, dst_file.c_str());
-                }
-
-                if (!std::string_view(mat_file.SpecularTexture).empty())
-                {
-                    auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, mat_file.SpecularTexture);
-                    auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, mat_file.SpecularTexture);
-
-                    create_base_dir_fn(dst_file);
-
-                    ZEngine::Helpers::secure_strcpy(mat_file.SpecularTexture, MAX_FILE_PATH_COUNT, dst_file.c_str());
-
-                    auto& sf = src_tex_files.push_use({});
-                    auto& df = dst_tex_files.push_use({});
-
-                    sf.init(scratch.Arena, src_file.c_str());
-                    df.init(scratch.Arena, dst_file.c_str());
-                }
-            }
-            /*
-             * Texture files processing
-             *  (1) Ensuring Scene sub-dir is created
-             *  (2) Copying files to destination
-             */
-
-            ZENGINE_VALIDATE_ASSERT(src_tex_files.size() == dst_tex_files.size(), "source files count can't be diff of destination files count")
-            for (int i = 0; i < src_tex_files.size(); ++i)
-            {
-                auto          src = fs::absolute(src_tex_files[i].c_str());
-                auto          dst = fs::absolute(dst_tex_files[i].c_str());
-
-                std::ifstream in(src.c_str(), std::ios::binary);
-                std::ofstream out(dst.c_str(), std::ios::binary);
-
-                if (!in.is_open() || !out.is_open())
-                {
-                    in.close();
-                    out.close();
-                    continue;
-                }
-
-                out << in.rdbuf();
-
                 in.close();
                 out.close();
+                continue;
             }
 
-            ZReleaseScratch(scratch);
+            out << in.rdbuf();
 
-            std::string   output_material_file = fmt::format("{}.zematerials", config.AssetFilename.c_str());
-            std::string   fullname_path        = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputMaterialsPath.c_str(), PLATFORM_OS_BACKSLASH, output_material_file.c_str());
-            std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
-
-            if (out.is_open())
-            {
-                out.seekp(std::ios::beg);
-
-                size_t material_total_count = importer_data.Scene.Materials.size();
-                out.write(reinterpret_cast<const char*>(&material_total_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.Materials.data()), sizeof(ZEngine::Rendering::Meshes::MeshMaterial) * material_total_count);
-
-                size_t mat_file_count = importer_data.Scene.MaterialFiles.size();
-                out.write(reinterpret_cast<const char*>(&mat_file_count), sizeof(size_t));
-                for (auto& mat_file : importer_data.Scene.MaterialFiles)
-                {
-                    Tetragrama::Helpers::SerializeStringData(out, mat_file.AlbedoTexture);
-                    Tetragrama::Helpers::SerializeStringData(out, mat_file.EmissiveTexture);
-                    Tetragrama::Helpers::SerializeStringData(out, mat_file.NormalTexture);
-                    Tetragrama::Helpers::SerializeStringData(out, mat_file.OpacityTexture);
-                    Tetragrama::Helpers::SerializeStringData(out, mat_file.SpecularTexture);
-                }
-            }
+            in.close();
             out.close();
-
-            importer_data.SerializedMaterialsPath.init(arena, output_material_file.c_str());
         }
 
-        if (!config.OutputModelFilePath.empty())
+        ZReleaseScratch(scratch);
+
+        /*
+         * Update texture path
+         */
+        for (auto& tex : textures)
         {
-            std::string   output_model_file = fmt::format("{}.zemodel", config.AssetFilename.c_str());
-            std::string   fullname_path     = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputModelFilePath.c_str(), PLATFORM_OS_BACKSLASH, output_model_file.c_str());
-            std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
-
-            if (out.is_open())
-            {
-                out.seekp(std::ios::beg);
-
-                size_t local_transform_count = importer_data.Scene.LocalTransforms.size();
-                out.write(reinterpret_cast<const char*>(&local_transform_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.LocalTransforms.data()), sizeof(glm::mat4) * local_transform_count);
-
-                size_t gobal_transform_count = importer_data.Scene.GlobalTransforms.size();
-                out.write(reinterpret_cast<const char*>(&gobal_transform_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.GlobalTransforms.data()), sizeof(glm::mat4) * gobal_transform_count);
-
-                size_t node_hierarchy_count = importer_data.Scene.NodeHierarchies.size();
-                out.write(reinterpret_cast<const char*>(&node_hierarchy_count), sizeof(size_t));
-                out.write(reinterpret_cast<const char*>(importer_data.Scene.NodeHierarchies.data()), sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
-
-                // Todo Kernel : This should be part of Move Engine to Arena
-                //
-                // Tetragrama::Helpers::SerializeStringArrayData(out, importer_data.Scene.Names);
-                // Tetragrama::Helpers::SerializeStringArrayData(out, importer_data.Scene.MaterialNames);
-                Tetragrama::Helpers::SerializeMapData(out, importer_data.Scene.NodeNames);
-                Tetragrama::Helpers::SerializeMapData(out, importer_data.Scene.NodeMeshes);
-                Tetragrama::Helpers::SerializeMapData(out, importer_data.Scene.NodeMaterials);
-            }
-
-            out.close();
-
-            importer_data.SerializedModelPath.init(arena, output_model_file.c_str());
+            auto new_path = fmt::format("{0}{1}{2}{3}{4}", config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetName.c_str(), PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+            tex.Path.clear();
+            tex.Path.append(new_path.c_str());
         }
-    }
-
-    ImporterData AssimpImporter::DeserializeImporterData(ZEngine::Core::Memory::ArenaAllocator* arena, std::string_view model_path, std::string_view mesh_path, std::string_view material_path)
-    {
-        ImporterData deserialized_data = {};
-
-        if (!mesh_path.empty())
-        {
-            std::ifstream in(mesh_path.data(), std::ios::binary);
-
-            if (in.is_open())
-            {
-                in.seekg(0, std::ios::beg);
-
-                size_t mesh_count;
-                in.read(reinterpret_cast<char*>(&mesh_count), sizeof(size_t));
-                deserialized_data.Scene.Meshes.resize(mesh_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.Meshes.data()), sizeof(ZEngine::Rendering::Meshes::MeshVNext) * mesh_count);
-
-                size_t indices_count;
-                in.read(reinterpret_cast<char*>(&indices_count), sizeof(size_t));
-                deserialized_data.Scene.Indices.resize(indices_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.Indices.data()), sizeof(uint32_t) * indices_count);
-
-                size_t vertice_count;
-                in.read(reinterpret_cast<char*>(&vertice_count), sizeof(size_t));
-                deserialized_data.Scene.Vertices.resize(vertice_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.Vertices.data()), sizeof(float) * vertice_count);
-            }
-            in.close();
-        }
-
-        if (!material_path.empty())
-        {
-            std::ifstream in(material_path.data(), std::ios::binary);
-
-            if (in.is_open())
-            {
-                in.seekg(0, std::ios::beg);
-
-                size_t material_total_count;
-                in.read(reinterpret_cast<char*>(&material_total_count), sizeof(size_t));
-                deserialized_data.Scene.Materials.resize(material_total_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.Materials.data()), sizeof(ZEngine::Rendering::Meshes::MeshMaterial) * material_total_count);
-
-                size_t mat_file_count;
-                in.read(reinterpret_cast<char*>(&mat_file_count), sizeof(size_t));
-                deserialized_data.Scene.MaterialFiles.resize(mat_file_count);
-
-                Array<String> textures = {};
-                textures.init(arena, 5, 5);
-                for (auto& mat_file : deserialized_data.Scene.MaterialFiles)
-                {
-                    Tetragrama::Helpers::DeserializeStringData(arena, in, textures[0]);
-                    Tetragrama::Helpers::DeserializeStringData(arena, in, textures[1]);
-                    Tetragrama::Helpers::DeserializeStringData(arena, in, textures[2]);
-                    Tetragrama::Helpers::DeserializeStringData(arena, in, textures[3]);
-                    Tetragrama::Helpers::DeserializeStringData(arena, in, textures[4]);
-
-                    ZEngine::Helpers::secure_strcpy(mat_file.AlbedoTexture, MAX_FILE_PATH_COUNT, textures[0].c_str());
-                    ZEngine::Helpers::secure_strcpy(mat_file.EmissiveTexture, MAX_FILE_PATH_COUNT, textures[1].c_str());
-                    ZEngine::Helpers::secure_strcpy(mat_file.NormalTexture, MAX_FILE_PATH_COUNT, textures[2].c_str());
-                    ZEngine::Helpers::secure_strcpy(mat_file.OpacityTexture, MAX_FILE_PATH_COUNT, textures[3].c_str());
-                    ZEngine::Helpers::secure_strcpy(mat_file.SpecularTexture, MAX_FILE_PATH_COUNT, textures[4].c_str());
-                }
-            }
-            in.close();
-        }
-
-        if (!model_path.empty())
-        {
-            std::ifstream in(model_path.data(), std::ios::binary);
-            if (in.is_open())
-            {
-                in.seekg(0, std::ios::beg);
-
-                size_t local_transform_count;
-                in.read(reinterpret_cast<char*>(&local_transform_count), sizeof(size_t));
-                deserialized_data.Scene.LocalTransforms.resize(local_transform_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.LocalTransforms.data()), sizeof(glm::mat4) * local_transform_count);
-
-                size_t gobal_transform_count;
-                in.read(reinterpret_cast<char*>(&gobal_transform_count), sizeof(size_t));
-                deserialized_data.Scene.GlobalTransforms.resize(gobal_transform_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.GlobalTransforms.data()), sizeof(glm::mat4) * gobal_transform_count);
-
-                size_t node_hierarchy_count;
-                in.read(reinterpret_cast<char*>(&node_hierarchy_count), sizeof(size_t));
-                deserialized_data.Scene.NodeHierarchies.resize(node_hierarchy_count);
-                in.read(reinterpret_cast<char*>(deserialized_data.Scene.NodeHierarchies.data()), sizeof(ZEngine::Rendering::Scenes::SceneNodeHierarchy) * node_hierarchy_count);
-
-                // Todo Kernel : This should be part of Move Engine to Arena
-                //
-                // DeserializeStringArrayData(arena, in, deserialized_data.Scene.Names);
-                // DeserializeStringArrayData(arena, in, deserialized_data.Scene.MaterialNames);
-                DeserializeMapData(arena, in, deserialized_data.Scene.NodeNames);
-                DeserializeMapData(arena, in, deserialized_data.Scene.NodeMeshes);
-                DeserializeMapData(arena, in, deserialized_data.Scene.NodeMaterials);
-            }
-            in.close();
-        }
-
-        return deserialized_data;
     }
 
     glm::mat4 AssimpImporter::ConvertToMat4(const aiMatrix4x4& m)

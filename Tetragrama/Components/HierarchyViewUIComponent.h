@@ -22,12 +22,11 @@ namespace Tetragrama::Components
 
         void         RenderTreeNodes();
         void         RenderGuizmo();
-        void         RenderSceneNodeTree(int node_identifier);
+        void         RenderNode(EditorScene* scene, int root_id, std::atomic_int& selected);
 
     private:
         ImGuiTreeNodeFlags m_node_flag;
         bool               m_is_node_opened{false};
-        int                m_selected_node_identifier{-1};
         int                m_gizmo_operation{-1};
     };
 } // namespace Tetragrama::Components

@@ -1,4 +1,5 @@
 #pragma once
+#include <Helpers/NodeHierarchyHelper.h>
 #include <UIComponent.h>
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/HashMap.h>
@@ -14,14 +15,6 @@ namespace Tetragrama::Components
 
 namespace Tetragrama::Layers
 {
-    struct NodeHierarchy
-    {
-        int Parent       = -1;
-        int FirstChild   = -1;
-        int RightSibling = -1;
-        int DepthLevel   = -1;
-    };
-
     class ImguiLayer : public ZEngine::Windows::Layers::Layer, public ZEngine::Windows::Inputs::IKeyboardEventCallback, public ZEngine::Windows::Inputs::IMouseEventCallback, public ZEngine::Windows::Inputs::ITextInputEventCallback, public ZEngine::Windows::Inputs::IWindowEventCallback
     {
 
@@ -29,7 +22,7 @@ namespace Tetragrama::Layers
         ImguiLayer(const char* name = "ImGUI Layer") : Layer(name) {}
         virtual ~ImguiLayer();
 
-        ZEngine::Core::Containers::Array<NodeHierarchy>                                NodeHierarchies  = {};
+        ZEngine::Core::Containers::Array<Helpers::NodeHierarchy>                       NodeHierarchies  = {};
         ZEngine::Core::Containers::Array<uint32_t>                                     NodeToRender     = {};
         ZEngine::Core::Containers::HashMap<uint32_t, ZRawPtr(Components::UIComponent)> NodeUIComponents = {};
         ZEngine::Core::Containers::HashMap<ZEngine::Windows::Inputs::GlfwKeyCode, int> KeyEntries       = {};

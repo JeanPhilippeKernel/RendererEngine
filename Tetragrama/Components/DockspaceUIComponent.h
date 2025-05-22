@@ -13,39 +13,43 @@ namespace Tetragrama::Components
         DockspaceUIComponent();
         virtual ~DockspaceUIComponent();
 
-        void              Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Dockspace", bool visibility = true, bool closed = false) override;
+        ZEngine::Core::Memory::ArenaAllocator LocalArena = {};
 
-        void              Update(ZEngine::Core::TimeStep dt) override;
-        virtual void      Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
+        void                                  Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Dockspace", bool visibility = true, bool closed = false) override;
 
-        void              RenderMenuBar();
-        void              RenderSaveScene();
-        void              RenderSaveSceneAs();
-        void              ResetSaveAsBuffers();
-        void              RenderExitPopup();
+        void                                  Update(ZEngine::Core::TimeStep dt) override;
+        virtual void                          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
+
+        void                                  RenderMenuBar();
+        void                                  ResetSaveAsBuffers();
+        void                                  RenderExitPopup();
 
         /*
          * Model Importer Funcs
          */
-        void              RenderImporter();
-        void              ResetImporterBuffers();
-        static void       OnAssetImporterComplete(void* const, Importers::ImporterData&&);
-        static void       OnAssetImporterProgress(void* const, float value);
-        static void       OnAssetImporterError(void* const, std::string_view);
-        static void       OnAssetImporterLog(void* const, std::string_view);
+        void                                  RenderImporter();
+        void                                  ResetImporterBuffers();
+        static void                           OnAssetImporterComplete(void* const context, ZEngine::Core::Containers::ArrayView<Importers::AssetImporterOutput> result);
+        static void                           OnAssetImporterProgress(void* const, float value);
+        static void                           OnAssetImporterError(void* const, std::string_view);
+        static void                           OnAssetImporterLog(void* const, std::string_view);
 
         /*
          * Editor Scene Funcs
          */
-        static void       OnEditorSceneSerializerProgress(void* const, float value);
-        static void       OnEditorSceneSerializerComplete(void* const);
-        static void       OnEditorSceneSerializerDeserializeComplete(void* const, EditorScene&&);
-        static void       OnEditorSceneSerializerError(void* const, std::string_view);
+        void                                  RenderLoadScene();
+        void                                  RenderSaveScene();
+        void                                  RenderSaveSceneAs();
+        static void                           OnEditorSceneSerializerProgress(void* const, float value);
+        static void                           OnEditorSceneSerializerComplete(void* const);
+        static void                           OnEditorSceneSerializerDeserializeComplete(void* const, EditorScene&&);
+        static void                           OnEditorSceneSerializerError(void* const, std::string_view);
+        static void                           OnEditorSceneSerializerLog(void* const, std::string_view);
 
-        std::future<void> OnNewSceneAsync();
-        std::future<void> OnOpenSceneAsync();
-        std::future<void> OnImportAssetAsync(std::string_view filename);
-        std::future<void> OnExitAsync();
+        std::future<void>                     OnNewSceneAsync();
+        std::future<void>                     OnOpenSceneAsync();
+        std::future<void>                     OnImportAssetAsync(const char* filename);
+        std::future<void>                     OnExitAsync();
 
     private:
         static ImVec4      s_asset_importer_report_msg_color;

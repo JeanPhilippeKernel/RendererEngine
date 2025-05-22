@@ -12,15 +12,19 @@ using namespace ZEngine::Helpers;
 using namespace Tetragrama::Layers;
 using namespace Tetragrama::Messengers;
 using namespace Tetragrama::Controllers;
+using namespace Tetragrama::Managers;
 
 namespace Tetragrama
 {
     void Editor::Initialize(ArenaAllocator* arena, const char* file)
     {
+        AssetManager::Initialize(arena);
+
         Context = ZPushStruct(arena, EditorContext);
 
-        arena->CreateSubArena(ZMega(50), &(Context->Arena));
+        arena->CreateSubArena(ZMega(800), &(Context->Arena));
 
+        Context->AssetManagerPtr     = AssetManager::Instance();
         Context->ConfigurationPtr    = ZPushStructCtor(&(Context->Arena), EditorConfiguration);
         Context->CameraControllerPtr = ZPushStructCtor(&(Context->Arena), EditorCameraController);
         UILayer                      = ZPushStructCtor(&(Context->Arena), ImguiLayer);
@@ -28,7 +32,7 @@ namespace Tetragrama
 
         Context->CurrentScenePtr     = ZPushStructCtor(&(Context->Arena), EditorScene);
 
-        if (Helpers::secure_strlen(file))
+        if (ZEngine::Helpers::secure_strlen(file))
         {
             Context->ConfigurationPtr->ReadConfig(arena, file);
 
@@ -59,61 +63,14 @@ namespace Tetragrama
 
     void Editor::Dispose()
     {
-        ZEngine::Engine::Dispose();
+        Engine::Dispose();
+        AssetManager::Shutdown();
     }
 
     void Editor::Run()
     {
-        ZEngine::Engine::Run();
-    }
-
-    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* name)
-    {
-        Name                         = name;
-
-        RenderScene                  = ZPushStructCtor(arena, ZEngine::Rendering::Scenes::GraphicScene);
-        RenderScene->IsDrawDataDirty = true;
-
-        MeshFiles.init(arena, 1);
-        ModelFiles.init(arena, 1);
-        MaterialFiles.init(arena, 1);
-        Hashes.init(arena, 1);
-    }
-
-    void EditorScene::Push(ZEngine::Core::Memory::ArenaAllocator* arena, const char* mesh, const char* model, const char* material)
-    {
-        uint16_t mesh_file_id     = MeshFiles.size();
-        uint16_t model_file_id    = ModelFiles.size();
-        uint16_t material_file_id = MaterialFiles.size();
-
-        String   mesh_file        = {};
-        String   model_file       = {};
-        String   mat_file         = {};
-
-        mesh_file.init(arena, mesh);
-        model_file.init(arena, model);
-        mat_file.init(arena, material);
-
-        MeshFiles.push(mesh_file);
-        ModelFiles.push(model_file);
-        MaterialFiles.push(mat_file);
-
-        std::stringstream ss;
-        ss << mesh_file_id << ":" << model_file_id << ":" << material_file_id;
-        auto   hash     = ss.str();
-
-        String hash_str = {};
-        hash_str.init(arena, hash.c_str());
-        Hashes.push(hash_str);
-
-        Data[hash_str.c_str()] = {.MeshFileIndex = mesh_file_id, .ModelPathIndex = model_file_id, .MaterialPathIndex = material_file_id};
-
-        m_has_pending_change   = true;
-    }
-
-    bool EditorScene::HasPendingChange() const
-    {
-        return m_has_pending_change;
+        AssetManager::Run();
+        Engine::Run();
     }
 
     void EditorConfiguration::ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file)

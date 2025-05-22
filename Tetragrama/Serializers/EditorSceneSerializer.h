@@ -7,8 +7,6 @@ namespace Tetragrama::Serializers
 {
     struct EditorSceneSerializer : public Serializer<EditorScene>
     {
-        ZRawPtr(Importers::IAssetImporter) AssetImporter = nullptr;
-
         virtual void Serialize(ZRawPtr(EditorScene) const data) override;
         virtual void Deserialize(std::string_view filename) override;
     };

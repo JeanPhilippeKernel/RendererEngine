@@ -1,6 +1,7 @@
 #pragma once
 #include <Allocator.h>
 #include <Array.h>
+#include <Helpers/MemoryOperations.h>
 #include <rapidhash.h>
 
 using namespace ZEngine::Core::Memory;
@@ -256,4 +257,9 @@ namespace ZEngine::Core::Containers
         Array<Entry>            m_entries;
         size_type               m_size = 0;
     };
+
+    inline uint64_t hash_compute(const char* str)
+    {
+        return rapidhash(str, Helpers::secure_strlen(str));
+    }
 } // namespace ZEngine::Core::Containers

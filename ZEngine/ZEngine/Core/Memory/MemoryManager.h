@@ -5,7 +5,7 @@ namespace ZEngine::Core::Memory
 {
     struct MemoryConfiguration
     {
-        size_t DefaultSize = ZGiga(2ull);
+        uint64_t DefaultSize = ZGiga(2ull);
     };
 
     struct MemoryManager

@@ -14,6 +14,14 @@
         }                                    \
     }
 
+#define REPORT_LOG(ctx, msg)          \
+    {                                 \
+        if (m_log_callback)           \
+        {                             \
+            m_log_callback(ctx, msg); \
+        }                             \
+    }
+
 namespace Tetragrama::Serializers
 {
     template <typename TSerializerData>
@@ -79,6 +87,11 @@ namespace Tetragrama::Serializers
         virtual bool IsSerializing()
         {
             return m_is_serializing.load(std::memory_order_acquire);
+        }
+
+        virtual bool IsDeserializing()
+        {
+            return m_is_deserializing.load(std::memory_order_acquire);
         }
 
         virtual void Serialize(ZRawPtr(TSerializerData) const data) = 0;

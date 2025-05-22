@@ -45,6 +45,7 @@ target_include_directories (${TARGET_NAME}
         ./Helpers
         ./Importers
         ./Serializers
+        ./Managers
 		${ENLISTMENT_ROOT}/ZEngine
 )
 

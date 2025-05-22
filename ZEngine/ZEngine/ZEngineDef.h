@@ -50,6 +50,7 @@
 #define SINGLE_ARG(...)     __VA_ARGS__
 
 #define MAX_FILE_PATH_COUNT 256
+#define DEFAULT_STR_BUFFER  256
 
 #define ZRawPtr(X)          X*
 
@@ -79,3 +80,17 @@
 #define ZAlloc(allocator, size, alignment)                     ((allocator)->Allocate((size), (alignment)))
 #define ZResize(allocator, ptr, old_size, new_size, alignment) ((allocator)->Resize((ptr), (old_size), (new_size), (alignment)))
 #define ZAlignof(type)                                         ((alignof(type) < DEFAULT_ALIGNMENT) ? DEFAULT_ALIGNMENT : alignof(type))
+
+/*
+ *
+ */
+#define MAKE_MAGIC(a, b, c, d)                                 ((uint32_t) (a) << 24 | (uint32_t) (b) << 16 | (uint32_t) (c) << 8 | (uint32_t) (d))
+#define MAKE_VERSION(major, minor, patch)                      (((uint32_t) (major) << 16) | ((uint32_t) (minor) << 8) | ((uint32_t) (patch)))
+
+#define ZEASSET_MAGIC                                          MAKE_MAGIC('Z', 'A', 'S', 'T')
+#define ZEMESH_MAGIC                                           MAKE_MAGIC('Z', 'M', 'S', 'H')
+#define ZEMATERIAL_MAGIC                                       MAKE_MAGIC('Z', 'M', 'A', 'T')
+#define ZETEXTURES_MAGIC                                       MAKE_MAGIC('Z', 'T', 'E', 'X')
+#define ZESCENE_MAGIC                                          MAKE_MAGIC('Z', 'S', 'C', 'N')
+#define ASSET_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
+#define SCENE_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
