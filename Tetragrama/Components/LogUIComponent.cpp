@@ -22,7 +22,7 @@ namespace Tetragrama::Components
     {
         UIComponent::Initialize(parent, name, visibility, closed);
 
-        parent->LayerArena.CreateSubArena(ZMega(1), &m_local_arena);
+        parent->LocalArena.CreateSubArena(ZMega(1), &m_local_arena);
         m_log_queue.init(&(m_local_arena), m_maxCount, m_maxCount);
         m_handler_cookie = Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
     }

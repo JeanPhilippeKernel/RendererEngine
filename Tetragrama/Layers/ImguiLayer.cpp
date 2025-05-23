@@ -28,12 +28,13 @@ namespace Tetragrama::Layers
 
     void ImguiLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(200), &LayerArena);
+        Arena = arena;
+        arena->CreateSubArena(ZMega(10), &LocalArena);
 
-        NodeHierarchies.init(&LayerArena, 10, 0);
-        NodeUIComponents.init(&LayerArena, 10, 0);
-        NodeToRender.init(&LayerArena, 10);
-        KeyEntries.init(&LayerArena, 10, 0);
+        NodeHierarchies.init(arena, 10, 0);
+        NodeUIComponents.init(arena, 10, 0);
+        NodeToRender.init(arena, 10);
+        KeyEntries.init(arena, 10, 0);
 
         KeyEntries[ZENGINE_KEY_SPACE]        = ImGuiKey_Space;
         KeyEntries[ZENGINE_KEY_BACKSPACE]    = ImGuiKey_Backspace;
@@ -47,14 +48,14 @@ namespace Tetragrama::Layers
         KeyEntries[ZENGINE_KEY_MOUSE_RIGHT]  = ImGuiKey_MouseRight;
         KeyEntries[ZENGINE_KEY_MOUSE_MIDDLE] = ImGuiKey_MouseMiddle;
 
-        auto dockspace_cmp                   = ZPushStructCtor(&LayerArena, Components::DockspaceUIComponent);
-        auto scene_cmp                       = ZPushStructCtor(&LayerArena, Components::SceneViewportUIComponent);
-        auto editor_log_cmp                  = ZPushStructCtor(&LayerArena, Components::LogUIComponent);
-        auto project_view_cmp                = ZPushStructCtor(&LayerArena, Components::ProjectViewUIComponent);
-        auto inspector_view_cmp              = ZPushStructCtor(&LayerArena, Components::InspectorViewUIComponent);
-        auto hierarchy_view_cmp              = ZPushStructCtor(&LayerArena, Components::HierarchyViewUIComponent);
+        auto dockspace_cmp                   = ZPushStructCtor(arena, Components::DockspaceUIComponent);
+        auto scene_cmp                       = ZPushStructCtor(arena, Components::SceneViewportUIComponent);
+        auto editor_log_cmp                  = ZPushStructCtor(arena, Components::LogUIComponent);
+        auto project_view_cmp                = ZPushStructCtor(arena, Components::ProjectViewUIComponent);
+        auto inspector_view_cmp              = ZPushStructCtor(arena, Components::InspectorViewUIComponent);
+        auto hierarchy_view_cmp              = ZPushStructCtor(arena, Components::HierarchyViewUIComponent);
 
-        auto demo_cmp                        = ZPushStructCtor(&LayerArena, Components::DemoUIComponent);
+        auto demo_cmp                        = ZPushStructCtor(arena, Components::DemoUIComponent);
 
         dockspace_cmp->Initialize(this);
         scene_cmp->Initialize(this);
@@ -64,7 +65,7 @@ namespace Tetragrama::Layers
         hierarchy_view_cmp->Initialize(this);
         demo_cmp->Initialize(this);
 
-        dockspace_cmp->Children.init(&LayerArena, 8);
+        dockspace_cmp->Children.init(arena, 8);
         dockspace_cmp->Children.push(scene_cmp);
         dockspace_cmp->Children.push(editor_log_cmp);
         dockspace_cmp->Children.push(demo_cmp);
@@ -131,7 +132,7 @@ namespace Tetragrama::Layers
             NodeToRender.clear();
         }
 
-        auto       temp_arena = ZGetScratch(&LayerArena);
+        auto       temp_arena = ZGetScratch(&LocalArena);
 
         Array<int> roots      = {};
         Array<int> children   = {};

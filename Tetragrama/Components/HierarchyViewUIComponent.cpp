@@ -275,7 +275,7 @@ namespace Tetragrama::Components
                 stack.push({-1, 0}); // Marker for TreePop
 
                 // Push children in reverse order
-                auto                                  scratch = ZGetScratch(&ParentLayer->LayerArena);
+                auto                                  scratch = ZGetScratch(&ParentLayer->LocalArena);
                 ZEngine::Core::Containers::Array<int> children;
                 children.init(scratch.Arena, 5);
 

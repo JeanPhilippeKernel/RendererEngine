@@ -20,14 +20,15 @@ namespace ZEngine::Windows::Layers
             Name = name;
         }
 
-        virtual ~Layer()                                                                      = default;
+        virtual ~Layer()                                                                       = default;
 
-        virtual void                          Initialize(Core::Memory::ArenaAllocator* arena) = 0;
-        virtual void                          Deinitialize() {};
+        virtual void                           Initialize(Core::Memory::ArenaAllocator* arena) = 0;
+        virtual void                           Deinitialize() {};
 
-        ZEngine::Core::Memory::ArenaAllocator LayerArena    = {};
-        const char*                           Name          = nullptr;
-        void*                                 ParentContext = nullptr;
-        ZRawPtr(ZEngine::Windows::CoreWindow) ParentWindow  = nullptr;
+        ZEngine::Core::Memory::ArenaAllocator  LocalArena    = {};
+        ZEngine::Core::Memory::ArenaAllocator* Arena         = nullptr;
+        const char*                            Name          = nullptr;
+        void*                                  ParentContext = nullptr;
+        ZRawPtr(ZEngine::Windows::CoreWindow) ParentWindow   = nullptr;
     };
 } // namespace ZEngine::Windows::Layers

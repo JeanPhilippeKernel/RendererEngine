@@ -16,7 +16,7 @@ namespace Tetragrama::Components
     void ProjectViewUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
     {
         UIComponent::Initialize(parent, name, visibility, closed);
-        parent->LayerArena.CreateSubArena(ZMega(1), &m_local_arena);
+        parent->LocalArena.CreateSubArena(ZMega(1), &m_local_arena);
         auto context        = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
         m_assets_directory  = context->ConfigurationPtr->WorkingSpacePath.c_str();
         m_current_directory = m_assets_directory;
