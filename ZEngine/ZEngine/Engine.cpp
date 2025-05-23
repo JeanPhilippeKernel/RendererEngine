@@ -11,18 +11,14 @@ namespace ZEngine
     static ZRawPtr(Windows::CoreWindow) g_current_window             = nullptr;
     static ZRawPtr(Rendering::Renderers::GraphicRenderer) g_renderer = nullptr;
     static ZRawPtr(Hardwares::VulkanDevice) g_device                 = nullptr;
-    static ZEngine::Core::Memory::ArenaAllocator g_engine_arena      = {};
 
-    void                                         Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZRawPtr(ZEngine::Windows::CoreWindow) const window)
+    void Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZRawPtr(ZEngine::Windows::CoreWindow) const window)
     {
         g_current_window = window;
+        g_device         = ZPushStructCtor(arena, Hardwares::VulkanDevice);
+        g_renderer       = ZPushStructCtor(arena, Rendering::Renderers::GraphicRenderer);
 
-        arena->CreateSubArena(ZGiga(1), &g_engine_arena);
-
-        g_device   = ZPushStructCtor(&g_engine_arena, Hardwares::VulkanDevice);
-        g_renderer = ZPushStructCtor(&g_engine_arena, Rendering::Renderers::GraphicRenderer);
-
-        g_device->Initialize(&g_engine_arena, window);
+        g_device->Initialize(arena, window);
         g_renderer->Initialize(g_device);
 
         ZENGINE_CORE_INFO("Engine initialized")

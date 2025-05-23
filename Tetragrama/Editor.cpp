@@ -20,17 +20,16 @@ namespace Tetragrama
     {
         AssetManager::Initialize(arena);
 
-        Context = ZPushStruct(arena, EditorContext);
-
-        arena->CreateSubArena(ZMega(800), &(Context->Arena));
+        Context                      = ZPushStruct(arena, EditorContext);
+        Context->Arena               = arena;
 
         Context->AssetManagerPtr     = AssetManager::Instance();
-        Context->ConfigurationPtr    = ZPushStructCtor(&(Context->Arena), EditorConfiguration);
-        Context->CameraControllerPtr = ZPushStructCtor(&(Context->Arena), EditorCameraController);
-        UILayer                      = ZPushStructCtor(&(Context->Arena), ImguiLayer);
-        CanvasLayer                  = ZPushStructCtor(&(Context->Arena), RenderLayer);
+        Context->ConfigurationPtr    = ZPushStructCtor(Context->Arena, EditorConfiguration);
+        Context->CameraControllerPtr = ZPushStructCtor(Context->Arena, EditorCameraController);
+        UILayer                      = ZPushStructCtor(Context->Arena, ImguiLayer);
+        CanvasLayer                  = ZPushStructCtor(Context->Arena, RenderLayer);
 
-        Context->CurrentScenePtr     = ZPushStructCtor(&(Context->Arena), EditorScene);
+        Context->CurrentScenePtr     = ZPushStructCtor(Context->Arena, EditorScene);
 
         if (ZEngine::Helpers::secure_strlen(file))
         {
@@ -38,7 +37,7 @@ namespace Tetragrama
 
             if (!Context->ConfigurationPtr->ActiveSceneName.empty())
             {
-                Context->CurrentScenePtr->Initialize(&(Context->Arena), Context->ConfigurationPtr->ActiveSceneName.c_str());
+                Context->CurrentScenePtr->Initialize(Context->Arena, Context->ConfigurationPtr->ActiveSceneName.c_str());
             }
         }
 
@@ -47,16 +46,16 @@ namespace Tetragrama
 
         std::string                  title       = fmt::format("{0} - Active Scene : {1}", Context->ConfigurationPtr->ProjectName.c_str(), Context->CurrentScenePtr->Name);
         Windows::WindowConfiguration window_conf = {.EnableVsync = true};
-        window_conf.Title.init(&(Context->Arena), title.c_str());
-        window_conf.RenderingLayerCollection.init(&(Context->Arena), 1);
-        window_conf.OverlayLayerCollection.init(&(Context->Arena), 1);
+        window_conf.Title.init(Context->Arena, title.c_str());
+        window_conf.RenderingLayerCollection.init(Context->Arena, 1);
+        window_conf.OverlayLayerCollection.init(Context->Arena, 1);
 
         window_conf.RenderingLayerCollection.push(CanvasLayer);
         window_conf.OverlayLayerCollection.push(UILayer);
 
-        Window = ZEngine::Windows::Create(&(Context->Arena), window_conf);
+        Window = ZEngine::Windows::Create(Context->Arena, window_conf);
 
-        Context->CameraControllerPtr->Initialize(&(Context->Arena), Window, 150.0, 0.f, 45.f);
+        Context->CameraControllerPtr->Initialize(Context->Arena, Window, 150.0, 0.f, 45.f);
 
         ZEngine::Engine::Initialize(arena, Window);
     }

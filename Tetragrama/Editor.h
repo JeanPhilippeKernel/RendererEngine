@@ -35,8 +35,8 @@ namespace Tetragrama
 
     struct EditorContext
     {
-        ZEngine::Core::Memory::ArenaAllocator Arena                      = {};
-        std::atomic_int                       SelectedSceneNode          = -1;
+        ZEngine::Core::Memory::ArenaAllocator* Arena                     = nullptr;
+        std::atomic_int                        SelectedSceneNode         = -1;
         ZRawPtr(EditorConfiguration) ConfigurationPtr                    = nullptr;
         ZRawPtr(EditorScene) CurrentScenePtr                             = nullptr;
         ZRawPtr(Controllers::EditorCameraController) CameraControllerPtr = nullptr;

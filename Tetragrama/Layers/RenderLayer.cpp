@@ -23,7 +23,7 @@ namespace Tetragrama::Layers
 
     void RenderLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(1), &LayerArena);
+        arena->CreateSubArena(ZMega(1), &LocalArena);
     }
 
     void RenderLayer::Deinitialize() {}

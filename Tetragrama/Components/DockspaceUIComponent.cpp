@@ -33,13 +33,13 @@ namespace Tetragrama::Components
     {
         UIComponent::Initialize(parent, name, visibility, closed);
 
-        parent->LayerArena.CreateSubArena(ZMega(10), &LocalArena);
+        parent->LocalArena.CreateSubArena(ZKilo(100), &LocalArena);
 
-        m_asset_importer    = ZPushStructCtor(&(parent->LayerArena), Importers::AssimpImporter);
-        m_editor_serializer = ZPushStructCtor(&(parent->LayerArena), Serializers::EditorSceneSerializer);
+        m_asset_importer    = ZPushStructCtor(parent->Arena, Importers::AssimpImporter);
+        m_editor_serializer = ZPushStructCtor(parent->Arena, Serializers::EditorSceneSerializer);
 
-        m_editor_serializer->Initialize(&(parent->LayerArena));
-        m_asset_importer->Initialize(&(parent->LayerArena));
+        m_editor_serializer->Initialize(parent->Arena);
+        m_asset_importer->Initialize(parent->Arena);
 
         m_dockspace_node_flag                        = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
         m_window_flags                               = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
