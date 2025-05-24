@@ -25,7 +25,6 @@ TEST(MatrixTest, ConstructionAndIndexingFloat)
     EXPECT_NEAR(m3(2, 2), 9.0f, EPSILON);
 }
 
-
 TEST(MatrixTest, DeterminantFloat)
 {
     Mat2<float> m2(1.0f, 2.0f, 3.0f, 4.0f);
@@ -34,5 +33,3 @@ TEST(MatrixTest, DeterminantFloat)
     Mat3<float> m3(1, 2, 3, 0, 1, 4, 5, 6, 0);
     EXPECT_NEAR(Determinant(m3), 1.0f, EPSILON);
 }
-
-
