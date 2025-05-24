@@ -2,7 +2,6 @@
 #include <cstddef>
 #include "Vec.h"
 
-using namespace ZEngine::Helpers;
 namespace ZEngine::Core::Maths
 {
     template <typename T, size_t R, size_t C, typename = std::enable_if_t<std::is_arithmetic_v<T> && (R >= 1) && (C >= 1)>>
@@ -13,23 +12,23 @@ namespace ZEngine::Core::Maths
         T& operator()(size_t row, size_t col)
         {
             ZENGINE_VALIDATE_ASSERT(row < R && col < C, "Index out of range");
-            return m_data[row * C + col];
+            return m_data[col * R + row];
         }
 
         const T& operator()(size_t row, size_t col) const
         {
             ZENGINE_VALIDATE_ASSERT(row < R && col < C, "Index out of range");
-            return m_data[row * C + col];
+            return m_data[col * R + row];
         }
 
-        Matrix<T, R, C> operator+(Matrix<T, R, C>& other)
+        Matrix<T, R, C> operator+(Matrix<T, R, C>& other) const
         {
             Matrix<T, R, C> result{};
             for (size_t j = 0; j < C; ++j)
             {
                 for (size_t i = 0; i < R; i++)
                 {
-                    result(i, j) = other(i, j) + (*this)(i, j);
+                    result(i, j) = (*this)(i, j) + other(i, j);
                 }
             }
             return result;
@@ -58,23 +57,28 @@ namespace ZEngine::Core::Maths
             secure_memset(this->m_data, 0, sizeof(T) * 4, sizeof(T) * 4);
         }
 
-        Mat2(T m00, T m01, T m10, T m11)
+        Mat2(T m00, T m10, T m01, T m11)
         {
-            this->m_data[0] = m00;
-            this->m_data[1] = m01;
-            this->m_data[2] = m10;
-            this->m_data[3] = m11;
+            (*this)(0, 0) = m00;
+            (*this)(1, 0) = m10;
+            (*this)(0, 1) = m01;
+            (*this)(1, 1) = m11;
+        }
+
+        Mat2(const Vec2<T>& a, const Vec2<T> b)
+        {
+            (*this)(0, 0) = a.x;
+            (*this)(0, 1) = a.y;
+            (*this)(1, 0) = b.x;
+            (*this)(1, 1) = b.y;
         }
 
         Mat2(const Matrix<T, 2, 2>& other)
         {
-            for (size_t i = 0; i < 4; ++i)
-                this->m_data[i] = other.m_data[i];
-        }
-
-        T Determinant() const
-        {
-            return this->m_data[0] * this->m_data[3] - this->m_data[1] * this->m_data[2];
+            this->m_data[0] = other.m_data[0];
+            this->m_data[1] = other.m_data[1];
+            this->m_data[2] = other.m_data[2];
+            this->m_data[3] = other.m_data[3];
         }
 
         Mat2& operator+=(const Mat2& other)
@@ -85,6 +89,7 @@ namespace ZEngine::Core::Maths
             }
             return *this;
         }
+
         Mat2& operator-=(const Mat2& other)
         {
             for (size_t i = 0; i < 4; i++)
@@ -93,18 +98,21 @@ namespace ZEngine::Core::Maths
             }
             return *this;
         }
+
         Mat2 operator+(const Mat2& other)
         {
             Mat2 result  = *this;
             result      += other;
             return result;
         }
+
         Mat2 operator-(const Mat2& other)
         {
             Mat2 result  = *this;
             result      -= other;
             return result;
         }
+
         Mat2 operator*(T scalar)
         {
             Mat2 result = *this;
@@ -114,6 +122,7 @@ namespace ZEngine::Core::Maths
             }
             return result;
         }
+
         Mat2& operator*=(T scalar)
         {
             for (size_t i = 0; i < 4; ++i)
@@ -143,14 +152,15 @@ namespace ZEngine::Core::Maths
             }
             return *this;
         }
+
         Mat2 Inverse()
         {
-            T det = this->Determinant();
+            T det = Determinant(this);
             ZENGINE_VALIDATE_ASSERT(det != 0, "Matrix is singular and cannot be inverted");
 
-            T invDet = 1 / det;
+            T invDet = T(1) / det;
 
-            return Mat2<T>(this->m_data[3] * invDet, -this->m_data[1] * invDet, -this->m_data[2] * invDet, this->m_data[0] * invDet);
+            return Mat2<T>((*this)(0, 0) * invDet, -(*this)(1, 0) * invDet, -(*this)(0, 1) * invDet, (*this)(1, 1) * invDet);
         }
     };
 
@@ -165,26 +175,55 @@ namespace ZEngine::Core::Maths
 
         Mat3(T m00, T m01, T m02, T m10, T m11, T m12, T m20, T m21, T m22)
         {
-            this->m_data[0] = m00;
-            this->m_data[1] = m01;
-            this->m_data[2] = m02;
-            this->m_data[3] = m10;
-            this->m_data[4] = m11;
-            this->m_data[5] = m12;
-            this->m_data[6] = m20;
-            this->m_data[7] = m21;
-            this->m_data[8] = m22;
+            (*this)(0, 0) = m00;
+            (*this)(1, 0) = m10;
+            (*this)(2, 0) = m20;
+
+            (*this)(0, 1) = m01;
+            (*this)(1, 1) = m11;
+            (*this)(2, 1) = m21;
+
+            (*this)(0, 2) = m02;
+            (*this)(1, 2) = m12;
+            (*this)(2, 2) = m22;
+        }
+
+        Mat3(const Vec3<T>& a, const Vec3<T>& b, const Vec3<T>& c)
+        {
+            (*this)(0, 0) = a.x;
+            (*this)(1, 0) = b.x;
+            (*this)(2, 0) = c.x;
+
+            (*this)(0, 1) = a.y;
+            (*this)(1, 1) = b.y;
+            (*this)(2, 1) = c.y;
+
+            (*this)(0, 2) = a.z;
+            (*this)(1, 2) = b.z;
+            (*this)(2, 2) = c.z;
         }
 
         Mat3(const Matrix<T, 3, 3>& other)
         {
-            for (size_t i = 0; i < 9; ++i)
-                this->m_data[i] = other.m_data[i];
+            this->m_data[0] = other.m_data[0];
+            this->m_data[1] = other.m_data[1];
+            this->m_data[2] = other.m_data[2];
+            this->m_data[3] = other.m_data[3];
+            this->m_data[4] = other.m_data[4];
+            this->m_data[5] = other.m_data[5];
+            this->m_data[6] = other.m_data[6];
+            this->m_data[7] = other.m_data[7];
+            this->m_data[8] = other.m_data[8];
         }
 
-        T Determinant() const
+        Vec3<T>& operator[](int j)
         {
-            return this->m_data[0] * (this->m_data[4] * this->m_data[8] - this->m_data[5] * this->m_data[7]) - this->m_data[1] * (this->m_data[3] * this->m_data[8] - this->m_data[5] * this->m_data[6]) + this->m_data[2] * (this->m_data[3] * this->m_data[7] - this->m_data[4] * this->m_data[6]);
+            return (*reinterpret_cast<Vec3<T>*>(&this->m_data[j * 3]));
+        }
+
+        const Vec3<T>& operator[](int j) const
+        {
+            return (*reinterpret_cast<Vec3<T>*>(&this->m_data[j * 3]));
         }
 
         Mat3& operator+=(const Mat3& other)
@@ -195,6 +234,7 @@ namespace ZEngine::Core::Maths
             }
             return *this;
         }
+
         Mat3& operator-=(const Mat3& other)
         {
             for (size_t i = 0; i < 9; i++)
@@ -203,18 +243,21 @@ namespace ZEngine::Core::Maths
             }
             return *this;
         }
+
         Mat3 operator+(const Mat3& other)
         {
             Mat3 result  = *this;
             result      += other;
             return result;
         }
+
         Mat3 operator-(const Mat3& other)
         {
             Mat3 result  = *this;
             result      -= other;
             return result;
         }
+
         Mat3 operator*(T scalar)
         {
             Mat3 result = *this;
@@ -224,6 +267,7 @@ namespace ZEngine::Core::Maths
             }
             return result;
         }
+
         Mat3& operator*=(T scalar)
         {
             for (size_t i = 0; i < 9; ++i)
@@ -243,6 +287,7 @@ namespace ZEngine::Core::Maths
             }
             return result;
         }
+
         Mat3& operator/=(T scalar)
         {
             scalar = 1.0f / scalar;
@@ -255,21 +300,19 @@ namespace ZEngine::Core::Maths
 
         Mat3 Inverse()
         {
-            T det = this->Determinant();
-            ZENGINE_VALIDATE_ASSERT(det != 0, "Matrix is singular and cannot be inverted");
+            auto&          M      = *this;
 
-            T invDet = 1 / det;
+            const Vec3<T>& a      = M[0];
+            const Vec3<T>& b      = M[1];
+            const Vec3<T>& c      = M[2];
 
-            return Mat3<T>(
-                (this->m_data[4] * this->m_data[8] - this->m_data[5] * this->m_data[7]) * invDet,
-                -(this->m_data[1] * this->m_data[8] - this->m_data[2] * this->m_data[7]) * invDet,
-                (this->m_data[1] * this->m_data[5] - this->m_data[2] * this->m_data[4]) * invDet,
-                -(this->m_data[3] * this->m_data[8] - this->m_data[5] * this->m_data[6]) * invDet,
-                (this->m_data[0] * this->m_data[8] - this->m_data[2] * this->m_data[6]) * invDet,
-                -(this->m_data[0] * this->m_data[5] - this->m_data[2] * this->m_data[3]) * invDet,
-                (this->m_data[3] * this->m_data[7] - this->m_data[4] * this->m_data[6]) * invDet,
-                -(this->m_data[0] * this->m_data[7] - this->m_data[1] * this->m_data[6]) * invDet,
-                (this->m_data[0] * this->m_data[4] - this->m_data[1] * this->m_data[3]) * invDet);
+            Vec3<T>        r0     = cross3d(b, c);
+            Vec3<T>        r1     = cross3d(c, a);
+            Vec3<T>        r2     = cross3d(a, b);
+
+            float          invDet = 1.0f / dot(r2, c);
+
+            return Mat3<T>(r0.x * invDet, r0.y * invDet, r0.z * invDet, r1.x * invDet, r1.y * invDet, r1.z * invDet, r2.x * invDet, r2.y * invDet, r2.z * invDet);
         }
     };
 
@@ -284,22 +327,25 @@ namespace ZEngine::Core::Maths
 
         Mat4(T m00, T m01, T m02, T m03, T m10, T m11, T m12, T m13, T m20, T m21, T m22, T m23, T m30, T m31, T m32, T m33)
         {
-            this->m_data[0]  = m00;
-            this->m_data[1]  = m01;
-            this->m_data[2]  = m02;
-            this->m_data[3]  = m03;
-            this->m_data[4]  = m10;
-            this->m_data[5]  = m11;
-            this->m_data[6]  = m12;
-            this->m_data[7]  = m13;
-            this->m_data[8]  = m20;
-            this->m_data[9]  = m21;
-            this->m_data[10] = m22;
-            this->m_data[11] = m23;
-            this->m_data[12] = m30;
-            this->m_data[13] = m31;
-            this->m_data[14] = m32;
-            this->m_data[15] = m33;
+            (*this)(0, 0) = m00;
+            (*this)(1, 0) = m10;
+            (*this)(2, 0) = m20;
+            (*this)(3, 0) = m30;
+
+            (*this)(0, 1) = m01;
+            (*this)(1, 1) = m11;
+            (*this)(2, 1) = m21;
+            (*this)(3, 1) = m31;
+
+            (*this)(0, 2) = m02;
+            (*this)(1, 2) = m12;
+            (*this)(2, 2) = m22;
+            (*this)(3, 2) = m32;
+
+            (*this)(0, 3) = m03;
+            (*this)(1, 3) = m13;
+            (*this)(2, 3) = m23;
+            (*this)(3, 3) = m33;
         }
 
         Mat4(const Matrix<T, 4, 4>& other)
@@ -365,6 +411,7 @@ namespace ZEngine::Core::Maths
             }
             return result;
         }
+
         Mat4& operator/=(T scalar)
         {
             scalar = 1.0f / scalar;
@@ -375,65 +422,36 @@ namespace ZEngine::Core::Maths
             return *this;
         }
 
-        T Determinant() const
-        {
-            return (
-                this->m_data[0] * (this->m_data[5] * (this->m_data[10] * this->m_data[15] - this->m_data[11] * this->m_data[14]) - this->m_data[6] * (this->m_data[9] * this->m_data[15] - this->m_data[11] * this->m_data[13]) + this->m_data[7] * (this->m_data[9] * this->m_data[14] - this->m_data[10] * this->m_data[13])) -
-                this->m_data[1] * (this->m_data[4] * (this->m_data[10] * this->m_data[15] - this->m_data[11] * this->m_data[14]) - this->m_data[6] * (this->m_data[8] * this->m_data[15] - this->m_data[11] * this->m_data[12]) + this->m_data[7] * (this->m_data[8] * this->m_data[14] - this->m_data[10] * this->m_data[12])) +
-                this->m_data[2] * (this->m_data[4] * (this->m_data[9] * this->m_data[15] - this->m_data[11] * this->m_data[13]) - this->m_data[5] * (this->m_data[8] * this->m_data[15] - this->m_data[11] * this->m_data[12]) + this->m_data[7] * (this->m_data[8] * this->m_data[13] - this->m_data[9] * this->m_data[12])) -
-                this->m_data[3] * (this->m_data[4] * (this->m_data[9] * this->m_data[14] - this->m_data[10] * this->m_data[13]) - this->m_data[5] * (this->m_data[8] * this->m_data[14] - this->m_data[10] * this->m_data[12]) + this->m_data[6] * (this->m_data[8] * this->m_data[13] - this->m_data[9] * this->m_data[12])));
-        }
         Mat4<T> Inverse() const
         {
-            const T* m   = this->m_data;
+            auto&          M       = *this;
+            const Vec3<T>& a       = reinterpret_cast<const Vec3<T>&>(M[0]);
+            const Vec3<T>& b       = reinterpret_cast<const Vec3<T>&>(M[1]);
+            const Vec3<T>& c       = reinterpret_cast<const Vec3<T>&>(M[2]);
+            const Vec3<T>& d       = reinterpret_cast<const Vec3<T>&>(M[3]);
 
-            T        c00 = m[5] * (m[10] * m[15] - m[11] * m[14]) - m[6] * (m[9] * m[15] - m[11] * m[13]) + m[7] * (m[9] * m[14] - m[10] * m[13]);
-            T        c01 = -(m[4] * (m[10] * m[15] - m[11] * m[14]) - m[6] * (m[8] * m[15] - m[11] * m[12]) + m[7] * (m[8] * m[14] - m[10] * m[12]));
-            T        c02 = m[4] * (m[9] * m[15] - m[11] * m[13]) - m[5] * (m[8] * m[15] - m[11] * m[12]) + m[7] * (m[8] * m[13] - m[9] * m[12]);
-            T        c03 = -(m[4] * (m[9] * m[14] - m[10] * m[13]) - m[5] * (m[8] * m[14] - m[10] * m[12]) + m[6] * (m[8] * m[13] - m[9] * m[12]));
+            const float&   x       = M(3, 0);
+            const float&   y       = M(3, 1);
+            const float&   z       = M(3, 2);
+            const float&   w       = M(3, 3);
 
-            T        c10 = -(m[1] * (m[10] * m[15] - m[11] * m[14]) - m[2] * (m[9] * m[15] - m[11] * m[13]) + m[3] * (m[9] * m[14] - m[10] * m[13]));
-            T        c11 = m[0] * (m[10] * m[15] - m[11] * m[14]) - m[2] * (m[8] * m[15] - m[11] * m[12]) + m[3] * (m[8] * m[14] - m[10] * m[12]);
-            T        c12 = -(m[0] * (m[9] * m[15] - m[11] * m[13]) - m[1] * (m[8] * m[15] - m[11] * m[12]) + m[3] * (m[8] * m[13] - m[9] * m[12]));
-            T        c13 = m[0] * (m[9] * m[14] - m[10] * m[13]) - m[1] * (m[8] * m[14] - m[10] * m[12]) + m[2] * (m[8] * m[13] - m[9] * m[12]);
+            Vec3<T>        s       = cross3d(a, b);
+            Vec3<T>        t       = cross3d(c, d);
+            Vec3<T>        u       = a * y - b * x;
+            Vec3<T>        v       = c * w - d * z;
 
-            T        c20 = m[1] * (m[6] * m[15] - m[7] * m[14]) - m[2] * (m[5] * m[15] - m[7] * m[13]) + m[3] * (m[5] * m[14] - m[6] * m[13]);
-            T        c21 = -(m[0] * (m[6] * m[15] - m[7] * m[14]) - m[2] * (m[4] * m[15] - m[7] * m[12]) + m[3] * (m[4] * m[14] - m[6] * m[12]));
-            T        c22 = m[0] * (m[5] * m[15] - m[7] * m[13]) - m[1] * (m[4] * m[15] - m[7] * m[12]) + m[3] * (m[4] * m[13] - m[5] * m[12]);
-            T        c23 = -(m[0] * (m[5] * m[14] - m[6] * m[13]) - m[1] * (m[4] * m[14] - m[6] * m[12]) + m[2] * (m[4] * m[13] - m[5] * m[12]));
+            float          invDet  = 1.0f / (dot(s, v) + dot(t, u));
+            s                     *= invDet;
+            t                     *= invDet;
+            u                     *= invDet;
+            v                     *= invDet;
 
-            T        c30 = -(m[1] * (m[6] * m[11] - m[7] * m[10]) - m[2] * (m[5] * m[11] - m[7] * m[9]) + m[3] * (m[5] * m[10] - m[6] * m[9]));
-            T        c31 = m[0] * (m[6] * m[11] - m[7] * m[10]) - m[2] * (m[4] * m[11] - m[7] * m[8]) + m[3] * (m[4] * m[10] - m[6] * m[8]);
-            T        c32 = -(m[0] * (m[5] * m[11] - m[7] * m[9]) - m[1] * (m[4] * m[11] - m[7] * m[8]) + m[3] * (m[4] * m[9] - m[5] * m[8]));
-            T        c33 = m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) + m[2] * (m[4] * m[9] - m[5] * m[8]);
+            Vec3<T> r0             = cross3d(b, v) + (t * y);
+            Vec3<T> r1             = cross3d(v, a) - (t * x);
+            Vec3<T> r2             = cross3d(d, u) + (s * w);
+            Vec3<T> r3             = cross3d(u, c) - (s * z);
 
-            T        det = m[0] * c00 + m[1] * c01 + m[2] * c02 + m[3] * c03;
-            ZENGINE_VALIDATE_ASSERT(det != 0, "Matrix is singular and cannot be inverted");
-
-            T       invDet = static_cast<T>(1) / det;
-
-            Mat4<T> result;
-            result.m_data[0]  = c00 * invDet;
-            result.m_data[1]  = c10 * invDet;
-            result.m_data[2]  = c20 * invDet;
-            result.m_data[3]  = c30 * invDet;
-
-            result.m_data[4]  = c01 * invDet;
-            result.m_data[5]  = c11 * invDet;
-            result.m_data[6]  = c21 * invDet;
-            result.m_data[7]  = c31 * invDet;
-
-            result.m_data[8]  = c02 * invDet;
-            result.m_data[9]  = c12 * invDet;
-            result.m_data[10] = c22 * invDet;
-            result.m_data[11] = c32 * invDet;
-
-            result.m_data[12] = c03 * invDet;
-            result.m_data[13] = c13 * invDet;
-            result.m_data[14] = c23 * invDet;
-            result.m_data[15] = c33 * invDet;
-
-            return result;
+            return Mat4<T>(r0.x, r0.y, r0.z, -dot(b, t), r1.x, r1.y, r1.z, dot(a, t), r2.x, r2.y, r2.z, -dot(d, s), r3.x, r3.y, r3.z, dot(c, s));
         }
     };
 
@@ -463,23 +481,52 @@ namespace ZEngine::Core::Maths
         return Mat4f(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
     }
 
-    template <typename T, size_t R, size_t K, size_t C>
-    Matrix<T, R, C> operator*(const Matrix<T, R, K>& a, const Matrix<T, K, C>& b)
+    template <typename T>
+    inline T Determinant(const Mat2<T>& M)
     {
-        Matrix<T, R, C> result{};
-        for (size_t j = 0; j < C; ++j)
-        {
-            for (size_t i = 0; i < R; ++i)
-            {
-                T sum = T{};
-                for (size_t k = 0; k < K; ++k)
-                {
-                    sum += a(i, k) * b(k, j);
-                }
-                result(i, j) = sum;
-            }
-        }
-        return result;
+        return M(0, 0) * M(1, 1) - M(1, 0) * M(0, 1);
     }
 
+    template <typename T>
+    inline T Determinant(const Mat3<T>& M)
+    {
+        return M(0, 0) * (M(1, 1) * M(2, 2) - M(1, 2) * M(2, 1)) - M(0, 1) * (M(1, 0) * M(2, 2) - M(1, 2) * M(2, 0)) + M(0, 2) * (M(1, 0) * M(2, 1) - M(1, 1) * M(2, 0));
+    }
+
+    template <typename T>
+    inline Mat3<T> Minor3x3(const Mat4<T>& M, size_t row, size_t col)
+    {
+        Mat3<T> minor;
+        size_t  m_row = 0, m_col = 0;
+
+        for (size_t i = 0; i < 4; ++i)
+        {
+            if (i == row)
+                continue;
+            m_col = 0;
+
+            for (size_t j = 0; j < 4; ++j)
+            {
+                if (j == col)
+                    continue;
+                minor(m_row, m_col) = M(i, j);
+                ++m_col;
+            }
+            ++m_row;
+        }
+
+        return minor;
+    }
+
+    template <typename T>
+    inline T Determinant(const Mat4<T>& M)
+    {
+        T det = T(0);
+        for (size_t col = 0; col < 4; ++col)
+        {
+            T sign  = ((col % 2) == 0) ? T(1) : T(-1);
+            det    += sign * M(0, col) * Determinant(Minor3x3(M, 0, col));
+        }
+        return det;
+    }
 } // namespace ZEngine::Core::Maths
