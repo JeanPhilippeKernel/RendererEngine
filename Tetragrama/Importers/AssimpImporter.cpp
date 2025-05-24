@@ -24,10 +24,21 @@ namespace Tetragrama::Importers
 
     AssimpImporter::~AssimpImporter() {}
 
-    std::future<void> AssimpImporter::ImportAsync(const char* filename, ImportConfiguration& config)
+    std::future<void> AssimpImporter::ImportAsync(const char* filename, const ImportConfiguration& cfg)
     {
-        ThreadPoolHelper::Submit([this, path = filename, config] {
+        ThreadPoolHelper::Submit([this, path = filename, cfg] {
             std::unique_lock l(m_mutex);
+
+            Arena.Clear();
+            auto                thread_local_arena = &Arena;
+            ImportConfiguration config             = {};
+
+            config.OutputWorkingSpacePath.init(thread_local_arena, cfg.OutputWorkingSpacePath.c_str());
+            config.OutputTextureFilesPath.init(thread_local_arena, cfg.OutputTextureFilesPath.c_str());
+            config.OutputAssetsPath.init(thread_local_arena, cfg.OutputAssetsPath.c_str());
+            config.AssetName.init(thread_local_arena, cfg.AssetName.c_str());
+            config.OutputAssetFile.init(thread_local_arena, cfg.OutputAssetFile.c_str());
+            config.InputBaseAssetFilePath.init(thread_local_arena, cfg.InputBaseAssetFilePath.c_str());
 
             m_is_importing.store(true, std::memory_order_release);
 
@@ -54,27 +65,27 @@ namespace Tetragrama::Importers
                 Array<AssetMaterial>  materials   = {};
                 Array<AssetTexture>   textures    = {};
 
-                ExtractMeshes(&Arena, scene, gen, mesh);
-                ExtractMaterials(&Arena, scene, gen, materials, hierarchies);
-                ExtractTextures(&Arena, scene, gen, materials, textures);
+                ExtractMeshes(thread_local_arena, scene, gen, mesh);
+                ExtractMaterials(thread_local_arena, scene, gen, materials, hierarchies);
+                ExtractTextures(thread_local_arena, scene, gen, materials, textures);
 
-                CreateHierachy(&Arena, scene, gen, hierarchies, mesh, materials);
-                CopyTextureFiles(&Arena, textures, config);
+                CreateHierachy(thread_local_arena, scene, gen, hierarchies, mesh, materials);
+                CopyTextureFiles(thread_local_arena, textures, config);
 
                 Array<AssetImporterOutput> outputs = {};
-                outputs.init(&Arena, 100);
+                outputs.init(thread_local_arena, 100);
 
-                auto out_m = SerializeMeshAssetFile(&Arena, mesh, hierarchies, config);
+                auto out_m = SerializeMeshAssetFile(thread_local_arena, mesh, hierarchies, config);
                 outputs.push(out_m);
 
                 for (unsigned i = 0; i < materials.size(); ++i)
                 {
                     auto& material = materials[i];
-                    auto  out_mat  = SerializeMaterialAssetFile(&Arena, material, config);
+                    auto  out_mat  = SerializeMaterialAssetFile(thread_local_arena, material, config);
                     outputs.push(out_mat);
                 }
 
-                auto out_tex = SerializeTextureAssetFiles(&Arena, ArrayView{textures}, config);
+                auto out_tex = SerializeTextureAssetFiles(thread_local_arena, ArrayView{textures}, config);
                 outputs.push(out_tex);
 
                 auto result = fmt::format("{0}{1}{2}", config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
@@ -88,8 +99,6 @@ namespace Tetragrama::Importers
             importer.FreeScene();
 
             m_is_importing.store(false, std::memory_order_release);
-
-            Arena.Clear();
         });
 
         co_return;
@@ -114,7 +123,7 @@ namespace Tetragrama::Importers
         }
 
         mesh.MeshUUID = generator();
-        mesh.SubMeshes.init(arena, t_meshes);
+        mesh.SubMeshes.init(arena, t_meshes, t_meshes);
         mesh.Vertices.init(arena, t_vertices);
         mesh.Indices.init(arena, t_indices);
 
@@ -164,7 +173,7 @@ namespace Tetragrama::Importers
                 }
             }
 
-            auto& subMesh                 = mesh.SubMeshes.push_use({});
+            auto& subMesh                 = mesh.SubMeshes[m];
             subMesh.VertexCount           = vertex_count;
             subMesh.VertexOffset          = VertexOffset;
             subMesh.VertexUnitStreamSize  = sizeof(float) * (3 + 3 + 2) /*pos-cmp + normal-cmp + tex-cmp*/;
@@ -364,13 +373,13 @@ namespace Tetragrama::Importers
         AssetNode.NodeHierarchyUUID = generator();
         AssetNode.MeshUUID          = asset_mesh.MeshUUID;
 
-        AssetNode.Hierarchies.init(arena, 10);
-        AssetNode.LocalTransforms.init(arena, 10);
-        AssetNode.GlobalTransforms.init(arena, 10);
-        AssetNode.Names.init(arena, 10);
-        AssetNode.NodeNames.init(arena, 10);
-        AssetNode.NodeMeshes.init(arena, 10);
-        AssetNode.NodeMaterials.init(arena, 10);
+        AssetNode.Hierarchies.init(arena, 3000);
+        AssetNode.LocalTransforms.init(arena, 3000);
+        AssetNode.GlobalTransforms.init(arena, 3000);
+        AssetNode.Names.init(arena, 3000);
+        AssetNode.NodeNames.init(arena, 3000);
+        AssetNode.NodeMeshes.init(arena, 3000);
+        AssetNode.NodeMaterials.init(arena, 3000);
 
         TraverseNode(arena, scene, scene->mRootNode, AssetNode, asset_mesh, materials, -1, 0);
     }

@@ -93,6 +93,15 @@ namespace Tetragrama::Layers
             auto message_ptr = reinterpret_cast<EmptyMessage*>(message);
             return inspector_view_cmp->SceneEntityDeletedMessageHandlerAsync(*message_ptr);
         });
+
+        /*
+         * Register Dockspace Component
+         */
+        IMessenger::Register<Components::UIComponent, GenericMessage<std::string>>(dockspace_cmp, EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE, [=](void* const message) -> std::future<void> {
+            auto message_ptr = reinterpret_cast<GenericMessage<std::string>*>(message);
+            auto value       = message_ptr->GetValue();
+            return dockspace_cmp->OnOpenSceneRequestAsync(value.c_str());
+        });
     }
 
     void ImguiLayer::Deinitialize()

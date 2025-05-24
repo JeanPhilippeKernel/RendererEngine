@@ -10,7 +10,7 @@ namespace ZEngine::Logging
     struct LogMessage
     {
         float       Color[4] = {0.0f};
-        std::string Message;
+        std::string Message  = "";
     };
 
     struct Logger

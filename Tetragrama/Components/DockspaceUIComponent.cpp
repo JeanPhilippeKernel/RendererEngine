@@ -33,7 +33,7 @@ namespace Tetragrama::Components
     {
         UIComponent::Initialize(parent, name, visibility, closed);
 
-        parent->LocalArena.CreateSubArena(ZKilo(100), &LocalArena);
+        parent->LocalArena.CreateSubArena(ZMega(1), &LocalArena);
 
         m_asset_importer    = ZPushStructCtor(parent->Arena, Importers::AssimpImporter);
         m_editor_serializer = ZPushStructCtor(parent->Arena, Serializers::EditorSceneSerializer);
@@ -588,31 +588,44 @@ namespace Tetragrama::Components
         co_return;
     }
 
+    std::future<void> DockspaceUIComponent::OnOpenSceneRequestAsync(const char* filename)
+    {
+        if (!ZEngine::Helpers::secure_strlen(filename))
+        {
+            co_return;
+        }
+
+        s_is_scene_loading = true;
+        m_editor_serializer->Deserialize(filename);
+        co_return;
+    }
+
     std::future<void> DockspaceUIComponent::OnImportAssetAsync(const char* filename)
     {
-        if (ZEngine::Helpers::secure_strlen(filename) == 0)
+        if ((ZEngine::Helpers::secure_strlen(filename) == 0) || m_asset_importer->IsImporting())
         {
             co_return;
         }
 
         LocalArena.Clear();
 
-        auto                           context           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        auto                           arena             = &LocalArena;
-        const auto&                    editor_config     = *context->ConfigurationPtr;
-        auto                           parent_path       = std::filesystem::path(filename).parent_path().string();
-        auto                           asset_name        = fs::path(filename).filename().replace_extension().string();
-        auto                           output_asset_file = fmt::format("{}.zemesh", asset_name.c_str());
+        auto        context           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        auto        arena             = &LocalArena;
+        const auto& editor_config     = *context->ConfigurationPtr;
+        auto        parent_path       = std::filesystem::path(filename).parent_path().string();
+        auto        asset_name        = fs::path(filename).filename().replace_extension().string();
+        auto        output_asset_file = fmt::format("{}.zemesh", asset_name.c_str());
 
-        Importers::ImportConfiguration config            = {};
-        config.OutputWorkingSpacePath.init(arena, editor_config.WorkingSpacePath.c_str());
-        config.OutputTextureFilesPath.init(arena, editor_config.DefaultImportTexturePath.c_str());
-        config.OutputAssetsPath.init(arena, editor_config.SceneDataPath.c_str());
-        config.AssetName.init(arena, asset_name.c_str());
-        config.OutputAssetFile.init(arena, output_asset_file.c_str());
-        config.InputBaseAssetFilePath.init(arena, parent_path.c_str());
+        auto        config            = ZPushStruct(arena, Importers::ImportConfiguration);
+        config->OutputWorkingSpacePath.init(arena, editor_config.WorkingSpacePath.c_str());
+        config->OutputTextureFilesPath.init(arena, editor_config.DefaultImportTexturePath.c_str());
+        config->OutputAssetsPath.init(arena, editor_config.SceneDataPath.c_str());
+        config->AssetName.init(arena, asset_name.c_str());
+        config->OutputAssetFile.init(arena, output_asset_file.c_str());
+        config->InputBaseAssetFilePath.init(arena, parent_path.c_str());
 
-        co_await m_asset_importer->ImportAsync(filename, config);
+        m_asset_importer->ImportAsync(filename, *config);
+        co_return;
     }
 
     std::future<void> DockspaceUIComponent::OnExitAsync()

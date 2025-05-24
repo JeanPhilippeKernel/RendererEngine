@@ -48,6 +48,7 @@ namespace Tetragrama::Components
 
         std::future<void>                     OnNewSceneAsync();
         std::future<void>                     OnOpenSceneAsync();
+        std::future<void>                     OnOpenSceneRequestAsync(const char* filename);
         std::future<void>                     OnImportAssetAsync(const char* filename);
         std::future<void>                     OnExitAsync();
 

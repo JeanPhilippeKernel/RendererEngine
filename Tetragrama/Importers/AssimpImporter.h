@@ -26,7 +26,7 @@ namespace Tetragrama::Importers
         AssimpImporter();
         virtual ~AssimpImporter();
 
-        virtual std::future<void> ImportAsync(const char* filename, ImportConfiguration& config) override;
+        virtual std::future<void> ImportAsync(const char* filename, const ImportConfiguration& config) override;
         void                      CopyTextureFiles(ZEngine::Core::Memory::ArenaAllocator*, ZEngine::Core::Containers::Array<AssetTexture>&, const ImportConfiguration&);
 
     private:
