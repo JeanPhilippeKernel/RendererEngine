@@ -250,12 +250,12 @@ namespace Tetragrama::Importers
 
         in.seekg(std::ios::beg);
 
-        uint32_t scene_magic;
-        uint32_t scene_version;
-        ReadBinary(in, scene_magic);
-        ReadBinary(in, scene_version);
+        uint32_t meshf_magic;
+        uint32_t meshf_version;
+        ReadBinary(in, meshf_magic);
+        ReadBinary(in, meshf_version);
 
-        if (scene_magic != ZEMESH_MAGIC && scene_version != ASSET_FILE_VERSION)
+        if (meshf_magic != ZEMESH_MAGIC && meshf_version != ASSET_FILE_VERSION)
         {
             in.close();
             return;
@@ -392,5 +392,42 @@ namespace Tetragrama::Importers
         }
 
         in.close();
+    }
+
+    bool IAssetImporter::ReadAssetMeshFileHeader(cstring asset_file, AssetMeshFileHeader& header)
+    {
+        bool output = false;
+        if (!ZEngine::Helpers::secure_strlen(asset_file))
+        {
+            return output;
+        }
+
+        std::ifstream in(asset_file, std::ios::binary);
+
+        if (!in.is_open())
+        {
+            in.close();
+            return output;
+        }
+
+        in.seekg(std::ios::beg);
+
+        ReadBinary(in, header.MagicNumber);
+        ReadBinary(in, header.Version);
+
+        if (header.MagicNumber != ZEMESH_MAGIC && header.Version != ASSET_FILE_VERSION)
+        {
+            in.close();
+            return output;
+        }
+
+        /*
+         * Asset Mesh Header
+         */
+        ReadBinary(in, header.Id);
+        output = true;
+
+        in.close();
+        return output;
     }
 } // namespace Tetragrama::Importers

@@ -94,3 +94,5 @@
 #define ZESCENE_MAGIC                                          MAKE_MAGIC('Z', 'S', 'C', 'N')
 #define ASSET_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
 #define SCENE_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
+
+typedef const char* cstring;

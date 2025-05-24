@@ -20,16 +20,17 @@ namespace Tetragrama
     {
         AssetManager::Initialize(arena);
 
-        Context                      = ZPushStruct(arena, EditorContext);
-        Context->Arena               = arena;
+        Context                           = ZPushStruct(arena, EditorContext);
+        Context->Arena                    = arena;
 
-        Context->AssetManagerPtr     = AssetManager::Instance();
-        Context->ConfigurationPtr    = ZPushStructCtor(Context->Arena, EditorConfiguration);
-        Context->CameraControllerPtr = ZPushStructCtor(Context->Arena, EditorCameraController);
-        UILayer                      = ZPushStructCtor(Context->Arena, ImguiLayer);
-        CanvasLayer                  = ZPushStructCtor(Context->Arena, RenderLayer);
+        Context->AssetManagerPtr          = AssetManager::Instance();
+        Context->ConfigurationPtr         = ZPushStructCtor(Context->Arena, EditorConfiguration);
+        Context->CameraControllerPtr      = ZPushStructCtor(Context->Arena, EditorCameraController);
+        Context->PendingOnLoadHierarchies = CreateRef<ZEngine::Helpers::ThreadSafeQueue<Managers::AssetManager::AssetHandle>>();
+        UILayer                           = ZPushStructCtor(Context->Arena, ImguiLayer);
+        CanvasLayer                       = ZPushStructCtor(Context->Arena, RenderLayer);
 
-        Context->CurrentScenePtr     = ZPushStructCtor(Context->Arena, EditorScene);
+        Context->CurrentScenePtr          = ZPushStructCtor(Context->Arena, EditorScene);
 
         if (ZEngine::Helpers::secure_strlen(file))
         {

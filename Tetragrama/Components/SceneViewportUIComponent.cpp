@@ -127,6 +127,10 @@ namespace Tetragrama::Components
                     {
                         Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<std::string>>(EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>(buf));
                     }
+                    else if (file_ext == ".zemesh")
+                    {
+                        Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<std::string>>(EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENMESH, Messengers::GenericMessage<std::string>(buf));
+                    }
                 }
             }
             ImGui::EndDragDropTarget();

@@ -35,12 +35,13 @@ namespace Tetragrama
 
     struct EditorContext
     {
-        ZEngine::Core::Memory::ArenaAllocator* Arena                     = nullptr;
-        std::atomic_int                        SelectedSceneNode         = -1;
-        ZRawPtr(EditorConfiguration) ConfigurationPtr                    = nullptr;
-        ZRawPtr(EditorScene) CurrentScenePtr                             = nullptr;
-        ZRawPtr(Controllers::EditorCameraController) CameraControllerPtr = nullptr;
-        ZRawPtr(Managers::AssetManager) AssetManagerPtr                  = nullptr;
+        ZEngine::Core::Memory::ArenaAllocator* Arena                                                                           = nullptr;
+        std::atomic_int                        SelectedSceneNode                                                               = -1;
+        ZRawPtr(EditorConfiguration) ConfigurationPtr                                                                          = nullptr;
+        ZRawPtr(EditorScene) CurrentScenePtr                                                                                   = nullptr;
+        ZRawPtr(Controllers::EditorCameraController) CameraControllerPtr                                                       = nullptr;
+        ZRawPtr(Managers::AssetManager) AssetManagerPtr                                                                        = nullptr;
+        ZEngine::Helpers::Ref<ZEngine::Helpers::ThreadSafeQueue<Managers::AssetManager::AssetHandle>> PendingOnLoadHierarchies = nullptr;
     };
 
     struct Editor

@@ -78,22 +78,56 @@ namespace Tetragrama
         return node_id;
     }
 
-    void EditorScene::CreateSceneNode(int parent, int depth)
+    // void EditorScene::CreateSceneNode(int parent, int depth)
+    //{
+    //     int node_id = AddHierarchyNode(parent, depth);
+    //     if (node_id < 0)
+    //     {
+    //         ZENGINE_CORE_ERROR("EditorScene::CreateSceneNode, failed to create scene node")
+    //         return;
+    //     }
+
+    //    NodeNames[node_id] = Names.size();
+    //    auto& name         = Names.push_use({});
+    //    name.init(&LocalArena, "Empty entity");
+
+    //    NodeMeshes.insert(node_id, uuids::uuid{});
+
+    //    HasPendingChanges.store(true, std::memory_order_release);
+    //}
+
+    int EditorScene::CreateSceneNode(int parent, int depth, const Importers::AssetNodeRef& metadata)
     {
         int node_id = AddHierarchyNode(parent, depth);
         if (node_id < 0)
         {
             ZENGINE_CORE_ERROR("EditorScene::CreateSceneNode, failed to create scene node")
-            return;
+            return node_id;
         }
 
         NodeNames[node_id] = Names.size();
         auto& name         = Names.push_use({});
-        name.init(&LocalArena, "Empty entity");
 
         NodeMeshes.insert(node_id, uuids::uuid{});
+        if (metadata.IsValid())
+        {
+            Hierarchies[node_id].NodeRef = metadata;
+            if (ZEngine::Helpers::secure_strlen(metadata.Name) > 0)
+            {
+                name.init(&LocalArena, metadata.Name);
+            }
+            else
+            {
+                name.init(&LocalArena, "Empty entity");
+            }
+        }
+        else
+        {
+            name.init(&LocalArena, "Empty entity");
+        }
 
         HasPendingChanges.store(true, std::memory_order_release);
+        return node_id;
     }
 
     void EditorScene::RemoveSceneNode(int node_id)

@@ -77,6 +77,7 @@ namespace Tetragrama::Importers
 
     struct AssetNodeRef
     {
+        cstring  Name               = nullptr;
         uint32_t AssetNodeHandle    = 0xFFFFFFFF;
         int      NodeHierarchyIndex = -1;
 

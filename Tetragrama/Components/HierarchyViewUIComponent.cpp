@@ -36,8 +36,12 @@ namespace Tetragrama::Components
 
     void HierarchyViewUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
+        if (!ParentLayer)
+        {
+            return;
+        }
 
-        if (ParentLayer && ParentLayer->ParentWindow)
+        if (ParentLayer->ParentWindow)
         {
             auto window = ParentLayer->ParentWindow;
             if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_T, window))
@@ -53,6 +57,84 @@ namespace Tetragrama::Components
             if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::SCALE;
+            }
+        }
+
+        if (ParentLayer->ParentContext)
+        {
+            auto                                ctx           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+            auto                                current_scene = ctx->CurrentScenePtr;
+
+            Managers::AssetManager::AssetHandle handle        = {};
+            if (ctx->PendingOnLoadHierarchies->Pop(handle))
+            {
+                Importers::AssetNodeHierarchy* mesh_node_hierarchy = Managers::AssetManager::GetAsset<Importers::AssetNodeHierarchy>(handle);
+                if (!mesh_node_hierarchy)
+                {
+                    return;
+                }
+
+                struct StackEntry
+                {
+                    int Parent  = -1;
+                    int Depth   = -1;
+                    int node_id = -1;
+                };
+
+                for (int i = 0; i < mesh_node_hierarchy->Hierarchies.size(); ++i)
+                {
+                    if (mesh_node_hierarchy->Hierarchies[i].Parent == -1)
+                    {
+                        std::stack<StackEntry> stack;
+                        stack.push({0, 1, i});
+
+                        while (!stack.empty())
+                        {
+                            auto entry = stack.top();
+                            stack.pop();
+
+                            if (entry.node_id == -1)
+                            {
+                                continue;
+                            }
+
+                            auto node_ref = Importers::AssetNodeRef{.AssetNodeHandle = handle, .NodeHierarchyIndex = entry.node_id};
+                            if (mesh_node_hierarchy->NodeNames.contains(entry.node_id))
+                            {
+                                auto name_idx = mesh_node_hierarchy->NodeNames[entry.node_id];
+                                node_ref.Name = mesh_node_hierarchy->Names[name_idx].c_str();
+                            }
+
+                            int         scene_node_id = current_scene->CreateSceneNode(entry.Parent, entry.Depth, node_ref);
+
+                            const auto& node          = mesh_node_hierarchy->Hierarchies[entry.node_id];
+                            bool        has_children  = (node.FirstChild != -1);
+
+                            if (has_children)
+                            {
+                                // Push TreePop manually
+                                stack.push({-1}); // Marker for TreePop
+
+                                // Push children in reverse order
+                                auto                                  scratch = ZGetScratch(&ParentLayer->LocalArena);
+                                ZEngine::Core::Containers::Array<int> children;
+                                children.init(scratch.Arena, 5);
+
+                                for (int child = node.FirstChild; child != -1; child = mesh_node_hierarchy->Hierarchies[child].RightSibling)
+                                {
+                                    children.push(child);
+                                }
+
+                                for (int i = static_cast<int>(children.size()) - 1; i >= 0; --i)
+                                {
+                                    stack.push({scene_node_id, (entry.Depth + 1), children[i]});
+                                }
+
+                                ZReleaseScratch(scratch);
+                            }
+                        }
+                    }
+                }
             }
         }
     }

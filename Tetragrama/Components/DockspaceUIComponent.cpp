@@ -600,6 +600,22 @@ namespace Tetragrama::Components
         co_return;
     }
 
+    std::future<void> DockspaceUIComponent::OnOpenMeshRequestAsync(const char* filename)
+    {
+        Importers::AssetMeshFileHeader header;
+        if (Importers::IAssetImporter::ReadAssetMeshFileHeader(filename, header))
+        {
+            auto asset_mesh = Managers::AssetManager::GetAsset<Importers::AssetMesh>(header.Id);
+            if (asset_mesh)
+            {
+                auto ctx        = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+                auto handle_ref = ctx->AssetManagerPtr->GetMeshNodeHierarchyHandle(asset_mesh->MeshUUID);
+                ctx->PendingOnLoadHierarchies->Enqueue(handle_ref);
+            }
+        }
+        co_return;
+    }
+
     std::future<void> DockspaceUIComponent::OnImportAssetAsync(const char* filename)
     {
         if ((ZEngine::Helpers::secure_strlen(filename) == 0) || m_asset_importer->IsImporting())

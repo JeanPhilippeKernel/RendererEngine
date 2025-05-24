@@ -43,6 +43,9 @@ namespace Tetragrama::Managers
         s_Instance->Textures.init(&(s_Instance->Arena), 5000);
         s_Instance->UUIDToHandle.init(&(s_Instance->Arena), 5000);
         s_Instance->HandleToUUID.init(&(s_Instance->Arena), 5000);
+
+        s_Instance->MeshToNodeHierarchy.init(&(s_Instance->Arena), 5000);
+        s_Instance->NodeHierarchyToMesh.init(&(s_Instance->Arena), 5000);
     }
 
     void AssetManager::Run()
@@ -93,6 +96,53 @@ namespace Tetragrama::Managers
 
         s_Instance->PendingAssetFiles.Enqueue(file);
         s_Instance->Cond.notify_one();
+    }
+
+    Importers::AssetNodeHierarchy* AssetManager::GetMeshNodeHierarchy(const uuids::uuid& id)
+    {
+        Importers::AssetNodeHierarchy* output = nullptr;
+        if (!s_Instance)
+        {
+            return output;
+        }
+
+        if (MeshToNodeHierarchy.contains(id))
+        {
+            auto& hierarchy_uuid = MeshToNodeHierarchy[id];
+            auto  handle         = UUIDToHandle[hierarchy_uuid];
+            auto  id             = ReadAssetHandleIndex(handle);
+            output               = &NodeHierarchies[id];
+            return output;
+        }
+
+        for (auto& h : NodeHierarchies)
+        {
+            if (h.MeshUUID == id)
+            {
+                output = &h;
+                break;
+            }
+        }
+
+        if (output)
+        {
+            MeshToNodeHierarchy.insert(id, output->NodeHierarchyUUID);
+            NodeHierarchyToMesh.insert(output->NodeHierarchyUUID, id);
+        }
+
+        return output;
+    }
+
+    AssetManager::AssetHandle AssetManager::GetMeshNodeHierarchyHandle(const uuids::uuid& id)
+    {
+        AssetManager::AssetHandle handle    = {};
+
+        auto                      hierarchy = GetMeshNodeHierarchy(id);
+        if (hierarchy)
+        {
+            handle = UUIDToHandle[hierarchy->NodeHierarchyUUID];
+        }
+        return handle;
     }
 
     void AssetManager::__Run()
@@ -150,9 +200,10 @@ namespace Tetragrama::Managers
                 auto& h        = NodeHierarchies.push_use({});
                 h.MeshUUID     = hierarchies.MeshUUID;
 
-                h.Hierarchies.init(&(s_Instance->Arena), hierarchies.Hierarchies.size());
-                h.LocalTransforms.init(&(s_Instance->Arena), hierarchies.LocalTransforms.size());
-                h.GlobalTransforms.init(&(s_Instance->Arena), hierarchies.GlobalTransforms.size());
+                h.Hierarchies.init(&(s_Instance->Arena), hierarchies.Hierarchies.size(), hierarchies.Hierarchies.size());
+                h.LocalTransforms.init(&(s_Instance->Arena), hierarchies.LocalTransforms.size(), hierarchies.LocalTransforms.size());
+                h.GlobalTransforms.init(&(s_Instance->Arena), hierarchies.GlobalTransforms.size(), hierarchies.GlobalTransforms.size());
+
                 h.Names.init(&(s_Instance->Arena), hierarchies.Names.size());
                 h.MaterialNames.init(&(s_Instance->Arena), hierarchies.MaterialNames.size());
                 h.NodeNames.init(&(s_Instance->Arena), hierarchies.NodeNames.size());
