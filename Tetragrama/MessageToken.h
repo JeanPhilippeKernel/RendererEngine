@@ -10,6 +10,7 @@ namespace Tetragrama
     static const std::string_view EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED                  = "editor::component::hierarchyview::node_selected";
     static const std::string_view EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED                = "editor::component::hierarchyview::node_unselected";
     static const std::string_view EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED                   = "editor::component::hierarchyview::node_deleted";
+    static const std::string_view EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE                  = "editor::component::dockspace::request::openscene";
     static const std::string_view EDITOR_COMPONENT_INSPECTORVIEW_REQUEST_RESUME_OR_PAUSE_RENDER = "editor::component::inspectorview::request::resume_or_pause_render";
     static const std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_RESIZE                      = "editor::render_layer::scene::request::resize";
     static const std::string_view EDITOR_RENDER_LAYER_SCENE_REQUEST_FOCUS                       = "editor::render_layer::scene::request::focus";

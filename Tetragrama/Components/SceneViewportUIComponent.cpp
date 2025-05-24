@@ -114,6 +114,24 @@ namespace Tetragrama::Components
 
         ImGuizmo::SetDrawlist();
 
+        if (ImGui::BeginDragDropTarget())
+        {
+            char buf[DEFAULT_STR_BUFFER] = {0};
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_FILE_DRAG_OP"))
+            {
+                ZEngine::Helpers::secure_memcpy(buf, DEFAULT_STR_BUFFER, payload->Data, payload->DataSize);
+                if (ZEngine::Helpers::secure_strlen(buf) > 0)
+                {
+                    auto file_ext = std::filesystem::path(buf).extension().string();
+                    if (file_ext == ".zescene")
+                    {
+                        Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<std::string>>(EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>(buf));
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
         ImGui::End();
 
         ImGui::PopStyleVar();

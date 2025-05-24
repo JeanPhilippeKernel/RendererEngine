@@ -22,7 +22,7 @@ int applicationEntryPoint(int argc, char* argv[])
     CLI11_PARSE(app, argc, argv);
 
     MemoryManager       manager = {};
-    MemoryConfiguration config  = {.DefaultSize = ZGiga(1u)};
+    MemoryConfiguration config  = {.DefaultSize = ZGiga(2u)};
     manager.Initialize(config);
     auto                arena      = &(manager.ArenaAllocator);
 

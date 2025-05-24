@@ -67,7 +67,7 @@ namespace Tetragrama::Importers
         virtual void               SetOnLogCallback(on_import_log_fn callback);
         virtual bool               IsImporting();
 
-        virtual std::future<void>  ImportAsync(const char* filename, ImportConfiguration& config) = 0;
+        virtual std::future<void>  ImportAsync(const char* filename, const ImportConfiguration& config) = 0;
 
         static AssetImporterOutput SerializeMeshAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, AssetMesh& data, AssetNodeHierarchy& hierarchies, const ImportConfiguration&);
         static AssetImporterOutput SerializeMaterialAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, AssetMaterial& data, const ImportConfiguration&);

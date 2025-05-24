@@ -57,7 +57,7 @@ namespace Tetragrama::Importers
 
     void IAssetImporter::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(100), &Arena);
+        arena->CreateSubArena(ZMega(200), &Arena);
     }
 
     void IAssetImporter::SetOnCompleteCallback(on_import_complete_fn callback)

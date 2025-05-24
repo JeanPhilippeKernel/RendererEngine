@@ -134,11 +134,18 @@ namespace Tetragrama::Components
         ImGui::PopStyleColor();
         ImGui::SetCursorPos(ImVec2(cursorPos.x, cursorPos.y + m_thumbnail_size + margin));
 
-        if (ImGui::BeginDragDropSource())
+        /*
+         * Drag and Drop scene file
+         * We don't support drag-and-drop for folder for now
+         */
+        if (!entry.is_directory())
         {
-            std::string itemPath = entry.path().string();
-            ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", itemPath.c_str(), (itemPath.length() + 1) * sizeof(char));
-            ImGui::EndDragDropSource();
+            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+            {
+                std::string itemPath = entry.path().string();
+                ImGui::SetDragDropPayload("CONTENT_BROWSER_FILE_DRAG_OP", itemPath.c_str(), (itemPath.length() + 1) * sizeof(char));
+                ImGui::EndDragDropSource();
+            }
         }
 
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))

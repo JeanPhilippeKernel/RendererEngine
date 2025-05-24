@@ -34,15 +34,15 @@ namespace Tetragrama::Managers
     void AssetManager::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
     {
         s_Instance = ZPushStructCtor(arena, AssetManager);
-        arena->CreateSubArena(ZMega(20), &(s_Instance->ThreadLocalArena));
-        arena->CreateSubArena(ZMega(20), &(s_Instance->Arena));
+        arena->CreateSubArena(ZMega(100), &(s_Instance->ThreadLocalArena));
+        arena->CreateSubArena(ZMega(70), &(s_Instance->Arena));
 
-        s_Instance->NodeHierarchies.init(&(s_Instance->Arena), 1000);
-        s_Instance->Meshes.init(&(s_Instance->Arena), 1000);
-        s_Instance->Materials.init(&(s_Instance->Arena), 1000);
-        s_Instance->Textures.init(&(s_Instance->Arena), 1000);
-        s_Instance->UUIDToHandle.init(&(s_Instance->Arena), 1000);
-        s_Instance->HandleToUUID.init(&(s_Instance->Arena), 1000);
+        s_Instance->NodeHierarchies.init(&(s_Instance->Arena), 5000);
+        s_Instance->Meshes.init(&(s_Instance->Arena), 5000);
+        s_Instance->Materials.init(&(s_Instance->Arena), 5000);
+        s_Instance->Textures.init(&(s_Instance->Arena), 5000);
+        s_Instance->UUIDToHandle.init(&(s_Instance->Arena), 5000);
+        s_Instance->HandleToUUID.init(&(s_Instance->Arena), 5000);
     }
 
     void AssetManager::Run()
