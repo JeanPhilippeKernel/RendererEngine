@@ -22,6 +22,7 @@ target_include_directories (zEngineLib
 	PUBLIC
 		.
 		./Core
+		./Core/Maths
 		./Core/Memory
 		./Core/Containers
 		./Hardwares
