@@ -62,9 +62,9 @@ namespace ZEngine::Rendering::Textures
     //    spec.Width                                = width;
     //    spec.Height                               = height;
     //    spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
-    //    spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-    //    spec.Data                                 = output_buffer.data();
-    //    auto texture                              = Create(spec);
+    //    spec.BytePerPixel                         =
+    //    Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)]; spec.Data = output_buffer.data(); auto
+    //    texture                              = Create(spec);
 
     //    return texture;
     //}
@@ -83,18 +83,19 @@ namespace ZEngine::Rendering::Textures
     //    // stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, channel);
     //    stbi_image_free((void*) image_data);
 
-    //    Buffers::Bitmap                      in                   = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};
-    //    Buffers::Bitmap                      vertical_cross       = Buffers::Bitmap::EquirectangularMapToVerticalCross(in);
-    //    Buffers::Bitmap                      cubemap              = Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
+    //    Buffers::Bitmap                      in                   = {width, height, 4, Buffers::BitmapFormat::FLOAT,
+    //    output_buffer.data()}; Buffers::Bitmap                      vertical_cross       =
+    //    Buffers::Bitmap::EquirectangularMapToVerticalCross(in); Buffers::Bitmap                      cubemap =
+    //    Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
 
     //    Specifications::TextureSpecification cubemap_texture_spec = {};
     //    cubemap_texture_spec.IsCubemap                            = true;
     //    cubemap_texture_spec.Width                                = cubemap.Width;
     //    cubemap_texture_spec.Height                               = cubemap.Height;
     //    cubemap_texture_spec.Format                               = Specifications::ImageFormat::R32G32B32A32_SFLOAT;
-    //    cubemap_texture_spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(cubemap_texture_spec.Format)];
-    //    cubemap_texture_spec.Data                                 = cubemap.Buffer.data();
-    //    cubemap_texture_spec.LayerCount                           = 6;
+    //    cubemap_texture_spec.BytePerPixel                         =
+    //    Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(cubemap_texture_spec.Format)]; cubemap_texture_spec.Data
+    //    = cubemap.Buffer.data(); cubemap_texture_spec.LayerCount                           = 6;
 
     //    return Create(cubemap_texture_spec);
     //}
@@ -130,9 +131,9 @@ namespace ZEngine::Rendering::Textures
     //    spec.Width                                        = width;
     //    spec.Height                                       = height;
     //    spec.Format                                       = Specifications::ImageFormat::R8G8B8A8_SRGB;
-    //    spec.BytePerPixel                                 = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-    //    spec.Data                                         = image_data;
-    //    return Create(spec);
+    //    spec.BytePerPixel                                 =
+    //    Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)]; spec.Data = image_data; return
+    //    Create(spec);
     //}
 
     // Ref<Texture2D> Texture2D::Create(uint32_t width, uint32_t height, float r, float g, float b, float a)
@@ -146,9 +147,9 @@ namespace ZEngine::Rendering::Textures
     //     spec.Width                                = width;
     //     spec.Height                               = height;
     //     spec.Format                               = Specifications::ImageFormat::R8G8B8A8_SRGB;
-    //     spec.BytePerPixel                         = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-    //     spec.Data                                 = image_data;
-    //     return Create(spec);
+    //     spec.BytePerPixel                         =
+    //     Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)]; spec.Data = image_data; return
+    //     Create(spec);
     // }
 
     // Ref<Hardwares::Image2DBuffer> Texture2D::GetImage2DBuffer() const
@@ -171,7 +172,8 @@ namespace ZEngine::Rendering::Textures
 
     //    // auto                  device = Hardwares::VulkanDevice::GetNativeDeviceHandle();
     //    // Hardwares::BufferView staging_buffer =
-    //    //     Hardwares::VulkanDevice::CreateBuffer(texture->m_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+    //    //     Hardwares::VulkanDevice::CreateBuffer(texture->m_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+    //    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
     //    // Hardwares::VulkanDevice::MapAndCopyToMemory(staging_buffer, texture->m_buffer_size, spec.Data);
 
@@ -179,18 +181,24 @@ namespace ZEngine::Rendering::Textures
     //    // uint32_t storage_bit   = spec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;
     //    // uint32_t transfert_bit = spec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
     //    // uint32_t sampled_bit   = spec.IsUsageSampled ? VK_IMAGE_USAGE_SAMPLED_BIT : 0;
-    //    // uint32_t image_aspect  = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    //    // uint32_t image_aspect  = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ?
+    //    VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
     //    // uint32_t image_usage_attachment =
-    //    //     (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    //    //     (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ?
+    //    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    //    // VkFormat image_format = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? Hardwares::VulkanDevice::FindDepthFormat()
-    //    //                                                                                                 : Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
+    //    // VkFormat image_format = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ?
+    //    Hardwares::VulkanDevice::FindDepthFormat()
+    //    //                                                                                                 :
+    //    Specifications::ImageFormatMap[static_cast<uint32_t>(spec.Format)];
     //    // Specifications::Image2DBufferSpecification buffer_spec;
     //    // buffer_spec.Width           = texture->m_width;
     //    // buffer_spec.Height          = texture->m_height;
-    //    // buffer_spec.BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE;
+    //    // buffer_spec.BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP :
+    //    Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE;
     //    // buffer_spec.ImageFormat     = image_format;
-    //    // buffer_spec.ImageUsage      = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
+    //    // buffer_spec.ImageUsage      = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit |
+    //    storage_bit);
     //    // buffer_spec.ImageAspectFlag = VkImageAspectFlagBits(image_aspect);
     //    // buffer_spec.LayerCount      = spec.LayerCount;
 
@@ -198,14 +206,19 @@ namespace ZEngine::Rendering::Textures
 
     //    // if (spec.PerformTransition)
     //    //{
-    //    //     /*Transition Image from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL OR VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL and Copy buffer to
+    //    //     /*Transition Image from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL OR
+    //    VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL and Copy buffer to
     //    //      * image*/
-    //    //     auto                                            image_handle   = texture->m_image_2d_buffer->GetHandle();
-    //    //     auto&                                           image_buffer   = texture->m_image_2d_buffer->GetBuffer();
+    //    //     auto                                            image_handle   =
+    //    texture->m_image_2d_buffer->GetHandle();
+    //    //     auto&                                           image_buffer   =
+    //    texture->m_image_2d_buffer->GetBuffer();
     //    //     Specifications::ImageMemoryBarrierSpecification barrier_spec_0 = {};
     //    //     barrier_spec_0.ImageHandle                                     = image_handle;
-    //    //     barrier_spec_0.OldLayout                                       = Specifications::ImageLayout::UNDEFINED;
-    //    //     barrier_spec_0.NewLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+    //    //     barrier_spec_0.OldLayout                                       =
+    //    Specifications::ImageLayout::UNDEFINED;
+    //    //     barrier_spec_0.NewLayout                                       =
+    //    Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
     //    //     barrier_spec_0.ImageAspectMask                                 = VkImageAspectFlagBits(image_aspect);
     //    //     barrier_spec_0.SourceAccessMask                                = 0;
     //    //     barrier_spec_0.DestinationAccessMask                           = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -216,10 +229,12 @@ namespace ZEngine::Rendering::Textures
 
     //    //    Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
     //    //    barrier_spec_1.ImageHandle                                     = image_handle;
-    //    //    barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-    //    //    barrier_spec_1.NewLayout             = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT ?
+    //    //    barrier_spec_1.OldLayout                                       =
+    //    Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+    //    //    barrier_spec_1.NewLayout             = VkImageAspectFlagBits(image_aspect) == VK_IMAGE_ASPECT_DEPTH_BIT
+    //    ?
     //    //    Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-    //    //                                                                                                            : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+    //    // : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
     //    //    barrier_spec_1.ImageAspectMask       = VkImageAspectFlagBits(image_aspect);
     //    //    barrier_spec_1.SourceAccessMask      = VK_ACCESS_TRANSFER_WRITE_BIT;
     //    //    barrier_spec_1.DestinationAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -228,9 +243,11 @@ namespace ZEngine::Rendering::Textures
     //    //    barrier_spec_1.LayerCount            = spec.LayerCount;
     //    //    Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
 
-    //    //    auto command_buffer = Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
+    //    //    auto command_buffer =
+    //    Hardwares::VulkanDevice::BeginInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
     //    //    command_buffer->TransitionImageLayout(barrier_0);
-    //    //    command_buffer->CopyBufferToImage(staging_buffer, image_buffer, texture->m_width, texture->m_height, spec.LayerCount, barrier_0.GetHandle().newLayout);
+    //    //    command_buffer->CopyBufferToImage(staging_buffer, image_buffer, texture->m_width, texture->m_height,
+    //    spec.LayerCount, barrier_0.GetHandle().newLayout);
     //    //    command_buffer->TransitionImageLayout(barrier_1);
     //    //    Hardwares::VulkanDevice::EndInstantCommandBuffer(command_buffer);
     //    //}

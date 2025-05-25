@@ -78,24 +78,6 @@ namespace Tetragrama
         return node_id;
     }
 
-    // void EditorScene::CreateSceneNode(int parent, int depth)
-    //{
-    //     int node_id = AddHierarchyNode(parent, depth);
-    //     if (node_id < 0)
-    //     {
-    //         ZENGINE_CORE_ERROR("EditorScene::CreateSceneNode, failed to create scene node")
-    //         return;
-    //     }
-
-    //    NodeNames[node_id] = Names.size();
-    //    auto& name         = Names.push_use({});
-    //    name.init(&LocalArena, "Empty entity");
-
-    //    NodeMeshes.insert(node_id, uuids::uuid{});
-
-    //    HasPendingChanges.store(true, std::memory_order_release);
-    //}
-
     int EditorScene::CreateSceneNode(int parent, int depth, const Importers::AssetNodeRef& metadata)
     {
         int node_id = AddHierarchyNode(parent, depth);

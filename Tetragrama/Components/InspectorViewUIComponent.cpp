@@ -94,7 +94,8 @@ namespace Tetragrama::Components
         });
 
         // Mesh Renderer
-        // Helpers::DrawEntityComponentControl<MeshComponent>("Mesh Geometry", m_scene_entity, m_node_flag, true, [this](MeshComponent& component) {
+        // Helpers::DrawEntityComponentControl<MeshComponent>("Mesh Geometry", m_scene_entity, m_node_flag, true,
+        // [this](MeshComponent& component) {
         //    std::string type_name;
         //    if (auto active_scene = m_active_scene.lock())
         //    {
@@ -107,48 +108,55 @@ namespace Tetragrama::Components
         //    Helpers::DrawInputTextControl("Mesh", type_name, nullptr, true);
         //});
 
-        // Helpers::DrawEntityComponentControl<MaterialComponent>("Materials", m_scene_entity, m_node_flag, true, [](MaterialComponent& component) {
-        //     auto        material               = component.GetMaterials()[0]; // Todo : need to be refactor to consider the collection of materials
-        //     auto        material_shader_type   = material->GetShaderBuiltInType();
+        // Helpers::DrawEntityComponentControl<MaterialComponent>("Materials", m_scene_entity, m_node_flag, true,
+        // [](MaterialComponent& component) {
+        //     auto        material               = component.GetMaterials()[0]; // Todo : need to be refactor to
+        //     consider the collection of materials auto        material_shader_type   =
+        //     material->GetShaderBuiltInType();
 
         //    const char* built_in_shader_type[] = {"Basic", "BASIC_2", "Standard"};
 
-        //    auto        material_name          = fmt::format("{0} Material", built_in_shader_type[(int) material_shader_type]);
-        //    ImGui::Dummy(ImVec2(0, 3));
-        //    Helpers::DrawInputTextControl("Name", material_name, nullptr, true);
+        //    auto        material_name          = fmt::format("{0} Material", built_in_shader_type[(int)
+        //    material_shader_type]); ImGui::Dummy(ImVec2(0, 3)); Helpers::DrawInputTextControl("Name", material_name,
+        //    nullptr, true);
 
         //    if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::STANDARD)
         //    {
-        //        auto standard_material = reinterpret_cast<ZEngine::Rendering::Materials::StandardMaterial*>(material.get());
+        //        auto standard_material =
+        //        reinterpret_cast<ZEngine::Rendering::Materials::StandardMaterial*>(material.get());
 
         //        ImGui::Dummy(ImVec2(0, 0.5f));
 
         //        float tile_factor = standard_material->GetTileFactor();
-        //        Helpers::DrawDragFloatControl("Tile Factor", tile_factor, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetTileFactor(value); });
-        //        ImGui::Dummy(ImVec2(0, 0.5f));
+        //        Helpers::DrawDragFloatControl("Tile Factor", tile_factor, 0.2f, 0.0f, 0.0f, "%.2f",
+        //        [standard_material](float value) { standard_material->SetTileFactor(value); }); ImGui::Dummy(ImVec2(0,
+        //        0.5f));
 
         //        float shininess = standard_material->GetShininess();
-        //        Helpers::DrawDragFloatControl("Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f", [standard_material](float value) { standard_material->SetShininess(value); });
-        //        ImGui::Dummy(ImVec2(0, 0.5f));
+        //        Helpers::DrawDragFloatControl("Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f",
+        //        [standard_material](float value) { standard_material->SetShininess(value); }); ImGui::Dummy(ImVec2(0,
+        //        0.5f));
 
         //        // auto diffuse_tint_color = standard_material->GetDiffuseTintColor();
         //        // auto diffuse_texture    = standard_material->GetDiffuseMap();
-        //        // Helpers::DrawTextureColorControl("Diffuse Map", reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), diffuse_tint_color, true, nullptr,
+        //        // Helpers::DrawTextureColorControl("Diffuse Map",
+        //        reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), diffuse_tint_color, true, nullptr,
         //        //     [standard_material](auto& value) { standard_material->SetDiffuseTintColor(value); });
         //        // ImGui::Dummy(ImVec2(0, 0.5f));
 
         //        // auto specular_tint_color = standard_material->GetSpecularTintColor();
         //        // auto specular_texture    = standard_material->GetSpecularMap();
-        //        // Helpers::DrawTextureColorControl("Specular Map", reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color, true, nullptr,
+        //        // Helpers::DrawTextureColorControl("Specular Map",
+        //        reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color, true, nullptr,
         //        //     [standard_material](auto& value) { standard_material->SetSpecularTintColor(value); });
         //        // ImGui::Dummy(ImVec2(0, 0.5f));
         //    }
         //});
 
-        /*Helpers::DrawEntityComponentControl<LightComponent>("Lighting", m_scene_entity, m_node_flag, true, [this](LightComponent& component) {
-            auto                            light           = component.GetLight();
-            auto                            light_type      = light->GetLightType();
-            std::array<std::string_view, 3> light_type_name = {"Directional", "Point", "Spot"};
+        /*Helpers::DrawEntityComponentControl<LightComponent>("Lighting", m_scene_entity, m_node_flag, true,
+        [this](LightComponent& component) { auto                            light           = component.GetLight(); auto
+        light_type      = light->GetLightType(); std::array<std::string_view, 3> light_type_name = {"Directional",
+        "Point", "Spot"};
 
             ImGui::Dummy(ImVec2(0, 3));
             Helpers::DrawInputTextControl("Type", light_type_name[static_cast<int>(light_type)], nullptr, true);
@@ -163,17 +171,17 @@ namespace Tetragrama::Components
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
                 {
-                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) { light_ptr->Direction = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) {
+        light_ptr->Direction = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) { light_ptr->Ambient = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
+        light_ptr->Ambient = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) { light_ptr->Diffuse = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
+        light_ptr->Diffuse = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) { light_ptr->Specular = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
+        light_ptr->Specular = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             }
 
@@ -189,26 +197,26 @@ namespace Tetragrama::Components
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
                 {
-                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) { light_ptr->Position = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) { light_ptr->Position =
+        glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) { light_ptr->Ambient = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
+        light_ptr->Ambient = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) { light_ptr->Diffuse = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
+        light_ptr->Diffuse = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) { light_ptr->Specular = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
+        light_ptr->Specular = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f", [light_ptr](float value) { light_ptr->Constant = value; });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f",
+        [light_ptr](float value) { light_ptr->Constant = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f", [light_ptr](float value) { light_ptr->Linear = value; });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f",
+        [light_ptr](float value) { light_ptr->Linear = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f", [light_ptr](float value) { light_ptr->Quadratic = value; });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f",
+        [light_ptr](float value) { light_ptr->Quadratic = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             }
 
@@ -226,41 +234,41 @@ namespace Tetragrama::Components
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
                 {
-                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) { light_ptr->Position = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) { light_ptr->Position =
+        glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) { light_ptr->Direction = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) {
+        light_ptr->Direction = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) { light_ptr->Ambient = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
+        light_ptr->Ambient = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) { light_ptr->Diffuse = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
+        light_ptr->Diffuse = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) { light_ptr->Specular = glm::vec4(value, 1.0f); });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
+        light_ptr->Specular = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("CutOff", phi_angle, 0.1f, 0.0f, 360.0f, "%.2f", [light_ptr](float value) {
-                        phi_angle         = value;
-                        light_ptr->CutOff = glm::cos(glm::radians(value));
+                    Helpers::DrawDragFloatControl("CutOff", phi_angle, 0.1f, 0.0f, 360.0f, "%.2f", [light_ptr](float
+        value) { phi_angle         = value; light_ptr->CutOff = glm::cos(glm::radians(value));
                     });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f", [light_ptr](float value) { light_ptr->Constant = value; });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f",
+        [light_ptr](float value) { light_ptr->Constant = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f", [light_ptr](float value) { light_ptr->Linear = value; });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f",
+        [light_ptr](float value) { light_ptr->Linear = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f", [light_ptr](float value) { light_ptr->Quadratic = value; });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f",
+        [light_ptr](float value) { light_ptr->Quadratic = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             }
         });*/
 
         // Camera
-        // Helpers::DrawEntityComponentControl<CameraComponent>("Camera", m_scene_entity, m_node_flag, true, [this](CameraComponent& component) {
+        // Helpers::DrawEntityComponentControl<CameraComponent>("Camera", m_scene_entity, m_node_flag, true,
+        // [this](CameraComponent& component) {
         //    // auto const camera_controller = component.GetCameraController();
         //    // auto       camera_type       = camera_controller->GetCamera()->GetCameraType();
 
@@ -274,27 +282,32 @@ namespace Tetragrama::Components
 
         //    // if (camera_type == ZEngine::Rendering::Cameras::CameraType::PERSPECTIVE)
         //    //{
-        //    //     auto  perspective_controller = reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
+        //    //     auto  perspective_controller =
+        //    reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
         //    //     float camera_fov             = ZEngine::Maths::degrees(perspective_controller->GetFieldOfView());
 
         //    //    Helpers::DrawDragFloatControl(
         //    //        "Field Of View", camera_fov, 0.2f, -180.0f, 180.f, "%.2f",
-        //    //        [&perspective_controller](float value) { perspective_controller->SetFieldOfView(ZEngine::Maths::radians(value)); }, 120.f);
+        //    //        [&perspective_controller](float value) {
+        //    perspective_controller->SetFieldOfView(ZEngine::Maths::radians(value)); }, 120.f);
 
         //    //    ImGui::Dummy(ImVec2(0, 3));
 
         //    //    // Clipping space
-        //    //    if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(CameraComponent).hash_code() + 0x000000FF), m_node_flag, "%s", "Clipping Space"))
+        //    //    if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(CameraComponent).hash_code() + 0x000000FF),
+        //    m_node_flag, "%s", "Clipping Space"))
         //    //    {
         //    //        float camera_near = perspective_controller->GetNear();
         //    //        float camera_far  = perspective_controller->GetFar();
 
         //    //        Helpers::DrawDragFloatControl(
-        //    //            "Near", camera_near, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) { perspective_controller->SetNear(value); });
+        //    //            "Near", camera_near, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) {
+        //    perspective_controller->SetNear(value); });
         //    //        ImGui::Dummy(ImVec2(0, 0.5f));
 
         //    //        Helpers::DrawDragFloatControl(
-        //    //            "Far", camera_far, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) { perspective_controller->SetFar(value); });
+        //    //            "Far", camera_far, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) {
+        //    perspective_controller->SetFar(value); });
 
         //    //        ImGui::TreePop();
         //    //    }
@@ -302,13 +315,17 @@ namespace Tetragrama::Components
         //    //    ImGui::Dummy(ImVec2(0, 3));
 
         //    //    // Camera Controller Type
-        //    //    if (camera_controller->GetControllerType() == ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER)
+        //    //    if (camera_controller->GetControllerType() ==
+        //    ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER)
         //    //    {
-        //    //        auto orbit_controller = reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(camera_controller);
-        //    //        if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(orbit_controller).hash_code()), m_node_flag, "%s", "Controller (Orbit)"))
+        //    //        auto orbit_controller =
+        //    reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(camera_controller);
+        //    //        if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(orbit_controller).hash_code()),
+        //    m_node_flag, "%s", "Controller (Orbit)"))
         //    //        {
         //    //            auto       camera       = orbit_controller->GetCamera();
-        //    //            auto const orbit_camera = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
+        //    //            auto const orbit_camera =
+        //    reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
         //    //            float      radius       = orbit_camera->GetRadius();
         //    //            float      yaw_angle    = orbit_camera->GetYawAngle();
         //    //            float      pitch_angle  = orbit_camera->GetPitchAngle();

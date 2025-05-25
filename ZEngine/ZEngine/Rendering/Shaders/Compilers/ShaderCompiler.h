@@ -31,8 +31,8 @@ namespace ZEngine::Rendering::Shaders::Compilers
 
         /**
          * Compile shader source code
-         * @return Tuple of <ShaderOperationResult, ShaderInformation> that represents status of the compile process (Success or Failure)
-         *			and the Shader Information
+         * @return Tuple of <ShaderOperationResult, ShaderInformation> that represents status of the compile process
+         *(Success or Failure) and the Shader Information
          */
 
         std::future<ShaderCompilerResult> CompileAsync();

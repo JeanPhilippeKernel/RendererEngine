@@ -1760,7 +1760,13 @@ namespace ZEngine::Hardwares
         {
             int   pool_index  = GetPoolFromIndex(Rendering::QueueType::GRAPHIC_QUEUE, i);
             auto& pool        = CommandPools[pool_index];
-            CommandBuffers[i] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, device, pool->Handle, pool->QueueType, /*(i % MaxBufferPerPool) == 0 ? false : true */ false);
+            CommandBuffers[i] = ZPushStructCtorArgs(
+                Device->Arena,
+                CommandBuffer,
+                device,
+                pool->Handle,
+                pool->QueueType,
+                /*(i % MaxBufferPerPool) == 0 ? false : true */ false);
         }
 
         if (Device->HasSeperateTransfertQueueFamily)

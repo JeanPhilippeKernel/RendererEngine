@@ -110,7 +110,8 @@ namespace ZEngine::Serializers
         //     serialize_info.IsSuccess    = false;
         //     serialize_info.ErrorMessage = output.GetLastError();
         // } else {
-        //     const auto full_scene_file_path = fmt::format("{0}/{1}", m_default_scene_directory_path.string(), filename);
+        //     const auto full_scene_file_path = fmt::format("{0}/{1}", m_default_scene_directory_path.string(),
+        //     filename);
 
         //    std::ofstream file_stream;
         //    file_stream.open(full_scene_file_path, std::ios::trunc | std::ios::ate);
@@ -188,7 +189,8 @@ namespace ZEngine::Serializers
             //                if (geometry_type == static_cast<int>(Rendering::Geometries::GeometryType::CUBE))
             //                {
             //                    int32_t mesh_id{-1};
-            //                    auto    cube_mesh = ZEngine::Helpers::CreateBuiltInMesh(ZEngine::Rendering::Meshes::MeshType::CUBE);
+            //                    auto    cube_mesh =
+            //                    ZEngine::Helpers::CreateBuiltInMesh(ZEngine::Rendering::Meshes::MeshType::CUBE);
             //                    mesh_id           = scene->AddMesh(std::move(cube_mesh));
             //                    scene_entity.AddComponent<MeshComponent>(mesh_id);
             //                }
@@ -199,7 +201,8 @@ namespace ZEngine::Serializers
             //            if (material_component)
             //            {
             //                auto material_shader_type = material_component["MaterialShaderType"].as<int>();
-            //                if (material_shader_type == static_cast<int>(Rendering::Shaders::ShaderBuiltInType::STANDARD))
+            //                if (material_shader_type ==
+            //                static_cast<int>(Rendering::Shaders::ShaderBuiltInType::STANDARD))
             //                {
             //                    Ref<StandardMaterial> standard_material = CreateRef<StandardMaterial>();
             //                    standard_material->SetShininess(material_component["Shininess"].as<float>());
@@ -217,9 +220,10 @@ namespace ZEngine::Serializers
             //                    else
             //                    {
             //                        auto texture_color = diffuse_map["TextureColor"].as<Maths::Vector4>();
-            //                        auto texture       = Ref<Rendering::Textures::Texture>(Rendering::Textures::CreateTexture(1, 1));
-            //                        texture->SetData(texture_color.r, texture_color.g, texture_color.b, texture_color.a);
-            //                        standard_material->SetDiffuseMap(std::move(texture));
+            //                        auto texture       =
+            //                        Ref<Rendering::Textures::Texture>(Rendering::Textures::CreateTexture(1, 1));
+            //                        texture->SetData(texture_color.r, texture_color.g, texture_color.b,
+            //                        texture_color.a); standard_material->SetDiffuseMap(std::move(texture));
             //                    }
 
             //                    auto specular_map = material_component["SpecularMap"];
@@ -232,14 +236,16 @@ namespace ZEngine::Serializers
             //                    else
             //                    {
             //                        auto texture_color = specular_map["TextureColor"].as<Maths::Vector4>();
-            //                        auto texture       = Ref<Rendering::Textures::Texture>(Rendering::Textures::CreateTexture(1, 1));
-            //                        texture->SetData(texture_color.r, texture_color.g, texture_color.b, texture_color.a);
-            //                        standard_material->SetSpecularMap(std::move(texture));
+            //                        auto texture       =
+            //                        Ref<Rendering::Textures::Texture>(Rendering::Textures::CreateTexture(1, 1));
+            //                        texture->SetData(texture_color.r, texture_color.g, texture_color.b,
+            //                        texture_color.a); standard_material->SetSpecularMap(std::move(texture));
             //                    }
 
             //                    scene_entity.AddComponent<MaterialComponent>(std::move(standard_material));
             //                }
-            //                else if (material_shader_type == static_cast<int>(Rendering::Shaders::ShaderBuiltInType::BASIC))
+            //                else if (material_shader_type ==
+            //                static_cast<int>(Rendering::Shaders::ShaderBuiltInType::BASIC))
             //                {
             //                    scene_entity.AddComponent<MaterialComponent>(CreateRef<BasicMaterial>());
             //                }
@@ -250,7 +256,8 @@ namespace ZEngine::Serializers
             //            if (light_component)
             //            {
             //                auto light_type = light_component["LightType"].as<int>();
-            //                if (light_type == static_cast<int>(ZEngine::Rendering::Lights::LightType::DIRECTIONAL_LIGHT))
+            //                if (light_type ==
+            //                static_cast<int>(ZEngine::Rendering::Lights::LightType::DIRECTIONAL_LIGHT))
             //                {
             //                    auto direction      = light_component["Direction"].as<Maths::Vector3>();
             //                    auto ambient_color  = light_component["AmbientColor"].as<Maths::Vector3>();
@@ -287,7 +294,8 @@ namespace ZEngine::Serializers
             //                    }
 
             //                    auto controller_type = camera_controller_type["ControllerType"].as<int>();
-            //                    if (controller_type == static_cast<int>(ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER))
+            //                    if (controller_type ==
+            //                    static_cast<int>(ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER))
             //                    {
             //                        auto radius             = camera_controller_type["Radius"].as<float>();
             //                        auto yaw_angle_degree   = camera_controller_type["YawAngleDegree"].as<float>();
@@ -295,17 +303,22 @@ namespace ZEngine::Serializers
             //                        auto position           = camera_controller_type["Position"].as<Maths::Vector3>();
 
             //                        auto window_parent    = scene->m_parent_window.lock();
-            //                        auto orbit_controller = CreateRef<ZEngine::Controllers::OrbitCameraController>(window_parent, position, yaw_angle_degree, pitch_angle_degree);
-            //                        //orbit_controller->SetAspectRatio(scene->m_last_scene_requested_size.first / scene->m_last_scene_requested_size.second);
+            //                        auto orbit_controller =
+            //                        CreateRef<ZEngine::Controllers::OrbitCameraController>(window_parent, position,
+            //                        yaw_angle_degree, pitch_angle_degree);
+            //                        //orbit_controller->SetAspectRatio(scene->m_last_scene_requested_size.first /
+            //                        scene->m_last_scene_requested_size.second);
             //                        orbit_controller->SetNear(camera_clipping_near);
             //                        orbit_controller->SetFar(camera_clipping_far);
             //                        orbit_controller->SetFieldOfView(Maths::radians(field_of_view_degree));
 
             //                        auto       camera       = orbit_controller->GetCamera();
-            //                        auto const orbit_camera = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
+            //                        auto const orbit_camera =
+            //                        reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
             //                        orbit_camera->SetRadius(radius);
 
-            //                        auto& component           = scene_entity.AddComponent<CameraComponent>(std::move(orbit_controller));
+            //                        auto& component           =
+            //                        scene_entity.AddComponent<CameraComponent>(std::move(orbit_controller));
             //                        component.IsPrimaryCamera = is_primary;
             //                    }
             //                }
@@ -388,10 +401,12 @@ namespace ZEngine::Serializers
                     emitter << YAML::BeginMap;
                     // emitter << YAML::Key << "FromFile" << YAML::Value << diffuse_map->IsFromFile();
                     // if (diffuse_map->IsFromFile()) {
-                    //     emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(diffuse_map->GetFilePath());
+                    //     emitter << YAML::Key << "TexturePath" << YAML::Value <<
+                    //     std::string(diffuse_map->GetFilePath());
                     // } else {
                     //     const auto color = diffuse_map->GetData();
-                    //     emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
+                    //     emitter << YAML::Key << "TextureColor" << YAML::Value <<
+                    //     ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
                     // }
                     emitter << YAML::EndMap;
                 }
@@ -401,10 +416,12 @@ namespace ZEngine::Serializers
                     emitter << YAML::BeginMap;
                     // emitter << YAML::Key << "FromFile" << YAML::Value << specular_map->IsFromFile();
                     // if (specular_map->IsFromFile()) {
-                    //     emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(specular_map->GetFilePath());
+                    //     emitter << YAML::Key << "TexturePath" << YAML::Value <<
+                    //     std::string(specular_map->GetFilePath());
                     // } else {
                     //     const auto color = specular_map->GetData();
-                    //     emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
+                    //     emitter << YAML::Key << "TextureColor" << YAML::Value <<
+                    //     ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
                     // }
                     emitter << YAML::EndMap;
                 }
@@ -421,7 +438,8 @@ namespace ZEngine::Serializers
                 //     emitter << YAML::Key << "TexturePath" << YAML::Value << std::string(texture->GetFilePath());
                 // } else {
                 //     const auto color = texture->GetData();
-                //     emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0], color[1], color[2], color[3]);
+                //     emitter << YAML::Key << "TextureColor" << YAML::Value << ZEngine::Maths::Vector4(color[0],
+                //     color[1], color[2], color[3]);
                 // }
                 emitter << YAML::EndMap;
             }
@@ -438,18 +456,20 @@ namespace ZEngine::Serializers
 
             if (light_type == ZEngine::Rendering::Lights::LightType::DIRECTIONAL)
             {
-                // auto directional_light = reinterpret_cast<ZEngine::Rendering::Lights::DirectionalLight*>(light.get());
-                // emitter << YAML::Key << "LightType" << YAML::Value << static_cast<int>(light_type);
-                // emitter << YAML::Key << "Direction" << YAML::Value << directional_light->GetDirection();
-                // emitter << YAML::Key << "AmbientColor" << YAML::Value << directional_light->GetAmbientColor();
-                // emitter << YAML::Key << "DiffuseColor" << YAML::Value << directional_light->GetDiffuseColor();
-                // emitter << YAML::Key << "SpecularColor" << YAML::Value << directional_light->GetSpecularColor();
+                // auto directional_light =
+                // reinterpret_cast<ZEngine::Rendering::Lights::DirectionalLight*>(light.get()); emitter <<
+                // YAML::Key << "LightType" << YAML::Value << static_cast<int>(light_type); emitter << YAML::Key <<
+                // "Direction" << YAML::Value << directional_light->GetDirection(); emitter << YAML::Key <<
+                // "AmbientColor" << YAML::Value << directional_light->GetAmbientColor(); emitter << YAML::Key <<
+                // "DiffuseColor" << YAML::Value << directional_light->GetDiffuseColor(); emitter << YAML::Key <<
+                // "SpecularColor" << YAML::Value << directional_light->GetSpecularColor();
             }
 
             emitter << YAML::EndMap;
         });
 
-        // SerializeSceneEntityComponent<CameraComponent>(emitter, entity, [](YAML::Emitter& emitter, CameraComponent& component) {
+        // SerializeSceneEntityComponent<CameraComponent>(emitter, entity, [](YAML::Emitter& emitter, CameraComponent&
+        // component) {
         //     // auto const camera_controller = component.GetCameraController();
         //     // auto       camera            = component.GetCamera();
         //     // auto       is_primary        = component.IsPrimaryCamera;
@@ -461,7 +481,8 @@ namespace ZEngine::Serializers
         //    // emitter << YAML::Key << "CameraType" << YAML::Value << static_cast<int>(camera_type);
 
         //    // if (camera_type == Rendering::Cameras::CameraType::PERSPECTIVE) {
-        //    //     auto  perspective_controller = reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
+        //    //     auto  perspective_controller =
+        //    reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
         //    //     float camera_fov             = ZEngine::Maths::degrees(perspective_controller->GetFieldOfView());
         //    //     float camera_near            = perspective_controller->GetNear();
         //    //     float camera_far             = perspective_controller->GetFar();
@@ -474,15 +495,19 @@ namespace ZEngine::Serializers
 
         //    //    auto camera_controller_type = camera_controller->GetControllerType();
         //    //    emitter << YAML::Key << "CameraControllerType";
-        //    //    if (camera_controller_type == ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER) {
-        //    //        //auto       orbit_controller = reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(perspective_controller);
-        //    //        //auto const orbit_camera     = reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
+        //    //    if (camera_controller_type ==
+        //    ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER) {
+        //    //        //auto       orbit_controller =
+        //    reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(perspective_controller);
+        //    //        //auto const orbit_camera     =
+        //    reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
         //    //        //float      radius           = orbit_camera->GetRadius();
         //    //        //float      yaw_angle        = orbit_camera->GetYawAngle();
         //    //        //float      pitch_angle      = orbit_camera->GetPitchAngle();
         //    //        //auto       position         = orbit_camera->GetPosition();
         //    //        //emitter << YAML::BeginMap;
-        //    //        //emitter << YAML::Key << "ControllerType" << YAML::Value << static_cast<int>(camera_controller_type);
+        //    //        //emitter << YAML::Key << "ControllerType" << YAML::Value <<
+        //    static_cast<int>(camera_controller_type);
         //    //        //emitter << YAML::Key << "Radius" << YAML::Value << radius;
         //    //        //emitter << YAML::Key << "YawAngleDegree" << YAML::Value << yaw_angle;
         //    //        //emitter << YAML::Key << "PitchAngleDegree" << YAML::Value << pitch_angle;

@@ -284,7 +284,7 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(command_buffer, "Command Buffer can't be null")
 
         command_buffer->ClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        command_buffer->ClearDepth(1.0f, 0); // Todo : setting value at 1.0f crash on Integrated GPU, floating precision issue or Hardware issue ??
+        command_buffer->ClearDepth(1.0f, 0);
 
         for (auto& node_name : m_sorted_nodes)
         {
@@ -344,8 +344,10 @@ namespace ZEngine::Rendering::Renderers
                     barrier_spec.ImageHandle           = buffer.Handle;
                     barrier_spec.OldLayout             = Specifications::ImageLayout::UNDEFINED;
                     barrier_spec.NewLayout             = Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    barrier_spec.ImageAspectMask       = VkImageAspectFlagBits(VK_IMAGE_ASPECT_DEPTH_BIT /*| VK_IMAGE_ASPECT_STENCIL_BIT*/); // Todo : To consider Stencil buffer, we want to extend Texture
-                                                                                                                                             // spec to introduce HasStencil bit
+                    barrier_spec.ImageAspectMask       = VkImageAspectFlagBits(VK_IMAGE_ASPECT_DEPTH_BIT /*| VK_IMAGE_ASPECT_STENCIL_BIT*/); // Todo : To consider Stencil
+                                                                                                                                             // buffer, we want to extend
+                                                                                                                                             // Texture spec to introduce
+                                                                                                                                             // HasStencil bit
                     barrier_spec.SourceAccessMask      = 0;
                     barrier_spec.DestinationAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
                     barrier_spec.SourceStageMask       = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -425,7 +427,8 @@ namespace ZEngine::Rendering::Renderers
                     pass_spec.Inputs.push(resource.ResourceInfo.TextureHandle);
                 }
                 /*
-                 * The resource is an attachment from a RenderPass output, but the current node consumes it as Image for sampling operation
+                 * The resource is an attachment from a RenderPass output, but the current node consumes it as Image for
+                 * sampling operation
                  */
                 else if (resource.Type == RenderGraphResourceType::ATTACHMENT && input.Type == RenderGraphResourceType::TEXTURE)
                 {

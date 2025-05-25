@@ -26,7 +26,8 @@ namespace ZEngine::Rendering::Buffers
         /*
          * Mapping pixel coordinates on a specific face of a cubemap to 3D Cartesian coordinates
          *
-         * The A and B values are normalized coordinates in the range [-1, 1], calculated from pixel coordinates (i, j) and the face size.
+         * The A and B values are normalized coordinates in the range [-1, 1], calculated from pixel coordinates (i, j)
+         * and the face size.
          *
          * Reference: "Real-Time Rendering, Fourth Edition" by Tomas Akenine-Möller, Eric Haines, Naty Hoffman
          */
@@ -58,7 +59,8 @@ namespace ZEngine::Rendering::Buffers
 
             /*
              * The bottom face is mapped to the negative y-axis, so the y-coordinate is set to 1.0f.
-             * The x-coordinate is set to 1.0f - A, and the z-coordinate is set based on the normalized pixel coordinates
+             * The x-coordinate is set to 1.0f - A, and the z-coordinate is set based on the normalized pixel
+             * coordinates
              */
             if (face_id == 3)
                 return glm::vec3(1.0f - A, 1.0f, 1.0f - B);

@@ -160,7 +160,8 @@ namespace Tetragrama::Components
         if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
         {
             ctx->SelectedSceneNode.store(-1, std::memory_order_release);
-            // Messengers::IMessenger::SendAsync<Components::UIComponent, Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, Messengers::EmptyMessage{});
+            // Messengers::IMessenger::SendAsync<Components::UIComponent,
+            // Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, Messengers::EmptyMessage{});
         }
 
         RenderGuizmo();

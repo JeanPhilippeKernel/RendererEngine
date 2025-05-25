@@ -60,7 +60,6 @@ namespace Tetragrama
 
         int                                                                 AddHierarchyNode(int parent, int depth);
 
-        // void                                                                CreateSceneNode(int parent = 0, int depth = 1) = delete;
         int                                                                 CreateSceneNode(int parent = 0, int depth = 1, const Importers::AssetNodeRef& = {});
         void                                                                RemoveSceneNode(int node_id);
         void                                                                ReparentNode(int node_id, int new_parent);
@@ -74,7 +73,8 @@ namespace Tetragrama
         void                                                                Reset();
         void                                                                InitRootNode();
 
-        void                                                                ExtractAsync(EditorScene& scene); // Todo : this should be const EditorScene& ... the map::view() props prevents us to do it... def a impl issue
+        void                                                                ExtractAsync(EditorScene& scene); // Todo : this should be const EditorScene& ... the map::view() props
+                                                                                                              // prevents us to do it... def a impl issue
 
         ZRawPtr(ZEngine::Rendering::Scenes::GraphicScene) RenderScene = nullptr;
     };

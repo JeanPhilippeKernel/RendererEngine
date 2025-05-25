@@ -135,7 +135,8 @@ namespace ZEngine::Hardwares
         {
             ZENGINE_VALIDATE_ASSERT(index < set.size(), "Index out of range")
 
-            // if (std::is_same_v<T, IndexBuffer> || std::is_same_v<T, VertexBuffer> || std::is_same_v<T, StorageBuffer>)
+            // if (std::is_same_v<T, IndexBuffer> || std::is_same_v<T, VertexBuffer> || std::is_same_v<T,
+            // StorageBuffer>)
             //{
             // }
             T& entry = set[index];

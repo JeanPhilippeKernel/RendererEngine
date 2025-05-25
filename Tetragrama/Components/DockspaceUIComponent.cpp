@@ -131,7 +131,8 @@ namespace Tetragrama::Components
         auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
         // if (ctx->CurrentScenePtr && ctx->CurrentScenePtr->RenderScene->IsDrawDataDirty)
         //{
-        //     ctx->CurrentScenePtr->RenderScene->InitOrResetDrawBuffer(renderer->Device, renderer->RenderGraph, renderer->AsyncLoader);
+        //     ctx->CurrentScenePtr->RenderScene->InitOrResetDrawBuffer(renderer->Device, renderer->RenderGraph,
+        //     renderer->AsyncLoader);
         // }
     }
 

@@ -188,7 +188,8 @@ namespace ZEngine::Rendering::Renderers
         {
             return;
         }
-        // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
+        // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer
+        // coordinates)
         int fb_width  = (int) (draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
         int fb_height = (int) (draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
         if (fb_width <= 0 || fb_height <= 0)
@@ -246,8 +247,8 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->BindIndexBuffer(*index_buffer->At(frame_index), sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 
         // Setup scale and translation:
-        // Our visible imgui space lies from draw_data->DisplayPps (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single
-        // viewport apps.
+        // Our visible imgui space lies from draw_data->DisplayPps (top left) to
+        // draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single viewport apps.
 
         PushConstantData pc_data = {};
         pc_data.Scale[0]         = 2.0f / draw_data->DisplaySize.x;

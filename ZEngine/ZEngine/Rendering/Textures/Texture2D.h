@@ -9,7 +9,8 @@ namespace ZEngine::Rendering::Textures
     //{
     // public:
     //     Texture2D() = default;
-    //     Texture2D(const Specifications::TextureSpecification& spec, const Helpers::Ref<Hardwares::Image2DBuffer>& buffer)
+    //     Texture2D(const Specifications::TextureSpecification& spec, const Helpers::Ref<Hardwares::Image2DBuffer>&
+    //     buffer)
     //     {
     //         m_image_2d_buffer = buffer;
     //         // m_specification   = spec;
@@ -25,10 +26,10 @@ namespace ZEngine::Rendering::Textures
 
     //    static Helpers::Ref<Texture2D>              Create(const Specifications::TextureSpecification& spec);
     //    static Helpers::Ref<Texture2D>              Create(uint32_t width = 1, uint32_t height = 1);
-    //    static Helpers::Ref<Texture2D>              Create(uint32_t width, uint32_t height, float r, float g, float b, float a);
-    //    static Helpers::Ref<Texture2D>              Read(std::string_view filename);
-    //    static Helpers::Ref<Texture2D>              ReadCubemap(std::string_view filename);
-    //    static std::future<Helpers::Ref<Texture2D>> ReadAsync(std::string_view filename);
+    //    static Helpers::Ref<Texture2D>              Create(uint32_t width, uint32_t height, float r, float g, float b,
+    //    float a); static Helpers::Ref<Texture2D>              Read(std::string_view filename); static
+    //    Helpers::Ref<Texture2D>              ReadCubemap(std::string_view filename); static
+    //    std::future<Helpers::Ref<Texture2D>> ReadAsync(std::string_view filename);
 
     //    virtual Hardwares::BufferImage&             GetBuffer() /*override*/;
     //    virtual const Hardwares::BufferImage&       GetBuffer() const /*override*/;
@@ -36,7 +37,8 @@ namespace ZEngine::Rendering::Textures
     //    virtual void                                Dispose() /*override*/;
 
     // protected:
-    //     static void FillAsVulkanImage(Helpers::Ref<Texture2D>& texture, const Specifications::TextureSpecification& specification);
+    //     static void FillAsVulkanImage(Helpers::Ref<Texture2D>& texture, const Specifications::TextureSpecification&
+    //     specification);
 
     // private:
     //     Helpers::Ref<Hardwares::Image2DBuffer> m_image_2d_buffer;
