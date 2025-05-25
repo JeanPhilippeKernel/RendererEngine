@@ -98,9 +98,15 @@ namespace Tetragrama::Layers
          * Register Dockspace Component
          */
         IMessenger::Register<Components::UIComponent, GenericMessage<std::string>>(dockspace_cmp, EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE, [=](void* const message) -> std::future<void> {
-            auto message_ptr = reinterpret_cast<GenericMessage<std::string>*>(message);
-            auto value       = message_ptr->GetValue();
+            auto        message_ptr = reinterpret_cast<GenericMessage<std::string>*>(message);
+            const auto& value       = message_ptr->GetValue();
             return dockspace_cmp->OnOpenSceneRequestAsync(value.c_str());
+        });
+
+        IMessenger::Register<Components::UIComponent, GenericMessage<std::string>>(dockspace_cmp, EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENMESH, [=](void* const message) -> std::future<void> {
+            auto        message_ptr = reinterpret_cast<GenericMessage<std::string>*>(message);
+            const auto& value       = message_ptr->GetValue();
+            return dockspace_cmp->OnOpenMeshRequestAsync(value.c_str());
         });
     }
 

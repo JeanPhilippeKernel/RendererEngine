@@ -60,7 +60,8 @@ namespace Tetragrama
 
         int                                                                 AddHierarchyNode(int parent, int depth);
 
-        void                                                                CreateSceneNode(int parent = 0, int depth = 1);
+        // void                                                                CreateSceneNode(int parent = 0, int depth = 1) = delete;
+        int                                                                 CreateSceneNode(int parent = 0, int depth = 1, const Importers::AssetNodeRef& = {});
         void                                                                RemoveSceneNode(int node_id);
         void                                                                ReparentNode(int node_id, int new_parent);
         bool                                                                IsSceneNodeDeleted(int node_id);

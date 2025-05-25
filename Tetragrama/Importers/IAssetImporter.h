@@ -32,6 +32,13 @@ namespace Tetragrama::Importers
         ZEngine::Core::Containers::String OutputTextureFilesPath;
     };
 
+    struct AssetMeshFileHeader
+    {
+        uint32_t    MagicNumber = 0xFFFFFF;
+        uint32_t    Version     = 0xFFFFFF;
+        uuids::uuid Id          = {};
+    };
+
     struct AssetImporterOutput
     {
         AssetFileType Type     = AssetFileType::UNKNOWN;
@@ -76,5 +83,7 @@ namespace Tetragrama::Importers
         static void                DeserializeMeshAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh&, AssetNodeHierarchy&);
         static void                DeserializeMaterialAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial&);
         static void                DeserializeTextureAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file, ZEngine::Core::Containers::Array<AssetTexture>&);
+
+        static bool                ReadAssetMeshFileHeader(cstring asset_file, AssetMeshFileHeader&);
     };
 } // namespace Tetragrama::Importers

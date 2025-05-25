@@ -51,7 +51,7 @@ namespace Tetragrama::Serializers
 
         void                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
         {
-            arena->CreateSubArena(ZMega(100), &Arena);
+            arena->CreateSubArena(ZMega(150), &Arena);
         }
 
         virtual void SetOnCompleteCallback(on_serializer_complete_fn callback)

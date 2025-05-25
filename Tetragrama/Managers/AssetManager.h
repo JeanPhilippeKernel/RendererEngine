@@ -21,21 +21,23 @@ namespace Tetragrama::Managers
 
     struct AssetManager
     {
-        using AssetHandle                                                                                             = uint32_t;
+        using AssetHandle                                                                                                = uint32_t;
 
-        ZEngine::Core::Memory::ArenaAllocator                                                        Arena            = {};
-        ZEngine::Core::Memory::ArenaAllocator                                                        ThreadLocalArena = {};
+        ZEngine::Core::Memory::ArenaAllocator                                                        Arena               = {};
+        ZEngine::Core::Memory::ArenaAllocator                                                        ThreadLocalArena    = {};
 
-        std::atomic_bool                                                                             IsLoading        = false;
-        std::atomic_bool                                                                             RequestShutdown  = false;
+        std::atomic_bool                                                                             IsLoading           = false;
+        std::atomic_bool                                                                             RequestShutdown     = false;
 
-        ZEngine::Core::Containers::Array<Importers::AssetNodeHierarchy>                              NodeHierarchies  = {};
-        ZEngine::Core::Containers::Array<Importers::AssetMesh>                                       Meshes           = {};
-        ZEngine::Core::Containers::Array<Importers::AssetMaterial>                                   Materials        = {};
-        ZEngine::Core::Containers::Array<Importers::AssetTexture>                                    Textures         = {};
+        ZEngine::Core::Containers::Array<Importers::AssetNodeHierarchy>                              NodeHierarchies     = {};
+        ZEngine::Core::Containers::Array<Importers::AssetMesh>                                       Meshes              = {};
+        ZEngine::Core::Containers::Array<Importers::AssetMaterial>                                   Materials           = {};
+        ZEngine::Core::Containers::Array<Importers::AssetTexture>                                    Textures            = {};
 
-        ZEngine::Core::Containers::HashMap<uuids::uuid, AssetHandle>                                 UUIDToHandle     = {};
-        ZEngine::Core::Containers::HashMap<AssetHandle, uuids::uuid>                                 HandleToUUID     = {};
+        ZEngine::Core::Containers::HashMap<uuids::uuid, AssetHandle>                                 UUIDToHandle        = {};
+        ZEngine::Core::Containers::HashMap<AssetHandle, uuids::uuid>                                 HandleToUUID        = {};
+        ZEngine::Core::Containers::HashMap<uuids::uuid, uuids::uuid>                                 MeshToNodeHierarchy = {};
+        ZEngine::Core::Containers::HashMap<uuids::uuid, uuids::uuid>                                 NodeHierarchyToMesh = {};
 
         std::mutex                                                                                   Mut;
         std::condition_variable                                                                      Cond;
@@ -45,6 +47,9 @@ namespace Tetragrama::Managers
         ZEngine::Helpers::ThreadSafeQueue<Importers::AssetNodeHierarchy>                             PendingAssetNodeHierarchies = {};
         ZEngine::Helpers::ThreadSafeQueue<Importers::AssetMaterial>                                  PendingAssetMaterials       = {};
         ZEngine::Helpers::ThreadSafeQueue<ZEngine::Core::Containers::Array<Importers::AssetTexture>> PendingAssetTextures        = {};
+
+        Importers::AssetNodeHierarchy*                                                               GetMeshNodeHierarchy(const uuids::uuid& id);
+        AssetHandle                                                                                  GetMeshNodeHierarchyHandle(const uuids::uuid& id);
 
         static AssetManager*                                                                         Instance();
 
@@ -100,6 +105,17 @@ namespace Tetragrama::Managers
         if (index < Instance()->Textures.size())
         {
             return &Instance()->Textures[index];
+        }
+        return nullptr;
+    }
+
+    template <>
+    inline Importers::AssetNodeHierarchy* AssetManager::GetAsset<Importers::AssetNodeHierarchy, AssetManager::AssetHandle>(AssetManager::AssetHandle key)
+    {
+        uint32_t index = ReadAssetHandleIndex(key);
+        if (index < Instance()->NodeHierarchies.size())
+        {
+            return &Instance()->NodeHierarchies[index];
         }
         return nullptr;
     }
