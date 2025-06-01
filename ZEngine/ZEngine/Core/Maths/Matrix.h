@@ -132,7 +132,7 @@ namespace ZEngine::Core::Maths
 
         Mat2()
         {
-            Helpers::secure_memset(m_data, 0, sizeof(m_data));
+            Helpers::secure_memset(m_data, 0, sizeof(m_data), sizeof(m_data));
         }
 
         Mat2(T m00, T m01, T m10, T m11)
@@ -192,7 +192,7 @@ namespace ZEngine::Core::Maths
 
         Mat3()
         {
-            Helpers::secure_memset(m_data, 0, sizeof(m_data));
+            Helpers::secure_memset(m_data, 0, sizeof(m_data), sizeof(m_data));
         }
 
         Mat3(T m00, T m01, T m02, T m10, T m11, T m12, T m20, T m21, T m22)
@@ -280,7 +280,7 @@ namespace ZEngine::Core::Maths
         using Matrix<T, 4, 4>::m_data;
         Mat4()
         {
-            Helpers::secure_memset(m_data, 0, sizeof(m_data));
+            Helpers::secure_memset(m_data, 0, sizeof(m_data),sizeof(m_data));
         }
 
         Mat4(T m00, T m01, T m02, T m03, T m10, T m11, T m12, T m13, T m20, T m21, T m22, T m23, T m30, T m31, T m32, T m33)
