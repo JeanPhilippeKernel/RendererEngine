@@ -294,20 +294,14 @@ TEST(MatrixTest, Inverse3x3)
     Mat3f m(1, 0, 2, 2, 1, 0, 1, 1, 1);
     Mat3f inv     = m.Inverse();
     Mat3f product = m * inv;
+    Mat3f identity = Identity<Mat3f>();
 
-    // Check if m * m^-1 ≈ I
+    // Check if (m * m^-1) ≈ I
     for (size_t i = 0; i < 3; ++i)
     {
         for (size_t j = 0; j < 3; ++j)
         {
-            if (i == j)
-            {
-                EXPECT_NEAR(product(i, j), 1.0f, EPSILON);
-            }
-            else
-            {
-                EXPECT_NEAR(product(i, j), 0.0f, EPSILON);
-            }
+            EXPECT_NEAR(product(i, j), identity(i, j), EPSILON);
         }
     }
 }

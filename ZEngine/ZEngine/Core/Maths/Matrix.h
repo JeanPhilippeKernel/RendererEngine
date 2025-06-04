@@ -270,7 +270,7 @@ namespace ZEngine::Core::Maths
 
             float          invDet = 1.0f / dot(r2, c);
 
-            return Mat<T>(r0.x * invDet, r0.y * invDet, r0.z * invDet, r1.x * invDet, r1.y * invDet, r1.z * invDet, r2.x * invDet, r2.y * invDet, r2.z * invDet);
+            return Mat3<T>(r0.x * invDet, r0.y * invDet, r0.z * invDet, r1.x * invDet, r1.y * invDet, r1.z * invDet, r2.x * invDet, r2.y * invDet, r2.z * invDet);
         };
     };
 
