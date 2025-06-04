@@ -292,8 +292,8 @@ TEST(MatrixTest, IdentityMatrices)
 TEST(MatrixTest, Inverse3x3)
 {
     Mat3f m(1, 0, 2, 2, 1, 0, 1, 1, 1);
-    Mat3f inv = m.Inverse();
-    Mat3f product = m * inv;
+    Mat3f inv      = m.Inverse();
+    Mat3f product  = m * inv;
     Mat3f identity = Identity<Mat3f>();
 
     // Check if (m * m^-1) ≈ I
