@@ -338,29 +338,29 @@ namespace ZEngine::Core::Maths
             Vec3<T>  c(M(2, 0), M(2, 1), M(2, 2));
             Vec3<T>  d(M(3, 0), M(3, 1), M(3, 2));
 
-            const T& x       = M(0, 3);
-            const T& y       = M(1, 3);
-            const T& z       = M(2, 3);
-            const T& w       = M(3, 3);
+            const T& x   = M(0, 3);
+            const T& y   = M(1, 3);
+            const T& z   = M(2, 3);
+            const T& w   = M(3, 3);
 
-            Vec3<T>  s       = cross3d(a, b);
-            Vec3<T>  t       = cross3d(c, d);
-            Vec3<T>  u       = a * y - b * x;
-            Vec3<T>  v       = c * w - d * z;
+            Vec3<T>  s   = cross3d(a, b);
+            Vec3<T>  t   = cross3d(c, d);
+            Vec3<T>  u   = a * y - b * x;
+            Vec3<T>  v   = c * w - d * z;
 
-            T        det     = dot(s, v) + dot(t, u);
+            T        det = dot(s, v) + dot(t, u);
             ZENGINE_VALIDATE_ASSERT(det != T(0), "Matrix is singular and cannot be inverted");
 
-            T        invDet  = T(1) / det;
-            s               *= invDet;
-            t               *= invDet;
-            u               *= invDet;
-            v               *= invDet;
+            T invDet    = T(1) / det;
+            s          *= invDet;
+            t          *= invDet;
+            u          *= invDet;
+            v          *= invDet;
 
-            Vec3<T> r0       = cross3d(b, v) + (t * y);
-            Vec3<T> r1       = cross3d(v, a) - (t * x);
-            Vec3<T> r2       = cross3d(d, u) + (s * w);
-            Vec3<T> r3       = cross3d(u, c) - (s * z);
+            Vec3<T> r0  = cross3d(b, v) + (t * y);
+            Vec3<T> r1  = cross3d(v, a) - (t * x);
+            Vec3<T> r2  = cross3d(d, u) + (s * w);
+            Vec3<T> r3  = cross3d(u, c) - (s * z);
 
             return Mat4<T>(r0.x, r1.x, r2.x, r3.x, r0.y, r1.y, r2.y, r3.y, r0.z, r1.z, r2.z, r3.z, -dot(r0, d), -dot(r1, d), -dot(r2, a), -dot(r3, a));
         }

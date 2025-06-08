@@ -309,8 +309,8 @@ TEST(MatrixTest, Inverse3x3)
 TEST(MatrixTest, Inverse4x4)
 {
     Mat4f m(1, 0, 0, 1, 0, 1, 0, 2, 0, 0, 1, 3, 0, 0, 0, 1);
-    Mat4f inv     = m.Inverse();
-    Mat4f product = m * inv;
+    Mat4f inv      = m.Inverse();
+    Mat4f product  = m * inv;
     Mat4f identity = Identity<Mat4f>();
 
     // Check if m * m^-1 ≈ I
