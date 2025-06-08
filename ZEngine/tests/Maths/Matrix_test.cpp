@@ -63,7 +63,7 @@ TEST(MatrixTest, ParameterConstruction)
     // Mat4 construction
     Mat4f m4(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     EXPECT_NEAR(m4(0, 0), 1.0f, EPSILON);
-    EXPECT_NEAR(m4(0, 1), 5.0f, EPSILON);
+    EXPECT_NEAR(m4(1, 0), 5.0f, EPSILON);
     EXPECT_NEAR(m4(3, 3), 16.0f, EPSILON);
 }
 
@@ -300,6 +300,23 @@ TEST(MatrixTest, Inverse3x3)
     for (size_t i = 0; i < 3; ++i)
     {
         for (size_t j = 0; j < 3; ++j)
+        {
+            EXPECT_NEAR(product(i, j), identity(i, j), EPSILON);
+        }
+    }
+}
+
+TEST(MatrixTest, Inverse4x4)
+{
+    Mat4f m(1, 0, 0, 1, 0, 1, 0, 2, 0, 0, 1, 3, 0, 0, 0, 1);
+    Mat4f inv     = m.Inverse();
+    Mat4f product = m * inv;
+    Mat4f identity = Identity<Mat4f>();
+
+    // Check if m * m^-1 ≈ I
+    for (size_t i = 0; i < 4; ++i)
+    {
+        for (size_t j = 0; j < 4; ++j)
         {
             EXPECT_NEAR(product(i, j), identity(i, j), EPSILON);
         }
