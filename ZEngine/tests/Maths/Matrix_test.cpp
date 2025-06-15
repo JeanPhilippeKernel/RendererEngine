@@ -1,4 +1,5 @@
 ﻿#include <Core/Maths/Matrix.h>
+#include <Core/Maths/Quaternion.h>
 #include <gtest/gtest.h>
 
 using namespace ZEngine::Core::Maths;
