@@ -146,12 +146,12 @@ namespace ZEngine::Core::Maths
     template <typename T>
     inline Quaternion<T> fromEulerAngles(double a, double b, double c)
     {
-        double     xs = std::sin(a * 0.5);
-        double     ys = std::sin(b * 0.5);
-        double     zs = std::sin(c * 0.5);
-        double     xc = std::cos(a * 0.5);
-        double     yc = std::cos(b * 0.5);
-        double     zc = std::cos(c * 0.5);
+        double        xs = std::sin(a * 0.5);
+        double        ys = std::sin(b * 0.5);
+        double        zs = std::sin(c * 0.5);
+        double        xc = std::cos(a * 0.5);
+        double        yc = std::cos(b * 0.5);
+        double        zc = std::cos(c * 0.5);
 
         Quaternion<T> quat;
         quat.x = xs * yc * zc - xc * ys * xs;
