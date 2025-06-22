@@ -127,7 +127,7 @@ namespace ZEngine::Core::Maths
 
         Quaternion normalize() const
         {
-            T len = std::sqrt(x * x + y * y + z * z + w * w);
+            T len = sqrt(x * x + y * y + z * z + w * w);
             ZENGINE_VALIDATE_ASSERT(len != 0, "Cannot normalize zero vector");
             return *this / len;
         }
@@ -154,13 +154,13 @@ namespace ZEngine::Core::Maths
         T             halfYaw   = yaw * T(0.5);
         T             halfRoll  = roll * T(0.5);
 
-        T             cx        = std::cos(halfPitch);
-        T             cy        = std::cos(halfYaw);
-        T             cz        = std::cos(halfRoll);
+        T             cx        = cos(halfPitch);
+        T             cy        = cos(halfYaw);
+        T             cz        = cos(halfRoll);
 
-        T             sx        = std::sin(halfPitch);
-        T             sy        = std::sin(halfYaw);
-        T             sz        = std::sin(halfRoll);
+        T             sx        = sin(halfPitch);
+        T             sy        = sin(halfYaw);
+        T             sz        = sin(halfRoll);
 
         Quaternion<T> quat;
         quat.w = cx * cy * cz + sx * sy * sz;
@@ -183,8 +183,8 @@ namespace ZEngine::Core::Maths
         Quaternion<T> quat;
 
         Vec3<T>       normAxis = axis.normalize();
-        T             sinHalf  = std::sin(angle * T(0.5));
-        T             cosHalf  = std::cos(angle * T(0.5));
+        T             sinHalf  = sin(angle * T(0.5));
+        T             cosHalf  = cos(angle * T(0.5));
 
         quat.w                 = cosHalf;
         quat.x                 = normAxis.x * sinHalf;
@@ -211,9 +211,9 @@ namespace ZEngine::Core::Maths
     inline Vec3<T> toEulerAngle(const Quaternion<T>& quat)
     {
         Vec3<T> euler;
-        euler.x = std::atan2(2(quat.w * quat.x + quat.y * quat.z), 1 - 2((quat.x * quat.x) + (quat.y * quat.y)));
-        euler.y = std::asin(2(quat.w * quat.y - quat.z * quat.x));
-        euler.z = std::atan2(2(quat.w * quat.z + quat.x * quat.y), 1 - 2((quat.y * quat.y) + (quat.z * quat.z)));
+        euler.x = atan2(2(quat.w * quat.x + quat.y * quat.z), 1 - 2((quat.x * quat.x) + (quat.y * quat.y)));
+        euler.y = asin(2(quat.w * quat.y - quat.z * quat.x));
+        euler.z = atan2(2(quat.w * quat.z + quat.x * quat.y), 1 - 2((quat.y * quat.y) + (quat.z * quat.z)));
 
         return euler;
     }
@@ -227,9 +227,9 @@ namespace ZEngine::Core::Maths
         }
         else
         {
-            angle = T(2) * std::acos(quat.w);
+            angle = T(2) * acos(quat.w);
         }
-        T s = std::sqrt(1 - quat.w * quat.w);
+        T s = sqrt(1 - quat.w * quat.w);
 
         if (s < T(0.0001))
         {
@@ -290,11 +290,11 @@ namespace ZEngine::Core::Maths
             return lerpUnclamped(a, bCopy, t);
         }
 
-        double        theta    = std::acos(dot);
-        double        sinTheta = std::sin(theta);
+        double        theta    = acos(dot);
+        double        sinTheta = sin(theta);
 
-        double        w1       = std::sin((1.0 - t) * theta) / sinTheta;
-        double        w2       = std::sin(t * theta) / sinTheta;
+        double        w1       = sin((1.0 - t) * theta) / sinTheta;
+        double        w2       = sin(t * theta) / sinTheta;
 
         Quaternion<T> result   = a * w1 + bCopy * w2;
         return result.normalize();

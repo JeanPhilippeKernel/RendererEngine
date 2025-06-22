@@ -1,6 +1,6 @@
 #pragma once
+#include <MathUtils.h>
 #include <ZEngineDef.h>
-#include <cmath>
 #include <type_traits>
 
 namespace ZEngine::Core::Maths
@@ -23,7 +23,7 @@ namespace ZEngine::Core::Maths
         {
             if constexpr (std::is_floating_point_v<T>)
             {
-                return std::fabs(a - b) <= tolerance * std::max(std::fabs(a), std::fabs(b));
+                return fabs(a - b) <= tolerance * max(fabs(a), fabs(b));
             }
             return a == b;
         }
@@ -114,7 +114,7 @@ namespace ZEngine::Core::Maths
 
         T magnitude() const
         {
-            return std::sqrt(x * x + y * y);
+            return sqrt(x * x + y * y);
         }
 
         Vec2 normalize() const
@@ -213,7 +213,7 @@ namespace ZEngine::Core::Maths
 
         T magnitude() const
         {
-            return std::sqrt(x * x + y * y + z * z);
+            return sqrt(x * x + y * y + z * z);
         }
 
         Vec3 normalize() const
@@ -318,7 +318,7 @@ namespace ZEngine::Core::Maths
 
         T magnitude() const
         {
-            return std::sqrt(x * x + y * y + z * z + w * w);
+            return sqrt(x * x + y * y + z * z + w * w);
         }
 
         Vec4 normalize() const
