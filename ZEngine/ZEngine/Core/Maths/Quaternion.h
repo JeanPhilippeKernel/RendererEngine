@@ -12,11 +12,6 @@ namespace ZEngine::Core::Maths
         Quaternion(const T data[]) : x(data[0]), y(data[1]), z(data[2]), w(data[3]) {}
         Quaternion(const Vec3<T> vec, double other) : x(vec.x), y(vec.y), z(vec.z), w(other) {}
 
-        Quaternion Identity()
-        {
-            return Quaternion(0, 0, 0, 1); // same as default tho so no need for identity or should i remove default ?
-        }
-
         Quaternion operator+(const Quaternion& other) const
         {
             return Quaternion(x + other.x, y + other.y, z + other.z, w + other.w);
@@ -34,7 +29,7 @@ namespace ZEngine::Core::Maths
             return Quaternion(x + other, y + other, z + other, w + other);
         }
 
-        Quaternion operator+=(T other)
+        Quaternion& operator+=(T other)
         {
             x += other;
             y += other;
@@ -60,7 +55,7 @@ namespace ZEngine::Core::Maths
             return Quaternion(x - other, y - other, z - other, w - other);
         }
 
-        Quaternion operator-=(T other)
+        Quaternion& operator-=(T other)
         {
             x -= other;
             y -= other;
@@ -93,7 +88,7 @@ namespace ZEngine::Core::Maths
             return Quaternion(x * other, y * other, z * other, w * other);
         }
 
-        Quaternion operator*=(T other)
+        Quaternion& operator*=(T other)
         {
             x *= other;
             y *= other;
@@ -104,14 +99,11 @@ namespace ZEngine::Core::Maths
 
         Quaternion operator/(const Quaternion& other) const
         {
-            return Quaternion(x / other.x, y / other.y, z / other.z, w / other.w);
+            return *this * other.inverse();
         }
         Quaternion& operator/=(const Quaternion& other)
         {
-            x /= other.x;
-            y /= other.y;
-            z /= other.z;
-            w /= other.w;
+            *this = *this * other.inverse();
             return *this;
         }
         Quaternion operator/(T other) const
@@ -140,24 +132,41 @@ namespace ZEngine::Core::Maths
             return *this / len;
         }
 
+        Quaternion conjugate() const
+        {
+            return {-x, -y, -z, w};
+        }
+
+        Quaternion inverse() const
+        {
+            T normSq = x * x + y * y + z * z + w * w;
+            ZENGINE_VALIDATE_ASSERT(normSq != 0, "Cannot invert zero quaternion");
+            return conjugate() / normSq;
+        }
+
         T x, y, z, w;
     };
 
     template <typename T>
-    inline Quaternion<T> fromEulerAngles(double a, double b, double c)
+    inline Quaternion<T> fromEulerAngles(T pitch, T yaw, T roll)
     {
-        double        xs = std::sin(a * 0.5);
-        double        ys = std::sin(b * 0.5);
-        double        zs = std::sin(c * 0.5);
-        double        xc = std::cos(a * 0.5);
-        double        yc = std::cos(b * 0.5);
-        double        zc = std::cos(c * 0.5);
+        T             halfPitch = pitch * T(0.5);
+        T             halfYaw   = yaw * T(0.5);
+        T             halfRoll  = roll * T(0.5);
+
+        T             cx        = std::cos(halfPitch);
+        T             cy        = std::cos(halfYaw);
+        T             cz        = std::cos(halfRoll);
+
+        T             sx        = std::sin(halfPitch);
+        T             sy        = std::sin(halfYaw);
+        T             sz        = std::sin(halfRoll);
 
         Quaternion<T> quat;
-        quat.x = xs * yc * zc - xc * ys * xs;
-        quat.y = xc * zc * ys - yc * xs * zs;
-        quat.z = xc * yc * zs - zc * xs * ys;
-        quat.w = xs * ys * zs + xc * yc * zc;
+        quat.w = cx * cy * cz + sx * sy * sz;
+        quat.x = sx * cy * cz - cx * sy * sz;
+        quat.y = cx * sy * cz + sx * cy * sz;
+        quat.z = cx * cy * sz - sx * sy * cz;
 
         return quat;
     }
@@ -186,7 +195,119 @@ namespace ZEngine::Core::Maths
     }
 
     template <typename T>
+    inline Quaternion<T> fromRotationVector(const Vec3<T>& rotation)
+    {
+        T angle = rotation.magnitude();
+        if (angle == T(0))
+        {
+            return Quaternion<T>();
+        }
+
+        Vec3<T> axis = rotation / angle;
+        return fromAxisAngle(axis, angle);
+    }
+
+    template <typename T>
     inline Vec3<T> toEulerAngle(const Quaternion<T>& quat)
     {
+        Vec3<T> euler;
+        euler.x = std::atan2(2(quat.w * quat.x + quat.y * quat.z), 1 - 2((quat.x * quat.x) + (quat.y * quat.y)));
+        euler.y = std::asin(2(quat.w * quat.y - quat.z * quat.x));
+        euler.z = std::atan2(2(quat.w * quat.z + quat.x * quat.y), 1 - 2((quat.y * quat.y) + (quat.z * quat.z)));
+
+        return euler;
     }
+
+    template <typename T>
+    inline void toAxisAngle(const Quaternion<T>& quat, Vec3<T>& axis, T& angle)
+    {
+        if (quat.w > T(1))
+        {
+            angle = T(0);
+        }
+        else
+        {
+            angle = T(2) * std::acos(quat.w);
+        }
+        T s = std::sqrt(1 - quat.w * quat.w);
+
+        if (s < T(0.0001))
+        {
+            axis = Vec3<T>(1, 0, 0);
+        }
+        else
+        {
+            axis = Vec3<T>(quat.x / s, quat.y / s, quat.z / s);
+        }
+    }
+
+    template <typename T>
+    inline Vec3<T> toRotationVector(const Quaternion<T>& quat)
+    {
+        Vec3<T> axis;
+        T       angle;
+        toAxisAngle(quat, axis, angle);
+        return axis * angle;
+    }
+
+    template <typename T>
+    inline Quaternion<T> lerpUnclamped(const Quaternion<T>& a, const Quaternion<T>& b, double t)
+    {
+        auto bCopy = b;
+        if (a.dot(b) < 0.0)
+        {
+            bCopy = -bCopy;
+        }
+
+        Quaternion<T> result = a * (1.0 - t) + bCopy * t;
+        return result.normalize();
+    }
+
+    template <typename T>
+    inline Quaternion<T> lerp(const Quaternion<T>& a, const Quaternion<T>& b, double t)
+    {
+        if (t < 0)
+            return a.normalize();
+        else if (t > 1)
+            return b.normalize();
+        return lerpUnclamped(a, b, t);
+    }
+
+    template <typename T>
+    inline Quaternion<T> slerpUnclamped(const Quaternion<T>& a, const Quaternion<T>& b, double t)
+    {
+        double        dot   = a.dot(b);
+        Quaternion<T> bCopy = b;
+
+        if (dot < 0.0)
+        {
+            dot   = -dot;
+            bCopy = -bCopy;
+        }
+
+        if (dot > 0.9995)
+        {
+            return lerpUnclamped(a, bCopy, t);
+        }
+
+        double        theta    = std::acos(dot);
+        double        sinTheta = std::sin(theta);
+
+        double        w1       = std::sin((1.0 - t) * theta) / sinTheta;
+        double        w2       = std::sin(t * theta) / sinTheta;
+
+        Quaternion<T> result   = a * w1 + bCopy * w2;
+        return result.normalize();
+    }
+
+    template <typename T>
+    inline Quaternion<T> slerp(const Quaternion<T>& a, const Quaternion<T>& b, double t)
+    {
+        if (t <= 0.0)
+            return a.normalize();
+        else if (t >= 1.0)
+            return b.normalize();
+        return slerpUnclamped(a, b, t);
+    }
+
 } // namespace ZEngine::Core::Maths
