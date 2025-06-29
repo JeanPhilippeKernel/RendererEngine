@@ -23,7 +23,7 @@ namespace ZEngine::Core::Maths
         {
             if constexpr (std::is_floating_point_v<T>)
             {
-                return fabs(a - b) <= tolerance * max(fabs(a), fabs(b));
+                return abs(a - b) <= tolerance * max(abs(a), abs(b));
             }
             return a == b;
         }
