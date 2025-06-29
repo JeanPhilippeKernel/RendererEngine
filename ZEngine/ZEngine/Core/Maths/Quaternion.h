@@ -12,6 +12,11 @@ namespace ZEngine::Core::Maths
         Quaternion(const T data[]) : x(data[0]), y(data[1]), z(data[2]), w(data[3]) {}
         Quaternion(const Vec3<T> vec, double other) : x(vec.x), y(vec.y), z(vec.z), w(other) {}
 
+        Quaternion operator-() const
+        {
+            return Quaternion(-x, -y, -z, -w);
+        }
+
         Quaternion operator+(const Quaternion& other) const
         {
             return Quaternion(x + other.x, y + other.y, z + other.z, w + other.w);
@@ -128,7 +133,7 @@ namespace ZEngine::Core::Maths
         Quaternion normalize() const
         {
             T len = sqrt(x * x + y * y + z * z + w * w);
-            ZENGINE_VALIDATE_ASSERT(len != 0, "Cannot normalize zero vector");
+            ZENGINE_VALIDATE_ASSERT(len > T(1e-8), "Cannot normalize zero or near-zero quaternion");
             return *this / len;
         }
 
@@ -211,9 +216,9 @@ namespace ZEngine::Core::Maths
     inline Vec3<T> toEulerAngle(const Quaternion<T>& quat)
     {
         Vec3<T> euler;
-        euler.x = atan2(2(quat.w * quat.x + quat.y * quat.z), 1 - 2((quat.x * quat.x) + (quat.y * quat.y)));
-        euler.y = asin(2(quat.w * quat.y - quat.z * quat.x));
-        euler.z = atan2(2(quat.w * quat.z + quat.x * quat.y), 1 - 2((quat.y * quat.y) + (quat.z * quat.z)));
+        euler.x = atan2(2 * (quat.w * quat.x + quat.y * quat.z), 1 - 2 * (quat.x * quat.x + quat.y * quat.y));
+        euler.y = asin(2 * (quat.w * quat.y - quat.z * quat.x));
+        euler.z = atan2(2 * (quat.w * quat.z + quat.x * quat.y), 1 - 2 * (quat.y * quat.y + quat.z * quat.z));
 
         return euler;
     }
@@ -221,15 +226,10 @@ namespace ZEngine::Core::Maths
     template <typename T>
     inline void toAxisAngle(const Quaternion<T>& quat, Vec3<T>& axis, T& angle)
     {
-        if (quat.w > T(1))
-        {
-            angle = T(0);
-        }
-        else
-        {
-            angle = T(2) * acos(quat.w);
-        }
-        T s = sqrt(1 - quat.w * quat.w);
+        T clampedW = max(T(-1), min(T(1), quat.w));
+        angle      = T(2) * acos(clampedW);
+
+        T s        = sqrt(1 - quat.w * quat.w);
 
         if (s < T(0.0001))
         {
@@ -266,9 +266,9 @@ namespace ZEngine::Core::Maths
     template <typename T>
     inline Quaternion<T> lerp(const Quaternion<T>& a, const Quaternion<T>& b, double t)
     {
-        if (t < 0)
+        if (t <= 0)
             return a.normalize();
-        else if (t > 1)
+        else if (t >= 1)
             return b.normalize();
         return lerpUnclamped(a, b, t);
     }
