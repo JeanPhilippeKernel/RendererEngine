@@ -226,11 +226,11 @@ namespace ZEngine::Core::Maths
     template <typename T>
     inline void toAxisAngle(const Quaternion<T>& quat, Vec3<T>& axis, T& angle)
     {
-        auto nquat     = quat.normalize();
-        T             clampedW = max(T(-1), min(T(1), nquat.w));
-        angle                  = T(2) * acos(clampedW);
+        auto nquat    = quat.normalize();
+        T    clampedW = max(T(-1), min(T(1), nquat.w));
+        angle         = T(2) * acos(clampedW);
 
-        T s        = sqrt(1 - nquat.w * nquat.w);
+        T s           = sqrt(1 - nquat.w * nquat.w);
 
         if (s < T(0.0001))
         {
