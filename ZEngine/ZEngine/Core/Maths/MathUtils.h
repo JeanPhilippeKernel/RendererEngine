@@ -53,157 +53,89 @@ namespace ZEngine::Core::Maths
     }
 
     template <typename T>
-    T sqrt(T x)
+    constexpr T floor(T x)
     {
-        if (x <= T(0))
-            return T(0);
-        constexpr T epsilon = (sizeof(T) == sizeof(float)) ? T(1e-7) : T(1e-15);
-
-        T           guess   = x;
-        T           prev    = T(0);
-        while (abs(guess - prev) > epsilon)
-        {
-            prev  = guess;
-            guess = (guess + x / guess) * T(0.5);
-        }
-
-        return guess;
+        T intPart = static_cast<T>(static_cast<long long>(x));
+        return (x < T(0) && x != intPart) ? intPart - T(1) : intPart;
     }
 
     template <typename T>
-    struct SinCoefficients
+    T sqrt(T x)
     {
-        static constexpr T c0 = T(0.99999999999999999999);
-        static constexpr T c1 = T(-0.16666666666666666666);
-        static constexpr T c2 = T(0.00833333333333333333);
-        static constexpr T c3 = T(-0.00019841269841269841);
-        static constexpr T c4 = T(0.00000275573192239858);
-        static constexpr T c5 = T(-0.00000002505210838544);
-        static constexpr T c6 = T(0.00000000016059043837);
-    };
-
-    template <typename T>
-    struct CosCoefficients
-    {
-        static constexpr T c0 = T(1.0);
-        static constexpr T c1 = T(-0.5);
-        static constexpr T c2 = T(0.04166666666666666666);
-        static constexpr T c3 = T(-0.00138888888888888888);
-        static constexpr T c4 = T(0.00002480158730158730);
-        static constexpr T c5 = T(-0.00000027557319223985);
-        static constexpr T c6 = T(0.00000000208767569878);
-    };
-
-    template <typename T>
-    struct AtanCoefficients
-    {
-        static constexpr T c0 = T(0.99999999999999999999);
-        static constexpr T c1 = T(-0.33333333333333333333);
-        static constexpr T c2 = T(0.20000000000000000000);
-        static constexpr T c3 = T(-0.14285714285714285714);
-        static constexpr T c4 = T(0.11111111111111111111);
-        static constexpr T c5 = T(-0.09090909090909090909);
-        static constexpr T c6 = T(0.07692307692307692307);
-    };
-
-    template <typename T>
-    constexpr T estrin_poly_7(T x, T c0, T c1, T c2, T c3, T c4, T c5, T c6)
-    {
-        T x2    = x * x;
-        T x4    = x2 * x2;
-
-        T p01   = c0 + c1 * x;
-        T p23   = c2 + c3 * x;
-        T p45   = c4 + c5 * x;
-        T p6    = c6;
-
-        T p0123 = p01 + p23 * x2;
-        T p456  = p45 + p6 * x;
-
-        return p0123 + p456 * x4;
+        if (x <= T(0))
+        {
+            return T(0);
+        }
+        constexpr T epsilon       = (sizeof(T) == sizeof(float)) ? T(1e-7) : T(1e-15);
+        T           guess         = x;
+        T           prev          = T(0);
+        int         iteration     = 0;
+        const int   max_iteration = 20;
+        while (abs(guess - prev) > epsilon && iteration < max_iteration)
+        {
+            prev  = guess;
+            guess = (guess + x / guess) * T(0.5);
+            ++iteration;
+        }
+        return guess;
     }
 
     template <typename T>
     T sin(T x)
     {
-        while (x > PI<T>)
-            x -= TWO_PI<T>;
-        while (x < -PI<T>)
-            x += TWO_PI<T>;
+        x      -= TWO_PI<T> * floor(x / TWO_PI<T>);
 
-        bool negate = false;
+        T sign  = T(1);
         if (x > HALF_PI<T>)
         {
-            x = PI<T> - x;
+            x    = PI<T> - x;
+            sign = -1;
         }
         else if (x < -HALF_PI<T>)
         {
-            x      = -PI<T> - x;
-            negate = true;
-        }
-        else if (x < T(0))
-        {
-            x      = -x;
-            negate = true;
+            x    = -PI<T> - x;
+            sign = -1;
         }
 
-        using Coeff = SinCoefficients<T>;
-        T x2        = x * x;
-        T result    = x * estrin_poly_7(x2, Coeff::c0, Coeff::c1, Coeff::c2, Coeff::c3, Coeff::c4, Coeff::c5, Coeff::c6);
+        T       x2 = x * x;
 
-        return negate ? -result : result;
+        const T c1 = T(-0.16666667);
+        const T c2 = T(0.0083333310);
+        const T c3 = T(-0.00019840874);
+
+        T       t1 = c2 + c3 * x2;
+        T       t2 = c1 + t1 * x2;
+
+        return sign * x * (1 + t2 * x2);
     }
 
     template <typename T>
     T cos(T x)
     {
-        while (x > PI<T>)
-            x -= TWO_PI<T>;
-        while (x < -PI<T>)
-            x += TWO_PI<T>;
-
-        x           = abs(x);
-
-        bool negate = false;
-        if (x > HALF_PI<T>)
-        {
-            x      = PI<T> - x;
-            negate = true;
-        }
-
-        using Coeff = CosCoefficients<T>;
-        T x2        = x * x;
-        T result    = estrin_poly_7(x2, Coeff::c0, Coeff::c1, Coeff::c2, Coeff::c3, Coeff::c4, Coeff::c5, Coeff::c6);
-
-        return negate ? -result : result;
+        return sin<T>(HALF_PI<T> - x);
     }
 
     template <typename T>
     T atan(T x)
     {
-        bool negate     = false;
-        bool reciprocal = false;
-
-        if (x < T(0))
+        if (abs(x) > T(1))
         {
-            x      = -x;
-            negate = true;
+            T result = (x > T(0) ? HALF_PI<T> : -HALF_PI<T>) -atan(T(1) / x);
+            return result;
         }
 
-        if (x > T(1))
-        {
-            x          = T(1) / x;
-            reciprocal = true;
-        }
+        T       x2 = x * x;
 
-        using Coeff = AtanCoefficients<T>;
-        T x2        = x * x;
-        T result    = x * estrin_poly_7(x2, Coeff::c0, Coeff::c1, Coeff::c2, Coeff::c3, Coeff::c4, Coeff::c5, Coeff::c6);
+        const T c1 = T(-0.33333333);
+        const T c2 = T(0.2);
+        const T c3 = T(-0.14285714);
+        const T c4 = T(0.11111111);
 
-        if (reciprocal)
-            result = HALF_PI<T> - result;
+        T       t1 = c3 + c4 * x2;
+        T       t2 = c2 + t1 * x2;
+        T       t3 = c1 + t2 * x2;
 
-        return negate ? -result : result;
+        return x + x * x2 * t3;
     }
 
     template <typename T>
