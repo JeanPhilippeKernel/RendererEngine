@@ -10,7 +10,7 @@ namespace ZEngine::Core::Maths
         Quaternion(T x_, T y_, T z_) : x(x_), y(y_), z(z_), w(0) {}
         Quaternion() : x(0), y(0), z(0), w(1) {}
         Quaternion(const T data[]) : x(data[0]), y(data[1]), z(data[2]), w(data[3]) {}
-        Quaternion(const Vec3<T> vec, double other) : x(vec.x), y(vec.y), z(vec.z), w(other) {}
+        Quaternion(const Vec3<T> vec, T other) : x(vec.x), y(vec.y), z(vec.z), w(other) {}
 
         Quaternion operator-() const
         {
@@ -71,7 +71,7 @@ namespace ZEngine::Core::Maths
 
         Quaternion operator*(const Quaternion& other) const
         {
-            return *this *= other;
+            return Quaternion(*this) *= other;
         }
 
         Quaternion& operator*=(const Quaternion& other)
@@ -226,10 +226,11 @@ namespace ZEngine::Core::Maths
     template <typename T>
     inline void toAxisAngle(const Quaternion<T>& quat, Vec3<T>& axis, T& angle)
     {
-        T clampedW = max(T(-1), min(T(1), quat.w));
-        angle      = T(2) * acos(clampedW);
+        auto nquat     = quat.normalize();
+        T             clampedW = max(T(-1), min(T(1), nquat.w));
+        angle                  = T(2) * acos(clampedW);
 
-        T s        = sqrt(1 - quat.w * quat.w);
+        T s        = sqrt(1 - nquat.w * nquat.w);
 
         if (s < T(0.0001))
         {
@@ -237,7 +238,7 @@ namespace ZEngine::Core::Maths
         }
         else
         {
-            axis = Vec3<T>(quat.x / s, quat.y / s, quat.z / s);
+            axis = Vec3<T>(nquat.x / s, nquat.y / s, nquat.z / s);
         }
     }
 
@@ -251,7 +252,7 @@ namespace ZEngine::Core::Maths
     }
 
     template <typename T>
-    inline Quaternion<T> lerpUnclamped(const Quaternion<T>& a, const Quaternion<T>& b, double t)
+    inline Quaternion<T> lerpUnclamped(const Quaternion<T>& a, const Quaternion<T>& b, T t)
     {
         auto bCopy = b;
         if (a.dot(b) < 0.0)
@@ -264,7 +265,7 @@ namespace ZEngine::Core::Maths
     }
 
     template <typename T>
-    inline Quaternion<T> lerp(const Quaternion<T>& a, const Quaternion<T>& b, double t)
+    inline Quaternion<T> lerp(const Quaternion<T>& a, const Quaternion<T>& b, T t)
     {
         if (t <= 0)
             return a.normalize();
@@ -274,9 +275,9 @@ namespace ZEngine::Core::Maths
     }
 
     template <typename T>
-    inline Quaternion<T> slerpUnclamped(const Quaternion<T>& a, const Quaternion<T>& b, double t)
+    inline Quaternion<T> slerpUnclamped(const Quaternion<T>& a, const Quaternion<T>& b, T t)
     {
-        double        dot   = a.dot(b);
+        T             dot   = a.dot(b);
         Quaternion<T> bCopy = b;
 
         if (dot < 0.0)
@@ -301,7 +302,7 @@ namespace ZEngine::Core::Maths
     }
 
     template <typename T>
-    inline Quaternion<T> slerp(const Quaternion<T>& a, const Quaternion<T>& b, double t)
+    inline Quaternion<T> slerp(const Quaternion<T>& a, const Quaternion<T>& b, T t)
     {
         if (t <= 0.0)
             return a.normalize();
