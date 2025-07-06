@@ -30,14 +30,14 @@ TEST(QuaternionTest, DefaultConstruction)
 
 TEST(QuaternionTest, Construction)
 {
-    float data[] = {1.5f, 2.5f, 3.5f, 4.5f};
+    float             data[] = {1.5f, 2.5f, 3.5f, 4.5f};
     Quaternion<float> q(data);
     EXPECT_NEAR(q.x, 1.5f, EPSILON);
     EXPECT_NEAR(q.y, 2.5f, EPSILON);
     EXPECT_NEAR(q.z, 3.5f, EPSILON);
     EXPECT_NEAR(q.w, 4.5f, EPSILON);
 
-    Vec3<float> vec(1.0f, 2.0f, 3.0f);
+    Vec3<float>       vec(1.0f, 2.0f, 3.0f);
     Quaternion<float> vq(vec, 4.0f);
     EXPECT_NEAR(vq.x, 1.0f, EPSILON);
     EXPECT_NEAR(vq.y, 2.0f, EPSILON);
@@ -49,7 +49,7 @@ TEST(QuaternionTest, CopyConstruction)
 {
     Quaternion<float> original(1.0f, 2.0f, 3.0f, 4.0f);
     Quaternion<float> copy(original);
-    
+
     EXPECT_NEAR(copy.x, original.x, EPSILON);
     EXPECT_NEAR(copy.y, original.y, EPSILON);
     EXPECT_NEAR(copy.z, original.z, EPSILON);
@@ -142,7 +142,7 @@ TEST(QuaternionTest, QuaternionMultiplication)
     Quaternion<float> result = q1 * q2;
 
     EXPECT_NEAR(result.x, 24.0f, EPSILON);
-    EXPECT_NEAR(result.y, 48.0f, EPSILON); 
+    EXPECT_NEAR(result.y, 48.0f, EPSILON);
     EXPECT_NEAR(result.z, 48.0f, EPSILON);
     EXPECT_NEAR(result.w, -6.0f, EPSILON);
 
@@ -156,10 +156,10 @@ TEST(QuaternionTest, IdentityMultiplication)
 {
     Quaternion<float> identity(0.0f, 0.0f, 0.0f, 1.0f);
     Quaternion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
-    
+
     Quaternion<float> result1 = identity * q;
     Quaternion<float> result2 = q * identity;
-    
+
     EXPECT_NEAR(result1.x, q.x, EPSILON);
     EXPECT_NEAR(result1.y, q.y, EPSILON);
     EXPECT_NEAR(result1.z, q.z, EPSILON);
@@ -176,7 +176,7 @@ TEST(QuaternionTest, QuaternionDivision)
     Quaternion<float> q1(1.0f, 2.0f, 3.0f, 4.0f);
     Quaternion<float> q2(2.0f, 0.0f, 0.0f, 2.0f);
     Quaternion<float> result = q1 / q2;
-    Quaternion<float> check = result * q2;
+    Quaternion<float> check  = result * q2;
 
     EXPECT_NEAR(check.x / q1.x, 1.0f, EPSILON);
     EXPECT_NEAR(check.y / q1.y, 1.0f, EPSILON);
@@ -190,16 +190,16 @@ TEST(QuaternionTest, DotProduct)
 {
     Quaternion<float> q1(1.0f, 2.0f, 3.0f, 4.0f);
     Quaternion<float> q2(5.0f, 6.0f, 7.0f, 8.0f);
-    float result = q1.dot(q2);
-    float expected = 70.0f;
+    float             result   = q1.dot(q2);
+    float             expected = 70.0f;
     EXPECT_NEAR(result, expected, EPSILON);
 }
 
 TEST(QuaternionTest, DotProductWithSelf)
 {
     Quaternion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
-    float result = q.dot(q);
-    float expected = 30.0f;
+    float             result   = q.dot(q);
+    float             expected = 30.0f;
     EXPECT_NEAR(result, expected, EPSILON);
 }
 
@@ -209,7 +209,7 @@ TEST(QuaternionTest, Normalize)
 {
     Quaternion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
     Quaternion<float> normalized = q.normalize();
-    float length = sqrt(normalized.dot(normalized));
+    float             length     = sqrt(normalized.dot(normalized));
     EXPECT_NEAR(length, 1.0f, EPSILON);
 }
 
@@ -229,7 +229,7 @@ TEST(QuaternionTest, Conjugate)
 {
     Quaternion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
     Quaternion<float> conj = q.conjugate();
-    
+
     EXPECT_NEAR(conj.x, -1.0f, EPSILON);
     EXPECT_NEAR(conj.y, -2.0f, EPSILON);
     EXPECT_NEAR(conj.z, -3.0f, EPSILON);
@@ -240,22 +240,21 @@ TEST(QuaternionTest, ConjugateOfConjugate)
 {
     Quaternion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
     Quaternion<float> doubleConj = q.conjugate().conjugate();
-    
+
     EXPECT_NEAR(doubleConj.x, q.x, EPSILON);
     EXPECT_NEAR(doubleConj.y, q.y, EPSILON);
     EXPECT_NEAR(doubleConj.z, q.z, EPSILON);
     EXPECT_NEAR(doubleConj.w, q.w, EPSILON);
 }
 
-
 TEST(QuaternionTest, Inverse)
 {
     Quaternion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
-    q = q.normalize();
-    
-    Quaternion<float> inv = q.inverse();
+    q                         = q.normalize();
+
+    Quaternion<float> inv     = q.inverse();
     Quaternion<float> product = q * inv;
-    
+
     EXPECT_NEAR(product.x, 0.0f, EPSILON);
     EXPECT_NEAR(product.y, 0.0f, EPSILON);
     EXPECT_NEAR(product.z, 0.0f, EPSILON);
@@ -266,7 +265,7 @@ TEST(QuaternionTest, InverseOfIdentity)
 {
     Quaternion<float> identity(0.0f, 0.0f, 0.0f, 1.0f);
     Quaternion<float> inv = identity.inverse();
-    
+
     EXPECT_NEAR(inv.x, 0.0f, EPSILON);
     EXPECT_NEAR(inv.y, 0.0f, EPSILON);
     EXPECT_NEAR(inv.z, 0.0f, EPSILON);
@@ -277,33 +276,33 @@ TEST(QuaternionTest, InverseOfIdentity)
 
 TEST(QuaternionTest, FromEulerAngles)
 {
-    float pitch = PI<float> / 4;
-    float yaw = PI<float> / 6;  
-    float roll = PI<float> / 3;
-    
-    Quaternion<float> q = fromEulerAngles(pitch, yaw, roll);
-    float length = sqrt(q.dot(q));
+    float             pitch  = PI<float> / 4;
+    float             yaw    = PI<float> / 6;
+    float             roll   = PI<float> / 3;
+
+    Quaternion<float> q      = fromEulerAngles(pitch, yaw, roll);
+    float             length = sqrt(q.dot(q));
     EXPECT_NEAR(length, 1.0f, EPSILON);
 }
 
 TEST(QuaternionTest, FromEulerAnglesVector)
 {
-    Vec3<float> rotation(PI<float> / 4, PI<float> / 6, PI<float> / 3);
-    Quaternion<float> q = fromEulerAngles(rotation);
-    
-    float length = sqrt(q.dot(q));
+    Vec3<float>       rotation(PI<float> / 4, PI<float> / 6, PI<float> / 3);
+    Quaternion<float> q      = fromEulerAngles(rotation);
+
+    float             length = sqrt(q.dot(q));
     EXPECT_NEAR(length, 1.0f, EPSILON);
 }
 
 TEST(QuaternionTest, FromAxisAngle)
 {
-    Vec3<float> axis(0.0f, 0.0f, 1.0f);
-    float angle = PI<float> / 2;
-    
-    Quaternion<float> q = fromAxisAngle(axis, angle);
-    float expected_z = sin(PI<float> / 4);
-    float expected_w = cos(PI<float> / 4);
-    
+    Vec3<float>       axis(0.0f, 0.0f, 1.0f);
+    float             angle      = PI<float> / 2;
+
+    Quaternion<float> q          = fromAxisAngle(axis, angle);
+    float             expected_z = sin(PI<float> / 4);
+    float             expected_w = cos(PI<float> / 4);
+
     EXPECT_NEAR(q.x, 0.0f, EPSILON);
     EXPECT_NEAR(q.y, 0.0f, EPSILON);
     EXPECT_NEAR(q.z, expected_z, EPSILON);
@@ -312,9 +311,9 @@ TEST(QuaternionTest, FromAxisAngle)
 
 TEST(QuaternionTest, FromRotationVector)
 {
-    Vec3<float> zeroRotation(0.0f, 0.0f, 0.0f);
+    Vec3<float>       zeroRotation(0.0f, 0.0f, 0.0f);
     Quaternion<float> q = fromRotationVector(zeroRotation);
-    
+
     EXPECT_NEAR(q.x, 0.0f, EPSILON);
     EXPECT_NEAR(q.y, 0.0f, EPSILON);
     EXPECT_NEAR(q.z, 0.0f, EPSILON);
@@ -323,10 +322,10 @@ TEST(QuaternionTest, FromRotationVector)
 
 TEST(QuaternionTest, ToRotationVector)
 {
-    Vec3<float> originalRotation(PI<float> / 4, 0.0f, 0.0f);
-    Quaternion<float> q = fromRotationVector(originalRotation);
-    Vec3<float> result = toRotationVector(q);
-    
+    Vec3<float>       originalRotation(PI<float> / 4, 0.0f, 0.0f);
+    Quaternion<float> q      = fromRotationVector(originalRotation);
+    Vec3<float>       result = toRotationVector(q);
+
     EXPECT_NEAR(result.x, originalRotation.x, EPSILON);
     EXPECT_NEAR(result.y, originalRotation.y, EPSILON);
     EXPECT_NEAR(result.z, originalRotation.z, EPSILON);
@@ -338,12 +337,12 @@ TEST(QuaternionTest, LerpBoundaryConditions)
 {
     Quaternion<float> q1(1.0f, 0.0f, 0.0f, 0.0f);
     Quaternion<float> q2(0.0f, 1.0f, 0.0f, 0.0f);
-    q1 = q1.normalize();
-    q2 = q2.normalize();
-    
+    q1                        = q1.normalize();
+    q2                        = q2.normalize();
+
     Quaternion<float> result1 = lerp(q1, q2, 0.0f);
     Quaternion<float> result2 = lerp(q1, q2, 1.0f);
-    
+
     EXPECT_NEAR(result1.x, q1.normalize().x, EPSILON);
     EXPECT_NEAR(result1.w, q1.normalize().w, EPSILON);
     EXPECT_NEAR(result2.x, q2.normalize().x, EPSILON);
@@ -354,12 +353,12 @@ TEST(QuaternionTest, SlerpBoundaryConditions)
 {
     Quaternion<float> q1(1.0f, 0.0f, 0.0f, 0.0f);
     Quaternion<float> q2(0.0f, 1.0f, 0.0f, 0.0f);
-    q1 = q1.normalize();
-    q2 = q2.normalize();
-    
+    q1                        = q1.normalize();
+    q2                        = q2.normalize();
+
     Quaternion<float> result1 = slerp(q1, q2, 0.0f);
     Quaternion<float> result2 = slerp(q1, q2, 1.0f);
-    
+
     EXPECT_NEAR(result1.x, q1.normalize().x, EPSILON);
     EXPECT_NEAR(result1.w, q1.normalize().w, EPSILON);
     EXPECT_NEAR(result2.x, q2.normalize().x, EPSILON);
@@ -392,11 +391,12 @@ TEST(QuaternionTest, ChainedOperations)
 {
     Quaternion<float> identity(0.0f, 0.0f, 0.0f, 1.0f);
     Quaternion<float> q(0.1f, 0.2f, 0.3f, 1.0f);
-    q = q.normalize();
-    
+    q                        = q.normalize();
+
     Quaternion<float> result = identity;
-    
-    for (int i = 0; i < 100; ++i) {
+
+    for (int i = 0; i < 100; ++i)
+    {
         result = result * q;
         result = result.normalize();
     }
