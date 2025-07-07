@@ -136,5 +136,5 @@ namespace Tetragrama::Layers
         // Todo (Kernel) : When we'll start considering multithreaded support
         // we might want to renderer->EnqueueAsync({command_buffer, {camera, frame_data} })
         renderer->DrawScene(command_buffer, camera, nullptr);
-
-    } // namespace Tetragrama::Layers
+    }
+} // namespace Tetragrama::Layers
