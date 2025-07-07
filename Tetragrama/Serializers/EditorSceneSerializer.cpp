@@ -63,7 +63,7 @@ namespace Tetragrama::Serializers
             WriteBinaryArray(out, ArrayView{scene->LocalTransforms});
             WriteBinaryArray(out, ArrayView{scene->GlobalTransforms});
 
-            WriteBinaryHashMap(out, scene->NodeMeshes);
+            // WriteBinaryHashMap(out, scene->NodeMeshes);
             WriteBinaryHashMap(out, scene->NodeNames);
 
             out.close();
@@ -158,7 +158,7 @@ namespace Tetragrama::Serializers
             ReadBinaryArray(&Arena, in_stream, scene.LocalTransforms);
             ReadBinaryArray(&Arena, in_stream, scene.GlobalTransforms);
 
-            ReadHashMap(&Arena, in_stream, scene.NodeMeshes);
+            // ReadHashMap(&Arena, in_stream, scene.NodeMeshes);
             ReadHashMap(&Arena, in_stream, scene.NodeNames);
 
             if (m_deserialize_complete_callback)

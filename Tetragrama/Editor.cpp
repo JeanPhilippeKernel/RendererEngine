@@ -18,34 +18,31 @@ namespace Tetragrama
 {
     void Editor::Initialize(ArenaAllocator* arena, const char* file)
     {
-        AssetManager::Initialize(arena);
 
         Context                           = ZPushStruct(arena, EditorContext);
         Context->Arena                    = arena;
 
-        Context->AssetManagerPtr          = AssetManager::Instance();
         Context->ConfigurationPtr         = ZPushStructCtor(Context->Arena, EditorConfiguration);
         Context->CameraControllerPtr      = ZPushStructCtor(Context->Arena, EditorCameraController);
         Context->PendingOnLoadHierarchies = CreateRef<ZEngine::Helpers::ThreadSafeQueue<Managers::AssetManager::AssetHandle>>();
         UILayer                           = ZPushStructCtor(Context->Arena, ImguiLayer);
         CanvasLayer                       = ZPushStructCtor(Context->Arena, RenderLayer);
 
-        Context->CurrentScenePtr          = ZPushStructCtor(Context->Arena, EditorScene);
+        UILayer->ParentContext            = reinterpret_cast<void*>(Context);
+        CanvasLayer->ParentContext        = reinterpret_cast<void*>(Context);
 
+        const char* scene_name            = "<Empty Scene>";
         if (ZEngine::Helpers::secure_strlen(file))
         {
             Context->ConfigurationPtr->ReadConfig(arena, file);
 
             if (!Context->ConfigurationPtr->ActiveSceneName.empty())
             {
-                Context->CurrentScenePtr->Initialize(Context->Arena, Context->ConfigurationPtr->ActiveSceneName.c_str());
+                scene_name = Context->ConfigurationPtr->ActiveSceneName.c_str();
             }
         }
 
-        UILayer->ParentContext                   = reinterpret_cast<void*>(Context);
-        CanvasLayer->ParentContext               = reinterpret_cast<void*>(Context);
-
-        std::string                  title       = fmt::format("{0} - Active Scene : {1}", Context->ConfigurationPtr->ProjectName.c_str(), Context->CurrentScenePtr->Name);
+        std::string                  title       = fmt::format("{0} - Active Scene : {1}", Context->ConfigurationPtr->ProjectName.c_str(), scene_name);
         Windows::WindowConfiguration window_conf = {.EnableVsync = true};
         window_conf.Title.init(Context->Arena, title.c_str());
         window_conf.RenderingLayerCollection.init(Context->Arena, 1);
@@ -59,6 +56,14 @@ namespace Tetragrama
         Context->CameraControllerPtr->Initialize(Context->Arena, Window, 150.0, 0.f, 45.f);
 
         ZEngine::Engine::Initialize(arena, Window);
+
+        auto device          = ZEngine::Engine::GetDevice();
+        auto resource_loader = ZEngine::Engine::GetAsyncResourceLoader();
+        AssetManager::Initialize(arena, device, resource_loader, Context->ConfigurationPtr->WorkingSpacePath.c_str());
+
+        Context->AssetManagerPtr = AssetManager::Instance();
+        Context->CurrentScenePtr = ZPushStructCtor(Context->Arena, EditorScene);
+        Context->CurrentScenePtr->Initialize(Context->Arena, device, scene_name);
     }
 
     void Editor::Dispose()

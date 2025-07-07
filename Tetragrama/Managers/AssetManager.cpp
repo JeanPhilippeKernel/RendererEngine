@@ -3,6 +3,8 @@
 #include <Importers/IAssetImporter.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Rendering/Meshes/Mesh.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 
 using namespace ZEngine::Core::Containers;
 using namespace Tetragrama::Importers;
@@ -31,18 +33,24 @@ namespace Tetragrama::Managers
         return AssetType((h >> 28) & 0xF);
     }
 
-    void AssetManager::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
+    void AssetManager::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Hardwares::VulkanDevice* device, ZEngine::Rendering::Renderers::AsyncResourceLoader* async_loader, cstring working_space_path)
     {
         s_Instance = ZPushStructCtor(arena, AssetManager);
         arena->CreateSubArena(ZMega(100), &(s_Instance->ThreadLocalArena));
         arena->CreateSubArena(ZMega(70), &(s_Instance->Arena));
 
+        s_Instance->Device                  = device;
+        s_Instance->ResourceLoader          = async_loader;
+        s_Instance->CurrentWorkingSpacePath = working_space_path;
+
         s_Instance->NodeHierarchies.init(&(s_Instance->Arena), 5000);
         s_Instance->Meshes.init(&(s_Instance->Arena), 5000);
         s_Instance->Materials.init(&(s_Instance->Arena), 5000);
+        s_Instance->GPUMeshMaterials.init(&(s_Instance->Arena), 5000);
         s_Instance->Textures.init(&(s_Instance->Arena), 5000);
         s_Instance->UUIDToHandle.init(&(s_Instance->Arena), 5000);
         s_Instance->HandleToUUID.init(&(s_Instance->Arena), 5000);
+        s_Instance->UUIDToTextureHandle.init(&(s_Instance->Arena), 5000);
 
         s_Instance->MeshToNodeHierarchy.init(&(s_Instance->Arena), 5000);
         s_Instance->NodeHierarchyToMesh.init(&(s_Instance->Arena), 5000);
@@ -98,6 +106,22 @@ namespace Tetragrama::Managers
         s_Instance->Cond.notify_one();
     }
 
+    Importers::AssetMesh* AssetManager::GetMeshAsset(const uuids::uuid& id)
+    {
+        if (!UUIDToHandle.contains(id))
+        {
+            return nullptr;
+        }
+
+        auto&    handle = UUIDToHandle.at(id);
+        uint32_t index  = ReadAssetHandleIndex(handle);
+        if (index >= Meshes.size())
+        {
+            return nullptr;
+        }
+        return &Meshes[index];
+    }
+
     Importers::AssetNodeHierarchy* AssetManager::GetMeshNodeHierarchy(const uuids::uuid& id)
     {
         Importers::AssetNodeHierarchy* output = nullptr;
@@ -108,8 +132,8 @@ namespace Tetragrama::Managers
 
         if (MeshToNodeHierarchy.contains(id))
         {
-            auto& hierarchy_uuid = MeshToNodeHierarchy[id];
-            auto  handle         = UUIDToHandle[hierarchy_uuid];
+            auto& hierarchy_uuid = MeshToNodeHierarchy.at(id);
+            auto  handle         = UUIDToHandle.at(hierarchy_uuid);
             auto  id             = ReadAssetHandleIndex(handle);
             output               = &NodeHierarchies[id];
             return output;
@@ -140,7 +164,17 @@ namespace Tetragrama::Managers
         auto                      hierarchy = GetMeshNodeHierarchy(id);
         if (hierarchy)
         {
-            handle = UUIDToHandle[hierarchy->NodeHierarchyUUID];
+            handle = UUIDToHandle.at(hierarchy->NodeHierarchyUUID);
+        }
+        return handle;
+    }
+
+    AssetManager::AssetHandle AssetManager::GetMaterialHandleFromUUID(const uuids::uuid& material_uuid)
+    {
+        AssetManager::AssetHandle handle = {};
+        if (UUIDToHandle.contains(material_uuid))
+        {
+            handle = UUIDToHandle.at(material_uuid);
         }
         return handle;
     }
@@ -206,9 +240,9 @@ namespace Tetragrama::Managers
 
                 h.Names.init(&(s_Instance->Arena), hierarchies.Names.size());
                 h.MaterialNames.init(&(s_Instance->Arena), hierarchies.MaterialNames.size());
-                h.NodeNames.init(&(s_Instance->Arena), hierarchies.NodeNames.size());
-                h.NodeMeshes.init(&(s_Instance->Arena), hierarchies.NodeMeshes.size());
-                h.NodeMaterials.init(&(s_Instance->Arena), hierarchies.NodeMaterials.size());
+                h.NodeNames.init(&(s_Instance->Arena), hierarchies.NodeNames.size() > 32 ? hierarchies.NodeNames.size() * 2 : 64);
+                h.NodeMeshes.init(&(s_Instance->Arena), hierarchies.NodeMeshes.size() > 32 ? hierarchies.NodeMeshes.size() * 2 : 64);
+                h.NodeMaterials.init(&(s_Instance->Arena), hierarchies.NodeMaterials.size() > 32 ? hierarchies.NodeMaterials.size() * 2 : 64);
 
                 ZEngine::Helpers::secure_memcpy(h.Hierarchies.data(), h.Hierarchies.size() * sizeof(AssetNodeHierarchy), hierarchies.Hierarchies.data(), hierarchies.Hierarchies.size() * sizeof(AssetNodeHierarchy));
                 ZEngine::Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(glm::mat4), hierarchies.LocalTransforms.data(), hierarchies.LocalTransforms.size() * sizeof(glm::mat4));
@@ -226,25 +260,43 @@ namespace Tetragrama::Managers
                     n.init(&(s_Instance->Arena), mat_name.c_str());
                 }
 
-                auto node_names_view = hierarchies.NodeNames.view();
-                for (auto [k, v] : node_names_view)
+                for (const auto& [k, v] : hierarchies.NodeNames)
                 {
                     h.NodeNames.insert(k, v);
                 }
 
-                auto node_meshes_view = hierarchies.NodeMeshes.view();
-                for (auto [k, v] : node_meshes_view)
+                for (const auto& [k, v] : hierarchies.NodeMeshes)
                 {
                     h.NodeMeshes.insert(k, v);
                 }
 
-                auto node_mat_view = hierarchies.NodeMaterials.view();
-                for (auto [k, v] : node_mat_view)
+                for (const auto& [k, v] : hierarchies.NodeMaterials)
                 {
                     h.NodeMaterials.insert(k, v);
                 }
 
                 RegisterAsset(AssetType::MESH_HIERARCHY, h.NodeHierarchyUUID, asset_id);
+                continue;
+            }
+
+            Array<AssetTexture> textures = {};
+            if (pendings_asset_textures.Pop(textures))
+            {
+                for (auto& tex : textures)
+                {
+                    auto  asset_id               = (uint32_t) Textures.size();
+                    auto& new_tex                = Textures.push_use({});
+                    new_tex.TextureUUID          = tex.TextureUUID;
+
+                    const auto tex_absolute_path = fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+                    new_tex.Handle               = s_Instance->ResourceLoader->LoadTextureFile(tex_absolute_path);
+                    new_tex.Path.init(&(s_Instance->Arena), tex.Path.c_str());
+
+                    RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, asset_id);
+
+                    UUIDToTextureHandle.insert(new_tex.TextureUUID, new_tex.Handle);
+                }
+
                 continue;
             }
 
@@ -255,20 +307,38 @@ namespace Tetragrama::Managers
                 Materials.push(material);
 
                 RegisterAsset(AssetType::MATERIAL, material.MaterialUUID, asset_id);
-                continue;
-            }
 
-            Array<AssetTexture> textures = {};
-            if (pendings_asset_textures.Pop(textures))
-            {
-                for (auto& tex : textures)
+                ZEngine::Rendering::Meshes::MeshMaterial& gpu_mesh_mat = GPUMeshMaterials.push_use({});
+                // gpu_mesh_mat.AlbedoColor                               = material.AlbedoColor;
+                // gpu_mesh_mat.EmissiveColor                             = material.EmissiveColor;
+                // gpu_mesh_mat.RoughnessColor                            = material.RoughnessColor;
+                // gpu_mesh_mat.SpecularColor                             = material.SpecularColor;
+                // gpu_mesh_mat.AmbientColor                              = material.AmbientColor;
+                // gpu_mesh_mat.Factors                                   = material.Factors;
+
+                if (!material.AlbedoTexUUID.is_nil())
                 {
-                    auto  asset_id      = (uint32_t) Textures.size();
-                    auto& new_tex       = Textures.push_use({});
-                    new_tex.TextureUUID = tex.TextureUUID;
-                    new_tex.Path.init(&(s_Instance->Arena), tex.Path.c_str());
+                    gpu_mesh_mat.AlbedoMap = UUIDToTextureHandle.at(material.AlbedoTexUUID).Index;
+                }
 
-                    RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, asset_id);
+                if (!material.EmissiveTexUUID.is_nil())
+                {
+                    gpu_mesh_mat.EmissiveMap = UUIDToTextureHandle.at(material.EmissiveTexUUID).Index;
+                }
+
+                if (!material.NormalTexUUID.is_nil())
+                {
+                    gpu_mesh_mat.NormalMap = UUIDToTextureHandle.at(material.NormalTexUUID).Index;
+                }
+
+                if (!material.OpacityTexUUID.is_nil())
+                {
+                    gpu_mesh_mat.OpacityMap = UUIDToTextureHandle.at(material.OpacityTexUUID).Index;
+                }
+
+                if (!material.SpecularTexUUID.is_nil())
+                {
+                    gpu_mesh_mat.SpecularMap = UUIDToTextureHandle.at(material.SpecularTexUUID).Index;
                 }
 
                 continue;
@@ -288,20 +358,20 @@ namespace Tetragrama::Managers
                     PendingAssetNodeHierarchies.Enqueue(hierarchies);
                 }
 
-                else if (file.Type == Importers::AssetFileType::MATERIAL)
-                {
-                    AssetMaterial material = {};
-                    auto          path     = fmt::format("{0}{1}{2}", file.RootPath, PLATFORM_OS_BACKSLASH, file.Path);
-                    IAssetImporter::DeserializeMaterialAssetFile(&ThreadLocalArena, path.c_str(), material);
-                    PendingAssetMaterials.Enqueue(material);
-                }
-
                 else if (file.Type == Importers::AssetFileType::TEXTURES)
                 {
                     Array<AssetTexture> textures = {};
                     auto                path     = fmt::format("{0}{1}{2}", file.RootPath, PLATFORM_OS_BACKSLASH, file.Path);
                     IAssetImporter::DeserializeTextureAssetFile(&ThreadLocalArena, path.c_str(), textures);
                     PendingAssetTextures.Enqueue(textures);
+                }
+
+                else if (file.Type == Importers::AssetFileType::MATERIAL)
+                {
+                    AssetMaterial material = {};
+                    auto          path     = fmt::format("{0}{1}{2}", file.RootPath, PLATFORM_OS_BACKSLASH, file.Path);
+                    IAssetImporter::DeserializeMaterialAssetFile(&ThreadLocalArena, path.c_str(), material);
+                    PendingAssetMaterials.Enqueue(material);
                 }
             }
         }

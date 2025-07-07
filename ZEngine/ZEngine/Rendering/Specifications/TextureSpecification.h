@@ -9,6 +9,7 @@ namespace ZEngine::Rendering::Specifications
         bool          IsUsageSampled    = true;
         bool          IsUsageStorage    = false;
         bool          IsUsageTransfert  = true;
+        /*Deprecated property - please avoid using it*/
         bool          PerformTransition = true;
         bool          IsCubemap         = false;
         uint32_t      Width             = 0;
@@ -17,6 +18,7 @@ namespace ZEngine::Rendering::Specifications
         uint32_t      LayerCount        = 1;
         ImageFormat   Format            = ImageFormat::UNDEFINED;
         LoadOperation LoadOp            = LoadOperation::CLEAR;
+        /*Deprecated property - please avoid using it*/
         const void*   Data              = nullptr;
     };
 

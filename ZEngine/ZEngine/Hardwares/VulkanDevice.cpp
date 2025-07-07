@@ -36,6 +36,7 @@ namespace ZEngine::Hardwares
         DefaultDepthFormats.push(VK_FORMAT_D24_UNORM_S8_UINT);
 
         GlobalTextures.Initialize(arena, 600);
+        Image2DBufferManager.Initialize(arena, 600);
         ShaderManager.Initialize(arena, 300);
         VertexBufferSetManager.Initialize(arena, 300);
         StorageBufferSetManager.Initialize(arena, 300);
@@ -416,7 +417,7 @@ namespace ZEngine::Hardwares
         DirtyCollectorCond.notify_one();
 
         GlobalTextures.Dispose();
-
+        Image2DBufferManager.Dispose();
         VertexBufferSetManager.Dispose();
         StorageBufferSetManager.Dispose();
         IndirectBufferSetManager.Dispose();
@@ -446,44 +447,7 @@ namespace ZEngine::Hardwares
         ZENGINE_DESTROY_VULKAN_HANDLE(Instance, vkDestroySurfaceKHR, Surface, nullptr)
     }
 
-    void VulkanDevice::Update()
-    {
-        Textures::TextureHandle tex_handle = {};
-        if (TextureHandleToUpdates.Pop(tex_handle))
-        {
-
-            auto texture = GlobalTextures.Access(tex_handle);
-
-            if (!texture)
-            {
-                TextureHandleToUpdates.Enqueue(tex_handle);
-                return;
-            }
-            const auto& image_info = texture->ImageBuffer->GetDescriptorImageInfo();
-
-            auto        scratch    = ZGetScratch(Arena);
-            {
-                Array<VkWriteDescriptorSet> write_descriptor_sets = {};
-                write_descriptor_sets.init(scratch.Arena, WriteBindlessDescriptorSetRequests.size());
-
-                for (auto& req : WriteBindlessDescriptorSetRequests)
-                {
-                    write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = req.DstSet, .dstBinding = req.Binding, .dstArrayElement = (uint32_t) tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-                }
-
-                vkUpdateDescriptorSets(LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
-            }
-            ZReleaseScratch(scratch);
-        }
-
-        Textures::TextureHandle tex_to_dispose = {};
-        if (TextureHandleToDispose.Pop(tex_to_dispose))
-        {
-            auto texture = GlobalTextures.Access(tex_to_dispose);
-            texture->Dispose();
-            GlobalTextures.Remove(tex_to_dispose);
-        }
-    }
+    void VulkanDevice::Update() {}
 
     void VulkanDevice::Dispose()
     {
@@ -575,7 +539,7 @@ namespace ZEngine::Hardwares
         {
             type = QueueType::GRAPHIC_QUEUE;
         }
-        ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(m_queue_map[type]) == VK_SUCCESS, "Failed to wait on queue")
+        ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(m_queue_map.at(type)) == VK_SUCCESS, "Failed to wait on queue")
     }
 
     QueueView VulkanDevice::GetQueue(Rendering::QueueType type)
@@ -590,7 +554,7 @@ namespace ZEngine::Hardwares
                 queue_family_index = HasSeperateTransfertQueueFamily ? TransferFamilyIndex : GraphicFamilyIndex;
                 break;
         }
-        return QueueView{.FamilyIndex = queue_family_index, .Handle = m_queue_map[type]};
+        return QueueView{.FamilyIndex = queue_family_index, .Handle = m_queue_map.at(type)};
     }
 
     void VulkanDevice::QueueWaitAll()
@@ -756,24 +720,104 @@ namespace ZEngine::Hardwares
 
         ZENGINE_VALIDATE_ASSERT(vmaCreateBuffer(VmaAllocator, &buffer_create_info, &allocation_create_info, &(buffer_view.Handle), &(buffer_view.Allocation), nullptr) == VK_SUCCESS, "Failed to create buffer");
 
+        /*
+         * Zeroing the buffer
+         */
+        VmaAllocationInfo allocation_info = {};
+        vmaGetAllocationInfo(VmaAllocator, buffer_view.Allocation, &allocation_info);
+        Helpers::secure_memset(allocation_info.pMappedData, 0, byte_size, byte_size);
+
         // Metadata info
         buffer_view.FrameIndex = CurrentFrameIndex;
+
+        if (buffer_usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
+        {
+            buffer_view.Type = BufferType::VERTEX;
+        }
+        else if (buffer_usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+        {
+            buffer_view.Type = BufferType::INDEX;
+        }
+        else if (buffer_usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+        {
+            buffer_view.Type = BufferType::STORAGE;
+        }
+        else if (buffer_usage & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT)
+        {
+            buffer_view.Type = BufferType::INDIRECT;
+        }
+        else if (buffer_usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+        {
+            buffer_view.Type = BufferType::UNIFORM;
+        }
 
         return buffer_view;
     }
 
-    void VulkanDevice::CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size)
+    void VulkanDevice::CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset, VkDeviceSize dst_buffer_offset)
     {
-        auto command_buffer = GetInstantCommandBuffer(Rendering::QueueType::TRANSFER_QUEUE);
-        {
-            VkBufferCopy buffer_copy = {};
-            buffer_copy.srcOffset    = 0;
-            buffer_copy.dstOffset    = 0;
-            buffer_copy.size         = byte_size;
+        auto                  command_buffer = GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
 
-            vkCmdCopyBuffer(command_buffer->GetHandle(), source.Handle, destination.Handle, 1, &buffer_copy);
+        VkBufferMemoryBarrier bufMemBarrier  = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        bufMemBarrier.srcAccessMask          = VK_ACCESS_HOST_WRITE_BIT;
+        bufMemBarrier.dstAccessMask          = VK_ACCESS_TRANSFER_READ_BIT;
+        bufMemBarrier.srcQueueFamilyIndex    = VK_QUEUE_FAMILY_IGNORED;
+        bufMemBarrier.dstQueueFamilyIndex    = VK_QUEUE_FAMILY_IGNORED;
+        bufMemBarrier.buffer                 = source.Handle;
+        bufMemBarrier.offset                 = 0;
+        bufMemBarrier.size                   = VK_WHOLE_SIZE;
+
+        vkCmdPipelineBarrier(command_buffer->GetHandle(), VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &bufMemBarrier, 0, nullptr);
+
+        VkBufferCopy buffer_copy = {};
+        buffer_copy.srcOffset    = src_buffer_offset;
+        buffer_copy.dstOffset    = dst_buffer_offset;
+        buffer_copy.size         = byte_size;
+
+        vkCmdCopyBuffer(command_buffer->GetHandle(), source.Handle, destination.Handle, 1, &buffer_copy);
+
+        VkAccessFlags        dst_access_mask    = VK_ACCESS_NONE;
+        VkPipelineStageFlags dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        switch (source.Type)
+        {
+            case BufferType::VERTEX:
+                dst_access_mask    = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+                dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+                break;
+
+            case BufferType::INDEX:
+                dst_access_mask    = VK_ACCESS_INDEX_READ_BIT;
+                dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+                break;
+
+            case BufferType::UNIFORM:
+                dst_access_mask    = VK_ACCESS_UNIFORM_READ_BIT;
+                dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+                break;
+
+            case BufferType::STORAGE:
+                dst_access_mask    = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+                break;
+
+            case BufferType::INDIRECT:
+                dst_access_mask    = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+                dst_pipeline_stage = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+                break;
         }
-        EnqueueInstantCommandBuffer(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+        VkBufferMemoryBarrier bufMemBarrier2 = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        bufMemBarrier2.srcAccessMask         = VK_ACCESS_TRANSFER_WRITE_BIT;
+        bufMemBarrier2.dstAccessMask         = dst_access_mask;
+        bufMemBarrier2.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+        bufMemBarrier2.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+        bufMemBarrier2.buffer                = destination.Handle;
+        bufMemBarrier2.offset                = 0;
+        bufMemBarrier2.size                  = VK_WHOLE_SIZE;
+
+        vkCmdPipelineBarrier(command_buffer->GetHandle(), VK_PIPELINE_STAGE_TRANSFER_BIT, dst_pipeline_stage, 0, 0, nullptr, 1, &bufMemBarrier2, 0, nullptr);
+
+        EnqueueInstantCommandBuffer(command_buffer, dst_pipeline_stage);
     }
 
     BufferImage VulkanDevice::CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, VkImageCreateFlags image_create_flag_bit)
@@ -1128,6 +1172,49 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::Present()
     {
+        Textures::TextureHandle tex_handle = {};
+        if (TextureHandleToUpdates.Pop(tex_handle))
+        {
+            auto texture = GlobalTextures.Access(tex_handle);
+
+            if (!texture)
+            {
+                TextureHandleToUpdates.Enqueue(tex_handle);
+                return;
+            }
+
+            else
+            {
+                auto        img_buf    = Image2DBufferManager.Access(texture->BufferHandle);
+                const auto& image_info = img_buf->GetDescriptorImageInfo();
+
+                auto        scratch    = ZGetScratch(Arena);
+                {
+                    Array<VkWriteDescriptorSet> write_descriptor_sets = {};
+                    write_descriptor_sets.init(scratch.Arena, WriteBindlessDescriptorSetRequests.size());
+
+                    for (auto& req : WriteBindlessDescriptorSetRequests)
+                    {
+                        write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = req.DstSet, .dstBinding = req.Binding, .dstArrayElement = (uint32_t) tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
+                    }
+
+                    vkUpdateDescriptorSets(LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
+                }
+                ZReleaseScratch(scratch);
+            }
+        }
+
+        Textures::TextureHandle tex_to_dispose = {};
+        if (TextureHandleToDispose.Pop(tex_to_dispose))
+        {
+            auto texture = GlobalTextures.Access(tex_to_dispose);
+            if (texture)
+            {
+                texture->Dispose();
+                GlobalTextures.Remove(tex_to_dispose);
+            }
+        }
+
         Primitives::Semaphore* acquired_semaphore        = SwapchainAcquiredSemaphores[CurrentFrameIndex];
         Primitives::Semaphore* render_complete_semaphore = SwapchainRenderCompleteSemaphores[CurrentFrameIndex];
         Primitives::Fence*     signal_fence              = SwapchainSignalFences[CurrentFrameIndex];
@@ -1145,7 +1232,7 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(render_complete_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
         ZENGINE_VALIDATE_ASSERT(signal_fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
 
-        VkQueue              queue               = m_queue_map[Rendering::QueueType::GRAPHIC_QUEUE];
+        VkQueue              queue               = m_queue_map.at(Rendering::QueueType::GRAPHIC_QUEUE);
         VkSemaphore          wait_semaphores[]   = {acquired_semaphore->GetHandle()};
         VkSemaphore          signal_semaphores[] = {render_complete_semaphore->GetHandle()};
         VkPipelineStageFlags stage_flags[]       = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -1365,7 +1452,7 @@ namespace ZEngine::Hardwares
 
         if (ShaderCaches.contains(spec.Name))
         {
-            return ShaderCaches[spec.Name];
+            return ShaderCaches.at(spec.Name);
         }
 
         auto handle = ShaderManager.Create();
@@ -1618,8 +1705,7 @@ namespace ZEngine::Hardwares
             Array<VkDescriptorSet> frame_sets         = {};
             frame_sets.init(scratch.Arena, 5);
 
-            auto descriptor_set_map_view = descriptor_set_map.view();
-            for (auto [_, sets] : descriptor_set_map_view)
+            for (const auto& [_, sets] : descriptor_set_map)
             {
                 frame_sets.push(sets[frame_index]);
             }
@@ -1646,7 +1732,7 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
         if (buffer.GetNativeBufferHandle())
         {
-            vkCmdDrawIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer.GetNativeBufferHandle()), 0, buffer.GetCommandCount(), sizeof(VkDrawIndirectCommand));
+            vkCmdDrawIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer.GetNativeBufferHandle()), 0, buffer.CommandCount, sizeof(VkDrawIndirectCommand));
         }
     }
 
@@ -1829,7 +1915,14 @@ namespace ZEngine::Hardwares
     void CommandBufferManager::EndInstantCommandBuffer(CommandBuffer* const buffer, VulkanDevice* const device, int wait_flag)
     {
         buffer->End();
+
         auto flag = buffer->QueueType == QueueType::GRAPHIC_QUEUE ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+        if (wait_flag != -1)
+        {
+            flag = VkPipelineStageFlagBits(wait_flag);
+        }
+
         device->QueueSubmit(flag, buffer, m_instant_semaphore, m_instant_fence);
         {
             std::unique_lock l(m_instant_command_mutex);
@@ -1858,307 +1951,79 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void VertexBuffer::SetData(const void* data, size_t byte_size)
+    BufferView VertexBuffer::CreateBuffer()
     {
-
-        if (byte_size == 0)
-        {
-            return;
-        }
-
-        if (this->m_byte_size != byte_size)
-        {
-            /*
-             * Tracking the size change..
-             */
-            m_last_byte_size = m_byte_size;
-
-            CleanUpMemory();
-            this->m_byte_size = byte_size;
-            m_vertex_buffer   = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-        }
-
-        VkMemoryPropertyFlags mem_prop_flags;
-        vmaGetAllocationMemoryProperties(m_device->VmaAllocator, m_vertex_buffer.Allocation, &mem_prop_flags);
-
-        if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-        {
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocator, m_vertex_buffer.Allocation, &allocation_info);
-            if (data && allocation_info.pMappedData)
-            {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-            }
-        }
-        else
-        {
-            BufferView        staging_buffer  = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocator, staging_buffer.Allocation, &allocation_info);
-
-            if (data && allocation_info.pMappedData)
-            {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-                ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(m_device->VmaAllocator, staging_buffer.Allocation, 0, static_cast<VkDeviceSize>(this->m_byte_size)) == VK_SUCCESS, "Failed to flush allocation")
-                m_device->CopyBuffer(staging_buffer, m_vertex_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
-            }
-
-            /* Cleanup resource */
-            m_device->EnqueueBufferForDeletion(staging_buffer);
-        }
+        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
     }
 
-    void VertexBuffer::CleanUpMemory()
+    BufferView StorageBuffer::CreateBuffer()
     {
-        if (m_vertex_buffer)
-        {
-            m_device->EnqueueBufferForDeletion(m_vertex_buffer);
-            m_vertex_buffer = {};
-        }
+        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
     }
 
-    void StorageBuffer::SetData(const void* data, uint32_t offset, size_t byte_size)
+    BufferView IndexBuffer::CreateBuffer()
+    {
+        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+    }
+
+    BufferView IndirectBuffer::CreateBuffer()
+    {
+        return m_device->CreateBuffer(static_cast<VkDeviceSize>(m_total_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+    }
+
+    BufferView UniformBuffer::CreateBuffer()
+    {
+        return m_device->CreateBuffer(static_cast<VkDeviceSize>(m_total_size), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+    }
+
+    void IndirectBuffer::Upload(const VkDrawIndirectCommand* data, size_t byte_size)
     {
         if (byte_size == 0)
         {
             return;
         }
 
-        if (this->m_byte_size < byte_size)
-        {
-            /*
-             * Tracking the size change..
-             */
-            m_last_byte_size = m_byte_size;
-
-            CleanUpMemory();
-            this->m_byte_size = byte_size;
-            m_storage_buffer  = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-        }
-
-        VkMemoryPropertyFlags mem_prop_flags;
-        vmaGetAllocationMemoryProperties(m_device->VmaAllocator, m_storage_buffer.Allocation, &mem_prop_flags);
-
-        if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-        {
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocator, m_storage_buffer.Allocation, &allocation_info);
-            if (data && allocation_info.pMappedData)
-            {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-            }
-        }
-        else
-        {
-            BufferView        staging_buffer  = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocator, staging_buffer.Allocation, &allocation_info);
-
-            if (data && allocation_info.pMappedData)
-            {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-                ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(m_device->VmaAllocator, staging_buffer.Allocation, 0, static_cast<VkDeviceSize>(this->m_byte_size)) == VK_SUCCESS, "Failed to flush allocation")
-                m_device->CopyBuffer(staging_buffer, m_storage_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
-            }
-
-            /* Cleanup resource */
-            m_device->EnqueueBufferForDeletion(staging_buffer);
-        }
-    }
-
-    void StorageBuffer::CleanUpMemory()
-    {
-        if (m_storage_buffer)
-        {
-            m_device->EnqueueBufferForDeletion(m_storage_buffer);
-            m_storage_buffer = {};
-        }
-    }
-
-    void IndexBuffer::SetData(const void* data, size_t byte_size)
-    {
-
-        if (byte_size == 0)
-        {
-            return;
-        }
-
-        if (this->m_byte_size != byte_size)
-        {
-            /*
-             * Tracking the size change..
-             */
-            m_last_byte_size = m_byte_size;
-
-            CleanUpMemory();
-            this->m_byte_size = byte_size;
-            m_index_buffer    = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-        }
-
-        VkMemoryPropertyFlags mem_prop_flags;
-        vmaGetAllocationMemoryProperties(m_device->VmaAllocator, m_index_buffer.Allocation, &mem_prop_flags);
-
-        if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-        {
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocator, m_index_buffer.Allocation, &allocation_info);
-            if (data && allocation_info.pMappedData)
-            {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-            }
-        }
-        else
-        {
-            BufferView        staging_buffer  = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocator, staging_buffer.Allocation, &allocation_info);
-
-            if (data && allocation_info.pMappedData)
-            {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-                ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(m_device->VmaAllocator, staging_buffer.Allocation, 0, static_cast<VkDeviceSize>(this->m_byte_size)) == VK_SUCCESS, "Failed to flush allocation")
-                m_device->CopyBuffer(staging_buffer, m_index_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
-            }
-
-            /* Cleanup resource */
-            m_device->EnqueueBufferForDeletion(staging_buffer);
-        }
-    }
-
-    void IndexBuffer::CleanUpMemory()
-    {
-        if (m_index_buffer)
-        {
-            m_device->EnqueueBufferForDeletion(m_index_buffer);
-            m_index_buffer = {};
-        }
-    }
-
-    void IndirectBuffer::SetData(const VkDrawIndirectCommand* data, size_t byte_size)
-    {
-        if (byte_size == 0)
-        {
-            return;
-        }
-
-        if (this->m_byte_size < byte_size)
-        {
-            /*
-             * Tracking the size change..
-             */
-            m_last_byte_size = m_byte_size;
-
-            CleanUpMemory();
-            this->m_byte_size = byte_size;
-            m_command_count   = byte_size / sizeof(VkDrawIndirectCommand);
-            m_indirect_buffer = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-        }
-
-        VkMemoryPropertyFlags mem_prop_flags;
-        vmaGetAllocationMemoryProperties(m_device->VmaAllocator, m_indirect_buffer.Allocation, &mem_prop_flags);
-
-        if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-        {
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocator, m_indirect_buffer.Allocation, &allocation_info);
-            if (data && allocation_info.pMappedData)
-            {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-            }
-        }
-        else
-        {
-            BufferView        staging_buffer  = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocator, staging_buffer.Allocation, &allocation_info);
-
-            if (data && allocation_info.pMappedData)
-            {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-                ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(m_device->VmaAllocator, staging_buffer.Allocation, 0, VK_WHOLE_SIZE) == VK_SUCCESS, "Failed to flush allocation")
-                m_device->CopyBuffer(staging_buffer, m_indirect_buffer, static_cast<VkDeviceSize>(this->m_byte_size));
-            }
-
-            /* Cleanup resource */
-            m_device->EnqueueBufferForDeletion(staging_buffer);
-        }
+        CommandCount = byte_size / sizeof(VkDrawIndirectCommand);
+        IGraphicBuffer::Upload(data, byte_size);
     }
 
     void IndirectBuffer::CleanUpMemory()
     {
-        m_command_count = 0;
-
-        if (m_indirect_buffer)
-        {
-            m_device->EnqueueBufferForDeletion(m_indirect_buffer);
-            m_indirect_buffer = {};
-        }
+        CommandCount = 0;
+        IGraphicBuffer::CleanUpMemory();
     }
 
-    void UniformBuffer::SetData(const void* data, size_t byte_size)
+    void UniformBuffer::Allocate(uint64_t byte_size, const char* debug_name)
     {
-        if (byte_size == 0)
+        if (m_total_size < byte_size || (!m_uniform_buffer_mapped))
         {
-            return;
-        }
-
-        if (this->m_byte_size < byte_size || (!m_uniform_buffer_mapped))
-        {
-            /*
-             * Tracking the size change..
-             */
-            m_last_byte_size = m_byte_size;
-
-            CleanUpMemory();
-            this->m_byte_size       = byte_size;
-            m_uniform_buffer        = m_device->CreateBuffer(static_cast<VkDeviceSize>(this->m_byte_size), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+            IGraphicBuffer::Allocate(byte_size, debug_name);
             m_uniform_buffer_mapped = true;
-        }
-
-        VmaAllocationInfo allocation_info = {};
-        vmaGetAllocationInfo(m_device->VmaAllocator, m_uniform_buffer.Allocation, &allocation_info);
-
-        if (allocation_info.pMappedData)
-        {
-            ZENGINE_VALIDATE_ASSERT(Helpers::secure_memset(allocation_info.pMappedData, 0, this->m_byte_size, allocation_info.size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory set operation")
-        }
-
-        if (data && allocation_info.pMappedData)
-        {
-            ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(allocation_info.pMappedData, allocation_info.size, data, this->m_byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
         }
     }
 
     void UniformBuffer::CleanUpMemory()
     {
-        if (m_uniform_buffer)
-        {
-            m_device->EnqueueBufferForDeletion(m_uniform_buffer);
-
-            m_uniform_buffer_mapped = false;
-            m_uniform_buffer        = {};
-        }
+        IGraphicBuffer::CleanUpMemory();
+        m_uniform_buffer_mapped = false;
     }
 
-    Image2DBuffer::Image2DBuffer(Hardwares::VulkanDevice* device, const Specifications::Image2DBufferSpecification& spec) : m_device(device), m_width(spec.Width), m_height(spec.Height)
+    void Image2DBuffer::Construct(Hardwares::VulkanDevice* device)
     {
-        ZENGINE_VALIDATE_ASSERT(m_width > 0, "Image width must be greater then zero")
-        ZENGINE_VALIDATE_ASSERT(m_height > 0, "Image height must be greater then zero")
+        Device = device;
+        ZENGINE_VALIDATE_ASSERT(Specification.Width > 0, "Image width must be greater then zero")
+        ZENGINE_VALIDATE_ASSERT(Specification.Height > 0, "Image height must be greater then zero")
 
         Specifications::ImageViewType   image_view_type   = Specifications::ImageViewType::TYPE_2D;
         Specifications::ImageCreateFlag image_create_flag = Specifications::ImageCreateFlag::NONE;
 
-        if (spec.BufferUsageType == Specifications::ImageBufferUsageType::CUBEMAP)
+        if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::CUBEMAP)
         {
             image_view_type   = Specifications::ImageViewType::TYPE_CUBE;
             image_create_flag = Specifications::ImageCreateFlag::CUBE_COMPATIBLE_BIT;
         }
 
-        m_buffer_image = m_device->CreateImage(m_width, m_height, VK_IMAGE_TYPE_2D, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], spec.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, spec.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, spec.ImageAspectFlag, spec.LayerCount, Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)]);
+        m_buffer_image = Device->CreateImage(Specification.Width, Specification.Height, VK_IMAGE_TYPE_2D, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, Specification.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Specification.ImageAspectFlag, Specification.LayerCount, Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)]);
     }
 
     Image2DBuffer::~Image2DBuffer()
@@ -2190,7 +2055,7 @@ namespace ZEngine::Hardwares
     {
         if (this && m_buffer_image)
         {
-            m_device->EnqueueBufferImageForDeletion(m_buffer_image);
+            Device->EnqueueBufferImageForDeletion(m_buffer_image);
             m_buffer_image = {};
         }
     }
@@ -2206,6 +2071,350 @@ namespace ZEngine::Hardwares
     VkImageView Image2DBuffer::GetImageViewHandle() const
     {
         return m_buffer_image.ViewHandle;
+    }
+
+    IGraphicBuffer::~IGraphicBuffer()
+    {
+        CleanUpMemory();
+    }
+
+    void IGraphicBuffer::Allocate(uint64_t size, const char* debug_name)
+    {
+        if (m_total_size < size)
+        {
+            CleanUpMemory();
+            m_current_offset = 0;
+            m_total_size     = size;
+            Buffer           = CreateBuffer();
+            vmaSetAllocationName(m_device->VmaAllocator, Buffer.Allocation, debug_name);
+        }
+    }
+
+    void IGraphicBuffer::Clear()
+    {
+        m_current_offset = 0;
+        ClearRange(0, m_current_offset, m_total_size);
+    }
+
+    void IGraphicBuffer::ClearRange(uint8_t value, uint32_t offset, size_t byte_size)
+    {
+        if (byte_size == 0)
+        {
+            ZENGINE_CORE_WARN("{} : Invalid operation, the byte size is zero", __FUNCTION__)
+            return;
+        }
+
+        if ((offset + byte_size) > m_total_size)
+        {
+            ZENGINE_CORE_WARN("{} : Invalid operation, range is out of bound", __FUNCTION__)
+            return;
+        }
+
+        VkMemoryPropertyFlags mem_prop_flags;
+        vmaGetAllocationMemoryProperties(m_device->VmaAllocator, Buffer.Allocation, &mem_prop_flags);
+
+        if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+        {
+            VmaAllocationInfo allocation_info = {};
+            vmaGetAllocationInfo(m_device->VmaAllocator, Buffer.Allocation, &allocation_info);
+            if (allocation_info.pMappedData)
+            {
+                auto mapped_buf = reinterpret_cast<uint8_t*>(allocation_info.pMappedData);
+                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memset((mapped_buf + offset), value, allocation_info.size, byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
+            }
+        }
+        else
+        {
+            BufferView        staging_buffer  = m_device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+            VmaAllocationInfo allocation_info = {};
+            vmaGetAllocationInfo(m_device->VmaAllocator, staging_buffer.Allocation, &allocation_info);
+
+            if (allocation_info.pMappedData)
+            {
+                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memset(allocation_info.pMappedData, value, allocation_info.size, byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
+                ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(m_device->VmaAllocator, staging_buffer.Allocation, 0, byte_size) == VK_SUCCESS, "Failed to flush allocation")
+                m_device->CopyBuffer(staging_buffer, Buffer, byte_size, 0u, offset);
+            }
+
+            /* Cleanup resource */
+            m_device->EnqueueBufferForDeletion(staging_buffer);
+        }
+    }
+
+    void IGraphicBuffer::UploadRange(const void* data, uint32_t offset, size_t byte_size)
+    {
+        if (byte_size == 0)
+        {
+            // ZENGINE_CORE_WARN("{} : Invalid operation, the byte size is zero", __FUNCTION__)
+            return;
+        }
+
+        if ((offset + byte_size) > m_total_size)
+        {
+            // ZENGINE_CORE_WARN("{} : Invalid operation, the buffer is full", __FUNCTION__)
+            return;
+        }
+
+        VkMemoryPropertyFlags mem_prop_flags;
+        vmaGetAllocationMemoryProperties(m_device->VmaAllocator, Buffer.Allocation, &mem_prop_flags);
+
+        if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+        {
+            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->VmaAllocator, data, Buffer.Allocation, offset, byte_size) == VK_SUCCESS, "Failed to perform memory copy operation")
+
+            VkAccessFlags        dst_access_mask    = VK_ACCESS_NONE;
+            VkPipelineStageFlags dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            switch (Buffer.Type)
+            {
+                case BufferType::VERTEX:
+                    dst_access_mask    = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+                    dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+                    break;
+
+                case BufferType::INDEX:
+                    dst_access_mask    = VK_ACCESS_INDEX_READ_BIT;
+                    dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+                    break;
+
+                case BufferType::UNIFORM:
+                    dst_access_mask    = VK_ACCESS_UNIFORM_READ_BIT;
+                    dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+                    break;
+
+                case BufferType::STORAGE:
+                    dst_access_mask    = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                    dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+                    break;
+
+                case BufferType::INDIRECT:
+                    dst_access_mask    = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+                    dst_pipeline_stage = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+                    break;
+            }
+
+            auto                  command_buffer = m_device->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
+            VkBufferMemoryBarrier bufMemBarrier  = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            bufMemBarrier.srcAccessMask          = VK_ACCESS_HOST_WRITE_BIT;
+            bufMemBarrier.dstAccessMask          = dst_access_mask;
+            bufMemBarrier.srcQueueFamilyIndex    = VK_QUEUE_FAMILY_IGNORED;
+            bufMemBarrier.dstQueueFamilyIndex    = VK_QUEUE_FAMILY_IGNORED;
+            bufMemBarrier.buffer                 = Buffer.Handle;
+            bufMemBarrier.offset                 = 0;
+            bufMemBarrier.size                   = VK_WHOLE_SIZE;
+
+            // It's important to insert a buffer memory barrier here to ensure writing to the buffer has finished.
+            vkCmdPipelineBarrier(command_buffer->GetHandle(), VK_PIPELINE_STAGE_HOST_BIT, dst_pipeline_stage, 0, 0, nullptr, 1, &bufMemBarrier, 0, nullptr);
+
+            m_device->EnqueueInstantCommandBuffer(command_buffer, dst_pipeline_stage);
+        }
+        else
+        {
+            BufferView staging_buffer = m_device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->VmaAllocator, data, staging_buffer.Allocation, offset, byte_size) == VK_SUCCESS, "Failed to perform memory copy operation")
+
+            m_device->CopyBuffer(staging_buffer, Buffer, byte_size, 0u, offset);
+
+            /* Cleanup resource */
+            m_device->EnqueueBufferForDeletion(staging_buffer);
+        }
+    }
+
+    void IGraphicBuffer::Upload(const void* data, size_t byte_size)
+    {
+        UploadRange(data, m_current_offset, byte_size);
+        m_current_offset += byte_size;
+    }
+
+    void IGraphicBuffer::CleanUpMemory()
+    {
+        if (Buffer)
+        {
+            m_device->EnqueueBufferForDeletion(Buffer);
+            Buffer = {};
+        }
+    }
+
+    void* IGraphicBuffer::GetNativeBufferHandle() const
+    {
+        return reinterpret_cast<void*>(Buffer.Handle);
+    }
+
+    const VkDescriptorBufferInfo& IGraphicBuffer::GetDescriptorBufferInfo()
+    {
+        BufferInfo.buffer = Buffer.Handle;
+        BufferInfo.offset = 0;
+        BufferInfo.range  = m_total_size;
+        return BufferInfo;
+    }
+    void IGraphicBuffer::Dispose()
+    {
+        CleanUpMemory();
+    }
+
+    Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(uint32_t width, uint32_t height)
+    {
+        return CreateTexture(width, height, 255, 255, 255, 255);
+    }
+
+    Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a)
+    {
+        uint32_t                             byte_per_pixel = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(Specifications::ImageFormat::R8G8B8A8_SRGB)];
+
+        Specifications::TextureSpecification spec           = {
+                      .Width        = width,
+                      .Height       = height,
+                      .BytePerPixel = byte_per_pixel,
+                      .Format       = Specifications::ImageFormat::R8G8B8A8_SRGB,
+        };
+
+        auto tex_handle = CreateTexture(spec);
+
+        if (!tex_handle)
+        {
+            return Rendering::Textures::TextureHandle{};
+        }
+
+        auto resource = GlobalTextures.Access(tex_handle);
+
+        if (!resource)
+        {
+            return Rendering::Textures::TextureHandle{};
+        }
+
+        auto                                            img_buf          = Image2DBufferManager.Access(resource->BufferHandle);
+        auto                                            image_buf_handle = img_buf->GetHandle();
+        auto                                            image_buf_aspect = (resource->Specification.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+
+        auto                                            new_image_layout = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+
+        Specifications::ImageMemoryBarrierSpecification barrier_spec_0   = {};
+        barrier_spec_0.ImageHandle                                       = image_buf_handle;
+        barrier_spec_0.OldLayout                                         = img_buf->Layout;
+        barrier_spec_0.NewLayout                                         = new_image_layout;
+        barrier_spec_0.ImageAspectMask                                   = VkImageAspectFlagBits(image_buf_aspect);
+        barrier_spec_0.SourceAccessMask                                  = VK_ACCESS_NONE;
+        barrier_spec_0.DestinationAccessMask                             = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier_spec_0.SourceStageMask                                   = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        barrier_spec_0.DestinationStageMask                              = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        barrier_spec_0.LayerCount                                        = spec.LayerCount;
+        Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
+
+        auto                           command_buf = GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE);
+        command_buf->TransitionImageLayout(barrier_0);
+
+        img_buf->Layout                 = new_image_layout;
+
+        auto                 scratch    = ZGetScratch(Arena);
+
+        size_t               data_size  = width * height * byte_per_pixel;
+        Array<unsigned char> image_data = {};
+
+        unsigned char        r_byte     = static_cast<unsigned char>(std::clamp(r * 255.0f, 0.0f, 255.0f));
+        unsigned char        g_byte     = static_cast<unsigned char>(std::clamp(g * 255.0f, 0.0f, 255.0f));
+        unsigned char        b_byte     = static_cast<unsigned char>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+        unsigned char        a_byte     = static_cast<unsigned char>(std::clamp(a * 255.0f, 0.0f, 255.0f));
+
+        for (size_t i = 0; i < data_size; i += byte_per_pixel)
+        {
+            image_data[i]     = r_byte;
+            image_data[i + 1] = g_byte;
+            image_data[i + 2] = b_byte;
+            image_data[i + 3] = a_byte;
+        }
+
+        WriteTextureData(command_buf, tex_handle, image_data.data());
+
+        ZReleaseScratch(scratch);
+
+        new_image_layout                                               = (image_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+        Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
+        barrier_spec_1.ImageHandle                                     = image_buf_handle;
+        barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+        barrier_spec_1.NewLayout                                       = new_image_layout;
+        barrier_spec_1.ImageAspectMask                                 = image_buf_aspect;
+        barrier_spec_1.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier_spec_1.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
+        barrier_spec_1.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        barrier_spec_1.LayerCount                                      = spec.LayerCount;
+        Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
+        command_buf->TransitionImageLayout(barrier_1);
+
+        EnqueueInstantCommandBuffer(command_buf);
+
+        img_buf->Layout = new_image_layout;
+
+        return tex_handle;
+    }
+
+    Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(const Rendering::Specifications::TextureSpecification& spec)
+    {
+        std::unique_lock l(Mutex);
+
+        auto             handle = GlobalTextures.Create();
+
+        if (!handle)
+        {
+            return Rendering::Textures::TextureHandle{};
+        }
+
+        auto resource = GlobalTextures.Access(handle);
+
+        if (!resource)
+        {
+            return Rendering::Textures::TextureHandle{};
+        }
+
+        resource->Specification              = spec;
+        resource->Width                      = spec.Width;
+        resource->Height                     = spec.Height;
+        resource->BytePerPixel               = spec.BytePerPixel;
+        resource->BufferSize                 = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
+        resource->IsDepthTexture             = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
+
+        uint32_t storage_bit                 = spec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;
+        uint32_t transfert_bit               = spec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
+        uint32_t sampled_bit                 = spec.IsUsageSampled ? VK_IMAGE_USAGE_SAMPLED_BIT : 0;
+        uint32_t image_aspect                = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+        uint32_t image_usage_attachment      = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+        VkFormat image_format                = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? FindDepthFormat() : Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(spec.Format)];
+
+        auto     buff_handle                 = Image2DBufferManager.Create();
+        auto     buffer_res                  = Image2DBufferManager.Access(buff_handle);
+
+        buffer_res->Specification            = {.Width = spec.Width, .Height = spec.Height, .BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .LayerCount = spec.LayerCount};
+        buffer_res->Specification.ImageUsage = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
+        buffer_res->Construct(this);
+
+        resource->BufferHandle = buff_handle;
+
+        return handle;
+    }
+
+    void VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data)
+    {
+        if (!handle.Valid() || !(data) || !(command_buf))
+        {
+            return;
+        }
+
+        auto       resource       = GlobalTextures.Access(handle);
+        auto       image_buf      = Image2DBufferManager.Access(resource->BufferHandle);
+
+        BufferView staging_buffer = CreateBuffer(resource->BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
+        MapAndCopyToMemory(staging_buffer, resource->BufferSize, data);
+        command_buf->CopyBufferToImage(staging_buffer, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)]);
+        EnqueueBufferForDeletion(staging_buffer);
+    }
+
+    Rendering::Renderers::RenderPasses::RenderPass* VulkanDevice::CreateRenderPass(const Rendering::Specifications::RenderPassSpecification& spec)
+    {
+        auto pass = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::RenderPass);
+        pass->Initialize(this, spec);
+        return pass;
     }
 
 } // namespace ZEngine::Hardwares

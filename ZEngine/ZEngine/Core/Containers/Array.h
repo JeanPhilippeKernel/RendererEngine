@@ -228,6 +228,11 @@ namespace ZEngine::Core::Containers
             return m_size;
         }
 
+        size_t size_bytes() const
+        {
+            return m_size * sizeof(T);
+        }
+
         T* data() const
         {
             return m_data;

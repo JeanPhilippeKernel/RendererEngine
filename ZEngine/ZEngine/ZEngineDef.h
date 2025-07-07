@@ -53,6 +53,7 @@
 #define DEFAULT_STR_BUFFER  256
 
 #define ZRawPtr(X)          X*
+#define ZDEFINE_PTR(X)      typedef ZRawPtr(X) X##Ptr
 
 /*
  * Allocator and Memory Macros

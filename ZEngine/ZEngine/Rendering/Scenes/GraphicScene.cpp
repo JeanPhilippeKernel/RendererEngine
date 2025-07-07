@@ -269,12 +269,12 @@ namespace ZEngine::Rendering::Scenes
 
         for (unsigned i = 0; i < device->SwapchainImageCount; ++i)
         {
-            transform_buf->SetData<glm::mat4>(i, SceneData->GlobalTransforms);
-            vert_buf->SetData<float>(i, SceneData->Vertices);
-            ind_buf->SetData<uint32_t>(i, SceneData->Indices);
-            material_buf->SetData<Meshes::MeshMaterial>(i, SceneData->Materials);
-            indirect_datadraw_buf->SetData<DrawData>(i, SceneData->DrawData);
-            indirect_buf->SetData<VkDrawIndirectCommand>(i, indirect_commmands);
+            // transform_buf->SetData<glm::mat4>(i, SceneData->GlobalTransforms);
+            // vert_buf->SetData<float>(i, SceneData->Vertices);
+            // ind_buf->SetData<uint32_t>(i, SceneData->Indices);
+            // material_buf->SetData<Meshes::MeshMaterial>(i, SceneData->Materials);
+            // indirect_datadraw_buf->SetData<DrawData>(i, SceneData->DrawData);
+            // indirect_buf->SetData<VkDrawIndirectCommand>(i, indirect_commmands);
         }
 
         render_graph->MarkAsDirty = true;

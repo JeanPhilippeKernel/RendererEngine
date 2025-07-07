@@ -63,8 +63,7 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        auto handlers_view = handlers.view();
-        for (const auto& handler : handlers_view)
+        for (const auto& handler : handlers)
         {
             handler.second(LogMessage{
                 .Color = {0.0f, 1.0f, 0.0f, 1.0f},
@@ -86,8 +85,7 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        auto handlers_view = handlers.view();
-        for (const auto& handler : handlers_view)
+        for (const auto& handler : handlers)
         {
             handler.second(LogMessage{
                 .Color = {0.5f, 0.5f, 0.5f, 1.0f},
@@ -109,8 +107,7 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        auto handlers_view = handlers.view();
-        for (const auto& handler : handlers_view)
+        for (const auto& handler : handlers)
         {
             handler.second(LogMessage{
                 .Color = {1.0f, 0.5f, 0.0f, 1.0f},
@@ -132,8 +129,7 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        auto handlers_view = handlers.view();
-        for (const auto& handler : handlers_view)
+        for (const auto& handler : handlers)
         {
             handler.second(LogMessage{
                 .Color = {1.0f, 0.0f, 0.0f, 1.0f},
@@ -155,8 +151,7 @@ namespace ZEngine::Logging
             handlers = s_log_event_handlers;
         }
 
-        auto handlers_view = handlers.view();
-        for (const auto& handler : handlers_view)
+        for (const auto& handler : handlers)
         {
             handler.second(LogMessage{
                 .Color = {1.0f, 0.0f, 1.0f, 1.0f},

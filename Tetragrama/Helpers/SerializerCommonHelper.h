@@ -71,8 +71,7 @@ namespace Tetragrama::Helpers
         size_t size = map.size();
         WriteBinary(writer, size);
 
-        auto view = map.view();
-        for (const auto& [key, val] : view)
+        for (const auto& [key, val] : map)
         {
             WriteBinary(writer, key);
             WriteBinary(writer, val);

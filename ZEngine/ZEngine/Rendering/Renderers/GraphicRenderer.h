@@ -27,15 +27,17 @@ namespace ZEngine::Rendering::Renderers
 
     struct TextureFileRequest
     {
-        std::string             Filename;
-        Textures::TextureHandle Handle;
+        std::string                          Filename;
+        Textures::TextureHandle              Handle;
+        Specifications::TextureSpecification TextureSpec;
     };
 
     struct TextureUploadRequest
     {
-        size_t                               BufferSize;
-        Textures::TextureHandle              Handle;
-        Specifications::TextureSpecification TextureSpec;
+        size_t                               BufferSize  = 0;
+        Textures::TextureHandle              Handle      = {};
+        Specifications::TextureSpecification TextureSpec = {};
+        std::vector<uint8_t>                 Buffer      = {};
     };
 
     struct AsyncResourceLoader;
@@ -44,27 +46,34 @@ namespace ZEngine::Rendering::Renderers
         GraphicRenderer();
         ~GraphicRenderer();
 
-        const char*                       FrameDepthRenderTargetName   = "g_frame_depth_render_target";
-        const char*                       FrameColorRenderTargetName   = "g_frame_color_render_target";
+        cstring                           FrameDepthRenderTargetName   = "g_frame_depth_render_target";
+        cstring                           FrameColorRenderTargetName   = "g_frame_color_render_target";
+
+        cstring                           SceneCameraBufferName        = "SceneCamera";
+        cstring                           VertexBufferName             = "VertexStorageBuffer";
+        cstring                           IndexBufferName              = "IndexStorageBuffer";
+        cstring                           TransformBufferName          = "TransformStorageBuffer";
+        cstring                           RenderDataBufferName         = "RenderDataStorageBuffer";
+        cstring                           MaterialBufferName           = "MaterialStorageBuffer";
+
+        const size_t                      DefaultBufferSize            = ZMega(10);
+
         Hardwares::UniformBufferSetHandle SceneCameraBufferHandle      = {};
         Textures::TextureHandle           FrameColorRenderTarget       = {};
         Textures::TextureHandle           FrameDepthRenderTarget       = {};
-        Hardwares::VulkanDevice*          Device                       = nullptr;
-        ZRawPtr(Renderers::ImGUIRenderer) ImguiRenderer                = nullptr;
+
+        Scenes::SceneDataPtr              RenderSceneData              = nullptr;
+
+        Hardwares::VulkanDevicePtr        Device                       = nullptr;
+        Renderers::ImGUIRendererPtr       ImguiRenderer                = nullptr;
         ZRawPtr(Renderers::RenderGraph) RenderGraph                    = nullptr;
         ZRawPtr(Renderers::AsyncResourceLoader) AsyncLoader            = nullptr;
         Helpers::ThreadSafeQueue<ResizeRequest> EnqueuedResizeRequests = {};
 
-        void                                    Initialize(Hardwares::VulkanDevice* device);
+        void                                    Initialize(Hardwares::VulkanDevicePtr device);
         void                                    Deinitialize();
-        void                                    Update();
-        void                                    DrawScene(Hardwares::CommandBuffer* const command_buffer, Cameras::Camera* const camera, Scenes::SceneRawData* const scene);
+        void                                    DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::Camera* const camera, Scenes::SceneData* const data);
         Textures::TextureHandle                 GetFrameOutput();
-
-        ZRawPtr(RenderPasses::RenderPass) CreateRenderPass(const Specifications::RenderPassSpecification& spec);
-        Textures::TextureHandle CreateTexture(const Specifications::TextureSpecification& spec);
-        Textures::TextureHandle CreateTexture(uint32_t width, uint32_t height);
-        Textures::TextureHandle CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a);
     };
 
     struct AsyncResourceLoader
@@ -75,15 +84,13 @@ namespace ZEngine::Rendering::Renderers
         void                    Run();
         void                    Shutdown();
 
-        void                    EnqueueTextureRequest(std::string_view file, const Textures::TextureHandle& handle);
         Textures::TextureHandle LoadTextureFile(std::string_view filename);
-        Textures::TextureHandle LoadTextureFileSync(std::string_view filename);
 
     private:
         std::atomic_bool                               m_cancellation_token{false};
         std::mutex                                     m_mutex;
+        std::mutex                                     m_mutex_2;
         std::condition_variable                        m_cond;
-        std::vector<uint8_t>                           m_temp_buffer{};
         Hardwares::CommandBufferManager                m_buffer_manager{};
         Helpers::ThreadSafeQueue<UpdateTextureRequest> m_update_texture_request;
         Helpers::ThreadSafeQueue<TextureFileRequest>   m_file_requests;

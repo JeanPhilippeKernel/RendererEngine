@@ -78,15 +78,15 @@ namespace Tetragrama::Importers
                 auto out_m = SerializeMeshAssetFile(thread_local_arena, mesh, hierarchies, config);
                 outputs.push(out_m);
 
+                auto out_tex = SerializeTextureAssetFiles(thread_local_arena, ArrayView{textures}, config);
+                outputs.push(out_tex);
+
                 for (unsigned i = 0; i < materials.size(); ++i)
                 {
                     auto& material = materials[i];
                     auto  out_mat  = SerializeMaterialAssetFile(thread_local_arena, material, config);
                     outputs.push(out_mat);
                 }
-
-                auto out_tex = SerializeTextureAssetFiles(thread_local_arena, ArrayView{textures}, config);
-                outputs.push(out_tex);
 
                 auto result = fmt::format("{0}{1}{2}", config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
                 if (m_complete_callback)

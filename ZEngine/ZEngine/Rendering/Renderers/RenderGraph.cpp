@@ -75,7 +75,7 @@ namespace ZEngine::Rendering::Renderers
     void RenderGraphBuilder::CreateRenderPassNode(const RenderGraphRenderPassCreation& creation)
     {
         m_graph.m_node[creation.Name].Creation = creation;
-        for (auto& output : m_graph.m_node[creation.Name].Creation.Outputs)
+        for (const auto& output : m_graph.m_node.at(creation.Name).Creation.Outputs)
         {
             if (output.Type == RenderGraphResourceType::ATTACHMENT)
             {
@@ -118,44 +118,29 @@ namespace ZEngine::Rendering::Renderers
         RenderPassBuilder = ZPushStructCtorArgs(arena, RenderPasses::RenderPassBuilder);
         RenderPassBuilder->Initialize(arena);
         m_sorted_nodes.init(arena, 7);
-        m_node.init(arena, 7);
-        m_resource_map.init(arena, 10);
+        m_node.init(arena);
+        m_resource_map.init(arena);
     }
 
     void RenderGraph::Setup()
     {
-        auto node_view = m_node.view();
-        for (auto [name, node] : node_view)
+        for (auto [name, node] : m_node)
         {
             node.EdgeNodes.init(Renderer->Device->Arena, 5);
             node.CallbackPass->Setup(name, this);
         }
     }
 
-    void RenderGraph::Compile(Rendering::Scenes::SceneRawData* const scene)
+    void RenderGraph::Compile()
     {
-
-        if (MarkAsDirty)
-        {
-            ZENGINE_VALIDATE_ASSERT(!m_sorted_nodes.empty(), "Sorted nodes can't be empty")
-
-            for (const char* name : m_sorted_nodes)
-            {
-                auto& node = m_node[name];
-                node.CallbackPass->Compile(&(node.Handle), this, scene);
-            }
-            return;
-        }
-
-        auto node_view = m_node.view();
-        for (auto pass : node_view)
+        for (auto pass : m_node)
         {
             for (uint32_t i = 0; i < pass.second.Creation.Inputs.size(); ++i)
             {
-                if (m_resource_map.count(pass.second.Creation.Inputs[i].Name))
+                if (m_resource_map.contains(pass.second.Creation.Inputs[i].Name))
                 {
                     RenderGraphResource& resource = m_resource_map[pass.second.Creation.Inputs[i].Name];
-                    if (m_node.count(resource.ProducerNodeName))
+                    if (m_node.contains(resource.ProducerNodeName))
                     {
                         RenderGraphNode& producer_node = m_node[resource.ProducerNodeName];
                         producer_node.EdgeNodes.push(pass.first);
@@ -177,9 +162,9 @@ namespace ZEngine::Rendering::Renderers
 
         sorted_nodes.init(scratch.Arena, 6);
         stack.init(scratch.Arena, 6);
-        visited_nodes.init(scratch.Arena, 6);
+        visited_nodes.init(scratch.Arena);
 
-        for (auto node : node_view)
+        for (auto node : m_node)
         {
             stack.push(node.first);
             while (!stack.empty())
@@ -248,7 +233,7 @@ namespace ZEngine::Rendering::Renderers
                 if (output.Type == RenderGraphResourceType::ATTACHMENT)
                 {
                     resource.ResourceInfo.TextureSpec.PerformTransition = false;
-                    resource.ResourceInfo.TextureHandle                 = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
+                    resource.ResourceInfo.TextureHandle                 = Renderer->Device->CreateTexture(resource.ResourceInfo.TextureSpec);
 
                     RenderPassBuilder->UseRenderTarget(resource.ResourceInfo.TextureHandle);
                 }
@@ -268,7 +253,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            node.CallbackPass->Compile(&(node.Handle), this, scene);
+            node.CallbackPass->Compile(&(node.Handle), this);
         }
 
         for (const char* name : m_sorted_nodes)
@@ -279,7 +264,7 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    void RenderGraph::Execute(uint32_t frame_index, Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene)
+    void RenderGraph::Execute(Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneData* const scene)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer, "Command Buffer can't be null")
 
@@ -307,7 +292,8 @@ namespace ZEngine::Rendering::Renderers
                     bool                                            is_resource_attachment = resource.Type == RenderGraphResourceType::ATTACHMENT;
 
                     auto                                            texture                = Renderer->Device->GlobalTextures.Access(resource.ResourceInfo.TextureHandle);
-                    auto&                                           buffer                 = texture->ImageBuffer->GetBuffer();
+                    auto                                            img_buf                = Renderer->Device->Image2DBufferManager.Access(texture->BufferHandle);
+                    auto&                                           buffer                 = img_buf->GetBuffer();
 
                     Specifications::ImageMemoryBarrierSpecification barrier_spec           = {};
                     barrier_spec.ImageHandle                                               = buffer.Handle;
@@ -322,6 +308,7 @@ namespace ZEngine::Rendering::Renderers
 
                     Primitives::ImageMemoryBarrier barrier{barrier_spec};
                     command_buffer->TransitionImageLayout(barrier);
+                    img_buf->Layout = barrier_spec.NewLayout;
                 }
             }
 
@@ -336,13 +323,14 @@ namespace ZEngine::Rendering::Renderers
                 ZENGINE_VALIDATE_ASSERT(resource.Type == RenderGraphResourceType::ATTACHMENT, "RenderPass Output should be an Attachment")
 
                 auto                                            texture      = Renderer->Device->GlobalTextures.Access(resource.ResourceInfo.TextureHandle);
-                auto&                                           buffer       = texture->ImageBuffer->GetBuffer();
+                auto                                            img_buf      = Renderer->Device->Image2DBufferManager.Access(texture->BufferHandle);
+                auto&                                           buffer       = img_buf->GetBuffer();
 
                 Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
                 if (texture->IsDepthTexture)
                 {
                     barrier_spec.ImageHandle           = buffer.Handle;
-                    barrier_spec.OldLayout             = Specifications::ImageLayout::UNDEFINED;
+                    barrier_spec.OldLayout             = img_buf->Layout;
                     barrier_spec.NewLayout             = Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
                     barrier_spec.ImageAspectMask       = VkImageAspectFlagBits(VK_IMAGE_ASPECT_DEPTH_BIT /*| VK_IMAGE_ASPECT_STENCIL_BIT*/); // Todo : To consider Stencil
                                                                                                                                              // buffer, we want to extend
@@ -356,11 +344,12 @@ namespace ZEngine::Rendering::Renderers
 
                     Primitives::ImageMemoryBarrier barrier{barrier_spec};
                     command_buffer->TransitionImageLayout(barrier);
+                    img_buf->Layout = barrier_spec.NewLayout;
                 }
                 else
                 {
                     barrier_spec.ImageHandle           = buffer.Handle;
-                    barrier_spec.OldLayout             = Specifications::ImageLayout::UNDEFINED;
+                    barrier_spec.OldLayout             = img_buf->Layout;
                     barrier_spec.NewLayout             = Specifications::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
                     barrier_spec.ImageAspectMask       = VK_IMAGE_ASPECT_COLOR_BIT;
                     barrier_spec.SourceAccessMask      = 0;
@@ -371,11 +360,12 @@ namespace ZEngine::Rendering::Renderers
 
                     Primitives::ImageMemoryBarrier barrier{barrier_spec};
                     command_buffer->TransitionImageLayout(barrier);
+                    img_buf->Layout = barrier_spec.NewLayout;
                 }
             }
 
-            node.CallbackPass->Execute(frame_index, scene, node.Handle, command_buffer, this);
-            node.CallbackPass->Render(frame_index, scene, node.Handle, node.Framebuffer, command_buffer, this);
+            node.CallbackPass->Execute(scene, node.Handle, command_buffer, this);
+            node.CallbackPass->Render(scene, node.Handle, node.Framebuffer, command_buffer, this);
         }
     }
 
@@ -409,7 +399,7 @@ namespace ZEngine::Rendering::Renderers
                 Renderer->Device->GlobalTextures.Remove(resource.ResourceInfo.TextureHandle);
                 resource.ResourceInfo.TextureSpec.Width  = width;
                 resource.ResourceInfo.TextureSpec.Height = height;
-                resource.ResourceInfo.TextureHandle      = Renderer->CreateTexture(resource.ResourceInfo.TextureSpec);
+                resource.ResourceInfo.TextureHandle      = Renderer->Device->CreateTexture(resource.ResourceInfo.TextureSpec);
 
                 if ((output.Name == Renderer->FrameColorRenderTargetName) || (output.Name == Renderer->FrameDepthRenderTargetName))
                 {
@@ -453,8 +443,7 @@ namespace ZEngine::Rendering::Renderers
             node.Framebuffer->Dispose();
         }
 
-        auto resource_view = m_resource_map.view();
-        for (auto resource : resource_view)
+        for (auto resource : m_resource_map)
         {
             auto& value = m_resource_map[resource.first];
             if (value.ResourceInfo.External)

@@ -28,11 +28,8 @@ namespace Tetragrama::Components
     {
         if (!m_textures_loaded)
         {
-            m_directory_icon = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/DirectoryIcon.png");
-            m_file_icon      = renderer->AsyncLoader->LoadTextureFileSync("Settings/Icons/FileIcon.png");
-
-            renderer->Device->TextureHandleToUpdates.Enqueue(m_directory_icon);
-            renderer->Device->TextureHandleToUpdates.Enqueue(m_file_icon);
+            m_directory_icon  = renderer->AsyncLoader->LoadTextureFile("Settings/Icons/DirectoryIcon.png");
+            m_file_icon       = renderer->AsyncLoader->LoadTextureFile("Settings/Icons/FileIcon.png");
 
             m_textures_loaded = true;
         }

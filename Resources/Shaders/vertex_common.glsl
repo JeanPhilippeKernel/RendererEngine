@@ -7,12 +7,14 @@ struct DrawVertex
 
 struct DrawData
 {
+    uint VertexOffset;
+    uint VertexCount;
+    uint IndexOffset;
+    uint IndexCount;
+    uint AllocationCount;
+    uint InstanceCount;
     uint TransformIndex;
     uint MaterialIndex;
-    uint VertexOffset;
-    uint IndexOffset;
-    uint VertexCount;
-    uint IndexCount;
 };
 
 struct DrawDataView

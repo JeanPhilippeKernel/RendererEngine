@@ -16,17 +16,17 @@ namespace ZEngine::Rendering::Textures
         Texture() = default;
         ~Texture();
 
-        void                                 Initialize(const Specifications::TextureSpecification& spec, Hardwares::Image2DBuffer* const buffer);
+        void                                      Initialize(const Specifications::TextureSpecification& spec, Hardwares::Image2DBuffer* const buffer);
 
-        bool                                 IsDepthTexture = false;
-        uint32_t                             Width          = 1;
-        uint32_t                             Height         = 1;
-        uint32_t                             BytePerPixel   = 0;
-        VkDeviceSize                         BufferSize     = 0;
-        Specifications::TextureSpecification Specification  = {};
-        Hardwares::Image2DBuffer*            ImageBuffer    = nullptr;
+        bool                                      IsDepthTexture = false;
+        uint32_t                                  Width          = 1;
+        uint32_t                                  Height         = 1;
+        uint32_t                                  BytePerPixel   = 0;
+        VkDeviceSize                              BufferSize     = 0;
+        Specifications::TextureSpecification      Specification  = {};
+        Helpers::Handle<Hardwares::Image2DBuffer> BufferHandle   = {};
 
-        void                                 Dispose();
+        void                                      Dispose();
     };
 
     using TextureHandle        = Helpers::Handle<Texture>;

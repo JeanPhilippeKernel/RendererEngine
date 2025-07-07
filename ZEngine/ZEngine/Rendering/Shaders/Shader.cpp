@@ -48,14 +48,12 @@ namespace ZEngine::Rendering::Shaders
         CreateDescriptorSetLayouts();
         CreatePushConstantRange();
 
-        auto set_layout_view = DescriptorSetLayoutMap.view();
-        for (auto layout : set_layout_view)
+        for (auto layout : DescriptorSetLayoutMap)
         {
             SetLayouts.push(layout.second);
         }
 
-        auto layout_binding_spec_view = LayoutBindingSpecificationMap.view();
-        for (const auto layout_binding : layout_binding_spec_view)
+        for (const auto layout_binding : LayoutBindingSpecificationMap)
         {
             for (const auto& spec : layout_binding.second)
             {
@@ -96,7 +94,7 @@ namespace ZEngine::Rendering::Shaders
                 uint32_t set     = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationDescriptorSet);
                 uint32_t binding = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationBinding);
 
-                if (LayoutBindingSpecificationMap[set].capacity() <= 0)
+                if (!LayoutBindingSpecificationMap.contains(set) || (LayoutBindingSpecificationMap.at(set).capacity() <= 0))
                 {
                     LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
@@ -109,7 +107,7 @@ namespace ZEngine::Rendering::Shaders
                 uint32_t set     = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationDescriptorSet);
                 uint32_t binding = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationBinding);
 
-                if (LayoutBindingSpecificationMap[set].capacity() <= 0)
+                if (!LayoutBindingSpecificationMap.contains(set) || (LayoutBindingSpecificationMap.at(set).capacity() <= 0))
                 {
                     LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
@@ -178,7 +176,7 @@ namespace ZEngine::Rendering::Shaders
                 uint32_t set     = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationDescriptorSet);
                 uint32_t binding = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationBinding);
 
-                if (LayoutBindingSpecificationMap[set].capacity() <= 0)
+                if (LayoutBindingSpecificationMap.at(set).capacity() <= 0)
                 {
                     LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
@@ -235,9 +233,8 @@ namespace ZEngine::Rendering::Shaders
 
     Specifications::LayoutBindingSpecification Shader::GetLayoutBindingSpecification(const char* name)
     {
-        LayoutBindingSpecification binding_spec             = {};
-        auto                       layout_binding_spec_view = LayoutBindingSpecificationMap.view();
-        for (const auto& layout_binding : layout_binding_spec_view)
+        LayoutBindingSpecification binding_spec = {};
+        for (const auto& layout_binding : LayoutBindingSpecificationMap)
         {
             const auto& binding_specification_collection = layout_binding.second;
             auto        find_it                          = std::find_if(binding_specification_collection.begin(), binding_specification_collection.end(), [&](const LayoutBindingSpecification& spec) { return spec.Name == name; });
@@ -259,8 +256,7 @@ namespace ZEngine::Rendering::Shaders
         }
         ShaderModules.clear();
 
-        auto set_layout_view = DescriptorSetLayoutMap.view();
-        for (auto set_layout : set_layout_view)
+        for (auto set_layout : DescriptorSetLayoutMap)
         {
             m_device->EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
         }
@@ -278,8 +274,7 @@ namespace ZEngine::Rendering::Shaders
         Array<VkDescriptorPoolSize> pool_size_collection = {};
         pool_size_collection.init(&LocalArena, 10);
 
-        auto layout_binding_spec_view = LayoutBindingSpecificationMap.view();
-        for (const auto& layout_binding_set : layout_binding_spec_view)
+        for (const auto& layout_binding_set : LayoutBindingSpecificationMap)
         {
             uint32_t                            binding_set               = layout_binding_set.first;
             Array<VkDescriptorSetLayoutBinding> layout_binding_collection = {};
@@ -365,8 +360,7 @@ namespace ZEngine::Rendering::Shaders
          * Create DescriptorSet
          */
         DescriptorSetMap.init(m_device->Arena, 5);
-        auto set_layout_map_view = DescriptorSetLayoutMap.view();
-        for (const auto& layout : set_layout_map_view)
+        for (const auto& layout : DescriptorSetLayoutMap)
         {
             DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainImageCount, m_device->SwapchainImageCount);
 

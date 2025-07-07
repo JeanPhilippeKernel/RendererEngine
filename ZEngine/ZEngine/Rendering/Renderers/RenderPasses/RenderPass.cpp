@@ -150,7 +150,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set      = descriptor_set_map[spec.Set][i];
+            auto  set      = descriptor_set_map.at(spec.Set)[i];
             auto& buf      = ubo_buf->At(i);
             auto& buf_info = buf->GetDescriptorBufferInfo();
 
@@ -181,7 +181,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set      = descriptor_set_map[spec.Set][i];
+            auto  set      = descriptor_set_map.at(spec.Set)[i];
             auto& buf      = sbo_buf->At(i);
             auto& buf_info = buf->GetDescriptorBufferInfo();
 
@@ -209,12 +209,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         auto        descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
         auto        tex_buf            = m_device->GlobalTextures.Access(handle);
+        auto        img_buf            = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set        = descriptor_set_map[spec.Set][i];
-            auto& image_info = tex_buf->ImageBuffer->GetDescriptorImageInfo();
+            auto  set        = descriptor_set_map.at(spec.Set)[i];
+            auto& image_info = img_buf->GetDescriptorImageInfo();
 
             write_reqs[i]    = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr};
         }
@@ -249,8 +250,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     void RenderPass::UpdateInputBinding()
     {
-        auto view = Specification.InputTextures.view();
-        for (auto [binding_name, texture] : view)
+        for (const auto& [binding_name, texture] : Specification.InputTextures)
         {
             SetInput(binding_name, texture);
         }

@@ -23,7 +23,7 @@ namespace Tetragrama::Components
         UIComponent::Initialize(parent, name, visibility, closed);
 
         parent->Arena->CreateSubArena(ZMega(1), &m_local_arena);
-        m_log_queue.init(&(m_local_arena), m_maxCount, m_maxCount);
+        m_log_queue.init(&(m_local_arena), m_maxCount);
         m_handler_cookie = Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
     }
 
@@ -147,8 +147,8 @@ namespace Tetragrama::Components
                 m_log_queue.clear();
             }
 
-            auto& m    = m_log_queue[m_currentCount];
-            m.Message  = message.Message;
+            auto& m    = m_log_queue.push_use({});
+            // m.Message  = message.Message;
             m.Color[0] = message.Color[0];
             m.Color[1] = message.Color[1];
             m.Color[2] = message.Color[2];
