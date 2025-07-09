@@ -28,7 +28,7 @@
         if (!(condition))                           \
         {                                           \
             ZENGINE_CORE_CRITICAL(message)          \
-            assert(condition&& message);            \
+            assert(condition && message);           \
             ZENGINE_DEBUG_BREAK()                   \
         }                                           \
     }
