@@ -66,7 +66,8 @@ namespace ZEngine::Logging
         auto handlers_view = handlers.view();
         for (const auto& handler : handlers_view)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {0.0f, 1.0f, 0.0f, 1.0f},
                   .Message = msg
             });
@@ -89,7 +90,8 @@ namespace ZEngine::Logging
         auto handlers_view = handlers.view();
         for (const auto& handler : handlers_view)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {0.5f, 0.5f, 0.5f, 1.0f},
                   .Message = msg
             });
@@ -112,7 +114,8 @@ namespace ZEngine::Logging
         auto handlers_view = handlers.view();
         for (const auto& handler : handlers_view)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {1.0f, 0.5f, 0.0f, 1.0f},
                   .Message = msg
             });
@@ -135,7 +138,8 @@ namespace ZEngine::Logging
         auto handlers_view = handlers.view();
         for (const auto& handler : handlers_view)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {1.0f, 0.0f, 0.0f, 1.0f},
                   .Message = msg
             });
@@ -158,7 +162,8 @@ namespace ZEngine::Logging
         auto handlers_view = handlers.view();
         for (const auto& handler : handlers_view)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {1.0f, 0.0f, 1.0f, 1.0f},
                   .Message = msg
             });
