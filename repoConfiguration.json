@@ -20,8 +20,8 @@
             "Url": "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
         },
         "LLVM": {
-            "Version": "18.1.8",
-            "MaximumVersion": "18.2.1"
+            "Version": "20.1.7",
+            "MaximumVersion": "20.2.0"
         }
     }
 }

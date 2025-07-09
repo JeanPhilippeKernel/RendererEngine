@@ -1,6 +1,5 @@
 #include <Helpers/MemoryOperations.h>
 #include <Vec.h>
-#include <cstddef>
 
 namespace ZEngine::Core::Maths
 {
@@ -132,7 +131,7 @@ namespace ZEngine::Core::Maths
 
         Mat2()
         {
-            Helpers::secure_memset(m_data, 0, sizeof(m_data));
+            Helpers::secure_memset(m_data, 0, sizeof(m_data), sizeof(m_data));
         }
 
         Mat2(T m00, T m01, T m10, T m11)
@@ -192,7 +191,7 @@ namespace ZEngine::Core::Maths
 
         Mat3()
         {
-            Helpers::secure_memset(m_data, 0, sizeof(m_data));
+            Helpers::secure_memset(m_data, 0, sizeof(m_data), sizeof(m_data));
         }
 
         Mat3(T m00, T m01, T m02, T m10, T m11, T m12, T m20, T m21, T m22)
@@ -270,7 +269,7 @@ namespace ZEngine::Core::Maths
 
             float          invDet = 1.0f / dot(r2, c);
 
-            return Mat<T>(r0.x * invDet, r0.y * invDet, r0.z * invDet, r1.x * invDet, r1.y * invDet, r1.z * invDet, r2.x * invDet, r2.y * invDet, r2.z * invDet);
+            return Mat3<T>(r0.x * invDet, r0.y * invDet, r0.z * invDet, r1.x * invDet, r1.y * invDet, r1.z * invDet, r2.x * invDet, r2.y * invDet, r2.z * invDet);
         };
     };
 
@@ -280,29 +279,29 @@ namespace ZEngine::Core::Maths
         using Matrix<T, 4, 4>::m_data;
         Mat4()
         {
-            Helpers::secure_memset(m_data, 0, sizeof(m_data));
+            Helpers::secure_memset(m_data, 0, sizeof(m_data), sizeof(m_data));
         }
 
         Mat4(T m00, T m01, T m02, T m03, T m10, T m11, T m12, T m13, T m20, T m21, T m22, T m23, T m30, T m31, T m32, T m33)
         {
             m_data[0][0] = m00;
-            m_data[1][0] = m10;
-            m_data[2][0] = m20;
-            m_data[3][0] = m30;
+            m_data[1][0] = m01;
+            m_data[2][0] = m02;
+            m_data[3][0] = m03;
 
-            m_data[0][1] = m01;
+            m_data[0][1] = m10;
             m_data[1][1] = m11;
-            m_data[2][1] = m21;
-            m_data[3][1] = m31;
+            m_data[2][1] = m12;
+            m_data[3][1] = m13;
 
-            m_data[0][2] = m02;
-            m_data[1][2] = m12;
+            m_data[0][2] = m20;
+            m_data[1][2] = m21;
             m_data[2][2] = m22;
-            m_data[3][2] = m32;
+            m_data[3][2] = m23;
 
-            m_data[0][3] = m03;
-            m_data[1][3] = m13;
-            m_data[2][3] = m23;
+            m_data[0][3] = m30;
+            m_data[1][3] = m31;
+            m_data[2][3] = m32;
             m_data[3][3] = m33;
         }
 
@@ -331,35 +330,38 @@ namespace ZEngine::Core::Maths
 
         Mat4<T> Inverse() const
         {
-            auto&        M = *this;
+            auto&    M = *this;
 
-            Vec3<T>      a(M(0, 0), M(1, 0), M(2, 0));
-            Vec3<T>      b(M(0, 1), M(1, 1), M(2, 1));
-            Vec3<T>      c(M(0, 2), M(1, 2), M(2, 2));
-            Vec3<T>      d(M(0, 3), M(1, 3), M(2, 3));
+            Vec3<T>  a(M(0, 0), M(0, 1), M(0, 2));
+            Vec3<T>  b(M(1, 0), M(1, 1), M(1, 2));
+            Vec3<T>  c(M(2, 0), M(2, 1), M(2, 2));
+            Vec3<T>  d(M(3, 0), M(3, 1), M(3, 2));
 
-            const float& x       = M(0, 3);
-            const float& y       = M(1, 3);
-            const float& z       = M(2, 3);
-            const float& w       = M(3, 3);
+            const T& x   = M(0, 3);
+            const T& y   = M(1, 3);
+            const T& z   = M(2, 3);
+            const T& w   = M(3, 3);
 
-            Vec3<T>      s       = cross3d(a, b);
-            Vec3<T>      t       = cross3d(c, d);
-            Vec3<T>      u       = a * y - b * x;
-            Vec3<T>      v       = c * w - d * z;
+            Vec3<T>  s   = cross3d(a, b);
+            Vec3<T>  t   = cross3d(c, d);
+            Vec3<T>  u   = a * y - b * x;
+            Vec3<T>  v   = c * w - d * z;
 
-            float        invDet  = T(1) / (dot(s, v) + dot(t, u));
-            s                   *= invDet;
-            t                   *= invDet;
-            u                   *= invDet;
-            v                   *= invDet;
+            T        det = dot(s, v) + dot(t, u);
+            ZENGINE_VALIDATE_ASSERT(det != T(0), "Matrix is singular and cannot be inverted");
 
-            Vec3<T> r0           = cross3d(b, v) + (t * y);
-            Vec3<T> r1           = cross3d(v, a) - (t * x);
-            Vec3<T> r2           = cross3d(d, u) + (s * w);
-            Vec3<T> r3           = cross3d(u, c) - (s * z);
+            T invDet    = T(1) / det;
+            s          *= invDet;
+            t          *= invDet;
+            u          *= invDet;
+            v          *= invDet;
 
-            return Mat4<T>(r0.x, r0.y, r0.z, -dot(b, t), r1.x, r1.y, r1.z, dot(a, t), r2.x, r2.y, r2.z, -dot(d, s), r3.x, r3.y, r3.z, dot(c, s));
+            Vec3<T> r0  = cross3d(b, v) + (t * y);
+            Vec3<T> r1  = cross3d(v, a) - (t * x);
+            Vec3<T> r2  = cross3d(d, u) + (s * w);
+            Vec3<T> r3  = cross3d(u, c) - (s * z);
+
+            return Mat4<T>(r0.x, r1.x, r2.x, r3.x, r0.y, r1.y, r2.y, r3.y, r0.z, r1.z, r2.z, r3.z, -dot(r0, d), -dot(r1, d), -dot(r2, a), -dot(r3, a));
         }
     };
 
@@ -433,5 +435,30 @@ namespace ZEngine::Core::Maths
         T m30 = M(3, 0), m31 = M(3, 1), m32 = M(3, 2), m33 = M(3, 3);
 
         return m00 * (m11 * (m22 * m33 - m23 * m32) - m12 * (m21 * m33 - m23 * m31) + m13 * (m21 * m32 - m22 * m31)) - m01 * (m10 * (m22 * m33 - m23 * m32) - m12 * (m20 * m33 - m23 * m30) + m13 * (m20 * m32 - m22 * m30)) + m02 * (m10 * (m21 * m33 - m23 * m31) - m11 * (m20 * m33 - m23 * m30) + m13 * (m20 * m31 - m21 * m30)) - m03 * (m10 * (m21 * m32 - m22 * m31) - m11 * (m20 * m32 - m22 * m30) + m12 * (m20 * m31 - m21 * m30));
+    }
+
+    template <typename T>
+    inline Mat4<T> operator*(const Mat4<T>& a, const Mat4<T>& b)
+    {
+        return (Mat4<T>(
+            a(0, 0) * b(0, 0) + a(0, 1) * b(1, 0) + a(0, 2) * b(2, 0) + a(0, 3) * b(3, 0),
+            a(0, 0) * b(0, 1) + a(0, 1) * b(1, 1) + a(0, 2) * b(2, 1) + a(0, 3) * b(3, 1),
+            a(0, 0) * b(0, 2) + a(0, 1) * b(1, 2) + a(0, 2) * b(2, 2) + a(0, 3) * b(3, 2),
+            a(0, 0) * b(0, 3) + a(0, 1) * b(1, 3) + a(0, 2) * b(2, 3) + a(0, 3) * b(3, 3),
+
+            a(1, 0) * b(0, 0) + a(1, 1) * b(1, 0) + a(1, 2) * b(2, 0) + a(1, 3) * b(3, 0),
+            a(1, 0) * b(0, 1) + a(1, 1) * b(1, 1) + a(1, 2) * b(2, 1) + a(1, 3) * b(3, 1),
+            a(1, 0) * b(0, 2) + a(1, 1) * b(1, 2) + a(1, 2) * b(2, 2) + a(1, 3) * b(3, 2),
+            a(1, 0) * b(0, 3) + a(1, 1) * b(1, 3) + a(1, 2) * b(2, 3) + a(1, 3) * b(3, 3),
+
+            a(2, 0) * b(0, 0) + a(2, 1) * b(1, 0) + a(2, 2) * b(2, 0) + a(2, 3) * b(3, 0),
+            a(2, 0) * b(0, 1) + a(2, 1) * b(1, 1) + a(2, 2) * b(2, 1) + a(2, 3) * b(3, 1),
+            a(2, 0) * b(0, 2) + a(2, 1) * b(1, 2) + a(2, 2) * b(2, 2) + a(2, 3) * b(3, 2),
+            a(2, 0) * b(0, 3) + a(2, 1) * b(1, 3) + a(2, 2) * b(2, 3) + a(2, 3) * b(3, 3),
+
+            a(3, 0) * b(0, 0) + a(3, 1) * b(1, 0) + a(3, 2) * b(2, 0) + a(3, 3) * b(3, 0),
+            a(3, 0) * b(0, 1) + a(3, 1) * b(1, 1) + a(3, 2) * b(2, 1) + a(3, 3) * b(3, 1),
+            a(3, 0) * b(0, 2) + a(3, 1) * b(1, 2) + a(3, 2) * b(2, 2) + a(3, 3) * b(3, 2),
+            a(3, 0) * b(0, 3) + a(3, 1) * b(1, 3) + a(3, 2) * b(2, 3) + a(3, 3) * b(3, 3)));
     }
 } // namespace ZEngine::Core::Maths

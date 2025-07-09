@@ -65,7 +65,8 @@ namespace ZEngine::Logging
 
         for (const auto& handler : handlers)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {0.0f, 1.0f, 0.0f, 1.0f},
                   .Message = msg
             });
@@ -87,7 +88,8 @@ namespace ZEngine::Logging
 
         for (const auto& handler : handlers)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {0.5f, 0.5f, 0.5f, 1.0f},
                   .Message = msg
             });
@@ -109,7 +111,8 @@ namespace ZEngine::Logging
 
         for (const auto& handler : handlers)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {1.0f, 0.5f, 0.0f, 1.0f},
                   .Message = msg
             });
@@ -131,7 +134,8 @@ namespace ZEngine::Logging
 
         for (const auto& handler : handlers)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {1.0f, 0.0f, 0.0f, 1.0f},
                   .Message = msg
             });
@@ -153,7 +157,8 @@ namespace ZEngine::Logging
 
         for (const auto& handler : handlers)
         {
-            handler.second(LogMessage{
+            handler.second(
+                LogMessage{
                 .Color = {1.0f, 0.0f, 1.0f, 1.0f},
                   .Message = msg
             });
