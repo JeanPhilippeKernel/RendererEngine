@@ -23,7 +23,7 @@ protected:
 TEST_F(HashMapTest, InitialState)
 {
     HashMap<int, int> array;
-    array.init(&allocator, 10, 0);
+    array.init(&allocator, 10);
     EXPECT_EQ(array.size(), 0);
     EXPECT_EQ(array.capacity(), 10);
     EXPECT_TRUE(array.empty());
@@ -32,7 +32,7 @@ TEST_F(HashMapTest, InitialState)
 TEST_F(HashMapTest, Contains)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10, 0);
+    map.init(&allocator, 10);
     map.insert(1, 10);
     EXPECT_TRUE(map.contains(1));
     EXPECT_FALSE(map.contains(2));
@@ -41,7 +41,7 @@ TEST_F(HashMapTest, Contains)
 TEST_F(HashMapTest, BracketOperator)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10, 0);
+    map.init(&allocator, 10);
     map[1] = 10;
     EXPECT_EQ(map[1], 10);
 
@@ -55,7 +55,7 @@ TEST_F(HashMapTest, BracketOperator)
 TEST_F(HashMapTest, Remove)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10, 0);
+    map.init(&allocator, 10);
     map.insert(1, 10);
     map.insert(2, 20);
     EXPECT_EQ(map.size(), 2);
@@ -68,7 +68,7 @@ TEST_F(HashMapTest, Remove)
 TEST_F(HashMapTest, Find)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10, 0);
+    map.init(&allocator, 10);
     map.insert(1, 10);
     int* value = map.find(1);
     ASSERT_NE(value, nullptr);
@@ -80,7 +80,7 @@ TEST_F(HashMapTest, Find)
 TEST_F(HashMapTest, Clear)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10, 0);
+    map.init(&allocator, 10);
 
     // Insert multiple elements
     map.insert(1, 10);
@@ -102,7 +102,7 @@ TEST_F(HashMapTest, Clear)
 TEST_F(HashMapTest, Resize)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 2, 0);
+    map.init(&allocator, 2);
 
     for (int i = 0; i < 10; ++i)
     {
@@ -123,7 +123,7 @@ TEST_F(HashMapTest, Resize)
 TEST_F(HashMapTest, OverwriteValue)
 {
     HashMap<int, String> map;
-    map.init(&allocator, 10, 0);
+    map.init(&allocator, 10);
 
     String str1;
     str1.init(&allocator, "first");
@@ -141,7 +141,7 @@ TEST_F(HashMapTest, OverwriteValue)
 TEST_F(HashMapTest, CollisionHandling)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 2, 0);
+    map.init(&allocator, 2);
 
     map.insert(1, 10);
     map.insert(3, 30);
@@ -159,7 +159,7 @@ TEST_F(HashMapTest, CollisionHandling)
 TEST_F(HashMapTest, ViewIteration)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 8, 0);
+    map.init(&allocator, 8);
 
     map.insert(10, 100);
     map.insert(20, 200);
@@ -171,8 +171,7 @@ TEST_F(HashMapTest, ViewIteration)
         {30, 300}
     };
 
-    auto view = map.view();
-    for (auto [key, value] : view)
+    for (auto [key, value] : map)
     {
         auto it = expected.find(key);
         ASSERT_NE(it, expected.end());
@@ -197,7 +196,7 @@ TEST_F(HashMapTest, UserDefinedStructViewIterations)
     };
 
     HashMap<Person, String> map;
-    map.init(&allocator, 8, 0);
+    map.init(&allocator, 8);
 
     String str1;
     str1.init(&allocator, "Alice");
@@ -241,8 +240,7 @@ TEST_F(HashMapTest, UserDefinedStructViewIterations)
 
     size_t matched_count = 0;
 
-    auto   view          = map.view();
-    for (auto [key, value] : view)
+    for (auto [key, value] : map)
     {
         bool found = false;
         for (auto& entry : expected)
