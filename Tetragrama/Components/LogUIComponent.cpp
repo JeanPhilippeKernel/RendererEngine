@@ -68,7 +68,14 @@ namespace Tetragrama::Components
 
     void LogUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        static const char* items[]                    = {"All", "info", "error", "warn", "critical", "trace"};
+        static const char* items[] = {
+            "info",
+            "error",
+            "warn",
+            "critical",
+            "trace",
+            "All",
+        };
         static int         current_item               = 0;
 
         char               search_buffer_tolower[256] = {0};
@@ -123,7 +130,7 @@ namespace Tetragrama::Components
             {
                 auto& message = UILogQueue[i];
 
-                if (current_item != 0)
+                if (current_item != (IM_ARRAYSIZE(items) - 1) /*Last item : All*/)
                 {
                     if (0 != secure_strcmp(message.Type.c_str(), items[current_item]))
                     {

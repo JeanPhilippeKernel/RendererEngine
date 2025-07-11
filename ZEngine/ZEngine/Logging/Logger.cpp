@@ -184,6 +184,9 @@ namespace ZEngine::Logging
             case LogMessageType::Trace:
                 return "trace";
                 break;
+            default:
+                return "";
+                break;
         }
     }
 
