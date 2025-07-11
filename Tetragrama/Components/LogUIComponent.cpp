@@ -76,9 +76,9 @@ namespace Tetragrama::Components
             "trace",
             "All",
         };
-        static int         current_item               = 0;
+        static int current_item               = 0;
 
-        char               search_buffer_tolower[256] = {0};
+        char       search_buffer_tolower[256] = {0};
         if (auto len = secure_strlen(m_search_buffer))
         {
             for (unsigned i = 0; i < len; ++i)
