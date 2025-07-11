@@ -107,6 +107,14 @@ namespace ZEngine::Hardwares
         virtual void       UploadRange(const void* data, uint32_t offset, size_t size);
         virtual void       Upload(const void* data, size_t size);
 
+        virtual void       Write(const void* data, size_t byte_size);
+
+        template <typename T>
+        inline void Write(Core::Containers::ArrayView<T> content)
+        {
+            Write(content.data(), content.size_bytes());
+        }
+
         template <typename T>
         inline void Upload(Core::Containers::ArrayView<T> content)
         {
@@ -154,9 +162,8 @@ namespace ZEngine::Hardwares
         void Dispose() {}
     };
 
-    class VertexBuffer : public IGraphicBuffer
+    struct VertexBuffer : public IGraphicBuffer
     {
-    public:
         explicit VertexBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
         virtual BufferView CreateBuffer() override;
@@ -179,9 +186,8 @@ namespace ZEngine::Hardwares
         }
     }
 
-    class StorageBuffer : public IGraphicBuffer
+    struct StorageBuffer : public IGraphicBuffer
     {
-    public:
         explicit StorageBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
         virtual BufferView CreateBuffer() override;
@@ -204,9 +210,8 @@ namespace ZEngine::Hardwares
         }
     }
 
-    class IndexBuffer : public IGraphicBuffer
+    struct IndexBuffer : public IGraphicBuffer
     {
-    public:
         IndexBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
         virtual BufferView CreateBuffer() override;
@@ -229,9 +234,8 @@ namespace ZEngine::Hardwares
         }
     }
 
-    class IndirectBuffer : public IGraphicBuffer
+    struct IndirectBuffer : public IGraphicBuffer
     {
-    public:
         explicit IndirectBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
         uint32_t           CommandCount = 0;
@@ -239,6 +243,13 @@ namespace ZEngine::Hardwares
         virtual BufferView CreateBuffer() override;
         virtual void       CleanUpMemory() override;
         virtual void       Upload(const VkDrawIndirectCommand* data, size_t byte_size);
+
+        virtual void       Write(const void* data, size_t byte_size) override;
+
+        inline void        Write(Core::Containers::ArrayView<VkDrawIndirectCommand> content)
+        {
+            Write(content.data(), content.size_bytes());
+        }
 
         virtual ~IndirectBuffer() {}
     };

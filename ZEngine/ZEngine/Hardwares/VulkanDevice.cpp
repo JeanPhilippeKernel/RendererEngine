@@ -1987,6 +1987,12 @@ namespace ZEngine::Hardwares
         IGraphicBuffer::Upload(data, byte_size);
     }
 
+    void IndirectBuffer::Write(const void* data, size_t byte_size)
+    {
+        IGraphicBuffer::Write(data, byte_size);
+        CommandCount = byte_size / sizeof(VkDrawIndirectCommand);
+    }
+
     void IndirectBuffer::CleanUpMemory()
     {
         CommandCount = 0;
@@ -2225,6 +2231,12 @@ namespace ZEngine::Hardwares
     {
         UploadRange(data, m_current_offset, byte_size);
         m_current_offset += byte_size;
+    }
+
+    void IGraphicBuffer::Write(const void* data, size_t byte_size)
+    {
+        UploadRange(data, 0, byte_size);
+        m_current_offset = byte_size;
     }
 
     void IGraphicBuffer::CleanUpMemory()

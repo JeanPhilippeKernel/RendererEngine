@@ -55,7 +55,7 @@ namespace ZEngine::Rendering::Renderers
         auto vertex_buffer = buffer_set->At(scene->FrameIndex);
 
         auto view          = ArrayView{m_vertex_data};
-        vertex_buffer->UploadRange(view.data(), 0, view.size_bytes());
+        vertex_buffer->Write(view);
     }
 
     void InitialPass::Render(Rendering::Scenes::SceneData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph)

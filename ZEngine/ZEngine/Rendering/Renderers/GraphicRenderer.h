@@ -72,7 +72,7 @@ namespace ZEngine::Rendering::Renderers
 
         void                                    Initialize(Hardwares::VulkanDevicePtr device);
         void                                    Deinitialize();
-        void                                    DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::Camera* const camera, Scenes::SceneData* const data);
+        void                                    DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::Camera* const camera);
         Textures::TextureHandle                 GetFrameOutput();
     };
 

@@ -87,7 +87,7 @@ namespace Tetragrama::Layers
             if (current_scene->TransformBufferDirty[device->CurrentFrameIndex].exchange(false, std::memory_order_acquire))
             {
                 auto transform_data_view = ArrayView{current_scene->GlobalTransforms};
-                transform_buffer->UploadRange(transform_data_view.data(), 0, transform_data_view.size_bytes());
+                transform_buffer->Write(transform_data_view);
             }
 
             if (current_scene->MeshAllocationDirty[device->CurrentFrameIndex].exchange(false, std::memory_order_acquire))
@@ -120,14 +120,13 @@ namespace Tetragrama::Layers
 
                 auto sub_mesh_alloc_view    = ArrayView{SubMeshAllocations};
                 auto indirect_commands_view = ArrayView{DrawIndirectCommands};
-                vtx_buffer->UploadRange(vertex_data_view.data(), 0, vertex_data_view.size_bytes());
-                idx_buffer->UploadRange(index_data_view.data(), 0, index_data_view.size_bytes());
-                material_buffer->UploadRange(material_data_view.data(), 0, material_data_view.size_bytes());
+                vtx_buffer->Write(vertex_data_view);
+                idx_buffer->Write(index_data_view);
+                material_buffer->Write(material_data_view);
 
-                rd_buffer->UploadRange(sub_mesh_alloc_view.data(), 0, sub_mesh_alloc_view.size_bytes());
+                rd_buffer->Write(sub_mesh_alloc_view);
 
-                indirect_buffer->UploadRange(indirect_commands_view.data(), 0, indirect_commands_view.size_bytes());
-                indirect_buffer->CommandCount = indirect_commands_view.size_bytes() / sizeof(VkDrawIndirectCommand);
+                indirect_buffer->Write(indirect_commands_view);
 
                 ZReleaseScratch(scratch);
             }
@@ -135,6 +134,6 @@ namespace Tetragrama::Layers
 
         // Todo (Kernel) : When we'll start considering multithreaded support
         // we might want to renderer->EnqueueAsync({command_buffer, {camera, frame_data} })
-        renderer->DrawScene(command_buffer, camera, nullptr);
+        renderer->DrawScene(command_buffer, camera);
     }
 } // namespace Tetragrama::Layers

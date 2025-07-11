@@ -121,14 +121,14 @@ namespace ZEngine::Rendering::Renderers
         ImguiRenderer->Deinitialize();
     }
 
-    void GraphicRenderer::DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::Camera* const camera, Scenes::SceneData* const data)
+    void GraphicRenderer::DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::Camera* const camera)
     {
         auto ubo_camera_data = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = glm::vec4(camera->GetPosition(), 1.0f)};
 
         auto buffer_set      = Device->UniformBufferSetManager.Access(SceneCameraBufferHandle);
         auto camera_buf      = buffer_set->At(Device->CurrentFrameIndex);
 
-        camera_buf->UploadRange(reinterpret_cast<void*>(&ubo_camera_data), 0u, sizeof(UBOCameraLayout));
+        camera_buf->Write(reinterpret_cast<void*>(&ubo_camera_data), sizeof(UBOCameraLayout));
 
         RenderGraph->Execute(cb, RenderSceneData);
     }

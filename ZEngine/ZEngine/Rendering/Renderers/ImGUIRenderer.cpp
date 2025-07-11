@@ -281,8 +281,8 @@ namespace ZEngine::Rendering::Renderers
 
         auto vtx_data_view = ArrayView{vertex_data};
         auto idx_data_view = ArrayView{index_data};
-        vertex_buffer->At(frame_index)->UploadRange(vtx_data_view.data(), 0, vtx_data_view.size_bytes());
-        index_buffer->At(frame_index)->UploadRange(idx_data_view.data(), 0, idx_data_view.size_bytes());
+        vertex_buffer->At(frame_index)->Write(vtx_data_view);
+        index_buffer->At(frame_index)->Write(idx_data_view);
 
         ZReleaseScratch(scratch);
 
