@@ -68,7 +68,7 @@ namespace ZEngine::Logging
             handler.second(
                 LogMessage{
                 .Color = {0.0f, 1.0f, 0.0f, 1.0f},
-                  .Message = msg
+                  .Type = LogMessageType::Info, .Message = msg
             });
         }
     }
@@ -91,7 +91,7 @@ namespace ZEngine::Logging
             handler.second(
                 LogMessage{
                 .Color = {0.5f, 0.5f, 0.5f, 1.0f},
-                  .Message = msg
+                  .Type = LogMessageType::Trace, .Message = msg
             });
         }
     }
@@ -114,7 +114,7 @@ namespace ZEngine::Logging
             handler.second(
                 LogMessage{
                 .Color = {1.0f, 0.5f, 0.0f, 1.0f},
-                  .Message = msg
+                  .Type = LogMessageType::Warn, .Message = msg
             });
         }
     }
@@ -137,7 +137,7 @@ namespace ZEngine::Logging
             handler.second(
                 LogMessage{
                 .Color = {1.0f, 0.0f, 0.0f, 1.0f},
-                  .Message = msg
+                  .Type = LogMessageType::Error, .Message = msg
             });
         }
     }
@@ -160,8 +160,30 @@ namespace ZEngine::Logging
             handler.second(
                 LogMessage{
                 .Color = {1.0f, 0.0f, 1.0f, 1.0f},
-                  .Message = msg
+                  .Type = LogMessageType::Critical, .Message = msg
             });
+        }
+    }
+
+    const char* Logger::MessageTypeToString(LogMessageType type)
+    {
+        switch (type)
+        {
+            case LogMessageType::Info:
+                return "info";
+                break;
+            case LogMessageType::Warn:
+                return "warn";
+                break;
+            case LogMessageType::Error:
+                return "error";
+                break;
+            case LogMessageType::Critical:
+                return "critical";
+                break;
+            case LogMessageType::Trace:
+                return "trace";
+                break;
         }
     }
 

@@ -10,6 +10,7 @@ namespace Tetragrama::Components
     struct UILogMessage
     {
         ZEngine::Core::Containers::Array<float> Color   = {};
+        ZEngine::Core::Containers::String       Type    = {};
         ZEngine::Core::Containers::String       Content = {};
     };
 
@@ -31,8 +32,6 @@ namespace Tetragrama::Components
         void                                                            OnLog(ZEngine::Logging::LogMessage);
 
         void                                                            ClearLog();
-
-        const char*                                                     GetMessageType(const UILogMessage& message);
 
     private:
         bool             m_auto_scroll            = true;

@@ -16,8 +16,6 @@ namespace ZEngine::Rendering::Textures
         Texture() = default;
         ~Texture();
 
-        void                                      Initialize(const Specifications::TextureSpecification& spec, Hardwares::Image2DBuffer* const buffer);
-
         bool                                      IsDepthTexture = false;
         uint32_t                                  Width          = 1;
         uint32_t                                  Height         = 1;

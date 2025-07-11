@@ -13,7 +13,7 @@ Camera;
 
 void main()
 {
-    scaleFactor   = 80.0;
+    scaleFactor   = 50.0;
 
     vec3 posScale = pos * scaleFactor;
     uv            = posScale.xz;
