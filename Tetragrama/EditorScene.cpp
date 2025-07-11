@@ -331,7 +331,7 @@ namespace Tetragrama
         node.DepthLevel = 0;
     }
 
-    void EditorScene::ExtractAsync(EditorScene& scene)
+    void EditorScene::ExtractAsync(const EditorScene& scene)
     {
         for (const auto& file : scene.AssetFiles)
         {

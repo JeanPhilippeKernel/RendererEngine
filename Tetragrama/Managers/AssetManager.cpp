@@ -309,12 +309,12 @@ namespace Tetragrama::Managers
                 RegisterAsset(AssetType::MATERIAL, material.MaterialUUID, asset_id);
 
                 ZEngine::Rendering::Meshes::MeshMaterial& gpu_mesh_mat = GPUMeshMaterials.push_use({});
-                // gpu_mesh_mat.AlbedoColor                               = material.AlbedoColor;
-                // gpu_mesh_mat.EmissiveColor                             = material.EmissiveColor;
-                // gpu_mesh_mat.RoughnessColor                            = material.RoughnessColor;
-                // gpu_mesh_mat.SpecularColor                             = material.SpecularColor;
-                // gpu_mesh_mat.AmbientColor                              = material.AmbientColor;
-                // gpu_mesh_mat.Factors                                   = material.Factors;
+                gpu_mesh_mat.AlbedoColor                               = material.AlbedoColor;
+                gpu_mesh_mat.EmissiveColor                             = material.EmissiveColor;
+                gpu_mesh_mat.RoughnessColor                            = material.RoughnessColor;
+                gpu_mesh_mat.SpecularColor                             = material.SpecularColor;
+                gpu_mesh_mat.AmbientColor                              = material.AmbientColor;
+                gpu_mesh_mat.Factors                                   = material.Factors;
 
                 if (!material.AlbedoTexUUID.is_nil())
                 {

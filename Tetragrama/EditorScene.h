@@ -85,8 +85,7 @@ namespace Tetragrama
         void                                                                                        Reset();
         void                                                                                        InitRootNode();
 
-        void                                                                                        ExtractAsync(EditorScene& scene); // Todo : this should be const EditorScene& ... the map::view() props
-                                                                                                                                      // prevents us to do it... def a impl issue
+        void                                                                                        ExtractAsync(const EditorScene& scene);
     };
 
 } // namespace Tetragrama
