@@ -10,6 +10,7 @@
 #include <memory>
 #include <regex>
 #include <span>
+#include <stack>
 #include <string>
 #include <string_view>
 #include <unordered_map>

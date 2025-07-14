@@ -15,6 +15,22 @@ namespace ZEngine::Rendering::Meshes
         SQUARE = 3
     };
 
+    struct MeshAllocation
+    {
+        uint32_t VertexOffset           = 0;
+        uint32_t VertexCount            = 0;
+        uint32_t IndexOffset            = 0;
+        uint32_t IndexCount             = 0;
+        uint32_t SubMeshAllocationCount = 0;
+        uint32_t InstanceCount          = 0;
+    };
+
+    struct SubMeshAllocation : public MeshAllocation
+    {
+        uint32_t TransformId = 0xFFFFFFFFu;
+        uint32_t MaterialId  = 0xFFFFFFFFu;
+    };
+
     struct MeshVNext
     {
         uint32_t VertexCount          = 0;

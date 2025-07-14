@@ -68,5 +68,23 @@ namespace ZEngine::Rendering
             w = v.w;
             return *this;
         }
+
+        gpuvec4& operator=(const gpuvec4& v)
+        {
+            x = v.x;
+            y = v.y;
+            z = v.z;
+            w = v.w;
+            return *this;
+        }
+
+        gpuvec4& operator=(const float v[4])
+        {
+            x = v[0];
+            y = v[1];
+            z = v[2];
+            w = v[3];
+            return *this;
+        }
     };
 } // namespace ZEngine::Rendering

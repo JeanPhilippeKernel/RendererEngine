@@ -4,16 +4,11 @@
 #include <ImGuizmo/ImGuizmo.h>
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>
-#include <MessageToken.h>
-#include <Messenger.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
-#include <ZEngine/Windows/Inputs/IDevice.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 #include <glm/glm.hpp>
 #include <gtc/type_ptr.hpp>
-#include <imgui.h>
-#include <stack>
 
 using namespace ZEngine;
 using namespace ZEngine::Helpers;
@@ -81,6 +76,9 @@ namespace Tetragrama::Components
                     int node_id = -1;
                 };
 
+                Importers::AssetMesh* mesh       = ctx->AssetManagerPtr->GetMeshAsset(mesh_node_hierarchy->MeshUUID);
+                const auto&           mesh_alloc = current_scene->CreateOrGetMeshAllocation(mesh);
+
                 for (int i = 0; i < mesh_node_hierarchy->Hierarchies.size(); ++i)
                 {
                     if (mesh_node_hierarchy->Hierarchies[i].Parent == -1)
@@ -98,17 +96,33 @@ namespace Tetragrama::Components
                                 continue;
                             }
 
-                            auto node_ref = Importers::AssetNodeRef{.AssetNodeHandle = handle, .NodeHierarchyIndex = entry.node_id};
+                            auto node_ref = Importers::AssetNodeRef{.NodeHierarchyIndex = entry.node_id, .AssetNodeHandle = handle, .AssetMeshUUID = mesh_node_hierarchy->MeshUUID};
                             if (mesh_node_hierarchy->NodeNames.contains(entry.node_id))
                             {
                                 auto name_idx = mesh_node_hierarchy->NodeNames[entry.node_id];
                                 node_ref.Name = mesh_node_hierarchy->Names[name_idx].c_str();
                             }
 
-                            int         scene_node_id = current_scene->CreateSceneNode(entry.Parent, entry.Depth, node_ref);
+                            int scene_node_id = current_scene->CreateSceneNode(entry.Parent, entry.Depth, node_ref);
 
-                            const auto& node          = mesh_node_hierarchy->Hierarchies[entry.node_id];
-                            bool        has_children  = (node.FirstChild != -1);
+                            if (mesh_node_hierarchy->NodeMeshes.contains(entry.node_id))
+                            {
+                                const auto& submesh_id                                               = mesh_node_hierarchy->NodeMeshes.at(entry.node_id);
+                                const auto& sub_mesh                                                 = mesh->SubMeshes[submesh_id];
+                                auto        material_handle                                          = ctx->AssetManagerPtr->GetMaterialHandleFromUUID(sub_mesh.MaterialUUID);
+                                auto        material_index                                           = Managers::AssetManager::ReadAssetHandleIndex(material_handle);
+
+                                current_scene->NodeSubMeshesAllocations[scene_node_id].TransformId   = scene_node_id;
+                                current_scene->NodeSubMeshesAllocations[scene_node_id].MaterialId    = material_index;
+                                current_scene->NodeSubMeshesAllocations[scene_node_id].IndexOffset   = mesh_alloc.IndexOffset + sub_mesh.IndexOffset;
+                                current_scene->NodeSubMeshesAllocations[scene_node_id].VertexOffset  = mesh_alloc.VertexOffset + sub_mesh.VertexOffset;
+                                current_scene->NodeSubMeshesAllocations[scene_node_id].VertexCount   = sub_mesh.VertexCount;
+                                current_scene->NodeSubMeshesAllocations[scene_node_id].IndexCount    = sub_mesh.IndexCount;
+                                current_scene->NodeSubMeshesAllocations[scene_node_id].InstanceCount = mesh_alloc.InstanceCount;
+                            }
+
+                            const auto& node         = mesh_node_hierarchy->Hierarchies[entry.node_id];
+                            bool        has_children = (node.FirstChild != -1);
 
                             if (has_children)
                             {
@@ -276,18 +290,22 @@ namespace Tetragrama::Components
             {
                 continue;
             }
+
             const auto&        node         = scene->Hierarchies[entry.node_id];
-
-            auto               name_id      = scene->NodeNames[entry.node_id];
-
+            auto               name_id      = scene->NodeNames.at(entry.node_id);
             bool               is_selected  = (selected_node == entry.node_id);
             bool               has_children = (node.FirstChild != -1);
 
             ImGuiTreeNodeFlags flags        = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanFullWidth;
             if (!has_children)
+            {
                 flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+            }
+
             if (is_selected)
+            {
                 flags |= ImGuiTreeNodeFlags_Selected;
+            }
 
             auto node_id = fmt::format("SceneNode_{0}", entry.node_id);
             bool open    = ImGui::TreeNodeEx(node_id.c_str(), flags, "%s", scene->Names[name_id].c_str());

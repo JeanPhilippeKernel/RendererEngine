@@ -1,6 +1,5 @@
 #include <pch.h>
 #include <Engine.h>
-#include <Hardwares/VulkanDevice.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 
@@ -107,5 +106,17 @@ namespace ZEngine
     {
         std::shared_lock l(g_mutex);
         return g_current_window;
+    }
+
+    ZEngine::Hardwares::VulkanDevice* Engine::GetDevice()
+    {
+        std::shared_lock l(g_mutex);
+        return g_device;
+    }
+
+    Rendering::Renderers::AsyncResourceLoader* Engine::GetAsyncResourceLoader()
+    {
+        std::shared_lock l(g_mutex);
+        return g_renderer->AsyncLoader;
     }
 } // namespace ZEngine

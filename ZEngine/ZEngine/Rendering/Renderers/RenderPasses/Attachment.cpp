@@ -29,10 +29,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         for (uint32_t i = 0; i < m_specification.ColorsMap.size(); ++i)
         {
-            auto&    color        = m_specification.ColorsMap[i];
+            const auto& color        = m_specification.ColorsMap.at(i);
 
             // Determine the right Image format
-            VkFormat color_format = VK_FORMAT_UNDEFINED;
+            VkFormat    color_format = VK_FORMAT_UNDEFINED;
             if (color.Format == ImageFormat::FORMAT_FROM_DEVICE)
             {
                 color_format = m_device->SurfaceFormat.format;
@@ -82,7 +82,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         for (int i = 0; i < spec.DependenciesMap.size(); ++i)
         {
-            subpass_dependency_collection.push(m_specification.DependenciesMap[i]);
+            subpass_dependency_collection.push(m_specification.DependenciesMap.at(i));
         }
 
         subpass_description.colorAttachmentCount       = color_attachment_reference_collection.size();

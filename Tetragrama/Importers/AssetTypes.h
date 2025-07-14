@@ -3,6 +3,7 @@
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/HashMap.h>
 #include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Rendering/Textures/Texture.h>
 #include <glm/glm.hpp>
 #include <uuid.h>
 
@@ -57,8 +58,9 @@ namespace Tetragrama::Importers
 
     struct AssetTexture
     {
-        uuids::uuid                       TextureUUID = {};
-        ZEngine::Core::Containers::String Path        = {};
+        ZEngine::Rendering::Textures::TextureHandle Handle      = {};
+        uuids::uuid                                 TextureUUID = {};
+        ZEngine::Core::Containers::String           Path        = {};
     };
 
     struct AssetNodeHierarchy
@@ -77,11 +79,12 @@ namespace Tetragrama::Importers
 
     struct AssetNodeRef
     {
-        cstring  Name               = nullptr;
-        uint32_t AssetNodeHandle    = 0xFFFFFFFF;
-        int      NodeHierarchyIndex = -1;
+        int         NodeHierarchyIndex = -1;
+        uint32_t    AssetNodeHandle    = 0xFFFFFFFF;
+        cstring     Name               = nullptr;
+        uuids::uuid AssetMeshUUID      = {};
 
-        bool     IsValid() const
+        bool        IsValid() const
         {
             return (AssetNodeHandle != 0xFFFFFFFF) && (NodeHierarchyIndex != -1);
         }

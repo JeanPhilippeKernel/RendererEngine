@@ -21,13 +21,45 @@ namespace Tetragrama::Components
     void LogUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
     {
         UIComponent::Initialize(parent, name, visibility, closed);
+        UILogQueue.init(parent->Arena, m_maxCount, m_maxCount);
 
-        parent->Arena->CreateSubArena(ZMega(1), &m_local_arena);
-        m_log_queue.init(&(m_local_arena), m_maxCount, m_maxCount);
+        parent->Arena->CreateSubArena(ZMega(2), &LocalArena);
+        for (unsigned i = 0; i < m_maxCount; ++i)
+        {
+            UILogQueue[i].Color.init(&LocalArena, 4, 4);
+            UILogQueue[i].Type.init(&LocalArena, 16);
+            UILogQueue[i].Content.init(&LocalArena, 256);
+        }
+
         m_handler_cookie = Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
     }
 
-    void LogUIComponent::Update(ZEngine::Core::TimeStep dt) {}
+    void LogUIComponent::Update(ZEngine::Core::TimeStep dt)
+    {
+        ZEngine::Logging::LogMessage engine_log_msg = {};
+        if (EngineLogQueue.Pop(engine_log_msg))
+        {
+            if (m_currentCount >= UILogQueue.size())
+            {
+                m_currentCount = 0;
+            }
+
+            auto& lm    = UILogQueue[m_currentCount];
+
+            lm.Color[0] = engine_log_msg.Color[0];
+            lm.Color[1] = engine_log_msg.Color[1];
+            lm.Color[2] = engine_log_msg.Color[2];
+            lm.Color[3] = engine_log_msg.Color[3];
+
+            lm.Content.clear();
+            lm.Content.append(engine_log_msg.Message.c_str());
+
+            lm.Type.clear();
+            lm.Type.append(ZEngine::Logging::Logger::MessageTypeToString(engine_log_msg.Type));
+
+            ++m_currentCount;
+        }
+    }
 
     void LogUIComponent::ClearLog()
     {
@@ -36,12 +68,17 @@ namespace Tetragrama::Components
 
     void LogUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        static const char* items[]                    = {"All", "info", "error", "warn", "critical", "trace"};
-        static int         current_item               = 0;
+        static const char* items[] = {
+            "info",
+            "error",
+            "warn",
+            "critical",
+            "trace",
+            "All",
+        };
+        static int current_item               = 0;
 
-        auto               scratch                    = ZGetScratch(&m_local_arena);
-
-        char               search_buffer_tolower[256] = {0};
+        char       search_buffer_tolower[256] = {0};
         if (auto len = secure_strlen(m_search_buffer))
         {
             for (unsigned i = 0; i < len; ++i)
@@ -91,30 +128,38 @@ namespace Tetragrama::Components
             auto count = m_currentCount.load(std::memory_order_acquire);
             for (unsigned i = 0; i < count; ++i)
             {
-                auto& message = m_log_queue[i];
+                auto& message = UILogQueue[i];
 
-                if (current_item != 0)
+                if (current_item != (IM_ARRAYSIZE(items) - 1) /*Last item : All*/)
                 {
-                    auto type = GetMessageType(message);
-
-                    if (0 != secure_strcmp(type, items[current_item]))
+                    if (0 != secure_strcmp(message.Type.c_str(), items[current_item]))
                     {
                         continue;
                     }
                 }
 
+                bool      search_succeeded = false;
+                ArenaTemp scratch          = {};
                 if (secure_strlen(search_buffer_tolower) > 0)
                 {
+                    scratch = ZGetScratch(&LocalArena);
 
-                    if (!Helpers::KMPSearch(scratch.Arena, message.Message.c_str(), search_buffer_tolower))
+                    if (!Helpers::KMPSearch(scratch.Arena, message.Content.c_str(), search_buffer_tolower))
                     {
+                        ZReleaseScratch(scratch);
                         continue;
                     }
+                    search_succeeded = true;
                 }
 
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
-                ImGui::TextColored({message.Color[0], message.Color[1], message.Color[2], message.Color[3]}, message.Message.data());
+                ImGui::TextColored({message.Color[0], message.Color[1], message.Color[2], message.Color[3]}, message.Content.data());
+
+                if (search_succeeded && scratch.Arena)
+                {
+                    ZReleaseScratch(scratch);
+                }
             }
             ImGui::EndTable();
         }
@@ -132,41 +177,10 @@ namespace Tetragrama::Components
         ImGui::PopStyleVar();
 
         ImGui::End();
-
-        ZReleaseScratch(scratch);
     }
 
     void LogUIComponent::OnLog(ZEngine::Logging::LogMessage message)
     {
-        {
-            auto count = m_currentCount.load(std::memory_order_acquire);
-
-            if (count > m_maxCount)
-            {
-                m_currentCount.store(0, std::memory_order_release);
-                m_log_queue.clear();
-            }
-
-            auto& m    = m_log_queue[m_currentCount];
-            m.Message  = message.Message;
-            m.Color[0] = message.Color[0];
-            m.Color[1] = message.Color[1];
-            m.Color[2] = message.Color[2];
-            m.Color[3] = message.Color[3];
-            m_currentCount.store(++count, std::memory_order_release);
-        }
-    }
-
-    const char* LogUIComponent::GetMessageType(const ZEngine::Logging::LogMessage& message)
-    {
-        if (message.Color[0] == 0.0f && message.Color[1] == 1.0f && message.Color[2] == 0.0f && message.Color[3] == 1.0f)
-            return "info";
-        if (message.Color[0] == 1.0f && message.Color[1] == 0.5f && message.Color[2] == 0.0f && message.Color[3] == 1.0f)
-            return "warn";
-        if (message.Color[0] == 1.0f && message.Color[1] == 0.0f && message.Color[2] == 0.0f && message.Color[3] == 1.0f)
-            return "error";
-        if (message.Color[0] == 1.0f && message.Color[1] == 0.0f && message.Color[2] == 1.0f && message.Color[3] == 0.0f)
-            return "critical";
-        return "trace";
+        EngineLogQueue.Emplace(std::move(message));
     }
 } // namespace Tetragrama::Components

@@ -25,6 +25,18 @@ namespace ZEngine::Rendering::Renderers
 
 namespace ZEngine::Rendering::Scenes
 {
+    struct SceneData
+    {
+        uint32_t                           FrameIndex             = {};
+        Hardwares::StorageBufferSetHandle  TransformBufferHandle  = {};
+        Hardwares::StorageBufferSetHandle  MaterialBufferHandle   = {};
+        Hardwares::StorageBufferSetHandle  VertexBufferHandle     = {};
+        Hardwares::StorageBufferSetHandle  IndexBufferHandle      = {};
+        Hardwares::StorageBufferSetHandle  RenderDataBufferHandle = {};
+        Hardwares::IndirectBufferSetHandle IndirectBufferHandle   = {};
+    };
+    ZDEFINE_PTR(SceneData);
+
     /*
      * This internal defragmented storage represents SceneNode struct with a DoD (Data-Oriented Design) approach
      * The access is index based.

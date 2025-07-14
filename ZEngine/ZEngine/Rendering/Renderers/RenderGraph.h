@@ -76,10 +76,10 @@ namespace ZEngine::Rendering::Renderers
 
     struct IRenderGraphCallbackPass
     {
-        virtual void Setup(std::string_view name, RenderGraph* const graph)                                                                                                                                                                                   = 0;
-        virtual void Compile(RenderPasses::RenderPass** const pass, RenderGraph* const graph, Rendering::Scenes::SceneRawData* const scene)                                                                                                                   = 0;
-        virtual void Execute(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph)                                              = 0;
-        virtual void Render(uint32_t frame_index, Rendering::Scenes::SceneRawData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) = 0;
+        virtual void Setup(std::string_view name, RenderGraph* const graph)                                                                                                                                                          = 0;
+        virtual void Compile(RenderPasses::RenderPass** const pass, RenderGraph* const graph)                                                                                                                                        = 0;
+        virtual void Execute(Rendering::Scenes::SceneData* const scene, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph)                                              = 0;
+        virtual void Render(Rendering::Scenes::SceneData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) = 0;
     };
 
     struct RenderGraphNode
@@ -106,8 +106,8 @@ namespace ZEngine::Rendering::Renderers
         void                               Initialize(Core::Memory::ArenaAllocator* arena, GraphicRenderer* renderer);
 
         void                               Setup();
-        void                               Compile(Rendering::Scenes::SceneRawData* const scene_data);
-        void                               Execute(uint32_t frame_index, Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneRawData* const scene_data);
+        void                               Compile();
+        void                               Execute(Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneData* const scene_data);
         void                               Resize(uint32_t width, uint32_t height);
         void                               Dispose();
         RenderGraphResource&               GetResource(const char*);

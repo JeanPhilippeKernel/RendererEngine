@@ -3,13 +3,17 @@
 #include <Managers/AssetManager.h>
 #include <stack>
 
+using namespace ZEngine::Rendering::Meshes;
+using namespace ZEngine::Core::Containers;
+
 namespace Tetragrama
 {
-    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* name)
+    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Hardwares::VulkanDevice* device, const char* name)
     {
         arena->CreateSubArena(ZMega(200), &LocalArena);
 
-        Name = name;
+        Name   = name;
+        Device = device;
 
         AssetFiles.init(&LocalArena, 500);
         HashToAssetFile.init(&LocalArena, 500);
@@ -18,8 +22,14 @@ namespace Tetragrama
         Names.init(&LocalArena, 1000);
         LocalTransforms.init(&LocalArena, 1000);
         GlobalTransforms.init(&LocalArena, 1000);
-        NodeMeshes.init(&LocalArena, 1000);
         NodeNames.init(&LocalArena, 1000);
+        MeshAllocations.init(&LocalArena, 1000);
+        NodeSubMeshesAllocations.init(&LocalArena, 1000);
+
+        Vertices.init(&LocalArena, 40000, 40000);
+        Indices.init(&LocalArena, 10000, 10000);
+        ZEngine::Helpers::secure_memset(Vertices.data(), 0, sizeof(float) * Vertices.size(), sizeof(float) * Vertices.size());
+        ZEngine::Helpers::secure_memset(Indices.data(), 0, sizeof(uint32_t) * Indices.size(), sizeof(uint32_t) * Indices.size());
 
         /*
          * Root Scene node
@@ -27,9 +37,6 @@ namespace Tetragrama
         Reset();
 
         InitRootNode();
-
-        RenderScene                  = ZPushStructCtor(&LocalArena, ZEngine::Rendering::Scenes::GraphicScene);
-        RenderScene->IsDrawDataDirty = true;
     }
 
     bool EditorScene::HasPendingChange() const
@@ -83,32 +90,30 @@ namespace Tetragrama
         int node_id = AddHierarchyNode(parent, depth);
         if (node_id < 0)
         {
-            ZENGINE_CORE_ERROR("EditorScene::CreateSceneNode, failed to create scene node")
+            ZENGINE_CORE_ERROR("{}, failed to create scene node", __FUNCTION__)
             return node_id;
         }
 
-        NodeNames[node_id] = Names.size();
-        auto& name         = Names.push_use({});
+        Hierarchies[node_id].NodeRef = metadata;
 
-        NodeMeshes.insert(node_id, uuids::uuid{});
-        if (metadata.IsValid())
+        NodeNames[node_id]           = Names.size();
+        auto&   name                 = Names.push_use({});
+        cstring name_val             = "Empty entity";
+
+        if (Hierarchies[node_id].NodeRef.IsValid())
         {
-            Hierarchies[node_id].NodeRef = metadata;
             if (ZEngine::Helpers::secure_strlen(metadata.Name) > 0)
             {
-                name.init(&LocalArena, metadata.Name);
-            }
-            else
-            {
-                name.init(&LocalArena, "Empty entity");
+                name_val = metadata.Name;
             }
         }
-        else
-        {
-            name.init(&LocalArena, "Empty entity");
-        }
+        name.init(&LocalArena, name_val);
 
         HasPendingChanges.store(true, std::memory_order_release);
+
+        TransformBufferDirty[0].store(true, std::memory_order_release);
+        TransformBufferDirty[1].store(true, std::memory_order_release);
+        TransformBufferDirty[2].store(true, std::memory_order_release);
         return node_id;
     }
 
@@ -221,10 +226,52 @@ namespace Tetragrama
         return Hierarchies[node].Parent == -2;
     }
 
+    const ZEngine::Rendering::Meshes::MeshAllocation& EditorScene::CreateOrGetMeshAllocation(Importers::AssetMesh* const mesh)
+    {
+        if (MeshAllocations.contains(mesh->MeshUUID))
+        {
+            MeshAllocations[mesh->MeshUUID].InstanceCount++;
+        }
+        else
+        {
+            auto vert_buff_dst_write_offset = Vertices.data() + CurrentVertexOffset;
+            auto vert_buff_dst_byte_size    = sizeof(float) * Vertices.size();
+
+            auto vert_buff_src_write_offset = mesh->Vertices.data();
+            auto vert_buff_src_byte_size    = sizeof(float) * mesh->Vertices.size();
+
+            auto indx_buff_dst_write_offset = Indices.data() + CurrentIndexOffset;
+            auto indx_buff_dst_byte_size    = sizeof(uint32_t) * Indices.size();
+
+            auto indx_buff_src_write_offset = mesh->Indices.data();
+            auto indx_buff_src_byte_size    = sizeof(uint32_t) * mesh->Indices.size();
+
+            ZEngine::Helpers::secure_memcpy(vert_buff_dst_write_offset, vert_buff_dst_byte_size, vert_buff_src_write_offset, vert_buff_src_byte_size);
+            ZEngine::Helpers::secure_memcpy(indx_buff_dst_write_offset, indx_buff_dst_byte_size, indx_buff_src_write_offset, indx_buff_src_byte_size);
+
+            MeshAllocations[mesh->MeshUUID].VertexOffset            = CurrentVertexOffset;
+            MeshAllocations[mesh->MeshUUID].IndexOffset             = CurrentIndexOffset;
+            MeshAllocations[mesh->MeshUUID].VertexCount             = mesh->Vertices.size();
+            MeshAllocations[mesh->MeshUUID].IndexCount              = mesh->Indices.size();
+            MeshAllocations[mesh->MeshUUID].SubMeshAllocationCount  = mesh->SubMeshes.size();
+            MeshAllocations[mesh->MeshUUID].InstanceCount           = 1;
+
+            CurrentVertexOffset                                    += mesh->Vertices.size();
+            CurrentIndexOffset                                     += mesh->Indices.size();
+        }
+
+        MeshAllocationDirty[0].store(true, std::memory_order_release);
+        MeshAllocationDirty[1].store(true, std::memory_order_release);
+        MeshAllocationDirty[2].store(true, std::memory_order_release);
+
+        return MeshAllocations.at(mesh->MeshUUID);
+    }
+
     void EditorScene::PushAssetFile(const Importers::AssetImporterOutput& data)
     {
         if (data.Type == Importers::AssetFileType::UNKNOWN)
         {
+            ZENGINE_CORE_WARN("{} : Invalid operation, unknown asset file type", __FUNCTION__)
             return;
         }
 
@@ -266,7 +313,6 @@ namespace Tetragrama
         Names.clear();
         LocalTransforms.clear();
         GlobalTransforms.clear();
-        NodeMeshes.clear();
         NodeNames.clear();
 
         Dirty.store(false, std::memory_order_release);
@@ -283,10 +329,9 @@ namespace Tetragrama
 
         auto& node      = Hierarchies.push_use(EditorSceneNodeHierarchy{});
         node.DepthLevel = 0;
-        NodeMeshes.insert(0, uuids::uuid{});
     }
 
-    void EditorScene::ExtractAsync(EditorScene& scene)
+    void EditorScene::ExtractAsync(const EditorScene& scene)
     {
         for (const auto& file : scene.AssetFiles)
         {
@@ -318,14 +363,7 @@ namespace Tetragrama
             GlobalTransforms.push(gt);
         }
 
-        auto node_mesh_view = scene.NodeMeshes.view();
-        for (const auto& [k, v] : node_mesh_view)
-        {
-            NodeMeshes.insert(k, v);
-        }
-
-        auto node_name_view = scene.NodeNames.view();
-        for (const auto& [k, v] : node_name_view)
+        for (const auto& [k, v] : scene.NodeNames)
         {
             NodeNames.insert(k, v);
         }

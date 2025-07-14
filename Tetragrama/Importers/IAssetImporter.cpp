@@ -334,6 +334,7 @@ namespace Tetragrama::Importers
         /*
          * Asset Materials
          */
+        ReadBinaryString(arena, in, material.Name);
         ReadBinary(in, material.MaterialUUID);
         ReadBinary(in, material.AlbedoTexUUID);
         ReadBinary(in, material.EmissiveTexUUID);

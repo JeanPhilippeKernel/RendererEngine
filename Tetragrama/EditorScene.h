@@ -5,6 +5,7 @@
 #include <ZEngine/Core/Containers/HashMap.h>
 #include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <ZEngineDef.h>
 #include <glm/glm.hpp>
@@ -35,48 +36,56 @@ namespace Tetragrama
 
     struct EditorScene
     {
-        void                                                                Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const char* scene_name = "");
+        std::atomic_bool                                                                            Dirty                    = false;
+        std::atomic_bool                                                                            MeshAllocationDirty[3]   = {false, false, false};
+        std::atomic_bool                                                                            TransformBufferDirty[3]  = {false, false, false};
+        std::atomic_bool                                                                            HasPendingChanges        = false;
 
-        bool                                                                HasPendingChange() const;
+        uint32_t                                                                                    CurrentTransformOffset   = 0;
+        uint32_t                                                                                    CurrentVertexOffset      = 0;
+        uint32_t                                                                                    CurrentIndexOffset       = 0;
 
-        std::atomic_bool                                                    Dirty             = false;
-        std::atomic_bool                                                    HasPendingChanges = false;
+        const char*                                                                                 Name                     = "";
+        ZEngine::Core::Containers::Array<EditorSceneNodeHierarchy>                                  Hierarchies              = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String>                         Names                    = {};
+        ZEngine::Core::Containers::Array<glm::mat4>                                                 LocalTransforms          = {};
+        ZEngine::Core::Containers::Array<glm::mat4>                                                 GlobalTransforms         = {};
+        ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>                                      NodeNames                = {};
 
-        const char*                                                         Name              = "";
-        ZEngine::Core::Containers::Array<EditorSceneNodeHierarchy>          Hierarchies       = {};
-        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> Names             = {};
-        ZEngine::Core::Containers::Array<glm::mat4>                         LocalTransforms   = {};
-        ZEngine::Core::Containers::Array<glm::mat4>                         GlobalTransforms  = {};
-        ZEngine::Core::Containers::HashMap<uint32_t, uuids::uuid>           NodeMeshes        = {};
-        ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>              NodeNames         = {};
+        ZEngine::Core::Containers::Array<float>                                                     Vertices                 = {};
+        ZEngine::Core::Containers::Array<uint32_t>                                                  Indices                  = {};
+        ZEngine::Core::Containers::HashMap<uuids::uuid, ZEngine::Rendering::Meshes::MeshAllocation> MeshAllocations          = {};
+        ZEngine::Core::Containers::HashMap<uint32_t, ZEngine::Rendering::Meshes::SubMeshAllocation> NodeSubMeshesAllocations = {};
 
-        ZEngine::Core::Containers::Array<float>                             Vertices          = {};
-        ZEngine::Core::Containers::Array<uint32_t>                          Indices           = {};
+        ZEngine::Core::Containers::HashMap<uint64_t, uint32_t>                                      HashToAssetFile          = {};
+        ZEngine::Core::Containers::Array<EditorAssetSceneFiles>                                     AssetFiles               = {};
 
-        ZEngine::Core::Containers::HashMap<uint64_t, uint32_t>              HashToAssetFile   = {};
-        ZEngine::Core::Containers::Array<EditorAssetSceneFiles>             AssetFiles        = {};
+        ZEngine::Core::Memory::ArenaAllocator                                                       LocalArena               = {};
 
-        ZEngine::Core::Memory::ArenaAllocator                               LocalArena        = {};
+        ZEngine::Hardwares::VulkanDevice*                                                           Device                   = nullptr;
 
-        int                                                                 AddHierarchyNode(int parent, int depth);
+        void                                                                                        Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Hardwares::VulkanDevice* device, const char* scene_name = "");
 
-        int                                                                 CreateSceneNode(int parent = 0, int depth = 1, const Importers::AssetNodeRef& = {});
-        void                                                                RemoveSceneNode(int node_id);
-        void                                                                ReparentNode(int node_id, int new_parent);
-        bool                                                                IsSceneNodeDeleted(int node_id);
+        bool                                                                                        HasPendingChange() const;
 
-        void                                                                PushAssetFile(const Importers::AssetImporterOutput&);
+        int                                                                                         AddHierarchyNode(int parent, int depth);
 
-        void                                                                MarkDirty(bool value);
-        bool                                                                IsDirty();
+        int                                                                                         CreateSceneNode(int parent = 0, int depth = 1, const Importers::AssetNodeRef& = {});
+        void                                                                                        RemoveSceneNode(int node_id);
+        void                                                                                        ReparentNode(int node_id, int new_parent);
+        bool                                                                                        IsSceneNodeDeleted(int node_id);
 
-        void                                                                Reset();
-        void                                                                InitRootNode();
+        const ZEngine::Rendering::Meshes::MeshAllocation&                                           CreateOrGetMeshAllocation(Importers::AssetMesh* const);
 
-        void                                                                ExtractAsync(EditorScene& scene); // Todo : this should be const EditorScene& ... the map::view() props
-                                                                                                              // prevents us to do it... def a impl issue
+        void                                                                                        PushAssetFile(const Importers::AssetImporterOutput&);
 
-        ZRawPtr(ZEngine::Rendering::Scenes::GraphicScene) RenderScene = nullptr;
+        void                                                                                        MarkDirty(bool value);
+        bool                                                                                        IsDirty();
+
+        void                                                                                        Reset();
+        void                                                                                        InitRootNode();
+
+        void                                                                                        ExtractAsync(const EditorScene& scene);
     };
 
 } // namespace Tetragrama

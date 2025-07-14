@@ -32,9 +32,9 @@ namespace Tetragrama::Layers
         arena->CreateSubArena(ZMega(10), &LocalArena);
 
         NodeHierarchies.init(arena, 10, 0);
-        NodeUIComponents.init(arena, 10, 0);
+        NodeUIComponents.init(arena);
         NodeToRender.init(arena, 10);
-        KeyEntries.init(arena, 10, 0);
+        KeyEntries.init(arena, 32);
 
         KeyEntries[ZENGINE_KEY_SPACE]        = ImGuiKey_Space;
         KeyEntries[ZENGINE_KEY_BACKSPACE]    = ImGuiKey_Backspace;
@@ -76,24 +76,6 @@ namespace Tetragrama::Layers
         dockspace_cmp->ChildrenCount = dockspace_cmp->Children.size();
 
         AddUIComponent(dockspace_cmp, -1, 0);
-        /*
-         *  Register Inspector Component
-         */
-        IMessenger::Register<Components::UIComponent, GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>>(inspector_view_cmp, EDITOR_COMPONENT_HIERARCHYVIEW_NODE_SELECTED, [=](void* const message) -> std::future<void> {
-            auto message_ptr = reinterpret_cast<GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>*>(message);
-            return inspector_view_cmp->SceneEntitySelectedMessageHandlerAsync(*message_ptr);
-        });
-
-        IMessenger::Register<Components::UIComponent, EmptyMessage>(inspector_view_cmp, EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, [=](void* const message) -> std::future<void> {
-            auto message_ptr = reinterpret_cast<EmptyMessage*>(message);
-            return inspector_view_cmp->SceneEntityUnSelectedMessageHandlerAsync(*message_ptr);
-        });
-
-        IMessenger::Register<Components::UIComponent, EmptyMessage>(inspector_view_cmp, EDITOR_COMPONENT_HIERARCHYVIEW_NODE_DELETED, [=](void* const message) -> std::future<void> {
-            auto message_ptr = reinterpret_cast<EmptyMessage*>(message);
-            return inspector_view_cmp->SceneEntityDeletedMessageHandlerAsync(*message_ptr);
-        });
-
         /*
          * Register Dockspace Component
          */
@@ -162,7 +144,7 @@ namespace Tetragrama::Layers
         {
             if (node.Parent == -1)
             {
-                auto& cmp = NodeUIComponents[i];
+                auto& cmp = NodeUIComponents.at(i);
                 if (cmp->IsVisible)
                 {
                     roots.push(i);
@@ -279,7 +261,7 @@ namespace Tetragrama::Layers
         ImGuiIO& io = ImGui::GetIO();
         if (KeyEntries.contains(e.GetKeyCode()))
         {
-            io.AddKeyEvent((ImGuiKey) KeyEntries[e.GetKeyCode()], true);
+            io.AddKeyEvent((ImGuiKey) KeyEntries.at(e.GetKeyCode()), true);
         }
         return false;
     }
@@ -289,7 +271,7 @@ namespace Tetragrama::Layers
         ImGuiIO& io = ImGui::GetIO();
         if (KeyEntries.contains(e.GetKeyCode()))
         {
-            io.AddKeyEvent((ImGuiKey) KeyEntries[e.GetKeyCode()], false);
+            io.AddKeyEvent((ImGuiKey) KeyEntries.at(e.GetKeyCode()), false);
         }
         return false;
     }

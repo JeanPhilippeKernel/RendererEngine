@@ -9,6 +9,7 @@
 #include <ZEngine/Rendering/Textures/Texture2D.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
+#include <Editor.h>
 #include <glm/gtx/matrix_decompose.hpp>
 
 using namespace ZEngine::Rendering::Materials;
@@ -29,69 +30,52 @@ namespace Tetragrama::Components
         m_node_flag = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding;
     }
 
-    void              InspectorViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
-
-    std::future<void> InspectorViewUIComponent::SceneEntitySelectedMessageHandlerAsync(Messengers::GenericMessage<ZEngine::Rendering::Scenes::SceneEntity>& message)
-    {
-        {
-            std::lock_guard lock(m_mutex);
-            m_scene_entity = std::move(message.GetValue());
-        }
-        co_return;
-    }
-
-    std::future<void> InspectorViewUIComponent::SceneEntityUnSelectedMessageHandlerAsync(Messengers::EmptyMessage& message)
-    {
-        {
-            std::lock_guard lock(m_mutex);
-            m_recieved_unselected_request = true;
-        }
-        co_return;
-    }
-
-    std::future<void> InspectorViewUIComponent::SceneEntityDeletedMessageHandlerAsync(Messengers::EmptyMessage&)
-    {
-        {
-            std::lock_guard lock(m_mutex);
-            m_recieved_deleted_request = true;
-        }
-        co_return;
-    }
+    void InspectorViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
     void InspectorViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        if (m_recieved_deleted_request || m_recieved_unselected_request)
-        {
-            m_scene_entity                = {};
-            m_recieved_deleted_request    = false;
-            m_recieved_unselected_request = false;
-        }
-
         ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
-        Helpers::DrawEntityControl("Name", m_scene_entity, m_node_flag, [this] {
-            ImGui::Dummy(ImVec2(0, 3));
-            Helpers::DrawInputTextControl("Entity name", m_scene_entity.GetName(), [this](std::string_view value) { m_scene_entity.SetName(value); });
-        });
+        if (ParentLayer && ParentLayer->ParentContext)
+        {
+            auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+            auto idx = ctx->SelectedSceneNode.load(std::memory_order_acquire);
+            if (idx != -1)
+            {
+                auto  name_idx = ctx->CurrentScenePtr->NodeNames[idx];
+                auto& name     = ctx->CurrentScenePtr->Names[name_idx];
 
-        Helpers::DrawEntityControl("Transform", m_scene_entity, m_node_flag, [this] {
-            auto            transform = m_scene_entity.GetTransform();
+                ImGui::Dummy(ImVec2(0, 3));
+                Helpers::DrawInputTextControl("Name", name.c_str(), [&](std::string_view value) {
+                    name.clear();
+                    name.append(value.data());
+                });
+            }
+        }
 
-            glm::vec3       translation, scale, skew;
-            glm::qua<float> rot_quat;
-            glm::vec4       perspective;
-            glm::decompose(transform, scale, rot_quat, translation, skew, perspective);
+        // Helpers::DrawEntityControl("Name", m_scene_entity, m_node_flag, [this] {
+        //     ImGui::Dummy(ImVec2(0, 3));
+        //     Helpers::DrawInputTextControl("Entity name", m_scene_entity.GetName(), [this](std::string_view value) { m_scene_entity.SetName(value); });
+        // });
 
-            ImGui::Dummy(ImVec2(0, 3));
-            Helpers::DrawVec3Control("Position", translation, [&translation](glm::vec3& value) { translation = value; });
+        // Helpers::DrawEntityControl("Transform", m_scene_entity, m_node_flag, [this] {
+        //     auto            transform = m_scene_entity.GetTransform();
 
-            glm::vec3 rotation = glm::eulerAngles(rot_quat);
-            ImGui::Dummy(ImVec2(0, 0.5));
-            Helpers::DrawVec3Control("Rotation", rotation, [&rotation](glm::vec3& value) { rotation = value; });
+        //    glm::vec3       translation, scale, skew;
+        //    glm::qua<float> rot_quat;
+        //    glm::vec4       perspective;
+        //    glm::decompose(transform, scale, rot_quat, translation, skew, perspective);
 
-            ImGui::Dummy(ImVec2(0, 0.5));
-            Helpers::DrawVec3Control("Scale", scale, [&scale](glm::vec3& value) { scale = value; }, 1.0f);
-        });
+        //    ImGui::Dummy(ImVec2(0, 3));
+        //    Helpers::DrawVec3Control("Position", translation, [&translation](glm::vec3& value) { translation = value; });
+
+        //    glm::vec3 rotation = glm::eulerAngles(rot_quat);
+        //    ImGui::Dummy(ImVec2(0, 0.5));
+        //    Helpers::DrawVec3Control("Rotation", rotation, [&rotation](glm::vec3& value) { rotation = value; });
+
+        //    ImGui::Dummy(ImVec2(0, 0.5));
+        //    Helpers::DrawVec3Control("Scale", scale, [&scale](glm::vec3& value) { scale = value; }, 1.0f);
+        //});
 
         // Mesh Renderer
         // Helpers::DrawEntityComponentControl<MeshComponent>("Mesh Geometry", m_scene_entity, m_node_flag, true,
@@ -354,7 +338,7 @@ namespace Tetragrama::Components
             ImGui::OpenPopup("PopupAddComponent");
         }
 
-        if (ImGui::BeginPopup("PopupAddComponent"))
+        /*if (ImGui::BeginPopup("PopupAddComponent"))
         {
             if (ImGui::BeginMenu("Lights"))
             {
@@ -379,7 +363,7 @@ namespace Tetragrama::Components
                 ImGui::EndMenu();
             }
             ImGui::EndPopup();
-        }
+        }*/
 
         ImGui::End();
     }

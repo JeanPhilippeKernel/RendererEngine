@@ -21,23 +21,31 @@ namespace Tetragrama::Managers
 
     struct AssetManager
     {
-        using AssetHandle                                                                                                = uint32_t;
+        using AssetHandle                                                                                                    = uint32_t;
 
-        ZEngine::Core::Memory::ArenaAllocator                                                        Arena               = {};
-        ZEngine::Core::Memory::ArenaAllocator                                                        ThreadLocalArena    = {};
+        ZEngine::Core::Memory::ArenaAllocator                                                        Arena                   = {};
+        ZEngine::Core::Memory::ArenaAllocator                                                        ThreadLocalArena        = {};
 
-        std::atomic_bool                                                                             IsLoading           = false;
-        std::atomic_bool                                                                             RequestShutdown     = false;
+        cstring                                                                                      CurrentWorkingSpacePath = "";
 
-        ZEngine::Core::Containers::Array<Importers::AssetNodeHierarchy>                              NodeHierarchies     = {};
-        ZEngine::Core::Containers::Array<Importers::AssetMesh>                                       Meshes              = {};
-        ZEngine::Core::Containers::Array<Importers::AssetMaterial>                                   Materials           = {};
-        ZEngine::Core::Containers::Array<Importers::AssetTexture>                                    Textures            = {};
+        std::atomic_bool                                                                             IsLoading               = false;
+        std::atomic_bool                                                                             RequestShutdown         = false;
 
-        ZEngine::Core::Containers::HashMap<uuids::uuid, AssetHandle>                                 UUIDToHandle        = {};
-        ZEngine::Core::Containers::HashMap<AssetHandle, uuids::uuid>                                 HandleToUUID        = {};
-        ZEngine::Core::Containers::HashMap<uuids::uuid, uuids::uuid>                                 MeshToNodeHierarchy = {};
-        ZEngine::Core::Containers::HashMap<uuids::uuid, uuids::uuid>                                 NodeHierarchyToMesh = {};
+        ZEngine::Core::Containers::Array<Importers::AssetNodeHierarchy>                              NodeHierarchies         = {};
+        ZEngine::Core::Containers::Array<Importers::AssetMesh>                                       Meshes                  = {};
+        ZEngine::Core::Containers::Array<Importers::AssetMaterial>                                   Materials               = {};
+        ZEngine::Core::Containers::Array<Importers::AssetTexture>                                    Textures                = {};
+
+        ZEngine::Core::Containers::Array<ZEngine::Rendering::Meshes::MeshMaterial>                   GPUMeshMaterials        = {};
+
+        ZEngine::Core::Containers::HashMap<uuids::uuid, AssetHandle>                                 UUIDToHandle            = {};
+        ZEngine::Core::Containers::HashMap<AssetHandle, uuids::uuid>                                 HandleToUUID            = {};
+        ZEngine::Core::Containers::HashMap<uuids::uuid, uuids::uuid>                                 MeshToNodeHierarchy     = {};
+        ZEngine::Core::Containers::HashMap<uuids::uuid, uuids::uuid>                                 NodeHierarchyToMesh     = {};
+
+        ZEngine::Core::Containers::HashMap<uuids::uuid, ZEngine::Rendering::Textures::TextureHandle> UUIDToTextureHandle     = {};
+
+        ZEngine::Hardwares::StorageBufferSetHandle                                                   MaterialBufferHandle    = {};
 
         std::mutex                                                                                   Mut;
         std::condition_variable                                                                      Cond;
@@ -48,8 +56,13 @@ namespace Tetragrama::Managers
         ZEngine::Helpers::ThreadSafeQueue<Importers::AssetMaterial>                                  PendingAssetMaterials       = {};
         ZEngine::Helpers::ThreadSafeQueue<ZEngine::Core::Containers::Array<Importers::AssetTexture>> PendingAssetTextures        = {};
 
+        ZEngine::Hardwares::VulkanDevice*                                                            Device                      = nullptr;
+        ZEngine::Rendering::Renderers::AsyncResourceLoader*                                          ResourceLoader              = nullptr;
+
+        Importers::AssetMesh*                                                                        GetMeshAsset(const uuids::uuid& id);
         Importers::AssetNodeHierarchy*                                                               GetMeshNodeHierarchy(const uuids::uuid& id);
         AssetHandle                                                                                  GetMeshNodeHierarchyHandle(const uuids::uuid& id);
+        AssetHandle                                                                                  GetMaterialHandleFromUUID(const uuids::uuid& material_uuid);
 
         static AssetManager*                                                                         Instance();
 
@@ -57,7 +70,7 @@ namespace Tetragrama::Managers
         static uint32_t                                                                              ReadAssetHandleIndex(AssetHandle);
         static AssetType                                                                             ReadAssetHandleType(AssetHandle);
 
-        static void                                                                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena);
+        static void                                                                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Hardwares::VulkanDevice* device, ZEngine::Rendering::Renderers::AsyncResourceLoader* async_loader, cstring working_space_path);
         static void                                                                                  Run();
         static void                                                                                  Shutdown();
 
@@ -125,7 +138,7 @@ namespace Tetragrama::Managers
     {
         if (Instance()->UUIDToHandle.contains(id))
         {
-            auto& handle = Instance()->UUIDToHandle[id];
+            const auto& handle = Instance()->UUIDToHandle.at(id);
             return GetAsset<Importers::AssetMesh, AssetHandle>(handle);
         }
         return nullptr;
@@ -136,7 +149,7 @@ namespace Tetragrama::Managers
     {
         if (Instance()->UUIDToHandle.contains(id))
         {
-            auto& handle = Instance()->UUIDToHandle[id];
+            const auto& handle = Instance()->UUIDToHandle.at(id);
             return GetAsset<Importers::AssetMaterial, AssetHandle>(handle);
         }
         return nullptr;
@@ -147,7 +160,7 @@ namespace Tetragrama::Managers
     {
         if (Instance()->UUIDToHandle.contains(id))
         {
-            auto& handle = Instance()->UUIDToHandle[id];
+            const auto& handle = Instance()->UUIDToHandle.at(id);
             return GetAsset<Importers::AssetTexture, AssetHandle>(handle);
         }
         return nullptr;

@@ -12,6 +12,7 @@
 #include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/ResourceTypes.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
+#include <Rendering/Specifications/RenderPassSpecification.h>
 #include <Rendering/Textures/Texture.h>
 #include <Core/Containers/Array.h>
 #include <Core/Containers/HashMap.h>
@@ -56,9 +57,19 @@ namespace ZEngine::Hardwares
      */
     struct VulkanDevice;
 
+    enum BufferType : uint8_t
+    {
+        UNKNOWN = 0,
+        VERTEX,
+        INDEX,
+        UNIFORM,
+        STORAGE,
+        INDIRECT
+    };
     struct BufferView
     {
         uint8_t       FrameIndex = std::numeric_limits<uint8_t>::max();
+        BufferType    Type       = BufferType::UNKNOWN;
         VkBuffer      Handle     = VK_NULL_HANDLE;
         VmaAllocation Allocation = nullptr;
 
@@ -84,33 +95,42 @@ namespace ZEngine::Hardwares
 
     struct IGraphicBuffer
     {
-        IGraphicBuffer()
+        IGraphicBuffer() {}
+        IGraphicBuffer(Hardwares::VulkanDevice* device) : m_device(device) {}
+        virtual ~IGraphicBuffer();
+
+        virtual BufferView CreateBuffer() = 0;
+
+        virtual void       Allocate(uint64_t size, const char* debug_name);
+        virtual void       Clear();
+        virtual void       ClearRange(uint8_t value, uint32_t offset, size_t size);
+        virtual void       UploadRange(const void* data, uint32_t offset, size_t size);
+        virtual void       Upload(const void* data, size_t size);
+
+        virtual void       Write(const void* data, size_t byte_size);
+
+        template <typename T>
+        inline void Write(Core::Containers::ArrayView<T> content)
         {
-            m_last_byte_size = m_byte_size;
+            Write(content.data(), content.size_bytes());
         }
 
-        IGraphicBuffer(Hardwares::VulkanDevice* device) : m_device(device)
+        template <typename T>
+        inline void Upload(Core::Containers::ArrayView<T> content)
         {
-            m_last_byte_size = m_byte_size;
+            Upload(content.data(), content.size_bytes());
         }
 
-        virtual ~IGraphicBuffer() = default;
+        virtual void                          CleanUpMemory();
+        virtual void*                         GetNativeBufferHandle() const;
+        virtual const VkDescriptorBufferInfo& GetDescriptorBufferInfo();
+        virtual void                          Dispose();
 
-        virtual inline size_t GetByteSize() const
-        {
-            return m_byte_size;
-        }
-
-        virtual bool HasBeenResized() const
-        {
-            return m_last_byte_size != m_byte_size;
-        }
-
-        virtual void*            GetNativeBufferHandle() const = 0;
-
-        size_t                   m_byte_size{0};
-        size_t                   m_last_byte_size{0};
-        Hardwares::VulkanDevice* m_device{nullptr};
+        uint64_t                              m_total_size     = 0;
+        uint64_t                              m_current_offset = 0;
+        Hardwares::VulkanDevice*              m_device         = nullptr;
+        BufferView                            Buffer           = {};
+        VkDescriptorBufferInfo                BufferInfo       = {};
     };
 
     template <typename T /*, typename = std::enable_if_t<std::is_base_of_v<IGraphicBuffer, T>> */>
@@ -131,61 +151,24 @@ namespace ZEngine::Hardwares
         }
 
         template <typename K>
-        void SetData(uint32_t index, std::span<const K> data)
+        void SetData(uint32_t index, Core::Containers::ArrayView<K> data)
         {
             ZENGINE_VALIDATE_ASSERT(index < set.size(), "Index out of range")
 
-            // if (std::is_same_v<T, IndexBuffer> || std::is_same_v<T, VertexBuffer> || std::is_same_v<T,
-            // StorageBuffer>)
-            //{
-            // }
             T& entry = set[index];
-            entry->template SetData<K>(data);
+            entry->template Upload<K>(data);
         }
 
         void Dispose() {}
     };
 
-    class VertexBuffer : public IGraphicBuffer
+    struct VertexBuffer : public IGraphicBuffer
     {
-    public:
         explicit VertexBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
-        void SetData(const void* data, size_t byte_size);
+        virtual BufferView CreateBuffer() override;
 
-        template <typename T>
-        inline void SetData(std::span<const T> content)
-        {
-            SetData(content.data(), content.size_bytes());
-        }
-
-        ~VertexBuffer()
-        {
-            CleanUpMemory();
-        }
-
-        void* GetNativeBufferHandle() const override
-        {
-            return reinterpret_cast<void*>(m_vertex_buffer.Handle);
-        }
-
-        const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
-        {
-            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_vertex_buffer.Handle, .offset = 0, .range = this->m_byte_size};
-            return m_buffer_info;
-        }
-
-        void Dispose()
-        {
-            CleanUpMemory();
-        }
-
-    private:
-        void CleanUpMemory();
-
-    private:
-        BufferView             m_vertex_buffer;
-        VkDescriptorBufferInfo m_buffer_info{};
+        virtual ~VertexBuffer() {}
     };
 
     using VertexBufferSet       = IBufferSet<VertexBuffer*>;
@@ -203,46 +186,13 @@ namespace ZEngine::Hardwares
         }
     }
 
-    class StorageBuffer : public IGraphicBuffer
+    struct StorageBuffer : public IGraphicBuffer
     {
-    public:
         explicit StorageBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
-        void SetData(const void* data, uint32_t offset, size_t byte_size);
+        virtual BufferView CreateBuffer() override;
 
-        template <typename T>
-        inline void SetData(std::span<const T> content)
-        {
-            SetData(content.data(), 0, content.size_bytes());
-        }
-
-        ~StorageBuffer()
-        {
-            CleanUpMemory();
-        }
-
-        void* GetNativeBufferHandle() const
-        {
-            return reinterpret_cast<void*>(m_storage_buffer.Handle);
-        }
-
-        const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
-        {
-            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_storage_buffer.Handle, .offset = 0, .range = this->m_byte_size};
-            return m_buffer_info;
-        }
-
-        void Dispose()
-        {
-            CleanUpMemory();
-        }
-
-    private:
-        void CleanUpMemory();
-
-    private:
-        BufferView             m_storage_buffer;
-        VkDescriptorBufferInfo m_buffer_info{};
+        virtual ~StorageBuffer() {}
     };
 
     using StorageBufferSet       = IBufferSet<StorageBuffer*>;
@@ -260,46 +210,13 @@ namespace ZEngine::Hardwares
         }
     }
 
-    class IndexBuffer : public IGraphicBuffer
+    struct IndexBuffer : public IGraphicBuffer
     {
-    public:
         IndexBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
-        void SetData(const void* data, size_t byte_size);
+        virtual BufferView CreateBuffer() override;
 
-        template <typename T>
-        inline void SetData(std::span<const T> content)
-        {
-            SetData(content.data(), content.size_bytes());
-        }
-
-        ~IndexBuffer()
-        {
-            CleanUpMemory();
-        }
-
-        void* GetNativeBufferHandle() const override
-        {
-            return reinterpret_cast<void*>(m_index_buffer.Handle);
-        }
-
-        const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
-        {
-            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_index_buffer.Handle, .offset = 0, .range = this->m_byte_size};
-            return m_buffer_info;
-        }
-
-        void Dispose()
-        {
-            CleanUpMemory();
-        }
-
-    private:
-        void CleanUpMemory();
-
-    private:
-        BufferView             m_index_buffer;
-        VkDescriptorBufferInfo m_buffer_info{};
+        virtual ~IndexBuffer() {}
     };
 
     using IndexBufferSet       = IBufferSet<IndexBuffer*>;
@@ -317,57 +234,28 @@ namespace ZEngine::Hardwares
         }
     }
 
-    class IndirectBuffer : public IGraphicBuffer
+    struct IndirectBuffer : public IGraphicBuffer
     {
-    public:
         explicit IndirectBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
 
-        void SetData(const VkDrawIndirectCommand* data, size_t byte_size);
+        uint32_t           CommandCount = 0;
 
-        template <typename T>
-        inline void SetData(std::span<const T> content)
+        virtual BufferView CreateBuffer() override;
+        virtual void       CleanUpMemory() override;
+        virtual void       Upload(const VkDrawIndirectCommand* data, size_t byte_size);
+
+        virtual void       Write(const void* data, size_t byte_size) override;
+
+        inline void        Write(Core::Containers::ArrayView<VkDrawIndirectCommand> content)
         {
-            SetData(content.data(), content.size_bytes());
+            Write(content.data(), content.size_bytes());
         }
 
-        uint32_t GetCommandCount() const
-        {
-            return m_command_count;
-        }
-
-        ~IndirectBuffer()
-        {
-            CleanUpMemory();
-        }
-
-        void* GetNativeBufferHandle() const override
-        {
-            return reinterpret_cast<void*>(m_indirect_buffer.Handle);
-        }
-
-        void Dispose()
-        {
-            CleanUpMemory();
-        }
-
-    private:
-        void CleanUpMemory();
-
-    private:
-        uint32_t   m_command_count{0};
-        BufferView m_indirect_buffer;
+        virtual ~IndirectBuffer() {}
     };
 
     using IndirectBufferSet       = IBufferSet<IndirectBuffer*>;
     using IndirectBufferSetHandle = Helpers::Handle<IndirectBufferSet>;
-
-    template <>
-    template <>
-    inline void IndirectBufferSet::SetData<VkDrawIndirectCommand>(uint32_t index, std::span<const VkDrawIndirectCommand> data)
-    {
-        ZENGINE_VALIDATE_ASSERT(index < set.size(), "Index out of range")
-        set[index]->SetData(data);
-    }
 
     template <>
     inline void IndirectBufferSet::Dispose()
@@ -391,28 +279,28 @@ namespace ZEngine::Hardwares
 
         explicit UniformBuffer(UniformBuffer& rhs)
         {
-            this->m_device    = rhs.m_device;
-            this->m_byte_size = rhs.m_byte_size;
+            this->m_device     = rhs.m_device;
+            this->m_total_size = rhs.m_total_size;
 
-            std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
+            std::swap(this->Buffer, rhs.Buffer);
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
-            rhs.m_byte_size             = 0;
+            rhs.m_total_size            = 0;
             rhs.m_uniform_buffer_mapped = false;
-            rhs.m_uniform_buffer        = {};
+            rhs.Buffer                  = {};
         }
 
         explicit UniformBuffer(UniformBuffer&& rhs) noexcept
         {
-            this->m_device    = rhs.m_device;
-            this->m_byte_size = rhs.m_byte_size;
+            this->m_device     = rhs.m_device;
+            this->m_total_size = rhs.m_total_size;
 
-            std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
+            std::swap(this->Buffer, rhs.Buffer);
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
-            rhs.m_byte_size             = 0;
+            rhs.m_total_size            = 0;
             rhs.m_uniform_buffer_mapped = false;
-            rhs.m_uniform_buffer        = {};
+            rhs.Buffer                  = {};
         }
 
         UniformBuffer& operator=(const UniformBuffer& rhs) = delete;
@@ -424,15 +312,15 @@ namespace ZEngine::Hardwares
                 return *this;
             }
 
-            this->m_byte_size = rhs.m_byte_size;
-            this->m_device    = rhs.m_device;
+            this->m_total_size = rhs.m_total_size;
+            this->m_device     = rhs.m_device;
 
-            std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
+            std::swap(this->Buffer, rhs.Buffer);
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
-            rhs.m_byte_size             = 0;
+            rhs.m_total_size            = 0;
             rhs.m_uniform_buffer_mapped = false;
-            rhs.m_uniform_buffer        = {};
+            rhs.Buffer                  = {};
 
             return *this;
         }
@@ -444,56 +332,27 @@ namespace ZEngine::Hardwares
                 return *this;
             }
 
-            this->m_byte_size = rhs.m_byte_size;
-            this->m_device    = rhs.m_device;
+            this->m_total_size = rhs.m_total_size;
+            this->m_device     = rhs.m_device;
 
-            std::swap(this->m_uniform_buffer, rhs.m_uniform_buffer);
+            std::swap(this->Buffer, rhs.Buffer);
             std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
 
-            rhs.m_byte_size             = 0;
+            rhs.m_total_size            = 0;
             rhs.m_uniform_buffer_mapped = false;
-            rhs.m_uniform_buffer        = {};
+            rhs.Buffer                  = {};
 
             return *this;
         }
 
-        void SetData(const void* data, size_t byte_size);
+        virtual void       Allocate(uint64_t byte_size, const char* debug_name) override;
+        virtual BufferView CreateBuffer() override;
+        virtual void       CleanUpMemory() override;
 
-        template <typename T>
-        inline void SetData(Core::Containers::ArrayView<T> content)
-        {
-            size_t byte_size = sizeof(T) * content.size();
-            this->SetData(content.data(), byte_size);
-        }
-
-        void* GetNativeBufferHandle() const override
-        {
-            return reinterpret_cast<void*>(m_uniform_buffer.Handle);
-        }
-
-        void Dispose()
-        {
-            CleanUpMemory();
-        }
-
-        ~UniformBuffer()
-        {
-            CleanUpMemory();
-        }
-
-        const VkDescriptorBufferInfo& GetDescriptorBufferInfo()
-        {
-            m_buffer_info = VkDescriptorBufferInfo{.buffer = m_uniform_buffer.Handle, .offset = 0, .range = m_byte_size};
-            return m_buffer_info;
-        }
+        virtual ~UniformBuffer() {}
 
     private:
-        void CleanUpMemory();
-
-    private:
-        bool                   m_uniform_buffer_mapped{false};
-        BufferView             m_uniform_buffer{};
-        VkDescriptorBufferInfo m_buffer_info{};
+        bool m_uniform_buffer_mapped{false};
     };
 
     using UniformBufferSet       = IBufferSet<UniformBuffer*>;
@@ -513,23 +372,26 @@ namespace ZEngine::Hardwares
 
     struct Image2DBuffer
     {
-        Image2DBuffer(VulkanDevice* device, const Rendering::Specifications::Image2DBufferSpecification& spec);
+        Image2DBuffer() = default;
         ~Image2DBuffer();
 
-        BufferImage&           GetBuffer();
-        const BufferImage&     GetBuffer() const;
-        VkImageView            GetImageViewHandle() const;
-        VkImage                GetHandle() const;
-        VkSampler              GetSampler() const;
-        void                   Dispose();
-        VkDescriptorImageInfo& GetDescriptorImageInfo();
+        Rendering::Specifications::ImageLayout                Layout        = Rendering::Specifications::ImageLayout::UNDEFINED;
+        Rendering::Specifications::Image2DBufferSpecification Specification = {};
+        VulkanDevice*                                         Device        = nullptr;
+
+        void                                                  Construct(VulkanDevice* device);
+
+        BufferImage&                                          GetBuffer();
+        const BufferImage&                                    GetBuffer() const;
+        VkImageView                                           GetImageViewHandle() const;
+        VkImage                                               GetHandle() const;
+        VkSampler                                             GetSampler() const;
+        void                                                  Dispose();
+        VkDescriptorImageInfo&                                GetDescriptorImageInfo();
 
     private:
-        uint32_t              m_width{1};
-        uint32_t              m_height{1};
         BufferImage           m_buffer_image;
         VkDescriptorImageInfo m_image_info;
-        VulkanDevice*         m_device{nullptr};
     };
 
     struct DirtyResource
@@ -609,13 +471,15 @@ namespace ZEngine::Hardwares
         ZRawPtr(Rendering::Renderers::RenderPasses::RenderPass) m_active_render_pass;
     };
 
+    ZDEFINE_PTR(CommandBuffer);
+
     struct CommandBufferManager
     {
         void                                                            Initialize(VulkanDevice* device, uint8_t swapchain_image_count = 3, int thread_count = 1);
         void                                                            Deinitialize();
         CommandBuffer*                                                  GetCommandBuffer(uint8_t frame_index, bool begin = true);
         CommandBuffer*                                                  GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin = true);
-        void                                                            EndInstantCommandBuffer(CommandBuffer* const buffer, VulkanDevice* const device, int wait_flag = 0);
+        void                                                            EndInstantCommandBuffer(CommandBuffer* const buffer, VulkanDevice* const device, int wait_flag = -1);
         Rendering::Pools::CommandPool*                                  GetCommandPool(Rendering::QueueType type, uint8_t frame_index);
         int                                                             GetPoolFromIndex(Rendering::QueueType type, uint8_t index);
         void                                                            ResetPool(int frame_index);
@@ -702,6 +566,7 @@ namespace ZEngine::Hardwares
         Core::Containers::HashMap<const char*, Helpers::Handle<Rendering::Shaders::Shader>> ShaderCaches                       = {};
         std::set<WriteDescriptorSetRequestKey>                                              WriteBindlessDescriptorSetRequests = {};
         Rendering::Textures::TextureHandleManager                                           GlobalTextures                     = {};
+        Helpers::HandleManager<Image2DBuffer>                                               Image2DBufferManager               = {};
         Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                        TextureHandleToUpdates             = {};
         Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                        TextureHandleToDispose             = {};
         Helpers::HandleManager<Rendering::Shaders::Shader>                                  ShaderManager                      = {};
@@ -718,6 +583,7 @@ namespace ZEngine::Hardwares
         std::atomic_uint                                                                    IdleFrameThreshold                 = SwapchainImageCount * 3 * 3;
         std::condition_variable                                                             DirtyCollectorCond                 = {};
         std::mutex                                                                          DirtyMutex                         = {};
+        std::mutex                                                                          Mutex                              = {};
         Windows::CoreWindow*                                                                CurrentWindow                      = nullptr;
         ZEngine::Core::Memory::ArenaAllocator*                                              Arena                              = nullptr;
 
@@ -735,7 +601,7 @@ namespace ZEngine::Hardwares
         void                                                                                QueueWaitAll();
         void                                                                                MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data);
         BufferView                                                                          CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags = 0);
-        void                                                                                CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size);
+        void                                                                                CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset = 0u, VkDeviceSize dst_buffer_offset = 0u);
         BufferImage                                                                         CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, VkImageCreateFlags image_create_flag_bit = 0);
         VkSampler                                                                           CreateImageSampler();
         VkFormat                                                                            FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
@@ -755,11 +621,18 @@ namespace ZEngine::Hardwares
         void                                                                                IncrementFrameImageCount();
         CommandBuffer*                                                                      GetCommandBuffer(bool begin = true);
         CommandBuffer*                                                                      GetInstantCommandBuffer(Rendering::QueueType type, bool begin = true);
-        void                                                                                EnqueueInstantCommandBuffer(CommandBuffer* const buffer, int wait_flag = 0);
+        void                                                                                EnqueueInstantCommandBuffer(CommandBuffer* const buffer, int wait_flag = -1);
         void                                                                                EnqueueCommandBuffer(CommandBuffer* const buffer);
         void                                                                                DirtyCollector();
 
         Helpers::Handle<Rendering::Shaders::Shader>                                         CompileShader(Rendering::Specifications::ShaderSpecification& spec);
+
+        Rendering::Textures::TextureHandle                                                  CreateTexture(uint32_t width, uint32_t height);
+        Rendering::Textures::TextureHandle                                                  CreateTexture(uint32_t width, uint32_t height, float r = 255, float g = 255, float b = 255, float a = 255);
+        Rendering::Textures::TextureHandle                                                  CreateTexture(const Rendering::Specifications::TextureSpecification& spec);
+        void                                                                                WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data);
+
+        Rendering::Renderers::RenderPasses::RenderPass*                                     CreateRenderPass(const Rendering::Specifications::RenderPassSpecification& spec);
 
     private:
         VulkanLayer                                              m_layer          = {};
@@ -773,6 +646,8 @@ namespace ZEngine::Hardwares
         void                                                     __cleanupBufferImageDirtyResource();
         static VKAPI_ATTR VkBool32 VKAPI_CALL                    __debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
     };
+
+    ZDEFINE_PTR(VulkanDevice);
 } // namespace ZEngine::Hardwares
 
 namespace ZEngine::Helpers
@@ -815,6 +690,15 @@ namespace ZEngine::Helpers
 
     template <>
     inline void HandleManager<Hardwares::UniformBufferSet>::Dispose()
+    {
+        for (size_t i = 0; i < m_count; ++i)
+        {
+            m_memory[i].Dispose();
+        }
+    }
+
+    template <>
+    inline void HandleManager<Hardwares::Image2DBuffer>::Dispose()
     {
         for (size_t i = 0; i < m_count; ++i)
         {
