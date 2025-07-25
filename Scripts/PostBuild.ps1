@@ -28,7 +28,7 @@ param (
     [string[]] $SystemName = 'Windows',
 
     [Parameter(HelpMessage="Architecture type to build, default to x64")]
-    [ValidateSet('win-x64', 'arm64', 'osx-x64', 'osx-arm64')]
+    [ValidateSet('win-x64', 'arm64', 'osx-x64', 'osx-arm64','linux-x64')]
     [string[]] $Architectures = 'win-x64',
 
     [Parameter(HelpMessage="Configuration type to build, default to Debug")]
@@ -103,7 +103,7 @@ $ContentsToProcess = @(
                     }
                 }
                 "Linux" {
-                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
+                    @{ From = "$OuputBuildDirectory\Tetragrama"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
                 }
                 Default {
                     throw 'This system is not supported'

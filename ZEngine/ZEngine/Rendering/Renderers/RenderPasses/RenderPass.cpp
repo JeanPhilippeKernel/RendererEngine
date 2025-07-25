@@ -390,13 +390,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::SetShaderOverloadMaxSet(uint32_t count)
     {
-        m_spec.PipelineSpecification.ShaderSpecification.OverloadMaxSet = count;
+        m_spec.PipelineSpecification.ShaderSpec.OverloadMaxSet = count;
         return *this;
     }
 
     RenderPassBuilder& RenderPassBuilder::SetOverloadPoolSize(uint32_t count)
     {
-        m_spec.PipelineSpecification.ShaderSpecification.OverloadPoolSize = count;
+        m_spec.PipelineSpecification.ShaderSpec.OverloadPoolSize = count;
         return *this;
     }
 
@@ -450,7 +450,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::UseShader(std::string_view name)
     {
-        m_spec.PipelineSpecification.ShaderSpecification.Name = name.data();
+        m_spec.PipelineSpecification.ShaderSpec.Name = name.data();
         return *this;
     }
 

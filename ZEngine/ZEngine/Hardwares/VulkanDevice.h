@@ -554,7 +554,7 @@ namespace ZEngine::Hardwares
         VkPhysicalDeviceFeatures                                                            PhysicalDeviceFeature              = {};
         VkPhysicalDeviceMemoryProperties                                                    PhysicalDeviceMemoryProperties     = {};
         VkSwapchainKHR                                                                      SwapchainHandle                    = VK_NULL_HANDLE;
-        VmaAllocator                                                                        VmaAllocator                       = nullptr;
+        VmaAllocator                                                                        Allocator                          = nullptr;
         Core::Containers::Array<VkFormat>                                                   DefaultDepthFormats                = {};
         Rendering::Renderers::RenderPasses::Attachment*                                     SwapchainAttachment                = {};
         Core::Containers::Array<VkImageView>                                                SwapchainImageViews                = {};

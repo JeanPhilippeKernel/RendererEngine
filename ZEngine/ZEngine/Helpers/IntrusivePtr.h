@@ -119,7 +119,7 @@ namespace ZEngine::Helpers
         IntrusivePtr(IntrusivePtr&& other) noexcept : m_ptr(other.detach()) {}
 
         template <class U, typename = std::enable_if_t<std::convertible_to<U*, T*>>>
-        IntrusivePtr(const IntrusivePtr<U>& other) noexcept(noexcept(T::IncrementRefCount(m_ptr))) : m_ptr(other.get())
+        IntrusivePtr(const IntrusivePtr<U>& other) noexcept(noexcept(T::IncrementRefCount(other.get()))) : m_ptr(other.get())
         {
             T::IncrementRefCount(m_ptr);
         }

@@ -11,7 +11,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         Device             = device;
         Specification      = std::move(spec);
-        auto shader_handle = Device->CompileShader(Specification.ShaderSpecification);
+        auto shader_handle = Device->CompileShader(Specification.ShaderSpec);
         if (!shader_handle)
         {
             ZENGINE_CORE_ERROR("")

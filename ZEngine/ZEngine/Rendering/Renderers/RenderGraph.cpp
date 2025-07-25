@@ -485,7 +485,7 @@ namespace ZEngine::Rendering::Renderers
         }
         if (m_resource_map[name].Type != RenderGraphResourceType::ATTACHMENT)
         {
-            ZENGINE_CORE_WARN("{} isn't a valid Attachement Resource", name)
+            // ZENGINE_CORE_WARN("{} isn't a valid Attachement Resource", name)
         }
 
         auto handle = m_resource_map[name].ResourceInfo.TextureHandle;
@@ -506,7 +506,7 @@ namespace ZEngine::Rendering::Renderers
         }
         if (m_resource_map[name].Type != RenderGraphResourceType::TEXTURE)
         {
-            ZENGINE_CORE_WARN("{} isn't a valid Texture Resource", name)
+            // ZENGINE_CORE_WARN("{} isn't a valid Texture Resource", name)
         }
 
         auto handle = m_resource_map[name].ResourceInfo.TextureHandle;

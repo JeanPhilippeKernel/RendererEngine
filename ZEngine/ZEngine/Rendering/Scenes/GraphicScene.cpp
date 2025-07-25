@@ -157,7 +157,7 @@ namespace ZEngine::Rendering::Scenes
         SceneData->Indices       = {0};
         SceneData->Materials     = {Meshes::MeshMaterial{}};
         SceneData->MaterialFiles = {Meshes::MaterialFile{}};
-        SceneData->DrawData      = {
+        SceneData->DrawDataList  = {
             DrawData{.TransformIndex = 0, .VertexOffset = 0, .IndexOffset = 0, .VertexCount = 1, .IndexCount = 1}
         };
     }
@@ -169,13 +169,13 @@ namespace ZEngine::Rendering::Scenes
 
         if (draw_count)
         {
-            SceneData->DrawData.resize(draw_count);
+            SceneData->DrawDataList.resize(draw_count);
             indirect_commmands.resize(draw_count);
 
             int i = 0;
             for (auto& [node, mesh] : SceneData->NodeMeshes)
             {
-                DrawData& draw_data      = SceneData->DrawData[i];
+                DrawData& draw_data      = SceneData->DrawDataList[i];
                 draw_data.TransformIndex = node;
                 draw_data.MaterialIndex  = SceneData->NodeMaterials[node];
                 draw_data.VertexOffset   = SceneData->Meshes[mesh].VertexOffset;
@@ -189,13 +189,13 @@ namespace ZEngine::Rendering::Scenes
         else
         {
             // We use the default data
-            indirect_commmands.resize(SceneData->DrawData.size());
+            indirect_commmands.resize(SceneData->DrawDataList.size());
         }
 
-        for (uint32_t i = 0; i < SceneData->DrawData.size(); ++i)
+        for (uint32_t i = 0; i < SceneData->DrawDataList.size(); ++i)
         {
             indirect_commmands[i] = {
-                .vertexCount   = SceneData->DrawData[i].IndexCount,
+                .vertexCount   = SceneData->DrawDataList[i].IndexCount,
                 .instanceCount = 1,
                 .firstVertex   = 0,
                 .firstInstance = i,
@@ -273,7 +273,7 @@ namespace ZEngine::Rendering::Scenes
             // vert_buf->SetData<float>(i, SceneData->Vertices);
             // ind_buf->SetData<uint32_t>(i, SceneData->Indices);
             // material_buf->SetData<Meshes::MeshMaterial>(i, SceneData->Materials);
-            // indirect_datadraw_buf->SetData<DrawData>(i, SceneData->DrawData);
+            // indirect_datadraw_buf->SetData<DrawData>(i, SceneData->DrawDataList);
             // indirect_buf->SetData<VkDrawIndirectCommand>(i, indirect_commmands);
         }
 

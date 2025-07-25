@@ -34,13 +34,13 @@ namespace ZEngine::Rendering::Specifications
     {
         uint32_t              Width;
         uint32_t              Height;
-        ImageViewType         ImageViewType = ImageViewType::TYPE_2D;
+        ImageViewType         ViewType = ImageViewType::TYPE_2D;
         ImageBufferUsageType  BufferUsageType;
         VkFormat              ImageFormat;
         VkImageUsageFlags     ImageUsage;
         VkImageAspectFlagBits ImageAspectFlag;
-        uint32_t              LayerCount      = 1U;
-        ImageCreateFlag       ImageCreateFlag = ImageCreateFlag::NONE;
+        uint32_t              LayerCount = 1U;
+        ImageCreateFlag       CreateFlag = ImageCreateFlag::NONE;
     };
 
 } // namespace ZEngine::Rendering::Specifications

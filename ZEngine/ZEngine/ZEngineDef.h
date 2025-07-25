@@ -8,7 +8,7 @@
 
 #ifdef _MSC_VER
 #define ZENGINE_DEBUG_BREAK() __debugbreak();
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) || defined(__linux__)
 #include <signal.h>
 #define ZENGINE_DEBUG_BREAK() __builtin_trap();
 #else

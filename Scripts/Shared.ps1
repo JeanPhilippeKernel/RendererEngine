@@ -166,6 +166,9 @@ function Find-GlslangValidator () {
         if ($IsMacOS) {
             Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslangValidator" # On macOS, the pipeline build might pick up this option...
         }
+        if ($IsLinux) {
+           Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslangValidator"
+        }
     )
 
     foreach ($GlslangValidatorProgram in $GlslangValidatorCandidates) {
@@ -197,6 +200,10 @@ function Find-ClangFormat () {
         if ($IsWindows) {
             Join-Path -Path $env:ProgramFiles -ChildPath 'LLVM\bin\clang-format.exe'
         }
+        if ($IsLinux) {
+            '/usr/bin/clang-format'
+            '/usr/local/bin/clang-format'
+        }
     )
 
     foreach ($candidate in $candidates) {
@@ -225,7 +232,7 @@ function Setup-ShaderCCompilerTool () {
         $outputFile = Join-Path -Path $repositoryToolPath -ChildPath "ShaderCCompiler$outputFileExtension"
         Write-Host "Downloading Shader Compiler Tools..."
 
-        $shaderCToolUrl = IF($IsWindows) {$repoConfiguration.Requirements.ShaderC.Windows.Url} Elseif($IsMacOS) {$repoConfiguration.Requirements.ShaderC.macOS.Url}
+        $shaderCToolUrl = IF($IsWindows) {$repoConfiguration.Requirements.ShaderC.Windows.Url} Elseif($IsMacOS) {$repoConfiguration.Requirements.ShaderC.macOS.Url} Elseif($IsLinux) {$repoConfiguration.Requirements.ShaderC.Linux.Url} 
         Invoke-WebRequest -Uri $shaderCToolUrl -OutFile $outputFile
 
         # Extract contents

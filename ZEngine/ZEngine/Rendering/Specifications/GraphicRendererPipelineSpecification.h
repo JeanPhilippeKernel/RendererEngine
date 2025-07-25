@@ -29,7 +29,7 @@ namespace ZEngine::Rendering::Specifications
         uint32_t                                                   DepthCompareOp                     = VK_COMPARE_OP_LESS_OR_EQUAL;
         bool                                                       EnableStencilTest                  = false;
         const char*                                                DebugName                          = {};
-        ShaderSpecification                                        ShaderSpecification                = {};
+        ShaderSpecification                                        ShaderSpec                         = {};
         Rendering::Buffers::FramebufferVNext*                      TargetFrameBuffer                  = {};
         Renderers::RenderPasses::Attachment*                       Attachment                         = {};
         Core::Containers::Array<VertexInputBindingSpecification>   VertexInputBindingSpecifications   = {};
