@@ -1,0 +1,425 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 17,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "description": "Base configuration for all platforms",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "windows-base",
+            "inherits": "base",
+            "hidden": true,
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            },
+            "generator": "Visual Studio 17 2022",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "toolset": {
+                "value": "host=x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "hostOS": ["Windows"]
+                }
+            }
+        },
+        {
+            "name": "linux-base",
+            "inherits": "base",
+            "hidden": true,
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            },
+            "generator": "Unix Makefiles",
+            "environment": {
+                "CC": "/usr/bin/gcc-11",
+                "CXX": "/usr/bin/g++-11"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "hostOS": ["Linux"]
+                }
+            }
+        },
+        {
+            "name": "macos-base",
+            "inherits": "base",
+            "hidden": true,
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            },
+            "generator": "Xcode",
+            "cacheVariables": {
+                "BUILD_FRAMEWORK": "ON"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "hostOS": ["macOS"]
+                }
+            }
+        },
+        {
+            "name": "windows-debug",
+            "displayName": "Windows Debug",
+            "description": "Debug build for Windows using MSVC",
+            "inherits": "windows-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ENTT_INCLUDE_HEADERS": "ON",
+                "SPDLOG_BUILD_SHARED": "OFF",
+                "BUILD_STATIC_LIBS": "ON",
+                "SPDLOG_FMT_EXTERNAL": "ON",
+                "SPDLOG_FMT_EXTERNAL_HO": "OFF",
+                "GLFW_BUILD_DOCS": "OFF",
+                "GLFW_BUILD_EXAMPLES": "OFF",
+                "GLFW_INSTALL": "OFF",
+                "ASSIMP_BUILD_TESTS": "OFF",
+                "ASSIMP_INSTALL": "OFF",
+                "ASSIMP_BUILD_SAMPLES": "OFF",
+                "ASSIMP_BUILD_ASSIMP_TOOLS": "OFF",
+                "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_IMPORTER": "ON",
+                "ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_EXPORTER": "ON",
+                "UUID_BUILD_TESTS": "OFF",
+                "UUID_USING_CXX20_SPAN": "ON",
+                "UUID_SYSTEM_GENERATOR": "OFF",
+                "YAML_CPP_BUILD_TOOLS": "OFF",
+                "YAML_CPP_BUILD_TESTS": "OFF",
+                "YAML_CPP_FORMAT_SOURCE": "OFF",
+                "YAML_BUILD_SHARED_LIBS": "OFF",
+                "USE_MASM": "OFF",
+                "USE_GAS": "OFF",
+                "SPIRV_SKIP_EXECUTABLES": "ON",
+                "SPIRV_SKIP_TESTS": "ON",
+                "SPIRV_CROSS_ENABLE_TESTS": "OFF",
+                "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
+            }
+        },
+        {
+            "name": "windows-release",
+            "displayName": "Windows Release",
+            "description": "Release build for Windows using MSVC",
+            "inherits": "windows-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "ENTT_INCLUDE_HEADERS": "ON",
+                "SPDLOG_BUILD_SHARED": "OFF",
+                "BUILD_STATIC_LIBS": "ON",
+                "SPDLOG_FMT_EXTERNAL": "ON",
+                "SPDLOG_FMT_EXTERNAL_HO": "OFF",
+                "GLFW_BUILD_DOCS": "OFF",
+                "GLFW_BUILD_EXAMPLES": "OFF",
+                "GLFW_INSTALL": "OFF",
+                "ASSIMP_BUILD_TESTS": "OFF",
+                "ASSIMP_INSTALL": "OFF",
+                "ASSIMP_BUILD_SAMPLES": "OFF",
+                "ASSIMP_BUILD_ASSIMP_TOOLS": "OFF",
+                "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_IMPORTER": "ON",
+                "ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_EXPORTER": "ON",
+                "UUID_BUILD_TESTS": "OFF",
+                "UUID_USING_CXX20_SPAN": "ON",
+                "UUID_SYSTEM_GENERATOR": "OFF",
+                "YAML_CPP_BUILD_TOOLS": "OFF",
+                "YAML_CPP_BUILD_TESTS": "OFF",
+                "YAML_CPP_FORMAT_SOURCE": "OFF",
+                "YAML_BUILD_SHARED_LIBS": "OFF",
+                "USE_MASM": "OFF",
+                "USE_GAS": "OFF",
+                "SPIRV_SKIP_EXECUTABLES": "ON",
+                "SPIRV_SKIP_TESTS": "ON",
+                "SPIRV_CROSS_ENABLE_TESTS": "OFF",
+                "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
+            }
+        },
+        {
+            "name": "linux-debug",
+            "displayName": "Linux Debug",
+            "description": "Debug build for Linux using GCC",
+            "inherits": "linux-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ENTT_INCLUDE_HEADERS": "ON",
+                "SPDLOG_BUILD_SHARED": "OFF",
+                "BUILD_STATIC_LIBS": "ON",
+                "SPDLOG_FMT_EXTERNAL": "ON",
+                "SPDLOG_FMT_EXTERNAL_HO": "OFF",
+                "GLFW_BUILD_DOCS": "OFF",
+                "GLFW_BUILD_EXAMPLES": "OFF",
+                "GLFW_INSTALL": "OFF",
+                "ASSIMP_BUILD_TESTS": "OFF",
+                "ASSIMP_INSTALL": "OFF",
+                "ASSIMP_BUILD_SAMPLES": "OFF",
+                "ASSIMP_BUILD_ASSIMP_TOOLS": "OFF",
+                "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_IMPORTER": "ON",
+                "ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_EXPORTER": "ON",
+                "UUID_BUILD_TESTS": "OFF",
+                "UUID_USING_CXX20_SPAN": "ON",
+                "UUID_SYSTEM_GENERATOR": "OFF",
+                "YAML_CPP_BUILD_TOOLS": "OFF",
+                "YAML_CPP_BUILD_TESTS": "OFF",
+                "YAML_CPP_FORMAT_SOURCE": "OFF",
+                "YAML_BUILD_SHARED_LIBS": "OFF",
+                "USE_MASM": "OFF",
+                "USE_GAS": "OFF",
+                "SPIRV_SKIP_EXECUTABLES": "ON",
+                "SPIRV_SKIP_TESTS": "ON",
+                "SPIRV_CROSS_ENABLE_TESTS": "OFF",
+                "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
+            }
+        },
+        {
+            "name": "linux-release",
+            "displayName": "Linux Release",
+            "description": "Release build for Linux using GCC",
+            "inherits": "linux-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "ENTT_INCLUDE_HEADERS": "ON",
+                "SPDLOG_BUILD_SHARED": "OFF",
+                "BUILD_STATIC_LIBS": "ON",
+                "SPDLOG_FMT_EXTERNAL": "ON",
+                "SPDLOG_FMT_EXTERNAL_HO": "OFF",
+                "GLFW_BUILD_DOCS": "OFF",
+                "GLFW_BUILD_EXAMPLES": "OFF",
+                "GLFW_INSTALL": "OFF",
+                "ASSIMP_BUILD_TESTS": "OFF",
+                "ASSIMP_INSTALL": "OFF",
+                "ASSIMP_BUILD_SAMPLES": "OFF",
+                "ASSIMP_BUILD_ASSIMP_TOOLS": "OFF",
+                "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_IMPORTER": "ON",
+                "ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_EXPORTER": "ON",
+                "UUID_BUILD_TESTS": "OFF",
+                "UUID_USING_CXX20_SPAN": "ON",
+                "UUID_SYSTEM_GENERATOR": "OFF",
+                "YAML_CPP_BUILD_TOOLS": "OFF",
+                "YAML_CPP_BUILD_TESTS": "OFF",
+                "YAML_CPP_FORMAT_SOURCE": "OFF",
+                "YAML_BUILD_SHARED_LIBS": "OFF",
+                "USE_MASM": "OFF",
+                "USE_GAS": "OFF",
+                "SPIRV_SKIP_EXECUTABLES": "ON",
+                "SPIRV_SKIP_TESTS": "ON",
+                "SPIRV_CROSS_ENABLE_TESTS": "OFF",
+                "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
+            }
+        },
+        {
+            "name": "macos-debug",
+            "displayName": "macOS Debug",
+            "description": "Debug build for macOS using Clang",
+            "inherits": "macos-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ENTT_INCLUDE_HEADERS": "ON",
+                "SPDLOG_BUILD_SHARED": "OFF",
+                "BUILD_STATIC_LIBS": "ON",
+                "SPDLOG_FMT_EXTERNAL": "ON",
+                "SPDLOG_FMT_EXTERNAL_HO": "OFF",
+                "GLFW_BUILD_DOCS": "OFF",
+                "GLFW_BUILD_EXAMPLES": "OFF",
+                "GLFW_INSTALL": "OFF",
+                "ASSIMP_BUILD_TESTS": "OFF",
+                "ASSIMP_INSTALL": "OFF",
+                "ASSIMP_BUILD_SAMPLES": "OFF",
+                "ASSIMP_BUILD_ASSIMP_TOOLS": "OFF",
+                "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_IMPORTER": "ON",
+                "ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_EXPORTER": "ON",
+                "UUID_BUILD_TESTS": "OFF",
+                "UUID_USING_CXX20_SPAN": "ON",
+                "UUID_SYSTEM_GENERATOR": "OFF",
+                "YAML_CPP_BUILD_TOOLS": "OFF",
+                "YAML_CPP_BUILD_TESTS": "OFF",
+                "YAML_CPP_FORMAT_SOURCE": "OFF",
+                "YAML_BUILD_SHARED_LIBS": "OFF",
+                "USE_MASM": "OFF",
+                "USE_GAS": "OFF",
+                "SPIRV_SKIP_EXECUTABLES": "ON",
+                "SPIRV_SKIP_TESTS": "ON",
+                "SPIRV_CROSS_ENABLE_TESTS": "OFF",
+                "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
+            }
+        },
+        {
+            "name": "macos-release",
+            "displayName": "macOS Release", 
+            "description": "Release build for macOS using Clang",
+            "inherits": "macos-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "ENTT_INCLUDE_HEADERS": "ON",
+                "SPDLOG_BUILD_SHARED": "OFF",
+                "BUILD_STATIC_LIBS": "ON",
+                "SPDLOG_FMT_EXTERNAL": "ON",
+                "SPDLOG_FMT_EXTERNAL_HO": "OFF",
+                "GLFW_BUILD_DOCS": "OFF",
+                "GLFW_BUILD_EXAMPLES": "OFF",
+                "GLFW_INSTALL": "OFF",
+                "ASSIMP_BUILD_TESTS": "OFF",
+                "ASSIMP_INSTALL": "OFF",
+                "ASSIMP_BUILD_SAMPLES": "OFF",
+                "ASSIMP_BUILD_ASSIMP_TOOLS": "OFF",
+                "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_IMPORTER": "ON",
+                "ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_EXPORTER": "ON",
+                "UUID_BUILD_TESTS": "OFF",
+                "UUID_USING_CXX20_SPAN": "ON",
+                "UUID_SYSTEM_GENERATOR": "OFF",
+                "YAML_CPP_BUILD_TOOLS": "OFF",
+                "YAML_CPP_BUILD_TESTS": "OFF",
+                "YAML_CPP_FORMAT_SOURCE": "OFF",
+                "YAML_BUILD_SHARED_LIBS": "OFF",
+                "USE_MASM": "OFF",
+                "USE_GAS": "OFF",
+                "SPIRV_SKIP_EXECUTABLES": "ON",
+                "SPIRV_SKIP_TESTS": "ON",
+                "SPIRV_CROSS_ENABLE_TESTS": "OFF",
+                "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
+            }
+        },
+        {
+            "name": "launcher-only-debug",
+            "displayName": "Launcher Only Debug",
+            "description": "Debug build for Panzerfaust launcher only",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "LAUNCHER_ONLY": "ON"
+            }
+        },
+        {
+            "name": "launcher-only-release",
+            "displayName": "Launcher Only Release",
+            "description": "Release build for Panzerfaust launcher only",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "LAUNCHER_ONLY": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "windows-debug",
+            "displayName": "Build Windows Debug",
+            "configurePreset": "windows-debug",
+            "configuration": "Debug",
+            "targets": ["ALL_BUILD"]
+        },
+        {
+            "name": "windows-release",
+            "displayName": "Build Windows Release", 
+            "configurePreset": "windows-release",
+            "configuration": "Release",
+            "targets": ["ALL_BUILD"]
+        },
+        {
+            "name": "linux-debug",
+            "displayName": "Build Linux Debug",
+            "configurePreset": "linux-debug",
+            "configuration": "Debug"
+        },
+        {
+            "name": "linux-release",
+            "displayName": "Build Linux Release",
+            "configurePreset": "linux-release", 
+            "configuration": "Release"
+        },
+        {
+            "name": "macos-debug",
+            "displayName": "Build macOS Debug",
+            "configurePreset": "macos-debug",
+            "configuration": "Debug"
+        },
+        {
+            "name": "macos-release",
+            "displayName": "Build macOS Release",
+            "configurePreset": "macos-release",
+            "configuration": "Release"
+        },
+        {
+            "name": "launcher-only-debug",
+            "displayName": "Build Launcher Only Debug",
+            "configurePreset": "launcher-only-debug",
+            "configuration": "Debug"
+        },
+        {
+            "name": "launcher-only-release", 
+            "displayName": "Build Launcher Only Release",
+            "configurePreset": "launcher-only-release",
+            "configuration": "Release"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "windows-debug-test",
+            "displayName": "Test Windows Debug",
+            "configurePreset": "windows-debug",
+            "configuration": "Debug"
+        },
+        {
+            "name": "windows-release-test",
+            "displayName": "Test Windows Release",
+            "configurePreset": "windows-release", 
+            "configuration": "Release"
+        },
+        {
+            "name": "linux-debug-test",
+            "displayName": "Test Linux Debug",
+            "configurePreset": "linux-debug",
+            "configuration": "Debug"
+        },
+        {
+            "name": "linux-release-test",
+            "displayName": "Test Linux Release",
+            "configurePreset": "linux-release",
+            "configuration": "Release"
+        },
+        {
+            "name": "macos-debug-test",
+            "displayName": "Test macOS Debug",
+            "configurePreset": "macos-debug",
+            "configuration": "Debug"
+        },
+        {
+            "name": "macos-release-test",
+            "displayName": "Test macOS Release",
+            "configurePreset": "macos-release",
+            "configuration": "Release"
+        }
+    ]
+}

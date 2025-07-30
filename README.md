@@ -62,7 +62,80 @@ Before building, make sure your setup is correct :
     brew install llvm@20
 ```
 
-## Building the engine & launcher
+## Building with CMake Presets (Recommended)
+
+ZEngine now supports CMake Presets for simplified building. This is the modern, cross-platform way to build the project.
+
+### Prerequisites
+- CMake 3.17 or later
+- Platform-specific build tools (Visual Studio on Windows, Xcode on macOS, GCC on Linux)
+
+### Configure and Build
+
+**Debug Build:**
+```bash
+# Configure
+cmake --preset linux-debug      # On Linux
+cmake --preset windows-debug    # On Windows
+cmake --preset macos-debug      # On macOS
+
+# Build
+cmake --build --preset linux-debug      # On Linux
+cmake --build --preset windows-debug    # On Windows
+cmake --build --preset macos-debug      # On macOS
+```
+
+**Release Build:**
+```bash
+# Configure
+cmake --preset linux-release    # On Linux
+cmake --preset windows-release  # On Windows
+cmake --preset macos-release    # On macOS
+
+# Build
+cmake --build --preset linux-release    # On Linux
+cmake --build --preset windows-release  # On Windows
+cmake --build --preset macos-release    # On macOS
+```
+
+**Launcher Only Build:**
+```bash
+# For building only the Panzerfaust launcher
+cmake --preset launcher-only-debug
+cmake --build --preset launcher-only-debug
+
+# Or release version
+cmake --preset launcher-only-release
+cmake --build --preset launcher-only-release
+```
+
+**Running Tests:**
+```bash
+ctest --preset linux-debug-test      # On Linux
+ctest --preset windows-debug-test    # On Windows
+ctest --preset macos-debug-test      # On macOS
+```
+
+### Available Presets
+
+List all available presets:
+```bash
+cmake --list-presets=configure
+cmake --list-presets=build
+cmake --list-presets=test
+```
+
+### IDE Integration
+
+CMakePresets.json is supported by:
+- Visual Studio 2019 16.10+ and Visual Studio 2022
+- Visual Studio Code with CMake Tools extension
+- CLion 2021.3+
+- Qt Creator 6.0+
+
+Simply open the project folder in your IDE and select the desired preset from the configuration dropdown.
+
+## Building the engine & launcher (Legacy PowerShell Method)
 
 1. Start `Powershell Core` and make sure that you can run CMake, You can type `cmake --version` to simply output the current CMake version installed.
 2. Change directories to the location where you've cloned the repository.
@@ -70,7 +143,7 @@ Before building, make sure your setup is correct :
 	- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True`
 	- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True`
 
-## Building the launcher only
+## Building the launcher only (Legacy PowerShell Method)
 
 To only build the Launcher only, you can specify `-LauncherOnly` which will skip building the engine :
 - Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True -LauncherOnly`

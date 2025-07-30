@@ -422,6 +422,7 @@ out/
 !.vscode/launch.json
 # Visual Studio CMake settings files
 CMakeSettings.json
+CMakeUserPresets.json
 
 # MacOS files
 .DS_Store
