@@ -28,6 +28,8 @@ if (APPLE)
     set (RUNTIME_IDENTIFIER -r $<IF:$<BOOL:${MACOSX_ARCHITECTURE_ARM64}>,osx-arm64,osx-x64>)
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set (RUNTIME_IDENTIFIER -r win-x64)
+elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+    set (RUNTIME_IDENTIFIER -r linux-x64)
 endif ()
 
 set (CUSTOM_TARGET_NAME ${CSPROJ})

@@ -9,6 +9,7 @@
 		<ApplicationIcon>./Assets/avalonia-logo.ico</ApplicationIcon>
 		<BaseOutputPath Condition="$([MSBuild]::IsOSPlatform('Windows')) == 'true'">..\Result.Windows.x64.MultiConfig</BaseOutputPath>
 		<BaseOutputPath Condition="$([MSBuild]::IsOSPlatform('OSX')) == 'true'">..\Result.Darwin.x64.$(Configuration)</BaseOutputPath>
+		<BaseOutputPath Condition="$([MSBuild]::IsOSPlatform('Linux')) == 'true'">..\Result.Linux.x64.$(Configuration)</BaseOutputPath>
 		<Platforms>x64;arm64</Platforms>
 	</PropertyGroup>
 	<PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) == 'true' AND '$(Configuration)' == 'Debug' ">
@@ -56,6 +57,23 @@
 		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
 		<DefineConstants>TRACE;__MACOS__</DefineConstants>
 	</PropertyGroup>
+	<PropertyGroup Condition=" '$(RuntimeIdentifier)' == 'linux-x64' AND '$(Configuration)' == 'Debug' ">
+		<PlatformTarget>x64</PlatformTarget>
+		<DebugSymbols>true</DebugSymbols>
+		<DebugType>full</DebugType>
+		<Optimize>false</Optimize>
+		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
+		<DefineConstants>TRACE;DEBUG;__LINUX__</DefineConstants>
+	</PropertyGroup>
+
+	<PropertyGroup Condition=" '$(RuntimeIdentifier)' == 'linux-x64' AND '$(Configuration)' == 'Release' ">
+		<PlatformTarget>x64</PlatformTarget>
+		<DebugType>pdbonly</DebugType>
+		<Optimize>true</Optimize>
+		<OutputPath>$(BaseOutputPath)\Panzerfaust\$(Configuration)</OutputPath>
+		<DefineConstants>TRACE;__LINUX__</DefineConstants>
+	</PropertyGroup>
+
 	<PropertyGroup>
 	  <ApplicationManifest>app.manifest</ApplicationManifest>
 	</PropertyGroup>

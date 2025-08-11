@@ -38,7 +38,17 @@ namespace Panzerfaust.Service
             };
 
             var engineProcess = Process.Start(processStartInfo);
-            bool processIdle = engineProcess.WaitForInputIdle();
+            bool processIdle = false;
+            if (OperatingSystem.IsWindows())
+            {
+                processIdle = engineProcess.WaitForInputIdle(3000);  
+            }
+            else
+            {
+                await Task.Delay(500);
+                processIdle = true;
+            }
+
 
             if (processIdle) { return; }
             else

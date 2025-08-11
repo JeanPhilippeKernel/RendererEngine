@@ -103,7 +103,8 @@ $ContentsToProcess = @(
                     }
                 }
                 "Linux" {
-                    @{ From = "$OuputBuildDirectory\Tetragrama"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
+                    @{ From = "$OuputBuildDirectory\Tetragrama"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\Editor"}
+                    @{ From = "$OuputBuildDirectory\Tetragrama"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
                 }
                 Default {
                     throw 'This system is not supported'
