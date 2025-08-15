@@ -13,6 +13,7 @@
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Pools/CommandPool.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
+#include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Windows/CoreWindow.h>
 
 using namespace std::chrono_literals;
@@ -27,8 +28,9 @@ namespace ZEngine::Hardwares
 {
     void VulkanDevice::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window)
     {
-        Arena         = arena;
-        CurrentWindow = window;
+        Arena          = arena;
+        CurrentWindow  = window;
+        AsyncResLoader = ZPushStructCtor(Arena, AsyncResourceLoader);
 
         DefaultDepthFormats.init(Arena, 3);
         DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT);
@@ -404,6 +406,8 @@ namespace ZEngine::Hardwares
         }
         CreateSwapchain();
 
+        AsyncResLoader->Initialize(this);
+
         ThreadPoolHelper::Submit([this] { DirtyCollector(); });
     }
 
@@ -415,6 +419,8 @@ namespace ZEngine::Hardwares
             RunningDirtyCollector = false;
         }
         DirtyCollectorCond.notify_one();
+
+        AsyncResLoader->Shutdown();
 
         GlobalTextures.Dispose();
         Image2DBufferManager.Dispose();

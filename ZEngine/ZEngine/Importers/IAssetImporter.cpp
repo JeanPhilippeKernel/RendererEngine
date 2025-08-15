@@ -1,14 +1,13 @@
 #include <pch.h>
+#include <Core/Containers/Array.h>
 #include <Helpers/SerializerCommonHelper.h>
 #include <IAssetImporter.h>
-#include <ZEngine/Core/Containers/Array.h>
 
 using namespace uuids;
 using namespace ZEngine::Helpers;
-using namespace Tetragrama::Helpers;
 using namespace ZEngine::Core::Containers;
 
-namespace Tetragrama::Importers
+namespace ZEngine::Importers
 {
     int AddNode(AssetNodeHierarchy& hierarchy, int parent, int depth)
     {
@@ -55,7 +54,7 @@ namespace Tetragrama::Importers
         return node_id;
     }
 
-    void IAssetImporter::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
+    void IAssetImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
         arena->CreateSubArena(ZMega(200), &Arena);
     }
@@ -85,7 +84,7 @@ namespace Tetragrama::Importers
         return m_is_importing.load(std::memory_order_acquire);
     }
 
-    AssetImporterOutput IAssetImporter::SerializeMeshAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config)
+    AssetImporterOutput IAssetImporter::SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config)
     {
         AssetImporterOutput output = {};
 
@@ -150,7 +149,7 @@ namespace Tetragrama::Importers
         return output;
     }
 
-    AssetImporterOutput IAssetImporter::SerializeMaterialAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, AssetMaterial& material, const ImportConfiguration& config)
+    AssetImporterOutput IAssetImporter::SerializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, AssetMaterial& material, const ImportConfiguration& config)
     {
 
         AssetImporterOutput output             = {};
@@ -195,7 +194,7 @@ namespace Tetragrama::Importers
         return output;
     }
 
-    AssetImporterOutput IAssetImporter::SerializeTextureAssetFiles(ZEngine::Core::Memory::ArenaAllocator* arena, ArrayView<AssetTexture> textures, const ImportConfiguration& config)
+    AssetImporterOutput IAssetImporter::SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* arena, ArrayView<AssetTexture> textures, const ImportConfiguration& config)
     {
         AssetImporterOutput output             = {};
 
@@ -233,9 +232,9 @@ namespace Tetragrama::Importers
         return output;
     }
 
-    void IAssetImporter::DeserializeMeshAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh& mesh, AssetNodeHierarchy& hierarchies)
+    void IAssetImporter::DeserializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh& mesh, AssetNodeHierarchy& hierarchies)
     {
-        if (!ZEngine::Helpers::secure_strlen(asset_file))
+        if (!Helpers::secure_strlen(asset_file))
         {
             return;
         }
@@ -303,9 +302,9 @@ namespace Tetragrama::Importers
         in.close();
     }
 
-    void IAssetImporter::DeserializeMaterialAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material)
+    void IAssetImporter::DeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material)
     {
-        if (!ZEngine::Helpers::secure_strlen(asset_file))
+        if (!Helpers::secure_strlen(asset_file))
         {
             return;
         }
@@ -351,9 +350,9 @@ namespace Tetragrama::Importers
         in.close();
     }
 
-    void IAssetImporter::DeserializeTextureAssetFile(ZEngine::Core::Memory::ArenaAllocator* arena, const char* asset_file, ZEngine::Core::Containers::Array<AssetTexture>& textures)
+    void IAssetImporter::DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>& textures)
     {
-        if (!ZEngine::Helpers::secure_strlen(asset_file))
+        if (!Helpers::secure_strlen(asset_file))
         {
             return;
         }
@@ -398,7 +397,7 @@ namespace Tetragrama::Importers
     bool IAssetImporter::ReadAssetMeshFileHeader(cstring asset_file, AssetMeshFileHeader& header)
     {
         bool output = false;
-        if (!ZEngine::Helpers::secure_strlen(asset_file))
+        if (!Helpers::secure_strlen(asset_file))
         {
             return output;
         }
@@ -431,4 +430,4 @@ namespace Tetragrama::Importers
         in.close();
         return output;
     }
-} // namespace Tetragrama::Importers
+} // namespace ZEngine::Importers

@@ -113,7 +113,6 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::Initialize(Core::Memory::ArenaAllocator* arena, GraphicRenderer* renderer)
     {
-        Renderer          = renderer;
         Builder           = ZPushStructCtorArgs(arena, RenderGraphBuilder, *this);
         RenderPassBuilder = ZPushStructCtorArgs(arena, RenderPasses::RenderPassBuilder);
         RenderPassBuilder->Initialize(arena);

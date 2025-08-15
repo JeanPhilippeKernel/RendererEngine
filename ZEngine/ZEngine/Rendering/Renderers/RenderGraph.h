@@ -13,7 +13,6 @@
 
 namespace ZEngine::Rendering::Renderers
 {
-    struct GraphicRenderer;
     struct RenderGraphBuilder;
     struct RenderGraphNode;
     struct RenderGraph;
@@ -99,9 +98,10 @@ namespace ZEngine::Rendering::Renderers
         ~RenderGraph() {}
 
         bool                               MarkAsDirty       = false;
-        GraphicRenderer*                   Renderer          = nullptr;
+
         RenderGraphBuilder*                Builder           = nullptr;
         RenderPasses::RenderPassBuilder*   RenderPassBuilder = nullptr;
+
 
         void                               Initialize(Core::Memory::ArenaAllocator* arena, GraphicRenderer* renderer);
 

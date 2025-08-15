@@ -74,6 +74,10 @@ if (NOT LAUNCHER_ONLY)
 	# Editor is here
 	#
 	add_subdirectory (Tetragrama)
+
+	# Entry point is here
+	#
+	add_subdirectory (Obelisk)
 endif ()
 
 # Launcher is here

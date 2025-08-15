@@ -3,24 +3,19 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Logging/Logger.h>
-#include "Editor.h"
+#include <ZEngine/Applications/GameApplication.h>
+
+#include <Editor.h>
 
 #ifdef ZENGINE_PLATFORM
 
 using namespace ZEngine;
 using namespace ZEngine::Logging;
 using namespace ZEngine::Core::Memory;
+using namespace ZEngine::Applications;
 
 int applicationEntryPoint(int argc, char* argv[])
 {
-    CLI::App app{"ZEngine Editor"};
-    argv = app.ensure_utf8(argv);
-
-    std::string editor_cfg_file{""};
-    app.add_option("--projectConfigFile", editor_cfg_file, "The project config file");
-
-    CLI11_PARSE(app, argc, argv);
-
     MemoryManager       manager = {};
     MemoryConfiguration config  = {.DefaultSize = ZGiga(2u)};
     manager.Initialize(config);
@@ -29,11 +24,34 @@ int applicationEntryPoint(int argc, char* argv[])
     LoggerConfiguration logger_cfg = {};
     Logger::Initialize(arena, logger_cfg);
 
-    auto editor = ZPushStruct(arena, Tetragrama::Editor);
-    editor->Initialize(arena, editor_cfg_file.c_str());
-    editor->Run();
+
+    GameApplicationPtr app = nullptr;
+
+
+    CLI::App cli{"ObeliskCLI"};
+    argv                      = cli.ensure_utf8(argv);
+
+    std::string config_file   = "";
+    bool        launch_editor = false;
+    cli.add_option("--projectConfigFile", config_file, "The project config file");
+    cli.add_option("--launchEditor", launch_editor, "The project config file");
+
+    CLI11_PARSE(cli, argc, argv);
+
+    app->ConfigFile = config_file.c_str();
+
+
+    if (launch_editor)
+    {
+        app = ZPushStruct(arena, Tetragrama::Editor);
+    }
+
+    app->Initialize(arena);
+    app->Run();
+    app->Shutdown();
 
     editor->Dispose();
+
     Logger::Dispose();
 
     manager.Shutdowm();

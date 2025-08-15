@@ -1,11 +1,11 @@
 #include <pch.h>
-#include <EditorWindow.h>
-#include <ZEngine/Core/Coroutine.h>
-#include <ZEngine/Engine.h>
-#include <ZEngine/Event/EngineClosedEvent.h>
-#include <ZEngine/Logging/LoggerDefinition.h>
-#include <ZEngine/Windows/Inputs/IDevice.h>
-#include <ZEngine/Windows/Inputs/KeyCode.h>
+#include <Core/Coroutine.h>
+#include <Engine.h>
+#include <Event/EngineClosedEvent.h>
+#include <GameWindow.h>
+#include <Inputs/IDevice.h>
+#include <Inputs/KeyCode.h>
+#include <Logging/LoggerDefinition.h>
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -32,35 +32,35 @@ using namespace ZEngine::Helpers;
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering::Renderers;
 
-namespace Tetragrama
+namespace ZEngine::Windows
 {
-    uint32_t EditorWindow::GetWidth() const
+    uint32_t GameWindow::GetWidth() const
     {
         return m_property.Width;
     }
 
-    ZEngine::Core::Containers::StringView EditorWindow::GetTitle() const
+    Core::Containers::StringView GameWindow::GetTitle() const
     {
         return m_property.Title;
     }
 
-    bool EditorWindow::IsMinimized() const
+    bool GameWindow::IsMinimized() const
     {
         return m_property.IsMinimized;
     }
 
-    void EditorWindow::SetTitle(ZEngine::Core::Containers::StringView title)
+    void GameWindow::SetTitle(Core::Containers::StringView title)
     {
         m_property.Title = title.data();
         glfwSetWindowTitle(m_native_window, m_property.Title);
     }
 
-    bool EditorWindow::IsVSyncEnable() const
+    bool GameWindow::IsVSyncEnable() const
     {
         return m_property.VSync;
     }
 
-    void EditorWindow::SetVSync(bool value)
+    void GameWindow::SetVSync(bool value)
     {
         m_property.VSync = value;
         if (value)
@@ -73,22 +73,22 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::SetCallbackFunction(const EventCallbackFn& callback)
+    void GameWindow::SetCallbackFunction(const EventCallbackFn& callback)
     {
         m_property.CallbackFn = callback;
     }
 
-    void* EditorWindow::GetNativeWindow() const
+    void* GameWindow::GetNativeWindow() const
     {
         return reinterpret_cast<void*>(m_native_window);
     }
 
-    const WindowProperty& EditorWindow::GetWindowProperty() const
+    const WindowProperty& GameWindow::GetWindowProperty() const
     {
         return m_property;
     }
 
-    void EditorWindow::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const ZEngine::Windows::WindowConfiguration& cfg)
+    void GameWindow::Initialize(Core::Memory::ArenaAllocator* arena, const WindowConfiguration& cfg)
     {
         m_configuration   = cfg;
 
@@ -146,71 +146,41 @@ namespace Tetragrama
 
         ZENGINE_CORE_INFO("Window created, Width = {0}, Height = {1}", m_property.Width, m_property.Height)
 
-        // Initialize in reverse order, so overlay layers can be initialize first
-        // this give us opportunity to initialize UI-like layers before graphic render-like layers
-
-        for (auto layer : m_configuration.OverlayLayerCollection)
-        {
-            layer->ParentWindow = this;
-            layer->Initialize(arena);
-        }
-
-        for (auto layer : m_configuration.RenderingLayerCollection)
-        {
-            layer->ParentWindow = this;
-            layer->Initialize(arena);
-        }
-
-        ZENGINE_CORE_INFO("Windows layers initialized")
-
         // Initialize Input Devices (Keyboard, Mouse)
-        ZEngine::Windows::Inputs::IDevice::Initialize(arena);
+        Inputs::IDevice::Initialize(arena);
 
         ZENGINE_CORE_INFO("Input devices initialized")
 
         glfwSetWindowUserPointer(m_native_window, &m_property);
 
-        glfwSetFramebufferSizeCallback(m_native_window, EditorWindow::__OnGlfwFrameBufferSizeChanged);
+        glfwSetFramebufferSizeCallback(m_native_window, GameWindow::__OnGlfwFrameBufferSizeChanged);
 
-        glfwSetWindowCloseCallback(m_native_window, EditorWindow::__OnGlfwWindowClose);
-        glfwSetWindowSizeCallback(m_native_window, EditorWindow::__OnGlfwWindowResized);
-        glfwSetWindowMaximizeCallback(m_native_window, EditorWindow::__OnGlfwWindowMaximized);
-        glfwSetWindowIconifyCallback(m_native_window, EditorWindow::__OnGlfwWindowMinimized);
+        glfwSetWindowCloseCallback(m_native_window, GameWindow::__OnGlfwWindowClose);
+        glfwSetWindowSizeCallback(m_native_window, GameWindow::__OnGlfwWindowResized);
+        glfwSetWindowMaximizeCallback(m_native_window, GameWindow::__OnGlfwWindowMaximized);
+        glfwSetWindowIconifyCallback(m_native_window, GameWindow::__OnGlfwWindowMinimized);
 
-        glfwSetMouseButtonCallback(m_native_window, EditorWindow::__OnGlfwMouseButtonRaised);
-        glfwSetScrollCallback(m_native_window, EditorWindow::__OnGlfwMouseScrollRaised);
-        glfwSetKeyCallback(m_native_window, EditorWindow::__OnGlfwKeyboardRaised);
+        glfwSetMouseButtonCallback(m_native_window, GameWindow::__OnGlfwMouseButtonRaised);
+        glfwSetScrollCallback(m_native_window, GameWindow::__OnGlfwMouseScrollRaised);
+        glfwSetKeyCallback(m_native_window, GameWindow::__OnGlfwKeyboardRaised);
 
-        glfwSetCursorPosCallback(m_native_window, EditorWindow::__OnGlfwCursorMoved);
-        glfwSetCharCallback(m_native_window, EditorWindow::__OnGlfwTextInputRaised);
+        glfwSetCursorPosCallback(m_native_window, GameWindow::__OnGlfwCursorMoved);
+        glfwSetCharCallback(m_native_window, GameWindow::__OnGlfwTextInputRaised);
 
         glfwMaximizeWindow(m_native_window);
     }
 
-    void EditorWindow::Deinitialize()
-    {
-        for (auto layer : m_configuration.OverlayLayerCollection)
-        {
-            layer->Deinitialize();
-        }
-
-        for (auto layer : m_configuration.RenderingLayerCollection)
-        {
-            layer->Deinitialize();
-        }
-    }
-
-    void EditorWindow::PollEvent()
+    void GameWindow::PollEvent()
     {
         glfwPollEvents();
     }
 
-    float EditorWindow::GetTime()
+    float GameWindow::GetTime()
     {
         return (float) glfwGetTime();
     }
 
-    float EditorWindow::GetDeltaTime()
+    float GameWindow::GetDeltaTime()
     {
         static float last_frame_time = 0.f;
 
@@ -220,7 +190,7 @@ namespace Tetragrama
         return m_delta_time;
     }
 
-    void EditorWindow::__OnGlfwFrameBufferSizeChanged(GLFWwindow* window, int width, int height)
+    void GameWindow::__OnGlfwFrameBufferSizeChanged(GLFWwindow* window, int width, int height)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -232,7 +202,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::__OnGlfwWindowClose(GLFWwindow* window)
+    void GameWindow::__OnGlfwWindowClose(GLFWwindow* window)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -242,7 +212,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::__OnGlfwWindowResized(GLFWwindow* window, int width, int height)
+    void GameWindow::__OnGlfwWindowResized(GLFWwindow* window, int width, int height)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -252,7 +222,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::__OnGlfwWindowMaximized(GLFWwindow* window, int maximized)
+    void GameWindow::__OnGlfwWindowMaximized(GLFWwindow* window, int maximized)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -269,7 +239,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::__OnGlfwWindowMinimized(GLFWwindow* window, int minimized)
+    void GameWindow::__OnGlfwWindowMinimized(GLFWwindow* window, int minimized)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -285,7 +255,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
+    void GameWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -302,7 +272,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::__OnGlfwMouseScrollRaised(GLFWwindow* window, double xoffset, double yoffset)
+    void GameWindow::__OnGlfwMouseScrollRaised(GLFWwindow* window, double xoffset, double yoffset)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -312,7 +282,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset)
+    void GameWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -322,7 +292,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::__OnGlfwTextInputRaised(GLFWwindow* window, unsigned int character)
+    void GameWindow::__OnGlfwTextInputRaised(GLFWwindow* window, unsigned int character)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
@@ -334,7 +304,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
+    void GameWindow::__OnGlfwKeyboardRaised(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (!property)
@@ -367,33 +337,7 @@ namespace Tetragrama
         }
     }
 
-    void EditorWindow::Update(Core::TimeStep delta_time)
-    {
-        for (auto layer : m_configuration.RenderingLayerCollection)
-        {
-            layer->Update(delta_time);
-        }
-
-        for (auto layer : m_configuration.OverlayLayerCollection)
-        {
-            layer->Update(delta_time);
-        }
-    }
-
-    void EditorWindow::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
-    {
-        for (auto layer : m_configuration.RenderingLayerCollection)
-        {
-            layer->Render(renderer, command_buffer);
-        }
-
-        for (auto layer : m_configuration.OverlayLayerCollection)
-        {
-            layer->Render(renderer, command_buffer);
-        }
-    }
-
-    std::future<std::string> EditorWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters)
+    std::future<std::string> GameWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters)
     {
         std::string path{""};
 #ifdef _WIN32
@@ -426,7 +370,7 @@ namespace Tetragrama
         co_return path;
     }
 
-    bool EditorWindow::CreateSurface(void* instance, void** out_window_surface)
+    bool GameWindow::CreateSurface(void* instance, void** out_window_surface)
     {
         if (!instance || !out_window_surface)
         {
@@ -438,19 +382,19 @@ namespace Tetragrama
         return (result == VK_SUCCESS);
     }
 
-    EditorWindow::~EditorWindow()
+    GameWindow::~GameWindow()
     {
         glfwSetErrorCallback(NULL);
         glfwDestroyWindow(m_native_window);
         glfwTerminate();
     }
 
-    uint32_t EditorWindow::GetHeight() const
+    uint32_t GameWindow::GetHeight() const
     {
         return m_property.Height;
     }
 
-    bool EditorWindow::OnWindowClosed(WindowClosedEvent& event)
+    bool GameWindow::OnWindowClosed(WindowClosedEvent& event)
     {
         glfwSetWindowShouldClose(m_native_window, GLFW_TRUE);
         ZENGINE_CORE_INFO("Window has been closed")
@@ -461,124 +405,48 @@ namespace Tetragrama
         return true;
     }
 
-    bool EditorWindow::OnWindowResized(WindowResizedEvent& event)
+    bool GameWindow::OnWindowResized(WindowResizedEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been resized")
 
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<WindowResizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        m_property.IsMinimized = false;
         return false;
     }
 
-    bool EditorWindow::OnWindowMinimized(WindowMinimizedEvent& event)
+    bool GameWindow::OnWindowMinimized(WindowMinimizedEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been minimized")
 
         m_property.IsMinimized = true;
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<WindowMinimizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return false;
     }
 
-    bool EditorWindow::OnWindowMaximized(WindowMaximizedEvent& event)
+    bool GameWindow::OnWindowMaximized(WindowMaximizedEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been maximized")
 
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<WindowMaximizedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
+        m_property.IsMinimized = false;
         return false;
     }
 
-    bool EditorWindow::OnWindowRestored(WindowRestoredEvent& event)
+    bool GameWindow::OnWindowRestored(WindowRestoredEvent& event)
     {
         ZENGINE_CORE_INFO("Window has been restored")
 
         m_property.IsMinimized = false;
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<WindowRestoredEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
         return false;
     }
 
-    bool EditorWindow::OnEvent(Core::CoreEvent& event)
+    bool GameWindow::OnEvent(Core::CoreEvent& event)
     {
         Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.Dispatch<WindowClosedEvent>(std::bind(&EditorWindow::OnWindowClosed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<WindowResizedEvent>(std::bind(&EditorWindow::OnWindowResized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowClosedEvent>(std::bind(&GameWindow::OnWindowClosed, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowResizedEvent>(std::bind(&GameWindow::OnWindowResized, this, std::placeholders::_1));
 
-        event_dispatcher.Dispatch<KeyPressedEvent>(std::bind(&EditorWindow::OnKeyPressed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<KeyReleasedEvent>(std::bind(&EditorWindow::OnKeyReleased, this, std::placeholders::_1));
-
-        event_dispatcher.Dispatch<MouseButtonPressedEvent>(std::bind(&EditorWindow::OnMouseButtonPressed, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<MouseButtonReleasedEvent>(std::bind(&EditorWindow::OnMouseButtonReleased, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<MouseButtonMovedEvent>(std::bind(&EditorWindow::OnMouseButtonMoved, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<MouseButtonWheelEvent>(std::bind(&EditorWindow::OnMouseButtonWheelMoved, this, std::placeholders::_1));
-
-        event_dispatcher.Dispatch<TextInputEvent>(std::bind(&EditorWindow::OnTextInputRaised, this, std::placeholders::_1));
-
-        event_dispatcher.Dispatch<WindowMinimizedEvent>(std::bind(&EditorWindow::OnWindowMinimized, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<WindowMaximizedEvent>(std::bind(&EditorWindow::OnWindowMaximized, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<WindowRestoredEvent>(std::bind(&EditorWindow::OnWindowRestored, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowMinimizedEvent>(std::bind(&GameWindow::OnWindowMinimized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowMaximizedEvent>(std::bind(&GameWindow::OnWindowMaximized, this, std::placeholders::_1));
+        event_dispatcher.Dispatch<WindowRestoredEvent>(std::bind(&GameWindow::OnWindowRestored, this, std::placeholders::_1));
 
         return true;
-    }
-
-    bool EditorWindow::OnKeyPressed(KeyPressedEvent& event)
-    {
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<KeyPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
-        return true;
-    }
-
-    bool EditorWindow::OnKeyReleased(KeyReleasedEvent& event)
-    {
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<KeyReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
-        return true;
-    }
-
-    bool EditorWindow::OnMouseButtonPressed(MouseButtonPressedEvent& event)
-    {
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<MouseButtonPressedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
-        return true;
-    }
-
-    bool EditorWindow::OnMouseButtonReleased(MouseButtonReleasedEvent& event)
-    {
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<MouseButtonReleasedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
-        return true;
-    }
-
-    bool EditorWindow::OnMouseButtonMoved(MouseButtonMovedEvent& event)
-    {
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<MouseButtonMovedEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
-        return true;
-    }
-
-    bool EditorWindow::OnMouseButtonWheelMoved(MouseButtonWheelEvent& event)
-    {
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<MouseButtonWheelEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
-        return true;
-    }
-
-    bool EditorWindow::OnTextInputRaised(TextInputEvent& event)
-    {
-        Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<TextInputEvent>(std::bind(&CoreWindow::ForwardEventToLayers, this, std::placeholders::_1));
-        return true;
-    }
-} // namespace Tetragrama
-
-namespace ZEngine::Windows
-{
-    CoreWindow* Create(Core::Memory::ArenaAllocator* arena, const WindowConfiguration& cfg)
-    {
-        auto core_window = ZPushStructCtor(arena, Tetragrama::EditorWindow);
-        core_window->SetCallbackFunction(std::bind(&CoreWindow::OnEvent, core_window, std::placeholders::_1));
-        core_window->Initialize(arena, cfg);
-        return core_window;
     }
 } // namespace ZEngine::Windows

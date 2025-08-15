@@ -1,5 +1,4 @@
 #include <pch.h>
-#include <GraphicRenderer.h>
 #include <Hardwares/VulkanDevice.h>
 #include <ImGuizmo/ImGuizmo.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
@@ -15,9 +14,10 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    void ImGUIRenderer::Initialize(Hardwares::VulkanDevicePtr device, RenderPasses::RenderPassBuilder* pass_builder)
+    void ImGUIRenderer::Initialize(Hardwares::VulkanDevicePtr device)
     {
         Device              = device;
+        RenderGraph         = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
         auto current_window = Device->CurrentWindow->GetNativeWindow();
 
         IMGUI_CHECKVERSION();
@@ -64,6 +64,7 @@ namespace ZEngine::Rendering::Renderers
             idx_buffer_set->At(i)->Allocate(ZMega(5), "ImguiIndexBuffer");
         }
 
+        auto pass_builder = RenderGraph->RenderPassBuilder;
         pass_builder->SetName("Imgui Pass")
             .SetPipelineName("Imgui-Pipeline")
             .EnablePipelineBlending(true)
@@ -224,7 +225,7 @@ namespace ZEngine::Rendering::Renderers
         ImGuizmo::BeginFrame();
     }
 
-    void ImGUIRenderer::DrawFrame(uint32_t frame_index, Hardwares::CommandBuffer* const command_buffer)
+    void ImGUIRenderer::DrawFrame(Hardwares::CommandBufferPtr const command_buffer)
     {
         ImGui::Render();
         ImDrawData* draw_data = ImGui::GetDrawData();
@@ -276,21 +277,25 @@ namespace ZEngine::Rendering::Renderers
             index_data_ptr += cmd_list->IdxBuffer.Size;
         }
 
-        auto vertex_buffer = Device->VertexBufferSetManager.Access(m_vertex_buffer_handle);
-        auto index_buffer  = Device->IndexBufferSetManager.Access(m_index_buffer_handle);
+        auto vtx_data_view     = ArrayView{vertex_data};
+        auto idx_data_view     = ArrayView{index_data};
 
-        auto vtx_data_view = ArrayView{vertex_data};
-        auto idx_data_view = ArrayView{index_data};
-        vertex_buffer->At(frame_index)->Write(vtx_data_view);
-        index_buffer->At(frame_index)->Write(idx_data_view);
+        auto vertex_buffer_set = Device->VertexBufferSetManager.Access(m_vertex_buffer_handle);
+        auto index_buffer_set  = Device->IndexBufferSetManager.Access(m_index_buffer_handle);
+
+        auto vertex_buffer     = vertex_buffer_set->At(Device->CurrentFrameIndex);
+        auto index_buffer      = index_buffer_set->At(Device->CurrentFrameIndex);
+
+        vertex_buffer->Write(vtx_data_view);
+        index_buffer->Write(idx_data_view);
 
         ZReleaseScratch(scratch);
 
         auto current_framebuffer = Device->SwapchainFramebuffers[Device->CurrentFrameIndex];
 
         command_buffer->BeginRenderPass(m_ui_pass, current_framebuffer);
-        command_buffer->BindVertexBuffer(*vertex_buffer->At(frame_index));
-        command_buffer->BindIndexBuffer(*index_buffer->At(frame_index), sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+        command_buffer->BindVertexBuffer(*vertex_buffer);
+        command_buffer->BindIndexBuffer(*index_buffer, sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 
         // Setup scale and translation:
         // Our visible imgui space lies from draw_data->DisplayPps (top left) to
@@ -341,7 +346,7 @@ namespace ZEngine::Rendering::Renderers
 
                         pc_data.TextureId = (uint32_t) (intptr_t) pcmd->TextureId;
                         command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &pc_data);
-                        command_buffer->BindDescriptorSets(frame_index);
+                        command_buffer->BindDescriptorSets(Device->CurrentFrameIndex);
                         command_buffer->DrawIndexed(pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
                     }
                 }

@@ -44,7 +44,7 @@ namespace Tetragrama
         ZEngine::Helpers::Ref<ZEngine::Helpers::ThreadSafeQueue<Managers::AssetManager::AssetHandle>> PendingOnLoadHierarchies = nullptr;
     };
 
-    struct Editor
+    struct Editor:
     {
         ~Editor() {}
 

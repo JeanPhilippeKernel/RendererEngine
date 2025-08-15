@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Tetragrama::Helpers
+namespace ZEngine::Helpers
 {
     struct NodeHierarchy
     {
@@ -10,4 +10,4 @@ namespace Tetragrama::Helpers
         int RightSibling = -1;
         int DepthLevel   = -1;
     };
-} // namespace Tetragrama::Helpers
+} // namespace ZEngine::Helpers

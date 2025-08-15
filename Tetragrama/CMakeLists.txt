@@ -16,11 +16,7 @@ source_group (TREE ${PROJECT_SOURCE_DIR} PREFIX "Source Files" FILES ${HEADER_FI
 
 set (TARGET_NAME tetragrama)
 
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-    add_executable (${TARGET_NAME} WIN32)
-else()
-    add_executable (${TARGET_NAME})
-endif()
+add_library (${TARGET_NAME})
 
 target_sources(${TARGET_NAME} PUBLIC ${HEADER_FILES} ${CPP_FILES})
 
@@ -34,8 +30,9 @@ endif ()
 include(${EXTERNAL_DIR}/externals.cmake)
 
 target_include_directories (${TARGET_NAME}
-	PRIVATE
+    PUBLIC
         .
+	PRIVATE
         ./Components
         ./Components/Events
         ./Controllers
@@ -50,6 +47,7 @@ target_include_directories (${TARGET_NAME}
 )
 
 target_precompile_headers(${TARGET_NAME} PRIVATE pch.h)
+
 target_compile_definitions(${TARGET_NAME}
     PRIVATE
         NOMINMAX
@@ -57,9 +55,6 @@ target_compile_definitions(${TARGET_NAME}
         _UNICODE
 )
 
-target_link_libraries(${TARGET_NAME} PRIVATE
-    zEngineLib
-    imported::External_editorLibs
-)
+target_link_libraries(${TARGET_NAME} PRIVATE zEngineLib)
 
 set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME "zEngineEditor")

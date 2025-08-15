@@ -7,7 +7,6 @@
 #include <fmt/format.h>
 
 using namespace ZEngine::Helpers;
-using namespace Tetragrama::Helpers;
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Core::Containers;
@@ -15,7 +14,7 @@ using namespace uuids;
 
 namespace fs = std::filesystem;
 
-namespace Tetragrama::Importers
+namespace ZEngine::Importers
 {
     AssimpImporter::AssimpImporter() : m_progress_handler{}, m_flags{aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_SortByPType}
     {
@@ -104,7 +103,7 @@ namespace Tetragrama::Importers
         co_return;
     }
 
-    void AssimpImporter::ExtractMeshes(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetMesh& mesh)
+    void AssimpImporter::ExtractMeshes(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetMesh& mesh)
     {
         if ((!scene) || (!scene->HasMeshes()))
         {
@@ -190,7 +189,7 @@ namespace Tetragrama::Importers
         }
     }
 
-    void AssimpImporter::ExtractMaterials(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, ZEngine::Core::Containers::Array<AssetMaterial>& materials, AssetNodeHierarchy& model)
+    void AssimpImporter::ExtractMaterials(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, Core::Containers::Array<AssetMaterial>& materials, AssetNodeHierarchy& model)
     {
         if (!scene)
         {
@@ -283,7 +282,7 @@ namespace Tetragrama::Importers
         }
     }
 
-    void AssimpImporter::ExtractTextures(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, ZEngine::Core::Containers::Array<AssetMaterial>& materials, ZEngine::Core::Containers::Array<AssetTexture>& textures)
+    void AssimpImporter::ExtractTextures(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, Core::Containers::Array<AssetMaterial>& materials, Core::Containers::Array<AssetTexture>& textures)
     {
         if (!scene)
         {
@@ -363,7 +362,7 @@ namespace Tetragrama::Importers
         }
     }
 
-    void AssimpImporter::CreateHierachy(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetNodeHierarchy& AssetNode, AssetMesh& asset_mesh, ZEngine::Core::Containers::Array<AssetMaterial>& materials)
+    void AssimpImporter::CreateHierachy(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetNodeHierarchy& AssetNode, AssetMesh& asset_mesh, Core::Containers::Array<AssetMaterial>& materials)
     {
         if (!scene || !(scene->mRootNode))
         {
@@ -384,7 +383,7 @@ namespace Tetragrama::Importers
         TraverseNode(arena, scene, scene->mRootNode, AssetNode, asset_mesh, materials, -1, 0);
     }
 
-    void AssimpImporter::TraverseNode(ZEngine::Core::Memory::ArenaAllocator* arena, const aiScene* ai_scene, const aiNode* node, AssetNodeHierarchy& hierarchy, AssetMesh& asset_mesh, ZEngine::Core::Containers::Array<AssetMaterial>& materials, int parent_node_id, int depth_level)
+    void AssimpImporter::TraverseNode(Core::Memory::ArenaAllocator* arena, const aiScene* ai_scene, const aiNode* node, AssetNodeHierarchy& hierarchy, AssetMesh& asset_mesh, Core::Containers::Array<AssetMaterial>& materials, int parent_node_id, int depth_level)
     {
         auto node_id                 = AddNode(hierarchy, parent_node_id, depth_level);
         hierarchy.NodeNames[node_id] = hierarchy.Names.size();
@@ -421,7 +420,7 @@ namespace Tetragrama::Importers
         }
     }
 
-    void AssimpImporter::CopyTextureFiles(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Core::Containers::Array<AssetTexture>& textures, const ImportConfiguration& config)
+    void AssimpImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::Array<AssetTexture>& textures, const ImportConfiguration& config)
     {
         /*
          * Normalize file naming
@@ -529,4 +528,4 @@ namespace Tetragrama::Importers
         }
         return true;
     }
-} // namespace Tetragrama::Importers
+} // namespace ZEngine::Importers

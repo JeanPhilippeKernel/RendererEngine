@@ -1,24 +1,36 @@
 #include <pch.h>
+#include <Applications/AppRenderPipeline.h>
+#include <Applications/GameApplication.h>
 #include <Engine.h>
 #include <Logging/LoggerDefinition.h>
-#include <Rendering/Renderers/GraphicRenderer.h>
+#include <Windows/GameWindow.h>
 
 namespace ZEngine
 {
-    static bool              s_request_terminate                     = false;
-    static std::shared_mutex g_mutex                                 = {};
-    static ZRawPtr(Windows::CoreWindow) g_current_window             = nullptr;
-    static ZRawPtr(Rendering::Renderers::GraphicRenderer) g_renderer = nullptr;
-    static ZRawPtr(Hardwares::VulkanDevice) g_device                 = nullptr;
+    static bool                               s_request_terminate = false;
+    static std::shared_mutex                  g_mutex             = {};
+    static EngineContextPtr                   g_engine_ctx        = nullptr;
+    static Applications::GameApplicationPtr   g_app               = nullptr;
+    static Applications::AppRenderPipelinePtr g_appRenderPipeline = nullptr;
 
-    void Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZRawPtr(ZEngine::Windows::CoreWindow) const window)
+    void                                      Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
-        g_current_window = window;
-        g_device         = ZPushStructCtor(arena, Hardwares::VulkanDevice);
-        g_renderer       = ZPushStructCtor(arena, Rendering::Renderers::GraphicRenderer);
+        g_engine_ctx         = ZPushStruct(arena, EngineContext);
+        g_engine_ctx->Device = ZPushStructCtor(arena, Hardwares::VulkanDevice);
+        auto window          = ZPushStructCtor(arena, Windows::GameWindow);
 
-        g_device->Initialize(arena, window);
-        g_renderer->Initialize(g_device);
+        window->Initialize(arena, *window_cfg_ptr);
+        window->SetCallbackFunction(std::bind(&Applications::GameApplication::ProcessEvent, app, std::placeholders::_1));
+        g_engine_ctx->Window = window;
+
+        g_appRenderPipeline  = ZPushStruct(arena, Applications::AppRenderPipeline);
+
+        g_engine_ctx->Device->Initialize(arena, window);
+        g_appRenderPipeline->Initialize(g_engine_ctx->Device);
+
+        app->RenderPipeline = g_appRenderPipeline;
+        app->CurrentWindow  = g_engine_ctx->Window;
+        g_app               = app;
 
         ZENGINE_CORE_INFO("Engine initialized")
     }
@@ -26,19 +38,21 @@ namespace ZEngine
     void Engine::Deinitialize()
     {
         std::unique_lock l(g_mutex);
-        if (g_current_window)
-        {
-            g_current_window->Deinitialize();
-        }
-        g_renderer->Deinitialize();
 
-        g_device->Deinitialize();
+        if (g_engine_ctx->Window)
+        {
+            g_engine_ctx->Window->Deinitialize();
+        }
+
+        g_appRenderPipeline->Shutdown();
+
+        g_engine_ctx->Device->Deinitialize();
     }
 
     void Engine::Dispose()
     {
         s_request_terminate = false;
-        g_device->Dispose();
+        g_engine_ctx->Device->Dispose();
 
         ZENGINE_CORE_INFO("Engine destroyed")
     }
@@ -52,71 +66,32 @@ namespace ZEngine
     void Engine::Run()
     {
         s_request_terminate = false;
-        while (g_current_window)
+        while (auto window = g_engine_ctx->Window)
         {
             if (s_request_terminate)
             {
                 break;
             }
 
-            float dt = g_current_window->GetDeltaTime();
+            float dt = window->GetDeltaTime();
 
-            g_current_window->PollEvent();
+            window->PollEvent();
 
-            if (g_current_window->IsMinimized())
+            if (window->IsMinimized())
             {
                 continue;
             }
 
             /*On Update*/
-            g_current_window->Update(dt);
-
-            g_device->Update();
-            if (g_renderer->EnqueuedResizeRequests.Size())
-            {
-                Rendering::Renderers::ResizeRequest req;
-                if (g_renderer->EnqueuedResizeRequests.Pop(req))
-                {
-                    g_renderer->RenderGraph->Resize(req.Width, req.Height);
-                    continue;
-                }
-            }
+            g_app->Update(dt);
 
             /*On Render*/
-            g_device->NewFrame();
-            g_renderer->ImguiRenderer->NewFrame();
-            auto buffer = g_device->GetCommandBuffer();
-            {
-
-                g_current_window->Render(g_renderer, buffer);
-
-                g_renderer->ImguiRenderer->DrawFrame(g_device->CurrentFrameIndex, buffer);
-            }
-            g_device->EnqueueCommandBuffer(buffer);
-            g_device->Present();
+            g_app->Render();
         }
 
         if (s_request_terminate)
         {
             Deinitialize();
         }
-    }
-
-    Windows::CoreWindow* Engine::GetWindow()
-    {
-        std::shared_lock l(g_mutex);
-        return g_current_window;
-    }
-
-    ZEngine::Hardwares::VulkanDevice* Engine::GetDevice()
-    {
-        std::shared_lock l(g_mutex);
-        return g_device;
-    }
-
-    Rendering::Renderers::AsyncResourceLoader* Engine::GetAsyncResourceLoader()
-    {
-        std::shared_lock l(g_mutex);
-        return g_renderer->AsyncLoader;
     }
 } // namespace ZEngine

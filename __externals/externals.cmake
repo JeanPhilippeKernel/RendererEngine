@@ -33,10 +33,10 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 endif()
 
 add_library (imported::External_libs INTERFACE IMPORTED)
-add_library(imported::External_editorLibs INTERFACE IMPORTED)
+add_library (imported::External_obeliskLibs INTERFACE IMPORTED)
 
 
-target_link_libraries(imported::External_editorLibs INTERFACE
+target_link_libraries(imported::External_obeliskLibs INTERFACE
 	CLI11::CLI11
 )
 

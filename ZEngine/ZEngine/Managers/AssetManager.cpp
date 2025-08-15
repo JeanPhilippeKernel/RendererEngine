@@ -1,15 +1,15 @@
 #include <pch.h>
 #include <AssetManager.h>
+#include <Helpers/MemoryOperations.h>
+#include <Helpers/ThreadPool.h>
 #include <Importers/IAssetImporter.h>
-#include <ZEngine/Helpers/MemoryOperations.h>
-#include <ZEngine/Helpers/ThreadPool.h>
-#include <ZEngine/Rendering/Meshes/Mesh.h>
-#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <Rendering/Meshes/Mesh.h>
+#include <Rendering/Renderers/GraphicRenderer.h>
 
 using namespace ZEngine::Core::Containers;
-using namespace Tetragrama::Importers;
+using namespace ZEngine::Importers;
 
-namespace Tetragrama::Managers
+namespace ZEngine::Managers
 {
     static AssetManager* s_Instance = nullptr;
 
@@ -33,7 +33,7 @@ namespace Tetragrama::Managers
         return AssetType((h >> 28) & 0xF);
     }
 
-    void AssetManager::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Hardwares::VulkanDevice* device, ZEngine::Rendering::Renderers::AsyncResourceLoader* async_loader, cstring working_space_path)
+    void AssetManager::Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, Rendering::Renderers::AsyncResourceLoader* async_loader, cstring working_space_path)
     {
         s_Instance = ZPushStructCtor(arena, AssetManager);
         arena->CreateSubArena(ZMega(100), &(s_Instance->ThreadLocalArena));
@@ -58,7 +58,7 @@ namespace Tetragrama::Managers
 
     void AssetManager::Run()
     {
-        ZEngine::Helpers::ThreadPoolHelper::Submit([instance = s_Instance]() { instance->__Run(); });
+        Helpers::ThreadPoolHelper::Submit([instance = s_Instance]() { instance->__Run(); });
     }
 
     void AssetManager::Shutdown()
@@ -214,8 +214,8 @@ namespace Tetragrama::Managers
                 m.Vertices.init(&(s_Instance->Arena), mesh.Vertices.size(), mesh.Vertices.size());
                 m.Indices.init(&(s_Instance->Arena), mesh.Indices.size(), mesh.Indices.size());
 
-                ZEngine::Helpers::secure_memcpy(m.Vertices.data(), m.Vertices.size() * sizeof(float), mesh.Vertices.data(), mesh.Vertices.size() * sizeof(float));
-                ZEngine::Helpers::secure_memcpy(m.Indices.data(), m.Indices.size() * sizeof(uint32_t), mesh.Indices.data(), mesh.Indices.size() * sizeof(uint32_t));
+                Helpers::secure_memcpy(m.Vertices.data(), m.Vertices.size() * sizeof(float), mesh.Vertices.data(), mesh.Vertices.size() * sizeof(float));
+                Helpers::secure_memcpy(m.Indices.data(), m.Indices.size() * sizeof(uint32_t), mesh.Indices.data(), mesh.Indices.size() * sizeof(uint32_t));
 
                 for (auto& submesh : mesh.SubMeshes)
                 {
@@ -244,9 +244,9 @@ namespace Tetragrama::Managers
                 h.NodeMeshes.init(&(s_Instance->Arena), hierarchies.NodeMeshes.size() > 32 ? hierarchies.NodeMeshes.size() * 2 : 64);
                 h.NodeMaterials.init(&(s_Instance->Arena), hierarchies.NodeMaterials.size() > 32 ? hierarchies.NodeMaterials.size() * 2 : 64);
 
-                ZEngine::Helpers::secure_memcpy(h.Hierarchies.data(), h.Hierarchies.size() * sizeof(AssetNodeHierarchy), hierarchies.Hierarchies.data(), hierarchies.Hierarchies.size() * sizeof(AssetNodeHierarchy));
-                ZEngine::Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(glm::mat4), hierarchies.LocalTransforms.data(), hierarchies.LocalTransforms.size() * sizeof(glm::mat4));
-                ZEngine::Helpers::secure_memcpy(h.GlobalTransforms.data(), h.GlobalTransforms.size() * sizeof(glm::mat4), hierarchies.GlobalTransforms.data(), hierarchies.GlobalTransforms.size() * sizeof(glm::mat4));
+                Helpers::secure_memcpy(h.Hierarchies.data(), h.Hierarchies.size() * sizeof(AssetNodeHierarchy), hierarchies.Hierarchies.data(), hierarchies.Hierarchies.size() * sizeof(AssetNodeHierarchy));
+                Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(glm::mat4), hierarchies.LocalTransforms.data(), hierarchies.LocalTransforms.size() * sizeof(glm::mat4));
+                Helpers::secure_memcpy(h.GlobalTransforms.data(), h.GlobalTransforms.size() * sizeof(glm::mat4), hierarchies.GlobalTransforms.data(), hierarchies.GlobalTransforms.size() * sizeof(glm::mat4));
 
                 for (auto& name : hierarchies.Names)
                 {
@@ -308,13 +308,13 @@ namespace Tetragrama::Managers
 
                 RegisterAsset(AssetType::MATERIAL, material.MaterialUUID, asset_id);
 
-                ZEngine::Rendering::Meshes::MeshMaterial& gpu_mesh_mat = GPUMeshMaterials.push_use({});
-                gpu_mesh_mat.AlbedoColor                               = material.AlbedoColor;
-                gpu_mesh_mat.EmissiveColor                             = material.EmissiveColor;
-                gpu_mesh_mat.RoughnessColor                            = material.RoughnessColor;
-                gpu_mesh_mat.SpecularColor                             = material.SpecularColor;
-                gpu_mesh_mat.AmbientColor                              = material.AmbientColor;
-                gpu_mesh_mat.Factors                                   = material.Factors;
+                Rendering::Meshes::MeshMaterial& gpu_mesh_mat = GPUMeshMaterials.push_use({});
+                gpu_mesh_mat.AlbedoColor                      = material.AlbedoColor;
+                gpu_mesh_mat.EmissiveColor                    = material.EmissiveColor;
+                gpu_mesh_mat.RoughnessColor                   = material.RoughnessColor;
+                gpu_mesh_mat.SpecularColor                    = material.SpecularColor;
+                gpu_mesh_mat.AmbientColor                     = material.AmbientColor;
+                gpu_mesh_mat.Factors                          = material.Factors;
 
                 if (!material.AlbedoTexUUID.is_nil())
                 {
@@ -376,4 +376,4 @@ namespace Tetragrama::Managers
             }
         }
     }
-} // namespace Tetragrama::Managers
+} // namespace ZEngine::Managers
