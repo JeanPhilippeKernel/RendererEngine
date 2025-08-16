@@ -57,7 +57,6 @@ namespace ZEngine::Managers
         Helpers::ThreadSafeQueue<Core::Containers::Array<Importers::AssetTexture>> PendingAssetTextures        = {};
 
         Hardwares::VulkanDevice*                                                   Device                      = nullptr;
-        Rendering::Renderers::AsyncResourceLoader*                                 ResourceLoader              = nullptr;
 
         Importers::AssetMesh*                                                      GetMeshAsset(const uuids::uuid& id);
         Importers::AssetNodeHierarchy*                                             GetMeshNodeHierarchy(const uuids::uuid& id);
@@ -70,7 +69,7 @@ namespace ZEngine::Managers
         static uint32_t                                                            ReadAssetHandleIndex(AssetHandle);
         static AssetType                                                           ReadAssetHandleType(AssetHandle);
 
-        static void                                                                Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, Rendering::Renderers::AsyncResourceLoader* async_loader, cstring working_space_path);
+        static void                                                                Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path);
         static void                                                                Run();
         static void                                                                Shutdown();
 

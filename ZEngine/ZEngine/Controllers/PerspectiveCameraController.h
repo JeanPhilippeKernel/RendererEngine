@@ -1,23 +1,23 @@
 #pragma once
 #include <Controllers/ICameraController.h>
-#include <ZEngine/Core/Memory/Allocator.h>
-#include <ZEngine/Rendering/Cameras/PerspectiveCamera.h>
-#include <ZEngine/Windows/Inputs/IInputEventCallback.h>
+#include <Core/Memory/Allocator.h>
+#include <Rendering/Cameras/PerspectiveCamera.h>
+#include <Windows/Inputs/IInputEventCallback.h>
 #include <mutex>
 
-namespace Tetragrama::Controllers
+namespace ZEngine::Controllers
 {
 
-    class PerspectiveCameraController : public ICameraController, public ZEngine::Windows::Inputs::IMouseEventCallback
+    class PerspectiveCameraController : public ICameraController, public Windows::Inputs::IMouseEventCallback
     {
     public:
         PerspectiveCameraController();
         virtual ~PerspectiveCameraController() = default;
 
-        void Update(ZEngine::Core::TimeStep) override;
-        bool OnEvent(ZEngine::Core::CoreEvent&) override;
+        void Update(Core::TimeStep) override;
+        bool OnEvent(Core::CoreEvent&) override;
 
-        ZRawPtr(ZEngine::Rendering::Cameras::Camera) GetCamera() const override;
+        ZRawPtr(Rendering::Cameras::Camera) GetCamera() const override;
 
         void              UpdateProjectionMatrix() override;
 
@@ -66,4 +66,4 @@ namespace Tetragrama::Controllers
         std::recursive_mutex m_event_mutex                                           = {};
         ZRawPtr(ZEngine::Rendering::Cameras::PerspectiveCamera) m_perspective_camera = nullptr;
     };
-} // namespace Tetragrama::Controllers
+} // namespace ZEngine::Controllers

@@ -1,11 +1,11 @@
 #pragma once
 #include <AssetTypes.h>
-#include <Helpers/IntrusivePtr.h>
-#include <Rendering/Meshes/Mesh.h>
-#include <Rendering/Scenes/GraphicScene.h>
 #include <Core/Containers/Array.h>
 #include <Core/Containers/Strings.h>
 #include <Core/Memory/Allocator.h>
+#include <Helpers/IntrusivePtr.h>
+#include <Rendering/Meshes/Mesh.h>
+#include <Rendering/Scenes/GraphicScene.h>
 #include <atomic>
 #include <future>
 #include <mutex>

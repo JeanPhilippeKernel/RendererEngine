@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <Controllers/EditorCameraController.h>
 #include <Editor.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
@@ -10,73 +11,73 @@ using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Helpers;
 using namespace Tetragrama::Layers;
-using namespace Tetragrama::Messengers;
-using namespace Tetragrama::Controllers;
-using namespace Tetragrama::Managers;
 
 namespace Tetragrama
 {
-    void Editor::Initialize(ArenaAllocator* arena, const char* file)
+    void Editor::OnInitializing()
     {
+        Configuration            = ZPushStructCtor(Arena, EditorConfiguration);
+        PendingOnLoadHierarchies = CreateRef<ThreadSafeQueue<Managers::AssetManager::AssetHandle>>();
 
-        Context                           = ZPushStruct(arena, EditorContext);
-        Context->Arena                    = arena;
-
-        Context->ConfigurationPtr         = ZPushStructCtor(Context->Arena, EditorConfiguration);
-        Context->CameraControllerPtr      = ZPushStructCtor(Context->Arena, EditorCameraController);
-        Context->PendingOnLoadHierarchies = CreateRef<ZEngine::Helpers::ThreadSafeQueue<Managers::AssetManager::AssetHandle>>();
-        UILayer                           = ZPushStructCtor(Context->Arena, ImguiLayer);
-        CanvasLayer                       = ZPushStructCtor(Context->Arena, RenderLayer);
-
-        UILayer->ParentContext            = reinterpret_cast<void*>(Context);
-        CanvasLayer->ParentContext        = reinterpret_cast<void*>(Context);
-
-        const char* scene_name            = "<Empty Scene>";
-        if (ZEngine::Helpers::secure_strlen(file))
+        if (ZEngine::Helpers::secure_strlen(ConfigFile))
         {
-            Context->ConfigurationPtr->ReadConfig(arena, file);
-
-            if (!Context->ConfigurationPtr->ActiveSceneName.empty())
-            {
-                scene_name = Context->ConfigurationPtr->ActiveSceneName.c_str();
-            }
+            Configuration->ReadConfig(Arena, ConfigFile);
         }
 
-        std::string                  title       = fmt::format("{0} - Active Scene : {1}", Context->ConfigurationPtr->ProjectName.c_str(), scene_name);
-        Windows::WindowConfiguration window_conf = {.EnableVsync = true};
-        window_conf.Title.init(Context->Arena, title.c_str());
-        window_conf.RenderingLayerCollection.init(Context->Arena, 1);
-        window_conf.OverlayLayerCollection.init(Context->Arena, 1);
+        if (Configuration->ActiveSceneName.empty())
+        {
+            ZENGINE_CORE_WARN("Editor Scene name is empty")
 
-        window_conf.RenderingLayerCollection.push(CanvasLayer);
-        window_conf.OverlayLayerCollection.push(UILayer);
-
-        Window = ZEngine::Windows::Create(Context->Arena, window_conf);
-
-        Context->CameraControllerPtr->Initialize(Context->Arena, Window, 150.0, 0.f, 45.f);
-
-        ZEngine::Engine::Initialize(arena, Window);
-
-        auto device          = ZEngine::Engine::GetDevice();
-        auto resource_loader = ZEngine::Engine::GetAsyncResourceLoader();
-        AssetManager::Initialize(arena, device, resource_loader, Context->ConfigurationPtr->WorkingSpacePath.c_str());
-
-        Context->AssetManagerPtr = AssetManager::Instance();
-        Context->CurrentScenePtr = ZPushStructCtor(Context->Arena, EditorScene);
-        Context->CurrentScenePtr->Initialize(Context->Arena, device, scene_name);
+            cstring active_scene = "<empty scene>";
+            Configuration->ActiveSceneName.clear();
+            Configuration->ActiveSceneName.append(active_scene);
+        }
+        WorkingSpacePath = Configuration->WorkingSpacePath.c_str();
     }
 
-    void Editor::Dispose()
+    void Editor::OverrideWindowConfiguration()
     {
-        Engine::Dispose();
-        AssetManager::Shutdown();
+        std::string title     = fmt::format("{0} - Active Scene : {1}", Configuration->ProjectName.c_str(), Configuration->ActiveSceneName.c_str());
+        WindowCfg.EnableVsync = true;
+        WindowCfg.Title.init(Arena, title.c_str());
     }
 
-    void Editor::Run()
+    void Editor::OnInitialized()
     {
-        AssetManager::Run();
-        Engine::Run();
+        auto editor_scene          = ZPushStructCtor(Arena, EditorScene);
+        auto editor_cam_controller = ZPushStructCtor(Arena, Controllers::EditorCameraController);
+        UILayer                    = ZPushStructCtor(Arena, ImguiLayer);
+
+        UILayer->Initialize(Arena);
+        editor_cam_controller->Initialize(Arena, CurrentWindow, 150.0, 0.f, 45.f);
+        editor_scene->Initialize(Arena, Configuration->ActiveSceneName.c_str());
+
+        CameraController = editor_cam_controller;
+        CurrentScene     = editor_scene;
     }
+
+    void Editor::OnUpdate(float dt)
+    {
+        UILayer->Update(dt);
+    }
+
+    void Editor::OnEvent(Core::CoreEvent& e)
+    {
+        UILayer->OnEvent(e);
+    }
+
+    void Editor::OnPreRender() {}
+
+    void Editor::OnPostRender() {}
+
+    void Editor::OnRenderUI()
+    {
+        UILayer->Render(nullptr, nullptr);
+    }
+
+    void Editor::OnClosing() {}
+
+    void Editor::OnClosed() {}
 
     void EditorConfiguration::ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file)
     {

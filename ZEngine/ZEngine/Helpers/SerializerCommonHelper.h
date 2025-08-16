@@ -1,13 +1,13 @@
 #pragma once
-#include <ZEngine/Core/Containers/Array.h>
-#include <ZEngine/Core/Containers/HashMap.h>
-#include <ZEngine/Core/Containers/Strings.h>
-#include <ZEngine/Core/Memory/Allocator.h>
+#include <Core/Containers/Array.h>
+#include <Core/Containers/HashMap.h>
+#include <Core/Containers/Strings.h>
+#include <Core/Memory/Allocator.h>
 #include <ZEngineDef.h>
 #include <iostream>
 #include <type_traits>
 
-namespace Tetragrama::Helpers
+namespace ZEngine::Helpers
 {
     template <typename T>
     static void WriteBinary(std::ostream& writer, const T& data)
@@ -165,4 +165,4 @@ namespace Tetragrama::Helpers
             map.insert(key, val);
         }
     }
-} // namespace Tetragrama::Helpers
+} // namespace ZEngine::Helpers

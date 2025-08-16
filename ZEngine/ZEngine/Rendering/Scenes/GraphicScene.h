@@ -1,27 +1,11 @@
 ﻿#pragma once
 #include <Hardwares/VulkanDevice.h>
-#include <Rendering/Lights/Light.h>
+#include <Helpers/NodeHierarchyHelper.h>
 #include <Rendering/Meshes/Mesh.h>
 #include <Textures/Texture.h>
 #include <ZEngineDef.h>
 #include <entt/entt.hpp>
 #include <uuid.h>
-#include <future>
-#include <mutex>
-#include <set>
-#include <vector>
-
-namespace ZEngine::Serializers
-{
-    class GraphicScene3DSerializer;
-}
-
-namespace ZEngine::Rendering::Renderers
-{
-    struct AsyncResourceLoader;
-    struct GraphicRenderer;
-    class RenderGraph;
-} // namespace ZEngine::Rendering::Renderers
 
 namespace ZEngine::Rendering::Scenes
 {
@@ -37,6 +21,27 @@ namespace ZEngine::Rendering::Scenes
     };
     ZDEFINE_PTR(SceneData);
 
+    struct RenderScene
+    {
+        std::atomic_bool                                                          MeshAllocationDirty[3]   = {false, false, false};
+        std::atomic_bool                                                          TransformBufferDirty[3]  = {false, false, false};
+
+        uint32_t                                                                  CurrentTransformOffset   = 0;
+        uint32_t                                                                  CurrentVertexOffset      = 0;
+        uint32_t                                                                  CurrentIndexOffset       = 0;
+
+        Core::Containers::Array<Helpers::NodeHierarchy>                           Hierarchies              = {};
+        Core::Containers::Array<glm::mat4>                                        LocalTransforms          = {};
+        Core::Containers::Array<glm::mat4>                                        GlobalTransforms         = {};
+
+        Core::Containers::Array<float>                                            Vertices                 = {};
+        Core::Containers::Array<uint32_t>                                         Indices                  = {};
+        Core::Containers::HashMap<uuids::uuid, Rendering::Meshes::MeshAllocation> MeshAllocations          = {};
+        Core::Containers::HashMap<uint32_t, Rendering::Meshes::SubMeshAllocation> NodeSubMeshesAllocations = {};
+    };
+    ZDEFINE_PTR(RenderScene);
+
+#if 0
     /*
      * This internal defragmented storage represents SceneNode struct with a DoD (Data-Oriented Design) approach
      * The access is index based.
@@ -247,4 +252,5 @@ namespace ZEngine::Rendering::Scenes
         std::recursive_mutex m_mutex = {};
         friend class ZEngine::Serializers::GraphicScene3DSerializer;
     };
+#endif
 } // namespace ZEngine::Rendering::Scenes

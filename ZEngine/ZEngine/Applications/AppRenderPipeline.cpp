@@ -19,18 +19,17 @@ namespace ZEngine::Applications
         ImguiRenderer->Deinitialize();
     }
 
+    void AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
+    {
+        if (SceneRenderer && SceneRenderer->RenderGraph)
+        {
+            auto rendergraph = SceneRenderer->RenderGraph;
+            rendergraph->Resize(w, h);
+        }
+    }
+
     void AppRenderPipeline::BeginFrame()
     {
-        // if (g_renderer->EnqueuedResizeRequests.Size())
-        //{
-        //     Rendering::Renderers::ResizeRequest req;
-        //     if (g_renderer->EnqueuedResizeRequests.Pop(req))
-        //     {
-        //         g_renderer->RenderGraph->Resize(req.Width, req.Height);
-        //         continue;
-        //     }
-        // }
-
         Device->NewFrame();
         CurrentCmdBuf = Device->GetCommandBuffer();
     }

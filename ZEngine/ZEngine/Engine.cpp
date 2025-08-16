@@ -3,6 +3,7 @@
 #include <Applications/GameApplication.h>
 #include <Engine.h>
 #include <Logging/LoggerDefinition.h>
+#include <Managers/AssetManager.h>
 #include <Windows/GameWindow.h>
 
 namespace ZEngine
@@ -28,6 +29,8 @@ namespace ZEngine
         g_engine_ctx->Device->Initialize(arena, window);
         g_appRenderPipeline->Initialize(g_engine_ctx->Device);
 
+        Managers::AssetManager::Initialize(arena, g_engine_ctx->Device, app->WorkingSpacePath);
+
         app->RenderPipeline = g_appRenderPipeline;
         app->CurrentWindow  = g_engine_ctx->Window;
         g_app               = app;
@@ -52,6 +55,7 @@ namespace ZEngine
     void Engine::Dispose()
     {
         s_request_terminate = false;
+        Managers::AssetManager::Shutdown();
         g_engine_ctx->Device->Dispose();
 
         ZENGINE_CORE_INFO("Engine destroyed")
@@ -65,6 +69,8 @@ namespace ZEngine
 
     void Engine::Run()
     {
+        Managers::AssetManager::Run();
+
         s_request_terminate = false;
         while (auto window = g_engine_ctx->Window)
         {

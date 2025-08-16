@@ -9,13 +9,17 @@
 #include <Rendering/Textures/Texture.h>
 #include <ZEngineDef.h>
 #include <functional>
-#include <string>
 
 namespace ZEngine::Rendering::Renderers
 {
-    struct RenderGraphBuilder;
+    struct RenderGraphResourceBuilder;
+    struct RenderGraphResourceInspector;
     struct RenderGraphNode;
     struct RenderGraph;
+
+    ZDEFINE_PTR(RenderGraphResourceBuilder);
+    ZDEFINE_PTR(RenderGraphResourceInspector);
+    ZDEFINE_PTR(RenderGraph);
 
     enum RenderGraphResourceType
     {
@@ -53,22 +57,22 @@ namespace ZEngine::Rendering::Renderers
 
     struct RenderGraphResource
     {
-        const char*             Name;
-        const char*             ProducerNodeName;
+        cstring                 Name;
+        cstring                 ProducerNodeName;
         RenderGraphResourceType Type;
         RenderGraphResourceInfo ResourceInfo;
     };
 
     struct RenderGraphRenderPassInputOutputInfo
     {
-        const char*             Name;
-        const char*             BindingInputKeyName;
+        cstring                 Name;
+        cstring                 BindingInputKeyName;
         RenderGraphResourceType Type = RenderGraphResourceType::ATTACHMENT;
     };
 
     struct RenderGraphRenderPassCreation
     {
-        const char*                                                   Name;
+        cstring                                                       Name;
         Core::Containers::Array<RenderGraphRenderPassInputOutputInfo> Inputs;
         Core::Containers::Array<RenderGraphRenderPassInputOutputInfo> Outputs;
     };
@@ -83,68 +87,74 @@ namespace ZEngine::Rendering::Renderers
 
     struct RenderGraphNode
     {
-        bool                                 Enabled   = true;
-        RenderGraphRenderPassCreation        Creation  = {};
-        Core::Containers::Array<const char*> EdgeNodes = {};
+        bool                             Enabled       = true;
+        RenderGraphRenderPassCreation    Creation      = {};
+        Core::Containers::Array<cstring> EdgeNodes     = {};
         ZRawPtr(RenderPasses::RenderPass) Handle       = nullptr;
         ZRawPtr(Buffers::FramebufferVNext) Framebuffer = nullptr;
         ZRawPtr(IRenderGraphCallbackPass) CallbackPass = nullptr;
     };
 
-    class RenderGraph
+    struct RenderGraph
     {
-    public:
         RenderGraph() {}
         ~RenderGraph() {}
 
-        bool                               MarkAsDirty       = false;
+        bool                                                    MarkAsDirty       = false;
 
-        RenderGraphBuilder*                Builder           = nullptr;
-        RenderPasses::RenderPassBuilder*   RenderPassBuilder = nullptr;
+        Hardwares::VulkanDevicePtr                              Device            = nullptr;
 
+        Core::Containers::Array<cstring>                        SortedNodesMap    = {};
+        Core::Containers::HashMap<cstring, RenderGraphNode>     NodeMap           = {};
+        Core::Containers::HashMap<cstring, RenderGraphResource> ResourceMap       = {};
 
-        void                               Initialize(Core::Memory::ArenaAllocator* arena, GraphicRenderer* renderer);
+        RenderGraphResourceBuilderPtr                           ResourceBuilder   = nullptr;
+        RenderGraphResourceInspectorPtr                         ResourceInspector = nullptr;
+        RenderPasses::RenderPassBuilder*                        RenderPassBuilder = nullptr;
 
-        void                               Setup();
-        void                               Compile();
-        void                               Execute(Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneData* const scene_data);
-        void                               Resize(uint32_t width, uint32_t height);
-        void                               Dispose();
-        RenderGraphResource&               GetResource(const char*);
-        Textures::TextureHandle            GetRenderTarget(const char*);
-        Textures::TextureHandle            GetTexture(const char*);
-        Hardwares::StorageBufferSetHandle  GetStorageBufferSet(const char*);
-        Hardwares::VertexBufferSetHandle   GetVertexBufferSet(const char*);
-        Hardwares::IndexBufferSetHandle    GetIndexBufferSet(const char*);
-        Hardwares::UniformBufferSetHandle  GetBufferUniformSet(const char*);
-        Hardwares::IndirectBufferSetHandle GetIndirectBufferSet(const char*);
-        RenderGraphNode&                   GetNode(const char*);
-        void                               AddCallbackPass(const char* pass_name, IRenderGraphCallbackPass* const pass_callback, bool enabled = true);
+        void                                                    Initialize(Hardwares::VulkanDevicePtr device);
 
-    private:
-        Core::Containers::Array<const char*>                        m_sorted_nodes;
-        Core::Containers::HashMap<const char*, RenderGraphNode>     m_node;
-        Core::Containers::HashMap<const char*, RenderGraphResource> m_resource_map;
-        friend struct RenderGraphBuilder;
+        void                                                    Setup();
+        void                                                    Compile();
+        void                                                    Execute(Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneData* const scene_data);
+        void                                                    Resize(uint32_t width, uint32_t height);
+        void                                                    Dispose();
+        void                                                    AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const pass_callback, bool enabled = true);
     };
 
-    struct RenderGraphBuilder
+    struct RenderGraphResourceInspector
     {
-        RenderGraphBuilder(RenderGraph& graph) : m_graph(graph) {}
+        RenderGraphPtr                     Graph = nullptr;
 
-        RenderGraphResource& CreateTexture(const char* name, const Specifications::TextureSpecification& spec);
-        RenderGraphResource& CreateTexture(const char* name, const char* filename);
-        RenderGraphResource& CreateRenderTarget(const char* name, const Specifications::TextureSpecification& spec);
-        RenderGraphResource& AttachBuffer(const char* name, const Hardwares::StorageBufferSetHandle& buffer);
-        RenderGraphResource& AttachBuffer(const char* name, const Hardwares::UniformBufferSetHandle& buffer);
-        RenderGraphResource& AttachTexture(const char* name, const Textures::TextureHandle& texture);
-        RenderGraphResource& AttachRenderTarget(const char* name, const Textures::TextureHandle& texture);
+        void                               Initialize(RenderGraphPtr graph);
+
+        RenderGraphResource&               GetResource(cstring name);
+        Textures::TextureHandle            GetRenderTarget(cstring name);
+        Textures::TextureHandle            GetTexture(cstring name);
+        Hardwares::StorageBufferSetHandle  GetStorageBufferSet(cstring name);
+        Hardwares::VertexBufferSetHandle   GetVertexBufferSet(cstring name);
+        Hardwares::IndexBufferSetHandle    GetIndexBufferSet(cstring name);
+        Hardwares::UniformBufferSetHandle  GetBufferUniformSet(cstring name);
+        Hardwares::IndirectBufferSetHandle GetIndirectBufferSet(cstring name);
+        RenderGraphNode&                   GetNode(cstring name);
+    };
+
+    struct RenderGraphResourceBuilder
+    {
+        RenderGraphPtr       Graph = nullptr;
+
+        void                 Initialize(RenderGraphPtr graph);
+
+        RenderGraphResource& CreateTexture(cstring name, const Specifications::TextureSpecification& spec);
+        RenderGraphResource& CreateTexture(cstring name, cstring filename);
+        RenderGraphResource& CreateRenderTarget(cstring name, const Specifications::TextureSpecification& spec);
+        RenderGraphResource& AttachBuffer(cstring name, const Hardwares::StorageBufferSetHandle& buffer);
+        RenderGraphResource& AttachBuffer(cstring name, const Hardwares::UniformBufferSetHandle& buffer);
+        RenderGraphResource& AttachTexture(cstring name, const Textures::TextureHandle& texture);
+        RenderGraphResource& AttachRenderTarget(cstring name, const Textures::TextureHandle& texture);
         void                 CreateRenderPassNode(const RenderGraphRenderPassCreation&);
 
-        RenderGraphResource& CreateBuffer(const char* name) = delete;
-        RenderGraphResource& CreateBufferSet(const char* name, BufferSetCreationType type = BufferSetCreationType::STORAGE);
-
-    private:
-        RenderGraph& m_graph;
+        RenderGraphResource& CreateBuffer(cstring name) = delete;
+        RenderGraphResource& CreateBufferSet(cstring name, BufferSetCreationType type = BufferSetCreationType::STORAGE);
     };
 } // namespace ZEngine::Rendering::Renderers

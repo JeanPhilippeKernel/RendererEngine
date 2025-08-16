@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Tetragrama::Controllers
+namespace ZEngine::Controllers
 {
     enum class CameraControllerType
     {
@@ -10,4 +10,4 @@ namespace Tetragrama::Controllers
         ORTHOGRAPHIC_CONTROLLER,
         UNDEFINED
     };
-} // namespace Tetragrama::Controllers
+} // namespace ZEngine::Controllers

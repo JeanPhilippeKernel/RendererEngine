@@ -1,9 +1,9 @@
 #pragma once
-#include <PerspectiveCameraController.h>
+#include <ZEngine/Controllers/PerspectiveCameraController.h>
 
 namespace Tetragrama::Controllers
 {
-    struct EditorCameraController : public Controllers::PerspectiveCameraController
+    struct EditorCameraController : public ZEngine::Controllers::PerspectiveCameraController
     {
         EditorCameraController()          = default;
         virtual ~EditorCameraController() = default;

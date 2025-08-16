@@ -5,40 +5,31 @@
 
 namespace ZEngine::Rendering::Renderers
 {
-    struct ResizeRequest
-    {
-        uint32_t Width;
-        uint32_t Height;
-    };
-
     struct GraphicRenderer : public IRenderer
     {
         GraphicRenderer();
         ~GraphicRenderer();
 
-        cstring                                 FrameDepthRenderTargetName = "g_frame_depth_render_target";
-        cstring                                 FrameColorRenderTargetName = "g_frame_color_render_target";
+        cstring                           FrameDepthRenderTargetName = "g_frame_depth_render_target";
+        cstring                           FrameColorRenderTargetName = "g_frame_color_render_target";
 
-        cstring                                 SceneCameraBufferName      = "SceneCamera";
-        cstring                                 VertexBufferName           = "VertexStorageBuffer";
-        cstring                                 IndexBufferName            = "IndexStorageBuffer";
-        cstring                                 TransformBufferName        = "TransformStorageBuffer";
-        cstring                                 RenderDataBufferName       = "RenderDataStorageBuffer";
-        cstring                                 MaterialBufferName         = "MaterialStorageBuffer";
+        cstring                           SceneCameraBufferName      = "SceneCamera";
+        cstring                           VertexBufferName           = "VertexStorageBuffer";
+        cstring                           IndexBufferName            = "IndexStorageBuffer";
+        cstring                           TransformBufferName        = "TransformStorageBuffer";
+        cstring                           RenderDataBufferName       = "RenderDataStorageBuffer";
+        cstring                           MaterialBufferName         = "MaterialStorageBuffer";
 
-        const size_t                            DefaultBufferSize          = ZMega(10);
+        const size_t                      DefaultBufferSize          = ZMega(10);
 
-        Hardwares::UniformBufferSetHandle       SceneCameraBufferHandle    = {};
-        Textures::TextureHandle                 FrameColorRenderTarget     = {};
-        Textures::TextureHandle                 FrameDepthRenderTarget     = {};
+        Hardwares::UniformBufferSetHandle SceneCameraBufferHandle    = {};
+        Textures::TextureHandle           FrameColorRenderTarget     = {};
+        Textures::TextureHandle           FrameDepthRenderTarget     = {};
 
-        Scenes::SceneDataPtr                    RenderSceneData            = nullptr;
-
-        Helpers::ThreadSafeQueue<ResizeRequest> EnqueuedResizeRequests     = {};
-
-        void                                    Initialize(Hardwares::VulkanDevicePtr device) override;
-        void                                    Deinitialize() override;
-        void                                    DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::Camera* const camera);
-        Textures::TextureHandle                 GetFrameOutput();
+        void                              Initialize(Hardwares::VulkanDevicePtr device) override;
+        void                              Deinitialize() override;
+        void                              DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera);
+        Textures::TextureHandle           GetFrameOutput();
     };
+    ZDEFINE_PTR(GraphicRenderer);
 } // namespace ZEngine::Rendering::Renderers

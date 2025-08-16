@@ -1,21 +1,21 @@
 #pragma once
 #include <Controllers/CameraControllerTypeEnums.h>
 #include <Controllers/IController.h>
-#include <ZEngine/Rendering/Cameras/Camera.h>
-#include <ZEngine/Windows/CoreWindow.h>
+#include <Rendering/Cameras/Camera.h>
+#include <Windows/CoreWindow.h>
 
-namespace Tetragrama::Controllers
+namespace ZEngine::Controllers
 {
 
     struct ICameraController : public IController
     {
         ICameraController() {}
-        virtual ~ICameraController()                                           = default;
+        virtual ~ICameraController()                                  = default;
 
-        virtual glm::vec3 GetPosition() const                                  = 0;
-        virtual void      SetPosition(const glm::vec3& position)               = 0;
-        virtual ZRawPtr(ZEngine::Rendering::Cameras::Camera) GetCamera() const = 0;
-        virtual void UpdateProjectionMatrix()                                  = 0;
+        virtual glm::vec3 GetPosition() const                         = 0;
+        virtual void      SetPosition(const glm::vec3& position)      = 0;
+        virtual ZRawPtr(Rendering::Cameras::Camera) GetCamera() const = 0;
+        virtual void UpdateProjectionMatrix()                         = 0;
 
         float        GetRotationAngle() const
         {
@@ -82,6 +82,7 @@ namespace Tetragrama::Controllers
         float                m_aspect_ratio{0.0f};
         bool                 m_can_rotate{false};
         CameraControllerType m_controller_type{CameraControllerType::UNDEFINED};
-        ZRawPtr(ZEngine::Windows::CoreWindow) m_window = nullptr;
+        ZRawPtr(Windows::CoreWindow) m_window = nullptr;
     };
-} // namespace Tetragrama::Controllers
+    ZDEFINE_PTR(ICameraController);
+} // namespace ZEngine::Controllers

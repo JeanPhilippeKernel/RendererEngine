@@ -1,18 +1,17 @@
 #include <pch.h>
 #include <Controllers/PerspectiveCameraController.h>
+#include <Core/EventDispatcher.h>
 #include <Inputs/IDevice.h>
 #include <Inputs/KeyCodeDefinition.h>
 #include <Inputs/Keyboard.h>
 #include <Inputs/Mouse.h>
-#include <ZEngine/Core/EventDispatcher.h>
 
 using namespace ZEngine;
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Windows::Inputs;
 using namespace ZEngine::Windows::Events;
-using namespace Tetragrama::Inputs;
 
-namespace Tetragrama::Controllers
+namespace ZEngine::Controllers
 {
     PerspectiveCameraController::PerspectiveCameraController() {}
     void PerspectiveCameraController::Update(Core::TimeStep dt)
@@ -129,4 +128,4 @@ namespace Tetragrama::Controllers
         return false;
     }
 
-} // namespace Tetragrama::Controllers
+} // namespace ZEngine::Controllers

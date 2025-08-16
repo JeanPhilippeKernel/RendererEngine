@@ -14,6 +14,7 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Scenes
 {
+#if 0
     static entt::registry g_sceneEntityRegistry;
 
     entt::registry&       GetEntityRegistry()
@@ -757,4 +758,5 @@ namespace ZEngine::Rendering::Scenes
         // }
         return camera_entity;
     }
+#endif
 } // namespace ZEngine::Rendering::Scenes

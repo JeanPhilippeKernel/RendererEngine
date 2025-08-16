@@ -69,16 +69,16 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Subsystems initialization
          */
-        RenderGraph->Initialize(Device->Arena, this);
+        RenderGraph->Initialize(Device);
         /*
          * Render Graph definition
          */
-        RenderGraph->Builder->AttachRenderTarget(FrameDepthRenderTargetName, FrameDepthRenderTarget);
-        RenderGraph->Builder->AttachRenderTarget(FrameColorRenderTargetName, FrameColorRenderTarget);
+        RenderGraph->ResourceBuilder->AttachRenderTarget(FrameDepthRenderTargetName, FrameDepthRenderTarget);
+        RenderGraph->ResourceBuilder->AttachRenderTarget(FrameColorRenderTargetName, FrameColorRenderTarget);
 
-        RenderGraph->Builder->CreateBufferSet("g_scene_directional_light_buffer");
-        RenderGraph->Builder->CreateBufferSet("g_scene_point_light_buffer");
-        RenderGraph->Builder->CreateBufferSet("g_scene_spot_light_buffer");
+        RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_directional_light_buffer");
+        RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_point_light_buffer");
+        RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_spot_light_buffer");
 
         RenderGraph->AddCallbackPass("Initial Pass", initial_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
@@ -98,7 +98,7 @@ namespace ZEngine::Rendering::Renderers
         Device->GlobalTextures.Remove(FrameDepthRenderTarget);
     }
 
-    void GraphicRenderer::DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::Camera* const camera)
+    void GraphicRenderer::DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera)
     {
         auto ubo_camera_data = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = glm::vec4(camera->GetPosition(), 1.0f)};
 
@@ -112,6 +112,6 @@ namespace ZEngine::Rendering::Renderers
 
     Textures::TextureHandle GraphicRenderer::GetFrameOutput()
     {
-        return RenderGraph->GetRenderTarget(FrameColorRenderTargetName);
+        return RenderGraph->ResourceInspector->GetRenderTarget(FrameColorRenderTargetName);
     }
 } // namespace ZEngine::Rendering::Renderers

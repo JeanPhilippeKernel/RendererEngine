@@ -25,6 +25,11 @@ namespace ZEngine::Applications
 
     void GameApplication::Update(Core::TimeStep dt)
     {
+        if (CameraController)
+        {
+            CameraController->Update(dt);
+        }
+
         OnUpdate(dt);
     }
 
@@ -34,15 +39,27 @@ namespace ZEngine::Applications
         {
             CurrentWindow->OnEvent(e);
         }
+
+        if (CameraController)
+        {
+            CameraController->OnEvent(e);
+        }
+
         OnEvent(e);
     }
 
     void GameApplication::Render()
     {
+        RenderTargetResizeRequest request = {};
+        if (State->RenderTargetResizeRequests.Pop(request))
+        {
+            RenderPipeline->ResizeRenderTarget(request.Width, request.Height);
+        }
+
         RenderPipeline->BeginFrame();
 
         OnPreRender();
-        RenderPipeline->RenderScene();
+        RenderPipeline->RenderScene(CameraController->GetCamera(), CurrentScene);
         OnPostRender();
 
         if (EnableRenderOverlay)

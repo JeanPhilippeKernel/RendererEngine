@@ -31,6 +31,7 @@ target_include_directories (zEngineLib
 		./Layers
 		./Managers
 		./Importers
+		./Controllers
 		./Logging
 		./Rendering
 		./Rendering/Entities

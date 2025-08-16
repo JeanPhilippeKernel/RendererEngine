@@ -15,10 +15,12 @@ namespace ZEngine::Applications
         void                                     Initialize(Hardwares::VulkanDevicePtr device);
         void                                     Shutdown();
 
+        void                                     ResizeRenderTarget(uint32_t w, uint32_t h);
+
         void                                     BeginFrame();
         void                                     EndFrame();
 
-        void                                     RenderScene(Rendering::Cameras::CameraPtr camera, Scenes::RenderScenePtr scene);
+        void                                     RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene);
 
         void                                     BeginOverlayFrame();
         void                                     EndOverlayFrame();

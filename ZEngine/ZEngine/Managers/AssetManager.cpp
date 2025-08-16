@@ -33,14 +33,13 @@ namespace ZEngine::Managers
         return AssetType((h >> 28) & 0xF);
     }
 
-    void AssetManager::Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, Rendering::Renderers::AsyncResourceLoader* async_loader, cstring working_space_path)
+    void AssetManager::Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path)
     {
         s_Instance = ZPushStructCtor(arena, AssetManager);
         arena->CreateSubArena(ZMega(100), &(s_Instance->ThreadLocalArena));
         arena->CreateSubArena(ZMega(70), &(s_Instance->Arena));
 
         s_Instance->Device                  = device;
-        s_Instance->ResourceLoader          = async_loader;
         s_Instance->CurrentWorkingSpacePath = working_space_path;
 
         s_Instance->NodeHierarchies.init(&(s_Instance->Arena), 5000);
@@ -289,7 +288,7 @@ namespace ZEngine::Managers
                     new_tex.TextureUUID          = tex.TextureUUID;
 
                     const auto tex_absolute_path = fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, tex.Path.c_str());
-                    new_tex.Handle               = s_Instance->ResourceLoader->LoadTextureFile(tex_absolute_path);
+                    new_tex.Handle               = s_Instance->Device->AsyncResLoader->LoadTextureFile(tex_absolute_path.c_str());
                     new_tex.Path.init(&(s_Instance->Arena), tex.Path.c_str());
 
                     RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, asset_id);
