@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <IRenderer.h>
 #include <RenderGraph.h>
 
 using namespace ZEngine::Core::Containers;
@@ -6,9 +7,10 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    void RenderGraph::Initialize(Hardwares::VulkanDevicePtr device)
+    void RenderGraph::Initialize(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr data)
     {
         Device            = device;
+        SceneData         = data;
         ResourceBuilder   = ZPushStruct(Device->Arena, RenderGraphResourceBuilder);
         ResourceInspector = ZPushStruct(Device->Arena, RenderGraphResourceInspector);
         RenderPassBuilder = ZPushStructCtorArgs(Device->Arena, RenderPasses::RenderPassBuilder);
@@ -33,7 +35,7 @@ namespace ZEngine::Rendering::Renderers
         for (auto [name, node] : NodeMap)
         {
             node.EdgeNodes.init(Device->Arena, 5);
-            node.CallbackPass->Setup(name, this);
+            node.CallbackPass->Setup(Device, name, ResourceBuilder, ResourceInspector);
         }
     }
 
@@ -159,7 +161,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            node.CallbackPass->Compile(&(node.Handle), this);
+            node.CallbackPass->Compile(Device, SceneData, RenderPassBuilder, ResourceInspector, &(node.Handle));
         }
 
         for (cstring name : SortedNodesMap)
@@ -170,7 +172,7 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    void RenderGraph::Execute(Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneData* const scene)
+    void RenderGraph::Execute(Hardwares::CommandBufferPtr const command_buffer)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer, "Command Buffer can't be null")
 
@@ -270,8 +272,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            node.CallbackPass->Execute(scene, node.Handle, command_buffer, this);
-            node.CallbackPass->Render(scene, node.Handle, node.Framebuffer, command_buffer, this);
+            node.CallbackPass->Execute(Device, SceneData, node.Handle, node.Framebuffer, command_buffer);
         }
     }
 
@@ -307,7 +308,7 @@ namespace ZEngine::Rendering::Renderers
                 resource.ResourceInfo.TextureSpec.Height = height;
                 resource.ResourceInfo.TextureHandle      = Device->CreateTexture(resource.ResourceInfo.TextureSpec);
 
-                if ((output.Name == FrameColorRenderTargetName) || (output.Name == FrameDepthRenderTargetName))
+                if ((output.Name == RendererResourceName::FrameColorRenderTargetName) || (output.Name == RendererResourceName::FrameDepthRenderTargetName))
                 {
                     Device->TextureHandleToUpdates.Enqueue(resource.ResourceInfo.TextureHandle);
                 }

@@ -12,6 +12,8 @@ namespace ZEngine::Applications
         Rendering::Renderers::ImGUIRendererPtr   ImguiRenderer = nullptr;
         Hardwares::CommandBufferPtr              CurrentCmdBuf = nullptr;
 
+        ZEngine::Core::Memory::ArenaAllocator    LocalArena    = {};
+
         void                                     Initialize(Hardwares::VulkanDevicePtr device);
         void                                     Shutdown();
 

@@ -51,14 +51,15 @@ namespace Tetragrama
             return -1;
         }
 
-        int                      node_id  = static_cast<int>(Hierarchies.size());
+        int                             node_id  = static_cast<int>(Hierarchies.size());
 
         // Create new node
-        EditorSceneNodeHierarchy new_node = {};
-        new_node.Parent                   = parent;
-        new_node.DepthLevel               = depth;
+        ZEngine::Helpers::NodeHierarchy new_node = {};
+        new_node.Parent                          = parent;
+        new_node.DepthLevel                      = depth;
 
         Hierarchies.push(new_node);
+        HierarchiesNodeRef.push({});
         LocalTransforms.push(glm::mat4(1.0f));
         GlobalTransforms.push(glm::mat4(1.0f));
 
@@ -94,13 +95,13 @@ namespace Tetragrama
             return node_id;
         }
 
-        Hierarchies[node_id].NodeRef = metadata;
+        HierarchiesNodeRef[node_id] = metadata;
 
-        NodeNames[node_id]           = Names.size();
-        auto&   name                 = Names.push_use({});
-        cstring name_val             = "Empty entity";
+        NodeNames[node_id]          = Names.size();
+        auto&   name                = Names.push_use({});
+        cstring name_val            = "Empty entity";
 
-        if (Hierarchies[node_id].NodeRef.IsValid())
+        if (HierarchiesNodeRef[node_id].IsValid())
         {
             if (ZEngine::Helpers::secure_strlen(metadata.Name) > 0)
             {
@@ -310,6 +311,7 @@ namespace Tetragrama
         HashToAssetFile.clear();
 
         Hierarchies.clear();
+        HierarchiesNodeRef.clear();
         Names.clear();
         LocalTransforms.clear();
         GlobalTransforms.clear();
@@ -327,7 +329,8 @@ namespace Tetragrama
         LocalTransforms.push(glm::mat4(1.0f));
         GlobalTransforms.push(glm::mat4(1.0f));
 
-        auto& node      = Hierarchies.push_use(EditorSceneNodeHierarchy{});
+        auto& node = Hierarchies.push_use({});
+        HierarchiesNodeRef.push({});
         node.DepthLevel = 0;
     }
 

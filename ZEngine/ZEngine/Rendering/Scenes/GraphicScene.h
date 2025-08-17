@@ -11,13 +11,14 @@ namespace ZEngine::Rendering::Scenes
 {
     struct SceneData
     {
-        uint32_t                           FrameIndex             = {};
-        Hardwares::StorageBufferSetHandle  TransformBufferHandle  = {};
-        Hardwares::StorageBufferSetHandle  MaterialBufferHandle   = {};
-        Hardwares::StorageBufferSetHandle  VertexBufferHandle     = {};
-        Hardwares::StorageBufferSetHandle  IndexBufferHandle      = {};
-        Hardwares::StorageBufferSetHandle  RenderDataBufferHandle = {};
-        Hardwares::IndirectBufferSetHandle IndirectBufferHandle   = {};
+        Hardwares::UniformBufferSetHandle  SceneCameraBufferHandle = {};
+
+        Hardwares::StorageBufferSetHandle  TransformBufferHandle   = {};
+        Hardwares::StorageBufferSetHandle  MaterialBufferHandle    = {};
+        Hardwares::StorageBufferSetHandle  VertexBufferHandle      = {};
+        Hardwares::StorageBufferSetHandle  IndexBufferHandle       = {};
+        Hardwares::StorageBufferSetHandle  RenderDataBufferHandle  = {};
+        Hardwares::IndirectBufferSetHandle IndirectBufferHandle    = {};
     };
     ZDEFINE_PTR(SceneData);
 

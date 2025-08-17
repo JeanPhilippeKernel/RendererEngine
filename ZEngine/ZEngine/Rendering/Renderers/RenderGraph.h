@@ -16,10 +16,12 @@ namespace ZEngine::Rendering::Renderers
     struct RenderGraphResourceInspector;
     struct RenderGraphNode;
     struct RenderGraph;
+    struct IRenderGraphCallbackPass;
 
     ZDEFINE_PTR(RenderGraphResourceBuilder);
     ZDEFINE_PTR(RenderGraphResourceInspector);
     ZDEFINE_PTR(RenderGraph);
+    ZDEFINE_PTR(IRenderGraphCallbackPass);
 
     enum RenderGraphResourceType
     {
@@ -79,10 +81,9 @@ namespace ZEngine::Rendering::Renderers
 
     struct IRenderGraphCallbackPass
     {
-        virtual void Setup(std::string_view name, RenderGraph* const graph)                                                                                                                                                          = 0;
-        virtual void Compile(RenderPasses::RenderPass** const pass, RenderGraph* const graph)                                                                                                                                        = 0;
-        virtual void Execute(Rendering::Scenes::SceneData* const scene, RenderPasses::RenderPass* const pass, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph)                                              = 0;
-        virtual void Render(Rendering::Scenes::SceneData* const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBuffer* const command_buffer, RenderGraph* const graph) = 0;
+        virtual void Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)                                                                              = 0;
+        virtual void Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) = 0;
+        virtual void Execute(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)       = 0;
     };
 
     struct RenderGraphNode
@@ -92,15 +93,13 @@ namespace ZEngine::Rendering::Renderers
         Core::Containers::Array<cstring> EdgeNodes     = {};
         ZRawPtr(RenderPasses::RenderPass) Handle       = nullptr;
         ZRawPtr(Buffers::FramebufferVNext) Framebuffer = nullptr;
-        ZRawPtr(IRenderGraphCallbackPass) CallbackPass = nullptr;
+        IRenderGraphCallbackPassPtr CallbackPass       = nullptr;
     };
 
     struct RenderGraph
     {
         RenderGraph() {}
         ~RenderGraph() {}
-
-        bool                                                    MarkAsDirty       = false;
 
         Hardwares::VulkanDevicePtr                              Device            = nullptr;
 
@@ -112,11 +111,13 @@ namespace ZEngine::Rendering::Renderers
         RenderGraphResourceInspectorPtr                         ResourceInspector = nullptr;
         RenderPasses::RenderPassBuilder*                        RenderPassBuilder = nullptr;
 
-        void                                                    Initialize(Hardwares::VulkanDevicePtr device);
+        Scenes::SceneDataPtr                                    SceneData         = nullptr;
+
+        void                                                    Initialize(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr data = nullptr);
 
         void                                                    Setup();
         void                                                    Compile();
-        void                                                    Execute(Hardwares::CommandBuffer* const command_buffer, Rendering::Scenes::SceneData* const scene_data);
+        void                                                    Execute(Hardwares::CommandBufferPtr const command_buffer);
         void                                                    Resize(uint32_t width, uint32_t height);
         void                                                    Dispose();
         void                                                    AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const pass_callback, bool enabled = true);
