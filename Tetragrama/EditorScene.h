@@ -4,11 +4,11 @@
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/HashMap.h>
 #include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <ZEngineDef.h>
-#include <glm/glm.hpp>
 #include <uuid.h>
 
 namespace Tetragrama::Serializers
@@ -48,8 +48,8 @@ namespace Tetragrama
         const char*                                                                                 Name                     = "";
         ZEngine::Core::Containers::Array<EditorSceneNodeHierarchy>                                  Hierarchies              = {};
         ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String>                         Names                    = {};
-        ZEngine::Core::Containers::Array<glm::mat4>                                                 LocalTransforms          = {};
-        ZEngine::Core::Containers::Array<glm::mat4>                                                 GlobalTransforms         = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Maths::Mat4f>                               LocalTransforms          = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Maths::Mat4f>                               GlobalTransforms         = {};
         ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>                                      NodeNames                = {};
 
         ZEngine::Core::Containers::Array<float>                                                     Vertices                 = {};

@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <Core/Maths/Matrix.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Lights/Light.h>
 #include <Rendering/Meshes/Mesh.h>
@@ -71,8 +72,8 @@ namespace ZEngine::Rendering::Scenes
         uint32_t                                   SIndexDataSize               = 0;
         uint32_t                                   SMeshCountOffset             = 0;
         std::vector<SceneNodeHierarchy>            NodeHierarchies              = {};
-        std::vector<glm::mat4>                     LocalTransforms              = {};
-        std::vector<glm::mat4>                     GlobalTransforms             = {};
+        std::vector<ZEngine::Core::Maths::Mat4f>   LocalTransforms              = {};
+        std::vector<ZEngine::Core::Maths::Mat4f>   GlobalTransforms             = {};
         std::map<uint32_t, std::set<uint32_t>>     LevelSceneNodeChangedMap     = {};
         /*
          * New Properties
@@ -119,11 +120,11 @@ namespace ZEngine::Rendering::Scenes
         SceneEntity(int node, Helpers::WeakRef<Scenes::SceneRawData> scene) : m_node(node), m_weak_scene(scene) {}
         ~SceneEntity() = default;
 
-        void             SetName(std::string_view name);
-        void             SetTransform(glm::mat4 transform);
-        std::string_view GetName() const;
-        glm::mat4        GetTransform() const;
-        int              GetNode() const;
+        void                        SetName(std::string_view name);
+        void                        SetTransform(ZEngine::Core::Maths::Mat4f transform);
+        std::string_view            GetName() const;
+        ZEngine::Core::Maths::Mat4f GetTransform() const;
+        int                         GetNode() const;
 
         template <typename TComponent>
         bool HasComponent() const
@@ -208,8 +209,8 @@ namespace ZEngine::Rendering::Scenes
         int                            GetSceneNodeFirstChild(int node_identifier);
         std::vector<int>               GetSceneNodeSiblingCollection(int node_identifier);
         std::string_view               GetSceneNodeName(int node_identifier);
-        glm::mat4&                     GetSceneNodeLocalTransform(int node_identifier);
-        glm::mat4&                     GetSceneNodeGlobalTransform(int node_identifier);
+        ZEngine::Core::Maths::Mat4f&   GetSceneNodeLocalTransform(int node_identifier);
+        ZEngine::Core::Maths::Mat4f&   GetSceneNodeGlobalTransform(int node_identifier);
         const SceneNodeHierarchy&      GetSceneNodeHierarchy(int node_identifier);
         SceneEntity                    GetSceneNodeEntityWrapper(int node_identifier);
         std::future<void>              SetSceneNodeNameAsync(int node_identifier, std::string_view node_name);

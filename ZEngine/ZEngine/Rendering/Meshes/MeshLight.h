@@ -1,5 +1,4 @@
 #pragma once
-#include <Maths/Math.h>
 #include <Rendering/Lights/Light.h>
 #include <Rendering/Meshes/Mesh.h>
 

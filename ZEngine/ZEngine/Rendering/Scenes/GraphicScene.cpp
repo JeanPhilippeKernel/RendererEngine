@@ -11,6 +11,7 @@
 
 using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::Maths;
 
 namespace ZEngine::Rendering::Scenes
 {
@@ -34,8 +35,8 @@ namespace ZEngine::Rendering::Scenes
         int node_id = (int) NodeHierarchies.size();
 
         NodeHierarchies.push_back({.Parent = parent});
-        LocalTransforms.emplace_back(1.0f);
-        GlobalTransforms.emplace_back(1.0f);
+        LocalTransforms.emplace_back(Identity<Mat4f>());
+        GlobalTransforms.emplace_back(Identity<Mat4f>());
 
         if (parent > -1)
         {
@@ -109,7 +110,7 @@ namespace ZEngine::Rendering::Scenes
         return name;
     }
 
-    void SceneEntity::SetTransform(glm::mat4 transform)
+    void SceneEntity::SetTransform(Mat4f transform)
     {
         if (auto scene = m_weak_scene.lock())
         {
@@ -121,9 +122,9 @@ namespace ZEngine::Rendering::Scenes
         }
     }
 
-    glm::mat4 SceneEntity::GetTransform() const
+    Mat4f SceneEntity::GetTransform() const
     {
-        glm::mat4 transform = {};
+        Mat4f transform = {};
         if (auto scene = m_weak_scene.lock())
         {
             if (m_node > 0)
@@ -149,8 +150,8 @@ namespace ZEngine::Rendering::Scenes
         SceneData->NodeNames[0]    = 0;
 
         SceneData->Names.emplace_back(root_node);
-        SceneData->GlobalTransforms.emplace_back(1.0f);
-        SceneData->LocalTransforms.emplace_back(1.0f);
+        SceneData->GlobalTransforms.emplace_back(Identity<Mat4f>());
+        SceneData->LocalTransforms.emplace_back(Identity<Mat4f>());
         SceneData->NodeHierarchies.push_back({.Parent = -1, .FirstChild = -1, .DepthLevel = 0});
 
         SceneData->Vertices      = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -269,7 +270,7 @@ namespace ZEngine::Rendering::Scenes
 
         for (unsigned i = 0; i < device->SwapchainImageCount; ++i)
         {
-            // transform_buf->SetData<glm::mat4>(i, SceneData->GlobalTransforms);
+            // transform_buf->SetData<Mat4f>(i, SceneData->GlobalTransforms);
             // vert_buf->SetData<float>(i, SceneData->Vertices);
             // ind_buf->SetData<uint32_t>(i, SceneData->Indices);
             // material_buf->SetData<Meshes::MeshMaterial>(i, SceneData->Materials);
@@ -567,14 +568,14 @@ namespace ZEngine::Rendering::Scenes
         return SceneData->NodeNames.contains(node_identifier) ? SceneData->Names[SceneData->NodeNames[node_identifier]] : std::string_view();
     }
 
-    glm::mat4& GraphicScene::GetSceneNodeLocalTransform(int node_identifier)
+    Mat4f& GraphicScene::GetSceneNodeLocalTransform(int node_identifier)
     {
         std::lock_guard lock(m_mutex);
         ZENGINE_VALIDATE_ASSERT((node_identifier > INVALID_NODE_ID) && (node_identifier < SceneData->LocalTransforms.size()), "node identifier is invalid")
         return SceneData->LocalTransforms[node_identifier];
     }
 
-    glm::mat4& GraphicScene::GetSceneNodeGlobalTransform(int node_identifier)
+    Mat4f& GraphicScene::GetSceneNodeGlobalTransform(int node_identifier)
     {
         std::lock_guard lock(m_mutex);
         ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < SceneData->GlobalTransforms.size(), "node identifier is invalid")

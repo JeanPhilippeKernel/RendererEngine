@@ -23,6 +23,7 @@ using namespace ZEngine::Rendering::Specifications;
 using namespace ZEngine::Rendering::Renderers::Contracts;
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;
+using namespace ZEngine::Core::Maths;
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -123,7 +124,7 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::Camera* const camera)
     {
-        auto ubo_camera_data = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = glm::vec4(camera->GetPosition(), 1.0f)};
+        auto ubo_camera_data = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = Vec4f(camera->GetPosition(), 1.0f)};
 
         auto buffer_set      = Device->UniformBufferSetManager.Access(SceneCameraBufferHandle);
         auto camera_buf      = buffer_set->At(Device->CurrentFrameIndex);

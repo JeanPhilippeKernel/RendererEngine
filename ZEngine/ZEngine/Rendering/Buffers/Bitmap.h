@@ -1,8 +1,8 @@
 #pragma once
+#include <Core/Maths/MathUtils.h>
+#include <Core/Maths/Matrix.h>
 #include <Helpers/MemoryOperations.h>
 #include <ZEngineDef.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/constants.hpp>
 #include <cmath>
 #include <vector>
 
@@ -29,9 +29,9 @@ namespace ZEngine::Rendering::Buffers
          * The A and B values are normalized coordinates in the range [-1, 1], calculated from pixel coordinates (i, j)
          * and the face size.
          *
-         * Reference: "Real-Time Rendering, Fourth Edition" by Tomas Akenine-Möller, Eric Haines, Naty Hoffman
+         * Reference: "Real-Time Rendering, Fourth Edition" by Tomas Akenine-Mï¿½ller, Eric Haines, Naty Hoffman
          */
-        static glm::vec3 FaceCoordToXYZ(int i, int j, int face_id, int face_size)
+        static ZEngine::Core::Maths::Vec3f FaceCoordToXYZ(int i, int j, int face_id, int face_size)
         {
             const float A = 2.0f * float(i) / face_size;
             const float B = 2.0f * float(j) / face_size;
@@ -41,21 +41,21 @@ namespace ZEngine::Rendering::Buffers
              * The y and z coordinates are set based on the normalized pixel coordinates.
              */
             if (face_id == 0)
-                return glm::vec3(-1.0f, A - 1.0f, B - 1.0f);
+                return ZEngine::Core::Maths::Vec3f(-1.0f, A - 1.0f, B - 1.0f);
 
             /*
              * The left face is mapped to the positive x-axis, so the x-coordinate is set to A - 1.0f.
              * The y-coordinate is set to -1.0f, and the z-coordinate is set based on the normalized pixel coordinates.
              */
             if (face_id == 1)
-                return glm::vec3(A - 1.0f, -1.0f, 1.0f - B);
+                return ZEngine::Core::Maths::Vec3f(A - 1.0f, -1.0f, 1.0f - B);
 
             /*
              * The top face is mapped to the positive y-axis, so the y-coordinate is set to A - 1.0f.
              * The x-coordinate is set to 1.0f, and the z-coordinate is set based on the normalized pixel coordinates.
              */
             if (face_id == 2)
-                return glm::vec3(1.0f, A - 1.0f, 1.0f - B);
+                return ZEngine::Core::Maths::Vec3f(1.0f, A - 1.0f, 1.0f - B);
 
             /*
              * The bottom face is mapped to the negative y-axis, so the y-coordinate is set to 1.0f.
@@ -63,23 +63,23 @@ namespace ZEngine::Rendering::Buffers
              * coordinates
              */
             if (face_id == 3)
-                return glm::vec3(1.0f - A, 1.0f, 1.0f - B);
+                return ZEngine::Core::Maths::Vec3f(1.0f - A, 1.0f, 1.0f - B);
 
             /*
              * The front face is mapped to the positive z-axis, so the z-coordinate is set to 1.0f.
              *The x and y coordinates are set based on the normalized pixel coordinates.
              */
             if (face_id == 4)
-                return glm::vec3(B - 1.0f, A - 1.0f, 1.0f);
+                return ZEngine::Core::Maths::Vec3f(B - 1.0f, A - 1.0f, 1.0f);
 
             /*
              * The back face is mapped to the negative z-axis, so the z-coordinate is set to -1.0f.
              * The x and y coordinates are set based on the normalized pixel coordinates.
              */
             if (face_id == 5)
-                return glm::vec3(1.0f - B, A - 1.0f, -1.0f);
+                return ZEngine::Core::Maths::Vec3f(1.0f - B, A - 1.0f, -1.0f);
 
-            return glm::vec3{};
+            return ZEngine::Core::Maths::Vec3f{};
         }
     };
 
@@ -97,7 +97,7 @@ namespace ZEngine::Rendering::Buffers
         }
         ~Bitmap() = default;
 
-        void SetPixel(int x, int y, const glm::vec4& pixel)
+        void SetPixel(int x, int y, const ZEngine::Core::Maths::Vec4f& pixel)
         {
             if (Format == BitmapFormat::UNSIGNED_BYTE)
             {
@@ -126,21 +126,21 @@ namespace ZEngine::Rendering::Buffers
             }
         }
 
-        glm::vec4 GetPixel(int x, int y) const
+        ZEngine::Core::Maths::Vec4f GetPixel(int x, int y) const
         {
             if (Format == BitmapFormat::UNSIGNED_BYTE)
             {
                 const int ofs = Channel * (y * Width + x);
-                return glm::vec4(Channel > 0 ? float(Buffer[ofs + 0]) / 255.0f : 0.0f, Channel > 1 ? float(Buffer[ofs + 1]) / 255.0f : 0.0f, Channel > 2 ? float(Buffer[ofs + 2]) / 255.0f : 0.0f, Channel > 3 ? float(Buffer[ofs + 3]) / 255.0f : 0.0f);
+                return ZEngine::Core::Maths::Vec4f(Channel > 0 ? float(Buffer[ofs + 0]) / 255.0f : 0.0f, Channel > 1 ? float(Buffer[ofs + 1]) / 255.0f : 0.0f, Channel > 2 ? float(Buffer[ofs + 2]) / 255.0f : 0.0f, Channel > 3 ? float(Buffer[ofs + 3]) / 255.0f : 0.0f);
             }
             else if (Format == BitmapFormat::FLOAT)
             {
                 const int    ofs  = Channel * (y * Width + x);
                 const float* data = reinterpret_cast<const float*>(Buffer.data());
-                return glm::vec4(Channel > 0 ? data[ofs + 0] : 0.0f, Channel > 1 ? data[ofs + 1] : 0.0f, Channel > 2 ? data[ofs + 2] : 0.0f, Channel > 3 ? data[ofs + 3] : 0.0f);
+                return ZEngine::Core::Maths::Vec4f(Channel > 0 ? data[ofs + 0] : 0.0f, Channel > 1 ? data[ofs + 1] : 0.0f, Channel > 2 ? data[ofs + 2] : 0.0f, Channel > 3 ? data[ofs + 3] : 0.0f);
             }
 
-            return glm::vec4();
+            return ZEngine::Core::Maths::Vec4f();
         }
 
         inline static int BytePerChannel(BitmapFormat format)
@@ -164,20 +164,20 @@ namespace ZEngine::Rendering::Buffers
                 return Bitmap();
             }
 
-            const int        face_size      = input_map.Width / 4;
+            const int                         face_size      = input_map.Width / 4;
 
-            const int        width          = face_size * 3;
-            const int        height         = face_size * 4;
+            const int                         width          = face_size * 3;
+            const int                         height         = face_size * 4;
 
-            Bitmap           vertical_cross = Bitmap(width, height, input_map.Channel, input_map.Format);
+            Bitmap                            vertical_cross = Bitmap(width, height, input_map.Channel, input_map.Format);
 
-            const glm::ivec2 face_offsets[] = {
-                glm::ivec2{    face_size, face_size * 3},
-                glm::ivec2{            0,     face_size},
-                glm::ivec2{    face_size,     face_size},
-                glm::ivec2{face_size * 2,     face_size},
-                glm::ivec2{    face_size,             0},
-                glm::ivec2{    face_size, face_size * 2}
+            const ZEngine::Core::Maths::IVec2 face_offsets[] = {
+                ZEngine::Core::Maths::IVec2{    face_size, face_size * 3},
+                ZEngine::Core::Maths::IVec2{            0,     face_size},
+                ZEngine::Core::Maths::IVec2{    face_size,     face_size},
+                ZEngine::Core::Maths::IVec2{face_size * 2,     face_size},
+                ZEngine::Core::Maths::IVec2{    face_size,             0},
+                ZEngine::Core::Maths::IVec2{    face_size, face_size * 2}
             };
 
             const int clamped_width  = input_map.Width - 1;
@@ -189,28 +189,28 @@ namespace ZEngine::Rendering::Buffers
                 {
                     for (int j = 0; j < face_size; ++j)
                     {
-                        const glm::vec3 P     = BitmapPixel::FaceCoordToXYZ(i, j, face, face_size);
-                        const float     R     = hypot(P.x, P.y);
-                        const float     theta = atan2(P.y, P.x);
-                        const float     phi   = atan2(P.z, R);
+                        const ZEngine::Core::Maths::Vec3f P     = BitmapPixel::FaceCoordToXYZ(i, j, face, face_size);
+                        const float                       R     = hypot(P.x, P.y);
+                        const float                       theta = atan2(P.y, P.x);
+                        const float                       phi   = atan2(P.z, R);
 
-                        const float     Uf    = float(2.0f * face_size * (theta + glm::pi<float>()) / glm::pi<float>());
-                        const float     Vf    = float(2.0f * face_size * (glm::pi<float>() / 2.0f - phi) / glm::pi<float>());
+                        const float                       Uf    = float(2.0f * face_size * (theta + ZEngine::Core::Maths::PI<float>) / ZEngine::Core::Maths::PI<float>);
+                        const float                       Vf    = float(2.0f * face_size * (ZEngine::Core::Maths::PI<float> / 2.0f - phi) / ZEngine::Core::Maths::PI<float>);
 
-                        const int       U1    = glm::clamp(int(floor(Uf)), 0, clamped_width);
-                        const int       V1    = glm::clamp(int(floor(Vf)), 0, clamped_height);
-                        const int       U2    = glm::clamp(U1 + 1, 0, clamped_width);
-                        const int       V2    = glm::clamp(V1 + 1, 0, clamped_height);
+                        const int                         U1    = ZEngine::Core::Maths::clamp(int(floor(Uf)), 0, clamped_width);
+                        const int                         V1    = ZEngine::Core::Maths::clamp(int(floor(Vf)), 0, clamped_height);
+                        const int                         U2    = ZEngine::Core::Maths::clamp(U1 + 1, 0, clamped_width);
+                        const int                         V2    = ZEngine::Core::Maths::clamp(V1 + 1, 0, clamped_height);
 
-                        const float     s     = Uf - U1;
-                        const float     t     = Vf - V1;
+                        const float                       s     = Uf - U1;
+                        const float                       t     = Vf - V1;
 
-                        const glm::vec4 A     = input_map.GetPixel(U1, V1);
-                        const glm::vec4 B     = input_map.GetPixel(U2, V1);
-                        const glm::vec4 C     = input_map.GetPixel(U1, V2);
-                        const glm::vec4 D     = input_map.GetPixel(U2, V2);
+                        const ZEngine::Core::Maths::Vec4f A     = input_map.GetPixel(U1, V1);
+                        const ZEngine::Core::Maths::Vec4f B     = input_map.GetPixel(U2, V1);
+                        const ZEngine::Core::Maths::Vec4f C     = input_map.GetPixel(U1, V2);
+                        const ZEngine::Core::Maths::Vec4f D     = input_map.GetPixel(U2, V2);
 
-                        const glm::vec4 color = A * (1 - s) * (1 - t) + B * (s) * (1 - t) + C * (1 - s) * t + D * (s) * (t);
+                        const ZEngine::Core::Maths::Vec4f color = A * (1 - s) * (1 - t) + B * (s) * (1 - t) + C * (1 - s) * t + D * (s) * (t);
                         vertical_cross.SetPixel(i + face_offsets[face].x, j + face_offsets[face].y, color);
                     }
                 }

@@ -17,9 +17,9 @@ static bool     approximatelyEqual(float a, float b, float epsilon)
 TEST(BitmapTest, GetOrSetPixel)
 {
 
-    glm::vec4 p(0.5, 0.5, 0.8, 0.0);
+    ZEngine::Core::Maths::Vec4f p(0.5, 0.5, 0.8, 0.0);
 
-    Bitmap    bitmap(100, 100, 3, BitmapFormat::UNSIGNED_BYTE);
+    Bitmap                      bitmap(100, 100, 3, BitmapFormat::UNSIGNED_BYTE);
     bitmap.SetPixel(0, 0, p);
 
     auto pp = bitmap.GetPixel(0, 0);

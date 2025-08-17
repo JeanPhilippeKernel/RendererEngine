@@ -4,7 +4,7 @@
 namespace Tetragrama::Helpers
 {
 
-    void DrawVec4Control(std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback, float default_value, float column_width)
+    void DrawVec4Control(std::string_view label, ZEngine::Core::Maths::Vec4f& values, const std::function<void(ZEngine::Core::Maths::Vec4f&)>& callback, float default_value, float column_width)
     {
         ImGuiIO& io                = ImGui::GetIO();
         auto     default_bold_font = io.Fonts->Fonts[0];
@@ -131,7 +131,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawVec3Control(std::string_view label, ZEngine::Maths::Vector3& values, const std::function<void(ZEngine::Maths::Vector3&)>& callback, float default_value, float column_width)
+    void DrawVec3Control(std::string_view label, ZEngine::Core::Maths::Vec3f& values, const std::function<void(ZEngine::Core::Maths::Vec3f&)>& callback, float default_value, float column_width)
     {
         ImGuiIO& io                = ImGui::GetIO();
         auto     default_bold_font = io.Fonts->Fonts[0];
@@ -234,7 +234,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawVec2Control(std::string_view label, ZEngine::Maths::Vector2& values, const std::function<void(ZEngine::Maths::Vector2&)>& callback, float default_value, float column_width)
+    void DrawVec2Control(std::string_view label, ZEngine::Core::Maths::Vec2f& values, const std::function<void(ZEngine::Core::Maths::Vec2f&)>& callback, float default_value, float column_width)
     {
         ImGuiIO& io                = ImGui::GetIO();
         auto     default_bold_font = io.Fonts->Fonts[0];
@@ -396,7 +396,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawColorEdit4Control(std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback, float default_value, float column_width)
+    void DrawColorEdit4Control(std::string_view label, ZEngine::Core::Maths::Vec4f& values, const std::function<void(ZEngine::Core::Maths::Vec4f&)>& callback, float default_value, float column_width)
     {
         ImGui::PushID(label.data(), (label.data() + label.size()));
 
@@ -409,7 +409,7 @@ namespace Tetragrama::Helpers
         ImGui::PushMultiItemsWidths(1, ImGui::CalcItemWidth() + 60.f);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.5f, 0});
 
-        if (ImGui::ColorEdit4("##TintColor", ZEngine::Maths::value_ptr(values)))
+        if (ImGui::ColorEdit4("##TintColor", ZEngine::Core::Maths::value_ptr(values)))
         {
             if (callback)
             {
@@ -423,7 +423,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawColorEdit3Control(std::string_view label, ZEngine::Maths::Vector3& values, const std::function<void(ZEngine::Maths::Vector3&)>& callback, float default_value, float column_width)
+    void DrawColorEdit3Control(std::string_view label, ZEngine::Core::Maths::Vec3f& values, const std::function<void(ZEngine::Core::Maths::Vec3f&)>& callback, float default_value, float column_width)
     {
         ImGui::PushID(label.data(), (label.data() + label.size()));
 
@@ -436,7 +436,7 @@ namespace Tetragrama::Helpers
         ImGui::PushMultiItemsWidths(1, ImGui::CalcItemWidth() + 60.f);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.5f, 0});
 
-        if (ImGui::ColorEdit3("##TintColor", ZEngine::Maths::value_ptr(values)))
+        if (ImGui::ColorEdit3("##TintColor", ZEngine::Core::Maths::value_ptr(values)))
         {
             if (callback)
             {
@@ -450,7 +450,7 @@ namespace Tetragrama::Helpers
         ImGui::PopID();
     }
 
-    void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Maths::Vector4& tint_color, bool enable_zoom, const std::function<void(void)>& image_click_callback, const std::function<void(ZEngine::Maths::Vector4&)>& tint_color_change_callback, float column_width)
+    void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Core::Maths::Vec4f& tint_color, bool enable_zoom, const std::function<void(void)>& image_click_callback, const std::function<void(ZEngine::Core::Maths::Vec4f&)>& tint_color_change_callback, float column_width)
     {
         ImGui::PushID(label.data(), (label.data() + label.size()));
         ImGui::Columns(2);
@@ -485,7 +485,7 @@ namespace Tetragrama::Helpers
 
         ImGui::SameLine();
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(1, 4));
-        if (ImGui::ColorEdit4("##TintColor", ZEngine::Maths::value_ptr(tint_color)))
+        if (ImGui::ColorEdit4("##TintColor", ZEngine::Core::Maths::value_ptr(tint_color)))
         {
             if (tint_color_change_callback)
             {

@@ -23,9 +23,9 @@ using namespace ZEngine::Core;
 namespace YAML
 {
     template <>
-    struct convert<glm::vec3>
+    struct convert<Maths::Vec3f>
     {
-        static Node encode(const glm::vec3& value)
+        static Node encode(const Maths::Vec3f& value)
         {
             Node node;
             node.push_back(value.x);
@@ -33,7 +33,7 @@ namespace YAML
             node.push_back(value.z);
         }
 
-        static bool decode(const Node& node, glm::vec3& value)
+        static bool decode(const Node& node, Maths::Vec3f& value)
         {
             if (!node.IsSequence() || node.size() != 3)
             {
@@ -48,9 +48,9 @@ namespace YAML
     };
 
     template <>
-    struct convert<glm::vec4>
+    struct convert<Maths::Vec4f>
     {
-        static Node encode(const glm::vec4& value)
+        static Node encode(const Maths::Vec4f& value)
         {
             Node node;
             node.push_back(value.x);
@@ -59,7 +59,7 @@ namespace YAML
             node.push_back(value.w);
         }
 
-        static bool decode(const Node& node, glm::vec4& value)
+        static bool decode(const Node& node, Maths::Vec4f& value)
         {
             if (!node.IsSequence() || node.size() != 4)
             {

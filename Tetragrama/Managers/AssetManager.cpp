@@ -245,8 +245,8 @@ namespace Tetragrama::Managers
                 h.NodeMaterials.init(&(s_Instance->Arena), hierarchies.NodeMaterials.size() > 32 ? hierarchies.NodeMaterials.size() * 2 : 64);
 
                 ZEngine::Helpers::secure_memcpy(h.Hierarchies.data(), h.Hierarchies.size() * sizeof(AssetNodeHierarchy), hierarchies.Hierarchies.data(), hierarchies.Hierarchies.size() * sizeof(AssetNodeHierarchy));
-                ZEngine::Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(glm::mat4), hierarchies.LocalTransforms.data(), hierarchies.LocalTransforms.size() * sizeof(glm::mat4));
-                ZEngine::Helpers::secure_memcpy(h.GlobalTransforms.data(), h.GlobalTransforms.size() * sizeof(glm::mat4), hierarchies.GlobalTransforms.data(), hierarchies.GlobalTransforms.size() * sizeof(glm::mat4));
+                ZEngine::Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(ZEngine::Core::Maths::Mat4f), hierarchies.LocalTransforms.data(), hierarchies.LocalTransforms.size() * sizeof(ZEngine::Core::Maths::Mat4f));
+                ZEngine::Helpers::secure_memcpy(h.GlobalTransforms.data(), h.GlobalTransforms.size() * sizeof(ZEngine::Core::Maths::Mat4f), hierarchies.GlobalTransforms.data(), hierarchies.GlobalTransforms.size() * sizeof(ZEngine::Core::Maths::Mat4f));
 
                 for (auto& name : hierarchies.Names)
                 {

@@ -3,7 +3,6 @@
 set(EXTERNAL_INCLUDE_DIRS
 	${EXTERNAL_DIR}/Vulkan-Headers/build/install/include
 	${EXTERNAL_DIR}/fmt/include
-	${EXTERNAL_DIR}/glm/glm
 	${EXTERNAL_DIR}/imgui/src
 	${EXTERNAL_DIR}/tlsf/src
 	${EXTERNAL_DIR}/rapidhash/src
@@ -43,7 +42,6 @@ target_link_libraries(imported::External_editorLibs INTERFACE
 target_link_libraries(imported::External_libs INTERFACE
 	vulkan
 	fmt
-	glm
 	imgui
 	spdlog
 	glfw

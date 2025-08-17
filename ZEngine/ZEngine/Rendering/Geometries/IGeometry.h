@@ -1,6 +1,6 @@
 #pragma once
+#include <Core/Maths/Matrix.h>
 #include <Helpers/IntrusivePtr.h>
-#include <Maths/Math.h>
 #include <Rendering/Geometries/GeometryEnum.h>
 #include <Rendering/Renderers/Storages/GraphicVertex.h>
 #include <algorithm>
@@ -23,12 +23,12 @@ namespace ZEngine::Rendering::Geometries
             m_vertices = std::move(vertices);
         }
 
-        virtual const Maths::Matrix4& GetTransform() const
+        virtual const ZEngine::Core::Maths::Mat4f& GetTransform() const
         {
             return m_transform;
         }
 
-        virtual void SetTransform(const Maths::Matrix4& transform)
+        virtual void SetTransform(const ZEngine::Core::Maths::Mat4f& transform)
         {
             m_transform = transform;
         }
@@ -44,7 +44,7 @@ namespace ZEngine::Rendering::Geometries
         }
 
     protected:
-        Maths::Matrix4                                  m_transform{Maths::Matrix4(1.0f)};
+        ZEngine::Core::Maths::Mat4f                     m_transform{ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>()};
         std::vector<Renderers::Storages::GraphicVertex> m_vertices{};
         GeometryType                                    m_geometry_type{GeometryType::CUSTOM};
     };

@@ -7,6 +7,7 @@ using namespace uuids;
 using namespace ZEngine::Helpers;
 using namespace Tetragrama::Helpers;
 using namespace ZEngine::Core::Containers;
+using namespace ZEngine::Core::Maths;
 
 namespace Tetragrama::Importers
 {
@@ -20,8 +21,8 @@ namespace Tetragrama::Importers
         int node_id = (int) hierarchy.Hierarchies.size();
 
         hierarchy.Hierarchies.push({.Parent = parent});
-        hierarchy.LocalTransforms.push(glm::mat4(1.0f));
-        hierarchy.GlobalTransforms.push(glm::mat4(1.0f));
+        hierarchy.LocalTransforms.push(Identity<Mat4f>());
+        hierarchy.GlobalTransforms.push(Identity<Mat4f>());
 
         if (parent > -1)
         {

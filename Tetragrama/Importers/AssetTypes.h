@@ -3,8 +3,8 @@
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/HashMap.h>
 #include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
-#include <glm/glm.hpp>
 #include <uuid.h>
 
 namespace Tetragrama::Importers
@@ -68,8 +68,8 @@ namespace Tetragrama::Importers
         uuids::uuid                                                         NodeHierarchyUUID = {};
         uuids::uuid                                                         MeshUUID          = {};
         ZEngine::Core::Containers::Array<Helpers::NodeHierarchy>            Hierarchies       = {};
-        ZEngine::Core::Containers::Array<glm::mat4>                         LocalTransforms   = {};
-        ZEngine::Core::Containers::Array<glm::mat4>                         GlobalTransforms  = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Maths::Mat4f>       LocalTransforms   = {};
+        ZEngine::Core::Containers::Array<ZEngine::Core::Maths::Mat4f>       GlobalTransforms  = {};
         ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> Names             = {};
         ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String> MaterialNames     = {};
         ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>              NodeNames         = {};

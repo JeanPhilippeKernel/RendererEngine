@@ -1,5 +1,5 @@
 #pragma once
-#include <Maths/Math.h>
+#include <Core/Maths/Vec.h>
 #include <Rendering/Entities/GraphicSceneEntity.h>
 #include <Serializers/GraphicSceneSerializer.h>
 #include <ZEngineDef.h>
@@ -8,21 +8,21 @@
 namespace ZEngine::Serializers
 {
 
-    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Maths::Vector4& v)
+    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Core::Maths::Vec4f& v)
     {
         emitter << YAML::Flow;
         emitter << YAML::BeginSeq << v.x << v.y << v.z << v.w << YAML::EndSeq;
         return emitter;
     }
 
-    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Maths::Vector3& v)
+    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Core::Maths::Vec3f& v)
     {
         emitter << YAML::Flow;
         emitter << YAML::BeginSeq << v.x << v.y << v.z << YAML::EndSeq;
         return emitter;
     }
 
-    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Maths::Vector2& v)
+    inline YAML::Emitter& operator<<(YAML::Emitter& emitter, const ZEngine::Core::Maths::Vec2f& v)
     {
         emitter << YAML::Flow;
         emitter << YAML::BeginSeq << v.x << v.y << YAML::EndSeq;
