@@ -63,6 +63,8 @@ namespace ZEngine::Managers
         AssetHandle                                                                GetMeshNodeHierarchyHandle(const uuids::uuid& id);
         AssetHandle                                                                GetMaterialHandleFromUUID(const uuids::uuid& material_uuid);
 
+        Importers::AssetTexture*                                                   LoadTextureFileAsAsset(cstring file, bool absolute);
+
         static AssetManager*                                                       Instance();
 
         static AssetHandle                                                         CreateHandle(uint32_t, AssetType);

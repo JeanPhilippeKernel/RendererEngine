@@ -1,6 +1,7 @@
 #pragma once
 #include <UIComponent.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Importers/AssetTypes.h>
 
 namespace Tetragrama::Components
 {
@@ -57,16 +58,15 @@ namespace Tetragrama::Components
         void         MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base, char* output);
 
     private:
-        ZEngine::Core::Memory::ArenaAllocator       m_local_arena = {};
-        std::filesystem::path                       m_assets_directory;
-        std::filesystem::path                       m_current_directory;
-        PopupType                                   m_active_popup = PopupType::None;
-        std::filesystem::path                       m_popup_target_path;
+        ZEngine::Core::Memory::ArenaAllocator m_local_arena = {};
+        std::filesystem::path                 m_assets_directory;
+        std::filesystem::path                 m_current_directory;
+        PopupType                             m_active_popup = PopupType::None;
+        std::filesystem::path                 m_popup_target_path;
 
-        ZEngine::Rendering::Textures::TextureHandle m_directory_icon;
-        ZEngine::Rendering::Textures::TextureHandle m_file_icon;
-        bool                                        m_textures_loaded                    = false;
-        static constexpr float                      m_thumbnail_size                     = 64.0f;
-        char                                        m_search_buffer[MAX_FILE_PATH_COUNT] = "";
+        ZEngine::Importers::AssetTexture*     m_directory_icon;
+        ZEngine::Importers::AssetTexture*     m_file_icon;
+        static constexpr float                m_thumbnail_size                     = 64.0f;
+        char                                  m_search_buffer[MAX_FILE_PATH_COUNT] = "";
     };
 } // namespace Tetragrama::Components

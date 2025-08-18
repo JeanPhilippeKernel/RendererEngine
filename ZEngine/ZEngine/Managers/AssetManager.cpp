@@ -4,7 +4,6 @@
 #include <Helpers/ThreadPool.h>
 #include <Importers/IAssetImporter.h>
 #include <Rendering/Meshes/Mesh.h>
-#include <Rendering/Renderers/GraphicRenderer.h>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Importers;
@@ -176,6 +175,33 @@ namespace ZEngine::Managers
             handle = UUIDToHandle.at(material_uuid);
         }
         return handle;
+    }
+
+    Importers::AssetTexture* AssetManager::LoadTextureFileAsAsset(cstring file, bool absolute)
+    {
+        if (!Helpers::secure_strlen(file))
+        {
+            return nullptr;
+        }
+
+        auto                         asset_id = (uint32_t) Textures.size();
+
+        auto&                        new_tex  = Textures.push_use({});
+
+        std::random_device           rd;
+        std::mt19937                 generator(rd());
+        uuids::uuid_random_generator gen(&generator);
+        new_tex.TextureUUID          = gen();
+
+        const auto tex_absolute_path = absolute ? std::string(file) : fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, file);
+        new_tex.Handle               = s_Instance->Device->AsyncResLoader->LoadTextureFile(tex_absolute_path.c_str());
+        new_tex.Path.init(&(s_Instance->Arena), file);
+
+        RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, asset_id);
+
+        UUIDToTextureHandle.insert(new_tex.TextureUUID, new_tex.Handle);
+
+        return &new_tex;
     }
 
     void AssetManager::__Run()
