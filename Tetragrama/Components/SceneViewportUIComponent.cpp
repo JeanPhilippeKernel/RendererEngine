@@ -98,7 +98,7 @@ namespace Tetragrama::Components
         // Scene texture representation
         if (!m_scene_texture || m_refresh_texture_handle)
         {
-            m_scene_texture          = renderer->GetFrameOutput();
+            m_scene_texture          = app->RenderPipeline->SceneRenderer->GetFrameOutput();
             m_refresh_texture_handle = false;
         }
 

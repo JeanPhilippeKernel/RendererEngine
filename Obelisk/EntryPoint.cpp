@@ -41,7 +41,8 @@ int applicationEntryPoint(int argc, char* argv[])
 
     if (launch_editor)
     {
-        app = ZPushStruct(arena, Tetragrama::Editor);    
+        app = ZPushStructCtor(arena, Tetragrama::Editor);    
+        app->EnableRenderOverlay = true;
     }
 
     app->ConfigFile = config_file.c_str();

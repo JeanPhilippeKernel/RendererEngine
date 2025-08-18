@@ -22,6 +22,7 @@ namespace Tetragrama
         HashToAssetFile.init(&LocalArena, 500);
 
         Hierarchies.init(&LocalArena, 1000);
+        HierarchiesNodeRef.init(&LocalArena, 1000);
         Names.init(&LocalArena, 1000);
         LocalTransforms.init(&LocalArena, 1000);
         GlobalTransforms.init(&LocalArena, 1000);

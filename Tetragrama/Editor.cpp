@@ -57,17 +57,23 @@ namespace Tetragrama
 
     void Editor::OnUpdate(float dt)
     {
+        CHECK_AND_ESCAPE_NULL(UILayer)
+              
         UILayer->Update(dt);
     }
 
     void Editor::OnEvent(Core::CoreEvent& e)
     {
+        CHECK_AND_ESCAPE_NULL(UILayer)
+
         UILayer->OnEvent(e);
     }
 
     void Editor::OnPreRender() {}
 
-    void Editor::OnPostRender() {}
+    void Editor::OnPostRender()
+    {
+    }
 
     void Editor::OnRenderUI()
     {

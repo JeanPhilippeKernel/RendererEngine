@@ -18,7 +18,8 @@ namespace ZEngine::Rendering::Renderers
     {
         Device              = device;
         RenderGraph         = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
-        auto current_window = Device->CurrentWindow->GetNativeWindow();
+
+        RenderGraph->Initialize(Device);
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -50,6 +51,8 @@ namespace ZEngine::Rendering::Renderers
         style.FrameRounding     = 7.0f;
 
         io.FontDefault          = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f);
+
+        auto current_window = Device->CurrentWindow->GetNativeWindow();
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window), false);
 

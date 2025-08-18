@@ -20,8 +20,8 @@ namespace ZEngine
         g_engine_ctx->Device = ZPushStructCtor(arena, Hardwares::VulkanDevice);
         auto window          = ZPushStructCtor(arena, Windows::GameWindow);
 
-        window->Initialize(arena, *window_cfg_ptr);
         window->SetCallbackFunction(std::bind(&Applications::GameApplication::ProcessEvent, app, std::placeholders::_1));
+        window->Initialize(arena, *window_cfg_ptr);
         g_engine_ctx->Window = window;
 
         g_appRenderPipeline  = ZPushStruct(arena, Applications::AppRenderPipeline);
