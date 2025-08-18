@@ -16,8 +16,8 @@ namespace ZEngine::Rendering::Renderers
 {
     void ImGUIRenderer::Initialize(Hardwares::VulkanDevicePtr device)
     {
-        Device              = device;
-        RenderGraph         = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
+        Device      = device;
+        RenderGraph = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
 
         RenderGraph->Initialize(Device);
 
@@ -52,7 +52,7 @@ namespace ZEngine::Rendering::Renderers
 
         io.FontDefault          = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f);
 
-        auto current_window = Device->CurrentWindow->GetNativeWindow();
+        auto current_window     = Device->CurrentWindow->GetNativeWindow();
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window), false);
 

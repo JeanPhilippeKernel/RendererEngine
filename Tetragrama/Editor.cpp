@@ -58,7 +58,7 @@ namespace Tetragrama
     void Editor::OnUpdate(float dt)
     {
         CHECK_AND_ESCAPE_NULL(UILayer)
-              
+
         UILayer->Update(dt);
     }
 
@@ -71,9 +71,7 @@ namespace Tetragrama
 
     void Editor::OnPreRender() {}
 
-    void Editor::OnPostRender()
-    {
-    }
+    void Editor::OnPostRender() {}
 
     void Editor::OnRenderUI()
     {
