@@ -32,7 +32,6 @@ include(${EXTERNAL_DIR}/externals.cmake)
 target_include_directories (${TARGET_NAME}
     PUBLIC
         .
-	PRIVATE
         ./Components
         ./Components/Events
         ./Controllers
@@ -56,5 +55,3 @@ target_compile_definitions(${TARGET_NAME}
 )
 
 target_link_libraries(${TARGET_NAME} PRIVATE zEngineLib)
-
-set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME "zEngineEditor")

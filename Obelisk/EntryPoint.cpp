@@ -5,7 +5,7 @@
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Applications/GameApplication.h>
 
-#include <Editor.h>
+#include <Tetragrama/Editor.h>
 
 #ifdef ZENGINE_PLATFORM
 
@@ -38,19 +38,17 @@ int applicationEntryPoint(int argc, char* argv[])
 
     CLI11_PARSE(cli, argc, argv);
 
-    app->ConfigFile = config_file.c_str();
-
 
     if (launch_editor)
     {
-        app = ZPushStruct(arena, Tetragrama::Editor);
+        app = ZPushStruct(arena, Tetragrama::Editor);    
     }
+
+    app->ConfigFile = config_file.c_str();
 
     app->Initialize(arena);
     app->Run();
     app->Shutdown();
-
-    editor->Dispose();
 
     Logger::Dispose();
 

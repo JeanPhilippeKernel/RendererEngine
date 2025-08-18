@@ -1,6 +1,8 @@
 #pragma once
 #include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Helpers/ThreadSafeQueue.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 
 namespace Tetragrama::Serializers

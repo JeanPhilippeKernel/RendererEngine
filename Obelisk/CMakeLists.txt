@@ -31,11 +31,18 @@ include(${EXTERNAL_DIR}/externals.cmake)
 target_include_directories (${TARGET_NAME}
     PRIVATE
         .
+        ${ENLISTMENT_ROOT}
         ${ENLISTMENT_ROOT}/ZEngine
-        ${ENLISTMENT_ROOT}/Tetragrama
 )
 
 target_precompile_headers(${TARGET_NAME} PRIVATE pch.h)
+
+target_compile_definitions(${TARGET_NAME}
+    PRIVATE
+        NOMINMAX
+        UNICODE
+        _UNICODE
+)
 
 target_link_libraries(${TARGET_NAME} PRIVATE
     zEngineLib

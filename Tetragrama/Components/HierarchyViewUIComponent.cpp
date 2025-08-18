@@ -3,6 +3,7 @@
 #include <Editor.h>
 #include <HierarchyViewUIComponent.h>
 #include <ImGuizmo/ImGuizmo.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 #include <ZEngine/Windows/Inputs/Keyboard.h>
