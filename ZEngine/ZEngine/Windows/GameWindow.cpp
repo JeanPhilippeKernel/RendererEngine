@@ -409,7 +409,6 @@ namespace ZEngine::Windows
     {
         ZENGINE_CORE_INFO("Window has been resized")
 
-        m_property.IsMinimized = false;
         return false;
     }
 
