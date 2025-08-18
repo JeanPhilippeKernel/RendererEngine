@@ -26,9 +26,10 @@ namespace Tetragrama::Layers
 {
     ImguiLayer::~ImguiLayer() {}
 
-    void ImguiLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
+    void ImguiLayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Applications::GameApplicationPtr app)
     {
-        Arena = arena;
+        Arena      = arena;
+        CurrentApp = app;
         arena->CreateSubArena(ZMega(10), &LocalArena);
 
         NodeHierarchies.init(arena, 10, 0);
@@ -332,7 +333,7 @@ namespace Tetragrama::Layers
     bool ImguiLayer::OnWindowClosed(WindowClosedEvent& event)
     {
         Core::EventDispatcher event_dispatcher(event);
-        event_dispatcher.ForwardTo<WindowClosedEvent>(std::bind(&ZEngine::Windows::CoreWindow::OnWindowClosed, ParentWindow, std::placeholders::_1));
+        event_dispatcher.ForwardTo<WindowClosedEvent>(std::bind(&ZEngine::Windows::CoreWindow::OnWindowClosed, CurrentApp->CurrentWindow, std::placeholders::_1));
         return true;
     }
 

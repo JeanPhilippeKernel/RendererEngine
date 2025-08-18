@@ -3,7 +3,6 @@
 #include <Layers/ImguiLayer.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/Allocator.h>
-#include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Managers/AssetManager.h>
 
 namespace Tetragrama::Serializers
@@ -30,9 +29,8 @@ namespace Tetragrama
 
     struct Editor : public ZEngine::Applications::GameApplication
     {
-        std::atomic_int                                                                                        SelectedSceneNode        = -1;
-        EditorConfigurationPtr                                                                                 Configuration            = nullptr;
-        ZEngine::Helpers::Ref<ZEngine::Helpers::ThreadSafeQueue<ZEngine::Managers::AssetManager::AssetHandle>> PendingOnLoadHierarchies = nullptr;
+
+        EditorConfigurationPtr Configuration = nullptr;
 
         virtual ~Editor() {}
 
@@ -43,7 +41,7 @@ namespace Tetragrama
         virtual void OnInitialized() override;
 
         virtual void OnUpdate(float dt) override;
-        virtual void OnEvent(Core::CoreEvent&) override;
+        virtual void OnEvent(ZEngine::Core::CoreEvent&) override;
 
         virtual void OnPreRender() override;
         virtual void OnPostRender() override;
@@ -52,5 +50,6 @@ namespace Tetragrama
         virtual void OnClosing() override;
         virtual void OnClosed() override;
     };
+    ZDEFINE_PTR(Editor);
 
 } // namespace Tetragrama

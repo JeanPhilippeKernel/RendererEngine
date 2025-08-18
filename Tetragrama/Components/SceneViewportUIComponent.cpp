@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <Controllers/EditorCameraController.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
 #include <SceneViewportUIComponent.h>
@@ -52,19 +53,21 @@ namespace Tetragrama::Components
             }
         }
 
-        auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        auto app               = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto camera_controller = reinterpret_cast<Controllers::EditorCameraControllerPtr>(app->CameraController);
+
         if (m_request_renderer_resize)
         {
-            ctx->CameraControllerPtr->SetViewport(m_viewport_size.x, m_viewport_size.y);
+            camera_controller->SetViewport(m_viewport_size.x, m_viewport_size.y);
         }
 
         if (m_is_window_hovered && m_is_window_focused)
         {
-            ctx->CameraControllerPtr->ResumeEventProcessing();
+            camera_controller->ResumeEventProcessing();
         }
         else
         {
-            ctx->CameraControllerPtr->PauseEventProcessing();
+            camera_controller->PauseEventProcessing();
         }
 
         if (m_is_window_clicked && m_is_window_hovered && m_is_window_focused)
@@ -81,6 +84,8 @@ namespace Tetragrama::Components
 
     void SceneViewportUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
+        auto app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
 
@@ -125,11 +130,11 @@ namespace Tetragrama::Components
                     auto file_ext = std::filesystem::path(buf).extension().string();
                     if (file_ext == ".zescene")
                     {
-                        Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<std::string>>(EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>(buf));
+                        Messengers::IMessenger::SendAsync<ZEngine::Applications::Layer, Messengers::GenericMessage<std::string>>(EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>(buf));
                     }
                     else if (file_ext == ".zemesh")
                     {
-                        Messengers::IMessenger::SendAsync<Windows::Layers::Layer, Messengers::GenericMessage<std::string>>(EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENMESH, Messengers::GenericMessage<std::string>(buf));
+                        Messengers::IMessenger::SendAsync<ZEngine::Applications::Layer, Messengers::GenericMessage<std::string>>(EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENMESH, Messengers::GenericMessage<std::string>(buf));
                     }
                 }
             }
@@ -142,7 +147,7 @@ namespace Tetragrama::Components
 
         if (m_request_renderer_resize)
         {
-            renderer->EnqueuedResizeRequests.Emplace({.Width = (uint32_t) m_viewport_size.x, .Height = (uint32_t) m_viewport_size.y});
+            app->State->RenderTargetResizeRequests.Emplace({.Width = (uint32_t) m_viewport_size.x, .Height = (uint32_t) m_viewport_size.y});
             m_refresh_texture_handle  = true;
             m_request_renderer_resize = false;
         }

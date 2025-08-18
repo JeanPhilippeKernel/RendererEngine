@@ -1,21 +1,15 @@
 #include <pch.h>
+#include <Editor.h>
 #include <InspectorViewUIComponent.h>
 #include <UIComponentDrawerHelper.h>
 #include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Helpers/MeshHelper.h>
-#include <ZEngine/Rendering/Components/GeometryComponent.h>
-#include <ZEngine/Rendering/Components/LightComponent.h>
-#include <ZEngine/Rendering/Components/MaterialComponent.h>
-#include <ZEngine/Rendering/Textures/Texture2D.h>
+#include <ZEngine/Rendering/Textures/Texture.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
-#include <Editor.h>
 #include <glm/gtx/matrix_decompose.hpp>
 
-using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Textures;
-using namespace ZEngine::Rendering::Lights;
-using namespace ZEngine::Rendering::Components;
 using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
@@ -36,14 +30,16 @@ namespace Tetragrama::Components
     {
         ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
-        if (ParentLayer && ParentLayer->ParentContext)
+        if (ParentLayer && ParentLayer->CurrentApp)
         {
-            auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-            auto idx = ctx->SelectedSceneNode.load(std::memory_order_acquire);
+            auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+
+            auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+            auto idx           = current_scene->SelectedSceneNode.load(std::memory_order_acquire);
             if (idx != -1)
             {
-                auto  name_idx = ctx->CurrentScenePtr->NodeNames[idx];
-                auto& name     = ctx->CurrentScenePtr->Names[name_idx];
+                auto  name_idx = current_scene->NodeNames[idx];
+                auto& name     = current_scene->Names[name_idx];
 
                 ImGui::Dummy(ImVec2(0, 3));
                 Helpers::DrawInputTextControl("Name", name.c_str(), [&](std::string_view value) {

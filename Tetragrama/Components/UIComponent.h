@@ -16,7 +16,7 @@ namespace Tetragrama::Components
         UIComponent()          = default;
         virtual ~UIComponent() = default;
 
-        virtual void Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
+        virtual void Initialize(Layers::ImguiLayer* parent, cstring name, bool visibility, bool closed)
         {
             ParentLayer = parent;
             Name        = name;
@@ -24,11 +24,12 @@ namespace Tetragrama::Components
             CanBeClosed = closed;
         }
 
-        bool                                                   IsVisible     = true;
-        bool                                                   CanBeClosed   = false;
-        const char*                                            Name          = "";
-        uint32_t                                               ChildrenCount = 0;
-        Tetragrama::Layers::ImguiLayer*                        ParentLayer   = nullptr;
-        ZEngine::Core::Containers::Array<ZRawPtr(UIComponent)> Children      = {};
+        bool                                           IsVisible     = true;
+        bool                                           CanBeClosed   = false;
+        cstring                                        Name          = "";
+        uint32_t                                       ChildrenCount = 0;
+        Tetragrama::Layers::ImguiLayer*                ParentLayer   = nullptr;
+        ZEngine::Core::Containers::Array<UIComponent*> Children      = {};
     };
+    ZDEFINE_PTR(UIComponent);
 } // namespace Tetragrama::Components

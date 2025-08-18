@@ -1,13 +1,13 @@
 #pragma once
-#include <Editor.h>
-#include <Importers/IAssetImporter.h>
-#include <Serializers/Serializer.h>
+#include <EditorScene.h>
+#include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Serializers/Serializer.h>
 
 namespace Tetragrama::Serializers
 {
-    struct EditorSceneSerializer : public Serializer<EditorScene>
+    struct EditorSceneSerializer : public ZEngine::Serializers::Serializer<EditorScene>
     {
         virtual void Serialize(ZRawPtr(EditorScene) const data) override;
-        virtual void Deserialize(std::string_view filename) override;
+        virtual void Deserialize(cstring filename) override;
     };
 } // namespace Tetragrama::Serializers

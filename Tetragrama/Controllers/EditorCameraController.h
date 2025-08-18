@@ -10,4 +10,5 @@ namespace Tetragrama::Controllers
 
         void Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Windows::CoreWindow* window, double distance, float yaw_degree, float pitch_degree);
     };
+    ZDEFINE_PTR(EditorCameraController);
 } // namespace Tetragrama::Controllers

@@ -6,6 +6,7 @@
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Managers;
+using namespace ZEngine::Helpers;
 
 namespace Tetragrama
 {
@@ -13,7 +14,9 @@ namespace Tetragrama
     {
         arena->CreateSubArena(ZMega(200), &LocalArena);
 
-        Name = name;
+        Name                     = name;
+
+        PendingOnLoadHierarchies = CreateRef<ThreadSafeQueue<AssetManager::AssetHandle>>();
 
         AssetFiles.init(&LocalArena, 500);
         HashToAssetFile.init(&LocalArena, 500);

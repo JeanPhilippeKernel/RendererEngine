@@ -35,22 +35,20 @@ namespace Tetragrama::Components
 
         parent->LocalArena.CreateSubArena(ZMega(1), &LocalArena);
 
-        m_asset_importer    = ZPushStructCtor(parent->Arena, Importers::AssimpImporter);
+        m_asset_importer    = ZPushStructCtor(parent->Arena, ZEngine::Importers::AssimpImporter);
         m_editor_serializer = ZPushStructCtor(parent->Arena, Serializers::EditorSceneSerializer);
 
         m_editor_serializer->Initialize(parent->Arena);
         m_asset_importer->Initialize(parent->Arena);
 
-        m_dockspace_node_flag                        = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
-        m_window_flags                               = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+        m_dockspace_node_flag                 = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
+        m_window_flags                        = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
-        auto context                                 = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        m_editor_serializer->Context                 = context;
-        m_asset_importer->Context                    = context;
+        auto app                              = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        m_editor_serializer->Context          = app;
+        m_asset_importer->Context             = app;
 
-        const auto& editor_config                    = *context->ConfigurationPtr;
-
-        auto        editor_serializer_default_output = fmt::format("{0}{1}{2}", editor_config.WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, editor_config.ScenePath.c_str());
+        auto editor_serializer_default_output = fmt::format("{0}{1}{2}", app->Configuration->WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, app->Configuration->ScenePath.c_str());
 
         m_editor_serializer->SetDefaultOutput(editor_serializer_default_output);
         m_editor_serializer->SetOnProgressCallback(OnEditorSceneSerializerProgress);
@@ -127,13 +125,6 @@ namespace Tetragrama::Components
         RenderExitPopup();
 
         ImGui::End();
-
-        auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        // if (ctx->CurrentScenePtr && ctx->CurrentScenePtr->RenderScene->IsDrawDataDirty)
-        //{
-        //     ctx->CurrentScenePtr->RenderScene->InitOrResetDrawBuffer(renderer->Device, renderer->RenderGraph,
-        //     renderer->AsyncLoader);
-        // }
     }
 
     void DockspaceUIComponent::RenderImporter()
@@ -167,9 +158,9 @@ namespace Tetragrama::Components
             if (ImGui::Button("...", ImVec2(50, 0)) && is_import_button_enabled)
             {
                 Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
-                    if (ParentLayer && ParentLayer->ParentWindow)
+                    if (ParentLayer && ParentLayer->CurrentApp)
                     {
-                        auto                          window = ParentLayer->ParentWindow;
+                        auto                          window = ParentLayer->CurrentApp->CurrentWindow;
                         std::vector<std::string_view> filters{".obj", ".gltf"};
                         std::string                   filename = co_await window->OpenFileDialogAsync(filters);
 
@@ -343,9 +334,10 @@ namespace Tetragrama::Components
 
             if (ImGui::Button("Save", ImVec2(80, 0)) && is_save_button_enabled)
             {
-                auto context                   = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-                context->CurrentScenePtr->Name = s_save_as_input_buffer;
-                m_editor_serializer->Serialize(context->CurrentScenePtr);
+                auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+                auto editor_scene  = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+                editor_scene->Name = s_save_as_input_buffer;
+                m_editor_serializer->Serialize(editor_scene);
 
                 m_open_save_scene_as          = false;
                 m_open_save_scene             = true;
@@ -378,8 +370,9 @@ namespace Tetragrama::Components
 
         m_pending_shutdown = true;
 
-        auto context       = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        auto current_scene = context->CurrentScenePtr;
+        auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+
         if (!current_scene->HasPendingChange())
         {
             Helpers::UIDispatcher::RunAsync([this] { OnExitAsync(); });
@@ -436,13 +429,14 @@ namespace Tetragrama::Components
         ZEngine::Helpers::secure_memset(s_save_as_input_buffer, 0, IM_ARRAYSIZE(s_save_as_input_buffer), IM_ARRAYSIZE(s_save_as_input_buffer));
     }
 
-    void DockspaceUIComponent::OnAssetImporterComplete(void* const context, ZEngine::Core::Containers::ArrayView<Importers::AssetImporterOutput> result)
+    void DockspaceUIComponent::OnAssetImporterComplete(void* const context, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> result)
     {
-        auto ctx = reinterpret_cast<EditorContext*>(context);
+        auto app           = reinterpret_cast<EditorPtr>(context);
+        auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
 
         for (unsigned i = 0; i < result.size(); ++i)
         {
-            ctx->CurrentScenePtr->PushAssetFile(result[i]);
+            current_scene->PushAssetFile(result[i]);
         }
 
         s_asset_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
@@ -501,10 +495,11 @@ namespace Tetragrama::Components
                     m_open_save_scene             = true;
                     m_request_save_scene_ui_close = true;
                     Helpers::UIDispatcher::RunAsync([this] {
-                        if (ParentLayer->ParentContext)
+                        if (ParentLayer->CurrentApp)
                         {
-                            auto ctx = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-                            m_editor_serializer->Serialize(ctx->CurrentScenePtr);
+                            auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+                            auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+                            m_editor_serializer->Serialize(current_scene);
                         }
                     });
                 }
@@ -536,29 +531,31 @@ namespace Tetragrama::Components
 
     void DockspaceUIComponent::OnEditorSceneSerializerComplete(void* const context)
     {
-        auto ctx = reinterpret_cast<EditorContext*>(context);
-        ctx->CurrentScenePtr->HasPendingChanges.store(false, std::memory_order_release);
+        auto app           = reinterpret_cast<EditorPtr>(context);
+        auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+        current_scene->HasPendingChanges.store(false, std::memory_order_release);
     }
 
     void DockspaceUIComponent::OnEditorSceneSerializerDeserializeComplete(void* const context, EditorScene&& scene)
     {
-        auto ctx = reinterpret_cast<EditorContext*>(context);
+        auto app           = reinterpret_cast<EditorPtr>(context);
+        auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
 
         // Todo : Ensure no data race on CurrentScenePtr
-        ctx->ConfigurationPtr->ActiveSceneName.clear();
-        ctx->ConfigurationPtr->ActiveSceneName.append(scene.Name);
+        app->Configuration->ActiveSceneName.clear();
+        app->Configuration->ActiveSceneName.append(scene.Name);
 
-        ctx->CurrentScenePtr->MarkDirty(true);
-        ctx->SelectedSceneNode.store(-1, std::memory_order_release);
-        ctx->CurrentScenePtr->Reset();
-        ctx->CurrentScenePtr->ExtractAsync(scene);
+        current_scene->MarkDirty(true);
+        current_scene->SelectedSceneNode.store(-1, std::memory_order_release);
+        current_scene->Reset();
+        current_scene->ExtractAsync(scene);
 
-        ctx->CurrentScenePtr->Name = ctx->ConfigurationPtr->ActiveSceneName.c_str();
+        current_scene->Name = app->Configuration->ActiveSceneName.c_str();
 
-        ctx->CurrentScenePtr->MarkDirty(false);
+        current_scene->MarkDirty(false);
 
         {
-            auto msg = fmt::format("Scene {} deserialized successfully", ctx->CurrentScenePtr->Name);
+            auto msg = fmt::format("Scene {} deserialized successfully", current_scene->Name);
             ZEngine::Helpers::secure_strcpy(s_scene_serializer_log, DEFAULT_STR_BUFFER, msg.data());
 
             ZENGINE_CORE_INFO("{}", msg.c_str())
@@ -574,16 +571,16 @@ namespace Tetragrama::Components
 
     std::future<void> DockspaceUIComponent::OnOpenSceneAsync()
     {
-        if (ParentLayer && ParentLayer->ParentWindow)
+        if (ParentLayer && ParentLayer->CurrentApp->CurrentWindow)
         {
-            auto                          window         = ParentLayer->ParentWindow;
+            auto                          window         = ParentLayer->CurrentApp->CurrentWindow;
             std::vector<std::string_view> filters        = {".zescene"};
             std::string                   scene_filename = co_await window->OpenFileDialogAsync(filters);
 
             if (!scene_filename.empty())
             {
                 s_is_scene_loading = true;
-                m_editor_serializer->Deserialize(scene_filename);
+                m_editor_serializer->Deserialize(scene_filename.c_str());
             }
         }
         co_return;
@@ -603,15 +600,18 @@ namespace Tetragrama::Components
 
     std::future<void> DockspaceUIComponent::OnOpenMeshRequestAsync(const char* filename)
     {
-        Importers::AssetMeshFileHeader header;
-        if (Importers::IAssetImporter::ReadAssetMeshFileHeader(filename, header))
+        ZEngine::Importers::AssetMeshFileHeader header;
+        if (ZEngine::Importers::IAssetImporter::ReadAssetMeshFileHeader(filename, header))
         {
-            auto asset_mesh = Managers::AssetManager::GetAsset<Importers::AssetMesh>(header.Id);
+            auto asset_mesh = ZEngine::Managers::AssetManager::GetAsset<ZEngine::Importers::AssetMesh>(header.Id);
             if (asset_mesh)
             {
-                auto ctx        = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-                auto handle_ref = ctx->AssetManagerPtr->GetMeshNodeHierarchyHandle(asset_mesh->MeshUUID);
-                ctx->PendingOnLoadHierarchies->Enqueue(handle_ref);
+                auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+                auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+                auto asset_manager = ZEngine::Managers::AssetManager::Instance();
+
+                auto handle_ref    = asset_manager->GetMeshNodeHierarchyHandle(asset_mesh->MeshUUID);
+                current_scene->PendingOnLoadHierarchies->Enqueue(handle_ref);
             }
         }
         co_return;
@@ -626,14 +626,15 @@ namespace Tetragrama::Components
 
         LocalArena.Clear();
 
-        auto        context           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
+        auto        app               = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+
         auto        arena             = &LocalArena;
-        const auto& editor_config     = *context->ConfigurationPtr;
+        const auto& editor_config     = *(app->Configuration);
         auto        parent_path       = std::filesystem::path(filename).parent_path().string();
         auto        asset_name        = fs::path(filename).filename().replace_extension().string();
         auto        output_asset_file = fmt::format("{}.zemesh", asset_name.c_str());
 
-        auto        config            = ZPushStruct(arena, Importers::ImportConfiguration);
+        auto        config            = ZPushStruct(arena, ZEngine::Importers::ImportConfiguration);
         config->OutputWorkingSpacePath.init(arena, editor_config.WorkingSpacePath.c_str());
         config->OutputTextureFilesPath.init(arena, editor_config.DefaultImportTexturePath.c_str());
         config->OutputAssetsPath.init(arena, editor_config.SceneDataPath.c_str());

@@ -16,8 +16,7 @@ namespace Tetragrama
 {
     void Editor::OnInitializing()
     {
-        Configuration            = ZPushStructCtor(Arena, EditorConfiguration);
-        PendingOnLoadHierarchies = CreateRef<ThreadSafeQueue<Managers::AssetManager::AssetHandle>>();
+        Configuration = ZPushStructCtor(Arena, EditorConfiguration);
 
         if (ZEngine::Helpers::secure_strlen(ConfigFile))
         {
@@ -48,7 +47,7 @@ namespace Tetragrama
         auto editor_cam_controller = ZPushStructCtor(Arena, Controllers::EditorCameraController);
         UILayer                    = ZPushStructCtor(Arena, ImguiLayer);
 
-        UILayer->Initialize(Arena);
+        UILayer->Initialize(Arena, this);
         editor_cam_controller->Initialize(Arena, CurrentWindow, 150.0, 0.f, 45.f);
         editor_scene->Initialize(Arena, Configuration->ActiveSceneName.c_str());
 

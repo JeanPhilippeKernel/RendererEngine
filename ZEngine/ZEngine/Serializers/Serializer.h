@@ -1,5 +1,5 @@
 #pragma once
-#include <ZEngine/Core/Memory/Allocator.h>
+#include <Core/Memory/Allocator.h>
 #include <ZEngineDef.h>
 #include <atomic>
 #include <future>
@@ -22,7 +22,7 @@
         }                             \
     }
 
-namespace Tetragrama::Serializers
+namespace ZEngine::Serializers
 {
     template <typename TSerializerData>
     struct Serializer
@@ -95,6 +95,6 @@ namespace Tetragrama::Serializers
         }
 
         virtual void Serialize(ZRawPtr(TSerializerData) const data) = 0;
-        virtual void Deserialize(std::string_view filename)         = 0;
+        virtual void Deserialize(cstring filename)                  = 0;
     };
-} // namespace Tetragrama::Serializers
+} // namespace ZEngine::Serializers
