@@ -17,7 +17,7 @@ using namespace ZEngine::Applications;
 int applicationEntryPoint(int argc, char* argv[])
 {
     MemoryManager       manager = {};
-    MemoryConfiguration config  = {.DefaultSize = ZGiga(2u)};
+    MemoryConfiguration config  = {.DefaultSize = ZGiga(3u)};
     manager.Initialize(config);
     auto                arena      = &(manager.ArenaAllocator);
 

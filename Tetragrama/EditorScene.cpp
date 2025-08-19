@@ -358,6 +358,7 @@ namespace Tetragrama
         for (const auto& h : scene.Hierarchies)
         {
             Hierarchies.push(h);
+            HierarchiesNodeRef.push({});
         }
 
         for (const auto& lt : scene.LocalTransforms)
