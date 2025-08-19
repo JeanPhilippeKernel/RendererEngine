@@ -61,16 +61,16 @@ $ContentsToProcess = @(
         Contents = @(
             switch ($SystemName) {
                 "Windows" {
-                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\$Configurations\Shaders"}
-                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\$Configurations\Settings"}
+                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Obelisk\$Configurations\Shaders"}
+                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Obelisk\$Configurations\Settings"}
                 }
                 "Darwin" {
-                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\$Configurations\Shaders"}
-                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\$Configurations\Settings"}
+                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Obelisk\$Configurations\Shaders"}
+                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Obelisk\$Configurations\Settings"}
                 }
                 "Linux" {
-                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Tetragrama\Shaders"}
-                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Tetragrama\Settings"}
+                    @{ From = "$RepoRoot\Resources\Shaders";            To = "$OuputBuildDirectory\Obelisk\Shaders"}
+                    @{ From = "$RepoRoot\Resources\Editor\Settings";    To = "$OuputBuildDirectory\Obelisk\Settings"}
                 }
                 Default {
                     throw 'This system is not supported'
@@ -79,23 +79,23 @@ $ContentsToProcess = @(
         )
     },
     @{
-        Name = "Tetragrama"
+        Name = "Obelisk"
         IsDirectory = $true
         Contents = @(
             switch ($SystemName) {
                 "Windows" {
-                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
-                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
+                    @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
+                    @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
                 }
                 "Darwin" {
                     switch ($Architectures) {
                         "osx-x64" {
-                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\Editor"}
-                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
+                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\Editor"}
+                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
                         }
                         "osx-arm64" {
-                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\Editor"}
-                            @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
+                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\Editor"}
+                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
                         }
                         Default {
                             throw 'This architecture is not supported'
@@ -103,7 +103,7 @@ $ContentsToProcess = @(
                     }
                 }
                 "Linux" {
-                    @{ From = "$OuputBuildDirectory\Tetragrama\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
+                    @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
                 }
                 Default {
                     throw 'This system is not supported'
