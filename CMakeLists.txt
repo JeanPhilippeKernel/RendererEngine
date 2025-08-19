@@ -109,7 +109,7 @@ add_custom_target (AssembleContent ALL
 )
 
 if (NOT LAUNCHER_ONLY)
-	add_dependencies(AssembleContent zEngineLib tetragrama)
+	add_dependencies(AssembleContent zEngineLib tetragrama Obelisk)
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
