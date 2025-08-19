@@ -138,7 +138,7 @@ namespace ZEngine::Helpers
     {
         size_t size = 0;
         ReadBinary(in, size);
-        map.init(arena, size);
+        map.init(arena, (size > 32) ? size : 32);
 
         for (uint32_t i = 0; i < size; ++i)
         {

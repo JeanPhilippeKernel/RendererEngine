@@ -56,7 +56,7 @@ namespace ZEngine::Importers
 
     void IAssetImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(200), &Arena);
+        arena->CreateSubArena(ZMega(350), &Arena);
     }
 
     void IAssetImporter::SetOnCompleteCallback(on_import_complete_fn callback)

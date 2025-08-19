@@ -37,18 +37,20 @@ namespace Tetragrama::Components
 
         if (ParentLayer->CurrentApp)
         {
-            auto window = ParentLayer->CurrentApp->CurrentWindow;
-            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_T, window))
+            auto window   = ParentLayer->CurrentApp->CurrentWindow;
+            auto keyboard = IDevice::As<Keyboard>();
+
+            if (keyboard && keyboard->IsKeyPressed(ZENGINE_KEY_T, window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
             }
 
-            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_R, window))
+            if (keyboard && keyboard->IsKeyPressed(ZENGINE_KEY_R, window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::ROTATE;
             }
 
-            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, window))
+            if (keyboard && keyboard->IsKeyPressed(ZENGINE_KEY_S, window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::SCALE;
             }
