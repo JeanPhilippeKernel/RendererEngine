@@ -484,9 +484,9 @@ namespace ZEngine::Core::Maths
         if (epsilonEqual(LocalMatrix(3, 3), static_cast<float>(0)))
             return false;
 
-        if (epsilonNotEqual(LocalMatrix(0, 3), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(1, 3), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(2, 3), static_cast<float>(0.0f)))
+        if (epsilonNotEqual(LocalMatrix(0, 3), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(3, 1), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(3, 2), static_cast<float>(0.0f)))
         {
-            LocalMatrix(0, 3) = LocalMatrix(1, 3) = LocalMatrix(2, 3) = static_cast<float>(0);
+            LocalMatrix(3, 0) = LocalMatrix(3, 1) = LocalMatrix(3, 2) = static_cast<float>(0);
             LocalMatrix(3, 3)                                         = static_cast<float>(1);
         }
 
