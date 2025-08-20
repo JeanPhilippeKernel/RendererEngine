@@ -18,7 +18,7 @@ on:
 jobs:
   cmake-build:
     name: cmake-build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
-    runs-on: ${{ inputs.architecture == 'x64' && 'macos-14' || 'macos-14' }}
+    runs-on: ${{ inputs.architecture == 'x64' && 'macos-13' || 'macos-14' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
