@@ -408,9 +408,9 @@ TEST(QuaternionTest, ChainedOperations)
 TEST(QuaternionTest, QuaternionToMat4)
 {
     Quaternion<float> identity(0.0f, 0.0f, 0.0f, 1.0f);
-    Mat4f result = quaternionToMat4(identity);
-    
-    Mat4f expectedIdentity = Identity<Mat4f>();
+    Mat4f             result           = quaternionToMat4(identity);
+
+    Mat4f             expectedIdentity = Identity<Mat4f>();
     for (size_t i = 0; i < 4; ++i)
     {
         for (size_t j = 0; j < 4; ++j)
@@ -418,22 +418,22 @@ TEST(QuaternionTest, QuaternionToMat4)
             EXPECT_NEAR(result(i, j), expectedIdentity(i, j), EPSILON);
         }
     }
-    
-    float angle = radians(90.0f);
+
+    float             angle = radians(90.0f);
     Quaternion<float> rotZ(0.0f, 0.0f, sin(angle * 0.5f), cos(angle * 0.5f));
-    Mat4f rotMatrix = quaternionToMat4(rotZ);
-    
+    Mat4f             rotMatrix = quaternionToMat4(rotZ);
+
     EXPECT_NEAR(rotMatrix(0, 0), 0.0f, EPSILON);
     EXPECT_NEAR(rotMatrix(0, 1), -1.0f, EPSILON);
     EXPECT_NEAR(rotMatrix(1, 0), 1.0f, EPSILON);
     EXPECT_NEAR(rotMatrix(1, 1), 0.0f, EPSILON);
     EXPECT_NEAR(rotMatrix(2, 2), 1.0f, EPSILON);
     EXPECT_NEAR(rotMatrix(3, 3), 1.0f, EPSILON);
-    
+
     Quaternion<float> arbitrary(0.1f, 0.2f, 0.3f, 0.4f);
-    arbitrary = arbitrary.normalize();
+    arbitrary       = arbitrary.normalize();
     Mat4f arbMatrix = quaternionToMat4(arbitrary);
-    
+
     EXPECT_NEAR(arbMatrix(0, 3), 0.0f, EPSILON);
     EXPECT_NEAR(arbMatrix(1, 3), 0.0f, EPSILON);
     EXPECT_NEAR(arbMatrix(2, 3), 0.0f, EPSILON);
@@ -443,41 +443,40 @@ TEST(QuaternionTest, QuaternionToMat4)
     EXPECT_NEAR(arbMatrix(3, 3), 1.0f, EPSILON);
 }
 
-
 TEST(TransformTest, QuaternionRotate)
 {
     Quaternion<float> identity(0.0f, 0.0f, 0.0f, 1.0f);
-    Vec3f vector(1.0f, 2.0f, 3.0f);
-    Vec3f result = rotate(identity, vector);
+    Vec3f             vector(1.0f, 2.0f, 3.0f);
+    Vec3f             result = rotate(identity, vector);
 
     EXPECT_NEAR(result.x, vector.x, EPSILON);
     EXPECT_NEAR(result.y, vector.y, EPSILON);
     EXPECT_NEAR(result.z, vector.z, EPSILON);
-    
-    float angle = radians(90.0f);
+
+    float             angle = radians(90.0f);
     Quaternion<float> rotZ(0.0f, 0.0f, sin(angle * 0.5f), cos(angle * 0.5f));
-    Vec3f xAxis(1.0f, 0.0f, 0.0f);
-    Vec3f rotatedX = rotate(rotZ, xAxis);
+    Vec3f             xAxis(1.0f, 0.0f, 0.0f);
+    Vec3f             rotatedX = rotate(rotZ, xAxis);
 
     EXPECT_NEAR(rotatedX.x, 0.0f, EPSILON);
     EXPECT_NEAR(rotatedX.y, 1.0f, EPSILON);
     EXPECT_NEAR(rotatedX.z, 0.0f, EPSILON);
-    
+
     angle = radians(180.0f);
     Quaternion<float> rot180Y(0.0f, sin(angle * 0.5f), 0.0f, cos(angle * 0.5f));
-    Vec3f zAxis(0.0f, 0.0f, 1.0f);
-    Vec3f rotatedZ = rotate(rot180Y, zAxis);
-    
+    Vec3f             zAxis(0.0f, 0.0f, 1.0f);
+    Vec3f             rotatedZ = rotate(rot180Y, zAxis);
+
     EXPECT_NEAR(rotatedZ.x, 0.0f, EPSILON);
     EXPECT_NEAR(rotatedZ.y, 0.0f, EPSILON);
     EXPECT_NEAR(rotatedZ.z, -1.0f, EPSILON);
-    
+
     Quaternion<float> arbitrary(0.1f, 0.2f, 0.3f, 0.4f);
     arbitrary = arbitrary.normalize();
     Vec3f originalVec(3.0f, 4.0f, 5.0f);
-    Vec3f rotatedVec = rotate(arbitrary, originalVec);
-    
+    Vec3f rotatedVec        = rotate(arbitrary, originalVec);
+
     float originalMagnitude = originalVec.magnitude();
-    float rotatedMagnitude = rotatedVec.magnitude();
+    float rotatedMagnitude  = rotatedVec.magnitude();
     EXPECT_NEAR(originalMagnitude, rotatedMagnitude, EPSILON);
 }

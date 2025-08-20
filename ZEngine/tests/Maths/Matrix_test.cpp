@@ -439,14 +439,13 @@ TEST(MatrixTest, TranslateFunction)
     EXPECT_NEAR(combined(2, 3), 33.0f, EPSILON);
 }
 
-
 TEST(MatrixTest, DecomposeTransformComponent)
 {
     // Test 1: Identity matrix
     Mat4f identity = Identity<Mat4f>();
     Vec3f translation, rotation, scale;
-    
-    bool success = DecomposeTransformComponent(identity, translation, rotation, scale);
+
+    bool  success = DecomposeTransformComponent(identity, translation, rotation, scale);
     EXPECT_TRUE(success);
     EXPECT_NEAR(translation.x, 0.0f, EPSILON);
     EXPECT_NEAR(translation.y, 0.0f, EPSILON);
@@ -454,13 +453,13 @@ TEST(MatrixTest, DecomposeTransformComponent)
     EXPECT_NEAR(scale.x, 1.0f, EPSILON);
     EXPECT_NEAR(scale.y, 1.0f, EPSILON);
     EXPECT_NEAR(scale.z, 1.0f, EPSILON);
-    
+
     Mat4f translationMatrix = Identity<Mat4f>();
     translationMatrix(0, 3) = 5.0f;
     translationMatrix(1, 3) = -3.0f;
     translationMatrix(2, 3) = 2.0f;
-    
-    success = DecomposeTransformComponent(translationMatrix, translation, rotation, scale);
+
+    success                 = DecomposeTransformComponent(translationMatrix, translation, rotation, scale);
     EXPECT_TRUE(success);
     EXPECT_NEAR(translation.x, 5.0f, EPSILON);
     EXPECT_NEAR(translation.y, -3.0f, EPSILON);
@@ -468,13 +467,13 @@ TEST(MatrixTest, DecomposeTransformComponent)
     EXPECT_NEAR(scale.x, 1.0f, EPSILON);
     EXPECT_NEAR(scale.y, 1.0f, EPSILON);
     EXPECT_NEAR(scale.z, 1.0f, EPSILON);
-    
+
     Mat4f scaleMatrix = Identity<Mat4f>();
     scaleMatrix(0, 0) = 2.0f;
     scaleMatrix(1, 1) = 0.5f;
     scaleMatrix(2, 2) = 3.0f;
-    
-    success = DecomposeTransformComponent(scaleMatrix, translation, rotation, scale);
+
+    success           = DecomposeTransformComponent(scaleMatrix, translation, rotation, scale);
     EXPECT_TRUE(success);
     EXPECT_NEAR(translation.x, 0.0f, EPSILON);
     EXPECT_NEAR(translation.y, 0.0f, EPSILON);
