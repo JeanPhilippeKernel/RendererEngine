@@ -1,16 +1,9 @@
 #pragma once
-#include <AssetManager.h>
-#include <EditorCameraController.h>
 #include <EditorScene.h>
-#include <Helpers/NodeHierarchyHelper.h>
 #include <Layers/ImguiLayer.h>
-#include <Layers/RenderLayer.h>
-#include <ZEngine/Core/Containers/Array.h>
-#include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/Allocator.h>
-#include <ZEngine/Engine.h>
-#include <ZEngine/Helpers/IntrusivePtr.h>
-#include <ZEngine/Windows/CoreWindow.h>
+#include <ZEngine/Managers/AssetManager.h>
 
 namespace Tetragrama::Serializers
 {
@@ -32,30 +25,31 @@ namespace Tetragrama
 
         void                              ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };
+    ZDEFINE_PTR(EditorConfiguration);
 
-    struct EditorContext
+    struct Editor : public ZEngine::Applications::GameApplication
     {
-        ZEngine::Core::Memory::ArenaAllocator* Arena                                                                           = nullptr;
-        std::atomic_int                        SelectedSceneNode                                                               = -1;
-        ZRawPtr(EditorConfiguration) ConfigurationPtr                                                                          = nullptr;
-        ZRawPtr(EditorScene) CurrentScenePtr                                                                                   = nullptr;
-        ZRawPtr(Controllers::EditorCameraController) CameraControllerPtr                                                       = nullptr;
-        ZRawPtr(Managers::AssetManager) AssetManagerPtr                                                                        = nullptr;
-        ZEngine::Helpers::Ref<ZEngine::Helpers::ThreadSafeQueue<Managers::AssetManager::AssetHandle>> PendingOnLoadHierarchies = nullptr;
+
+        EditorConfigurationPtr Configuration = nullptr;
+
+        virtual ~Editor() {}
+
+        ZRawPtr(Layers::ImguiLayer) UILayer = nullptr;
+
+        virtual void OnInitializing() override;
+        virtual void OverrideWindowConfiguration() override;
+        virtual void OnInitialized() override;
+
+        virtual void OnUpdate(float dt) override;
+        virtual void OnEvent(ZEngine::Core::CoreEvent&) override;
+
+        virtual void OnPreRender() override;
+        virtual void OnPostRender() override;
+        virtual void OnRenderUI() override;
+
+        virtual void OnClosing() override;
+        virtual void OnClosed() override;
     };
-
-    struct Editor
-    {
-        ~Editor() {}
-
-        ZRawPtr(EditorContext) Context               = nullptr;
-        ZRawPtr(Layers::ImguiLayer) UILayer          = nullptr;
-        ZRawPtr(Layers::RenderLayer) CanvasLayer     = nullptr;
-        ZRawPtr(ZEngine::Windows::CoreWindow) Window = nullptr;
-
-        void Initialize(ZEngine::Core::Memory::ArenaAllocator*, const char*);
-        void Dispose();
-        void Run();
-    };
+    ZDEFINE_PTR(Editor);
 
 } // namespace Tetragrama

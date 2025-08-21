@@ -5,26 +5,17 @@
 #include <Core/EventDispatcher.h>
 #include <Core/IEventable.h>
 #include <Core/IInitializable.h>
-#include <Core/IRenderable.h>
-#include <Core/IUpdatable.h>
 #include <Core/Memory/Allocator.h>
 #include <Core/TimeStep.h>
-#include <Helpers/IntrusivePtr.h>
 #include <Inputs/IInputEventCallback.h>
-#include <Layers/Layer.h>
 #include <WindowConfiguration.h>
 #include <WindowProperty.h>
 #include <future>
 #include <span>
 
-namespace ZEngine::Windows::Layers
-{
-    class Layer;
-} // namespace ZEngine::Windows::Layers
-
 namespace ZEngine::Windows
 {
-    class CoreWindow : public Inputs::IKeyboardEventCallback, public Inputs::IMouseEventCallback, public Inputs::ITextInputEventCallback, public Inputs::IWindowEventCallback, public Core::IUpdatable, public Core::IRenderable, public Core::IEventable
+    class CoreWindow : public Inputs::IWindowEventCallback, public Core::IEventable
     {
 
     public:
@@ -57,8 +48,6 @@ namespace ZEngine::Windows
         virtual float                        GetTime()                                                          = 0;
         virtual float                        GetDeltaTime()                                                     = 0;
 
-        virtual void                         ForwardEventToLayers(Core::CoreEvent& event);
-
         virtual void                         Deinitialize() {}
 
     protected:
@@ -66,6 +55,5 @@ namespace ZEngine::Windows
         WindowProperty      m_property;
         WindowConfiguration m_configuration;
     };
-
-    CoreWindow* Create(Core::Memory::ArenaAllocator* arena, const WindowConfiguration& cfg);
+    ZDEFINE_PTR(CoreWindow);
 } // namespace ZEngine::Windows

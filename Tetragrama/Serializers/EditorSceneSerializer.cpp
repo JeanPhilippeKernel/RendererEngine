@@ -1,15 +1,13 @@
 #include <pch.h>
-#include <Helpers/SerializerCommonHelper.h>
-#include <Helpers/ThreadPool.h>
+#include <EditorSceneSerializer.h>
 #include <Importers/IAssetImporter.h>
-#include <Serializers/EditorSceneSerializer.h>
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Helpers/SerializerCommonHelper.h>
+#include <ZEngine/Helpers/ThreadPool.h>
 #include <fmt/format.h>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Core::Containers;
-using namespace Tetragrama::Helpers;
-using namespace Tetragrama::Importers;
 
 namespace Tetragrama::Serializers
 {
@@ -77,7 +75,7 @@ namespace Tetragrama::Serializers
         });
     }
 
-    void EditorSceneSerializer::Deserialize(std::string_view filename)
+    void EditorSceneSerializer::Deserialize(cstring filename)
     {
         ThreadPoolHelper::Submit([this, scene_filename = std::string(filename)] {
             std::unique_lock l(m_mutex);

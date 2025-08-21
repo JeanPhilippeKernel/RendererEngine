@@ -13,9 +13,10 @@ namespace Panzerfaust.Service
         string _enginePath = string.Empty;
         string _workingDirectory = string.Empty;
 
-        const string _editorAppName = "zEngineEditor";
+        const string _launcherCLIAppName = "Obelisk";
         const string _configJsonFilename = "projectConfig.json";
-        const string _engineCommandLineArgs = "--projectConfigFile";
+        const string _projectFileCommandLineArgs = "--projectConfigFile";
+        const string _editorCommandLineArgs = "--launchEditor 1";
 
         public EngineService()
         {
@@ -23,13 +24,13 @@ namespace Panzerfaust.Service
 #if _WIN32
             engineExtension = ".exe";
 #endif
-            _enginePath = Path.Combine(Environment.CurrentDirectory, "Editor", $"{_editorAppName}{engineExtension}");
+            _enginePath = Path.Combine(Environment.CurrentDirectory, "Editor", $"{_launcherCLIAppName}{engineExtension}");
             _workingDirectory = Path.Combine(Environment.CurrentDirectory, "Editor");
         }
 
         public async Task StartAsync(string path)
         {
-            List<string> engineArgs = new() { _engineCommandLineArgs, Path.Combine(path, _configJsonFilename) };
+            List<string> engineArgs = new() { _editorCommandLineArgs, _projectFileCommandLineArgs, Path.Combine(path, _configJsonFilename) };
 
             var processStartInfo = new ProcessStartInfo(_enginePath, string.Join(" ", engineArgs))
             {

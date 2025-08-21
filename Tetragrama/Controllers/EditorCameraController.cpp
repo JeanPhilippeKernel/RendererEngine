@@ -9,7 +9,7 @@ namespace Tetragrama::Controllers
     {
         m_position           = {0.0f, 0.0f, 1.5f};
         m_process_event      = true;
-        m_controller_type    = Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;
+        m_controller_type    = ZEngine::Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;
         m_window             = window;
 
         m_perspective_camera = ZPushStructCtor(arena, PerspectiveCamera);

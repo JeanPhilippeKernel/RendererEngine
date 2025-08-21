@@ -55,6 +55,12 @@
 #define ZRawPtr(X)          X*
 #define ZDEFINE_PTR(X)      typedef ZRawPtr(X) X##Ptr
 
+#define CHECK_AND_ESCAPE_NULL(handle) \
+    if (!handle)                      \
+    {                                 \
+        return;                       \
+    }
+
 /*
  * Allocator and Memory Macros
  */

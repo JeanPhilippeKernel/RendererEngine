@@ -1,12 +1,13 @@
 #include <pch.h>
+#include <Controllers/EditorCameraController.h>
 #include <Editor.h>
 #include <HierarchyViewUIComponent.h>
 #include <ImGuizmo/ImGuizmo.h>
-#include <Inputs/Keyboard.h>
-#include <Inputs/Mouse.h>
-#include <ZEngine/Engine.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
+#include <ZEngine/Windows/Inputs/Keyboard.h>
+#include <ZEngine/Windows/Inputs/Mouse.h>
 #include <glm/glm.hpp>
 #include <gtc/type_ptr.hpp>
 
@@ -14,8 +15,6 @@ using namespace ZEngine;
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Windows::Inputs;
 using namespace ZEngine::Rendering::Scenes;
-using namespace Tetragrama::Inputs;
-using namespace Tetragrama::Controllers;
 
 namespace Tetragrama::Components
 {
@@ -36,32 +35,34 @@ namespace Tetragrama::Components
             return;
         }
 
-        if (ParentLayer->ParentWindow)
+        if (ParentLayer->CurrentApp)
         {
-            auto window = ParentLayer->ParentWindow;
-            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_T, window))
+            auto window   = ParentLayer->CurrentApp->CurrentWindow;
+            auto keyboard = IDevice::As<Keyboard>();
+
+            if (keyboard && keyboard->IsKeyPressed(ZENGINE_KEY_T, window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
             }
 
-            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_R, window))
+            if (keyboard && keyboard->IsKeyPressed(ZENGINE_KEY_R, window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::ROTATE;
             }
 
-            if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_S, window))
+            if (keyboard && keyboard->IsKeyPressed(ZENGINE_KEY_S, window))
             {
                 m_gizmo_operation = ImGuizmo::OPERATION::SCALE;
             }
         }
 
-        if (ParentLayer->ParentContext)
+        if (ParentLayer->CurrentApp)
         {
-            auto                                ctx           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-            auto                                current_scene = ctx->CurrentScenePtr;
+            auto                                app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+            auto                                current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
 
             Managers::AssetManager::AssetHandle handle        = {};
-            if (ctx->PendingOnLoadHierarchies->Pop(handle))
+            if (current_scene->PendingOnLoadHierarchies->Pop(handle))
             {
                 Importers::AssetNodeHierarchy* mesh_node_hierarchy = Managers::AssetManager::GetAsset<Importers::AssetNodeHierarchy>(handle);
                 if (!mesh_node_hierarchy)
@@ -76,7 +77,9 @@ namespace Tetragrama::Components
                     int node_id = -1;
                 };
 
-                Importers::AssetMesh* mesh       = ctx->AssetManagerPtr->GetMeshAsset(mesh_node_hierarchy->MeshUUID);
+                auto                  asset_mgr  = ZEngine::Managers::AssetManager::Instance();
+
+                Importers::AssetMesh* mesh       = asset_mgr->GetMeshAsset(mesh_node_hierarchy->MeshUUID);
                 const auto&           mesh_alloc = current_scene->CreateOrGetMeshAllocation(mesh);
 
                 for (int i = 0; i < mesh_node_hierarchy->Hierarchies.size(); ++i)
@@ -109,7 +112,7 @@ namespace Tetragrama::Components
                             {
                                 const auto& submesh_id                                               = mesh_node_hierarchy->NodeMeshes.at(entry.node_id);
                                 const auto& sub_mesh                                                 = mesh->SubMeshes[submesh_id];
-                                auto        material_handle                                          = ctx->AssetManagerPtr->GetMaterialHandleFromUUID(sub_mesh.MaterialUUID);
+                                auto        material_handle                                          = asset_mgr->GetMaterialHandleFromUUID(sub_mesh.MaterialUUID);
                                 auto        material_index                                           = Managers::AssetManager::ReadAssetHandleIndex(material_handle);
 
                                 current_scene->NodeSubMeshesAllocations[scene_node_id].TransformId   = scene_node_id;
@@ -155,8 +158,8 @@ namespace Tetragrama::Components
 
     void HierarchyViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        auto ctx           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        auto current_scene = ctx->CurrentScenePtr;
+        auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
 
         ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
         if (ImGui::BeginPopupContextWindow(Name))
@@ -173,7 +176,7 @@ namespace Tetragrama::Components
         // 0 means left buttom
         if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
         {
-            ctx->SelectedSceneNode.store(-1, std::memory_order_release);
+            current_scene->SelectedSceneNode.store(-1, std::memory_order_release);
             // Messengers::IMessenger::SendAsync<Components::UIComponent,
             // Messengers::EmptyMessage>(EDITOR_COMPONENT_HIERARCHYVIEW_NODE_UNSELECTED, Messengers::EmptyMessage{});
         }
@@ -185,8 +188,8 @@ namespace Tetragrama::Components
 
     void HierarchyViewUIComponent::RenderTreeNodes()
     {
-        auto ctx           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        auto current_scene = ctx->CurrentScenePtr;
+        auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
 
         if (current_scene->IsDirty())
         {
@@ -197,30 +200,30 @@ namespace Tetragrama::Components
         {
             if (!current_scene->IsSceneNodeDeleted(i) && current_scene->Hierarchies[i].Parent == -1)
             {
-                RenderNode(current_scene, i, ctx->SelectedSceneNode);
+                RenderNode(current_scene, i, current_scene->SelectedSceneNode);
             }
         }
     }
 
     void HierarchyViewUIComponent::RenderGuizmo()
     {
-        auto ctx           = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        auto current_scene = ctx->CurrentScenePtr;
+        auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
 
         if (current_scene->IsDirty())
         {
             return;
         }
 
-        int selected_node = ctx->SelectedSceneNode.load(std::memory_order_acquire);
+        int selected_node = current_scene->SelectedSceneNode.load(std::memory_order_acquire);
         if (selected_node == -1)
         {
             return;
         }
 
-        if (auto active_editor_camera = ctx->CameraControllerPtr)
+        if (app->CameraController)
         {
-            auto       camera             = active_editor_camera->GetCamera();
+            auto       camera             = app->CameraController->GetCamera();
             const auto camera_projection  = camera->GetPerspectiveMatrix();
             const auto camera_view_matrix = camera->GetViewMatrix();
 
@@ -228,14 +231,15 @@ namespace Tetragrama::Components
             auto       initial_transform  = global_transform;
             auto&      local_transform    = current_scene->LocalTransforms[selected_node];
 
-            if (camera && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, Engine::GetWindow()))
+            if (camera && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, app->CurrentWindow))
             {
+                auto active_editor_camera = reinterpret_cast<Controllers::EditorCameraControllerPtr>(app->CameraController);
                 active_editor_camera->SetTarget(glm::vec3(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
             }
 
             // snapping
             float snap_value        = 0.5f;
-            bool  is_snap_operation = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, Engine::GetWindow());
+            bool  is_snap_operation = IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, app->CurrentWindow);
             if (is_snap_operation && static_cast<ImGuizmo::OPERATION>(m_gizmo_operation) == ImGuizmo::ROTATE)
             {
                 snap_value = 45.0f;

@@ -1,6 +1,6 @@
 #pragma once
-#include <Helpers/IntrusivePtr.h>
 #include <Rendering/Cameras/CameraEnum.h>
+#include <ZEngineDef.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -9,7 +9,7 @@
 
 namespace ZEngine::Rendering::Cameras
 {
-    struct Camera : public Helpers::RefCounted
+    struct Camera
     {
         float             Fov                          = 0.0f;
         float             AspectRatio                  = 0.0f;
@@ -39,4 +39,5 @@ namespace ZEngine::Rendering::Cameras
         virtual glm::mat4 GetPerspectiveMatrix() const = 0;
         virtual glm::vec3 GetPosition() const          = 0;
     };
+    ZDEFINE_PTR(Camera);
 } // namespace ZEngine::Rendering::Cameras

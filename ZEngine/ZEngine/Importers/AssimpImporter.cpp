@@ -1,0 +1,531 @@
+#include <pch.h>
+#include <AssimpImporter.h>
+#include <Core/Coroutine.h>
+#include <Helpers/MemoryOperations.h>
+#include <Helpers/ThreadPool.h>
+#include <assimp/postprocess.h>
+#include <fmt/format.h>
+
+using namespace ZEngine::Helpers;
+using namespace ZEngine::Rendering::Meshes;
+using namespace ZEngine::Rendering::Scenes;
+using namespace ZEngine::Core::Containers;
+using namespace uuids;
+
+namespace fs = std::filesystem;
+
+namespace ZEngine::Importers
+{
+    AssimpImporter::AssimpImporter() : m_progress_handler{}, m_flags{aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_SortByPType}
+    {
+        m_progress_handler.SetImporter(this);
+    }
+
+    AssimpImporter::~AssimpImporter() {}
+
+    std::future<void> AssimpImporter::ImportAsync(const char* filename, const ImportConfiguration& cfg)
+    {
+        ThreadPoolHelper::Submit([this, path = filename, cfg] {
+            std::unique_lock l(m_mutex);
+
+            Arena.Clear();
+            auto                thread_local_arena = &Arena;
+            ImportConfiguration config             = {};
+
+            config.OutputWorkingSpacePath.init(thread_local_arena, cfg.OutputWorkingSpacePath.c_str());
+            config.OutputTextureFilesPath.init(thread_local_arena, cfg.OutputTextureFilesPath.c_str());
+            config.OutputAssetsPath.init(thread_local_arena, cfg.OutputAssetsPath.c_str());
+            config.AssetName.init(thread_local_arena, cfg.AssetName.c_str());
+            config.OutputAssetFile.init(thread_local_arena, cfg.OutputAssetFile.c_str());
+            config.InputBaseAssetFilePath.init(thread_local_arena, cfg.InputBaseAssetFilePath.c_str());
+
+            m_is_importing.store(true, std::memory_order_release);
+
+            Assimp::Importer importer{};
+            importer.SetProgressHandler(&m_progress_handler);
+
+            const aiScene* scene = importer.ReadFile(path, m_flags);
+
+            if ((!scene) || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
+            {
+                if (m_error_callback)
+                {
+                    m_error_callback(Context, importer.GetErrorString());
+                }
+            }
+            else
+            {
+                std::random_device    rd;
+                std::mt19937          generator(rd());
+                uuid_random_generator gen(&generator);
+
+                AssetMesh             mesh        = {};
+                AssetNodeHierarchy    hierarchies = {};
+                Array<AssetMaterial>  materials   = {};
+                Array<AssetTexture>   textures    = {};
+
+                ExtractMeshes(thread_local_arena, scene, gen, mesh);
+                ExtractMaterials(thread_local_arena, scene, gen, materials, hierarchies);
+                ExtractTextures(thread_local_arena, scene, gen, materials, textures);
+
+                CreateHierachy(thread_local_arena, scene, gen, hierarchies, mesh, materials);
+                CopyTextureFiles(thread_local_arena, textures, config);
+
+                Array<AssetImporterOutput> outputs = {};
+                outputs.init(thread_local_arena, 100);
+
+                auto out_m = SerializeMeshAssetFile(thread_local_arena, mesh, hierarchies, config);
+                outputs.push(out_m);
+
+                auto out_tex = SerializeTextureAssetFiles(thread_local_arena, ArrayView{textures}, config);
+                outputs.push(out_tex);
+
+                for (unsigned i = 0; i < materials.size(); ++i)
+                {
+                    auto& material = materials[i];
+                    auto  out_mat  = SerializeMaterialAssetFile(thread_local_arena, material, config);
+                    outputs.push(out_mat);
+                }
+
+                auto result = fmt::format("{0}{1}{2}", config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
+                if (m_complete_callback)
+                {
+                    m_complete_callback(Context, ArrayView{outputs});
+                }
+            }
+
+            importer.SetProgressHandler(nullptr);
+            importer.FreeScene();
+
+            m_is_importing.store(false, std::memory_order_release);
+        });
+
+        co_return;
+    }
+
+    void AssimpImporter::ExtractMeshes(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetMesh& mesh)
+    {
+        if ((!scene) || (!scene->HasMeshes()))
+        {
+            return;
+        }
+
+        unsigned int t_vertices = 0;
+        unsigned int t_indices  = 0;
+        unsigned int t_meshes   = scene->mNumMeshes;
+
+        for (unsigned int i = 0; i < t_meshes; ++i)
+        {
+            aiMesh* mesh  = scene->mMeshes[i];
+            t_vertices   += mesh->mNumVertices;
+            t_indices    += mesh->mNumFaces * 3; // assuming triangulated
+        }
+
+        mesh.MeshUUID = generator();
+        mesh.SubMeshes.init(arena, t_meshes, t_meshes);
+        mesh.Vertices.init(arena, t_vertices);
+        mesh.Indices.init(arena, t_indices);
+
+        uint32_t VertexOffset = 0;
+        uint32_t IndexOffset  = 0;
+
+        for (uint32_t m = 0; m < t_meshes; ++m)
+        {
+            REPORT_LOG(Context, fmt::format("Extrating Meshes : {0}/{1} ", (m + 1), t_meshes).c_str())
+
+            aiMesh*  ai_mesh = scene->mMeshes[m];
+
+            uint32_t vertex_count{0};
+
+            /* Vertice processing */
+            for (int v = 0; v < ai_mesh->mNumVertices; ++v)
+            {
+                const aiVector3D position = ai_mesh->mVertices[v];
+                const aiVector3D normal   = ai_mesh->mNormals[v];
+                const aiVector3D texture  = ai_mesh->HasTextureCoords(0) ? ai_mesh->mTextureCoords[0][v] : aiVector3D{};
+
+                mesh.Vertices.push(position.x);
+                mesh.Vertices.push(position.y);
+                mesh.Vertices.push(position.z);
+
+                mesh.Vertices.push(normal.x);
+                mesh.Vertices.push(normal.y);
+                mesh.Vertices.push(normal.z);
+
+                mesh.Vertices.push(texture.x);
+                mesh.Vertices.push(texture.y);
+
+                vertex_count++;
+            }
+
+            /* Face and Indices processing */
+            uint32_t index_count{0};
+            for (int f = 0; f < ai_mesh->mNumFaces; ++f)
+            {
+                aiFace ai_face = ai_mesh->mFaces[f];
+
+                for (int fidx = 0; fidx < ai_face.mNumIndices; ++fidx)
+                {
+                    mesh.Indices.push(ai_face.mIndices[fidx]);
+
+                    index_count++;
+                }
+            }
+
+            auto& subMesh                 = mesh.SubMeshes[m];
+            subMesh.VertexCount           = vertex_count;
+            subMesh.VertexOffset          = VertexOffset;
+            subMesh.VertexUnitStreamSize  = sizeof(float) * (3 + 3 + 2) /*pos-cmp + normal-cmp + tex-cmp*/;
+            subMesh.StreamOffset          = (subMesh.VertexUnitStreamSize * subMesh.VertexOffset);
+            subMesh.IndexOffset           = IndexOffset;
+            subMesh.IndexCount            = index_count;
+            subMesh.IndexUnitStreamSize   = sizeof(uint32_t);
+            subMesh.IndexStreamOffset     = (subMesh.IndexUnitStreamSize * subMesh.IndexOffset);
+            subMesh.TotalByteSize         = (subMesh.VertexCount * subMesh.VertexUnitStreamSize) + (subMesh.IndexCount * subMesh.IndexUnitStreamSize);
+
+            /* Computing offset data */
+            VertexOffset                 += ai_mesh->mNumVertices;
+            IndexOffset                  += index_count;
+        }
+    }
+
+    void AssimpImporter::ExtractMaterials(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, Core::Containers::Array<AssetMaterial>& materials, AssetNodeHierarchy& model)
+    {
+        if (!scene)
+        {
+            return;
+        }
+
+        uint32_t number_of_materials = scene->mNumMaterials;
+        materials.init(arena, number_of_materials, number_of_materials);
+        model.MaterialNames.init(arena, number_of_materials, number_of_materials);
+
+        for (uint32_t m = 0; m < number_of_materials; ++m)
+        {
+            REPORT_LOG(Context, fmt::format("Extrating materials : {0}/{1}", (m + 1), number_of_materials).c_str())
+
+            aiColor4D      color;
+            aiMaterial*    ai_material = scene->mMaterials[m];
+            aiString       mat_name    = ai_material->GetName();
+            AssetMaterial& material    = materials[m];
+
+            material.MaterialUUID      = generator();
+
+            {
+                std::stringstream ss;
+                ss << material.MaterialUUID;
+                auto mat_uuid = ss.str();
+                material.Name.init(arena, (mat_name.C_Str() ? mat_name.C_Str() : mat_uuid.c_str()));
+                ss.clear();
+            }
+
+            model.MaterialNames[m].init(arena, material.Name.c_str());
+
+            if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_AMBIENT, &color) == AI_SUCCESS)
+            {
+                material.AmbientColor[0] = color.r;
+                material.AmbientColor[1] = color.g;
+                material.AmbientColor[2] = color.b;
+                material.AmbientColor[3] = color.a;
+                material.AmbientColor[3] = glm::min(material.AmbientColor[3], 1.0f);
+            }
+
+            if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_DIFFUSE, &color) == AI_SUCCESS)
+            {
+                material.AlbedoColor[0] = color.r;
+                material.AlbedoColor[1] = color.g;
+                material.AlbedoColor[2] = color.b;
+                material.AlbedoColor[3] = color.a;
+                material.AlbedoColor[3] = glm::min(material.AlbedoColor[3], 1.0f);
+            }
+
+            if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_SPECULAR, &color) == AI_SUCCESS)
+            {
+                material.SpecularColor[0] = color.r;
+                material.SpecularColor[1] = color.g;
+                material.SpecularColor[2] = color.b;
+                material.SpecularColor[3] = color.a;
+                material.SpecularColor[3] = glm::min(material.SpecularColor[3], 1.0f);
+            }
+
+            if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_EMISSIVE, &color) == AI_SUCCESS)
+            {
+                material.EmissiveColor[0] = color.r;
+                material.EmissiveColor[1] = color.g;
+                material.EmissiveColor[2] = color.b;
+                material.EmissiveColor[3] = color.a;
+                material.EmissiveColor[3] = glm::min(material.EmissiveColor[3], 1.0f);
+            }
+
+            float       opacity              = 1.0f;
+            const float opaqueness_threshold = 0.05f;
+
+            if (aiGetMaterialFloat(ai_material, AI_MATKEY_OPACITY, &opacity) == AI_SUCCESS)
+            {
+                material.Factors[0] = glm::clamp(1.f - opacity, 0.0f, 1.0f);
+                if (material.Factors[0] >= (1.0f - opaqueness_threshold))
+                {
+                    material.Factors[0] = 0.0f;
+                }
+            }
+
+            if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_TRANSPARENT, &color) == AI_SUCCESS)
+            {
+                const float component_as_opacity = std::max(std::max(color.r, color.g), color.b);
+                material.Factors[0]              = glm::clamp(component_as_opacity, 0.0f, 1.0f);
+                if (material.Factors[0] >= (1.0f - opaqueness_threshold))
+                {
+                    material.Factors[0] = 0.0f;
+                }
+                material.Factors[2] = 0.5f;
+            }
+        }
+    }
+
+    void AssimpImporter::ExtractTextures(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, Core::Containers::Array<AssetMaterial>& materials, Core::Containers::Array<AssetTexture>& textures)
+    {
+        if (!scene)
+        {
+            return;
+        }
+
+        aiString         texture_filename;
+        aiTextureMapping texture_mapping;
+        uint32_t         uv_index;
+        float            blend               = 1.0f;
+        aiTextureOp      texture_operation   = aiTextureOp_Add;
+        aiTextureMapMode texture_map_mode[]  = {aiTextureMapMode_Wrap, aiTextureMapMode_Wrap};
+        uint32_t         texture_flags       = 0;
+
+        uint32_t         number_of_materials = scene->mNumMaterials;
+
+        textures.init(arena, number_of_materials);
+
+        for (uint32_t m = 0; m < number_of_materials; ++m)
+        {
+            REPORT_LOG(Context, fmt::format("Extrating Material's textures:  {0}/{1} materials", (m + 1), number_of_materials).c_str())
+
+            aiMaterial*    ai_material = scene->mMaterials[m];
+            AssetMaterial& material    = materials[m];
+
+            if (aiGetMaterialTexture(ai_material, aiTextureType_DIFFUSE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
+            {
+                AssetTexture& texture  = textures.push_use({});
+                texture.TextureUUID    = generator();
+                material.AlbedoTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
+            }
+
+            if (aiGetMaterialTexture(ai_material, aiTextureType_SPECULAR, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
+            {
+                AssetTexture& texture    = textures.push_use({});
+                texture.TextureUUID      = generator();
+                material.SpecularTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
+            }
+
+            if (aiGetMaterialTexture(ai_material, aiTextureType_EMISSIVE, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
+            {
+                AssetTexture& texture    = textures.push_use({});
+                texture.TextureUUID      = generator();
+                material.EmissiveTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
+            }
+
+            if (aiGetMaterialTexture(ai_material, aiTextureType_NORMALS, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
+            {
+                AssetTexture& texture  = textures.push_use({});
+                texture.TextureUUID    = generator();
+                material.NormalTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
+            }
+
+            if (material.NormalTexUUID.is_nil())
+            {
+                if (aiGetMaterialTexture(ai_material, aiTextureType_HEIGHT, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
+                {
+                    AssetTexture& texture  = textures.push_use({});
+                    texture.TextureUUID    = generator();
+                    material.NormalTexUUID = texture.TextureUUID;
+                    texture.Path.init(arena, texture_filename.C_Str());
+                }
+            }
+
+            if (aiGetMaterialTexture(ai_material, aiTextureType_OPACITY, 0, &texture_filename, &texture_mapping, &uv_index, &blend, &texture_operation, texture_map_mode, &texture_flags) == AI_SUCCESS)
+            {
+                AssetTexture& texture   = textures.push_use({});
+                texture.TextureUUID     = generator();
+                material.OpacityTexUUID = texture.TextureUUID;
+                texture.Path.init(arena, texture_filename.C_Str());
+                material.Factors[2] = 0.5f;
+            }
+        }
+    }
+
+    void AssimpImporter::CreateHierachy(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetNodeHierarchy& AssetNode, AssetMesh& asset_mesh, Core::Containers::Array<AssetMaterial>& materials)
+    {
+        if (!scene || !(scene->mRootNode))
+        {
+            return;
+        }
+
+        AssetNode.NodeHierarchyUUID = generator();
+        AssetNode.MeshUUID          = asset_mesh.MeshUUID;
+
+        AssetNode.Hierarchies.init(arena, 3000);
+        AssetNode.LocalTransforms.init(arena, 3000);
+        AssetNode.GlobalTransforms.init(arena, 3000);
+        AssetNode.Names.init(arena, 3000);
+        AssetNode.NodeNames.init(arena, 3000);
+        AssetNode.NodeMeshes.init(arena, 3000);
+        AssetNode.NodeMaterials.init(arena, 3000);
+
+        TraverseNode(arena, scene, scene->mRootNode, AssetNode, asset_mesh, materials, -1, 0);
+    }
+
+    void AssimpImporter::TraverseNode(Core::Memory::ArenaAllocator* arena, const aiScene* ai_scene, const aiNode* node, AssetNodeHierarchy& hierarchy, AssetMesh& asset_mesh, Core::Containers::Array<AssetMaterial>& materials, int parent_node_id, int depth_level)
+    {
+        auto node_id                 = AddNode(hierarchy, parent_node_id, depth_level);
+        hierarchy.NodeNames[node_id] = hierarchy.Names.size();
+        auto& name                   = hierarchy.Names.push_use({});
+        name.init(arena, node->mName.C_Str() ? node->mName.C_Str() : "<unamed node>");
+
+        hierarchy.GlobalTransforms[node_id] = glm::mat4(1.0f);
+        hierarchy.LocalTransforms[node_id]  = ConvertToMat4(node->mTransformation);
+
+        for (uint32_t i = 0; i < node->mNumMeshes; ++i)
+        {
+            auto     sub_node_id             = AddNode(hierarchy, node_id, depth_level + 1);
+            uint32_t mesh                    = node->mMeshes[i];
+            uint32_t material_id             = ai_scene->mMeshes[mesh]->mMaterialIndex;
+
+            hierarchy.NodeNames[sub_node_id] = hierarchy.Names.size();
+            auto&    n                       = hierarchy.Names.push_use({});
+            aiString mesh_name               = ai_scene->mMeshes[mesh]->mName;
+            n.init(arena, mesh_name.C_Str() ? mesh_name.C_Str() : "<unamed node>");
+
+            hierarchy.NodeMeshes[sub_node_id]       = mesh;
+            hierarchy.NodeMaterials[sub_node_id]    = material_id;
+            hierarchy.GlobalTransforms[sub_node_id] = glm::mat4(1.0f);
+            hierarchy.LocalTransforms[sub_node_id]  = glm::mat4(1.0f);
+
+            auto& asset_mat                         = materials[material_id];
+            auto& sub_mesh                          = asset_mesh.SubMeshes[mesh];
+            sub_mesh.MaterialUUID                   = asset_mat.MaterialUUID;
+        }
+
+        for (uint32_t child = 0; child < node->mNumChildren; ++child)
+        {
+            TraverseNode(arena, ai_scene, node->mChildren[child], hierarchy, asset_mesh, materials, node_id, (depth_level + 1));
+        }
+    }
+
+    void AssimpImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::Array<AssetTexture>& textures, const ImportConfiguration& config)
+    {
+        /*
+         * Normalize file naming
+         */
+        auto dst_dir               = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetName.c_str());
+
+        auto CreateBaseDirectoryFn = [](std::string_view filename) -> void {
+            auto            base_dir = fs::absolute(filename).parent_path();
+
+            std::error_code err      = {};
+            if (!fs::exists(base_dir))
+            {
+                fs::create_directories(base_dir, err);
+            }
+        };
+
+        auto          scratch       = ZGetScratch(arena);
+        Array<String> src_tex_files = {};
+        Array<String> dst_tex_files = {};
+        src_tex_files.init(scratch.Arena, textures.size());
+        dst_tex_files.init(scratch.Arena, textures.size());
+
+        for (auto& tex : textures)
+        {
+            if (tex.Path.empty())
+            {
+                continue;
+            }
+
+            auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+            auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+
+            CreateBaseDirectoryFn(dst_file);
+
+            auto& sf = src_tex_files.push_use({});
+            auto& df = dst_tex_files.push_use({});
+
+            sf.init(scratch.Arena, src_file.c_str());
+            df.init(scratch.Arena, dst_file.c_str());
+        }
+        /*
+         * Texture files processing
+         *  (1) Ensuring Scene sub-dir is created
+         *  (2) Copying files to destination
+         */
+
+        ZENGINE_VALIDATE_ASSERT(src_tex_files.size() == dst_tex_files.size(), "source files count can't be diff of destination files count")
+        for (int i = 0; i < src_tex_files.size(); ++i)
+        {
+            auto          src = fs::absolute(src_tex_files[i].c_str());
+            auto          dst = fs::absolute(dst_tex_files[i].c_str());
+
+            std::ifstream in(src.c_str(), std::ios::binary);
+            std::ofstream out(dst.c_str(), std::ios::binary);
+
+            if (!in.is_open() || !out.is_open())
+            {
+                in.close();
+                out.close();
+                continue;
+            }
+
+            out << in.rdbuf();
+
+            in.close();
+            out.close();
+        }
+
+        ZReleaseScratch(scratch);
+
+        /*
+         * Update texture path
+         */
+        for (auto& tex : textures)
+        {
+            auto new_path = fmt::format("{0}{1}{2}{3}{4}", config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetName.c_str(), PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+            tex.Path.clear();
+            tex.Path.append(new_path.c_str());
+        }
+    }
+
+    glm::mat4 AssimpImporter::ConvertToMat4(const aiMatrix4x4& m)
+    {
+        glm::mat4 mm;
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                mm[i][j] = m[i][j];
+            }
+        }
+        return mm;
+    }
+
+    void AssimpProgressHandler::SetImporter(AssimpImporter* const importer)
+    {
+        m_importer = importer;
+    }
+
+    bool AssimpProgressHandler::Update(float percentage)
+    {
+        if (m_importer && m_importer->m_progress_callback)
+        {
+            m_importer->m_progress_callback(m_importer->Context, percentage);
+        }
+        return true;
+    }
+} // namespace ZEngine::Importers

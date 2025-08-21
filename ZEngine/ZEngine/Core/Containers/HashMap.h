@@ -146,7 +146,7 @@ namespace ZEngine::Core::Containers
             size_type index = probe_for_insert(key);
             auto&     entry = m_entries[index];
 
-            if (entry.state == EntryState::Occupied && entry.key == key)
+            if (entry.state == EntryState::Occupied && key_equals(entry.key, key))
             {
                 entry.value = value; // Update existing key
                 return;
@@ -344,6 +344,19 @@ namespace ZEngine::Core::Containers
             }
         }
 
+        // Compare keys, specialized for const char*
+        bool key_equals(const K& a, const K& b) const
+        {
+            if constexpr (std::is_same_v<K, const char*>)
+            {
+                return Helpers::secure_strcmp(a, b) == 0;
+            }
+            else
+            {
+                return a == b;
+            }
+        }
+
         // Rehashes the hash map to a new capacity, reinserting all occupied entries.
         // @param new_capacity The new number of slots.
         // @note Moves the old entries to avoid copying and skips Deleted entries.
@@ -384,7 +397,7 @@ namespace ZEngine::Core::Containers
                 {
                     return size_type(-1);
                 }
-                if (entry.state == EntryState::Occupied && entry.key == key)
+                if (entry.state == EntryState::Occupied && key_equals(entry.key, key))
                 {
                     return index;
                 }
@@ -418,7 +431,7 @@ namespace ZEngine::Core::Containers
                 {
                     first_deleted = index;
                 }
-                else if (entry.state == EntryState::Occupied && entry.key == key)
+                else if (entry.state == EntryState::Occupied && key_equals(entry.key, key))
                 {
                     return index;
                 }
@@ -451,7 +464,14 @@ namespace ZEngine::Core::Containers
         // @return The hash value.
         size_type hash(const K& key) const
         {
-            return rapidhash(&key, sizeof(key));
+            if constexpr (std::is_same_v<K, const char*>)
+            {
+                return rapidhash(key, Helpers::secure_strlen(key));
+            }
+            else
+            {
+                return rapidhash(&key, sizeof(K));
+            }
         }
 
         // Computes a secondary hash for double hashing to determine probe step size.

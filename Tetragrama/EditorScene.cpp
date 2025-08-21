@@ -1,24 +1,28 @@
 #include <pch.h>
 #include <EditorScene.h>
-#include <Managers/AssetManager.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <stack>
 
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Core::Containers;
+using namespace ZEngine::Managers;
+using namespace ZEngine::Helpers;
 
 namespace Tetragrama
 {
-    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Hardwares::VulkanDevice* device, const char* name)
+    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring name)
     {
         arena->CreateSubArena(ZMega(200), &LocalArena);
 
-        Name   = name;
-        Device = device;
+        Name                     = name;
+
+        PendingOnLoadHierarchies = CreateRef<ThreadSafeQueue<AssetManager::AssetHandle>>();
 
         AssetFiles.init(&LocalArena, 500);
         HashToAssetFile.init(&LocalArena, 500);
 
         Hierarchies.init(&LocalArena, 1000);
+        HierarchiesNodeRef.init(&LocalArena, 1000);
         Names.init(&LocalArena, 1000);
         LocalTransforms.init(&LocalArena, 1000);
         GlobalTransforms.init(&LocalArena, 1000);
@@ -51,14 +55,15 @@ namespace Tetragrama
             return -1;
         }
 
-        int                      node_id  = static_cast<int>(Hierarchies.size());
+        int                             node_id  = static_cast<int>(Hierarchies.size());
 
         // Create new node
-        EditorSceneNodeHierarchy new_node = {};
-        new_node.Parent                   = parent;
-        new_node.DepthLevel               = depth;
+        ZEngine::Helpers::NodeHierarchy new_node = {};
+        new_node.Parent                          = parent;
+        new_node.DepthLevel                      = depth;
 
         Hierarchies.push(new_node);
+        HierarchiesNodeRef.push({});
         LocalTransforms.push(glm::mat4(1.0f));
         GlobalTransforms.push(glm::mat4(1.0f));
 
@@ -85,7 +90,7 @@ namespace Tetragrama
         return node_id;
     }
 
-    int EditorScene::CreateSceneNode(int parent, int depth, const Importers::AssetNodeRef& metadata)
+    int EditorScene::CreateSceneNode(int parent, int depth, const ZEngine::Importers::AssetNodeRef& metadata)
     {
         int node_id = AddHierarchyNode(parent, depth);
         if (node_id < 0)
@@ -94,13 +99,13 @@ namespace Tetragrama
             return node_id;
         }
 
-        Hierarchies[node_id].NodeRef = metadata;
+        HierarchiesNodeRef[node_id] = metadata;
 
-        NodeNames[node_id]           = Names.size();
-        auto&   name                 = Names.push_use({});
-        cstring name_val             = "Empty entity";
+        NodeNames[node_id]          = Names.size();
+        auto&   name                = Names.push_use({});
+        cstring name_val            = "Empty entity";
 
-        if (Hierarchies[node_id].NodeRef.IsValid())
+        if (HierarchiesNodeRef[node_id].IsValid())
         {
             if (ZEngine::Helpers::secure_strlen(metadata.Name) > 0)
             {
@@ -226,7 +231,7 @@ namespace Tetragrama
         return Hierarchies[node].Parent == -2;
     }
 
-    const ZEngine::Rendering::Meshes::MeshAllocation& EditorScene::CreateOrGetMeshAllocation(Importers::AssetMesh* const mesh)
+    const ZEngine::Rendering::Meshes::MeshAllocation& EditorScene::CreateOrGetMeshAllocation(ZEngine::Importers::AssetMesh* const mesh)
     {
         if (MeshAllocations.contains(mesh->MeshUUID))
         {
@@ -267,9 +272,9 @@ namespace Tetragrama
         return MeshAllocations.at(mesh->MeshUUID);
     }
 
-    void EditorScene::PushAssetFile(const Importers::AssetImporterOutput& data)
+    void EditorScene::PushAssetFile(const ZEngine::Importers::AssetImporterOutput& data)
     {
-        if (data.Type == Importers::AssetFileType::UNKNOWN)
+        if (data.Type == ZEngine::Importers::AssetFileType::UNKNOWN)
         {
             ZENGINE_CORE_WARN("{} : Invalid operation, unknown asset file type", __FUNCTION__)
             return;
@@ -310,6 +315,7 @@ namespace Tetragrama
         HashToAssetFile.clear();
 
         Hierarchies.clear();
+        HierarchiesNodeRef.clear();
         Names.clear();
         LocalTransforms.clear();
         GlobalTransforms.clear();
@@ -327,7 +333,8 @@ namespace Tetragrama
         LocalTransforms.push(glm::mat4(1.0f));
         GlobalTransforms.push(glm::mat4(1.0f));
 
-        auto& node      = Hierarchies.push_use(EditorSceneNodeHierarchy{});
+        auto& node = Hierarchies.push_use({});
+        HierarchiesNodeRef.push({});
         node.DepthLevel = 0;
     }
 
@@ -351,6 +358,7 @@ namespace Tetragrama
         for (const auto& h : scene.Hierarchies)
         {
             Hierarchies.push(h);
+            HierarchiesNodeRef.push({});
         }
 
         for (const auto& lt : scene.LocalTransforms)
@@ -368,11 +376,11 @@ namespace Tetragrama
             NodeNames.insert(k, v);
         }
 
-        auto asset_manager = Managers::AssetManager::Instance();
+        auto asset_manager = AssetManager::Instance();
 
         for (const auto& file : AssetFiles)
         {
-            asset_manager->LoadAssetFile(Importers::AssetImporterOutput{.Type = file.Type, .Path = file.Path.c_str(), .RootPath = file.RootPath.c_str()});
+            asset_manager->LoadAssetFile(ZEngine::Importers::AssetImporterOutput{.Type = file.Type, .Path = file.Path.c_str(), .RootPath = file.RootPath.c_str()});
         }
     }
 } // namespace Tetragrama

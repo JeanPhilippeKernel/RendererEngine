@@ -17,23 +17,24 @@ namespace Tetragrama::Components
     {
         UIComponent::Initialize(parent, name, visibility, closed);
         parent->LocalArena.CreateSubArena(ZMega(1), &m_local_arena);
-        auto context        = reinterpret_cast<EditorContext*>(ParentLayer->ParentContext);
-        m_assets_directory  = context->ConfigurationPtr->WorkingSpacePath.c_str();
-        m_current_directory = m_assets_directory;
+
+        m_assets_directory             = ParentLayer->CurrentApp->WorkingSpacePath;
+        m_current_directory            = m_assets_directory;
+
+        auto       asset_mgr           = ZEngine::Managers::AssetManager::Instance();
+
+        const auto current_directoy    = std::filesystem::current_path();
+        const auto directory_icon_path = fmt::format("{0}{1}{2}", current_directoy.string(), PLATFORM_OS_BACKSLASH, "Settings/Icons/DirectoryIcon.png");
+        const auto file_icon_path      = fmt::format("{0}{1}{2}", current_directoy.string(), PLATFORM_OS_BACKSLASH, "Settings/Icons/FileIcon.png");
+
+        m_directory_icon               = asset_mgr->LoadTextureFileAsAsset(directory_icon_path.c_str(), true);
+        m_file_icon                    = asset_mgr->LoadTextureFileAsAsset(file_icon_path.c_str(), true);
     }
 
     void ProjectViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
     void ProjectViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        if (!m_textures_loaded)
-        {
-            m_directory_icon  = renderer->AsyncLoader->LoadTextureFile("Settings/Icons/DirectoryIcon.png");
-            m_file_icon       = renderer->AsyncLoader->LoadTextureFile("Settings/Icons/FileIcon.png");
-
-            m_textures_loaded = true;
-        }
-
         ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
 
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
@@ -120,7 +121,7 @@ namespace Tetragrama::Components
 
         ImGui::PushID(name.c_str());
 
-        ImTextureID icon      = entry.is_directory() ? (ImTextureID) m_directory_icon.Index : (ImTextureID) m_file_icon.Index;
+        ImTextureID icon      = entry.is_directory() ? (ImTextureID) m_directory_icon->Handle.Index : (ImTextureID) m_file_icon->Handle.Index;
 
         const float margin    = 5.0f;
         ImVec2      cursorPos = ImGui::GetCursorPos();

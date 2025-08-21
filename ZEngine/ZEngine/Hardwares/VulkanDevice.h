@@ -18,6 +18,7 @@
 #include <Core/Containers/HashMap.h>
 #include <Core/Containers/Strings.h>
 #include <Core/Memory/Allocator.h>
+#include <AsyncResourceLoader.h>
 #include <set>
 // clang-format on
 
@@ -586,6 +587,7 @@ namespace ZEngine::Hardwares
         std::mutex                                                                          Mutex                              = {};
         Windows::CoreWindow*                                                                CurrentWindow                      = nullptr;
         ZEngine::Core::Memory::ArenaAllocator*                                              Arena                              = nullptr;
+        AsyncResourceLoaderPtr                                                              AsyncResLoader                     = nullptr;
 
         void                                                                                Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window);
         void                                                                                Deinitialize();

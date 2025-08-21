@@ -1,12 +1,12 @@
 #pragma once
-#include <Helpers/NodeHierarchyHelper.h>
 #include <UIComponent.h>
+#include <ZEngine/Applications/Layer.h>
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/HashMap.h>
 #include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Helpers/NodeHierarchyHelper.h>
 #include <ZEngine/Windows/Inputs/IInputEventCallback.h>
-#include <ZEngine/Windows/Layers/Layer.h>
 
 namespace Tetragrama::Components
 {
@@ -15,19 +15,17 @@ namespace Tetragrama::Components
 
 namespace Tetragrama::Layers
 {
-    class ImguiLayer : public ZEngine::Windows::Layers::Layer, public ZEngine::Windows::Inputs::IKeyboardEventCallback, public ZEngine::Windows::Inputs::IMouseEventCallback, public ZEngine::Windows::Inputs::ITextInputEventCallback, public ZEngine::Windows::Inputs::IWindowEventCallback
+    struct ImguiLayer : public ZEngine::Applications::Layer, public ZEngine::Windows::Inputs::IKeyboardEventCallback, public ZEngine::Windows::Inputs::IMouseEventCallback, public ZEngine::Windows::Inputs::ITextInputEventCallback, public ZEngine::Windows::Inputs::IWindowEventCallback
     {
-
-    public:
-        ImguiLayer(const char* name = "ImGUI Layer") : Layer(name) {}
+        ImguiLayer(cstring name = "ImGUI Layer") : ZEngine::Applications::Layer(name) {}
         virtual ~ImguiLayer();
 
-        ZEngine::Core::Containers::Array<Helpers::NodeHierarchy>                       NodeHierarchies  = {};
+        ZEngine::Core::Containers::Array<ZEngine::Helpers::NodeHierarchy>              NodeHierarchies  = {};
         ZEngine::Core::Containers::Array<uint32_t>                                     NodeToRender     = {};
-        ZEngine::Core::Containers::HashMap<uint32_t, ZRawPtr(Components::UIComponent)> NodeUIComponents = {};
+        ZEngine::Core::Containers::HashMap<uint32_t, Components::UIComponent*>         NodeUIComponents = {};
         ZEngine::Core::Containers::HashMap<ZEngine::Windows::Inputs::GlfwKeyCode, int> KeyEntries       = {};
 
-        virtual void                                                                   Initialize(ZEngine::Core::Memory::ArenaAllocator* arena) override;
+        virtual void                                                                   Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Applications::GameApplicationPtr app) override;
         virtual void                                                                   Deinitialize() override;
 
         bool                                                                           OnEvent(ZEngine::Core::CoreEvent& event) override;
@@ -54,4 +52,5 @@ namespace Tetragrama::Layers
         bool                                                                           OnWindowMaximized(ZEngine::Windows::Events::WindowMaximizedEvent&) override;
         bool                                                                           OnWindowRestored(ZEngine::Windows::Events::WindowRestoredEvent&) override;
     };
+    ZDEFINE_PTR(ImguiLayer);
 } // namespace Tetragrama::Layers

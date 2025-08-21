@@ -21,6 +21,7 @@ add_library (zEngineLib
 target_include_directories (zEngineLib
 	PUBLIC
 		.
+		./Applications
 		./Core
 		./Core/Maths
 		./Core/Memory
@@ -28,6 +29,9 @@ target_include_directories (zEngineLib
 		./Hardwares
 		./Helpers
 		./Layers
+		./Managers
+		./Importers
+		./Controllers
 		./Logging
 		./Rendering
 		./Rendering/Entities
