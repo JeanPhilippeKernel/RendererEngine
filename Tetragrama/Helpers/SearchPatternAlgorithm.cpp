@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <SearchPatternAlgorithm.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 

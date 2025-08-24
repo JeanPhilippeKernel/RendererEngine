@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Controllers/PerspectiveCameraController.h>
 #include <Core/EventDispatcher.h>
 #include <Inputs/IDevice.h>

@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Rendering/Cameras/PerspectiveCamera.h>
 #include <glm/gtx/quaternion.hpp>
 

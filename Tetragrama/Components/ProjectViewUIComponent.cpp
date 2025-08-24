@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Editor.h>
 #include <Helpers/SearchPatternAlgorithm.h>
 #include <ProjectViewUIComponent.h>

@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Rendering/Geometries/CubeGeometry.h>
 
 namespace ZEngine::Rendering::Geometries

@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <AssetManager.h>
 #include <Helpers/MemoryOperations.h>
 #include <Helpers/ThreadPool.h>

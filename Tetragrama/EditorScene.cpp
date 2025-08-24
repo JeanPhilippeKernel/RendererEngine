@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <EditorScene.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <stack>

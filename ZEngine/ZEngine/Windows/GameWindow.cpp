@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Core/Coroutine.h>
 #include <Engine.h>
 #include <Event/EngineClosedEvent.h>

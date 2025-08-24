@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <fmt/format.h>

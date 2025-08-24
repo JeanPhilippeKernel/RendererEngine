@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <CLI/CLI.hpp>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/EngineConfiguration.h>

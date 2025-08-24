@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Controllers/EditorCameraController.h>
 #include <Editor.h>
 #include <HierarchyViewUIComponent.h>

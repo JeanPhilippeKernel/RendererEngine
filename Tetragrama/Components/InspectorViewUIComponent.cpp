@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Editor.h>
 #include <InspectorViewUIComponent.h>
 #include <UIComponentDrawerHelper.h>

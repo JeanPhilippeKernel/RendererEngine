@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Rendering/Entities/GraphicSceneEntity.h>
 
 namespace ZEngine::Rendering::Entities

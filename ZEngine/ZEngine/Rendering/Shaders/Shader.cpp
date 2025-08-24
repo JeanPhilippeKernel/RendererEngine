@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Helpers/MemoryOperations.h>
 #include <Logging/LoggerDefinition.h>

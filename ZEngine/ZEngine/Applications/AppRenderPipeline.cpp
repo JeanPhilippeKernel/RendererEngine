@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <AppRenderPipeline.h>
 #include <Core/Containers/Array.h>
 

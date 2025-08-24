@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Core/Coroutine.h>
 #include <Helpers/MeshHelper.h>
 #include <Rendering/Components/CameraComponent.h>

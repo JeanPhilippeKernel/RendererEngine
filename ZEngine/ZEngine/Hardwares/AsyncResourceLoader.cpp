@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <AsyncResourceLoader.h>
 #include <Helpers/ThreadPool.h>
 #include <Rendering/Buffers/Bitmap.h>
