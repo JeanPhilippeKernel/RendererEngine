@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Managers/AssetManager.h>
 #include <RendererPasses.h>
 #include <Rendering/Renderers/Contracts/RendererDataContract.h>

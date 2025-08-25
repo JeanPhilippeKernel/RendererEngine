@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Rendering/Renderers/Storages/GraphicVertex.h>
 #include <vulkan/vulkan.h>
 

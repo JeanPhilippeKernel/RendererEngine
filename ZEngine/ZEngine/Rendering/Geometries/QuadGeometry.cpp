@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Rendering/Geometries/QuadGeometry.h>
 
 namespace ZEngine::Rendering::Geometries

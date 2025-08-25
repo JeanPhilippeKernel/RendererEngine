@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <EditorSceneSerializer.h>
 #include <Importers/IAssetImporter.h>
 #include <ZEngine/Core/Containers/Array.h>

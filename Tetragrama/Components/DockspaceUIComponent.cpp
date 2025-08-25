@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <DockspaceUIComponent.h>
 #include <Editor.h>
 #include <Helpers/UIDispatcher.h>

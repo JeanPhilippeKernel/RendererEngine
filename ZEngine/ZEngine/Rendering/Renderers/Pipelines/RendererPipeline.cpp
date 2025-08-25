@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 

@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <AssimpImporter.h>
 #include <Core/Coroutine.h>
 #include <Helpers/MemoryOperations.h>

@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <UIComponentDrawerHelper.h>
 
 namespace Tetragrama::Helpers

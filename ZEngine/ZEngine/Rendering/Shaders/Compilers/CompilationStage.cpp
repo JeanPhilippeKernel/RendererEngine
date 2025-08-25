@@ -1,5 +1,4 @@
 #pragma once
-#include <pch.h>
 #include <Core/Coroutine.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Shaders/Compilers/CompilationStage.h>

@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Applications/AppRenderPipeline.h>
 #include <Applications/GameApplication.h>
 #include <Engine.h>

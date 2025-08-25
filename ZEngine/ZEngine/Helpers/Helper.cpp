@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Core/Coroutine.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Helpers/MathHelper.h>

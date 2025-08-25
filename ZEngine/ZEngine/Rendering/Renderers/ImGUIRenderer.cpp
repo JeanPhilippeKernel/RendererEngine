@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Hardwares/VulkanDevice.h>
 #include <ImGuizmo/ImGuizmo.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>

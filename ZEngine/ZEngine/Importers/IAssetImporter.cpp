@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Core/Containers/Array.h>
 #include <Helpers/SerializerCommonHelper.h>
 #include <IAssetImporter.h>

@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Maths/Math.h>
 
 #define GLM_ENABLE_EXPERIMENTAL

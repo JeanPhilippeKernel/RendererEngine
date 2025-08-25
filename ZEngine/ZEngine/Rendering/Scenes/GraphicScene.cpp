@@ -1,5 +1,4 @@
-﻿#include <pch.h>
-#include <Core/Coroutine.h>
+﻿#include <Core/Coroutine.h>
 #include <Renderers/GraphicRenderer.h>
 #include <Rendering/Components/CameraComponent.h>
 #include <Rendering/Components/LightComponent.h>

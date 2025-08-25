@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Core/Coroutine.h>
 #include <Rendering/Buffers/Bitmap.h>
 #include <Rendering/Primitives/ImageMemoryBarrier.h>

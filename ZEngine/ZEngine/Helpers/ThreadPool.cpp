@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <Helpers/ThreadPool.h>
 
 namespace ZEngine::Helpers

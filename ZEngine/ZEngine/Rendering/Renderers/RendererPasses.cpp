@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <GraphicRenderer.h>
 #include <RendererPasses.h>
 

@@ -1,4 +1,3 @@
-#include <pch.h>
 #include <IRenderer.h>
 #include <RenderGraph.h>
 
