@@ -8,7 +8,7 @@
 #include <ZEngine/Windows/Inputs/Keyboard.h>
 #include <ZEngine/Windows/Inputs/Mouse.h>
 #include <glm/glm.hpp>
-#include <gtc/type_ptr.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 using namespace ZEngine;
 using namespace ZEngine::Helpers;

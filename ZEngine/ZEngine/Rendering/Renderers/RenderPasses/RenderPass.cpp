@@ -1,6 +1,7 @@
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <fmt/format.h>
+#include <numeric>
 
 using namespace ZEngine::Rendering::Buffers;
 using namespace ZEngine::Rendering::Specifications;
@@ -389,13 +390,13 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::SetShaderOverloadMaxSet(uint32_t count)
     {
-        m_spec.PipelineSpecification.ShaderSpecification.OverloadMaxSet = count;
+        m_spec.PipelineSpecification.ShaderSpecificationValue.OverloadMaxSet = count;
         return *this;
     }
 
     RenderPassBuilder& RenderPassBuilder::SetOverloadPoolSize(uint32_t count)
     {
-        m_spec.PipelineSpecification.ShaderSpecification.OverloadPoolSize = count;
+        m_spec.PipelineSpecification.ShaderSpecificationValue.OverloadPoolSize = count;
         return *this;
     }
 
@@ -449,7 +450,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::UseShader(std::string_view name)
     {
-        m_spec.PipelineSpecification.ShaderSpecification.Name = name.data();
+        m_spec.PipelineSpecification.ShaderSpecificationValue.Name = name.data();
         return *this;
     }
 

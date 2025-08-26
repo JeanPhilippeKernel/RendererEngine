@@ -1,0 +1,55 @@
+name: ZEngine Cmake Linux Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Debug'
+      targetFramework:
+        type: string
+        default: 'net8.0'
+
+jobs:
+  Linux-Build:
+    name: cmake-build-linux-${{ inputs.configuration }}
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      
+    - name: Download the Microsoft repository GPG keys
+      run: wget -q https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
+
+    - name: Register the Microsoft repository GPG keys
+      run: sudo dpkg -i packages-microsoft-prod.deb
+
+    - name: Install LLVM-20
+      run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20
+
+    - name: Update the list of packages
+      run: sudo apt-get update
+
+    - name: Install Dependencies
+      run: sudo apt-get install libasound2-dev libgl1-mesa-dev libpulse-dev libdbus-1-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxt-dev libxxf86vm-dev cmake apt-transport-https software-properties-common gcc g++ powershell clang-format-20 glslang-tools libwayland-dev libxkbcommon-dev
+
+    - name: CMake Build
+      run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}}
+      shell: pwsh
+
+    - name: Publish Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build-linux-${{inputs.configuration}}
+        path: |
+          Result.Linux.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/publish/
+          Result.Linux.x64.${{inputs.configuration}}/__externals/Vulkan-Loader/loader/
+          Result.Linux.x64.${{inputs.configuration}}/ZEngine/tests/ZEngineTests
+          Result.Linux.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.CSharp.resources.dll
+          !Result.Linux.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
+          !Result.Linux.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.resources.dll
+          !Result.Linux.x64.${{inputs.configuration}}/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.Scripting.resources.dll

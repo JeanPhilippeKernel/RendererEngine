@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <iostream>
 
 namespace ZEngine::Windows::Inputs
 {
@@ -136,4 +137,10 @@ namespace ZEngine::Windows::Inputs
         MOUSE_BUTTON_8      = 7
 
     } GlfwKey;
+
+    inline std::ostream& operator<<(std::ostream& stream, GlfwKeyCode f)
+    {
+        stream << static_cast<int32_t>(f);
+        return stream;
+    }
 } // namespace ZEngine::Windows::Inputs

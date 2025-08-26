@@ -1,5 +1,5 @@
 #pragma once
-#include <Allocator.h>
+#include <Core/Memory/Allocator.h>
 
 namespace ZEngine::Core::Memory
 {
@@ -12,14 +12,14 @@ namespace ZEngine::Core::Memory
     {
         void Initialize(const MemoryConfiguration& config)
         {
-            this->ArenaAllocator.Initialize(config.DefaultSize);
+            this->Allocator.Initialize(config.DefaultSize);
         }
 
         void Shutdowm()
         {
-            ArenaAllocator.Shutdown();
+            Allocator.Shutdown();
         }
 
-        ArenaAllocator ArenaAllocator = {};
+        ArenaAllocator Allocator = {};
     };
 } // namespace ZEngine::Core::Memory

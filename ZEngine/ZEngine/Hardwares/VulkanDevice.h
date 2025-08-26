@@ -6,8 +6,8 @@
 #include <Helpers/HandleManager.h>
 #include <Helpers/MemoryOperations.h>
 #include <Helpers/ThreadSafeQueue.h>
-#include <Primitives/Fence.h>
-#include <Primitives/Semaphore.h>
+#include <Rendering/Primitives/Fence.h>
+#include <Rendering/Primitives/Semaphore.h>
 #include <Rendering/Pools/CommandPool.h>
 #include <Rendering/Primitives/ImageMemoryBarrier.h>
 #include <Rendering/ResourceTypes.h>
@@ -20,6 +20,8 @@
 #include <Core/Memory/Allocator.h>
 #include <AsyncResourceLoader.h>
 #include <set>
+#include <limits>
+#include <cstdint>
 // clang-format on
 
 namespace ZEngine::Windows
@@ -555,7 +557,7 @@ namespace ZEngine::Hardwares
         VkPhysicalDeviceFeatures                                                            PhysicalDeviceFeature              = {};
         VkPhysicalDeviceMemoryProperties                                                    PhysicalDeviceMemoryProperties     = {};
         VkSwapchainKHR                                                                      SwapchainHandle                    = VK_NULL_HANDLE;
-        VmaAllocator                                                                        VmaAllocator                       = nullptr;
+        VmaAllocator                                                                        VmaAllocatorValue                  = nullptr;
         Core::Containers::Array<VkFormat>                                                   DefaultDepthFormats                = {};
         Rendering::Renderers::RenderPasses::Attachment*                                     SwapchainAttachment                = {};
         Core::Containers::Array<VkImageView>                                                SwapchainImageViews                = {};

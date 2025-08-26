@@ -2,7 +2,7 @@
 #include <Hardwares/VulkanDevice.h>
 #include <Helpers/NodeHierarchyHelper.h>
 #include <Rendering/Meshes/Mesh.h>
-#include <Textures/Texture.h>
+#include <Rendering/Textures/Texture.h>
 #include <ZEngineDef.h>
 #include <entt/entt.hpp>
 #include <uuid.h>
@@ -85,7 +85,7 @@ namespace ZEngine::Rendering::Scenes
          */
         std::vector<float>                         Vertices                     = {};
         std::vector<uint32_t>                      Indices                      = {};
-        std::vector<DrawData>                      DrawData                     = {};
+        std::vector<DrawData>                      DrawDataValue                = {};
         std::vector<std::string>                   Names                        = {};
         std::vector<std::string>                   MaterialNames                = {};
         std::unordered_map<uint32_t, uint32_t>     NodeMeshes                   = {};

@@ -18,7 +18,7 @@ int applicationEntryPoint(int argc, char* argv[])
     MemoryManager       manager = {};
     MemoryConfiguration config  = {.DefaultSize = ZGiga(3u)};
     manager.Initialize(config);
-    auto                arena      = &(manager.ArenaAllocator);
+    auto                arena      = &(manager.Allocator);
 
     LoggerConfiguration logger_cfg = {};
     Logger::Initialize(arena, logger_cfg);

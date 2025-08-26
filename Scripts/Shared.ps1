@@ -189,7 +189,6 @@ function Find-ClangFormat () {
     $LLVMMaximumVersion = $repoConfiguration.Requirements.LLVM.MaximumVersion
 
     $candidates = @(
-        'clang-format'
         if ($IsMacOS) {
             $brewPrefixPath = Invoke-Expression -Command "& brew --prefix"
             Join-Path $brewPrefixPath -ChildPath 'opt/llvm/bin/clang-format'
@@ -197,6 +196,11 @@ function Find-ClangFormat () {
         if ($IsWindows) {
             Join-Path -Path $env:ProgramFiles -ChildPath 'LLVM\bin\clang-format.exe'
         }
+        if ($IsLinux) {
+            '/usr/bin/clang-format'
+            '/usr/bin/clang-format-20'
+        }
+        'clang-format'
     )
 
     foreach ($candidate in $candidates) {
@@ -225,7 +229,7 @@ function Setup-ShaderCCompilerTool () {
         $outputFile = Join-Path -Path $repositoryToolPath -ChildPath "ShaderCCompiler$outputFileExtension"
         Write-Host "Downloading Shader Compiler Tools..."
 
-        $shaderCToolUrl = IF($IsWindows) {$repoConfiguration.Requirements.ShaderC.Windows.Url} Elseif($IsMacOS) {$repoConfiguration.Requirements.ShaderC.macOS.Url}
+        $shaderCToolUrl = IF($IsWindows) {$repoConfiguration.Requirements.ShaderC.Windows.Url} Elseif($IsMacOS) {$repoConfiguration.Requirements.ShaderC.macOS.Url} Elseif($IsLinux){$repoConfiguration.Requirements.ShaderC.Linux.Url}
         Invoke-WebRequest -Uri $shaderCToolUrl -OutFile $outputFile
 
         # Extract contents
