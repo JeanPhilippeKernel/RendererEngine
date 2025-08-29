@@ -67,7 +67,9 @@ function RunTests {
         "Darwin" {
             $testExecutablePath = Join-Path $OutputBuildDirectory -ChildPath "ZEngine/tests/$Configuration/ZEngineTests"
         }
-        "Linux" {}
+        "Linux" {
+            $testExecutablePath = Join-Path $OutputBuildDirectory -ChildPath "ZEngine/tests/ZEngineTests"
+            }
         Default {
             throw 'This system is not supported'
         }
@@ -79,7 +81,7 @@ function RunTests {
         & $testExecutablePath
     }
     else {
-        Write-Warning "Test executable does not exist: $testExecutablePath"
+        Write-Error "Test executable does not exist: $testExecutablePath"
     }
 }
 

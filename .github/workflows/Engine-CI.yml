@@ -24,3 +24,9 @@ jobs:
     uses: ./.github/workflows/macOS-build.yml
     with:
       targetFramework: net8.0
+
+  linux:
+    needs: clang-format
+    uses: ./.github/workflows/linux-build.yml
+    with:
+      targetFramework: net8.0

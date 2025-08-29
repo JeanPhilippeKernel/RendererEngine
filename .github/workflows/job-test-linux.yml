@@ -1,0 +1,31 @@
+# Run tests for linux
+#
+name: linux Test Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Debug'
+
+jobs:
+  test:
+    name: test-linux-${{ inputs.configuration }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Build-linux-${{ inputs.configuration }}
+          path: Result.Linux.x64.${{ inputs.configuration }}
+
+      - name: Update access permission of ZEngineTests
+        run: chmod +x ./Result.Linux.x64.${{ inputs.configuration }}/ZEngine/tests/ZEngineTests
+
+      - name: Run Tests
+        run: .\Scripts\RunTests.ps1 -Configurations ${{ inputs.configuration }}
+        shell: pwsh

@@ -113,7 +113,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     # Check the system name
     if ($IsLinux) {
         $systemName = "Linux"
-        $cMakeGenerator
     }
     elseif ($IsMacOS) {
         $systemName = "Darwin"
@@ -131,7 +130,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     [string]$BuildDirectoryName = "Result." + $systemName + "." + $architecture + "." + $BuildDirectoryNameExtension
     [string]$buildDirectoryPath = [IO.Path]::Combine($RepoRoot, $BuildDirectoryName)
     [string]$cMakeCacheVariableOverride = ""
-    [string]$cMakeGenerator = ""
 
     # Create build directory
     if (-Not (Test-Path $buildDirectoryPath)) {
@@ -171,11 +169,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
             $cMakeCacheVariableOverride += ' -DCMAKE_CONFIGURATION_TYPES=Debug;Release '
         }
         "Linux" {
-            $cMakeGenerator = "-G `"Unix Makefiles`""
-
-            # Set Linux build compiler
-            $env:CC = '/usr/bin/gcc-11'
-            $env:CXX = '/usr/bin/g++-11'
+            $cMakeGenerator = "-G `"Ninja`""
         }
         "Darwin" {
             $cMakeGenerator = "-G `"Xcode`""
