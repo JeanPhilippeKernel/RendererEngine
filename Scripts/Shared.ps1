@@ -166,6 +166,9 @@ function Find-GlslangValidator () {
         if ($IsMacOS) {
             Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslangValidator" # On macOS, the pipeline build might pick up this option...
         }
+        if ($IsLinux) {
+       Join-Path -Path $shaderCCompilerPath -ChildPath "\bin\glslangValidator"
+        }
     )
 
     foreach ($GlslangValidatorProgram in $GlslangValidatorCandidates) {
