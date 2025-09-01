@@ -1,3 +1,4 @@
+#pragma once
 #include <Helpers/MemoryOperations.h>
 #include <Vec.h>
 
@@ -363,6 +364,15 @@ namespace ZEngine::Core::Maths
 
             return Mat4<T>(r0.x, r1.x, r2.x, r3.x, r0.y, r1.y, r2.y, r3.y, r0.z, r1.z, r2.z, r3.z, -dot(r0, d), -dot(r1, d), -dot(r2, a), -dot(r3, a));
         }
+        Vec4<T>& operator[](int j)
+        {
+            return (*reinterpret_cast<Vec4<T>*>(m_data[j]));
+        }
+
+        const Vec4<T>& operator[](int j) const
+        {
+            return (*reinterpret_cast<const Vec4<T>*>(m_data[j]));
+        }
     };
 
     using IMat2 = Mat2<int>;
@@ -409,9 +419,15 @@ namespace ZEngine::Core::Maths
     }
 
     template <typename T>
-    inline Mat3<T> operator*(const Mat3<T>& a, const Vec3<T>& v)
+    inline Vec3<T> operator*(const Mat3<T>& a, const Vec3<T>& v)
     {
         return Vec3<T>(a(0, 0) * v.x + a(0, 1) * v.y + a(0, 2) * v.z, a(1, 0) * v.x + a(1, 1) * v.y + a(1, 2) * v.z, a(2, 0) * v.x + a(2, 1) * v.y + a(2, 2) * v.z);
+    }
+
+    template <typename T>
+    inline Vec4<T> operator*(const Mat4<T>& a, const Vec4<T>& vec)
+    {
+        return Vec4<T>(a(0, 0) * vec.x + a(0, 1) * vec.y + a(0, 2) * vec.z + a(0, 3) * vec.w, a(1, 0) * vec.x + a(1, 1) * vec.y + a(1, 2) * vec.z + a(1, 3) * vec.w, a(2, 0) * vec.x + a(2, 1) * vec.y + a(2, 2) * vec.z + a(2, 3) * vec.w, a(3, 0) * vec.x + a(3, 1) * vec.y + a(3, 2) * vec.z + a(3, 3) * vec.w);
     }
 
     template <typename T>
@@ -461,4 +477,115 @@ namespace ZEngine::Core::Maths
             a(3, 0) * b(0, 2) + a(3, 1) * b(1, 2) + a(3, 2) * b(2, 2) + a(3, 3) * b(3, 2),
             a(3, 0) * b(0, 3) + a(3, 1) * b(1, 3) + a(3, 2) * b(2, 3) + a(3, 3) * b(3, 3)));
     }
+
+    inline bool DecomposeTransformComponent(const Mat4f& transform, Vec3f& translation, Vec3f& rotation, Vec3f& scale)
+    {
+        Mat4f LocalMatrix(transform);
+        if (epsilonEqual(LocalMatrix(3, 3), static_cast<float>(0)))
+            return false;
+
+        if (epsilonNotEqual(LocalMatrix(0, 3), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(3, 1), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(3, 2), static_cast<float>(0.0f)))
+        {
+            LocalMatrix(3, 0) = LocalMatrix(3, 1) = LocalMatrix(3, 2) = static_cast<float>(0);
+            LocalMatrix(3, 3)                                         = static_cast<float>(1);
+        }
+
+        // Next take care of translation (easy).
+        translation    = Vec3f(LocalMatrix[3].x, LocalMatrix[3].y, LocalMatrix[3].z);
+        LocalMatrix[3] = Vec4f(0, 0, 0, LocalMatrix[3].w);
+
+        Vec3f Row[3], Pdum3;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                Row[i][j] = LocalMatrix(i, j);
+
+        scale.x    = Row[0].magnitude();
+        Row[0]     = Row[0].normalize();
+        scale.y    = Row[1].magnitude();
+        Row[1]     = Row[1].normalize();
+        scale.z    = Row[2].magnitude();
+        Row[2]     = Row[2].normalize();
+
+        // At this point, the matrix (in rows[]) is orthonormal.
+        // Check for a coordinate system flip.  If the determinant
+        // is -1, then negate the matrix and the scaling factors.
+
+        rotation.y = asin(-Row[0][2]);
+        if (cos(rotation.y) != 0)
+        {
+            rotation.x = atan2(Row[1][2], Row[2][2]);
+            rotation.z = atan2(Row[0][1], Row[0][0]);
+        }
+        else
+        {
+            rotation.x = atan2(-Row[2][0], Row[1][1]);
+            rotation.z = 0;
+        }
+
+        return true;
+    }
+
+    template <typename T>
+    inline Mat4<T> translate(const Mat4<T>& matrix, const Vec3<T>& translation)
+    {
+        Mat4<T> result = matrix;
+
+        // Set translation column (last column)
+        result(0, 3)   = matrix(0, 0) * translation.x + matrix(0, 1) * translation.y + matrix(0, 2) * translation.z + matrix(0, 3);
+        result(1, 3)   = matrix(1, 0) * translation.x + matrix(1, 1) * translation.y + matrix(1, 2) * translation.z + matrix(1, 3);
+        result(2, 3)   = matrix(2, 0) * translation.x + matrix(2, 1) * translation.y + matrix(2, 2) * translation.z + matrix(2, 3);
+        result(3, 3)   = matrix(3, 0) * translation.x + matrix(3, 1) * translation.y + matrix(3, 2) * translation.z + matrix(3, 3);
+
+        return result;
+    }
+
+    template <typename T, size_t R, size_t C>
+    const T* value_ptr(const Matrix<T, R, C>& matrix)
+    {
+        return &matrix.m_data[0][0];
+    }
+
+    template <typename T, size_t R, size_t C>
+    T* value_ptr(Matrix<T, R, C>& matrix)
+    {
+        return &matrix.m_data[0][0];
+    }
+
+    // value_ptr for vectors
+    template <typename T>
+    const T* value_ptr(const Vec2<T>& vec)
+    {
+        return &vec.x;
+    }
+
+    template <typename T>
+    T* value_ptr(Vec2<T>& vec)
+    {
+        return &vec.x;
+    }
+
+    template <typename T>
+    const T* value_ptr(const Vec3<T>& vec)
+    {
+        return &vec.x;
+    }
+
+    template <typename T>
+    T* value_ptr(Vec3<T>& vec)
+    {
+        return &vec.x;
+    }
+
+    template <typename T>
+    const T* value_ptr(const Vec4<T>& vec)
+    {
+        return &vec.x;
+    }
+
+    template <typename T>
+    T* value_ptr(Vec4<T>& vec)
+    {
+        return &vec.x;
+    }
+
 } // namespace ZEngine::Core::Maths

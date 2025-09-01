@@ -2,14 +2,13 @@
 #include <InspectorViewUIComponent.h>
 #include <UIComponentDrawerHelper.h>
 #include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Helpers/MeshHelper.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/matrix_decompose.hpp>
-
 using namespace ZEngine::Rendering::Textures;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::Maths;
 
 namespace Tetragrama::Components
 {
@@ -56,20 +55,20 @@ namespace Tetragrama::Components
         // Helpers::DrawEntityControl("Transform", m_scene_entity, m_node_flag, [this] {
         //     auto            transform = m_scene_entity.GetTransform();
 
-        //    glm::vec3       translation, scale, skew;
-        //    glm::qua<float> rot_quat;
-        //    glm::vec4       perspective;
-        //    glm::decompose(transform, scale, rot_quat, translation, skew, perspective);
+        //    Vec3f       translation, scale, skew;
+        //    Quaternion<float> rot_quat;
+        //    Vec4f       perspective;
+        //    decompose(transform, scale, rot_quat, translation, skew, perspective);
 
         //    ImGui::Dummy(ImVec2(0, 3));
-        //    Helpers::DrawVec3Control("Position", translation, [&translation](glm::vec3& value) { translation = value; });
+        //    Helpers::DrawVec3Control("Position", translation, [&translation](Vec3f& value) { translation = value; });
 
-        //    glm::vec3 rotation = glm::eulerAngles(rot_quat);
+        //    Vec3f rotation = eulerAngles(rot_quat);
         //    ImGui::Dummy(ImVec2(0, 0.5));
-        //    Helpers::DrawVec3Control("Rotation", rotation, [&rotation](glm::vec3& value) { rotation = value; });
+        //    Helpers::DrawVec3Control("Rotation", rotation, [&rotation](Vec3f& value) { rotation = value; });
 
         //    ImGui::Dummy(ImVec2(0, 0.5));
-        //    Helpers::DrawVec3Control("Scale", scale, [&scale](glm::vec3& value) { scale = value; }, 1.0f);
+        //    Helpers::DrawVec3Control("Scale", scale, [&scale](Vec3f& value) { scale = value; }, 1.0f);
         //});
 
         // Mesh Renderer
@@ -143,24 +142,24 @@ namespace Tetragrama::Components
             if (light_type == LightType::DIRECTIONAL)
             {
                 auto light_ptr = reinterpret_cast<DirectionalLight*>(light.get());
-                auto direction = light_ptr->Direction.As<glm::vec3>();
-                auto ambient   = light_ptr->Ambient.As<glm::vec3>();
-                auto diffuse   = light_ptr->Diffuse.As<glm::vec3>();
-                auto specular  = light_ptr->Specular.As<glm::vec3>();
+                auto direction = light_ptr->Direction.As<Vec3f>();
+                auto ambient   = light_ptr->Ambient.As<Vec3f>();
+                auto diffuse   = light_ptr->Diffuse.As<Vec3f>();
+                auto specular  = light_ptr->Specular.As<Vec3f>();
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
                 {
-                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) {
-        light_ptr->Direction = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](Vec3f& value) {
+        light_ptr->Direction = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
-        light_ptr->Ambient = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](Vec3f& value) {
+        light_ptr->Ambient = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
-        light_ptr->Diffuse = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](Vec3f& value) {
+        light_ptr->Diffuse = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
-        light_ptr->Specular = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](Vec3f& value) {
+        light_ptr->Specular = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
                 }
             }
 
@@ -169,24 +168,24 @@ namespace Tetragrama::Components
                 auto transform = m_scene_entity.GetTransform();
                 auto light_ptr = reinterpret_cast<PointLight*>(light.get());
 
-                auto position  = glm::vec3(transform[3]);
-                auto ambient   = light_ptr->Ambient.As<glm::vec3>();
-                auto diffuse   = light_ptr->Diffuse.As<glm::vec3>();
-                auto specular  = light_ptr->Specular.As<glm::vec3>();
+                auto position  = Vec3f(transform[3]);
+                auto ambient   = light_ptr->Ambient.As<Vec3f>();
+                auto diffuse   = light_ptr->Diffuse.As<Vec3f>();
+                auto specular  = light_ptr->Specular.As<Vec3f>();
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
                 {
-                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) { light_ptr->Position =
-        glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawVec3Control("Position", position, [light_ptr](Vec3f& value) { light_ptr->Position =
+        Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
-        light_ptr->Ambient = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](Vec3f& value) {
+        light_ptr->Ambient = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
-        light_ptr->Diffuse = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](Vec3f& value) {
+        light_ptr->Diffuse = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
-        light_ptr->Specular = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](Vec3f& value) {
+        light_ptr->Specular = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
                     Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f",
         [light_ptr](float value) { light_ptr->Constant = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
@@ -204,32 +203,32 @@ namespace Tetragrama::Components
                 auto         transform = m_scene_entity.GetTransform();
                 auto         light_ptr = reinterpret_cast<Spotlight*>(light.get());
 
-                auto         direction = light_ptr->Direction.As<glm::vec3>();
-                auto         position  = glm::vec3(transform[3]);
-                auto         ambient   = light_ptr->Ambient.As<glm::vec3>();
-                auto         diffuse   = light_ptr->Diffuse.As<glm::vec3>();
-                auto         specular  = light_ptr->Specular.As<glm::vec3>();
+                auto         direction = light_ptr->Direction.As<Vec3f>();
+                auto         position  = Vec3f(transform[3]);
+                auto         ambient   = light_ptr->Ambient.As<Vec3f>();
+                auto         diffuse   = light_ptr->Diffuse.As<Vec3f>();
+                auto         specular  = light_ptr->Specular.As<Vec3f>();
                 static float phi_angle = 12.5f;
 
                 ImGui::Dummy(ImVec2(0, 0.5f));
                 {
-                    Helpers::DrawVec3Control("Position", position, [light_ptr](glm::vec3& value) { light_ptr->Position =
-        glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawVec3Control("Position", position, [light_ptr](Vec3f& value) { light_ptr->Position =
+        Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](glm::vec3& value) {
-        light_ptr->Direction = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](Vec3f& value) {
+        light_ptr->Direction = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](glm::vec3& value) {
-        light_ptr->Ambient = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](Vec3f& value) {
+        light_ptr->Ambient = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](glm::vec3& value) {
-        light_ptr->Diffuse = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](Vec3f& value) {
+        light_ptr->Diffuse = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](glm::vec3& value) {
-        light_ptr->Specular = glm::vec4(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
+                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](Vec3f& value) {
+        light_ptr->Specular = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
 
                     Helpers::DrawDragFloatControl("CutOff", phi_angle, 0.1f, 0.0f, 360.0f, "%.2f", [light_ptr](float
-        value) { phi_angle         = value; light_ptr->CutOff = glm::cos(glm::radians(value));
+        value) { phi_angle         = value; light_ptr->CutOff = cos(radians(value));
                     });
                     ImGui::Dummy(ImVec2(0, 0.5f));
 

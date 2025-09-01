@@ -9,6 +9,7 @@ using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Core::Containers;
+using namespace ZEngine::Core::Maths;
 using namespace uuids;
 
 namespace fs = std::filesystem;
@@ -226,7 +227,7 @@ namespace ZEngine::Importers
                 material.AmbientColor[1] = color.g;
                 material.AmbientColor[2] = color.b;
                 material.AmbientColor[3] = color.a;
-                material.AmbientColor[3] = glm::min(material.AmbientColor[3], 1.0f);
+                material.AmbientColor[3] = min(material.AmbientColor[3], 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_DIFFUSE, &color) == AI_SUCCESS)
@@ -235,7 +236,7 @@ namespace ZEngine::Importers
                 material.AlbedoColor[1] = color.g;
                 material.AlbedoColor[2] = color.b;
                 material.AlbedoColor[3] = color.a;
-                material.AlbedoColor[3] = glm::min(material.AlbedoColor[3], 1.0f);
+                material.AlbedoColor[3] = min(material.AlbedoColor[3], 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_SPECULAR, &color) == AI_SUCCESS)
@@ -244,7 +245,7 @@ namespace ZEngine::Importers
                 material.SpecularColor[1] = color.g;
                 material.SpecularColor[2] = color.b;
                 material.SpecularColor[3] = color.a;
-                material.SpecularColor[3] = glm::min(material.SpecularColor[3], 1.0f);
+                material.SpecularColor[3] = min(material.SpecularColor[3], 1.0f);
             }
 
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_EMISSIVE, &color) == AI_SUCCESS)
@@ -253,7 +254,7 @@ namespace ZEngine::Importers
                 material.EmissiveColor[1] = color.g;
                 material.EmissiveColor[2] = color.b;
                 material.EmissiveColor[3] = color.a;
-                material.EmissiveColor[3] = glm::min(material.EmissiveColor[3], 1.0f);
+                material.EmissiveColor[3] = min(material.EmissiveColor[3], 1.0f);
             }
 
             float       opacity              = 1.0f;
@@ -261,7 +262,7 @@ namespace ZEngine::Importers
 
             if (aiGetMaterialFloat(ai_material, AI_MATKEY_OPACITY, &opacity) == AI_SUCCESS)
             {
-                material.Factors[0] = glm::clamp(1.f - opacity, 0.0f, 1.0f);
+                material.Factors[0] = clamp(1.f - opacity, 0.0f, 1.0f);
                 if (material.Factors[0] >= (1.0f - opaqueness_threshold))
                 {
                     material.Factors[0] = 0.0f;
@@ -271,7 +272,7 @@ namespace ZEngine::Importers
             if (aiGetMaterialColor(ai_material, AI_MATKEY_COLOR_TRANSPARENT, &color) == AI_SUCCESS)
             {
                 const float component_as_opacity = std::max(std::max(color.r, color.g), color.b);
-                material.Factors[0]              = glm::clamp(component_as_opacity, 0.0f, 1.0f);
+                material.Factors[0]              = clamp(component_as_opacity, 0.0f, 1.0f);
                 if (material.Factors[0] >= (1.0f - opaqueness_threshold))
                 {
                     material.Factors[0] = 0.0f;
@@ -389,7 +390,7 @@ namespace ZEngine::Importers
         auto& name                   = hierarchy.Names.push_use({});
         name.init(arena, node->mName.C_Str() ? node->mName.C_Str() : "<unamed node>");
 
-        hierarchy.GlobalTransforms[node_id] = glm::mat4(1.0f);
+        hierarchy.GlobalTransforms[node_id] = Identity<Mat4f>();
         hierarchy.LocalTransforms[node_id]  = ConvertToMat4(node->mTransformation);
 
         for (uint32_t i = 0; i < node->mNumMeshes; ++i)
@@ -405,8 +406,8 @@ namespace ZEngine::Importers
 
             hierarchy.NodeMeshes[sub_node_id]       = mesh;
             hierarchy.NodeMaterials[sub_node_id]    = material_id;
-            hierarchy.GlobalTransforms[sub_node_id] = glm::mat4(1.0f);
-            hierarchy.LocalTransforms[sub_node_id]  = glm::mat4(1.0f);
+            hierarchy.GlobalTransforms[sub_node_id] = Identity<Mat4f>();
+            hierarchy.LocalTransforms[sub_node_id]  = Identity<Mat4f>();
 
             auto& asset_mat                         = materials[material_id];
             auto& sub_mesh                          = asset_mesh.SubMeshes[mesh];
@@ -501,14 +502,14 @@ namespace ZEngine::Importers
         }
     }
 
-    glm::mat4 AssimpImporter::ConvertToMat4(const aiMatrix4x4& m)
+    Mat4f AssimpImporter::ConvertToMat4(const aiMatrix4x4& m)
     {
-        glm::mat4 mm;
+        Mat4f mm;
         for (int i = 0; i < 4; i++)
         {
             for (int j = 0; j < 4; j++)
             {
-                mm[i][j] = m[i][j];
+                mm(i, j) = m[i][j];
             }
         }
         return mm;

@@ -1,6 +1,6 @@
+#include <pch.h>
 #include <Core/Coroutine.h>
 #include <Hardwares/VulkanDevice.h>
-#include <Helpers/MathHelper.h>
 #include <Helpers/MeshHelper.h>
 #include <Rendering/Renderers/Storages/IVertex.h>
 #include <ZEngineDef.h>
@@ -96,14 +96,14 @@ namespace ZEngine::Helpers
         return meshes;
     }
 
-    glm::mat4 ConvertToMat4(const aiMatrix4x4& m)
+    ZEngine::Core::Maths::Mat4f ConvertToMat4(const aiMatrix4x4& m)
     {
-        glm::mat4 mm;
+        ZEngine::Core::Maths::Mat4f mm;
         for (int i = 0; i < 4; i++)
         {
             for (int j = 0; j < 4; j++)
             {
-                mm[i][j] = m[i][j];
+                mm(i, j) = m[i][j];
             }
         }
         return mm;

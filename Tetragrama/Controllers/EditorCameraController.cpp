@@ -1,7 +1,9 @@
 #include <EditorCameraController.h>
+#include <ZEngine/Core/Maths/MathUtils.h>
 
 using namespace ZEngine::Rendering::Cameras;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::Maths;
 
 namespace Tetragrama::Controllers
 {
@@ -13,7 +15,7 @@ namespace Tetragrama::Controllers
         m_window             = window;
 
         m_perspective_camera = ZPushStructCtor(arena, PerspectiveCamera);
-        m_perspective_camera->Initialize(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far, glm::radians(yaw_degree), glm::radians(pitch_degree));
+        m_perspective_camera->Initialize(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far, radians(yaw_degree), radians(pitch_degree));
         m_perspective_camera->SetDistance(distance);
 
         m_window = window;

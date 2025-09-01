@@ -2,9 +2,9 @@
 #include <Core/Containers/Array.h>
 #include <Core/Containers/HashMap.h>
 #include <Core/Containers/Strings.h>
+#include <Core/Maths/Matrix.h>
 #include <Helpers/NodeHierarchyHelper.h>
 #include <Rendering/Textures/Texture.h>
-#include <glm/glm.hpp>
 #include <uuid.h>
 
 namespace ZEngine::Importers
@@ -68,8 +68,8 @@ namespace ZEngine::Importers
         uuids::uuid                                       NodeHierarchyUUID = {};
         uuids::uuid                                       MeshUUID          = {};
         Core::Containers::Array<Helpers::NodeHierarchy>   Hierarchies       = {};
-        Core::Containers::Array<glm::mat4>                LocalTransforms   = {};
-        Core::Containers::Array<glm::mat4>                GlobalTransforms  = {};
+        Core::Containers::Array<Core::Maths::Mat4f>       LocalTransforms   = {};
+        Core::Containers::Array<Core::Maths::Mat4f>       GlobalTransforms  = {};
         Core::Containers::Array<Core::Containers::String> Names             = {};
         Core::Containers::Array<Core::Containers::String> MaterialNames     = {};
         Core::Containers::HashMap<uint32_t, uint32_t>     NodeNames         = {};

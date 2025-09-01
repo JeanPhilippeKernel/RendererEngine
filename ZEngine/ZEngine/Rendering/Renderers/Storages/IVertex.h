@@ -1,5 +1,5 @@
 #pragma once
-#include <glm/glm.hpp>
+#include <Core/Maths/Matrix.h>
 #include <vulkan/vulkan.h>
 #include <array>
 
@@ -8,9 +8,9 @@ namespace ZEngine::Rendering::Renderers::Storages
 
     struct IVertex
     {
-        glm::vec3                                                    m_position{0.0f, 0.0f, 0.0f};
-        glm::vec3                                                    m_normal{0.0f, 0.0f, 0.0f};
-        glm::vec2                                                    m_texture_coord{0.0f, 0.0f};
+        ZEngine::Core::Maths::Vec3f                                  m_position{0.0f, 0.0f, 0.0f};
+        ZEngine::Core::Maths::Vec3f                                  m_normal{0.0f, 0.0f, 0.0f};
+        ZEngine::Core::Maths::Vec2f                                  m_texture_coord{0.0f, 0.0f};
 
         static const std::array<VkVertexInputBindingDescription, 1>& GetVertexInputBindingDescription()
         {

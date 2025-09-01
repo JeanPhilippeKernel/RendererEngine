@@ -1,5 +1,5 @@
 #pragma once
-#include <Maths/Math.h>
+#include <Core/Maths/Matrix.h>
 
 namespace ZEngine::Rendering::Components
 {
@@ -7,57 +7,57 @@ namespace ZEngine::Rendering::Components
     {
         TransformComponent()  = default;
         ~TransformComponent() = default;
-        TransformComponent(glm::mat4& transform) : m_transform(transform) {}
+        TransformComponent(ZEngine::Core::Maths::Mat4f& transform) : m_transform(transform) {}
 
-        void SetPosition(const Maths::Vector3& value)
+        void SetPosition(const ZEngine::Core::Maths::Vec3f& value)
         {
             m_position = value;
         }
 
-        void SetScaleSize(const Maths::Vector3& value)
+        void SetScaleSize(const ZEngine::Core::Maths::Vec3f& value)
         {
             m_scale_size = value;
         }
 
-        void SetRotation(const Maths::Vector3& rad_angles)
+        void SetRotation(const ZEngine::Core::Maths::Vec3f& rad_angles)
         {
             m_rotation = rad_angles;
         }
 
-        void SetRotationEulerAngles(const Maths::Vector3& euler_angles)
+        void SetRotationEulerAngles(const ZEngine::Core::Maths::Vec3f& euler_angles)
         {
-            m_rotation = Maths::radians(euler_angles);
+            m_rotation = ZEngine::Core::Maths::radians(euler_angles);
         }
 
-        const Maths::Vector3& GetPosition() const
+        const ZEngine::Core::Maths::Vec3f& GetPosition() const
         {
             return m_position;
         }
 
-        const Maths::Vector3& GetScaleSize() const
+        const ZEngine::Core::Maths::Vec3f& GetScaleSize() const
         {
             return m_scale_size;
         }
 
-        const Maths::Vector3& GetRotation() const
+        const ZEngine::Core::Maths::Vec3f& GetRotation() const
         {
             return m_rotation;
         }
 
-        Maths::Vector3 GetRotationEulerAngles() const
+        ZEngine::Core::Maths::Vec3f GetRotationEulerAngles() const
         {
-            return Maths::degrees(m_rotation);
+            return ZEngine::Core::Maths::degrees(m_rotation);
         }
 
-        const Maths::mat4& GetTransform()
+        const ZEngine::Core::Maths::Mat4f& GetTransform()
         {
             return m_transform;
         }
 
     private:
-        Maths::Vector3 m_position;
-        Maths::Vector3 m_rotation;
-        Maths::Vector3 m_scale_size;
-        glm::mat4      m_transform;
+        ZEngine::Core::Maths::Vec3f m_position;
+        ZEngine::Core::Maths::Vec3f m_rotation;
+        ZEngine::Core::Maths::Vec3f m_scale_size;
+        ZEngine::Core::Maths::Mat4f m_transform;
     };
 } // namespace ZEngine::Rendering::Components

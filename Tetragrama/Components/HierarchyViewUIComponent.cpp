@@ -2,18 +2,18 @@
 #include <Editor.h>
 #include <HierarchyViewUIComponent.h>
 #include <ImGuizmo/ImGuizmo.h>
+#include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 #include <ZEngine/Windows/Inputs/Keyboard.h>
 #include <ZEngine/Windows/Inputs/Mouse.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 using namespace ZEngine;
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Windows::Inputs;
 using namespace ZEngine::Rendering::Scenes;
+using namespace ZEngine::Core::Maths;
 
 namespace Tetragrama::Components
 {
@@ -233,7 +233,7 @@ namespace Tetragrama::Components
             if (camera && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, app->CurrentWindow))
             {
                 auto active_editor_camera = reinterpret_cast<Controllers::EditorCameraControllerPtr>(app->CameraController);
-                active_editor_camera->SetTarget(glm::vec3(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
+                active_editor_camera->SetTarget(Vec3f(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
             }
 
             // snapping
@@ -247,10 +247,10 @@ namespace Tetragrama::Components
 
             if (m_gizmo_operation > 0)
             {
-                ImGuizmo::Manipulate(glm::value_ptr(camera_view_matrix), glm::value_ptr(camera_projection), (ImGuizmo::OPERATION) m_gizmo_operation, ImGuizmo::MODE::WORLD, glm::value_ptr(global_transform), nullptr, is_snap_operation ? snap_array : nullptr);
+                ImGuizmo::Manipulate(value_ptr(camera_view_matrix), value_ptr(camera_projection), (ImGuizmo::OPERATION) m_gizmo_operation, ImGuizmo::MODE::WORLD, value_ptr(global_transform), nullptr, is_snap_operation ? snap_array : nullptr);
             }
 
-            auto delta_transform = glm::inverse(initial_transform) * global_transform;
+            auto delta_transform = initial_transform.Inverse() * global_transform;
             local_transform      = local_transform * delta_transform;
             // current_scene->MarkSceneNodeAsChanged(m_selected_node_identifier);
 

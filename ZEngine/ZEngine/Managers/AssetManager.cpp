@@ -269,8 +269,8 @@ namespace ZEngine::Managers
                 h.NodeMaterials.init(&(s_Instance->Arena), hierarchies.NodeMaterials.size() > 32 ? hierarchies.NodeMaterials.size() * 2 : 64);
 
                 Helpers::secure_memcpy(h.Hierarchies.data(), h.Hierarchies.size() * sizeof(AssetNodeHierarchy), hierarchies.Hierarchies.data(), hierarchies.Hierarchies.size() * sizeof(AssetNodeHierarchy));
-                Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(glm::mat4), hierarchies.LocalTransforms.data(), hierarchies.LocalTransforms.size() * sizeof(glm::mat4));
-                Helpers::secure_memcpy(h.GlobalTransforms.data(), h.GlobalTransforms.size() * sizeof(glm::mat4), hierarchies.GlobalTransforms.data(), hierarchies.GlobalTransforms.size() * sizeof(glm::mat4));
+                Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(Core::Maths::Mat4f), hierarchies.LocalTransforms.data(), hierarchies.LocalTransforms.size() * sizeof(Core::Maths::Mat4f));
+                Helpers::secure_memcpy(h.GlobalTransforms.data(), h.GlobalTransforms.size() * sizeof(Core::Maths::Mat4f), hierarchies.GlobalTransforms.data(), hierarchies.GlobalTransforms.size() * sizeof(Core::Maths::Mat4f));
 
                 for (auto& name : hierarchies.Names)
                 {

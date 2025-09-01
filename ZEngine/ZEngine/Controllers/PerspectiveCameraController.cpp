@@ -23,7 +23,7 @@ namespace ZEngine::Controllers
             }
 
             const auto mouse_position = IDevice::As<Mouse>()->GetMousePosition(window);
-            const auto mouse          = glm::vec2(mouse_position[0], mouse_position[1]);
+            const auto mouse          = Core::Maths::Vec2f(mouse_position[0], mouse_position[1]);
             bool       mouse_pressed  = false;
             if (IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_ALT, window))
             {
@@ -36,12 +36,12 @@ namespace ZEngine::Controllers
         }
     }
 
-    glm::vec3 PerspectiveCameraController::GetPosition() const
+    Core::Maths::Vec3f PerspectiveCameraController::GetPosition() const
     {
         return m_perspective_camera->GetPosition();
     }
 
-    void PerspectiveCameraController::SetPosition(const glm::vec3& position)
+    void PerspectiveCameraController::SetPosition(const Core::Maths::Vec3f& position)
     {
         m_perspective_camera->SetPosition(position);
     }
@@ -80,7 +80,7 @@ namespace ZEngine::Controllers
         m_perspective_camera->SetViewport(width, height);
     }
 
-    void PerspectiveCameraController::SetTarget(const glm::vec3& target)
+    void PerspectiveCameraController::SetTarget(const Core::Maths::Vec3f& target)
     {
         m_perspective_camera->SetTarget(target);
     }
@@ -101,7 +101,7 @@ namespace ZEngine::Controllers
         }
     }
 
-    ZRawPtr(ZEngine::Rendering::Cameras::Camera) PerspectiveCameraController::GetCamera() const
+    ZRawPtr(Rendering::Cameras::Camera) PerspectiveCameraController::GetCamera() const
     {
         return m_perspective_camera;
     }

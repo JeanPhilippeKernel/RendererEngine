@@ -87,7 +87,6 @@ See our roadmap here [Roadmap](Roadmap.md)
 
 The project uses the following dependencies as submodules : 
  - [GLFW](https://github.com/glfw/glfw) for window creation and user input management for Windows, Linux, and MacOS,
- - [GLM](https://glm.g-truc.net/0.9.9/index.html) for functions and mathematical calculations,
  - [STB](https://github.com/nothings/stb) for loading and manipulating image files for textures.
  - [ImGUI](https://github.com/ocornut/imgui) for GUI components and interaction.
  - [SPDLOG](https://github.com/gabime/spdlog) for logging
