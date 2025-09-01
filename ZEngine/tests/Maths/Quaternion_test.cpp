@@ -443,7 +443,7 @@ TEST(QuaternionTest, QuaternionToMat4)
     EXPECT_NEAR(arbMatrix(3, 3), 1.0f, EPSILON);
 }
 
-TEST(TransformTest, QuaternionRotate)
+TEST(QuaternionTest, QuaternionRotate)
 {
     Quaternion<float> identity(0.0f, 0.0f, 0.0f, 1.0f);
     Vec3f             vector(1.0f, 2.0f, 3.0f);
@@ -464,8 +464,9 @@ TEST(TransformTest, QuaternionRotate)
 
     angle = radians(180.0f);
     Quaternion<float> rot180Y(0.0f, sin(angle * 0.5f), 0.0f, cos(angle * 0.5f));
-    Vec3f             zAxis(0.0f, 0.0f, 1.0f);
-    Vec3f             rotatedZ = rotate(rot180Y, zAxis);
+    rot180Y = rot180Y.normalize();
+    Vec3f zAxis(0.0f, 0.0f, 1.0f);
+    Vec3f rotatedZ = rotate(rot180Y, zAxis);
 
     EXPECT_NEAR(rotatedZ.x, 0.0f, EPSILON);
     EXPECT_NEAR(rotatedZ.y, 0.0f, EPSILON);
