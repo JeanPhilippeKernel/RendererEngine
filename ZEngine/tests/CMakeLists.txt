@@ -4,7 +4,9 @@ file ( GLOB TEST_SOURCES
             Maths/*.cpp
             Misc/*.cpp)
 
-add_executable(ZEngineTests ${TEST_SOURCES})
+add_executable(ZEngineTests)
+
+target_sources(ZEngineTests PRIVATE ${TEST_SOURCES})
 
 target_link_libraries(ZEngineTests PRIVATE
     zEngineLib

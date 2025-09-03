@@ -24,11 +24,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: Build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
-          path: Result.Darwin.x64.${{ inputs.configuration }}
+          path: Result.Darwin.${{inputs.architecture}}.${{ inputs.configuration }}
 
       - name: Update access permission of ZEngineTests
-        run: chmod +x ./Result.Darwin.x64.${{ inputs.configuration }}/ZEngine/tests/${{ inputs.configuration }}/ZEngineTests
+        run: chmod +x ./Result.Darwin.${{inputs.architecture}}.${{ inputs.configuration }}/ZEngine/tests/${{ inputs.configuration }}/ZEngineTests
 
       - name: Run Tests
-        run: .\Scripts\RunTests.ps1 -Configurations ${{ inputs.configuration }}
+        run: .\Scripts\RunTests.ps1 -Configurations ${{ inputs.configuration }} -Architecture ${{ inputs.architecture }}
         shell: pwsh

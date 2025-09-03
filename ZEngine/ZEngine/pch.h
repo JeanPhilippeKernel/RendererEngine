@@ -1,5 +1,4 @@
 #pragma once
-#include <imgui.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <uuid.h>
 #include <algorithm>
