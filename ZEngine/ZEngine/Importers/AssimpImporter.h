@@ -35,12 +35,12 @@ namespace ZEngine::Importers
 
         friend struct AssimpProgressHandler;
 
-        void      ExtractMeshes(Core::Memory::ArenaAllocator*, const aiScene*, uuids::uuid_random_generator&, AssetMesh&);
-        void      ExtractMaterials(Core::Memory::ArenaAllocator*, const aiScene*, uuids::uuid_random_generator&, Core::Containers::Array<AssetMaterial>&, AssetNodeHierarchy&);
-        void      ExtractTextures(Core::Memory::ArenaAllocator* arena, const aiScene*, uuids::uuid_random_generator&, Core::Containers::Array<AssetMaterial>&, Core::Containers::Array<AssetTexture>&);
-        void      CreateHierachy(Core::Memory::ArenaAllocator* arena, const aiScene*, uuids::uuid_random_generator&, AssetNodeHierarchy&, AssetMesh&, Core::Containers::Array<AssetMaterial>&);
+        void               ExtractMeshes(Core::Memory::ArenaAllocator*, const aiScene*, uuids::uuid_random_generator&, AssetMesh&);
+        void               ExtractMaterials(Core::Memory::ArenaAllocator*, const aiScene*, uuids::uuid_random_generator&, Core::Containers::Array<AssetMaterial>&, AssetNodeHierarchy&);
+        void               ExtractTextures(Core::Memory::ArenaAllocator* arena, const aiScene*, uuids::uuid_random_generator&, Core::Containers::Array<AssetMaterial>&, Core::Containers::Array<AssetTexture>&);
+        void               CreateHierachy(Core::Memory::ArenaAllocator* arena, const aiScene*, uuids::uuid_random_generator&, AssetNodeHierarchy&, AssetMesh&, Core::Containers::Array<AssetMaterial>&);
 
-        void      TraverseNode(Core::Memory::ArenaAllocator* arena, const aiScene*, const aiNode*, AssetNodeHierarchy&, AssetMesh&, Core::Containers::Array<AssetMaterial>&, int parent_node_id, int depth_level);
-        glm::mat4 ConvertToMat4(const aiMatrix4x4& m);
+        void               TraverseNode(Core::Memory::ArenaAllocator* arena, const aiScene*, const aiNode*, AssetNodeHierarchy&, AssetMesh&, ZEngine::Core::Containers::Array<AssetMaterial>&, int parent_node_id, int depth_level);
+        Core::Maths::Mat4f ConvertToMat4(const aiMatrix4x4& m);
     };
 } // namespace ZEngine::Importers

@@ -1,13 +1,13 @@
 #pragma once
-#include <ZEngine/Maths/Math.h>
+#include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <imgui/src/imgui_internal.h>
 
 namespace Tetragrama::Helpers
 {
-    void DrawVec4Control(std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback = nullptr, float default_value = 0.0f, float column_width = 100.0f);
-    void DrawVec3Control(std::string_view label, ZEngine::Maths::Vector3& values, const std::function<void(ZEngine::Maths::Vector3&)>& callback = nullptr, float default_value = 0.0f, float column_width = 100.0f);
-    void DrawVec2Control(std::string_view label, ZEngine::Maths::Vector2& values, const std::function<void(ZEngine::Maths::Vector2&)>& callback = nullptr, float default_value = 0.0f, float column_width = 100.0f);
+    void DrawVec4Control(std::string_view label, ZEngine::Core::Maths::Vec4f& values, const std::function<void(ZEngine::Core::Maths::Vec4f&)>& callback = nullptr, float default_value = 0.0f, float column_width = 100.0f);
+    void DrawVec3Control(std::string_view label, ZEngine::Core::Maths::Vec3f& values, const std::function<void(ZEngine::Core::Maths::Vec3f&)>& callback = nullptr, float default_value = 0.0f, float column_width = 100.0f);
+    void DrawVec2Control(std::string_view label, ZEngine::Core::Maths::Vec2f& values, const std::function<void(ZEngine::Core::Maths::Vec2f&)>& callback = nullptr, float default_value = 0.0f, float column_width = 100.0f);
 
     void DrawInputTextControl(std::string_view label, std::string_view content, const std::function<void(std::string_view)>& callback = nullptr, bool read_only_mode = false, float column_width = 50.f);
 
@@ -15,11 +15,11 @@ namespace Tetragrama::Helpers
 
     void DrawCenteredButtonControl(std::string_view label, const std::function<void(void)>& callback = nullptr);
 
-    void DrawColorEdit4Control(std::string_view label, ZEngine::Maths::Vector4& values, const std::function<void(ZEngine::Maths::Vector4&)>& callback = nullptr, float default_value = 0.0f, float column_width = 100.0f);
+    void DrawColorEdit4Control(std::string_view label, ZEngine::Core::Maths::Vec4f& values, const std::function<void(ZEngine::Core::Maths::Vec4f&)>& callback = nullptr, float default_value = 0.0f, float column_width = 100.0f);
 
-    void DrawColorEdit3Control(std::string_view label, ZEngine::Maths::Vector3& values, const std::function<void(ZEngine::Maths::Vector3&)>& callback, float default_value = 0.0f, float column_width = 100.0f);
+    void DrawColorEdit3Control(std::string_view label, ZEngine::Core::Maths::Vec3f& values, const std::function<void(ZEngine::Core::Maths::Vec3f&)>& callback, float default_value = 0.0f, float column_width = 100.0f);
 
-    void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Maths::Vector4& texture_tint_color, bool enable_zoom = true, const std::function<void(void)>& image_click_callback = nullptr, const std::function<void(ZEngine::Maths::Vector4&)>& tint_color_change_callback = nullptr, float column_width = 100.0f);
+    void DrawTextureColorControl(std::string_view label, ImTextureID texture_id, ZEngine::Core::Maths::Vec4f& texture_tint_color, bool enable_zoom = true, const std::function<void(void)>& image_click_callback = nullptr, const std::function<void(ZEngine::Core::Maths::Vec4f&)>& tint_color_change_callback = nullptr, float column_width = 100.0f);
 
     void DrawColoredTextLine(const char* start, const char* end, const ImVec4& color);
 

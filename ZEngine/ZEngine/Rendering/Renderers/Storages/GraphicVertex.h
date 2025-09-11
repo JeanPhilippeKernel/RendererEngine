@@ -1,7 +1,6 @@
 #pragma once
 #include <Rendering/Buffers/BufferLayout.h>
 #include <Rendering/Renderers/Storages/IVertex.h>
-#include <glm/glm.hpp>
 #include <array>
 
 namespace ZEngine::Rendering::Renderers::Storages
@@ -14,19 +13,19 @@ namespace ZEngine::Rendering::Renderers::Storages
 
     public:
         explicit GraphicVertex();
-        explicit GraphicVertex(const glm::vec3& position, const glm::vec3& normal = {0.0f, 0.0f, 0.0f}, const glm::vec2& texture_coord = {0.0f, 0.0f});
+        explicit GraphicVertex(const ZEngine::Core::Maths::Vec3f& position, const ZEngine::Core::Maths::Vec3f& normal = {0.0f, 0.0f, 0.0f}, const ZEngine::Core::Maths::Vec2f& texture_coord = {0.0f, 0.0f});
 
         ~GraphicVertex() = default;
 
-        glm::vec3                   GetPosition() const;
-        glm::vec3                   GetNormal() const;
-        glm::vec2                   GetTextureCoord() const;
+        ZEngine::Core::Maths::Vec3f GetPosition() const;
+        ZEngine::Core::Maths::Vec3f GetNormal() const;
+        ZEngine::Core::Maths::Vec2f GetTextureCoord() const;
 
-        void                        SetPosition(const glm::vec3& value);
-        void                        SetNormal(const glm::vec3& value);
-        void                        SetTextureCoord(const glm::vec2& value);
+        void                        SetPosition(const ZEngine::Core::Maths::Vec3f& value);
+        void                        SetNormal(const ZEngine::Core::Maths::Vec3f& value);
+        void                        SetTextureCoord(const ZEngine::Core::Maths::Vec2f& value);
 
-        void                        TransformPosition(const glm::mat4& matrix);
+        void                        TransformPosition(const ZEngine::Core::Maths::Mat4f& matrix);
 
         const std::array<float, 8>& GetData() const
         {

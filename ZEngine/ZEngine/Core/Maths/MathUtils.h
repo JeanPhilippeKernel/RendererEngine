@@ -174,4 +174,44 @@ namespace ZEngine::Core::Maths
         return atan2(sqrt_term, x);
     }
 
+    template <typename T>
+    constexpr bool epsilonNotEqual(T a, T b, T epsilon = T(1e-6))
+    {
+        return abs(a - b) > epsilon;
+    }
+
+    template <typename T>
+    constexpr bool epsilonEqual(T a, T b, T epsilon = T(1e-6))
+    {
+        return abs(a - b) == epsilon;
+    }
+
+    template <typename T>
+    T asin(T x)
+    {
+        if (abs(x) > T(1))
+            return T(0);
+
+        if (x == T(1))
+            return HALF_PI<T>;
+        else if (x == T(-1))
+            return -HALF_PI<T>;
+        else if (x == T(0))
+            return T(0);
+
+        T sqrt_term = sqrt(T(1) - x * x);
+        return atan2(x, sqrt_term);
+    }
+
+    template <typename T>
+    T tan(T x)
+    {
+        T c = cos<T>(x);
+        if (c == T(0))
+        {
+            return (x > T(0)) ? T(1e30) : T(-1e30);
+        }
+        return sin<T>(x) / c;
+    }
+
 } // namespace ZEngine::Core::Maths

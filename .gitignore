@@ -36,7 +36,6 @@ bld/
 
 # Submodules folder
 __externals/fmt
-__externals/glm
 __externals/imgui/src
 __externals/imgui/src/examples/example_glfw_vulkan/out/
 __externals/SDL2

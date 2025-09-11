@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <Core/Maths/Matrix.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Helpers/NodeHierarchyHelper.h>
 #include <Rendering/Meshes/Mesh.h>
@@ -32,8 +33,8 @@ namespace ZEngine::Rendering::Scenes
         uint32_t                                                                  CurrentIndexOffset       = 0;
 
         Core::Containers::Array<Helpers::NodeHierarchy>                           Hierarchies              = {};
-        Core::Containers::Array<glm::mat4>                                        LocalTransforms          = {};
-        Core::Containers::Array<glm::mat4>                                        GlobalTransforms         = {};
+        Core::Containers::Array<Core::Maths::Mat4f>                               LocalTransforms          = {};
+        Core::Containers::Array<Core::Maths::Mat4f>                               GlobalTransforms         = {};
 
         Core::Containers::Array<float>                                            Vertices                 = {};
         Core::Containers::Array<uint32_t>                                         Indices                  = {};
@@ -77,8 +78,8 @@ namespace ZEngine::Rendering::Scenes
         uint32_t                                   SIndexDataSize               = 0;
         uint32_t                                   SMeshCountOffset             = 0;
         std::vector<SceneNodeHierarchy>            NodeHierarchies              = {};
-        std::vector<glm::mat4>                     LocalTransforms              = {};
-        std::vector<glm::mat4>                     GlobalTransforms             = {};
+        std::vector<Core::Maths::Mat4f>                     LocalTransforms              = {};
+        std::vector<Core::Maths::Mat4f>                     GlobalTransforms             = {};
         std::map<uint32_t, std::set<uint32_t>>     LevelSceneNodeChangedMap     = {};
         /*
          * New Properties
@@ -126,9 +127,9 @@ namespace ZEngine::Rendering::Scenes
         ~SceneEntity() = default;
 
         void             SetName(std::string_view name);
-        void             SetTransform(glm::mat4 transform);
+        void             SetTransform(Core::Maths::Mat4f transform);
         std::string_view GetName() const;
-        glm::mat4        GetTransform() const;
+        Core::Maths::Mat4f        GetTransform() const;
         int              GetNode() const;
 
         template <typename TComponent>
@@ -214,8 +215,8 @@ namespace ZEngine::Rendering::Scenes
         int                            GetSceneNodeFirstChild(int node_identifier);
         std::vector<int>               GetSceneNodeSiblingCollection(int node_identifier);
         std::string_view               GetSceneNodeName(int node_identifier);
-        glm::mat4&                     GetSceneNodeLocalTransform(int node_identifier);
-        glm::mat4&                     GetSceneNodeGlobalTransform(int node_identifier);
+        Core::Maths::Mat4f&                     GetSceneNodeLocalTransform(int node_identifier);
+        Core::Maths::Mat4f&                     GetSceneNodeGlobalTransform(int node_identifier);
         const SceneNodeHierarchy&      GetSceneNodeHierarchy(int node_identifier);
         SceneEntity                    GetSceneNodeEntityWrapper(int node_identifier);
         std::future<void>              SetSceneNodeNameAsync(int node_identifier, std::string_view node_name);

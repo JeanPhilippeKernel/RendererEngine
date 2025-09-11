@@ -137,7 +137,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     }
 
     # Define CMake Generator arguments
-    $cMakeOptions = " -DCMAKE_SYSTEM_NAME=$systemName", " -DCMAKE_BUILD_TYPE=$configuration"
+    $cMakeOptions = " -DCMAKE_SYSTEM_NAME=$systemName", " -DCMAKE_BUILD_TYPE=$configuration", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
     $submoduleCMakeOptions = @{
         'ENTT'      = @("-DENTT_INCLUDE_HEADERS=ON")
         'SPDLOG'    = @("-DSPDLOG_BUILD_SHARED=OFF", "-DBUILD_STATIC_LIBS=ON", "-DSPDLOG_FMT_EXTERNAL=ON", "-DSPDLOG_FMT_EXTERNAL_HO=OFF");
@@ -150,7 +150,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         'SPIRV_TOOLS' = @("-DSPIRV_SKIP_EXECUTABLES=ON", "-DSPIRV_SKIP_TESTS=ON")
         'SPIRV_CROSS' = @("-DSPIRV_CROSS_ENABLE_TESTS=OFF")
         'LAUNCHER_ONLY' = @("-DLAUNCHER_ONLY=ON")
-        'GLM'       = @("-DCMAKE_POLICY_VERSION_MINIMUM=3.5")
     }
 
     $cMakeCacheVariableOverride = $cMakeOptions -join ' '
@@ -192,7 +191,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_CROSS -join ' '
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.SPIRV_TOOLS -join ' '
         $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLFW -join ' '
-        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.GLM -join ' '
     }
 
     $cMakeArguments = " -S $repositoryRootPath -B $buildDirectoryPath $cMakeGenerator $cMakeCacheVariableOverride"

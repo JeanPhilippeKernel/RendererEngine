@@ -1,5 +1,5 @@
 #pragma once
-#include <Maths/Math.h>
+#include <Core/Maths/Vec.h>
 #include <Rendering/Lights/Light.h>
 #include <Rendering/Materials/ShaderMaterial.h>
 
@@ -12,31 +12,31 @@ namespace ZEngine::Rendering::Materials
         explicit StandardMaterial();
         virtual ~StandardMaterial() = default;
 
-        void                  SetTileFactor(float value);
-        void                  SetDiffuseTintColor(const glm::vec4& value);
-        void                  SetSpecularTintColor(const glm::vec4& value);
+        void                               SetTileFactor(float value);
+        void                               SetDiffuseTintColor(const ZEngine::Core::Maths::Vec4f& value);
+        void                               SetSpecularTintColor(const ZEngine::Core::Maths::Vec4f& value);
 
-        void                  SetShininess(float value);
+        void                               SetShininess(float value);
 
-        void                  Apply(const Helpers::Ref<Shaders::Shader>&) override;
+        void                               Apply(const Helpers::Ref<Shaders::Shader>&) override;
 
-        void                  SetSpecularMap(const Textures::Texture* texture);
-        void                  SetDiffuseMap(const Textures::Texture* texture);
+        void                               SetSpecularMap(const Textures::Texture* texture);
+        void                               SetDiffuseMap(const Textures::Texture* texture);
 
-        float                 GetTileFactor() const;
-        float                 GetShininess() const;
-        const Maths::Vector4& GetDiffuseTintColor() const;
-        const Maths::Vector4& GetSpecularTintColor() const;
+        float                              GetTileFactor() const;
+        float                              GetShininess() const;
+        const ZEngine::Core::Maths::Vec4f& GetDiffuseTintColor() const;
+        const ZEngine::Core::Maths::Vec4f& GetSpecularTintColor() const;
 
-        Textures::Texture*    GetSpecularMap() const;
-        Textures::Texture*    GetDiffuseMap() const;
+        Textures::Texture*                 GetSpecularMap() const;
+        Textures::Texture*                 GetDiffuseMap() const;
 
     private:
-        float              m_shininess;
-        float              m_tile_factor;
-        Maths::Vector4     m_diffuse_tint_color;
-        Maths::Vector4     m_specular_tint_color;
-        Textures::Texture* m_diffuse_map;
-        Textures::Texture* m_specular_map;
+        float                       m_shininess;
+        float                       m_tile_factor;
+        ZEngine::Core::Maths::Vec4f m_diffuse_tint_color;
+        ZEngine::Core::Maths::Vec4f m_specular_tint_color;
+        Textures::Texture*          m_diffuse_map;
+        Textures::Texture*          m_specular_map;
     };
 } // namespace ZEngine::Rendering::Materials

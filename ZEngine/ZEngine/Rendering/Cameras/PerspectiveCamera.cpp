@@ -1,11 +1,11 @@
+#include <Core/Maths/MathUtils.h>
 #include <Rendering/Cameras/PerspectiveCamera.h>
-#include <glm/gtx/quaternion.hpp>
 
 namespace ZEngine::Rendering::Cameras
 {
     void PerspectiveCamera::Initialize(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad, float pitch_rad)
     {
-        Fov           = glm::radians(field_of_view);
+        Fov           = ZEngine::Core::Maths::radians(field_of_view);
         AspectRatio   = aspect_ratio;
         ClipNear      = clip_near;
         ClipFar       = clip_far;
@@ -15,24 +15,24 @@ namespace ZEngine::Rendering::Cameras
         m_pitch_angle = pitch_rad;
     }
 
-    void PerspectiveCamera::SetTarget(const glm::vec3& target)
+    void PerspectiveCamera::SetTarget(const ZEngine::Core::Maths::Vec3f& target)
     {
         Target = target;
     }
 
-    void PerspectiveCamera::SetPosition(const glm::vec3& position)
+    void PerspectiveCamera::SetPosition(const ZEngine::Core::Maths::Vec3f& position)
     {
         Position = position;
     }
 
-    void PerspectiveCamera::SetProjectionMatrix(const glm::mat4& projection)
+    void PerspectiveCamera::SetProjectionMatrix(const ZEngine::Core::Maths::Mat4f& projection)
     {
         Projection = projection;
     }
 
-    void PerspectiveCamera::Update(float time_step, const glm::vec2& mouse_position, bool mouse_pressed)
+    void PerspectiveCamera::Update(float time_step, const ZEngine::Core::Maths::Vec2f& mouse_position, bool mouse_pressed)
     {
-        const glm::vec2 delta = (mouse_position - m_mouse_pos) * 0.003f;
+        const ZEngine::Core::Maths::Vec2f delta = (mouse_position - m_mouse_pos) * 0.003f;
         if (mouse_pressed)
         {
             if (Movement.MousePan)
@@ -64,7 +64,7 @@ namespace ZEngine::Rendering::Cameras
         speed           = std::min(speed, 100.0f);
 
         m_distance     -= delta * speed;
-        m_distance      = glm::clamp(static_cast<float>(m_distance), 3.0f, ClipFar);
+        m_distance      = ZEngine::Core::Maths::clamp(static_cast<float>(m_distance), 3.0f, ClipFar);
     }
 
     void PerspectiveCamera::SetDistance(double distance)
@@ -90,30 +90,30 @@ namespace ZEngine::Rendering::Cameras
         m_viewport_height = height;
     }
 
-    glm::mat4 PerspectiveCamera::GetViewMatrix()
+    ZEngine::Core::Maths::Mat4f PerspectiveCamera::GetViewMatrix()
     {
-        Position              = Target - GetForward() * static_cast<float>(m_distance);
-        auto      orientation = GetOrientation();
-        glm::mat4 view        = glm::translate(glm::mat4(1.0f), Position) * glm::mat4_cast(orientation);
-        view                  = glm::inverse(view);
+        Position                                = Target - GetForward() * static_cast<float>(m_distance);
+        auto                        orientation = GetOrientation();
+        ZEngine::Core::Maths::Mat4f view        = ZEngine::Core::Maths::translate(ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>(), Position) * ZEngine::Core::Maths::quaternionToMat4(orientation);
+        view                                    = view.Inverse();
         return view;
     }
 
-    glm::mat4 PerspectiveCamera::GetPerspectiveMatrix() const
+    ZEngine::Core::Maths::Mat4f PerspectiveCamera::GetPerspectiveMatrix() const
     {
         /*
          * Ref : https://johannesugb.github.io/gpu-programming/why-do-opengl-proj-matrices-fail-in-vulkan/
          * Unlike the article, for our implementation we decided to use have the y-axis Up.
          * For future Gfx API we may want to revisit/adapt it.
          */
-        glm::mat4 I              = glm::identity<glm::mat4>();
-        I[2][2]                  = -1;
+        ZEngine::Core::Maths::Mat4f I              = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+        I[2][2]                                    = -1;
 
-        float     inv_a          = m_viewport_height / m_viewport_width;
-        float     tan_half_fov   = glm::tan(Fov / 2);
-        float     far_minus_near = ClipFar - ClipNear;
+        float                       inv_a          = m_viewport_height / m_viewport_width;
+        float                       tan_half_fov   = ZEngine::Core::Maths::tan(Fov / 2);
+        float                       far_minus_near = ClipFar - ClipNear;
 
-        glm::mat4 P(0);
+        ZEngine::Core::Maths::Mat4f P(ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>());
         P[0][0] = (inv_a / tan_half_fov);
         P[1][1] = (1.0f / tan_half_fov);
         P[2][2] = (ClipFar / far_minus_near);
@@ -123,28 +123,28 @@ namespace ZEngine::Rendering::Cameras
         return P * I;
     }
 
-    glm::vec3 PerspectiveCamera::GetPosition() const
+    ZEngine::Core::Maths::Vec3f PerspectiveCamera::GetPosition() const
     {
         return Position;
     }
 
-    glm::quat PerspectiveCamera::GetOrientation()
+    ZEngine::Core::Maths::Quaternion<float> PerspectiveCamera::GetOrientation()
     {
-        return glm::quat(glm::vec3(-m_pitch_angle, -m_yaw_angle, 0.0f));
+        return ZEngine::Core::Maths::fromEulerAngles(-m_pitch_angle, -m_yaw_angle, 0.0f);
     }
 
-    glm::vec3 PerspectiveCamera::GetForward()
+    ZEngine::Core::Maths::Vec3f PerspectiveCamera::GetForward()
     {
-        return glm::rotate(GetOrientation(), glm::vec3(0.0f, 0.0f, -1.0f));
+        return ZEngine::Core::Maths::rotate(GetOrientation(), ZEngine::Core::Maths::Vec3f(0.0f, 0.0f, -1.0f));
     }
 
-    glm::vec3 PerspectiveCamera::GetUp()
+    ZEngine::Core::Maths::Vec3f PerspectiveCamera::GetUp()
     {
-        return glm::rotate(GetOrientation(), WorldUp);
+        return ZEngine::Core::Maths::rotate(GetOrientation(), WorldUp);
     }
 
-    glm::vec3 PerspectiveCamera::GetRight()
+    ZEngine::Core::Maths::Vec3f PerspectiveCamera::GetRight()
     {
-        return glm::rotate(GetOrientation(), glm::vec3(1.0f, 0.0f, 0.0f));
+        return ZEngine::Core::Maths::rotate(GetOrientation(), ZEngine::Core::Maths::Vec3f(1.0f, 0.0f, 0.0f));
     }
 } // namespace ZEngine::Rendering::Cameras

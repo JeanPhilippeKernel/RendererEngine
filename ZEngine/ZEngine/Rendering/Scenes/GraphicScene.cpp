@@ -109,7 +109,7 @@ namespace ZEngine::Rendering::Scenes
         return name;
     }
 
-    void SceneEntity::SetTransform(glm::mat4 transform)
+    void SceneEntity::SetTransform(Core::Maths::Mat4f transform)
     {
         if (auto scene = m_weak_scene.lock())
         {
@@ -121,9 +121,9 @@ namespace ZEngine::Rendering::Scenes
         }
     }
 
-    glm::mat4 SceneEntity::GetTransform() const
+    Core::Maths::Mat4f SceneEntity::GetTransform() const
     {
-        glm::mat4 transform = {};
+        Core::Maths::Mat4f transform = {};
         if (auto scene = m_weak_scene.lock())
         {
             if (m_node > 0)
@@ -269,7 +269,7 @@ namespace ZEngine::Rendering::Scenes
 
         for (unsigned i = 0; i < device->SwapchainImageCount; ++i)
         {
-            // transform_buf->SetData<glm::mat4>(i, SceneData->GlobalTransforms);
+            // transform_buf->SetData<Core::Maths::Mat4f>(i, SceneData->GlobalTransforms);
             // vert_buf->SetData<float>(i, SceneData->Vertices);
             // ind_buf->SetData<uint32_t>(i, SceneData->Indices);
             // material_buf->SetData<Meshes::MeshMaterial>(i, SceneData->Materials);
@@ -567,14 +567,14 @@ namespace ZEngine::Rendering::Scenes
         return SceneData->NodeNames.contains(node_identifier) ? SceneData->Names[SceneData->NodeNames[node_identifier]] : std::string_view();
     }
 
-    glm::mat4& GraphicScene::GetSceneNodeLocalTransform(int node_identifier)
+    Core::Maths::Mat4f& GraphicScene::GetSceneNodeLocalTransform(int node_identifier)
     {
         std::lock_guard lock(m_mutex);
         ZENGINE_VALIDATE_ASSERT((node_identifier > INVALID_NODE_ID) && (node_identifier < SceneData->LocalTransforms.size()), "node identifier is invalid")
         return SceneData->LocalTransforms[node_identifier];
     }
 
-    glm::mat4& GraphicScene::GetSceneNodeGlobalTransform(int node_identifier)
+    Core::Maths::Mat4f& GraphicScene::GetSceneNodeGlobalTransform(int node_identifier)
     {
         std::lock_guard lock(m_mutex);
         ZENGINE_VALIDATE_ASSERT(node_identifier > INVALID_NODE_ID && node_identifier < SceneData->GlobalTransforms.size(), "node identifier is invalid")

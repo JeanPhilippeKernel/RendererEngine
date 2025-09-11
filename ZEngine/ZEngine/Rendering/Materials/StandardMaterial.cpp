@@ -1,11 +1,12 @@
 #include <Rendering/Materials/StandardMaterial.h>
 
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::Maths;
 
 namespace ZEngine::Rendering::Materials
 {
 
-    StandardMaterial::StandardMaterial() : ShaderMaterial(Shaders::ShaderBuiltInType::STANDARD), m_tile_factor(1.0f), m_diffuse_tint_color(glm::vec4(1.0f)), m_specular_tint_color(glm::vec4(1.0f)), m_diffuse_map(Textures::CreateTexture(1, 1)), m_specular_map(Textures::CreateTexture(1, 1))
+    StandardMaterial::StandardMaterial() : ShaderMaterial(Shaders::ShaderBuiltInType::STANDARD), m_tile_factor(1.0f), m_diffuse_tint_color(Vec4f(1.0f, 1.0f, 1.0f, 1.0f)), m_specular_tint_color(Vec4f(1.0f, 1.0f, 1.0f, 1.0f)), m_diffuse_map(Textures::CreateTexture(1, 1)), m_specular_map(Textures::CreateTexture(1, 1))
     {
         m_material_name = typeid(*this).name();
     }
@@ -15,12 +16,12 @@ namespace ZEngine::Rendering::Materials
         m_tile_factor = value;
     }
 
-    void StandardMaterial::SetDiffuseTintColor(const glm::vec4& value)
+    void StandardMaterial::SetDiffuseTintColor(const Vec4f& value)
     {
         m_diffuse_tint_color = value;
     }
 
-    void StandardMaterial::SetSpecularTintColor(const glm::vec4& value)
+    void StandardMaterial::SetSpecularTintColor(const Vec4f& value)
     {
         m_specular_tint_color = value;
     }
@@ -50,12 +51,12 @@ namespace ZEngine::Rendering::Materials
         return m_shininess;
     }
 
-    const Maths::Vector4& StandardMaterial::GetDiffuseTintColor() const
+    const Vec4f& StandardMaterial::GetDiffuseTintColor() const
     {
         return m_diffuse_tint_color;
     }
 
-    const Maths::Vector4& StandardMaterial::GetSpecularTintColor() const
+    const Vec4f& StandardMaterial::GetSpecularTintColor() const
     {
         return m_specular_tint_color;
     }

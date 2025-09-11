@@ -1,4 +1,5 @@
-#include <Vec.h>
+#pragma once
+#include <Matrix.h>
 
 namespace ZEngine::Core::Maths
 {
@@ -309,6 +310,42 @@ namespace ZEngine::Core::Maths
         else if (t >= 1.0)
             return b.normalize();
         return slerpUnclamped(a, b, t);
+    }
+
+    template <typename T>
+    inline Vec3<T> rotate(const Quaternion<T>& quat, const Vec3<T>& vec)
+    {
+        Vec3<T> qvec(quat.x, quat.y, quat.z);
+        T       qw     = quat.w;
+
+        Vec3<T> cross1 = cross3d(qvec, vec);
+        Vec3<T> cross2 = cross3d(qvec, cross1 + vec * qw);
+
+        return vec + cross2 * T(2);
+    }
+
+    template <typename T>
+    Mat4<T> quaternionToMat4(const Quaternion<T>& quat)
+    {
+        Quaternion<T> q = quat.normalize();
+
+        T             x = q.x, y = q.y, z = q.z, w = q.w;
+
+        T             x2 = x * T(2);
+        T             y2 = y * T(2);
+        T             z2 = z * T(2);
+
+        T             xx = x * x2;
+        T             xy = x * y2;
+        T             xz = x * z2;
+        T             yy = y * y2;
+        T             yz = y * z2;
+        T             zz = z * z2;
+        T             wx = w * x2;
+        T             wy = w * y2;
+        T             wz = w * z2;
+
+        return Mat4<T>(T(1) - (yy + zz), xy - wz, xz + wy, T(0), xy + wz, T(1) - (xx + zz), yz - wx, T(0), xz - wy, yz + wx, T(1) - (xx + yy), T(0), T(0), T(0), T(0), T(1));
     }
 
 } // namespace ZEngine::Core::Maths

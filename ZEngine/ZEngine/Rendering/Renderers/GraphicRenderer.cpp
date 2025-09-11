@@ -9,6 +9,7 @@ using namespace ZEngine::Rendering::Renderers::Contracts;
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;
 using namespace ZEngine::Core::Containers;
+using namespace ZEngine::Core::Maths;
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -100,7 +101,7 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera)
     {
         auto asset_manager       = Managers::AssetManager::Instance();
-        auto ubo_camera_data     = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = glm::vec4(camera->GetPosition(), 1.0f)};
+        auto ubo_camera_data     = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = Vec4f(camera->GetPosition(), 1.0f)};
 
         auto material_buffer_set = Device->StorageBufferSetManager.Access(RenderSceneData->MaterialBufferHandle);
         auto camera_buffer_set   = Device->UniformBufferSetManager.Access(RenderSceneData->SceneCameraBufferHandle);

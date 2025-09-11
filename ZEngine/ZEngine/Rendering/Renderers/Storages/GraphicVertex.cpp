@@ -8,7 +8,7 @@ namespace ZEngine::Rendering::Renderers::Storages
         _UpdateBuffer();
     }
 
-    GraphicVertex::GraphicVertex(const glm::vec3& position, const glm::vec3& normal, const glm::vec2& texture_coord) : IVertex()
+    GraphicVertex::GraphicVertex(const ZEngine::Core::Maths::Vec3f& position, const ZEngine::Core::Maths::Vec3f& normal, const ZEngine::Core::Maths::Vec2f& texture_coord) : IVertex()
     {
         m_position      = position;
         m_normal        = normal;
@@ -17,22 +17,22 @@ namespace ZEngine::Rendering::Renderers::Storages
         _UpdateBuffer();
     }
 
-    glm::vec3 GraphicVertex::GetPosition() const
+    ZEngine::Core::Maths::Vec3f GraphicVertex::GetPosition() const
     {
         return m_position;
     }
 
-    glm::vec3 GraphicVertex::GetNormal() const
+    ZEngine::Core::Maths::Vec3f GraphicVertex::GetNormal() const
     {
         return m_normal;
     }
 
-    glm::vec2 GraphicVertex::GetTextureCoord() const
+    ZEngine::Core::Maths::Vec2f GraphicVertex::GetTextureCoord() const
     {
         return m_texture_coord;
     }
 
-    void GraphicVertex::SetPosition(const glm::vec3& value)
+    void GraphicVertex::SetPosition(const ZEngine::Core::Maths::Vec3f& value)
     {
         m_position  = value;
         m_buffer[0] = m_position.x;
@@ -40,7 +40,7 @@ namespace ZEngine::Rendering::Renderers::Storages
         m_buffer[2] = m_position.z;
     }
 
-    void GraphicVertex::SetNormal(const glm::vec3& value)
+    void GraphicVertex::SetNormal(const ZEngine::Core::Maths::Vec3f& value)
     {
         m_normal    = value;
         m_buffer[3] = m_normal.x;
@@ -48,17 +48,17 @@ namespace ZEngine::Rendering::Renderers::Storages
         m_buffer[5] = m_normal.z;
     }
 
-    void GraphicVertex::SetTextureCoord(const glm::vec2& value)
+    void GraphicVertex::SetTextureCoord(const ZEngine::Core::Maths::Vec2f& value)
     {
         m_texture_coord = value;
         m_buffer[6]     = m_texture_coord.x;
         m_buffer[7]     = m_texture_coord.y;
     }
 
-    void GraphicVertex::TransformPosition(const glm::mat4& matrix)
+    void GraphicVertex::TransformPosition(const ZEngine::Core::Maths::Mat4f& matrix)
     {
-        glm::vec4 position = glm::vec4(m_position, 1.0f);
-        position           = matrix * position;
+        ZEngine::Core::Maths::Vec4f position = ZEngine::Core::Maths::Vec4f(m_position, 1.0f);
+        position                             = matrix * position;
         SetPosition({position.x, position.y, position.z});
     }
 

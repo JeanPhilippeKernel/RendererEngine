@@ -4,6 +4,7 @@
 
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Core::Containers;
+using namespace ZEngine::Core::Maths;
 using namespace ZEngine::Managers;
 using namespace ZEngine::Helpers;
 
@@ -63,8 +64,8 @@ namespace Tetragrama
 
         Hierarchies.push(new_node);
         HierarchiesNodeRef.push({});
-        LocalTransforms.push(glm::mat4(1.0f));
-        GlobalTransforms.push(glm::mat4(1.0f));
+        LocalTransforms.push(Identity<Mat4f>());
+        GlobalTransforms.push(Identity<Mat4f>());
 
         if (parent >= 0)
         {
@@ -329,8 +330,8 @@ namespace Tetragrama
         auto& root_name = Names.push_use({});
         root_name.init(&LocalArena, Name);
 
-        LocalTransforms.push(glm::mat4(1.0f));
-        GlobalTransforms.push(glm::mat4(1.0f));
+        LocalTransforms.push(Identity<Mat4f>());
+        GlobalTransforms.push(Identity<Mat4f>());
 
         auto& node = Hierarchies.push_use({});
         HierarchiesNodeRef.push({});

@@ -211,6 +211,11 @@ namespace ZEngine::Core::Maths
             return *this;
         }
 
+        Vec3 operator-() const
+        {
+            return Vec3(-x, -y, -z);
+        }
+
         T magnitude() const
         {
             return sqrt(x * x + y * y + z * z);
@@ -238,6 +243,14 @@ namespace ZEngine::Core::Maths
             x = x_;
             y = y_;
             z = z_;
+            w = w_;
+        }
+
+        Vec4(const Vec3<T>& vec3, T w_)
+        {
+            x = vec3.x;
+            y = vec3.y;
+            z = vec3.z;
             w = w_;
         }
 
@@ -350,6 +363,18 @@ namespace ZEngine::Core::Maths
             result += a[i] * b[i];
         }
         return result;
+    }
+
+    template <typename T>
+    inline Vec3<T> radians(const Vec3<T>& degrees)
+    {
+        return Vec3<T>(radians(degrees.x), radians(degrees.y), radians(degrees.z));
+    }
+
+    template <typename T>
+    inline Vec3<T> degrees(const Vec3<T>& angles)
+    {
+        return Vec3<T>(degrees(angles.x), degrees(angles.y), degrees(angles.z));
     }
 
     using Vec2f = Vec2<float>;

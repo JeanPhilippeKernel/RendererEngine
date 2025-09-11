@@ -10,12 +10,12 @@ namespace ZEngine::Controllers
     struct ICameraController : public IController
     {
         ICameraController() {}
-        virtual ~ICameraController()                                  = default;
+        virtual ~ICameraController()                                               = default;
 
-        virtual glm::vec3 GetPosition() const                         = 0;
-        virtual void      SetPosition(const glm::vec3& position)      = 0;
-        virtual ZRawPtr(Rendering::Cameras::Camera) GetCamera() const = 0;
-        virtual void UpdateProjectionMatrix()                         = 0;
+        virtual Core::Maths::Vec3f GetPosition() const                             = 0;
+        virtual void               SetPosition(const Core::Maths::Vec3f& position) = 0;
+        virtual ZRawPtr(Rendering::Cameras::Camera) GetCamera() const              = 0;
+        virtual void UpdateProjectionMatrix()                                      = 0;
 
         float        GetRotationAngle() const
         {
@@ -74,7 +74,7 @@ namespace ZEngine::Controllers
         }
 
     protected:
-        glm::vec3            m_position{0.0f, 0.0f, 10.0f};
+        Core::Maths::Vec3f   m_position{0.0f, 0.0f, 10.0f};
         float                m_rotation_angle{0.0f};
         float                m_zoom_factor{1.0f};
         float                m_move_speed{0.05f};
