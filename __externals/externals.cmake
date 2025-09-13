@@ -1,29 +1,9 @@
 # Packages
 #
-set(EXTERNAL_INCLUDE_DIRS
-	${EXTERNAL_DIR}/Vulkan-Headers/build/install/include
-	${EXTERNAL_DIR}/fmt/include
-	${EXTERNAL_DIR}/imgui/src
-	${EXTERNAL_DIR}/tlsf/src
-	${EXTERNAL_DIR}/rapidhash/src
-	${EXTERNAL_DIR}/spdlog/include
-	${EXTERNAL_DIR}/glfw/include
-	${EXTERNAL_DIR}/entt
-	${EXTERNAL_DIR}/assimp/include
-	${EXTERNAL_DIR}/stduuid/include
-	${EXTERNAL_DIR}/yaml-cpp/include
-	${EXTERNAL_DIR}/SPIRV-headers
-	${EXTERNAL_DIR}/SPIRV-Tools
-	${EXTERNAL_DIR}/glslang
-	${EXTERNAL_DIR}/SPIRV-Cross
-	${EXTERNAL_DIR}/VulkanMemoryAllocator
-	${EXTERNAL_DIR}/nlohmann_json/single_include
-	${EXTERNAL_DIR}/CLI11/include
-)
 
 if (MSVC)
 	target_compile_options(assimp PRIVATE /Wv:18) # Fix zip lib compile issue
-elseif(APPLE)
+else()
 	target_compile_options(assimp PRIVATE -Wno-shorten-64-to-32 -Wno-unused-but-set-variable -Wno-deprecated-declarations)
 endif()
 
@@ -40,19 +20,20 @@ target_link_libraries(imported::External_obeliskLibs INTERFACE
 )
 
 target_link_libraries(imported::External_libs INTERFACE
-	vulkan
-	fmt
-	imgui
-	spdlog
-	glfw
-	EnTT
-	assimp
-	stduuid
-	yaml-cpp
-	spirv-cross-reflect spirv-cross-glsl
-	GPUOpen::VulkanMemoryAllocator
-	glslang  SPIRV
-	SPIRV-Tools
-	tlsf
-	rapidhash
+         fmt::fmt
+         imgui
+         spdlog::spdlog
+         EnTT::EnTT
+         assimp::assimp
+         stduuid
+         yaml-cpp::yaml-cpp
+         spirv-cross-core
+         SPIRV-Tools
+         glslang
+         glslang-default-resource-limits
+         SPIRV
+         SPVRemapper
+         GPUOpen::VulkanMemoryAllocator 
+         nlohmann_json::nlohmann_json
+         rapidhash
 )

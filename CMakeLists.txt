@@ -42,6 +42,8 @@ endif()
 # Externals dependencies
 #
 if (NOT LAUNCHER_ONLY)
+    add_subdirectory (${EXTERNAL_DIR}/Vulkan-Headers)
+	add_subdirectory (${EXTERNAL_DIR}/Vulkan-Loader)
 	add_subdirectory (${EXTERNAL_DIR}/fmt)
 	add_subdirectory (${EXTERNAL_DIR}/imgui)
 	add_subdirectory (${EXTERNAL_DIR}/glfw)
@@ -59,12 +61,8 @@ if (NOT LAUNCHER_ONLY)
 	add_subdirectory (${EXTERNAL_DIR}/tlsf)
 	add_subdirectory (${EXTERNAL_DIR}/rapidhash)
 	add_subdirectory (${EXTERNAL_DIR}/CLI11)
+	add_subdirectory (${EXTERNAL_DIR}/nlohmann_json)
 
-	set (CMAKE_PREFIX_PATH
-		${CMAKE_PREFIX_PATH}
-		${EXTERNAL_DIR}/Vulkan-Headers/build/install/share/cmake
-	)
-	add_subdirectory (${EXTERNAL_DIR}/Vulkan-Loader)
 
 	# Core engine lib is here
 	#
@@ -91,20 +89,20 @@ endif ()
 #
 set (SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-	set (SYSTEM_ARCHITECTURE "win-x64")
+	set (SYSTEM_ARCHITECTURE "x64")
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-	set (SYSTEM_ARCHITECTURE "linux-x64")
+	set (SYSTEM_ARCHITECTURE "x64")
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 	if (MACOSX_ARCHITECTURE_ARM64)
-		set (SYSTEM_ARCHITECTURE "osx-arm64")
+		set (SYSTEM_ARCHITECTURE "arm64")
 	else ()
-		set (SYSTEM_ARCHITECTURE "osx-x64")
+		set (SYSTEM_ARCHITECTURE "x64")
 	endif ()
 endif ()
 
 add_custom_target (AssembleContent ALL
 	COMMENT "Copying assets and resources contents"
-	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -SystemName ${SYSTEM_NAME} -Architectures ${SYSTEM_ARCHITECTURE} -Configurations $<IF:$<CONFIG:Debug>,Debug,Release> $<$<BOOL:${LAUNCHER_ONLY}>:-LauncherOnly>
+	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -SystemName ${SYSTEM_NAME} -Architecture ${SYSTEM_ARCHITECTURE} -Configurations $<IF:$<CONFIG:Debug>,Debug,Release> $<$<BOOL:${LAUNCHER_ONLY}>:-LauncherOnly>
 )
 
 if (NOT LAUNCHER_ONLY)

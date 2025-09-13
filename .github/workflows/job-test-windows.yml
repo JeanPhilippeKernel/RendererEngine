@@ -27,7 +27,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: vulkan-build
-          name: Vulkan-build-x64-release
+          name: Vulkan-build-x64-${{inputs.configuration}}
 
       - name: Run Tests
         shell: pwsh

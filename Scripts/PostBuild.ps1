@@ -27,9 +27,9 @@ param (
     [ValidateSet('Windows', 'Darwin', 'Linux')]
     [string[]] $SystemName = 'Windows',
 
-    [Parameter(HelpMessage="Architecture type to build, default to x64")]
-    [ValidateSet('win-x64', 'arm64', 'osx-x64', 'osx-arm64', 'linux-x64')]
-    [string[]] $Architectures = 'win-x64',
+    [Parameter(HelpMessage = "Architecture to build")]
+    [ValidateSet('x64', 'arm64')]
+    [string] $Architecture = 'x64',
 
     [Parameter(HelpMessage="Configuration type to build, default to Debug")]
     [ValidateSet('Debug', 'Release')]
@@ -84,18 +84,18 @@ $ContentsToProcess = @(
         Contents = @(
             switch ($SystemName) {
                 "Windows" {
-                    @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
-                    @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
+                    @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\win-$Architecture\Editor"}
+                    @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\win-$Architecture\publish\Editor"}
                 }
                 "Darwin" {
-                    switch ($Architectures) {
-                        "osx-x64" {
-                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\Editor"}
-                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
+                    switch ($Architecture) {
+                        "x64" {
+                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\osx-$Architecture\Editor"}
+                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\osx-$Architecture\publish\Editor"}
                         }
-                        "osx-arm64" {
-                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\Editor"}
-                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\$Architectures\publish\Editor"}
+                        "arm64" {
+                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\osx-$Architecture\Editor"}
+                            @{ From = "$OuputBuildDirectory\Obelisk\$Configurations"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\osx-$Architecture\publish\Editor"}
                         }
                         Default {
                             throw 'This architecture is not supported'

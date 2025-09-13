@@ -25,7 +25,11 @@
 param (
     [Parameter(HelpMessage = "Configuration type to build, default to Debug")]
     [ValidateSet('Debug', 'Release')]
-    [string[]] $Configurations = 'Debug'
+    [string[]] $Configurations = 'Debug',
+
+    [Parameter(HelpMessage = "Architecture to build")]
+    [ValidateSet('x64', 'arm64')]
+    [string] $Architecture = 'x64'
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,10 +50,10 @@ else {
 
 [string]$RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
 [string]$OutputBuildDirectory = If ($IsWindows) { 
-    [IO.Path]::Combine($RepoRoot, "Result.Windows.x64.MultiConfig") 
+    [IO.Path]::Combine($RepoRoot, "Result.Windows.$Architecture.MultiConfig") 
 }
 Else { 
-    [IO.Path]::Combine($RepoRoot, "Result.$SystemName.x64.$Configurations")
+    [IO.Path]::Combine($RepoRoot, "Result.$SystemName.$Architecture.$Configurations")
 }
 
 
