@@ -36,4 +36,5 @@ target_link_libraries(imported::External_libs INTERFACE
          GPUOpen::VulkanMemoryAllocator 
          nlohmann_json::nlohmann_json
          rapidhash
+         Vulkan::Loader
 )
