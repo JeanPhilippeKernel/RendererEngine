@@ -117,6 +117,6 @@ namespace ZEngine::Rendering::Renderers
 
     Textures::TextureHandle GraphicRenderer::GetFrameOutput()
     {
-        return RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName);
+        return RenderGraph->ResourceInspector->GetRenderTarget("grid_render_target");
     }
 } // namespace ZEngine::Rendering::Renderers

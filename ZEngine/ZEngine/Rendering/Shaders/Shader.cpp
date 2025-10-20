@@ -216,7 +216,7 @@ namespace ZEngine::Rendering::Shaders
                     count = type.array[0];
                     if (count == 0) // Unsized arrays
                     {
-                        count = m_device->PhysicalDeviceProperties.limits.maxDescriptorSetSampledImages - 1;
+                        count = m_device->PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSamplers - 1;
                     }
                 }
 

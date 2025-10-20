@@ -57,7 +57,10 @@ namespace ZEngine::Hardwares
 
         VkInstanceCreateInfo instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = VK_NULL_HANDLE, .flags = 0, .pApplicationInfo = &app_info};
 
-        auto                 scratch              = ZGetScratch(Arena);
+#ifdef __APPLE__
+        instance_create_info.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
+        auto                 scratch = ZGetScratch(Arena);
 
         Array<const char*>   enabled_layer_name_collection;
         Array<LayerProperty> selected_layer_property_collection;
@@ -71,7 +74,9 @@ namespace ZEngine::Hardwares
         validation_layer_name_collection.push("VK_LAYER_LUNARG_api_dump");
         validation_layer_name_collection.push("VK_LAYER_KHRONOS_validation");
         validation_layer_name_collection.push("VK_LAYER_LUNARG_monitor");
+#ifndef __APPLE__
         validation_layer_name_collection.push("VK_LAYER_LUNARG_screenshot");
+#endif
 
         for (const char* layer_name : validation_layer_name_collection)
         {
@@ -126,6 +131,9 @@ namespace ZEngine::Hardwares
             }
         }
 
+#ifdef __APPLE__
+        enabled_extension_layer_name_collection.push(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+#endif
         instance_create_info.enabledLayerCount       = enabled_layer_name_collection.size();
         instance_create_info.ppEnabledLayerNames     = enabled_layer_name_collection.data();
         instance_create_info.enabledExtensionCount   = enabled_extension_layer_name_collection.size();
@@ -175,16 +183,26 @@ namespace ZEngine::Hardwares
 
         for (VkPhysicalDevice physical_device : physical_device_collection)
         {
-            VkPhysicalDeviceProperties physical_device_properties;
-            VkPhysicalDeviceFeatures   physical_device_feature;
+            VkPhysicalDeviceDescriptorIndexingProperties indexing_properties = {};
+            indexing_properties.sType                                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES;
+
+            VkPhysicalDeviceProperties  physical_device_properties;
+            VkPhysicalDeviceProperties2 physical_device_properties2 = {};
+            physical_device_properties2.sType                       = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            physical_device_properties2.pNext                       = &indexing_properties;
+
+            VkPhysicalDeviceFeatures physical_device_feature;
+
             vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
+            vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties2);
             vkGetPhysicalDeviceFeatures(physical_device, &physical_device_feature);
 
-            if ((physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
+            if (/*(physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && */ ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
-                PhysicalDevice           = physical_device;
-                PhysicalDeviceProperties = physical_device_properties;
-                PhysicalDeviceFeature    = physical_device_feature;
+                PhysicalDevice                             = physical_device;
+                PhysicalDeviceProperties                   = physical_device_properties;
+                PhysicalDeviceDescriptorIndexingProperties = indexing_properties;
+                PhysicalDeviceFeature                      = physical_device_feature;
                 vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
                 break;
             }
@@ -197,6 +215,9 @@ namespace ZEngine::Hardwares
 
         requested_device_extension_layer_name_collection.push(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
         requested_device_extension_layer_name_collection.push(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME);
+#ifdef __APPLE__
+        requested_device_extension_layer_name_collection.push("VK_KHR_portability_subset");
+#endif
 
         for (LayerProperty& layer : selected_layer_property_collection)
         {
