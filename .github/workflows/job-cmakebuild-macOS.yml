@@ -22,6 +22,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
+      - name: Install NuGet CLI
+        run: brew install nuget
 
       - name: CMake Build
         run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}} -Architecture ${{inputs.architecture}} -RunClangFormat 0
