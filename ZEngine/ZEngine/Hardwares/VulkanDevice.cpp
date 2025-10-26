@@ -893,7 +893,8 @@ namespace ZEngine::Hardwares
         sampler_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.maxAnisotropy           = PhysicalDeviceProperties.limits.maxSamplerAnisotropy;
+        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.samplerAnisotropy;
+        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.samplerAnisotropy ? PhysicalDeviceProperties.limits.maxSamplerAnisotropy : 1.0f;
         sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         sampler_create_info.unnormalizedCoordinates = VK_FALSE;
         sampler_create_info.compareEnable           = VK_FALSE;
@@ -1095,7 +1096,15 @@ namespace ZEngine::Hardwares
 
         ZENGINE_VALIDATE_ASSERT(vkCreateSwapchainKHR(LogicalDevice, &swapchain_create_info, nullptr, &SwapchainHandle) == VK_SUCCESS, "Failed to create Swapchain")
 
-        ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &SwapchainImageCount, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
+        uint32_t image_count = 0;
+        ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &image_count, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
+
+        if (image_count < SwapchainImageCount)
+        {
+            ZENGINE_CORE_WARN("Max Swapchain image count supported is {}, but requested {}", image_count, SwapchainImageCount);
+            SwapchainImageCount = image_count;
+            ZENGINE_CORE_WARN("Swapchain image count has changed from {} to {}", SwapchainImageCount, image_count);
+        }
 
         Array<VkImage> SwapchainImages = {};
         SwapchainImages.init(scratch.Arena, SwapchainImageCount, SwapchainImageCount);
