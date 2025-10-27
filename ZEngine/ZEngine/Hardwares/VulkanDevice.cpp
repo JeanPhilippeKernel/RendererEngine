@@ -1065,20 +1065,11 @@ namespace ZEngine::Hardwares
         }
 
         auto                     min_image_count       = std::clamp(capabilities.minImageCount, capabilities.minImageCount + 1, capabilities.maxImageCount);
+
         VkSwapchainCreateInfoKHR swapchain_create_info = {
             .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, .pNext = nullptr, .surface = Surface, .minImageCount = min_image_count, .imageFormat = SurfaceFormat.format, .imageColorSpace = SurfaceFormat.colorSpace, .imageExtent = VkExtent2D{.width = SwapchainImageWidth, .height = SwapchainImageHeight},
                                 .imageArrayLayers = 1, .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, .preTransform = capabilities.currentTransform, .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, .presentMode = PresentMode, .clipped = VK_TRUE
         };
-
-        if (SwapchainImageViews.capacity() <= 0)
-        {
-            SwapchainImageViews.init(Arena, SwapchainImageCount, SwapchainImageCount);
-        }
-
-        if (SwapchainFramebuffers.capacity() <= 0)
-        {
-            SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
-        }
 
         auto            scratch             = ZGetScratch(Arena);
 
@@ -1096,15 +1087,34 @@ namespace ZEngine::Hardwares
 
         ZENGINE_VALIDATE_ASSERT(vkCreateSwapchainKHR(LogicalDevice, &swapchain_create_info, nullptr, &SwapchainHandle) == VK_SUCCESS, "Failed to create Swapchain")
 
+        ZReleaseScratch(scratch);
+
         uint32_t image_count = 0;
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &image_count, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
 
-        if (image_count < SwapchainImageCount)
+        if (image_count == 0)
         {
-            ZENGINE_CORE_WARN("Max Swapchain image count supported is {}, but requested {}", image_count, SwapchainImageCount);
-            SwapchainImageCount = image_count;
-            ZENGINE_CORE_WARN("Swapchain image count has changed from {} to {}", SwapchainImageCount, image_count);
+            ZENGINE_CORE_ERROR("Swapchain returned zero images.")
+            return;
         }
+
+        if (SwapchainImageCount != image_count)
+        {
+            SwapchainImageCount = image_count;
+            ZENGINE_CORE_INFO("Swapchain Image Count changed to {}", SwapchainImageCount)
+        }
+
+        if (SwapchainImageViews.capacity() <= 0)
+        {
+            SwapchainImageViews.init(Arena, SwapchainImageCount, SwapchainImageCount);
+        }
+
+        if (SwapchainFramebuffers.capacity() <= 0)
+        {
+            SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
+        }
+
+        scratch                        = ZGetScratch(Arena);
 
         Array<VkImage> SwapchainImages = {};
         SwapchainImages.init(scratch.Arena, SwapchainImageCount, SwapchainImageCount);
