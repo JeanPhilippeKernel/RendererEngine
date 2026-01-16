@@ -6,13 +6,13 @@
         "ShaderC": {
             "MinimumVersion": "11.1.0",
             "Windows": {
-                "Url": "https://storage.googleapis.com/shaderc/artifacts/prod/graphics_shader_compiler/shaderc/windows/continuous_release_2019/26/20230810-123915/install.zip"
+                "Url": "https://storage.googleapis.com/shaderc/artifacts/prod/graphics_shader_compiler/shaderc/windows/vs2022_amd64_release_continuous/29/20260112-140346/install.zip"
             },
             "macOS": {
-                "Url": "https://storage.googleapis.com/shaderc/artifacts/prod/graphics_shader_compiler/shaderc/macos/continuous_clang_release/472/20240708-061139/install.tgz"
+            "Url": "https://storage.googleapis.com/shaderc/artifacts/prod/graphics_shader_compiler/shaderc/macos/continuous_clang_release/519/20260112-140351/install.tgz" 
             },
             "Linux": {
-                "Url": "https://storage.googleapis.com/shaderc/artifacts/prod/graphics_shader_compiler/shaderc/linux/continuous_gcc_release/500/20250807-100822/install.tgz"
+                "Url": "https://storage.googleapis.com/shaderc/artifacts/prod/graphics_shader_compiler/shaderc/linux/continuous_clang_release/510/20260112-140346/install.tgz"
             }
         },
         "GlslangValidator": {
