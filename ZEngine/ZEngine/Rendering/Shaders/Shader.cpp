@@ -98,7 +98,7 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
 
-                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = UB_resource.name, .DescriptorTypeValue = DescriptorType::UNIFORM_BUFFER, .Flags = ShaderStageFlags::VERTEX});
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = UB_resource.name.c_str(), .DescriptorTypeValue = DescriptorType::UNIFORM_BUFFER, .Flags = ShaderStageFlags::VERTEX});
             }
 
             for (const auto& SB_resource : vertex_resources.storage_buffers)
@@ -111,7 +111,7 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
 
-                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = SB_resource.name, .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER, .Flags = ShaderStageFlags::VERTEX});
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = SB_resource.name.c_str(), .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER, .Flags = ShaderStageFlags::VERTEX});
             }
 
             for (const auto& pushConstant_resource : vertex_resources.push_constant_buffers)
@@ -127,7 +127,7 @@ namespace ZEngine::Rendering::Shaders
                         uint32_t memberSize  = spirv_compiler->get_declared_struct_member_size(type, i);
                         struct_total_size   += memberSize;
                     }
-                    PushConstantSpecifications.push(PushConstantSpecification{.Name = pushConstant_resource.name, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::VERTEX});
+                    PushConstantSpecifications.push(PushConstantSpecification{.Name = pushConstant_resource.name.c_str(), .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::VERTEX});
                     /*
                      * We update the offset for next iteration
                      */
@@ -167,7 +167,7 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
 
-                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = UB_resource.name, .DescriptorTypeValue = DescriptorType::UNIFORM_BUFFER, .Flags = ShaderStageFlags::FRAGMENT});
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = UB_resource.name.c_str(), .DescriptorTypeValue = DescriptorType::UNIFORM_BUFFER, .Flags = ShaderStageFlags::FRAGMENT});
             }
 
             for (const auto& SB_resource : fragment_resources.storage_buffers)
@@ -180,7 +180,7 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
 
-                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = SB_resource.name, .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER, .Flags = ShaderStageFlags::FRAGMENT});
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = SB_resource.name.c_str(), .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER, .Flags = ShaderStageFlags::FRAGMENT});
             }
 
             for (const auto& pushConstant_resource : fragment_resources.push_constant_buffers)
@@ -196,7 +196,7 @@ namespace ZEngine::Rendering::Shaders
                         uint32_t memberSize  = spirv_compiler->get_declared_struct_member_size(type, i);
                         struct_total_size   += memberSize;
                     }
-                    PushConstantSpecifications.push(PushConstantSpecification{.Name = pushConstant_resource.name, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::FRAGMENT});
+                    PushConstantSpecifications.push(PushConstantSpecification{.Name = pushConstant_resource.name.c_str(), .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::FRAGMENT});
                     /*
                      * We update the offset for next iteration
                      */
@@ -225,7 +225,7 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
 
-                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = SI_resource.name, .DescriptorTypeValue = DescriptorType::COMBINED_IMAGE_SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = SI_resource.name.c_str(), .DescriptorTypeValue = DescriptorType::COMBINED_IMAGE_SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
             }
         }
     }
