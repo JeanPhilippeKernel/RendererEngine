@@ -1,6 +1,6 @@
 #pragma once
+#include <fmt/format.h>
 #include <cstdint>
-#include <iostream>
 
 namespace ZEngine::Windows::Inputs
 {
@@ -138,9 +138,8 @@ namespace ZEngine::Windows::Inputs
 
     } GlfwKey;
 
-    inline std::ostream& operator<<(std::ostream& stream, GlfwKeyCode f)
+    inline auto format_as(GlfwKey f)
     {
-        stream << static_cast<int32_t>(f);
-        return stream;
+        return fmt::underlying(f);
     }
 } // namespace ZEngine::Windows::Inputs
