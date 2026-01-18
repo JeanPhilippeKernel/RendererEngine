@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngineDef.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Specifications
@@ -38,14 +39,14 @@ namespace ZEngine::Rendering::Specifications
         uint32_t         Set{0xFFFFFFFF};
         uint32_t         Binding{0xFFFFFFFF};
         uint32_t         Count{1};
-        std::string      Name;
+        cstring          Name;
         DescriptorType   DescriptorTypeValue;
         ShaderStageFlags Flags;
     };
 
     struct PushConstantSpecification
     {
-        std::string      Name;
+        cstring          Name;
         uint32_t         Size;
         uint32_t         Offset;
         ShaderStageFlags Flags;
@@ -53,10 +54,10 @@ namespace ZEngine::Rendering::Specifications
 
     struct ShaderSpecification
     {
-        uint32_t    OverloadMaxSet   = 1;
-        uint32_t    OverloadPoolSize = 0;
-        const char* VertexFilename   = {};
-        const char* FragmentFilename = {};
-        const char* Name             = {};
+        uint32_t OverloadMaxSet   = 1;
+        uint32_t OverloadPoolSize = 0;
+        cstring  VertexFilename   = {};
+        cstring  FragmentFilename = {};
+        cstring  Name             = {};
     };
 } // namespace ZEngine::Rendering::Specifications
