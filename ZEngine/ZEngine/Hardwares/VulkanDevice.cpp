@@ -191,27 +191,23 @@ namespace ZEngine::Hardwares
             physical_device_properties2.sType                       = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
             physical_device_properties2.pNext                       = &indexing_properties;
 
-
             vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
             vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties2);
 
-
             VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {};
-            descriptor_indexing_features.sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-            VkPhysicalDeviceFeatures2 physical_device_feature                                                = {};
-            physical_device_feature.sType                                                                    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-            physical_device_feature.pNext                                                                    = &descriptor_indexing_features;
+            descriptor_indexing_features.sType                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+            VkPhysicalDeviceFeatures2 physical_device_feature                       = {};
+            physical_device_feature.sType                                           = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            physical_device_feature.pNext                                           = &descriptor_indexing_features;
             vkGetPhysicalDeviceFeatures2(physical_device, &physical_device_feature);
 
             if (/*(physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && */ ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
-                PhysicalDevice                             = physical_device;
-                PhysicalDeviceProperties                   = physical_device_properties;
-                PhysicalDeviceDescriptorIndexingProperties = indexing_properties;
-                PhysicalDeviceFeature                      = physical_device_feature;
-                PhysicalDeviceSupportDescriptorUpdateAfterBind           = (descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE &&
-                                                            descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE &&
-                                                            descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
+                PhysicalDevice                                 = physical_device;
+                PhysicalDeviceProperties                       = physical_device_properties;
+                PhysicalDeviceDescriptorIndexingProperties     = indexing_properties;
+                PhysicalDeviceFeature                          = physical_device_feature;
+                PhysicalDeviceSupportDescriptorUpdateAfterBind = (descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE && descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE && descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
                 vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
                 break;
             }
@@ -296,37 +292,38 @@ namespace ZEngine::Hardwares
             queue_create_info.queueCount               = 1;
             queue_create_info.pNext                    = nullptr;
         }
-        
+
         /*
          * Enabling some features
          */
-        VkDeviceCreateInfo device_create_info                                                      = {};
-        device_create_info.sType                                                                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        device_create_info.queueCreateInfoCount                                                    = queue_create_info_collection.size();
-        device_create_info.pQueueCreateInfos                                                       = queue_create_info_collection.data();
-        device_create_info.enabledExtensionCount                                                   = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
-        device_create_info.ppEnabledExtensionNames                                                 = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
-        device_create_info.pEnabledFeatures                                                        = nullptr;
-
+        VkDeviceCreateInfo device_create_info                                                   = {};
+        device_create_info.sType                                                                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        device_create_info.queueCreateInfoCount                                                 = queue_create_info_collection.size();
+        device_create_info.pQueueCreateInfos                                                    = queue_create_info_collection.data();
+        device_create_info.enabledExtensionCount                                                = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
+        device_create_info.ppEnabledExtensionNames                                              = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
+        device_create_info.pEnabledFeatures                                                     = nullptr;
 
         VkPhysicalDeviceDescriptorIndexingFeatures physical_device_descriptor_indexing_features = {};
-        physical_device_descriptor_indexing_features.sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-        VkPhysicalDeviceFeatures2 device_features_2                                                = {};
-        device_features_2.sType                                                                    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features_2.features.drawIndirectFirstInstance                                                                 = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
-        device_features_2.features.multiDrawIndirect                                                                     = PhysicalDeviceFeature.features.multiDrawIndirect;
+        physical_device_descriptor_indexing_features.sType                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+        VkPhysicalDeviceFeatures2 device_features_2                                             = {};
+        device_features_2.sType                                                                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        device_features_2.features.drawIndirectFirstInstance                                    = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
+        device_features_2.features.multiDrawIndirect                                            = PhysicalDeviceFeature.features.multiDrawIndirect;
+        device_features_2.features.samplerAnisotropy                                            = PhysicalDeviceFeature.features.samplerAnisotropy;
+        device_features_2.features.shaderInt64                                                  = PhysicalDeviceFeature.features.shaderInt64;
         if (PhysicalDeviceSupportDescriptorUpdateAfterBind)
         {
-            physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing     = VK_TRUE;
-            physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE;
-            physical_device_descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending     = VK_TRUE;
-            physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound               = VK_TRUE;
-            physical_device_descriptor_indexing_features.runtimeDescriptorArray                        = VK_TRUE;
+            physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
+            physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+            physical_device_descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending    = VK_TRUE;
+            physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound              = VK_TRUE;
+            physical_device_descriptor_indexing_features.runtimeDescriptorArray                       = VK_TRUE;
 
-            device_features_2.pNext                                                                    = &physical_device_descriptor_indexing_features;
+            device_features_2.pNext                                                                   = &physical_device_descriptor_indexing_features;
         }
 
-        device_create_info.pNext                                                                   = &device_features_2;
+        device_create_info.pNext = &device_features_2;
 
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice) == VK_SUCCESS, "Failed to create GPU logical device")
 

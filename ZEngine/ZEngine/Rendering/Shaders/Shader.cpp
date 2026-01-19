@@ -216,7 +216,37 @@ namespace ZEngine::Rendering::Shaders
                     count = type.array[0];
                     if (count == 0) // Unsized arrays
                     {
-                        count = m_device->PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSamplers - 1;
+                        /*
+                         * Unsized arrays require descriptor update-after-bind support
+                         * If device doesn't support it, we fall back to a reasonable maximum
+                         */
+                        if (m_device->PhysicalDeviceSupportDescriptorUpdateAfterBind)
+                        {
+                            count = m_device->PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSamplers - 1;
+                        }
+                        else
+                        {
+                            /*
+                             * Fallback: derive a safe maximum from device properties when possible
+                             * Otherwise fall back to a conservative hard limit.
+                             */
+                            uint32_t fallback_count = 4096;
+                            if (m_device->PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSamplers > 1)
+                            {
+                                fallback_count = static_cast<uint32_t>(m_device->PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSamplers - 1);
+                                if (fallback_count > 4096)
+                                {
+                                    fallback_count = 4096; // cap to reasonable upper bound
+                                }
+                            }
+
+                            count = fallback_count;
+                            ZENGINE_CORE_WARN(
+                                "Shader {} uses unsized sampler arrays but device does not support descriptor update-after-bind. "
+                                "Using fallback size of {} descriptors. For full bindless rendering support, use GPUs with descriptor-indexing support.",
+                                m_specification.VertexFilename ? m_specification.VertexFilename : m_specification.FragmentFilename,
+                                count)
+                        }
                     }
                 }
 
@@ -289,12 +319,20 @@ namespace ZEngine::Rendering::Shaders
             binding_flags_collection.init(&LocalArena, layout_binding_collection.size(), layout_binding_collection.size());
             for (uint32_t i = 0; i < layout_binding_collection.size(); ++i)
             {
-                if ((layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE))
+                if (m_device->PhysicalDeviceSupportDescriptorUpdateAfterBind)
                 {
-                    binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
-                    continue;
+                    if ((layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE))
+                    {
+                        binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+                        continue;
+                    }
+                    binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
                 }
-                binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+                else
+                {
+                    // Fallback for devices that don't support update-after-bind
+                    binding_flags_collection[i] = 0;
+                }
             }
 
             VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_create_info = {};
@@ -308,7 +346,7 @@ namespace ZEngine::Rendering::Shaders
             descriptor_set_layout_create_info.sType                               = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             descriptor_set_layout_create_info.bindingCount                        = layout_binding_collection.size();
             descriptor_set_layout_create_info.pBindings                           = layout_binding_collection.data();
-            descriptor_set_layout_create_info.flags                               = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+            descriptor_set_layout_create_info.flags                               = m_device->PhysicalDeviceSupportDescriptorUpdateAfterBind ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT : 0;
             descriptor_set_layout_create_info.pNext                               = &binding_flags_create_info;
 
             VkDescriptorSetLayout descriptor_set_layout                           = VK_NULL_HANDLE;
@@ -348,7 +386,7 @@ namespace ZEngine::Rendering::Shaders
 
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_info.flags                      = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+        pool_info.flags                      = m_device->PhysicalDeviceSupportDescriptorUpdateAfterBind ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
         pool_info.maxSets                    = m_device->SwapchainImageCount * pool_size_collection.size() * m_specification.OverloadMaxSet;
         pool_info.poolSizeCount              = pool_size_collection.size();
         pool_info.pPoolSizes                 = pool_size_collection.data();
