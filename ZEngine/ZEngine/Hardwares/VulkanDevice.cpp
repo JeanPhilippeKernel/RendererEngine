@@ -191,11 +191,17 @@ namespace ZEngine::Hardwares
             physical_device_properties2.sType                       = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
             physical_device_properties2.pNext                       = &indexing_properties;
 
-            VkPhysicalDeviceFeatures physical_device_feature;
 
             vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
             vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties2);
-            vkGetPhysicalDeviceFeatures(physical_device, &physical_device_feature);
+
+
+            VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {};
+            descriptor_indexing_features.sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+            VkPhysicalDeviceFeatures2 physical_device_feature                                                = {};
+            physical_device_feature.sType                                                                    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            physical_device_feature.pNext                                                                    = &descriptor_indexing_features;
+            vkGetPhysicalDeviceFeatures2(physical_device, &physical_device_feature);
 
             if (/*(physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && */ ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
@@ -203,6 +209,9 @@ namespace ZEngine::Hardwares
                 PhysicalDeviceProperties                   = physical_device_properties;
                 PhysicalDeviceDescriptorIndexingProperties = indexing_properties;
                 PhysicalDeviceFeature                      = physical_device_feature;
+                PhysicalDeviceSupportDescriptorUpdateAfterBind           = (descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE &&
+                                                            descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE &&
+                                                            descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
                 vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
                 break;
             }
@@ -287,26 +296,10 @@ namespace ZEngine::Hardwares
             queue_create_info.queueCount               = 1;
             queue_create_info.pNext                    = nullptr;
         }
+        
         /*
          * Enabling some features
          */
-        PhysicalDeviceFeature.drawIndirectFirstInstance                                            = VK_TRUE;
-        PhysicalDeviceFeature.multiDrawIndirect                                                    = VK_TRUE;
-        PhysicalDeviceFeature.shaderSampledImageArrayDynamicIndexing                               = VK_TRUE;
-
-        VkPhysicalDeviceDescriptorIndexingFeaturesEXT physical_device_descriptor_indexing_features = {};
-        physical_device_descriptor_indexing_features.sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
-        physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing     = VK_TRUE;
-        physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE;
-        physical_device_descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending     = VK_TRUE;
-        physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound               = VK_TRUE;
-        physical_device_descriptor_indexing_features.runtimeDescriptorArray                        = VK_TRUE;
-
-        VkPhysicalDeviceFeatures2 device_features_2                                                = {};
-        device_features_2.sType                                                                    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features_2.pNext                                                                    = &physical_device_descriptor_indexing_features;
-        device_features_2.features                                                                 = PhysicalDeviceFeature;
-
         VkDeviceCreateInfo device_create_info                                                      = {};
         device_create_info.sType                                                                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_create_info.queueCreateInfoCount                                                    = queue_create_info_collection.size();
@@ -314,6 +307,25 @@ namespace ZEngine::Hardwares
         device_create_info.enabledExtensionCount                                                   = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
         device_create_info.ppEnabledExtensionNames                                                 = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
         device_create_info.pEnabledFeatures                                                        = nullptr;
+
+
+        VkPhysicalDeviceDescriptorIndexingFeatures physical_device_descriptor_indexing_features = {};
+        physical_device_descriptor_indexing_features.sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+        VkPhysicalDeviceFeatures2 device_features_2                                                = {};
+        device_features_2.sType                                                                    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        device_features_2.features.drawIndirectFirstInstance                                                                 = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
+        device_features_2.features.multiDrawIndirect                                                                     = PhysicalDeviceFeature.features.multiDrawIndirect;
+        if (PhysicalDeviceSupportDescriptorUpdateAfterBind)
+        {
+            physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing     = VK_TRUE;
+            physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE;
+            physical_device_descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending     = VK_TRUE;
+            physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound               = VK_TRUE;
+            physical_device_descriptor_indexing_features.runtimeDescriptorArray                        = VK_TRUE;
+
+            device_features_2.pNext                                                                    = &physical_device_descriptor_indexing_features;
+        }
+
         device_create_info.pNext                                                                   = &device_features_2;
 
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice) == VK_SUCCESS, "Failed to create GPU logical device")
@@ -893,8 +905,8 @@ namespace ZEngine::Hardwares
         sampler_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.samplerAnisotropy;
-        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.samplerAnisotropy ? PhysicalDeviceProperties.limits.maxSamplerAnisotropy : 1.0f;
+        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.features.samplerAnisotropy;
+        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.limits.maxSamplerAnisotropy : 1.0f;
         sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         sampler_create_info.unnormalizedCoordinates = VK_FALSE;
         sampler_create_info.compareEnable           = VK_FALSE;

@@ -535,6 +535,7 @@ namespace ZEngine::Hardwares
     struct VulkanDevice
     {
         bool                                                                                HasSeperateTransfertQueueFamily            = false;
+        bool                                                                                PhysicalDeviceSupportDescriptorUpdateAfterBind           = false;
         const char*                                                                         ApplicationName                            = "Tetragrama";
         const char*                                                                         EngineName                                 = "ZEngine";
         uint32_t                                                                            SwapchainImageCount                        = 3;
@@ -555,7 +556,7 @@ namespace ZEngine::Hardwares
         VkPhysicalDeviceDescriptorIndexingProperties                                        PhysicalDeviceDescriptorIndexingProperties = {};
         VkDevice                                                                            LogicalDevice                              = VK_NULL_HANDLE;
         VkPhysicalDevice                                                                    PhysicalDevice                             = VK_NULL_HANDLE;
-        VkPhysicalDeviceFeatures                                                            PhysicalDeviceFeature                      = {};
+        VkPhysicalDeviceFeatures2                                                            PhysicalDeviceFeature                      = {};
         VkPhysicalDeviceMemoryProperties                                                    PhysicalDeviceMemoryProperties             = {};
         VkSwapchainKHR                                                                      SwapchainHandle                            = VK_NULL_HANDLE;
         VmaAllocator                                                                        VmaAllocatorValue                          = nullptr;
