@@ -207,7 +207,18 @@ namespace ZEngine::Hardwares
                 PhysicalDeviceProperties                       = physical_device_properties;
                 PhysicalDeviceDescriptorIndexingProperties     = indexing_properties;
                 PhysicalDeviceFeature                          = physical_device_feature;
-                PhysicalDeviceSupportDescriptorUpdateAfterBind = (descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE && descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE && descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
+                PhysicalDeviceSupportSampledImageBindless = (
+                    descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && 
+                    descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE &&
+                    descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE && 
+                    descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE && 
+                    descriptor_indexing_features.descriptorIndexing == VK_TRUE
+                );
+                PhysicalDeviceSupportStorageBufferBindless = (
+                    descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && 
+                    descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE &&
+                    descriptor_indexing_features.descriptorIndexing == VK_TRUE
+                );
                 vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
                 break;
             }
@@ -312,13 +323,19 @@ namespace ZEngine::Hardwares
         device_features_2.features.multiDrawIndirect                                            = PhysicalDeviceFeature.features.multiDrawIndirect;
         device_features_2.features.samplerAnisotropy                                            = PhysicalDeviceFeature.features.samplerAnisotropy;
         device_features_2.features.shaderInt64                                                  = PhysicalDeviceFeature.features.shaderInt64;
-        if (PhysicalDeviceSupportDescriptorUpdateAfterBind)
+
+        if (PhysicalDeviceSupportSampledImageBindless || PhysicalDeviceSupportStorageBufferBindless)
         {
-            physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
-            physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
-            physical_device_descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending    = VK_TRUE;
+            if (PhysicalDeviceSupportSampledImageBindless)
+            {
+                physical_device_descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending    = VK_TRUE;
+                physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
+                physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+            }
+            
             physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound              = VK_TRUE;
             physical_device_descriptor_indexing_features.runtimeDescriptorArray                       = VK_TRUE;
+            physical_device_descriptor_indexing_features.descriptorIndexing = VK_TRUE;
 
             device_features_2.pNext                                                                   = &physical_device_descriptor_indexing_features;
         }

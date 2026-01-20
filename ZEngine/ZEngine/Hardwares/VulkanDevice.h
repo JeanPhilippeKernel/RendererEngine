@@ -535,7 +535,8 @@ namespace ZEngine::Hardwares
     struct VulkanDevice
     {
         bool                                                                                HasSeperateTransfertQueueFamily                = false;
-        bool                                                                                PhysicalDeviceSupportDescriptorUpdateAfterBind = false;
+        bool                                                                                PhysicalDeviceSupportSampledImageBindless = false;
+        bool PhysicalDeviceSupportStorageBufferBindless = false;
         const char*                                                                         ApplicationName                                = "Tetragrama";
         const char*                                                                         EngineName                                     = "ZEngine";
         uint32_t                                                                            SwapchainImageCount                            = 3;

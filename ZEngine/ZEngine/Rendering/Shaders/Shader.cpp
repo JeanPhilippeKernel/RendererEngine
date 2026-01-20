@@ -220,7 +220,7 @@ namespace ZEngine::Rendering::Shaders
                          * Unsized arrays require descriptor update-after-bind support
                          * If device doesn't support it, we fall back to a reasonable maximum
                          */
-                        if (m_device->PhysicalDeviceSupportDescriptorUpdateAfterBind)
+                        if (m_device->PhysicalDeviceSupportSampledImageBindless)
                         {
                             count = m_device->PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSamplers - 1;
                         }
@@ -319,14 +319,15 @@ namespace ZEngine::Rendering::Shaders
             binding_flags_collection.init(&LocalArena, layout_binding_collection.size(), layout_binding_collection.size());
             for (uint32_t i = 0; i < layout_binding_collection.size(); ++i)
             {
-                if (m_device->PhysicalDeviceSupportDescriptorUpdateAfterBind)
+                if (m_device->PhysicalDeviceSupportSampledImageBindless 
+                    && ((layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)))
                 {
-                    if ((layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE))
-                    {
                         binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
                         continue;
-                    }
-                    binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+                }
+                else if (m_device->PhysicalDeviceSupportStorageBufferBindless && (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER))
+                {
+                    binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
                 }
                 else
                 {
@@ -346,8 +347,12 @@ namespace ZEngine::Rendering::Shaders
             descriptor_set_layout_create_info.sType                               = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             descriptor_set_layout_create_info.bindingCount                        = layout_binding_collection.size();
             descriptor_set_layout_create_info.pBindings                           = layout_binding_collection.data();
-            descriptor_set_layout_create_info.flags                               = m_device->PhysicalDeviceSupportDescriptorUpdateAfterBind ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT : 0;
-            descriptor_set_layout_create_info.pNext                               = &binding_flags_create_info;
+            
+            if (m_device->PhysicalDeviceSupportSampledImageBindless)
+            {
+                descriptor_set_layout_create_info.flags                               = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+                descriptor_set_layout_create_info.pNext                               = &binding_flags_create_info;
+            }
 
             VkDescriptorSetLayout descriptor_set_layout                           = VK_NULL_HANDLE;
             ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorSetLayout(m_device->LogicalDevice, &descriptor_set_layout_create_info, nullptr, &descriptor_set_layout) == VK_SUCCESS, "Failed to create DescriptorSetLayout")
@@ -386,7 +391,7 @@ namespace ZEngine::Rendering::Shaders
 
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_info.flags                      = m_device->PhysicalDeviceSupportDescriptorUpdateAfterBind ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
+        pool_info.flags                      = m_device->PhysicalDeviceSupportSampledImageBindless ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
         pool_info.maxSets                    = m_device->SwapchainImageCount * pool_size_collection.size() * m_specification.OverloadMaxSet;
         pool_info.poolSizeCount              = pool_size_collection.size();
         pool_info.pPoolSizes                 = pool_size_collection.data();
