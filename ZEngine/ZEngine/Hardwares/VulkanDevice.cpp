@@ -203,22 +203,12 @@ namespace ZEngine::Hardwares
 
             if (/*(physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && */ ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
-                PhysicalDevice                                 = physical_device;
-                PhysicalDeviceProperties                       = physical_device_properties;
-                PhysicalDeviceDescriptorIndexingProperties     = indexing_properties;
-                PhysicalDeviceFeature                          = physical_device_feature;
-                PhysicalDeviceSupportSampledImageBindless = (
-                    descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && 
-                    descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE &&
-                    descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE && 
-                    descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE && 
-                    descriptor_indexing_features.descriptorIndexing == VK_TRUE
-                );
-                PhysicalDeviceSupportStorageBufferBindless = (
-                    descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && 
-                    descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE &&
-                    descriptor_indexing_features.descriptorIndexing == VK_TRUE
-                );
+                PhysicalDevice                             = physical_device;
+                PhysicalDeviceProperties                   = physical_device_properties;
+                PhysicalDeviceDescriptorIndexingProperties = indexing_properties;
+                PhysicalDeviceFeature                      = physical_device_feature;
+                PhysicalDeviceSupportSampledImageBindless  = (descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE && descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE && descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
+                PhysicalDeviceSupportStorageBufferBindless = (descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE);
                 vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
                 break;
             }
@@ -332,12 +322,11 @@ namespace ZEngine::Hardwares
                 physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
                 physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
             }
-            
-            physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound              = VK_TRUE;
-            physical_device_descriptor_indexing_features.runtimeDescriptorArray                       = VK_TRUE;
-            physical_device_descriptor_indexing_features.descriptorIndexing = VK_TRUE;
 
-            device_features_2.pNext                                                                   = &physical_device_descriptor_indexing_features;
+            physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
+            physical_device_descriptor_indexing_features.runtimeDescriptorArray          = VK_TRUE;
+
+            device_features_2.pNext                                                      = &physical_device_descriptor_indexing_features;
         }
 
         device_create_info.pNext = &device_features_2;
