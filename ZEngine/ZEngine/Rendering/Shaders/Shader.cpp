@@ -266,7 +266,7 @@ namespace ZEngine::Rendering::Shaders
         for (const auto& layout_binding : LayoutBindingSpecificationMap)
         {
             const auto& binding_specification_collection = layout_binding.second;
-            auto        find_it                          = std::find_if(binding_specification_collection.begin(), binding_specification_collection.end(), [&](const LayoutBindingSpecification& spec) { return Helpers::secure_strcmp(spec.Name, name); });
+            auto        find_it                          = std::find_if(binding_specification_collection.begin(), binding_specification_collection.end(), [&](const LayoutBindingSpecification& spec) { return Helpers::secure_strcmp(spec.Name, name) == 0; });
 
             if (find_it != std::end(binding_specification_collection))
             {

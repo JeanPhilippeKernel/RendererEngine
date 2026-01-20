@@ -1103,8 +1103,9 @@ namespace ZEngine::Hardwares
         if (image_count != SwapchainImageCount)
         {
             ZENGINE_CORE_WARN("Max Swapchain image count supported is {}, but requested {}", image_count, SwapchainImageCount);
-            SwapchainImageCount = image_count;
-            ZENGINE_CORE_WARN("Swapchain image count has changed from {} to {}", SwapchainImageCount, image_count);
+            auto old_swapchain_image_count = SwapchainImageCount;
+            SwapchainImageCount            = image_count;
+            ZENGINE_CORE_WARN("Swapchain image count has changed from {} to {}", old_swapchain_image_count, image_count);
         }
 
         if (SwapchainImageViews.capacity() <= 0)
