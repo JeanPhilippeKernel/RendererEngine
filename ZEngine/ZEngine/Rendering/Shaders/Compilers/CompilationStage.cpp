@@ -1,4 +1,3 @@
-#pragma once
 #include <Core/Coroutine.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Shaders/Compilers/CompilationStage.h>

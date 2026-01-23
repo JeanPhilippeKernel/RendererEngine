@@ -26,8 +26,6 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set_target_properties(${TARGET_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$(ProjectDir)$(Configuration)")
 endif ()
 
-include(${EXTERNAL_DIR}/externals.cmake)
-
 target_include_directories (${TARGET_NAME}
     PRIVATE
         .
@@ -44,8 +42,20 @@ target_compile_definitions(${TARGET_NAME}
         _UNICODE
 )
 
-target_link_libraries(${TARGET_NAME} PRIVATE
-    zEngineLib
+target_link_libraries(${TARGET_NAME} PUBLIC
     tetragrama
     imported::External_obeliskLibs
 )
+
+set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
+
+install(TARGETS ${TARGET_NAME} 
+    DESTINATION bin
+)
+
+install(DIRECTORY ../Resources/Editor/Settings DESTINATION bin)
+
+install(DIRECTORY ../Resources/Shaders DESTINATION bin)
+
+
+

@@ -6,7 +6,7 @@
 #include <Messengers/Messenger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <fmt/format.h>
-#include <imgui/src/imgui_internal.h>
+#include <imgui/imgui_internal.h>
 
 namespace fs = std::filesystem;
 

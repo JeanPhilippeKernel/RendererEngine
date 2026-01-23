@@ -1,5 +1,4 @@
 #pragma once
-#define GLFW_INCLUDE_VULKAN
 #include <Core/Memory/Allocator.h>
 #include <CoreWindow.h>
 #include <GLFW/glfw3.h>

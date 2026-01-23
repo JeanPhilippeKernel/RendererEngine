@@ -19,11 +19,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: Result.Linux.x64.${{ inputs.configuration }}
           name: Build-linux-Release
+          path: Result.Linux.x64.${{ inputs.configuration }}
 
       - name: Publish Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-${{ inputs.configuration }}
-          path: Result.Linux.x64.${{inputs.configuration}}/Panzerfaust/${{ inputs.configuration }}/${{inputs.targetFramework}}/publish/
+          if-no-files-found: error
+          path: |
+            Result.Linux.x64.${{inputs.configuration}}/bin
+            Result.Linux.x64.${{inputs.configuration}}/lib

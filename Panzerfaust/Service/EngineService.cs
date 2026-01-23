@@ -24,8 +24,8 @@ namespace Panzerfaust.Service
 #if _WIN32
             engineExtension = ".exe";
 #endif
-            _enginePath = Path.Combine(Environment.CurrentDirectory, "Editor", $"{_launcherCLIAppName}{engineExtension}");
-            _workingDirectory = Path.Combine(Environment.CurrentDirectory, "Editor");
+            _enginePath = Path.Combine(Environment.CurrentDirectory, $"{_launcherCLIAppName}{engineExtension}");
+            _workingDirectory = Environment.CurrentDirectory;
         }
 
         public async Task StartAsync(string path)

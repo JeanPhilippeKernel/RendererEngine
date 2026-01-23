@@ -2,6 +2,9 @@
 #
 name: Windows Build Workflow
 
+permissions:
+  packages: write
+
 on:
   workflow_call:
     inputs:
@@ -28,20 +31,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Build-Windows-x64-${{inputs.configuration}}
+          if-no-files-found: error
           path: |
-            Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/win-x64/publish/
-            Result.Windows.x64.MultiConfig/ZEngine/tests/${{inputs.configuration}}/
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.CSharp.resources.dll
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.CSharp.Scripting.resources.dll
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.resources.dll
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/Microsoft.CodeAnalysis.Scripting.resources.dll
-            !Result.Windows.x64.MultiConfig/Panzerfaust/${{inputs.configuration}}/${{inputs.targetFramework}}/**/createdump.exe
-
-      - name: Publish Vulkan Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Vulkan-build-x64-${{inputs.configuration}}
-          path: |
-            Result.Windows.x64.MultiConfig/__externals/Vulkan-Loader/loader/${{inputs.configuration}}/vulkan-1.dll
-            Result.Windows.x64.MultiConfig/__externals/Vulkan-Loader/loader/${{inputs.configuration}}/vulkan-1.exp
-            Result.Windows.x64.MultiConfig/__externals/Vulkan-Loader/loader/${{inputs.configuration}}/vulkan-1.lib
+            Result.Windows.x64.MultiConfig/bin/
+            Result.Windows.x64.MultiConfig/lib/*vulkan*
+            Result.Windows.x64.MultiConfig/tests/ZEngineTests.exe

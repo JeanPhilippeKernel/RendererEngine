@@ -29,4 +29,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
-          path: Result.Darwin.${{inputs.architecture}}.${{ inputs.configuration }}/Panzerfaust/${{ inputs.configuration }}/${{inputs.targetFramework}}/osx-${{ inputs.architecture }}/publish/
+          if-no-files-found: error
+          path: |
+            Result.Darwin.${{inputs.architecture}}.${{ inputs.configuration }}/bin/
+            Result.Darwin.${{inputs.architecture}}.${{ inputs.configuration }}/lib/

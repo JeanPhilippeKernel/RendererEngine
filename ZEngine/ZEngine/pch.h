@@ -1,6 +1,4 @@
 #pragma once
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <uuid.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -8,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <memory>
 #include <queue>
 #include <regex>
@@ -15,4 +14,5 @@
 #include <shared_mutex>
 #include <sstream>
 #include <stack>
+#include <type_traits>
 #include <unordered_set>

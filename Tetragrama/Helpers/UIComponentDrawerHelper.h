@@ -1,7 +1,7 @@
 #pragma once
 #include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
-#include <imgui/src/imgui_internal.h>
+#include <imgui/imgui_internal.h>
 
 namespace Tetragrama::Helpers
 {
