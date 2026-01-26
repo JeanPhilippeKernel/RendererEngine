@@ -104,7 +104,7 @@ $ContentsToProcess = @(
                 }
                 "Linux" {
                     @{ From = "$OuputBuildDirectory\Obelisk"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
-                    @{ From = "$OuputBuildDirectory\Obelisk"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\publish\Editor"}
+                    @{ From = "$OuputBuildDirectory\Obelisk"; To = "$OuputBuildDirectory\Panzerfaust\$Configurations\$TargetFramework\Editor"}
                 }
                 Default {
                     throw 'This system is not supported'

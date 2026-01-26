@@ -27,8 +27,6 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set_target_properties(${TARGET_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$(ProjectDir)$(Configuration)")
 endif ()
 
-include(${EXTERNAL_DIR}/externals.cmake)
-
 target_include_directories (${TARGET_NAME}
     PUBLIC
         .
@@ -42,7 +40,6 @@ target_include_directories (${TARGET_NAME}
         ./Importers
         ./Serializers
         ./Managers
-		${ENLISTMENT_ROOT}/ZEngine
 )
 
 target_precompile_headers(${TARGET_NAME} PRIVATE pch.h)
@@ -54,4 +51,4 @@ target_compile_definitions(${TARGET_NAME}
         _UNICODE
 )
 
-target_link_libraries(${TARGET_NAME} PRIVATE zEngineLib)
+target_link_libraries(${TARGET_NAME} PUBLIC zEngineLib)

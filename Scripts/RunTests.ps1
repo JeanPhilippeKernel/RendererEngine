@@ -62,22 +62,9 @@ function RunTests {
     param (
         [string]$Configuration
     )
+ 
+    [string] $testExecutablePath = Join-Path $OutputBuildDirectory -ChildPath "tests/ZEngineTests")
 
-    [string]$testExecutablePath = ""
-    switch ($SystemName) {
-        "Windows" {
-            $testExecutablePath = [IO.Path]::Combine($OutputBuildDirectory, "ZEngine", "tests", $Configuration, "ZEngineTests.exe")
-        }
-        "Darwin" {
-            $testExecutablePath = Join-Path $OutputBuildDirectory -ChildPath "ZEngine/tests/$Configuration/ZEngineTests"
-        }
-        "Linux" {
-            $testExecutablePath = Join-Path $OutputBuildDirectory -ChildPath "ZEngine/tests/ZEngineTests"
-            }
-        Default {
-            throw 'This system is not supported'
-        }
-    }
     
     # Check if the executable exists
     if (Test-Path $testExecutablePath) {
@@ -88,7 +75,6 @@ function RunTests {
         Write-Error "Test executable does not exist: $testExecutablePath"
     }
 }
-
 # Run tests for each configuration
 foreach ($config in $Configurations) {
     RunTests -Configuration $config

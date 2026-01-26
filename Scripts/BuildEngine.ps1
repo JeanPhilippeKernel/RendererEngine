@@ -87,16 +87,6 @@ if ($IsWindows) {
 }
 
 
-if(-Not $LauncherOnly) {
-    $RepoRoot = [IO.Path]::Combine($PSScriptRoot, "..")
-    Write-Host "Ensuring submodules are initialized and updated..."
-    & git -C $RepoRoot submodule update --init --recursive
-    
-} else {
-    Write-Host "Skipping submodules initialization..."
-}
-
-
 function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 
     # Check if the system supports multiple configurations
@@ -116,7 +106,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         throw 'The OS is not supported'
     }
 
-    Write-Host "Building $systemName $architecture $configuration"
+    Write-Host "Configuring $systemName $architecture $configuration"
 
     [string]$cMakeCacheVariableOverride = ""
 
@@ -142,17 +132,39 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 
     # CMake Build Process
     #
+    
+        Write-Host "Building $systemName $architecture $configuration"
+
         $buildArguments = "--build --preset $configName"
 
         $buildProcess = Start-Process $cMakeProgram -ArgumentList $buildArguments -NoNewWindow -PassThru
 
-        # Grab the process handle. When using `-NoNewWindow`, retrieving the ExitCode can return null once the process
-        # has exited. See:
-        # https://stackoverflow.com/questions/44057728/start-process-system-diagnostics-process-exitcode-is-null-with-nonewwindow
+    # Grab the process handle. When using `-NoNewWindow`, retrieving the ExitCode can return null once the process
+    # has exited. See: https://stackoverflow.com/questions/44057728/start-process-system-diagnostics-process-exitcode-is-null-with-nonewwindow
+
         $processHandle = $buildProcess.Handle
         $buildProcess.WaitForExit();
+        
         if ($buildProcess.ExitCode -ne 0) {
             throw "cmake failed build for '$buildArguments' with exit code '$buildProcess.ExitCode'"
+        }
+
+        $install_directory =""
+
+        if($IsWindows){
+            $install_directory = "Result.$systemName.$architecture.MultiConfig"
+        }
+
+        else{
+            $install_directory = "Result.$systemName.$architecture.$configuration"
+        }
+
+        $installProcess = Start-Process $cMakeProgram -ArgumentList "--install $install_directory --prefix $install_directory" -NoNewWindow -PassThru
+
+        $installProcess.WaitForExit();
+
+        if($installProcess.ExitCode -ne 0){
+            throw "cmake failed to install to '$install_directory'"
         }
 }
 
