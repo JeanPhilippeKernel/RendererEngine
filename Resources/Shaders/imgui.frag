@@ -3,7 +3,8 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
 
 layout(location = 0) out vec4 fColor;
-layout(set = 0, binding = 0) uniform sampler2D TextureArray[];
+layout(set = 0, binding = 0) uniform sampler2D _unused;
+layout(set = 1, binding = 0) uniform sampler2D TextureArray[];
 
 layout(location = 0) in struct
 {

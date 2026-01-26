@@ -27,17 +27,16 @@ namespace ZEngine::Hardwares
 {
     void VulkanDevice::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window)
     {
-        Arena          = arena;
-        CurrentWindow  = window;
-        AsyncResLoader = ZPushStructCtor(Arena, AsyncResourceLoader);
+        Arena                     = arena;
+        CurrentWindow             = window;
+        ShaderReservedBindingSets = {1}; // Todo: we should introduce HashSet<>
+        AsyncResLoader            = ZPushStructCtor(Arena, AsyncResourceLoader);
 
         DefaultDepthFormats.init(Arena, 3);
         DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT);
         DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT_S8_UINT);
         DefaultDepthFormats.push(VK_FORMAT_D24_UNORM_S8_UINT);
 
-        GlobalTextures.Initialize(arena, 600);
-        Image2DBufferManager.Initialize(arena, 600);
         ShaderManager.Initialize(arena, 300);
         VertexBufferSetManager.Initialize(arena, 300);
         StorageBufferSetManager.Initialize(arena, 300);
@@ -441,6 +440,113 @@ namespace ZEngine::Hardwares
         }
         CreateSwapchain();
 
+        /*
+         * Creating Global Descriptor Pool for : Textures
+         */
+        MaxGlobalTexture = std::min(MaxGlobalTexture, PhysicalDeviceDescriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers - 1);
+
+        GlobalTextures.Initialize(Arena, MaxGlobalTexture);
+        Image2DBufferManager.Initialize(Arena, MaxGlobalTexture);
+        ShaderReservedLayoutBindingSpecificationMap.init(Arena, 1);
+
+        ShaderReservedLayoutBindingSpecificationMap[1].init(Arena, 1);
+        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 0, .Count = MaxGlobalTexture, .Name = "TextureArray", .DescriptorTypeValue = DescriptorType::COMBINED_IMAGE_SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
+
+        ShaderReservedDescriptorSetMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
+        ShaderReservedDescriptorSetLayoutMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
+
+        VkDescriptorPoolSize pool_sizes[] = {
+            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = (MaxGlobalTexture * SwapchainImageCount)}
+        };
+
+        for (const auto& layout_binding_set : ShaderReservedLayoutBindingSpecificationMap)
+        {
+            scratch                                                = ZGetScratch(Arena);
+
+            Array<VkDescriptorSetLayoutBinding> layout_bindings    = {};
+
+            uint32_t                            binding_spec_count = layout_binding_set.second.size();
+            layout_bindings.init(scratch.Arena, binding_spec_count, binding_spec_count);
+            for (uint32_t i = 0; i < binding_spec_count; ++i)
+            {
+                auto& binding_spec = layout_binding_set.second[i];
+
+                layout_bindings[i] = VkDescriptorSetLayoutBinding{.binding = binding_spec.Binding, .descriptorType = DescriptorTypeMap[VALUE_FROM_SPEC_MAP(binding_spec.DescriptorTypeValue)], .descriptorCount = binding_spec.Count, .stageFlags = ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(binding_spec.Flags)], .pImmutableSamplers = nullptr};
+            }
+
+            Array<VkDescriptorBindingFlags> binding_flags = {};
+            binding_flags.init(scratch.Arena, layout_bindings.size(), layout_bindings.size());
+
+            for (uint32_t i = 0; i < layout_bindings.size(); ++i)
+            {
+                binding_flags[i] = 0; // We zeroing as we iterate
+
+                if (PhysicalDeviceSupportSampledImageBindless && ((layout_bindings[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || (layout_bindings[i].descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)))
+                {
+                    binding_flags[i] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+                }
+                else if (PhysicalDeviceSupportStorageBufferBindless && (layout_bindings[i].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER))
+                {
+                    binding_flags[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+                }
+            }
+            VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_create_info = {};
+            binding_flags_create_info.sType                                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+            binding_flags_create_info.bindingCount                                = binding_flags.size();
+            binding_flags_create_info.pBindingFlags                               = binding_flags.data();
+            /*
+             * Creating SetLayout
+             */
+            VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info     = {};
+            descriptor_set_layout_create_info.sType                               = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            descriptor_set_layout_create_info.bindingCount                        = layout_bindings.size();
+            descriptor_set_layout_create_info.pBindings                           = layout_bindings.data();
+            if (PhysicalDeviceSupportSampledImageBindless)
+            {
+                descriptor_set_layout_create_info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+                descriptor_set_layout_create_info.pNext = &binding_flags_create_info;
+            }
+            VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
+            ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorSetLayout(LogicalDevice, &descriptor_set_layout_create_info, nullptr, &descriptor_set_layout) == VK_SUCCESS, "Failed to create DescriptorSetLayout")
+
+            ZReleaseScratch(scratch);
+
+            ShaderReservedDescriptorSetLayoutMap.insert(layout_binding_set.first, descriptor_set_layout);
+        }
+
+        VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool_info.flags                      = PhysicalDeviceSupportSampledImageBindless ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
+        pool_info.maxSets                    = SwapchainImageCount;
+        pool_info.poolSizeCount              = sizeof(pool_sizes) / sizeof(VkDescriptorPoolSize);
+        pool_info.pPoolSizes                 = pool_sizes;
+        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(LogicalDevice, &pool_info, nullptr, &GlobalDescriptorPoolHandle) == VK_SUCCESS, "Failed to create Global DescriptorPool")
+
+        for (const auto& layout : ShaderReservedDescriptorSetLayoutMap)
+        {
+            ShaderReservedDescriptorSetMap[layout.first].init(Arena, SwapchainImageCount, SwapchainImageCount);
+        }
+
+        scratch = ZGetScratch(Arena);
+
+        for (const auto& layout : ShaderReservedDescriptorSetLayoutMap)
+        {
+            Array<VkDescriptorSetLayout> layout_set = {};
+            layout_set.init(scratch.Arena, SwapchainImageCount, SwapchainImageCount);
+            for (uint32_t i = 0; i < SwapchainImageCount; ++i)
+            {
+                layout_set[i] = layout.second;
+            }
+
+            VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
+            descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            descriptor_set_allocate_info.descriptorPool              = GlobalDescriptorPoolHandle;
+            descriptor_set_allocate_info.descriptorSetCount          = SwapchainImageCount;
+            descriptor_set_allocate_info.pSetLayouts                 = layout_set.data();
+            ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(LogicalDevice, &descriptor_set_allocate_info, ShaderReservedDescriptorSetMap[layout.first].data()) == VK_SUCCESS, "Failed to create DescriptorSet")
+        }
+
+        ZReleaseScratch(scratch);
+
         AsyncResLoader->Initialize(this);
 
         ThreadPoolHelper::Submit([this] { DirtyCollector(); });
@@ -478,6 +584,18 @@ namespace ZEngine::Hardwares
         SwapchainImageViews.clear();
 
         m_buffer_manager.Deinitialize();
+
+        for (auto set_layout : ShaderReservedDescriptorSetLayoutMap)
+        {
+            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
+        }
+        ShaderReservedDescriptorSetLayoutMap.clear();
+
+        if (GlobalDescriptorPoolHandle)
+        {
+            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, GlobalDescriptorPoolHandle);
+            GlobalDescriptorPoolHandle = VK_NULL_HANDLE;
+        }
 
         __cleanupBufferDirtyResource();
 

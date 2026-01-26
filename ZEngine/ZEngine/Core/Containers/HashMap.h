@@ -32,17 +32,17 @@ namespace ZEngine::Core::Containers
     {
     public:
         using Entry             = HashEntry<K, V>;
-        using ArrayType         = std::conditional_t<IsConst, const Array<Entry>, Array<Entry>>;
-        using value_type        = std::conditional_t<IsConst, std::pair<const K&, const V&>, std::pair<const K&, V&>>;
+        using EntryPointer      = std::conditional_t<IsConst, const Entry*, Entry*>;
+        using value_type        = std::conditional_t<IsConst, std::pair<const K, const V>, std::pair<const K, V>>;
         using reference         = value_type;
         using pointer           = value_type*;
-        using iterator_category = std::forward_iterator_tag;
+        using iterator_category = std::input_iterator_tag;
         using difference_type   = std::ptrdiff_t;
 
         // Constructs an iterator for the hash map's entries, starting at the given index.
-        // @param entries Reference to the array of hash map entries.
+        // @param entries Value to the array of hash map entries.
         // @param index Starting index for iteration.
-        HashMapIterator(ArrayType& entries, std::size_t index) : m_entries(entries), m_index(index)
+        HashMapIterator(EntryPointer entries, std::size_t index, std::size_t size) : m_entries(entries), m_index(index), m_size(size)
         {
             advance_to_valid();
         }
@@ -91,22 +91,22 @@ namespace ZEngine::Core::Containers
         // @return A pointer to a temporary key-value pair.
         pointer operator->() const
         {
-            static value_type temp = **this;
-            return &temp;
+            return std::addressof(**this);
         }
 
     private:
         // Advances the iterator to the next occupied entry, skipping empty or deleted entries.
         void advance_to_valid()
         {
-            while (m_index < m_entries.size() && m_entries[m_index].state != EntryState::Occupied)
+            while (m_index < m_size && m_entries[m_index].state != EntryState::Occupied)
             {
                 ++m_index;
             }
         }
 
-        ArrayType&  m_entries;
-        std::size_t m_index;
+        EntryPointer m_entries;
+        std::size_t  m_index;
+        std::size_t  m_size;
     };
 
     template <typename K, typename V>
@@ -122,11 +122,11 @@ namespace ZEngine::Core::Containers
         // @param allocator Pointer to the arena allocator for memory management.
         // @param initial_capacity Initial number of slots (default: 16).
         // @param load_factor Maximum load factor before resizing (default: 0.75).
-        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity = 32)
+        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity = 16)
         {
             m_allocator   = allocator;
             m_load_factor = 0.75f;
-            m_entries.init(m_allocator, initial_capacity, 0);
+            m_entries.init(m_allocator, initial_capacity);
             for (size_type i = 0; i < initial_capacity; ++i)
             {
                 m_entries.push({});
@@ -146,12 +146,6 @@ namespace ZEngine::Core::Containers
             size_type index = probe_for_insert(key);
             auto&     entry = m_entries[index];
 
-            if (entry.state == EntryState::Occupied && key_equals(entry.key, key))
-            {
-                entry.value = value; // Update existing key
-                return;
-            }
-
             if (entry.state == EntryState::Empty || entry.state == EntryState::Deleted)
             {
                 entry.key   = key;
@@ -161,15 +155,10 @@ namespace ZEngine::Core::Containers
             }
             else
             {
-                throw std::runtime_error("HashMap insert failed: table full");
+                entry.value = value;
             }
         }
 
-        // Accesses or inserts a value for a key, returning a reference to the value.
-        // Inserts a default-constructed value if the key is not found.
-        // @param key The key to access or insert.
-        // @return Reference to the associated value.
-        // @throws std::runtime_error if the table is full and cannot be resized.
         V& operator[](const K& key)
         {
             maybe_grow();
@@ -184,11 +173,6 @@ namespace ZEngine::Core::Containers
                 entry.state = EntryState::Occupied;
                 ++m_size;
             }
-            else if (entry.state == EntryState::Occupied && entry.key != key)
-            {
-                throw std::runtime_error("HashMap insert failed: table full");
-            }
-
             return entry.value;
         }
 
@@ -282,14 +266,14 @@ namespace ZEngine::Core::Containers
         // @note Iterators are invalidated by insert, remove, or reserve operations.
         iterator begin()
         {
-            return iterator(m_entries, 0);
+            return iterator(m_entries.data(), 0, m_entries.size());
         }
 
         // Returns an iterator to the end of the hash map.
         // @return Iterator representing the past-the-end position.
         iterator end()
         {
-            return iterator(m_entries, m_entries.size());
+            return iterator(m_entries.data(), m_entries.size(), m_entries.size());
         }
 
         // Returns a const iterator to the first occupied entry.
@@ -297,14 +281,14 @@ namespace ZEngine::Core::Containers
         // @note Iterators are invalidated by insert, remove, or reserve operations.
         const_iterator begin() const
         {
-            return const_iterator(m_entries, 0);
+            return const_iterator(m_entries.data(), 0, m_entries.size());
         }
 
         // Returns a const iterator to the end of the hash map.
         // @return Const iterator representing the past-the-end position.
         const_iterator end() const
         {
-            return const_iterator(m_entries, m_entries.size());
+            return const_iterator(m_entries.data(), m_entries.size(), m_entries.size());
         }
 
         // Returns a const iterator to the first occupied entry (alias for begin() const).
@@ -339,7 +323,7 @@ namespace ZEngine::Core::Containers
         {
             if (static_cast<float>(m_size + 1) / m_entries.size() > m_load_factor)
             {
-                size_type new_capacity = std::max<size_type>(16, m_entries.size() * 3 / 2); // Growth factor 1.5
+                size_type new_capacity = std::max<size_type>(16, static_cast<size_type>(m_entries.size() * 1.5f)); // Growth factor 1.5
                 rehash(new_capacity);
             }
         }
@@ -364,18 +348,20 @@ namespace ZEngine::Core::Containers
         {
             Array<Entry> old_entries = m_entries; // Move to avoid copying
             m_entries                = Array<Entry>{};
-            m_entries.init(m_allocator, new_capacity, 0);
+            m_entries.init(m_allocator, new_capacity);
             for (size_type i = 0; i < new_capacity; ++i)
             {
                 m_entries.push({});
             }
             m_size = 0;
 
-            for (const auto& entry : old_entries)
+            for (size_type i = 0; i < old_entries.size(); ++i)
             {
-                if (entry.state == EntryState::Occupied)
+                if (old_entries[i].state == EntryState::Occupied)
                 {
-                    insert(entry.key, entry.value);
+                    size_type index  = probe_for_insert(old_entries[i].key);
+                    m_entries[index] = old_entries[i]; // Direct assignment
+                    ++m_size;
                 }
             }
         }
@@ -386,8 +372,6 @@ namespace ZEngine::Core::Containers
         size_type probe_for_key(const K& key) const
         {
             size_type index = hash(key) % m_entries.size();
-            size_type step  = double_hash(key);
-            size_type start = index;
             size_type i     = 0;
 
             do
@@ -401,9 +385,9 @@ namespace ZEngine::Core::Containers
                 {
                     return index;
                 }
-                index = (index + step) % m_entries.size();
                 ++i;
-            } while (index != start && i < m_entries.size());
+                index = (index + i) % m_entries.size();
+            } while (i < m_entries.size());
 
             return size_type(-1);
         }
@@ -415,45 +399,34 @@ namespace ZEngine::Core::Containers
         size_type probe_for_insert(const K& key)
         {
             size_type index         = hash(key) % m_entries.size();
-            size_type step          = double_hash(key);
-            size_type start         = index;
             size_type first_deleted = size_type(-1);
             size_type i             = 0;
 
             do
             {
                 auto& entry = m_entries[index];
+                if (entry.state == EntryState::Occupied && key_equals(entry.key, key))
+                {
+                    return index;
+                }
+
                 if (entry.state == EntryState::Empty)
                 {
                     return (first_deleted != size_type(-1)) ? first_deleted : index;
                 }
+
                 if (entry.state == EntryState::Deleted && first_deleted == size_type(-1))
                 {
                     first_deleted = index;
                 }
-                else if (entry.state == EntryState::Occupied && key_equals(entry.key, key))
-                {
-                    return index;
-                }
-                index = (index + step) % m_entries.size();
+
                 ++i;
-            } while (index != start && i < m_entries.size());
+                index = (index + i) % m_entries.size();
+            } while (i < m_entries.size());
 
             if (first_deleted != size_type(-1))
             {
                 return first_deleted;
-            }
-
-            // Debug table state on failure
-            size_type empty_count = 0, deleted_count = 0, occupied_count = 0;
-            for (const auto& entry : m_entries)
-            {
-                if (entry.state == EntryState::Empty)
-                    ++empty_count;
-                else if (entry.state == EntryState::Deleted)
-                    ++deleted_count;
-                else if (entry.state == EntryState::Occupied)
-                    ++occupied_count;
             }
 
             throw std::runtime_error("HashMap probe failed: table full");

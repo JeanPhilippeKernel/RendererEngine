@@ -41,15 +41,42 @@ namespace ZEngine::Rendering::Shaders
         LayoutBindingSpecificationMap.init(device->Arena, 4);
         LayoutBindingSpections.init(device->Arena, 5);
         SetLayouts.init(device->Arena, 5);
-        DescriptorSetLayoutMap.init(device->Arena, 5);
+        InternalDescriptorSetLayoutMap.init(device->Arena, 5);
 
         CreateModule();
         CreateDescriptorSetLayouts();
         CreatePushConstantRange();
 
-        for (auto layout : DescriptorSetLayoutMap)
+        for (auto layout : InternalDescriptorSetLayoutMap)
         {
             SetLayouts.push(layout.second);
+        }
+
+        // We merge info of Biding Set that is managed by the Device
+        if (!PostBindingSetFromDevices.empty())
+        {
+            for (uint32_t i = 0; i < PostBindingSetFromDevices.size(); ++i)
+            {
+                uint32_t set = PostBindingSetFromDevices[i];
+                SetLayouts.push(m_device->ShaderReservedDescriptorSetLayoutMap[set]);
+
+                const auto& descriptor_sets        = m_device->ShaderReservedDescriptorSetMap[set];
+                const auto& binding_specifications = m_device->ShaderReservedLayoutBindingSpecificationMap[set];
+
+                DescriptorSetMap[set].init(m_device->Arena, descriptor_sets.size(), descriptor_sets.size());
+                for (uint32_t ds = 0; ds < descriptor_sets.size(); ++ds)
+                {
+                    DescriptorSetMap[set][ds] = descriptor_sets[ds];
+                }
+
+                LayoutBindingSpecificationMap[set].init(m_device->Arena, binding_specifications.size(), binding_specifications.size());
+                for (uint32_t lb = 0; lb < binding_specifications.size(); ++lb)
+                {
+                    LayoutBindingSpecificationMap[set][lb] = binding_specifications[lb];
+                }
+            }
+
+            PostBindingSetFromDevices.empty();
         }
 
         for (const auto layout_binding : LayoutBindingSpecificationMap)
@@ -59,11 +86,14 @@ namespace ZEngine::Rendering::Shaders
                 LayoutBindingSpections.push(spec);
             }
         }
+
         LocalArena.Clear();
     }
 
     void Shader::CreateModule()
     {
+        PostBindingSetFromDevices.init(&LocalArena, 5);
+
         ZRawPtr(spirv_cross::Compiler) spirv_compiler = nullptr;
 
         /*
@@ -206,49 +236,19 @@ namespace ZEngine::Rendering::Shaders
 
             for (const auto& SI_resource : fragment_resources.sampled_images)
             {
-                uint32_t    set     = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+
+                if (m_device->ShaderReservedBindingSets.contains(set)) // reserved set by the Device
+                {
+                    PostBindingSetFromDevices.push(set);
+                    continue;
+                }
+
                 uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
-                uint32_t    count   = 1;
                 const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
-                if (!type.array.empty())
-                {
-                    count = type.array[0];
-                    if (count == 0) // Unsized arrays
-                    {
-                        /*
-                         * Unsized arrays require descriptor update-after-bind support
-                         * If device doesn't support it, we fall back to a reasonable maximum
-                         */
-                        if (m_device->PhysicalDeviceSupportSampledImageBindless)
-                        {
-                            count = m_device->PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSamplers - 1;
-                        }
-                        else
-                        {
-                            /*
-                             * Fallback: derive a safe maximum from device properties when possible
-                             * Otherwise fall back to a conservative hard limit.
-                             */
-                            uint32_t fallback_count = 4096;
-                            if (m_device->PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSamplers > 1)
-                            {
-                                fallback_count = static_cast<uint32_t>(m_device->PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSamplers - 1);
-                                if (fallback_count > 4096)
-                                {
-                                    fallback_count = 4096; // cap to reasonable upper bound
-                                }
-                            }
 
-                            count = fallback_count;
-                            ZENGINE_CORE_WARN(
-                                "Shader {} uses unsized sampler arrays but device does not support descriptor update-after-bind. "
-                                "Using fallback size of {} descriptors. For full bindless rendering support, use GPUs with descriptor-indexing support.",
-                                m_specification.VertexFilename ? m_specification.VertexFilename : m_specification.FragmentFilename,
-                                count)
-                        }
-                    }
-                }
+                uint32_t    count   = std::min(type.array.empty() ? 1 : type.array[0], 256u);
 
                 if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
@@ -285,11 +285,11 @@ namespace ZEngine::Rendering::Shaders
         }
         ShaderModules.clear();
 
-        for (auto set_layout : DescriptorSetLayoutMap)
+        for (auto set_layout : InternalDescriptorSetLayoutMap)
         {
             m_device->EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
         }
-        DescriptorSetLayoutMap.clear();
+        InternalDescriptorSetLayoutMap.clear();
 
         if (m_descriptor_pool)
         {
@@ -320,6 +320,7 @@ namespace ZEngine::Rendering::Shaders
             for (uint32_t i = 0; i < layout_binding_collection.size(); ++i)
             {
                 binding_flags_collection[i] = 0; // We zeroing as we iterate
+
                 if (m_device->PhysicalDeviceSupportSampledImageBindless && ((layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)))
                 {
                     binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
@@ -351,7 +352,7 @@ namespace ZEngine::Rendering::Shaders
             VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
             ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorSetLayout(m_device->LogicalDevice, &descriptor_set_layout_create_info, nullptr, &descriptor_set_layout) == VK_SUCCESS, "Failed to create DescriptorSetLayout")
 
-            DescriptorSetLayoutMap[binding_set] = std::move(descriptor_set_layout);
+            InternalDescriptorSetLayoutMap[binding_set] = std::move(descriptor_set_layout);
             /*
              * Packing PoolSize
              */
@@ -367,7 +368,7 @@ namespace ZEngine::Rendering::Shaders
                 /*
                  * ToDo: we should check the limit against the device..
                  */
-                find_pool_size_it->descriptorCount++;
+                find_pool_size_it->descriptorCount += layout_binding.descriptorCount;
             }
             /*
              * Ensure correctness with number of frame count
@@ -375,12 +376,18 @@ namespace ZEngine::Rendering::Shaders
             for (auto& pool_size : pool_size_collection)
             {
                 pool_size.descriptorCount *= m_device->SwapchainImageCount;
-                pool_size.descriptorCount += m_specification.OverloadPoolSize;
+                // pool_size.descriptorCount += m_specification.OverloadPoolSize;
             }
         }
+        DescriptorSetMap.init(m_device->Arena, 5);
         /*
          * Create DescriptorPool
          */
+        if (pool_size_collection.empty())
+        {
+            ZENGINE_CORE_WARN("Shader: - The pool size is empty!")
+            return;
+        }
         ZENGINE_VALIDATE_ASSERT(!pool_size_collection.empty(), "The pool size can't be empty")
 
         VkDescriptorPoolCreateInfo pool_info = {};
@@ -395,8 +402,8 @@ namespace ZEngine::Rendering::Shaders
         /*
          * Create DescriptorSet
          */
-        DescriptorSetMap.init(m_device->Arena, 5);
-        for (const auto& layout : DescriptorSetLayoutMap)
+
+        for (const auto& layout : InternalDescriptorSetLayoutMap)
         {
             DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainImageCount, m_device->SwapchainImageCount);
 

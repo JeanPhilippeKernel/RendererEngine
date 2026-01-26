@@ -91,7 +91,7 @@ namespace ZEngine::Rendering::Renderers
             .SetOffset(2, IM_OFFSETOF(ImDrawVert, col))
 
             .UseShader("imgui")
-            .SetShaderOverloadMaxSet(2000)
+            // .SetShaderOverloadMaxSet(2000) // Todo : deprecated API - should be removed
 
             .UseSwapchainAsRenderTarget();
 
@@ -165,7 +165,7 @@ namespace ZEngine::Rendering::Renderers
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto set = descriptor_set_map.at(0)[i];
+            auto set = descriptor_set_map.at(1)[i];
             write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
         }
 
