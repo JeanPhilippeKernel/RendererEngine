@@ -10,14 +10,9 @@ set_property (GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Core invariants
 #
-get_filename_component (ENLISTMENT_ROOT "." ABSOLUTE CACHE)
-get_filename_component (EXTERNAL_DIR "${ENLISTMENT_ROOT}/__externals" ABSOLUTE CACHE)
-get_filename_component (EXTERNAL_NUGET_DIR "${ENLISTMENT_ROOT}/__externals/nuget" ABSOLUTE CACHE)
 
-include(${ENLISTMENT_ROOT}/Scripts/CMake/NuGet.cmake)
-include(${ENLISTMENT_ROOT}/Scripts/CMake/CppWinRT.cmake)
-include(${ENLISTMENT_ROOT}/dependencies.cmake)
-
+include(Scripts/CMake/NuGet.cmake)
+include(Scripts/CMake/CppWinRT.cmake)
 
 option (COPY_EXAMPLE_PROJECT "Copy example projects that show how to use Launcher" ON)
 option (LAUNCHER_ONLY "Build Launcher only" OFF)
@@ -39,30 +34,14 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	add_compile_definitions(_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING) # Fix Warning from VS 2022 +
 endif()
 
+list( APPEND CMAKE_INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib )
+
 # Externals dependencies
 #
 if (NOT LAUNCHER_ONLY)
-    add_subdirectory (${EXTERNAL_DIR}/Vulkan-Headers)
-	add_subdirectory (${EXTERNAL_DIR}/Vulkan-Loader)
-	add_subdirectory (${EXTERNAL_DIR}/fmt)
-	add_subdirectory (${EXTERNAL_DIR}/imgui)
-	add_subdirectory (${EXTERNAL_DIR}/glfw)
-	add_subdirectory (${EXTERNAL_DIR}/spdlog)
-	add_subdirectory (${EXTERNAL_DIR}/entt)
-	add_subdirectory (${EXTERNAL_DIR}/assimp)
-	add_subdirectory (${EXTERNAL_DIR}/stduuid)
-	add_subdirectory (${EXTERNAL_DIR}/yaml-cpp)
-	add_subdirectory (${EXTERNAL_DIR}/SPIRV-headers)
-	add_subdirectory (${EXTERNAL_DIR}/SPIRV-Tools)
-	add_subdirectory (${EXTERNAL_DIR}/glslang)
-	add_subdirectory (${EXTERNAL_DIR}/SPIRV-Cross)
-	add_subdirectory (${EXTERNAL_DIR}/gtest)
-	add_subdirectory (${EXTERNAL_DIR}/VulkanMemoryAllocator)
-	add_subdirectory (${EXTERNAL_DIR}/tlsf)
-	add_subdirectory (${EXTERNAL_DIR}/rapidhash)
-	add_subdirectory (${EXTERNAL_DIR}/CLI11)
-	add_subdirectory (${EXTERNAL_DIR}/nlohmann_json)
 
+    ## Setup Dependencies
+    include(dependencies.cmake)
 
 	# Core engine lib is here
 	#
@@ -83,34 +62,4 @@ add_subdirectory (Panzerfaust)
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	set_property (DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Panzerfaust)
-endif ()
-
-# Post build operation
-#
-set (SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-	set (SYSTEM_ARCHITECTURE "x64")
-elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-	set (SYSTEM_ARCHITECTURE "x64")
-elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-	if (MACOSX_ARCHITECTURE_ARM64)
-		set (SYSTEM_ARCHITECTURE "arm64")
-	else ()
-		set (SYSTEM_ARCHITECTURE "x64")
-	endif ()
-endif ()
-
-add_custom_target (AssembleContent ALL
-	COMMENT "Copying assets and resources contents"
-	COMMAND pwsh ${CMAKE_CURRENT_SOURCE_DIR}/Scripts/PostBuild.ps1 -SystemName ${SYSTEM_NAME} -Architecture ${SYSTEM_ARCHITECTURE} -Configurations $<IF:$<CONFIG:Debug>,Debug,Release> $<$<BOOL:${LAUNCHER_ONLY}>:-LauncherOnly>
-)
-
-if (NOT LAUNCHER_ONLY)
-	add_dependencies(AssembleContent zEngineLib tetragrama Obelisk)
-endif ()
-
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-	add_dependencies(AssembleContent Panzerfaust-WinBuild)
-else ()
-	add_dependencies(AssembleContent Panzerfaust)
 endif ()

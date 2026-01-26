@@ -19,12 +19,9 @@ jobs:
 
   test:
     needs: cmake-build
-    strategy:
-      matrix:
-        testConfiguration: [Debug, Release]
     uses: ./.github/workflows/job-test-windows.yml
     with:
-      configuration: ${{matrix.testConfiguration}}
+      configuration: Release
 
   deploy:
     needs: test

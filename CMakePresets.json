@@ -10,6 +10,11 @@
             "name": "BaseOptions",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_STANDARD": "20",
+                "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+                "CMAKE_CXX_EXTENSIONS": "OFF",
+                "BUILD_SHARED_LIBS": "OFF",
+                "FETCHCONTENT_QUIET": "OFF",
 
                 "VULKAN_HEADERS_ENABLE_INSTALL": "ON",
                 "ENTT_INCLUDE_HEADERS": "ON",
@@ -20,7 +25,6 @@
 
                 "GLFW_BUILD_DOCS": "OFF",
                 "GLFW_BUILD_EXAMPLES": "OFF",
-                "GLFW_INSTALL": "OFF",
 
                 "ASSIMP_BUILD_TESTS": "OFF",
                 "ASSIMP_INSTALL": "OFF",
@@ -40,13 +44,12 @@
                 "YAML_CPP_FORMAT_SOURCE": "OFF",
                 "YAML_BUILD_SHARED_LIBS": "OFF",
 
-                "USE_MASM": "OFF",
                 "USE_GAS": "OFF",
 
                 "SPIRV_SKIP_EXECUTABLES": "ON",
                 "SPIRV_SKIP_TESTS": "ON",
                 "GLSLANG_ENABLE_INSTALL": "ON",
-                "ALLOW_EXTERNAL_SPIRV_TOOLS": "OFF",
+                "ALLOW_EXTERNAL_SPIRV_TOOLS": "ON",
 
                 "SPIRV_CROSS_ENABLE_TESTS": "OFF",
                 "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
@@ -60,8 +63,8 @@
             "binaryDir": "Result.Windows.x64.MultiConfig",
             "architecture": "x64",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CONFIGURATION_TYPES": "Debug"
+                "CMAKE_CONFIGURATION_TYPES": "Debug",
+                "CMAKE_INSTALL_PREFIX": "Result.Windows.x64.MultiConfig"
             }
 
         },
@@ -70,7 +73,6 @@
             "displayName": "Windows Visual Studio Release",
             "inherits": "Windows_x64_Debug",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_CONFIGURATION_TYPES": "Release"
             }
         },
@@ -82,7 +84,9 @@
             "binaryDir": "Result.Darwin.x64.Debug",
             "generator": "Xcode",
             "cacheVariables": {
-                "BUILD_FRAMEWORK": "ON"
+                "BUILD_FRAMEWORK": "ON",
+                "CMAKE_INSTALL_PREFIX": "Result.Darwin.x64.Debug",
+                "CMAKE_CONFIGURATION_TYPES": "Debug"
             }
         },
         {
@@ -91,7 +95,9 @@
             "displayName": "Darwin XCode Release",
             "binaryDir": "Result.Darwin.x64.Release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"  
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INSTALL_PREFIX": "Result.Darwin.x64.Release",
+                "CMAKE_CONFIGURATION_TYPES": "Release"
             }
         },
 
@@ -99,14 +105,20 @@
             "name": "Darwin_arm64_Debug",
             "inherits": "Darwin_x64_Debug",
             "binaryDir": "Result.Darwin.arm64.Debug",
-            "displayName": "Darwin ARM XCode Debug"
+            "displayName": "Darwin ARM XCode Debug",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "Result.Darwin.arm64.Debug"
+            }
         },
 
         {
             "name": "Darwin_arm64_Release",
             "inherits": "Darwin_x64_Release",
             "binaryDir": "Result.Darwin.arm64.Release",
-            "displayName": "Darwin ARM XCode Release"
+            "displayName": "Darwin ARM XCode Release",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "Result.Darwin.arm64.Release"
+            }
         },
 
         {
@@ -114,7 +126,10 @@
             "inherits": "BaseOptions",
             "displayName": "Linux Ninja Debug",
             "binaryDir": "Result.Linux.x64.Debug",
-            "generator": "Ninja"
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "Result.Linux.x64.Debug"
+            }
         },
         {
             "name": "Linux_x64_Release",
@@ -123,6 +138,7 @@
             "binaryDir": "Result.Linux.x64.Release",
             "generator": "Ninja",
             "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "Result.Linux.x64.Release",
                 "CMAKE_BUILD_TYPE": "Release"
             }
         }

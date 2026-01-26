@@ -12,3 +12,8 @@ target_link_libraries(ZEngineTests PRIVATE
     zEngineLib
     GTest::gtest_main
 )
+
+set_target_properties(ZEngineTests PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
+
+install(TARGETS ZEngineTests 
+    RUNTIME DESTINATION tests)

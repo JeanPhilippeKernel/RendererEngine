@@ -17,18 +17,15 @@ jobs:
     name: test-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-latest' }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
           name: Build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
-          path: Result.Darwin.${{inputs.architecture}}.${{ inputs.configuration }}
 
       - name: Update access permission of ZEngineTests
-        run: chmod +x ./Result.Darwin.${{inputs.architecture}}.${{ inputs.configuration }}/ZEngine/tests/${{ inputs.configuration }}/ZEngineTests
+        run: chmod +x ${{github.workspace}}/tests/ZEngineTests
 
       - name: Run Tests
-        run: .\Scripts\RunTests.ps1 -Configurations ${{ inputs.configuration }} -Architecture ${{ inputs.architecture }}
-        shell: pwsh
+        env:
+          DYLD_LIBRARY_PATH: ${{github.workspace}}/lib
+        run: ${{github.workspace}}/tests/ZEngineTests
