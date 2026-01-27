@@ -409,9 +409,6 @@ namespace ZEngine::Hardwares
         VmaAllocatorCreateInfo vma_allocator_create_info = {.physicalDevice = PhysicalDevice, .device = LogicalDevice, .instance = Instance, .vulkanApiVersion = VK_API_VERSION_1_3};
         ZENGINE_VALIDATE_ASSERT(vmaCreateAllocator(&vma_allocator_create_info, &VmaAllocatorValue) == VK_SUCCESS, "Failed to create VMA Allocator")
 
-        m_buffer_manager.Initialize(this);
-        EnqueuedCommandbuffers.init(Arena, m_buffer_manager.TotalCommandBufferCount, m_buffer_manager.TotalCommandBufferCount);
-
         /*
          * Creating Swapchain
          */
@@ -428,6 +425,10 @@ namespace ZEngine::Hardwares
         PreviousFrameIndex                                    = 0;
         CurrentFrameIndex                                     = 0;
 
+        CreateSwapchain();
+
+        EnqueuedCommandbuffers.init(Arena, m_buffer_manager.TotalCommandBufferCount, m_buffer_manager.TotalCommandBufferCount);
+
         SwapchainRenderCompleteSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
         SwapchainAcquiredSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
         SwapchainSignalFences.init(Arena, SwapchainImageCount, SwapchainImageCount);
@@ -438,7 +439,6 @@ namespace ZEngine::Hardwares
             SwapchainRenderCompleteSemaphores[i] = ZPushStructCtorArgs(Arena, Primitives::Semaphore, this);
             SwapchainSignalFences[i]             = ZPushStructCtorArgs(Arena, Primitives::Fence, this, true);
         }
-        CreateSwapchain();
 
         /*
          * Creating Global Descriptor Pool for : Textures
@@ -1241,6 +1241,8 @@ namespace ZEngine::Hardwares
         {
             SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
         }
+
+        m_buffer_manager.Initialize(this, SwapchainImageCount);
 
         scratch                        = ZGetScratch(Arena);
 
