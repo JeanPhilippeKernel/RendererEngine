@@ -427,8 +427,6 @@ namespace ZEngine::Hardwares
 
         CreateSwapchain();
 
-        EnqueuedCommandbuffers.init(Arena, m_buffer_manager.TotalCommandBufferCount, m_buffer_manager.TotalCommandBufferCount);
-
         SwapchainRenderCompleteSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
         SwapchainAcquiredSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
         SwapchainSignalFences.init(Arena, SwapchainImageCount, SwapchainImageCount);
@@ -1242,7 +1240,8 @@ namespace ZEngine::Hardwares
             SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
         }
 
-        m_buffer_manager.Initialize(this, SwapchainImageCount);
+        m_buffer_manager.Initialize(this);
+        EnqueuedCommandbuffers.init(Arena, m_buffer_manager.TotalCommandBufferCount, m_buffer_manager.TotalCommandBufferCount);
 
         scratch                        = ZGetScratch(Arena);
 
@@ -2006,10 +2005,10 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void CommandBufferManager::Initialize(VulkanDevice* device, uint8_t swapchain_image_count, int thread_count)
+    void CommandBufferManager::Initialize(VulkanDevice* device, int thread_count)
     {
         Device                  = device;
-        m_total_pool_count      = swapchain_image_count * thread_count;
+        m_total_pool_count      = device->SwapchainImageCount * thread_count;
         TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
         m_instant_fence         = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, device);
         m_instant_semaphore     = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, device);
