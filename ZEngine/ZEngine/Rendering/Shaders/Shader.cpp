@@ -39,7 +39,7 @@ namespace ZEngine::Rendering::Shaders
         PushConstants.init(device->Arena, 4);
         PushConstantSpecifications.init(device->Arena, 4);
         LayoutBindingSpecificationMap.init(device->Arena, 4);
-        LayoutBindingSpections.init(device->Arena, 5);
+        LayoutBindingSpecifications.init(device->Arena, 5);
         SetLayouts.init(device->Arena, 5);
         InternalDescriptorSetLayoutMap.init(device->Arena, 5);
 
@@ -47,43 +47,33 @@ namespace ZEngine::Rendering::Shaders
         CreateDescriptorSetLayouts();
         CreatePushConstantRange();
 
-        for (auto layout : InternalDescriptorSetLayoutMap)
         {
-            SetLayouts.push(layout.second);
-        }
-
-        // We merge info of Biding Set that is managed by the Device
-        if (!PostBindingSetFromDevices.empty())
-        {
-            for (uint32_t i = 0; i < PostBindingSetFromDevices.size(); ++i)
+            std::set<uint32_t> ordered_sets = {};
+            for (auto [i, _] : InternalDescriptorSetLayoutMap)
             {
-                uint32_t set = PostBindingSetFromDevices[i];
-                SetLayouts.push(m_device->ShaderReservedDescriptorSetLayoutMap[set]);
-
-                const auto& descriptor_sets        = m_device->ShaderReservedDescriptorSetMap[set];
-                const auto& binding_specifications = m_device->ShaderReservedLayoutBindingSpecificationMap[set];
-
-                DescriptorSetMap[set].init(m_device->Arena, descriptor_sets.size(), descriptor_sets.size());
-                for (uint32_t ds = 0; ds < descriptor_sets.size(); ++ds)
-                {
-                    DescriptorSetMap[set][ds] = descriptor_sets[ds];
-                }
-
-                LayoutBindingSpecificationMap[set].init(m_device->Arena, binding_specifications.size(), binding_specifications.size());
-                for (uint32_t lb = 0; lb < binding_specifications.size(); ++lb)
-                {
-                    LayoutBindingSpecificationMap[set][lb] = binding_specifications[lb];
-                }
+                ordered_sets.insert(i);
             }
 
-            PostBindingSetFromDevices.empty();
+            for (auto set : ordered_sets)
+            {
+                SetLayouts.push(InternalDescriptorSetLayoutMap[set]);
+            }
         }
 
         for (const auto layout_binding : LayoutBindingSpecificationMap)
         {
             for (const auto& spec : layout_binding.second)
             {
-                LayoutBindingSpections.push(spec);
+                LayoutBindingSpecifications.push(spec);
+            }
+        }
+
+        // We remove the Set to avoid double release from the Device and Shader owned resource
+        for (const auto& [set, _] : m_device->ShaderReservedDescriptorSetLayoutMap)
+        {
+            if (InternalDescriptorSetLayoutMap.contains(set))
+            {
+                InternalDescriptorSetLayoutMap.remove(set);
             }
         }
 
@@ -92,8 +82,6 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::CreateModule()
     {
-        PostBindingSetFromDevices.init(&LocalArena, 5);
-
         ZRawPtr(spirv_cross::Compiler) spirv_compiler = nullptr;
 
         /*
@@ -238,12 +226,17 @@ namespace ZEngine::Rendering::Shaders
             {
                 uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
 
-                if (m_device->ShaderReservedBindingSets.contains(set)) // reserved set by the Device
+                if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
                 {
-                    PostBindingSetFromDevices.push(set);
+                    const auto& binding_specifications = m_device->ShaderReservedLayoutBindingSpecificationMap[set];
+                    LayoutBindingSpecificationMap[set].init(m_device->Arena, binding_specifications.size(), binding_specifications.size());
+
+                    for (uint32_t i = 0; i < binding_specifications.size(); ++i)
+                    {
+                        LayoutBindingSpecificationMap[set][i] = binding_specifications[i];
+                    }
                     continue;
                 }
-
                 uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
                 const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
@@ -260,9 +253,15 @@ namespace ZEngine::Rendering::Shaders
         }
     }
 
-    Specifications::LayoutBindingSpecification Shader::GetLayoutBindingSpecification(const char* name)
+    Specifications::LayoutBindingSpecification Shader::GetLayoutBindingSpecification(cstring name)
     {
         LayoutBindingSpecification binding_spec = {};
+
+        if (!Helpers::secure_strlen(name))
+        {
+            return binding_spec;
+        }
+
         for (const auto& layout_binding : LayoutBindingSpecificationMap)
         {
             const auto& binding_specification_collection = layout_binding.second;
@@ -305,7 +304,15 @@ namespace ZEngine::Rendering::Shaders
 
         for (const auto& layout_binding_set : LayoutBindingSpecificationMap)
         {
-            uint32_t                            binding_set               = layout_binding_set.first;
+            uint32_t binding_set = layout_binding_set.first;
+
+            if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(binding_set))
+            {
+                // Since it's a reserved Set The device already created its SetLayout
+                InternalDescriptorSetLayoutMap[binding_set] = m_device->ShaderReservedDescriptorSetLayoutMap[binding_set];
+                continue;
+            }
+
             Array<VkDescriptorSetLayoutBinding> layout_binding_collection = {};
             layout_binding_collection.init(&LocalArena, 10);
             for (uint32_t i = 0; i < layout_binding_set.second.size(); ++i)
@@ -376,10 +383,14 @@ namespace ZEngine::Rendering::Shaders
             for (auto& pool_size : pool_size_collection)
             {
                 pool_size.descriptorCount *= m_device->SwapchainImageCount;
-                // pool_size.descriptorCount += m_specification.OverloadPoolSize;
             }
         }
+
+        /*
+         * Creating DescriptorPool and DescriptorSet
+         */
         DescriptorSetMap.init(m_device->Arena, 5);
+
         /*
          * Create DescriptorPool
          */
@@ -388,12 +399,11 @@ namespace ZEngine::Rendering::Shaders
             ZENGINE_CORE_WARN("Shader: - The pool size is empty!")
             return;
         }
-        ZENGINE_VALIDATE_ASSERT(!pool_size_collection.empty(), "The pool size can't be empty")
 
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags                      = m_device->PhysicalDeviceSupportSampledImageBindless ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
-        pool_info.maxSets                    = m_device->SwapchainImageCount * pool_size_collection.size() * m_specification.OverloadMaxSet;
+        pool_info.maxSets                    = m_device->SwapchainImageCount;
         pool_info.poolSizeCount              = pool_size_collection.size();
         pool_info.pPoolSizes                 = pool_size_collection.data();
 
@@ -406,6 +416,15 @@ namespace ZEngine::Rendering::Shaders
         for (const auto& layout : InternalDescriptorSetLayoutMap)
         {
             DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainImageCount, m_device->SwapchainImageCount);
+            if (m_device->ShaderReservedDescriptorSetMap.contains(layout.first))
+            {
+                // Since it's a Reserved Set, the Device already created the DescriptorSet
+                for (uint32_t i = 0; i < m_device->SwapchainImageCount; ++i)
+                {
+                    DescriptorSetMap[layout.first][i] = m_device->ShaderReservedDescriptorSetMap[layout.first][i];
+                }
+                continue;
+            }
 
             Array<VkDescriptorSetLayout> layout_set = {};
             layout_set.init(&LocalArena, m_device->SwapchainImageCount, m_device->SwapchainImageCount);

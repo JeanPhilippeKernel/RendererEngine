@@ -1873,15 +1873,18 @@ namespace ZEngine::Hardwares
             auto                   pipeline           = render_pass->Pipeline;
             auto                   pipeline_layout    = pipeline->Layout;
             auto                   shader             = pipeline->Shader;
+            const auto&            set_layout         = shader->SetLayouts;
             auto&                  descriptor_set_map = shader->DescriptorSetMap;
 
             auto                   scratch            = ZGetScratch(&LocalArena);
             Array<VkDescriptorSet> frame_sets         = {};
             frame_sets.init(scratch.Arena, 5);
 
-            for (const auto& [_, sets] : descriptor_set_map)
+            // Since SetLayout is ordered by defined Set in shader source
+            // We're safe to use index as Set
+            for (uint32_t i = 0; i < set_layout.size(); ++i)
             {
-                frame_sets.push(sets[frame_index]);
+                frame_sets.push(descriptor_set_map[i][frame_index]);
             }
 
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, frame_sets.size(), frame_sets.data(), 0, nullptr);

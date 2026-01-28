@@ -15,7 +15,7 @@ namespace ZEngine::Rendering::Shaders
 
         void                                                                                                     Initialize(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec);
         void                                                                                                     Dispose();
-        Specifications::LayoutBindingSpecification                                                               GetLayoutBindingSpecification(const char* name);
+        Specifications::LayoutBindingSpecification                                                               GetLayoutBindingSpecification(cstring name);
 
         VkDescriptorPool                                                                                         m_descriptor_pool              = VK_NULL_HANDLE;
         Specifications::ShaderSpecification                                                                      m_specification                = {};
@@ -25,9 +25,8 @@ namespace ZEngine::Rendering::Shaders
         Core::Containers::Array<VkPipelineShaderStageCreateInfo>                                                 ShaderCreateInfos              = {};
         Core::Containers::Array<VkShaderModule>                                                                  ShaderModules                  = {};
         Core::Containers::Array<VkDescriptorSetLayout>                                                           SetLayouts                     = {};
-        Core::Containers::Array<Specifications::LayoutBindingSpecification>                                      LayoutBindingSpections         = {};
+        Core::Containers::Array<Specifications::LayoutBindingSpecification>                                      LayoutBindingSpecifications    = {};
         Core::Containers::Array<VkPushConstantRange>                                                             PushConstants                  = {};
-        Core::Containers::Array<uint32_t>                                                                        PostBindingSetFromDevices      = {};
         Core::Containers::HashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                            DescriptorSetMap               = {}; //<set, vec<descriptorSet>>
         Core::Containers::HashMap<uint32_t, VkDescriptorSetLayout>                                               InternalDescriptorSetLayoutMap = {}; // <set, layout>
         Core::Containers::HashMap<uint32_t, Core::Containers::Array<Specifications::LayoutBindingSpecification>> LayoutBindingSpecificationMap  = {};
@@ -38,7 +37,6 @@ namespace ZEngine::Rendering::Shaders
         void CreatePushConstantRange();
 
     private:
-        bool                     m_perform_post_merging_from_device{false};
         Hardwares::VulkanDevice* m_device{nullptr};
     };
 
