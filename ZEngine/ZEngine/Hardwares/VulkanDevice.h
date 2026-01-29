@@ -479,7 +479,7 @@ namespace ZEngine::Hardwares
 
     struct CommandBufferManager
     {
-        void                                                            Initialize(VulkanDevice* device, uint8_t swapchain_image_count = 3, int thread_count = 1);
+        void                                                            Initialize(VulkanDevice* device, int thread_count = 1);
         void                                                            Deinitialize();
         CommandBuffer*                                                  GetCommandBuffer(uint8_t frame_index, bool begin = true);
         CommandBuffer*                                                  GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin = true);
