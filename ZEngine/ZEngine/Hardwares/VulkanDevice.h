@@ -479,7 +479,7 @@ namespace ZEngine::Hardwares
 
     struct CommandBufferManager
     {
-        void                                                            Initialize(VulkanDevice* device, uint8_t swapchain_image_count = 3, int thread_count = 1);
+        void                                                            Initialize(VulkanDevice* device, int thread_count = 1);
         void                                                            Deinitialize();
         CommandBuffer*                                                  GetCommandBuffer(uint8_t frame_index, bool begin = true);
         CommandBuffer*                                                  GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin = true);
@@ -487,17 +487,26 @@ namespace ZEngine::Hardwares
         Rendering::Pools::CommandPool*                                  GetCommandPool(Rendering::QueueType type, uint8_t frame_index);
         int                                                             GetPoolFromIndex(Rendering::QueueType type, uint8_t index);
         void                                                            ResetPool(int frame_index);
+        void                                                            IncreaseBuffers();
+        void                                                            EnqueueBuffer(CommandBufferPtr const buffer);
+        void                                                            EndEnqueuedBuffers();
+        void                                                            ResetEnqueuedBufferIndex();
+        bool                                                            IsInitialized() const;
 
-        VulkanDevice*                                                   Device                  = nullptr;
-        const int                                                       MaxBufferPerPool        = 4;
-        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> CommandPools            = {};
-        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> TransferCommandPools    = {};
-        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 CommandBuffers          = {};
-        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 TransferCommandBuffers  = {};
-        int                                                             TotalCommandBufferCount = 0;
+        VulkanDevice*                                                   Device                     = nullptr;
+        const int                                                       MaxBufferPerPool           = 4;
+        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> CommandPools               = {};
+        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> TransferCommandPools       = {};
+        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 CommandBuffers             = {};
+        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 TransferCommandBuffers     = {};
+        int                                                             TotalCommandBufferCount    = 0;
+        uint32_t                                                        EnqueuedCommandbufferIndex = 0;
+        Core::Containers::Array<CommandBuffer*>                         EnqueuedCommandbuffers     = {};
 
     private:
-        int                     m_total_pool_count{0};
+        bool                    m_is_initialized   = false;
+        int                     m_total_pool_count = 0;
+        int                     m_thread_count     = 1;
         std::condition_variable m_cond;
         std::atomic_bool        m_executing_instant_command{false};
         std::mutex              m_instant_command_mutex;
@@ -541,6 +550,8 @@ namespace ZEngine::Hardwares
         const char*                                                                                                         ApplicationName                             = "Tetragrama";
         const char*                                                                                                         EngineName                                  = "ZEngine";
         uint32_t                                                                                                            SwapchainImageCount                         = 3;
+        uint32_t                                                                                                            PreviousSwapchainImageCount                 = 3;
+        uint32_t                                                                                                            SwapchainImageCountChangeCount              = 0;
         uint32_t                                                                                                            SwapchainImageIndex                         = std::numeric_limits<uint8_t>::max();
         uint32_t                                                                                                            CurrentFrameIndex                           = std::numeric_limits<uint8_t>::max();
         uint32_t                                                                                                            PreviousFrameIndex                          = std::numeric_limits<uint8_t>::max();
@@ -548,7 +559,7 @@ namespace ZEngine::Hardwares
         uint32_t                                                                                                            SwapchainImageHeight                        = std::numeric_limits<uint32_t>::max();
         uint32_t                                                                                                            GraphicFamilyIndex                          = std::numeric_limits<uint32_t>::max();
         uint32_t                                                                                                            TransferFamilyIndex                         = std::numeric_limits<uint32_t>::max();
-        uint32_t                                                                                                            EnqueuedCommandbufferIndex                  = 0;
+
         uint32_t                                                                                                            WriteDescriptorSetIndex                     = 0;
         uint32_t                                                                                                            MaxGlobalTexture                            = 600;
         VkInstance                                                                                                          Instance                                    = VK_NULL_HANDLE;
@@ -571,7 +582,7 @@ namespace ZEngine::Hardwares
         Core::Containers::Array<Rendering::Primitives::Semaphore*>                                                          SwapchainAcquiredSemaphores                 = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*>                                                          SwapchainRenderCompleteSemaphores           = {};
         Core::Containers::Array<Rendering::Primitives::Fence*>                                                              SwapchainSignalFences                       = {};
-        Core::Containers::Array<CommandBuffer*>                                                                             EnqueuedCommandbuffers                      = {};
+
         Core::Containers::HashMap<const char*, Helpers::Handle<Rendering::Shaders::Shader>>                                 ShaderCaches                                = {};
         Core::Containers::HashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                                       ShaderReservedDescriptorSetMap              = {}; //<set, vec<descriptorSet>>
         Core::Containers::HashMap<uint32_t, VkDescriptorSetLayout>                                                          ShaderReservedDescriptorSetLayoutMap        = {}; // <set, layout>

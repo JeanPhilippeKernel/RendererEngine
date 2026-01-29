@@ -570,7 +570,6 @@ namespace ZEngine::Hardwares
         UniformBufferSetManager.Dispose();
         ShaderManager.Dispose();
 
-        EnqueuedCommandbuffers.clear();
         SwapchainSignalFences.clear();
         SwapchainAcquiredSemaphores.clear();
         SwapchainRenderCompleteSemaphores.clear();
@@ -1222,26 +1221,50 @@ namespace ZEngine::Hardwares
         uint32_t image_count = 0;
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &image_count, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
 
+        bool swapchainImageCountChanged = false;
         if (image_count != SwapchainImageCount)
         {
-            ZENGINE_CORE_WARN("Max Swapchain image count supported is {}, but requested {}", image_count, SwapchainImageCount);
+            ZENGINE_CORE_WARN("Max Swapchain image count supported is {}, but requested {}", image_count, SwapchainImageCount)
             auto old_swapchain_image_count = SwapchainImageCount;
             SwapchainImageCount            = image_count;
-            ZENGINE_CORE_WARN("Swapchain image count has changed from {} to {}", old_swapchain_image_count, image_count);
+            ZENGINE_CORE_WARN("Swapchain image count has changed from {} to {}", old_swapchain_image_count, image_count)
+
+            swapchainImageCountChanged = true;
         }
 
-        if (SwapchainImageViews.capacity() <= 0)
+        if ((SwapchainImageCountChangeCount > 0) && (PreviousSwapchainImageCount != SwapchainImageCount))
         {
-            SwapchainImageViews.init(Arena, SwapchainImageCount, SwapchainImageCount);
-        }
+            ZENGINE_CORE_WARN("Swapchain image count has changed from previous creation")
 
-        if (SwapchainFramebuffers.capacity() <= 0)
+            auto delta = SwapchainImageCount - PreviousSwapchainImageCount;
+
+            // When delta is less or equal of zero, it means we have enough memory to handle ops
+            if (delta > 0 && delta < std::numeric_limits<uint32_t>::max())
+            {
+                SwapchainImageViews.push({});
+                SwapchainFramebuffers.push({});
+
+                m_buffer_manager.IncreaseBuffers();
+                // EnqueuedCommandbuffers.reserve(m_buffer_manager.TotalCommandBufferCount);
+            }
+        }
+        else
         {
-            SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
-        }
+            if (SwapchainImageViews.capacity() <= 0)
+            {
+                SwapchainImageViews.init(Arena, SwapchainImageCount, SwapchainImageCount);
+            }
 
-        m_buffer_manager.Initialize(this);
-        EnqueuedCommandbuffers.init(Arena, m_buffer_manager.TotalCommandBufferCount, m_buffer_manager.TotalCommandBufferCount);
+            if (SwapchainFramebuffers.capacity() <= 0)
+            {
+                SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
+            }
+
+            if (!m_buffer_manager.IsInitialized())
+            {
+                m_buffer_manager.Initialize(this);
+            }
+        }
 
         scratch                        = ZGetScratch(Arena);
 
@@ -1282,6 +1305,11 @@ namespace ZEngine::Hardwares
         }
 
         ZReleaseScratch(scratch);
+
+        if (swapchainImageCountChanged)
+        {
+            SwapchainImageCountChangeCount++;
+        }
     }
 
     void VulkanDevice::ResizeSwapchain()
@@ -1296,6 +1324,8 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::DisposeSwapchain()
     {
+        PreviousSwapchainImageCount = SwapchainImageCount;
+
         for (VkImageView image_view : SwapchainImageViews)
         {
             if (image_view)
@@ -1394,14 +1424,14 @@ namespace ZEngine::Hardwares
         Primitives::Semaphore* render_complete_semaphore = SwapchainRenderCompleteSemaphores[CurrentFrameIndex];
         Primitives::Fence*     signal_fence              = SwapchainSignalFences[CurrentFrameIndex];
 
-        auto                   scratch                   = ZGetScratch(Arena);
+        m_buffer_manager.EndEnqueuedBuffers();
+        auto                   scratch = ZGetScratch(Arena);
 
-        Array<VkCommandBuffer> buffer;
-        buffer.init(scratch.Arena, EnqueuedCommandbufferIndex);
-        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
+        Array<VkCommandBuffer> buffer  = {};
+        buffer.init(scratch.Arena, m_buffer_manager.EnqueuedCommandbufferIndex, m_buffer_manager.EnqueuedCommandbufferIndex);
+        for (int i = 0; i < buffer.size(); ++i)
         {
-            EnqueuedCommandbuffers[i]->End();
-            buffer.push(EnqueuedCommandbuffers[i]->GetHandle());
+            buffer[i] = m_buffer_manager.EnqueuedCommandbuffers[i]->GetHandle();
         }
 
         ZENGINE_VALIDATE_ASSERT(render_complete_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
@@ -1418,10 +1448,7 @@ namespace ZEngine::Hardwares
 
         ZReleaseScratch(scratch);
 
-        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
-        {
-            EnqueuedCommandbuffers[i]->SetState(CommanBufferState::Pending);
-        }
+        m_buffer_manager.ResetEnqueuedBufferIndex();
 
         signal_fence->SetState(FenceState::Submitted);
         render_complete_semaphore->SetState(SemaphoreState::Submitted);
@@ -1429,9 +1456,8 @@ namespace ZEngine::Hardwares
         VkSwapchainKHR   swapchains[]   = {SwapchainHandle};
         uint32_t         frames[]       = {SwapchainImageIndex};
         VkPresentInfoKHR present_info   = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .pNext = nullptr, .waitSemaphoreCount = 1, .pWaitSemaphores = signal_semaphores, .swapchainCount = 1, .pSwapchains = swapchains, .pImageIndices = frames};
-
         VkResult         present_result = vkQueuePresentKHR(queue, &present_info);
-        EnqueuedCommandbufferIndex      = 0;
+
         acquired_semaphore->SetState(SemaphoreState::Idle);
         render_complete_semaphore->SetState(SemaphoreState::Idle);
 
@@ -1476,7 +1502,7 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::EnqueueCommandBuffer(CommandBuffer* const buffer)
     {
-        EnqueuedCommandbuffers[EnqueuedCommandbufferIndex++] = buffer;
+        m_buffer_manager.EnqueueBuffer(buffer);
     }
 
     void VulkanDevice::DirtyCollector()
@@ -2007,16 +2033,25 @@ namespace ZEngine::Hardwares
 
     void CommandBufferManager::Initialize(VulkanDevice* device, int thread_count)
     {
+        if (m_is_initialized)
+        {
+            ZENGINE_CORE_WARN("Attempted to call {}, but it has been already initialized", __FUNCTION__)
+            return;
+        }
+
         Device                  = device;
-        m_total_pool_count      = device->SwapchainImageCount * thread_count;
+        m_thread_count          = thread_count;
+        m_total_pool_count      = Device->SwapchainImageCount * m_thread_count;
         TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
-        m_instant_fence         = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, device);
-        m_instant_semaphore     = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, device);
+        m_instant_fence         = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, Device);
+        m_instant_semaphore     = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, Device);
+
+        EnqueuedCommandbuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
 
         CommandPools.init(Device->Arena, m_total_pool_count, m_total_pool_count);
         for (int i = 0; i < m_total_pool_count; ++i)
         {
-            CommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, device, Rendering::QueueType::GRAPHIC_QUEUE);
+            CommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE);
         }
 
         CommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
@@ -2027,7 +2062,7 @@ namespace ZEngine::Hardwares
             CommandBuffers[i] = ZPushStructCtorArgs(
                 Device->Arena,
                 CommandBuffer,
-                device,
+                Device,
                 pool->Handle,
                 pool->QueueType,
                 /*(i % MaxBufferPerPool) == 0 ? false : true */ false);
@@ -2038,7 +2073,7 @@ namespace ZEngine::Hardwares
             TransferCommandPools.init(Device->Arena, m_total_pool_count, m_total_pool_count);
             for (int i = 0; i < m_total_pool_count; ++i)
             {
-                TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, device, Rendering::QueueType::TRANSFER_QUEUE);
+                TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
             }
 
             TransferCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
@@ -2046,9 +2081,11 @@ namespace ZEngine::Hardwares
             {
                 int   pool_index          = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
                 auto& pool                = TransferCommandPools[pool_index];
-                TransferCommandBuffers[i] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, device, pool->Handle, pool->QueueType, true);
+                TransferCommandBuffers[i] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true);
             }
         }
+
+        m_is_initialized = true;
     }
 
     void CommandBufferManager::Deinitialize()
@@ -2060,6 +2097,7 @@ namespace ZEngine::Hardwares
 
         CommandPools.clear();
         TransferCommandPools.clear();
+        EnqueuedCommandbuffers.clear();
     }
 
     CommandBuffer* CommandBufferManager::GetCommandBuffer(uint8_t frame_index, bool begin)
@@ -2127,6 +2165,41 @@ namespace ZEngine::Hardwares
         {
             vkResetCommandPool(Device->LogicalDevice, TransferCommandPools[frame_index]->Handle, 0);
         }
+    }
+
+    void CommandBufferManager::ResetEnqueuedBufferIndex()
+    {
+        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
+        {
+            EnqueuedCommandbuffers[i]->SetState(CommanBufferState::Pending);
+        }
+        EnqueuedCommandbufferIndex = 0u;
+    }
+
+    void CommandBufferManager::EndEnqueuedBuffers()
+    {
+        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
+        {
+            EnqueuedCommandbuffers[i]->End();
+        }
+    }
+
+    void CommandBufferManager::EnqueueBuffer(CommandBufferPtr const buffer)
+    {
+        EnqueuedCommandbuffers[EnqueuedCommandbufferIndex++] = buffer;
+    }
+
+    void CommandBufferManager::IncreaseBuffers()
+    {
+        m_total_pool_count      = Device->SwapchainImageCount * m_thread_count;
+        TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
+
+        
+    }
+
+    bool CommandBufferManager::IsInitialized() const
+    {
+        return m_is_initialized;
     }
 
     BufferView VertexBuffer::CreateBuffer()
