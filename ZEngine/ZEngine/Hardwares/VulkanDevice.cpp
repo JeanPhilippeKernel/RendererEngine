@@ -2194,7 +2194,57 @@ namespace ZEngine::Hardwares
         m_total_pool_count      = Device->SwapchainImageCount * m_thread_count;
         TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
 
-        
+        if (TotalCommandBufferCount > EnqueuedCommandbuffers.size())
+        {
+            auto size = EnqueuedCommandbuffers.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                EnqueuedCommandbuffers.push(nullptr);
+            }
+        }
+
+        if (m_total_pool_count > CommandPools.size())
+        {
+            auto size = CommandPools.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                CommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE));
+            }
+        }
+
+        if (TotalCommandBufferCount > CommandBuffers.size())
+        {
+            auto size = CommandBuffers.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                int   pool_index = GetPoolFromIndex(Rendering::QueueType::GRAPHIC_QUEUE, i);
+                auto& pool       = CommandPools[pool_index];
+                CommandBuffers.push(ZPushStructCtorArgs(
+                    Device->Arena,
+                    CommandBuffer,
+                    Device,
+                    pool->Handle,
+                    pool->QueueType,
+                    /*(i % MaxBufferPerPool) == 0 ? false : true */ false));
+            }
+        }
+
+        if (Device->HasSeperateTransfertQueueFamily)
+        {
+            auto size = TransferCommandPools.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                TransferCommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE));
+            }
+
+            size = TransferCommandBuffers.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                int   pool_index = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
+                auto& pool       = TransferCommandPools[pool_index];
+                TransferCommandBuffers.push(ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true));
+            }
+        }
     }
 
     bool CommandBufferManager::IsInitialized() const
