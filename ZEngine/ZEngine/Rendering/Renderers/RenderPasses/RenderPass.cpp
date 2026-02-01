@@ -146,7 +146,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         const auto& spec               = validity_output.second;
         auto        shader             = Pipeline->Shader;
-        auto        descriptor_set_map = shader->DescriptorSetMap;
+        const auto& descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
         auto        ubo_buf            = m_device->UniformBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
@@ -177,7 +177,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         const auto& spec               = validity_output.second;
         auto        shader             = Pipeline->Shader;
-        auto        descriptor_set_map = shader->DescriptorSetMap;
+        const auto& descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
         auto        sbo_buf            = m_device->StorageBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
@@ -209,7 +209,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const auto& spec               = validity_output.second;
 
         auto        shader             = Pipeline->Shader;
-        auto        descriptor_set_map = shader->DescriptorSetMap;
+        const auto& descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
         auto        tex_buf            = m_device->GlobalTextures.Access(handle);
         auto        img_buf            = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);

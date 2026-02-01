@@ -104,13 +104,7 @@ namespace ZEngine::Helpers
 
     inline int secure_strcpy(char* dest, size_t destSize, const char* src)
     {
-        if (!dest || !src)
-        {
-            return MEMORY_OP_FAILURE;
-        }
-
-        size_t srcLength = secure_strlen(src);
-        if (srcLength + 1 > destSize)
+        if (!dest || !src || destSize == 0)
         {
             return MEMORY_OP_FAILURE;
         }
@@ -119,6 +113,14 @@ namespace ZEngine::Helpers
         errno_t err = strcpy_s(dest, destSize, src);
         return (err == 0) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #else
+        // Manual bounds-checked implementation for portability
+
+        size_t src_len = secure_strlen(src);
+        if (src_len + 1 > destSize)
+        {
+            return MEMORY_OP_FAILURE;
+        }
+
         return (std::strcpy(dest, src) == dest) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #endif
     }
