@@ -27,17 +27,16 @@ namespace ZEngine::Hardwares
 {
     void VulkanDevice::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window)
     {
-        Arena          = arena;
-        CurrentWindow  = window;
-        AsyncResLoader = ZPushStructCtor(Arena, AsyncResourceLoader);
+        Arena                     = arena;
+        CurrentWindow             = window;
+        ShaderReservedBindingSets = {1}; // Todo: we should introduce HashSet<>
+        AsyncResLoader            = ZPushStructCtor(Arena, AsyncResourceLoader);
 
         DefaultDepthFormats.init(Arena, 3);
         DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT);
         DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT_S8_UINT);
         DefaultDepthFormats.push(VK_FORMAT_D24_UNORM_S8_UINT);
 
-        GlobalTextures.Initialize(arena, 600);
-        Image2DBufferManager.Initialize(arena, 600);
         ShaderManager.Initialize(arena, 300);
         VertexBufferSetManager.Initialize(arena, 300);
         StorageBufferSetManager.Initialize(arena, 300);
@@ -191,11 +190,15 @@ namespace ZEngine::Hardwares
             physical_device_properties2.sType                       = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
             physical_device_properties2.pNext                       = &indexing_properties;
 
-            VkPhysicalDeviceFeatures physical_device_feature;
-
             vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
             vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties2);
-            vkGetPhysicalDeviceFeatures(physical_device, &physical_device_feature);
+
+            VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {};
+            descriptor_indexing_features.sType                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+            VkPhysicalDeviceFeatures2 physical_device_feature                       = {};
+            physical_device_feature.sType                                           = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            physical_device_feature.pNext                                           = &descriptor_indexing_features;
+            vkGetPhysicalDeviceFeatures2(physical_device, &physical_device_feature);
 
             if (/*(physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && */ ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
@@ -203,6 +206,8 @@ namespace ZEngine::Hardwares
                 PhysicalDeviceProperties                   = physical_device_properties;
                 PhysicalDeviceDescriptorIndexingProperties = indexing_properties;
                 PhysicalDeviceFeature                      = physical_device_feature;
+                PhysicalDeviceSupportSampledImageBindless  = (descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE && descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE && descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
+                PhysicalDeviceSupportStorageBufferBindless = (descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE);
                 vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
                 break;
             }
@@ -287,34 +292,43 @@ namespace ZEngine::Hardwares
             queue_create_info.queueCount               = 1;
             queue_create_info.pNext                    = nullptr;
         }
+
         /*
          * Enabling some features
          */
-        PhysicalDeviceFeature.drawIndirectFirstInstance                                            = VK_TRUE;
-        PhysicalDeviceFeature.multiDrawIndirect                                                    = VK_TRUE;
-        PhysicalDeviceFeature.shaderSampledImageArrayDynamicIndexing                               = VK_TRUE;
+        VkDeviceCreateInfo device_create_info                                                   = {};
+        device_create_info.sType                                                                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        device_create_info.queueCreateInfoCount                                                 = queue_create_info_collection.size();
+        device_create_info.pQueueCreateInfos                                                    = queue_create_info_collection.data();
+        device_create_info.enabledExtensionCount                                                = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
+        device_create_info.ppEnabledExtensionNames                                              = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
+        device_create_info.pEnabledFeatures                                                     = nullptr;
 
-        VkPhysicalDeviceDescriptorIndexingFeaturesEXT physical_device_descriptor_indexing_features = {};
-        physical_device_descriptor_indexing_features.sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
-        physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing     = VK_TRUE;
-        physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE;
-        physical_device_descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending     = VK_TRUE;
-        physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound               = VK_TRUE;
-        physical_device_descriptor_indexing_features.runtimeDescriptorArray                        = VK_TRUE;
+        VkPhysicalDeviceDescriptorIndexingFeatures physical_device_descriptor_indexing_features = {};
+        physical_device_descriptor_indexing_features.sType                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+        VkPhysicalDeviceFeatures2 device_features_2                                             = {};
+        device_features_2.sType                                                                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        device_features_2.features.drawIndirectFirstInstance                                    = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
+        device_features_2.features.multiDrawIndirect                                            = PhysicalDeviceFeature.features.multiDrawIndirect;
+        device_features_2.features.samplerAnisotropy                                            = PhysicalDeviceFeature.features.samplerAnisotropy;
+        device_features_2.features.shaderInt64                                                  = PhysicalDeviceFeature.features.shaderInt64;
 
-        VkPhysicalDeviceFeatures2 device_features_2                                                = {};
-        device_features_2.sType                                                                    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features_2.pNext                                                                    = &physical_device_descriptor_indexing_features;
-        device_features_2.features                                                                 = PhysicalDeviceFeature;
+        if (PhysicalDeviceSupportSampledImageBindless || PhysicalDeviceSupportStorageBufferBindless)
+        {
+            if (PhysicalDeviceSupportSampledImageBindless)
+            {
+                physical_device_descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending    = VK_TRUE;
+                physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
+                physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+            }
 
-        VkDeviceCreateInfo device_create_info                                                      = {};
-        device_create_info.sType                                                                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        device_create_info.queueCreateInfoCount                                                    = queue_create_info_collection.size();
-        device_create_info.pQueueCreateInfos                                                       = queue_create_info_collection.data();
-        device_create_info.enabledExtensionCount                                                   = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
-        device_create_info.ppEnabledExtensionNames                                                 = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
-        device_create_info.pEnabledFeatures                                                        = nullptr;
-        device_create_info.pNext                                                                   = &device_features_2;
+            physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
+            physical_device_descriptor_indexing_features.runtimeDescriptorArray          = VK_TRUE;
+
+            device_features_2.pNext                                                      = &physical_device_descriptor_indexing_features;
+        }
+
+        device_create_info.pNext = &device_features_2;
 
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice) == VK_SUCCESS, "Failed to create GPU logical device")
 
@@ -395,9 +409,6 @@ namespace ZEngine::Hardwares
         VmaAllocatorCreateInfo vma_allocator_create_info = {.physicalDevice = PhysicalDevice, .device = LogicalDevice, .instance = Instance, .vulkanApiVersion = VK_API_VERSION_1_3};
         ZENGINE_VALIDATE_ASSERT(vmaCreateAllocator(&vma_allocator_create_info, &VmaAllocatorValue) == VK_SUCCESS, "Failed to create VMA Allocator")
 
-        m_buffer_manager.Initialize(this);
-        EnqueuedCommandbuffers.init(Arena, m_buffer_manager.TotalCommandBufferCount, m_buffer_manager.TotalCommandBufferCount);
-
         /*
          * Creating Swapchain
          */
@@ -414,6 +425,8 @@ namespace ZEngine::Hardwares
         PreviousFrameIndex                                    = 0;
         CurrentFrameIndex                                     = 0;
 
+        CreateSwapchain();
+
         SwapchainRenderCompleteSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
         SwapchainAcquiredSemaphores.init(Arena, SwapchainImageCount, SwapchainImageCount);
         SwapchainSignalFences.init(Arena, SwapchainImageCount, SwapchainImageCount);
@@ -424,7 +437,113 @@ namespace ZEngine::Hardwares
             SwapchainRenderCompleteSemaphores[i] = ZPushStructCtorArgs(Arena, Primitives::Semaphore, this);
             SwapchainSignalFences[i]             = ZPushStructCtorArgs(Arena, Primitives::Fence, this, true);
         }
-        CreateSwapchain();
+
+        /*
+         * Creating Global Descriptor Pool for : Textures
+         */
+        MaxGlobalTexture = std::min(MaxGlobalTexture, PhysicalDeviceDescriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers - 1);
+
+        GlobalTextures.Initialize(Arena, MaxGlobalTexture);
+        Image2DBufferManager.Initialize(Arena, MaxGlobalTexture);
+        ShaderReservedLayoutBindingSpecificationMap.init(Arena, 1);
+
+        ShaderReservedLayoutBindingSpecificationMap[1].init(Arena, 1);
+        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 0, .Count = MaxGlobalTexture, .Name = "TextureArray", .DescriptorTypeValue = DescriptorType::COMBINED_IMAGE_SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
+
+        ShaderReservedDescriptorSetMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
+        ShaderReservedDescriptorSetLayoutMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
+
+        VkDescriptorPoolSize pool_sizes[] = {
+            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = (MaxGlobalTexture * SwapchainImageCount)}
+        };
+
+        for (const auto& layout_binding_set : ShaderReservedLayoutBindingSpecificationMap)
+        {
+            scratch                                                = ZGetScratch(Arena);
+
+            Array<VkDescriptorSetLayoutBinding> layout_bindings    = {};
+
+            uint32_t                            binding_spec_count = layout_binding_set.second.size();
+            layout_bindings.init(scratch.Arena, binding_spec_count, binding_spec_count);
+            for (uint32_t i = 0; i < binding_spec_count; ++i)
+            {
+                auto& binding_spec = layout_binding_set.second[i];
+
+                layout_bindings[i] = VkDescriptorSetLayoutBinding{.binding = binding_spec.Binding, .descriptorType = DescriptorTypeMap[VALUE_FROM_SPEC_MAP(binding_spec.DescriptorTypeValue)], .descriptorCount = binding_spec.Count, .stageFlags = ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(binding_spec.Flags)], .pImmutableSamplers = nullptr};
+            }
+
+            Array<VkDescriptorBindingFlags> binding_flags = {};
+            binding_flags.init(scratch.Arena, layout_bindings.size(), layout_bindings.size());
+
+            for (uint32_t i = 0; i < layout_bindings.size(); ++i)
+            {
+                binding_flags[i] = 0; // We zeroing as we iterate
+
+                if (PhysicalDeviceSupportSampledImageBindless && ((layout_bindings[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || (layout_bindings[i].descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)))
+                {
+                    binding_flags[i] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+                }
+                else if (PhysicalDeviceSupportStorageBufferBindless && (layout_bindings[i].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER))
+                {
+                    binding_flags[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+                }
+            }
+            VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_create_info = {};
+            binding_flags_create_info.sType                                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+            binding_flags_create_info.bindingCount                                = binding_flags.size();
+            binding_flags_create_info.pBindingFlags                               = binding_flags.data();
+            /*
+             * Creating SetLayout
+             */
+            VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info     = {};
+            descriptor_set_layout_create_info.sType                               = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            descriptor_set_layout_create_info.bindingCount                        = layout_bindings.size();
+            descriptor_set_layout_create_info.pBindings                           = layout_bindings.data();
+            if (PhysicalDeviceSupportSampledImageBindless)
+            {
+                descriptor_set_layout_create_info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+                descriptor_set_layout_create_info.pNext = &binding_flags_create_info;
+            }
+            VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
+            ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorSetLayout(LogicalDevice, &descriptor_set_layout_create_info, nullptr, &descriptor_set_layout) == VK_SUCCESS, "Failed to create DescriptorSetLayout")
+
+            ZReleaseScratch(scratch);
+
+            ShaderReservedDescriptorSetLayoutMap.insert(layout_binding_set.first, descriptor_set_layout);
+        }
+
+        VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool_info.flags                      = PhysicalDeviceSupportSampledImageBindless ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
+        pool_info.maxSets                    = SwapchainImageCount;
+        pool_info.poolSizeCount              = sizeof(pool_sizes) / sizeof(VkDescriptorPoolSize);
+        pool_info.pPoolSizes                 = pool_sizes;
+        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(LogicalDevice, &pool_info, nullptr, &GlobalDescriptorPoolHandle) == VK_SUCCESS, "Failed to create Global DescriptorPool")
+
+        for (const auto& layout : ShaderReservedDescriptorSetLayoutMap)
+        {
+            ShaderReservedDescriptorSetMap[layout.first].init(Arena, SwapchainImageCount, SwapchainImageCount);
+        }
+
+        scratch = ZGetScratch(Arena);
+
+        for (const auto& layout : ShaderReservedDescriptorSetLayoutMap)
+        {
+            Array<VkDescriptorSetLayout> layout_set = {};
+            layout_set.init(scratch.Arena, SwapchainImageCount, SwapchainImageCount);
+            for (uint32_t i = 0; i < SwapchainImageCount; ++i)
+            {
+                layout_set[i] = layout.second;
+            }
+
+            VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
+            descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            descriptor_set_allocate_info.descriptorPool              = GlobalDescriptorPoolHandle;
+            descriptor_set_allocate_info.descriptorSetCount          = SwapchainImageCount;
+            descriptor_set_allocate_info.pSetLayouts                 = layout_set.data();
+            ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(LogicalDevice, &descriptor_set_allocate_info, ShaderReservedDescriptorSetMap[layout.first].data()) == VK_SUCCESS, "Failed to create DescriptorSet")
+        }
+
+        ZReleaseScratch(scratch);
 
         AsyncResLoader->Initialize(this);
 
@@ -451,7 +570,6 @@ namespace ZEngine::Hardwares
         UniformBufferSetManager.Dispose();
         ShaderManager.Dispose();
 
-        EnqueuedCommandbuffers.clear();
         SwapchainSignalFences.clear();
         SwapchainAcquiredSemaphores.clear();
         SwapchainRenderCompleteSemaphores.clear();
@@ -463,6 +581,18 @@ namespace ZEngine::Hardwares
         SwapchainImageViews.clear();
 
         m_buffer_manager.Deinitialize();
+
+        for (auto set_layout : ShaderReservedDescriptorSetLayoutMap)
+        {
+            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
+        }
+        ShaderReservedDescriptorSetLayoutMap.clear();
+
+        if (GlobalDescriptorPoolHandle)
+        {
+            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, GlobalDescriptorPoolHandle);
+            GlobalDescriptorPoolHandle = VK_NULL_HANDLE;
+        }
 
         __cleanupBufferDirtyResource();
 
@@ -893,8 +1023,8 @@ namespace ZEngine::Hardwares
         sampler_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.samplerAnisotropy;
-        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.samplerAnisotropy ? PhysicalDeviceProperties.limits.maxSamplerAnisotropy : 1.0f;
+        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.features.samplerAnisotropy;
+        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.limits.maxSamplerAnisotropy : 1.0f;
         sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         sampler_create_info.unnormalizedCoordinates = VK_FALSE;
         sampler_create_info.compareEnable           = VK_FALSE;
@@ -1091,21 +1221,49 @@ namespace ZEngine::Hardwares
         uint32_t image_count = 0;
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &image_count, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
 
+        bool swapchainImageCountChanged = false;
         if (image_count != SwapchainImageCount)
         {
-            ZENGINE_CORE_WARN("Max Swapchain image count supported is {}, but requested {}", image_count, SwapchainImageCount);
-            SwapchainImageCount = image_count;
-            ZENGINE_CORE_WARN("Swapchain image count has changed from {} to {}", SwapchainImageCount, image_count);
+            ZENGINE_CORE_WARN("Max Swapchain image count supported is {}, but requested {}", image_count, SwapchainImageCount)
+            auto old_swapchain_image_count = SwapchainImageCount;
+            SwapchainImageCount            = image_count;
+            ZENGINE_CORE_WARN("Swapchain image count has changed from {} to {}", old_swapchain_image_count, image_count)
+
+            swapchainImageCountChanged = true;
         }
 
-        if (SwapchainImageViews.capacity() <= 0)
+        if ((SwapchainImageCountChangeCount > 0) && (PreviousSwapchainImageCount != SwapchainImageCount))
         {
-            SwapchainImageViews.init(Arena, SwapchainImageCount, SwapchainImageCount);
-        }
+            ZENGINE_CORE_WARN("Swapchain image count has changed from previous creation")
 
-        if (SwapchainFramebuffers.capacity() <= 0)
+            auto delta = SwapchainImageCount - PreviousSwapchainImageCount;
+
+            // When delta is less or equal of zero, it means we have enough memory to handle ops
+            if (delta > 0 && delta < std::numeric_limits<uint32_t>::max())
+            {
+                SwapchainImageViews.push({});
+                SwapchainFramebuffers.push({});
+
+                m_buffer_manager.IncreaseBuffers();
+                // EnqueuedCommandbuffers.reserve(m_buffer_manager.TotalCommandBufferCount);
+            }
+        }
+        else
         {
-            SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
+            if (SwapchainImageViews.capacity() <= 0)
+            {
+                SwapchainImageViews.init(Arena, SwapchainImageCount, SwapchainImageCount);
+            }
+
+            if (SwapchainFramebuffers.capacity() <= 0)
+            {
+                SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
+            }
+
+            if (!m_buffer_manager.IsInitialized())
+            {
+                m_buffer_manager.Initialize(this);
+            }
         }
 
         scratch                        = ZGetScratch(Arena);
@@ -1147,6 +1305,11 @@ namespace ZEngine::Hardwares
         }
 
         ZReleaseScratch(scratch);
+
+        if (swapchainImageCountChanged)
+        {
+            SwapchainImageCountChangeCount++;
+        }
     }
 
     void VulkanDevice::ResizeSwapchain()
@@ -1161,6 +1324,8 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::DisposeSwapchain()
     {
+        PreviousSwapchainImageCount = SwapchainImageCount;
+
         for (VkImageView image_view : SwapchainImageViews)
         {
             if (image_view)
@@ -1259,14 +1424,14 @@ namespace ZEngine::Hardwares
         Primitives::Semaphore* render_complete_semaphore = SwapchainRenderCompleteSemaphores[CurrentFrameIndex];
         Primitives::Fence*     signal_fence              = SwapchainSignalFences[CurrentFrameIndex];
 
-        auto                   scratch                   = ZGetScratch(Arena);
+        m_buffer_manager.EndEnqueuedBuffers();
+        auto                   scratch = ZGetScratch(Arena);
 
-        Array<VkCommandBuffer> buffer;
-        buffer.init(scratch.Arena, EnqueuedCommandbufferIndex);
-        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
+        Array<VkCommandBuffer> buffer  = {};
+        buffer.init(scratch.Arena, m_buffer_manager.EnqueuedCommandbufferIndex, m_buffer_manager.EnqueuedCommandbufferIndex);
+        for (int i = 0; i < buffer.size(); ++i)
         {
-            EnqueuedCommandbuffers[i]->End();
-            buffer.push(EnqueuedCommandbuffers[i]->GetHandle());
+            buffer[i] = m_buffer_manager.EnqueuedCommandbuffers[i]->GetHandle();
         }
 
         ZENGINE_VALIDATE_ASSERT(render_complete_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
@@ -1283,10 +1448,7 @@ namespace ZEngine::Hardwares
 
         ZReleaseScratch(scratch);
 
-        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
-        {
-            EnqueuedCommandbuffers[i]->SetState(CommanBufferState::Pending);
-        }
+        m_buffer_manager.ResetEnqueuedBufferIndex();
 
         signal_fence->SetState(FenceState::Submitted);
         render_complete_semaphore->SetState(SemaphoreState::Submitted);
@@ -1294,9 +1456,8 @@ namespace ZEngine::Hardwares
         VkSwapchainKHR   swapchains[]   = {SwapchainHandle};
         uint32_t         frames[]       = {SwapchainImageIndex};
         VkPresentInfoKHR present_info   = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .pNext = nullptr, .waitSemaphoreCount = 1, .pWaitSemaphores = signal_semaphores, .swapchainCount = 1, .pSwapchains = swapchains, .pImageIndices = frames};
-
         VkResult         present_result = vkQueuePresentKHR(queue, &present_info);
-        EnqueuedCommandbufferIndex      = 0;
+
         acquired_semaphore->SetState(SemaphoreState::Idle);
         render_complete_semaphore->SetState(SemaphoreState::Idle);
 
@@ -1341,7 +1502,7 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::EnqueueCommandBuffer(CommandBuffer* const buffer)
     {
-        EnqueuedCommandbuffers[EnqueuedCommandbufferIndex++] = buffer;
+        m_buffer_manager.EnqueueBuffer(buffer);
     }
 
     void VulkanDevice::DirtyCollector()
@@ -1739,15 +1900,18 @@ namespace ZEngine::Hardwares
             auto                   pipeline           = render_pass->Pipeline;
             auto                   pipeline_layout    = pipeline->Layout;
             auto                   shader             = pipeline->Shader;
-            auto&                  descriptor_set_map = shader->DescriptorSetMap;
+            const auto&            set_layout         = shader->SetLayouts;
+            const auto&            descriptor_set_map = shader->DescriptorSetMap;
 
             auto                   scratch            = ZGetScratch(&LocalArena);
             Array<VkDescriptorSet> frame_sets         = {};
             frame_sets.init(scratch.Arena, 5);
 
-            for (const auto& [_, sets] : descriptor_set_map)
+            // Since SetLayout is ordered by defined Set in shader source
+            // We're safe to use index as Set
+            for (uint32_t i = 0; i < set_layout.size(); ++i)
             {
-                frame_sets.push(sets[frame_index]);
+                frame_sets.push(descriptor_set_map.at(i)[frame_index]);
             }
 
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, frame_sets.size(), frame_sets.data(), 0, nullptr);
@@ -1867,18 +2031,27 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void CommandBufferManager::Initialize(VulkanDevice* device, uint8_t swapchain_image_count, int thread_count)
+    void CommandBufferManager::Initialize(VulkanDevice* device, int thread_count)
     {
+        if (m_is_initialized)
+        {
+            ZENGINE_CORE_WARN("Attempted to call {}, but it has been already initialized", __FUNCTION__)
+            return;
+        }
+
         Device                  = device;
-        m_total_pool_count      = swapchain_image_count * thread_count;
+        m_thread_count          = thread_count;
+        m_total_pool_count      = Device->SwapchainImageCount * m_thread_count;
         TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
-        m_instant_fence         = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, device);
-        m_instant_semaphore     = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, device);
+        m_instant_fence         = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, Device);
+        m_instant_semaphore     = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, Device);
+
+        EnqueuedCommandbuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
 
         CommandPools.init(Device->Arena, m_total_pool_count, m_total_pool_count);
         for (int i = 0; i < m_total_pool_count; ++i)
         {
-            CommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, device, Rendering::QueueType::GRAPHIC_QUEUE);
+            CommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE);
         }
 
         CommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
@@ -1889,7 +2062,7 @@ namespace ZEngine::Hardwares
             CommandBuffers[i] = ZPushStructCtorArgs(
                 Device->Arena,
                 CommandBuffer,
-                device,
+                Device,
                 pool->Handle,
                 pool->QueueType,
                 /*(i % MaxBufferPerPool) == 0 ? false : true */ false);
@@ -1900,7 +2073,7 @@ namespace ZEngine::Hardwares
             TransferCommandPools.init(Device->Arena, m_total_pool_count, m_total_pool_count);
             for (int i = 0; i < m_total_pool_count; ++i)
             {
-                TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, device, Rendering::QueueType::TRANSFER_QUEUE);
+                TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
             }
 
             TransferCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
@@ -1908,9 +2081,11 @@ namespace ZEngine::Hardwares
             {
                 int   pool_index          = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
                 auto& pool                = TransferCommandPools[pool_index];
-                TransferCommandBuffers[i] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, device, pool->Handle, pool->QueueType, true);
+                TransferCommandBuffers[i] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true);
             }
         }
+
+        m_is_initialized = true;
     }
 
     void CommandBufferManager::Deinitialize()
@@ -1922,6 +2097,7 @@ namespace ZEngine::Hardwares
 
         CommandPools.clear();
         TransferCommandPools.clear();
+        EnqueuedCommandbuffers.clear();
     }
 
     CommandBuffer* CommandBufferManager::GetCommandBuffer(uint8_t frame_index, bool begin)
@@ -1989,6 +2165,91 @@ namespace ZEngine::Hardwares
         {
             vkResetCommandPool(Device->LogicalDevice, TransferCommandPools[frame_index]->Handle, 0);
         }
+    }
+
+    void CommandBufferManager::ResetEnqueuedBufferIndex()
+    {
+        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
+        {
+            EnqueuedCommandbuffers[i]->SetState(CommanBufferState::Pending);
+        }
+        EnqueuedCommandbufferIndex = 0u;
+    }
+
+    void CommandBufferManager::EndEnqueuedBuffers()
+    {
+        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
+        {
+            EnqueuedCommandbuffers[i]->End();
+        }
+    }
+
+    void CommandBufferManager::EnqueueBuffer(CommandBufferPtr const buffer)
+    {
+        EnqueuedCommandbuffers[EnqueuedCommandbufferIndex++] = buffer;
+    }
+
+    void CommandBufferManager::IncreaseBuffers()
+    {
+        m_total_pool_count      = Device->SwapchainImageCount * m_thread_count;
+        TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
+
+        if (TotalCommandBufferCount > EnqueuedCommandbuffers.size())
+        {
+            auto size = EnqueuedCommandbuffers.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                EnqueuedCommandbuffers.push(nullptr);
+            }
+        }
+
+        if (m_total_pool_count > CommandPools.size())
+        {
+            auto size = CommandPools.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                CommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE));
+            }
+        }
+
+        if (TotalCommandBufferCount > CommandBuffers.size())
+        {
+            auto size = CommandBuffers.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                int   pool_index = GetPoolFromIndex(Rendering::QueueType::GRAPHIC_QUEUE, i);
+                auto& pool       = CommandPools[pool_index];
+                CommandBuffers.push(ZPushStructCtorArgs(
+                    Device->Arena,
+                    CommandBuffer,
+                    Device,
+                    pool->Handle,
+                    pool->QueueType,
+                    /*(i % MaxBufferPerPool) == 0 ? false : true */ false));
+            }
+        }
+
+        if (Device->HasSeperateTransfertQueueFamily)
+        {
+            auto size = TransferCommandPools.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                TransferCommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE));
+            }
+
+            size = TransferCommandBuffers.size();
+            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+            {
+                int   pool_index = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
+                auto& pool       = TransferCommandPools[pool_index];
+                TransferCommandBuffers.push(ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true));
+            }
+        }
+    }
+
+    bool CommandBufferManager::IsInitialized() const
+    {
+        return m_is_initialized;
     }
 
     BufferView VertexBuffer::CreateBuffer()
@@ -2362,11 +2623,12 @@ namespace ZEngine::Hardwares
 
         size_t               data_size  = width * height * byte_per_pixel;
         Array<unsigned char> image_data = {};
+        image_data.init(scratch.Arena, data_size, data_size);
 
-        unsigned char        r_byte     = static_cast<unsigned char>(std::clamp(r * 255.0f, 0.0f, 255.0f));
-        unsigned char        g_byte     = static_cast<unsigned char>(std::clamp(g * 255.0f, 0.0f, 255.0f));
-        unsigned char        b_byte     = static_cast<unsigned char>(std::clamp(b * 255.0f, 0.0f, 255.0f));
-        unsigned char        a_byte     = static_cast<unsigned char>(std::clamp(a * 255.0f, 0.0f, 255.0f));
+        unsigned char r_byte = static_cast<unsigned char>(std::clamp(r * 255.0f, 0.0f, 255.0f));
+        unsigned char g_byte = static_cast<unsigned char>(std::clamp(g * 255.0f, 0.0f, 255.0f));
+        unsigned char b_byte = static_cast<unsigned char>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+        unsigned char a_byte = static_cast<unsigned char>(std::clamp(a * 255.0f, 0.0f, 255.0f));
 
         for (size_t i = 0; i < data_size; i += byte_per_pixel)
         {

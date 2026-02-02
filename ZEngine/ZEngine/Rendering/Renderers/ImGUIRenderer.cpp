@@ -91,7 +91,7 @@ namespace ZEngine::Rendering::Renderers
             .SetOffset(2, IM_OFFSETOF(ImDrawVert, col))
 
             .UseShader("imgui")
-            .SetShaderOverloadMaxSet(2000)
+            // .SetShaderOverloadMaxSet(2000) // Todo : deprecated API - should be removed
 
             .UseSwapchainAsRenderTarget();
 
@@ -152,9 +152,17 @@ namespace ZEngine::Rendering::Renderers
         img_buf->Layout = barrier_spec_1.NewLayout;
         Device->EnqueueInstantCommandBuffer(command_buf);
 
+        /*
+         * Dummy Texture
+         */
+        auto dummy_tex_handle                             = Device->CreateTexture(1, 1, 255, 255, 255, 255);
+        auto dummy_tex_res                                = Device->GlobalTextures.Access(dummy_tex_handle);
+        auto dummy_tex_buf                                = Device->Image2DBufferManager.Access(dummy_tex_res->BufferHandle);
+
         io.Fonts->TexID                                   = (ImTextureID) font_tex_handle.Index;
 
         auto                        font_image_info       = img_buf->GetDescriptorImageInfo();
+        auto                        dummy_image_info      = dummy_tex_buf->GetDescriptorImageInfo();
         uint32_t                    frame_count           = Device->SwapchainImageCount;
         auto                        shader                = m_ui_pass->Pipeline->Shader;
         auto&                       descriptor_set_map    = shader->DescriptorSetMap;
@@ -165,8 +173,17 @@ namespace ZEngine::Rendering::Renderers
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto set = descriptor_set_map.at(0)[i];
-            write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
+            for (const auto& [set, arr] : descriptor_set_map)
+            {
+                auto frame_set = arr[i];
+                if (set == 0) // __unused
+                {
+                    write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = frame_set, .dstBinding = 0, .dstArrayElement = 0u /*(uint32_t) dummy_tex_handle.Index*/, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(dummy_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
+                    continue;
+                }
+
+                write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = frame_set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
+            }
         }
 
         vkUpdateDescriptorSets(Device->LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
@@ -295,7 +312,7 @@ namespace ZEngine::Rendering::Renderers
 
         ZReleaseScratch(scratch);
 
-        auto current_framebuffer = Device->SwapchainFramebuffers[Device->CurrentFrameIndex];
+        auto current_framebuffer = Device->SwapchainFramebuffers[Device->SwapchainImageIndex];
 
         command_buffer->BeginRenderPass(m_ui_pass, current_framebuffer);
         command_buffer->BindVertexBuffer(*vertex_buffer);

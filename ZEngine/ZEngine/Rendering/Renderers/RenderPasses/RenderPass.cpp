@@ -110,27 +110,30 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     bool RenderPass::Verify()
     {
-        const auto& m_layout_bindings = Pipeline->Shader->LayoutBindingSpections;
+        bool        verify                       = true;
+        const auto& layout_binding_specification = Pipeline->Shader->LayoutBindingSpecifications;
 
-        if (Inputs.size() != m_layout_bindings.size())
+        if (Inputs.size() != layout_binding_specification.size())
         {
             std::vector<std::string> missing_names;
-            for (const auto& binding : m_layout_bindings)
+            for (const auto& specification : layout_binding_specification)
             {
-                if (!Inputs.count(binding.Name))
+                std::string name(specification.Name);
+                if (!Inputs.count(name))
                 {
-                    missing_names.emplace_back(binding.Name);
+                    missing_names.emplace_back(name);
                 }
             }
             auto        start        = missing_names.begin();
             auto        end          = missing_names.end();
-            std::string unset_inputs = std::accumulate(std::next(start), end, *start, [](std::string_view a, std::string_view b) { return fmt::format("{}, {}", a, b); });
+            std::string unset_inputs = std::accumulate(std::next(start), end, *start, [](std::string_view a, std::string_view b) { return fmt::format("{}, {}", a.data(), b.data()); });
 
-            ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", Specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs);
+            ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", Specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs.c_str());
 
-            return false;
+            verify = false;
         }
-        return true;
+
+        return verify;
     }
 
     void RenderPass::SetInput(std::string_view key_name, const Hardwares::UniformBufferSetHandle& handle)
@@ -143,7 +146,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         const auto& spec               = validity_output.second;
         auto        shader             = Pipeline->Shader;
-        auto        descriptor_set_map = shader->DescriptorSetMap;
+        const auto& descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
         auto        ubo_buf            = m_device->UniformBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
@@ -174,7 +177,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         const auto& spec               = validity_output.second;
         auto        shader             = Pipeline->Shader;
-        auto        descriptor_set_map = shader->DescriptorSetMap;
+        const auto& descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
         auto        sbo_buf            = m_device->StorageBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
@@ -206,7 +209,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const auto& spec               = validity_output.second;
 
         auto        shader             = Pipeline->Shader;
-        auto        descriptor_set_map = shader->DescriptorSetMap;
+        const auto& descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainImageCount;
         auto        tex_buf            = m_device->GlobalTextures.Access(handle);
         auto        img_buf            = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);

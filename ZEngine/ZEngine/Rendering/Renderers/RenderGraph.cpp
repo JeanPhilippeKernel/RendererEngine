@@ -31,10 +31,10 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::Setup()
     {
-        for (auto [name, node] : NodeMap)
+        for (auto [name, _] : NodeMap) // Todo HashMap needs to support for (auto& [key, val]) {....}
         {
-            node.EdgeNodes.init(Device->Arena, 5);
-            node.CallbackPass->Setup(Device, name, ResourceBuilder, ResourceInspector);
+            NodeMap[name].EdgeNodes.init(Device->Arena, 5);
+            NodeMap[name].CallbackPass->Setup(Device, name, ResourceBuilder, ResourceInspector);
         }
     }
 
