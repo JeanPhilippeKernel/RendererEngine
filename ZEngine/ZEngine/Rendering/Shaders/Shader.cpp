@@ -209,7 +209,7 @@ namespace ZEngine::Rendering::Shaders
 
                 if (LayoutBindingSpecificationMap.at(set).capacity() <= 0)
                 {
-                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
+                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
                 auto name_c_size = (SB_resource.name.size() + 1u);
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
@@ -249,7 +249,7 @@ namespace ZEngine::Rendering::Shaders
                 if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
                 {
                     const auto& binding_specifications = m_device->ShaderReservedLayoutBindingSpecificationMap[set];
-                    LayoutBindingSpecificationMap[set].init(&LocalArena, binding_specifications.size(), binding_specifications.size());
+                    LayoutBindingSpecificationMap[set].init(m_device->Arena, binding_specifications.size(), binding_specifications.size());
 
                     for (uint32_t i = 0; i < binding_specifications.size(); ++i)
                     {
@@ -265,7 +265,7 @@ namespace ZEngine::Rendering::Shaders
 
                 if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
-                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
+                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
                 auto name_c_size = (SI_resource.name.size() + 1u);
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
