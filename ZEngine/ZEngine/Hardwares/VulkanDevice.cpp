@@ -2623,11 +2623,12 @@ namespace ZEngine::Hardwares
 
         size_t               data_size  = width * height * byte_per_pixel;
         Array<unsigned char> image_data = {};
+        image_data.init(scratch.Arena, data_size, data_size);
 
-        unsigned char        r_byte     = static_cast<unsigned char>(std::clamp(r * 255.0f, 0.0f, 255.0f));
-        unsigned char        g_byte     = static_cast<unsigned char>(std::clamp(g * 255.0f, 0.0f, 255.0f));
-        unsigned char        b_byte     = static_cast<unsigned char>(std::clamp(b * 255.0f, 0.0f, 255.0f));
-        unsigned char        a_byte     = static_cast<unsigned char>(std::clamp(a * 255.0f, 0.0f, 255.0f));
+        unsigned char r_byte = static_cast<unsigned char>(std::clamp(r * 255.0f, 0.0f, 255.0f));
+        unsigned char g_byte = static_cast<unsigned char>(std::clamp(g * 255.0f, 0.0f, 255.0f));
+        unsigned char b_byte = static_cast<unsigned char>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+        unsigned char a_byte = static_cast<unsigned char>(std::clamp(a * 255.0f, 0.0f, 255.0f));
 
         for (size_t i = 0; i < data_size; i += byte_per_pixel)
         {

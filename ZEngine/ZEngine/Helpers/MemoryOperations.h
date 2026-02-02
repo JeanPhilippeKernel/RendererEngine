@@ -109,18 +109,16 @@ namespace ZEngine::Helpers
             return MEMORY_OP_FAILURE;
         }
 
-#if SECURE_C11_FUNCTIONS_AVAILABLE
-        errno_t err = strcpy_s(dest, destSize, src);
-        return (err == 0) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
-#else
-        // Manual bounds-checked implementation for portability
-
         size_t src_len = secure_strlen(src);
         if (src_len + 1 > destSize)
         {
             return MEMORY_OP_FAILURE;
         }
 
+#if SECURE_C11_FUNCTIONS_AVAILABLE
+        errno_t err = strcpy_s(dest, destSize, src);
+        return (err == 0) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
+#else
         return (std::strcpy(dest, src) == dest) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #endif
     }
