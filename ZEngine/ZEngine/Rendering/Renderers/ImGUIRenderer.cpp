@@ -312,7 +312,7 @@ namespace ZEngine::Rendering::Renderers
 
         ZReleaseScratch(scratch);
 
-        auto current_framebuffer = Device->SwapchainFramebuffers[Device->CurrentFrameIndex];
+        auto current_framebuffer = Device->SwapchainFramebuffers[Device->SwapchainImageIndex];
 
         command_buffer->BeginRenderPass(m_ui_pass, current_framebuffer);
         command_buffer->BindVertexBuffer(*vertex_buffer);
