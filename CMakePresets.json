@@ -56,9 +56,9 @@
             }
         },
         {
-            "name": "Windows_x64_Debug",
+            "name": "Windows_x64_Debug_2022",
             "inherits": "BaseOptions",
-            "displayName": "Windows Visual Studio Debug",
+            "displayName": "Windows Visual Studio 2022 Debug",
             "generator": "Visual Studio 17 2022",
             "binaryDir": "Result.Windows.x64.MultiConfig",
             "architecture": "x64",
@@ -69,13 +69,27 @@
 
         },
         {
-            "name": "Windows_x64_Release",
-            "displayName": "Windows Visual Studio Release",
-            "inherits": "Windows_x64_Debug",
+            "name": "Windows_x64_Release_2022",
+            "displayName": "Windows Visual Studio 2022 Release",
+            "inherits": "Windows_x64_Debug_2022",
             "cacheVariables": {
                 "CMAKE_CONFIGURATION_TYPES": "Release"
             }
         },
+
+        {
+            "name": "Windows_x64_Debug_2026",
+            "inherits": "Windows_x64_Debug_2022",
+            "displayName": "Windows Visual Studio 2026 Debug",
+            "generator": "Visual Studio 18 2026"
+        }, 
+
+        {
+            "name": "Windows_x64_Release_2026",
+            "inherits": "Windows_x64_Release_2022",
+            "displayName": "Windows Visual Studio 2026 Release",
+            "generator": "Visual Studio 18 2026"
+        }, 
 
         {
             "name": "Darwin_x64_Debug",
@@ -146,20 +160,32 @@
 
     "buildPresets": [
         {
-            "name": "Windows_x64_Debug",
-            "configurePreset": "Windows_x64_Debug",
+            "name": "Windows_x64_Debug_2022",
+            "configurePreset": "Windows_x64_Debug_2022",
             "configuration": "Debug",
             "nativeToolOptions": [
                 "-nodeReuse:false"
             ]
         },
         {
-            "name": "Windows_x64_Release",
-            "configurePreset": "Windows_x64_Release",
+            "name": "Windows_x64_Release_2022",
+            "configurePreset": "Windows_x64_Release_2022",
             "configuration": "Release",
             "nativeToolOptions": [
                 "-nodeReuse:false"
             ]
+        },
+
+        {
+            "name": "Windows_x64_Debug_2026",
+            "inherits": "Windows_x64_Debug_2022",
+            "configurePreset": "Windows_x64_Debug_2026"
+        },
+
+        {
+            "name": "Windows_x64_Release_2026",
+            "inherits": "Windows_x64_Release_2022",
+            "configurePreset": "Windows_x64_Release_2026"
         },
 
         {

@@ -42,7 +42,7 @@ param (
     [bool] $VerifyFormatting = $False,
 
     [Parameter(HelpMessage = "VS version use to build, default to 2022")]
-    [ValidateSet(2022)]
+    [ValidateSet('2022', '2026')]
     [int] $VsVersion = 2022,
 
     [Parameter(HelpMessage = "Build Launcher only")]
@@ -121,6 +121,10 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     # Define CMake Generator arguments
     $configName = $systemName, $architecture, $configuration -join "_"
 
+    if($IsWindows){
+        $configName += '_'+$VsVersion
+    }
+
     $cMakeArguments = " --preset $configName $cMakeCacheVariableOverride"
 
     # CMake Generation process
@@ -130,8 +134,9 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         throw "cmake failed generation for '$cMakeArguments' with exit code '$cMakeProcess.ExitCode'"
     }
 
+
+    if ($runBuild) {
     # CMake Build Process
-    #
     
         Write-Host "Building $systemName $architecture $configuration"
 
@@ -166,6 +171,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
         if($installProcess.ExitCode -ne 0){
             throw "cmake failed to install to '$install_directory'"
         }
+    }
 }
 
 
