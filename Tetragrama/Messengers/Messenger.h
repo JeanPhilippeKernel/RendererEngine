@@ -141,6 +141,7 @@ namespace Tetragrama::Messengers
             // catch (...)
             //{
             //}
+            return {};
         }
 
         template <typename TRecipient, typename TMessage>

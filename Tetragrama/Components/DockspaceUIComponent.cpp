@@ -40,7 +40,7 @@ namespace Tetragrama::Components
         m_editor_serializer->Initialize(parent->Arena);
         m_asset_importer->Initialize(parent->Arena);
 
-        m_dockspace_node_flag                 = ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_PassthruCentralNode;
+        m_dockspace_node_flag                 = ImGuiDockNodeFlags_NoWindowMenuButton | static_cast<decltype(ImGuiDockNodeFlags_NoWindowMenuButton)>(ImGuiDockNodeFlags_PassthruCentralNode);
         m_window_flags                        = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
         auto app                              = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
@@ -211,7 +211,7 @@ namespace Tetragrama::Components
 
             ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
             ImGui::SetCursorPos(ImVec2(10, ImGui::GetWindowSize().y - 30));
-            ImGui::TextColored(s_asset_importer_report_msg_color, s_asset_importer_report_msg.c_str());
+            ImGui::TextColored(s_asset_importer_report_msg_color, "%s", s_asset_importer_report_msg.c_str());
             ImGui::PopFont();
 
             ImGui::EndPopup();
@@ -244,7 +244,7 @@ namespace Tetragrama::Components
 
             ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
             ImGui::SetCursorPos(ImVec2(10, wind_size.y - 30));
-            ImGui::TextColored(s_scene_serializer_log_color, s_scene_serializer_log);
+            ImGui::TextColored(s_scene_serializer_log_color, "%s", s_scene_serializer_log);
             ImGui::PopFont();
 
             ImGui::EndPopup();
@@ -385,7 +385,7 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginPopupModal(str_id, NULL, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::Text(fmt::format("You have unsaved changes for your current scene : {}", current_scene->Name).c_str());
+            ImGui::Text("%s", fmt::format("You have unsaved changes for your current scene : {}", current_scene->Name).c_str());
             ImGui::Separator();
 
             if (ImGui::Button("Save", ImVec2(120, 0)))
