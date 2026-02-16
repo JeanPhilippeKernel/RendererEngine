@@ -117,7 +117,7 @@ namespace ZEngine::Rendering::Renderers
         auto                                            img_buf          = Device->Image2DBufferManager.Access(font_tex_res->BufferHandle);
         auto                                            image_buf_handle = img_buf->GetHandle();
 
-        auto                                            command_buf      = Device->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE);
+        auto                                            command_buf_info = Device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, Device->CurrentFrameIndex, 0, 2, true);
 
         Specifications::ImageMemoryBarrierSpecification barrier_spec_0   = {};
         barrier_spec_0.ImageHandle                                       = image_buf_handle;
@@ -130,11 +130,11 @@ namespace ZEngine::Rendering::Renderers
         barrier_spec_0.DestinationStageMask                              = VK_PIPELINE_STAGE_TRANSFER_BIT;
         barrier_spec_0.LayerCount                                        = font_tex_res->Specification.LayerCount;
         Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-        command_buf->TransitionImageLayout(barrier_0);
+        command_buf_info.Buffer->TransitionImageLayout(barrier_0);
 
         img_buf->Layout = barrier_spec_0.NewLayout;
 
-        Device->WriteTextureData(command_buf, font_tex_handle, pixels);
+        Device->WriteTextureData(command_buf_info.Buffer, font_tex_handle, pixels);
 
         Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
         barrier_spec_1.ImageHandle                                     = image_buf_handle;
@@ -147,10 +147,10 @@ namespace ZEngine::Rendering::Renderers
         barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         barrier_spec_1.LayerCount                                      = font_tex_res->Specification.LayerCount;
         Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
-        command_buf->TransitionImageLayout(barrier_1);
+        command_buf_info.Buffer->TransitionImageLayout(barrier_1);
 
         img_buf->Layout = barrier_spec_1.NewLayout;
-        Device->EnqueueInstantCommandBuffer(command_buf);
+        Device->CommandBufferMgr->EndInstantCommandBuffer(command_buf_info);
 
         /*
          * Dummy Texture
@@ -363,7 +363,7 @@ namespace ZEngine::Rendering::Renderers
                         scissor.offset.y      = (int32_t) (clip_rect.y);
                         scissor.extent.width  = (uint32_t) (clip_rect.z - clip_rect.x);
                         scissor.extent.height = (uint32_t) (clip_rect.w - clip_rect.y);
-                        command_buffer->SetScissor(scissor);
+                        command_buffer->SetScissor(scissor.x, scissor.y, scissor.w, scissor.h);
 
                         pc_data.TextureId = (uint32_t) (intptr_t) pcmd->TextureId;
                         command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &pc_data);

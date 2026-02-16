@@ -7,10 +7,14 @@ namespace ZEngine::Applications
 {
     void AppRenderPipeline::Initialize(Hardwares::VulkanDevicePtr device)
     {
-        Device        = device;
+        Device                  = device;
+        RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount - 1u;
+        UICommandBufferIndex    = RenderMainThreadIndex + 1u;
+        ExecutableCommandBuffers.init(Device, RenderWorkerThreadCount, RenderWorkerThreadCount);
+        Device->Arena->CreateSubArena(ZMega(30), &LocalArena);
+
         SceneRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
         ImguiRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::ImGUIRenderer);
-        Device->Arena->CreateSubArena(ZMega(30), &LocalArena);
 
         SceneRenderer->Initialize(Device);
         ImguiRenderer->Initialize(Device);
@@ -34,12 +38,28 @@ namespace ZEngine::Applications
     void AppRenderPipeline::BeginFrame()
     {
         Device->NewFrame();
-        CurrentCmdBuf = Device->GetCommandBuffer();
+
+        for (uint8_t thread_idx = 0; i < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
+        {
+            Device->CommandBufferMgr->ResetPool(Device->CurrentFrameIndex, thread_idx);
+        }
+
+        uint8_t render_worker_thread_idx = RenderThreadIndex + 1;
+        for (uint8_t worker_thread_idx = 0; worker_thread_idx < RenderWorkerThreadCount; ++worker_thread_idx)
+        {
+            auto thread_idx                             = render_worker_thread_idx + worker_thread_idx;
+
+            ExecutableCommandBuffers[worker_thread_idx] = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, thread_idx, 0, false);
+        }
+        CurrentCmdBuf                              = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, RenderMainThreadIndex, 0, true);
+        CurrentCmdBuf->SecondaryCommandBuffers     = ExecutableCommandBuffers.data();
+        CurrentCmdBuf->SecondaryCommandBufferCount = ExecutableCommandBuffers.size();
     }
 
     void AppRenderPipeline::EndFrame()
     {
-        Device->EnqueueCommandBuffer(CurrentCmdBuf);
+        CurrentCmdBuf->ExecuteSecondaryCommandBuffers();
+        Device->CommandBufferMgr->EnqueueCommandBuffer(CurrentCmdBuf);
         Device->Present();
     }
 
@@ -123,6 +143,7 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::EndOverlayFrame()
     {
-        ImguiRenderer->DrawFrame(CurrentCmdBuf);
+        auto ui_command_buffer = Device->CommandBufferManager->GetCommandBuffer(Device->CurrentFrameIndex, RenderMainThreadIndex, UICommandBufferIndex, false);
+        ImguiRenderer->DrawFrame(ui_command_buffer);
     }
 } // namespace ZEngine::Applications

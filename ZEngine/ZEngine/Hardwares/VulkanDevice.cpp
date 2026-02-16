@@ -11,6 +11,7 @@
 #include <Helpers/ThreadPool.h>
 #include <Logging/LoggerDefinition.h>
 #include <Rendering/Pools/CommandPool.h>
+#include <Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <Rendering/Renderers/RenderPasses/Attachment.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Windows/CoreWindow.h>
@@ -25,12 +26,14 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Hardwares
 {
-    void VulkanDevice::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window)
+    void VulkanDevice::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count)
     {
         Arena                     = arena;
         CurrentWindow             = window;
+        WorkerThreadCount         = worker_thread_count;
         ShaderReservedBindingSets = {1}; // Todo: we should introduce HashSet<>
         AsyncResLoader            = ZPushStructCtor(Arena, AsyncResourceLoader);
+        CommandBufferMgr          = ZPushStructCtor(Arena, CommandBufferManager);
 
         DefaultDepthFormats.init(Arena, 3);
         DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT);
@@ -580,7 +583,7 @@ namespace ZEngine::Hardwares
         SwapchainFramebuffers.clear();
         SwapchainImageViews.clear();
 
-        m_buffer_manager.Deinitialize();
+        CommandBufferMgr->Deinitialize();
 
         for (auto set_layout : ShaderReservedDescriptorSetLayoutMap)
         {
@@ -913,25 +916,25 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset, VkDeviceSize dst_buffer_offset)
     {
-        auto                  command_buffer = GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
+        CommandBufferManager::InstantCommandBufferInfo command_buffer_info = CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, CurrentFrameIndex, 0, 2, true);
 
-        VkBufferMemoryBarrier bufMemBarrier  = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        bufMemBarrier.srcAccessMask          = VK_ACCESS_HOST_WRITE_BIT;
-        bufMemBarrier.dstAccessMask          = VK_ACCESS_TRANSFER_READ_BIT;
-        bufMemBarrier.srcQueueFamilyIndex    = VK_QUEUE_FAMILY_IGNORED;
-        bufMemBarrier.dstQueueFamilyIndex    = VK_QUEUE_FAMILY_IGNORED;
-        bufMemBarrier.buffer                 = source.Handle;
-        bufMemBarrier.offset                 = 0;
-        bufMemBarrier.size                   = VK_WHOLE_SIZE;
+        VkBufferMemoryBarrier                          bufMemBarrier       = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        bufMemBarrier.srcAccessMask                                        = VK_ACCESS_HOST_WRITE_BIT;
+        bufMemBarrier.dstAccessMask                                        = VK_ACCESS_TRANSFER_READ_BIT;
+        bufMemBarrier.srcQueueFamilyIndex                                  = VK_QUEUE_FAMILY_IGNORED;
+        bufMemBarrier.dstQueueFamilyIndex                                  = VK_QUEUE_FAMILY_IGNORED;
+        bufMemBarrier.buffer                                               = source.Handle;
+        bufMemBarrier.offset                                               = 0;
+        bufMemBarrier.size                                                 = VK_WHOLE_SIZE;
 
-        vkCmdPipelineBarrier(command_buffer->GetHandle(), VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &bufMemBarrier, 0, nullptr);
+        vkCmdPipelineBarrier(command_buffer_info.Buffer->GetHandle(), VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &bufMemBarrier, 0, nullptr);
 
         VkBufferCopy buffer_copy = {};
         buffer_copy.srcOffset    = src_buffer_offset;
         buffer_copy.dstOffset    = dst_buffer_offset;
         buffer_copy.size         = byte_size;
 
-        vkCmdCopyBuffer(command_buffer->GetHandle(), source.Handle, destination.Handle, 1, &buffer_copy);
+        vkCmdCopyBuffer(command_buffer_info.Buffer->GetHandle(), source.Handle, destination.Handle, 1, &buffer_copy);
 
         VkAccessFlags        dst_access_mask    = VK_ACCESS_NONE;
         VkPipelineStageFlags dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -972,9 +975,9 @@ namespace ZEngine::Hardwares
         bufMemBarrier2.offset                = 0;
         bufMemBarrier2.size                  = VK_WHOLE_SIZE;
 
-        vkCmdPipelineBarrier(command_buffer->GetHandle(), VK_PIPELINE_STAGE_TRANSFER_BIT, dst_pipeline_stage, 0, 0, nullptr, 1, &bufMemBarrier2, 0, nullptr);
+        vkCmdPipelineBarrier(command_buffer_info.Buffer->GetHandle(), VK_PIPELINE_STAGE_TRANSFER_BIT, dst_pipeline_stage, 0, 0, nullptr, 1, &bufMemBarrier2, 0, nullptr);
 
-        EnqueueInstantCommandBuffer(command_buffer, dst_pipeline_stage);
+        CommandBufferMgr->EndInstantCommandBuffer(command_buffer_info, dst_pipeline_stage);
     }
 
     BufferImage VulkanDevice::CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, VkImageCreateFlags image_create_flag_bit)
@@ -1244,8 +1247,8 @@ namespace ZEngine::Hardwares
                 SwapchainImageViews.push({});
                 SwapchainFramebuffers.push({});
 
-                m_buffer_manager.IncreaseBuffers();
-                // EnqueuedCommandbuffers.reserve(m_buffer_manager.TotalCommandBufferCount);
+                CommandBufferMgr->IncreaseBuffers();
+                // EnqueuedCommandBuffers.reserve(m_buffer_manager.TotalCommandBufferCount);
             }
         }
         else
@@ -1260,9 +1263,9 @@ namespace ZEngine::Hardwares
                 SwapchainFramebuffers.init(Arena, SwapchainImageCount, SwapchainImageCount);
             }
 
-            if (!m_buffer_manager.IsInitialized())
+            if (!CommandBufferMgr->IsInitialized())
             {
-                m_buffer_manager.Initialize(this);
+                CommandBufferMgr->Initialize(this);
             }
         }
 
@@ -1273,7 +1276,7 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &SwapchainImageCount, SwapchainImages.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
 
         /*Transition Image from Undefined to Present_src*/
-        auto command_buffer = GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
+        auto command_buffer_info = CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, CurrentFrameIndex, 0, 2, true);
         {
             for (int i = 0; i < SwapchainImages.size(); ++i)
             {
@@ -1289,10 +1292,10 @@ namespace ZEngine::Hardwares
                 barrier_spec.LayerCount                                                 = 1;
 
                 Rendering::Primitives::ImageMemoryBarrier barrier{barrier_spec};
-                command_buffer->TransitionImageLayout(barrier);
+                command_buffer_info.Buffer->TransitionImageLayout(barrier);
             }
         }
-        EnqueueInstantCommandBuffer(command_buffer);
+        CommandBufferMgr->EndInstantCommandBuffer(command_buffer_info);
 
         for (int i = 0; i < SwapchainImageCount; ++i)
         {
@@ -1371,8 +1374,6 @@ namespace ZEngine::Hardwares
         {
             ResizeSwapchain();
         }
-
-        m_buffer_manager.ResetPool(CurrentFrameIndex);
     }
 
     void VulkanDevice::Present()
@@ -1424,14 +1425,14 @@ namespace ZEngine::Hardwares
         Primitives::Semaphore* render_complete_semaphore = SwapchainRenderCompleteSemaphores[CurrentFrameIndex];
         Primitives::Fence*     signal_fence              = SwapchainSignalFences[CurrentFrameIndex];
 
-        m_buffer_manager.EndEnqueuedBuffers();
+        CommandBufferMgr->EndEnqueuedBuffers();
         auto                   scratch = ZGetScratch(Arena);
 
         Array<VkCommandBuffer> buffer  = {};
-        buffer.init(scratch.Arena, m_buffer_manager.EnqueuedCommandbufferIndex, m_buffer_manager.EnqueuedCommandbufferIndex);
+        buffer.init(scratch.Arena, CommandBufferMgr->EnqueuedCommandBufferIndex, CommandBufferMgr->EnqueuedCommandBufferIndex);
         for (int i = 0; i < buffer.size(); ++i)
         {
-            buffer[i] = m_buffer_manager.EnqueuedCommandbuffers[i]->GetHandle();
+            buffer[i] = CommandBufferMgr->EnqueuedCommandBuffers[i]->GetHandle();
         }
 
         ZENGINE_VALIDATE_ASSERT(render_complete_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
@@ -1448,7 +1449,7 @@ namespace ZEngine::Hardwares
 
         ZReleaseScratch(scratch);
 
-        m_buffer_manager.ResetEnqueuedBufferIndex();
+        CommandBufferMgr->ResetEnqueuedBufferIndex();
 
         signal_fence->SetState(FenceState::Submitted);
         render_complete_semaphore->SetState(SemaphoreState::Submitted);
@@ -1485,25 +1486,20 @@ namespace ZEngine::Hardwares
         CurrentFrameIndex  = (CurrentFrameIndex + 1) % SwapchainImageCount;
     }
 
-    CommandBuffer* VulkanDevice::GetCommandBuffer(bool begin)
-    {
-        return m_buffer_manager.GetCommandBuffer(CurrentFrameIndex, begin);
-    }
+    // CommandBufferManager::InstantCommandBufferInfo VulkanDevice::GetInstantCommandBuffer(Rendering::QueueType type, bool begin)
+    // {
+    //     return m_buffer_manager.GetInstantCommandBuffer(type, CurrentFrameIndex, begin);
+    // }
 
-    CommandBuffer* VulkanDevice::GetInstantCommandBuffer(Rendering::QueueType type, bool begin)
-    {
-        return m_buffer_manager.GetInstantCommandBuffer(type, CurrentFrameIndex, begin);
-    }
+    // void VulkanDevice::EnqueueInstantCommandBuffer(const CommandBufferManager::InstantCommandBufferInfo& info, int wait_flag)
+    // {
+    //     m_buffer_manager.EndInstantCommandBuffer(info, this, wait_flag);
+    // }
 
-    void VulkanDevice::EnqueueInstantCommandBuffer(CommandBuffer* const buffer, int wait_flag)
-    {
-        m_buffer_manager.EndInstantCommandBuffer(buffer, this, wait_flag);
-    }
-
-    void VulkanDevice::EnqueueCommandBuffer(CommandBuffer* const buffer)
-    {
-        m_buffer_manager.EnqueueBuffer(buffer);
-    }
+    // void VulkanDevice::EnqueueCommandBuffer(CommandBuffer* const buffer)
+    // {
+    //     m_buffer_manager.EnqueueBuffer(buffer);
+    // }
 
     void VulkanDevice::DirtyCollector()
     {
@@ -1725,10 +1721,31 @@ namespace ZEngine::Hardwares
     void CommandBuffer::Begin()
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Idle, "command buffer must be in Idle state")
+        ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Primary, "command buffer must be Primary Buffer Type")
 
         VkCommandBufferBeginInfo command_buffer_begin_info = {};
         command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         command_buffer_begin_info.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(m_command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin the Command Buffer")
+
+        m_command_buffer_state = CommanBufferState::Recording;
+    }
+
+    void CommandBuffer::BeginSecondary(Rendering::Renderers::RenderPasses::RenderPass* const render_pass, VkFramebuffer framebuffer)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Idle, "command buffer must be in Idle state")
+        ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Secondary, "command buffer must be Secondary Buffer Type")
+
+        VkCommandBufferInheritanceInfo inheritance_info    = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO};
+        inheritance_info.renderPass                        = render_pass->GetAttachment()->GetHandle();
+        inheritance_info.subpass                           = 0;
+        inheritance_info.framebuffer                       = framebuffer;
+
+        VkCommandBufferBeginInfo command_buffer_begin_info = {};
+        command_buffer_begin_info.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        command_buffer_begin_info.flags                    = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+        command_buffer_begin_info.pInheritanceInfo         = &inheritance_info;
+
         ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(m_command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin the Command Buffer")
 
         m_command_buffer_state = CommanBufferState::Recording;
@@ -1805,9 +1822,10 @@ namespace ZEngine::Hardwares
         m_clear_value[1].depthStencil.stencil = stencil;
     }
 
-    void CommandBuffer::BeginRenderPass(Rendering::Renderers::RenderPasses::RenderPass* const render_pass, VkFramebuffer framebuffer)
+    void CommandBuffer::BeginRenderPass(Rendering::Renderers::RenderPasses::RenderPass* const render_pass, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+        ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Primary, "command buffer must be Primary Buffer Type")
 
         const auto&         render_pass_spec = render_pass->Specification;
         const uint32_t      width            = render_pass->GetRenderAreaWidth();
@@ -1857,24 +1875,23 @@ namespace ZEngine::Hardwares
         render_pass_begin_info.clearValueCount       = clear_values.size();
         render_pass_begin_info.pClearValues          = clear_values.data();
 
-        vkCmdBeginRenderPass(m_command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBeginRenderPass(m_command_buffer, &render_pass_begin_info, is_content_secondary_command_buffer ? VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS : VK_SUBPASS_CONTENTS_INLINE);
 
-        VkViewport viewport = {};
-        viewport.x          = 0.0f;
-        viewport.y          = 0.0f;
-        viewport.width      = width;
-        viewport.height     = height;
-        viewport.minDepth   = 0.0f;
-        viewport.maxDepth   = 1.0f;
-        vkCmdSetViewport(m_command_buffer, 0, 1, &viewport);
+        // Todo : if is_content_secondary_command_buffer, vkCmdSetViewport, vkCmdSetViewport, vkCmdBindPipeline, should be with secondary buf...
+        // VkViewport viewport = {};
+        // viewport.x          = 0.0f;
+        // viewport.y          = 0.0f;
+        // viewport.width      = width;
+        // viewport.height     = height;
+        // viewport.minDepth   = 0.0f;
+        // viewport.maxDepth   = 1.0f;
+        // vkCmdSetViewport(m_command_buffer, 0, 1, &viewport);
 
-        /*Scissor definition*/
-        VkRect2D scissor = {};
-        scissor.offset   = {0, 0};
-        scissor.extent   = {width, height};
-        vkCmdSetScissor(m_command_buffer, 0, 1, &scissor);
-
-        vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, render_pass->Pipeline->Handle);
+        // /*Scissor definition*/
+        // VkRect2D scissor = {};
+        // scissor.offset   = {0, 0};
+        // scissor.extent   = {width, height};
+        // vkCmdSetScissor(m_command_buffer, 0, 1, &scissor);
 
         m_active_render_pass = render_pass;
 
@@ -1929,6 +1946,16 @@ namespace ZEngine::Hardwares
             VkDescriptorSet desc_set[1]     = {descriptor};
             vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, desc_set, 0, nullptr);
         }
+    }
+
+    void CommandBuffer::BindPipeline(Rendering::Specifications::PipelineBindPoint bind_point, Rendering::Renderers::Pipelines::GraphicPipeline* const pipeline)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+        ZENGINE_VALIDATE_ASSERT(pipeline != nullptr, "Pipeline can't be null")
+        ZENGINE_VALIDATE_ASSERT(pipeline->Handle != VK_NULL_HANDLE, "Pipeline Handle can't be null")
+
+        // todo : adapt value based on bind_point
+        vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->Handle);
     }
 
     void CommandBuffer::DrawIndirect(const Hardwares::IndirectBuffer& buffer)
@@ -2014,10 +2041,27 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void CommandBuffer::SetScissor(const VkRect2D& scissor)
+    void CommandBuffer::SetScissor(int32_t x, int32_t y, uint32_t w, uint32_t h)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+        VkRect2D scissor = {};
+        scissor.offset   = {x, y};
+        scissor.extent   = {w, h};
         vkCmdSetScissor(m_command_buffer, 0, 1, &scissor);
+    }
+
+    void CommandBuffer::SetViewport(uint32_t w, uint32_t h, float x, float y, float min_depth, float max_depth)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+
+        VkViewport viewport = {};
+        viewport.x          = x;
+        viewport.y          = y;
+        viewport.width      = w;
+        viewport.height     = h;
+        viewport.minDepth   = min_depth;
+        viewport.maxDepth   = max_depth;
+        vkCmdSetViewport(m_command_buffer, 0, 1, &viewport);
     }
 
     void CommandBuffer::PushConstants(VkShaderStageFlags stage_flags, uint32_t offset, uint32_t size, const void* data)
@@ -2031,7 +2075,34 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void CommandBufferManager::Initialize(VulkanDevice* device, int thread_count)
+    void CommandBuffer::ExecuteSecondaryCommandBuffers()
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+        ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Primary, "command buffer must be Primary Buffer Type")
+
+        if (!SecondaryCommandBuffers || SecondaryCommandBufferCount == 0u)
+        {
+            ZENGINE_CORE_WARN("No secondary buffers to execute")
+            return;
+        }
+
+        auto                   buffers = ArrayView<CommandBuffer>{SecondaryCommandBuffers, SecondaryCommandBufferCount};
+
+        Array<VkCommandBuffer> handles = {};
+        auto                   scratch = ZGetScratch(Device->Arena);
+
+        handles.init(scratch.Arena, SecondaryCommandBufferCount, SecondaryCommandBufferCount);
+        for (size_t i = 0; i < SecondaryCommandBufferCount; ++i)
+        {
+            handles[i] = buffers[i].GetHandle();
+        }
+
+        vkCmdExecuteCommands(m_command_buffer, SecondaryCommandBufferCount, handles.data());
+
+        ZReleaseScratch(scratch);
+    }
+
+    void CommandBufferManager::Initialize(VulkanDevice* device)
     {
         if (m_is_initialized)
         {
@@ -2040,48 +2111,52 @@ namespace ZEngine::Hardwares
         }
 
         Device                  = device;
-        m_thread_count          = thread_count;
-        m_total_pool_count      = Device->SwapchainImageCount * m_thread_count;
-        TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
-        m_instant_fence         = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, Device);
-        m_instant_semaphore     = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, Device);
+        TotalThreadCount        = device->WorkerThreadCount;
+        TotalPoolCount          = Device->SwapchainImageCount * TotalThreadCount;
+        TotalCommandBufferCount = TotalPoolCount * MaxBufferPerPool;
 
-        EnqueuedCommandbuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
+        InstantResources.init(Device->Arena, TotalPoolCount, TotalPoolCount);
+        CommandPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
 
-        CommandPools.init(Device->Arena, m_total_pool_count, m_total_pool_count);
-        for (int i = 0; i < m_total_pool_count; ++i)
+        for (uint32_t i = 0; i < TotalPoolCount; ++i)
         {
-            CommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE);
+            CommandPools[i]    = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE);
+
+            auto& resource     = InstantResources[i];
+            resource.Fence     = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, Device);
+            resource.Semaphore = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, Device);
         }
 
         CommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
-        for (int i = 0; i < TotalCommandBufferCount; ++i)
+        EnqueuedCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
+
+        for (uint32_t i = 0; i < TotalPoolCount; ++i)
         {
-            int   pool_index  = GetPoolFromIndex(Rendering::QueueType::GRAPHIC_QUEUE, i);
-            auto& pool        = CommandPools[pool_index];
-            CommandBuffers[i] = ZPushStructCtorArgs(
-                Device->Arena,
-                CommandBuffer,
-                Device,
-                pool->Handle,
-                pool->QueueType,
-                /*(i % MaxBufferPerPool) == 0 ? false : true */ false);
+            auto pool = CommandPools[i];
+            for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
+            {
+                uint32_t buffer_idx        = (i * MaxBufferPerPool) + buf_idx;
+                CommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, false);
+            }
         }
 
         if (Device->HasSeperateTransfertQueueFamily)
         {
-            TransferCommandPools.init(Device->Arena, m_total_pool_count, m_total_pool_count);
-            for (int i = 0; i < m_total_pool_count; ++i)
+            TransferCommandPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
+            for (int i = 0; i < TotalPoolCount; ++i)
             {
                 TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
             }
 
             TransferCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
-            for (int i = 0; i < TotalCommandBufferCount; ++i)
+            for (uint32_t i = 0; i < TotalPoolCount; ++i)
             {
-                int   pool_index          = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
-                auto& pool                = TransferCommandPools[pool_index];
-                TransferCommandBuffers[i] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true);
+                auto pool = TransferCommandPools[i];
+                for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
+                {
+                    uint32_t buffer_idx                = (i * MaxBufferPerPool) + buf_idx;
+                    TransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true);
+                }
             }
         }
 
@@ -2090,19 +2165,19 @@ namespace ZEngine::Hardwares
 
     void CommandBufferManager::Deinitialize()
     {
-        m_instant_semaphore = nullptr;
-        m_instant_fence     = nullptr;
         CommandBuffers.clear();
         TransferCommandBuffers.clear();
+        EnqueuedCommandBuffers.clear();
 
         CommandPools.clear();
+        InstantResources.clear();
         TransferCommandPools.clear();
-        EnqueuedCommandbuffers.clear();
     }
 
-    CommandBuffer* CommandBufferManager::GetCommandBuffer(uint8_t frame_index, bool begin)
+    CommandBuffer* CommandBufferManager::GetCommandBuffer(uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin)
     {
-        CommandBuffer* buffer = CommandBuffers[frame_index * MaxBufferPerPool];
+        auto           buffer_index = ((frame_index * TotalThreadCount) + thread_index) * MaxBufferPerPool + buffer_per_pool_index;
+        CommandBuffer* buffer       = CommandBuffers[buffer_index];
 
         if (begin)
         {
@@ -2112,139 +2187,148 @@ namespace ZEngine::Hardwares
         return buffer;
     }
 
-    CommandBuffer* CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, bool begin)
+    CommandBufferManager::InstantCommandBufferInfo CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin)
     {
-        CommandBuffer*   buffer = (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[frame_index] : CommandBuffers[(frame_index * MaxBufferPerPool) + 1];
+        auto             pool_index   = ((frame_index * TotalThreadCount) + thread_index);
+        auto             buffer_index = (pool_index * MaxBufferPerPool) + buffer_per_pool_index;
 
-        std::unique_lock l(m_instant_command_mutex);
-        m_cond.wait(l, [this] { return m_instant_semaphore->GetState() == Primitives::SemaphoreState::Idle; });
-        m_executing_instant_command = true;
+        CommandBuffer*   buffer       = (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[buffer_index] : CommandBuffers[buffer_index];
+        InstantResource& resource     = InstantResources[pool_index];
+
+        std::unique_lock l(resource.CommandMutex);
+        resource.Cond.wait(l, [&resource] { return !resource.IsExecuting; });
+        resource.IsExecuting = true;
 
         if (begin)
         {
             buffer->ResetState();
             buffer->Begin();
         }
-        return buffer;
+        return CommandBufferManager::InstantCommandBufferInfo{.Buffer = buffer, .Resource = &resource};
     }
 
-    void CommandBufferManager::EndInstantCommandBuffer(CommandBuffer* const buffer, VulkanDevice* const device, int wait_flag)
+    void CommandBufferManager::EndInstantCommandBuffer(const CommandBufferManager::InstantCommandBufferInfo& info, int wait_flag)
     {
-        buffer->End();
+        info.Buffer->End();
 
-        auto flag = buffer->QueueType == QueueType::GRAPHIC_QUEUE ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
+        auto flag = info.Buffer->QueueType == QueueType::GRAPHIC_QUEUE ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
 
         if (wait_flag != -1)
         {
             flag = VkPipelineStageFlagBits(wait_flag);
         }
 
-        device->QueueSubmit(flag, buffer, m_instant_semaphore, m_instant_fence);
+        Device->QueueSubmit(flag, info.Buffer, info.Resource->Semaphore, info.Resource->Fence);
         {
-            std::unique_lock l(m_instant_command_mutex);
-            m_executing_instant_command = false;
+            std::unique_lock l(info.Resource->CommandMutex);
+            info.Resource->IsExecuting = false;
         }
 
-        m_cond.notify_one();
+        info.Resource->Cond.notify_one();
     }
 
-    Rendering::Pools::CommandPool* CommandBufferManager::GetCommandPool(Rendering::QueueType type, uint8_t frame_index)
+    Rendering::Pools::CommandPool* CommandBufferManager::GetCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index)
     {
-        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandPools[frame_index] : CommandPools[frame_index];
+        uint32_t pool_index = (frame_index * TotalThreadCount) + thread_index;
+        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandPools[pool_index] : CommandPools[pool_index];
     }
 
-    int CommandBufferManager::GetPoolFromIndex(Rendering::QueueType type, uint8_t index)
+    void CommandBufferManager::ResetPool(uint8_t frame_index, uint8_t thread_index)
     {
-        return index / MaxBufferPerPool;
-    }
-
-    void CommandBufferManager::ResetPool(int frame_index)
-    {
-        vkResetCommandPool(Device->LogicalDevice, CommandPools[frame_index]->Handle, 0);
+        uint32_t pool_index = (frame_index * TotalThreadCount) + thread_index;
+        vkResetCommandPool(Device->LogicalDevice, CommandPools[pool_index]->Handle, 0);
         if (Device->HasSeperateTransfertQueueFamily)
         {
-            vkResetCommandPool(Device->LogicalDevice, TransferCommandPools[frame_index]->Handle, 0);
+            vkResetCommandPool(Device->LogicalDevice, TransferCommandPools[pool_index]->Handle, 0);
         }
     }
 
     void CommandBufferManager::ResetEnqueuedBufferIndex()
     {
-        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
+        for (int i = 0; i < EnqueuedCommandBufferIndex && i < EnqueuedCommandBuffers.size(); ++i)
         {
-            EnqueuedCommandbuffers[i]->SetState(CommanBufferState::Pending);
+            if (EnqueuedCommandBuffers[i])
+            {
+                EnqueuedCommandBuffers[i]->SetState(CommanBufferState::Pending);
+            }
         }
-        EnqueuedCommandbufferIndex = 0u;
+        EnqueuedCommandBufferIndex = 0u;
     }
 
     void CommandBufferManager::EndEnqueuedBuffers()
     {
-        for (int i = 0; i < EnqueuedCommandbufferIndex; ++i)
+        for (int i = 0; i < EnqueuedCommandBufferIndex; ++i)
         {
-            EnqueuedCommandbuffers[i]->End();
+            EnqueuedCommandBuffers[i]->End();
         }
     }
 
     void CommandBufferManager::EnqueueBuffer(CommandBufferPtr const buffer)
     {
-        EnqueuedCommandbuffers[EnqueuedCommandbufferIndex++] = buffer;
+        if (EnqueuedCommandBufferIndex < EnqueuedCommandBuffers.size())
+        {
+            EnqueuedCommandBuffers[EnqueuedCommandBufferIndex++] = buffer;
+            return;
+        }
+        ZENGINE_CORE_ERROR("[!] Enqueued Command Buffer overflow detected")
     }
 
     void CommandBufferManager::IncreaseBuffers()
     {
-        m_total_pool_count      = Device->SwapchainImageCount * m_thread_count;
-        TotalCommandBufferCount = m_total_pool_count * MaxBufferPerPool;
+        // TotalPoolCount          = Device->SwapchainImageCount * TotalThreadCount;
+        // TotalCommandBufferCount = TotalPoolCount * MaxBufferPerPool;
 
-        if (TotalCommandBufferCount > EnqueuedCommandbuffers.size())
-        {
-            auto size = EnqueuedCommandbuffers.size();
-            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-            {
-                EnqueuedCommandbuffers.push(nullptr);
-            }
-        }
+        // if (TotalCommandBufferCount > EnqueuedCommandBuffers.size())
+        // {
+        //     auto size = EnqueuedCommandBuffers.size();
+        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+        //     {
+        //         EnqueuedCommandBuffers.push(nullptr);
+        //     }
+        // }
 
-        if (m_total_pool_count > CommandPools.size())
-        {
-            auto size = CommandPools.size();
-            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-            {
-                CommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE));
-            }
-        }
+        // if (TotalPoolCount > CommandPools.size())
+        // {
+        //     auto size = CommandPools.size();
+        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+        //     {
+        //         CommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE));
+        //     }
+        // }
 
-        if (TotalCommandBufferCount > CommandBuffers.size())
-        {
-            auto size = CommandBuffers.size();
-            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-            {
-                int   pool_index = GetPoolFromIndex(Rendering::QueueType::GRAPHIC_QUEUE, i);
-                auto& pool       = CommandPools[pool_index];
-                CommandBuffers.push(ZPushStructCtorArgs(
-                    Device->Arena,
-                    CommandBuffer,
-                    Device,
-                    pool->Handle,
-                    pool->QueueType,
-                    /*(i % MaxBufferPerPool) == 0 ? false : true */ false));
-            }
-        }
+        // if (TotalCommandBufferCount > CommandBuffers.size())
+        // {
+        //     auto size = CommandBuffers.size();
+        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+        //     {
+        //         int   pool_index = GetPoolFromIndex(Rendering::QueueType::GRAPHIC_QUEUE, i);
+        //         auto& pool       = CommandPools[pool_index];
+        //         CommandBuffers.push(ZPushStructCtorArgs(
+        //             Device->Arena,
+        //             CommandBuffer,
+        //             Device,
+        //             pool->Handle,
+        //             pool->QueueType,
+        //             /*(i % MaxBufferPerPool) == 0 ? false : true */ false));
+        //     }
+        // }
 
-        if (Device->HasSeperateTransfertQueueFamily)
-        {
-            auto size = TransferCommandPools.size();
-            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-            {
-                TransferCommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE));
-            }
+        // if (Device->HasSeperateTransfertQueueFamily)
+        // {
+        //     auto size = TransferCommandPools.size();
+        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+        //     {
+        //         TransferCommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE));
+        //     }
 
-            size = TransferCommandBuffers.size();
-            for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-            {
-                int   pool_index = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
-                auto& pool       = TransferCommandPools[pool_index];
-                TransferCommandBuffers.push(ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true));
-            }
-        }
+        //     size = TransferCommandBuffers.size();
+        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
+        //     {
+        //         int   pool_index = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
+        //         auto& pool       = TransferCommandPools[pool_index];
+        //         TransferCommandBuffers.push(ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true));
+        //     }
+        // }
     }
 
     bool CommandBufferManager::IsInitialized() const
@@ -2500,20 +2584,20 @@ namespace ZEngine::Hardwares
                     break;
             }
 
-            auto                  command_buffer = m_device->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE);
-            VkBufferMemoryBarrier bufMemBarrier  = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-            bufMemBarrier.srcAccessMask          = VK_ACCESS_HOST_WRITE_BIT;
-            bufMemBarrier.dstAccessMask          = dst_access_mask;
-            bufMemBarrier.srcQueueFamilyIndex    = VK_QUEUE_FAMILY_IGNORED;
-            bufMemBarrier.dstQueueFamilyIndex    = VK_QUEUE_FAMILY_IGNORED;
-            bufMemBarrier.buffer                 = Buffer.Handle;
-            bufMemBarrier.offset                 = 0;
-            bufMemBarrier.size                   = VK_WHOLE_SIZE;
+            auto                  command_buffer_info = m_device->CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, m_device->CurrentFrameIndex, 0, 2, true);
+            VkBufferMemoryBarrier bufMemBarrier       = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            bufMemBarrier.srcAccessMask               = VK_ACCESS_HOST_WRITE_BIT;
+            bufMemBarrier.dstAccessMask               = dst_access_mask;
+            bufMemBarrier.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+            bufMemBarrier.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+            bufMemBarrier.buffer                      = Buffer.Handle;
+            bufMemBarrier.offset                      = 0;
+            bufMemBarrier.size                        = VK_WHOLE_SIZE;
 
             // It's important to insert a buffer memory barrier here to ensure writing to the buffer has finished.
-            vkCmdPipelineBarrier(command_buffer->GetHandle(), VK_PIPELINE_STAGE_HOST_BIT, dst_pipeline_stage, 0, 0, nullptr, 1, &bufMemBarrier, 0, nullptr);
+            vkCmdPipelineBarrier(command_buffer_info.Buffer->GetHandle(), VK_PIPELINE_STAGE_HOST_BIT, dst_pipeline_stage, 0, 0, nullptr, 1, &bufMemBarrier, 0, nullptr);
 
-            m_device->EnqueueInstantCommandBuffer(command_buffer, dst_pipeline_stage);
+            m_device->CommandBufferMgr->EndInstantCommandBuffer(command_buffer_info, dst_pipeline_stage);
         }
         else
         {
@@ -2614,8 +2698,8 @@ namespace ZEngine::Hardwares
         barrier_spec_0.LayerCount                                        = spec.LayerCount;
         Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
 
-        auto                           command_buf = GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE);
-        command_buf->TransitionImageLayout(barrier_0);
+        auto                           command_buf_info = CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, CurrentFrameIndex, 0, 2, true);
+        command_buf_info.Buffer->TransitionImageLayout(barrier_0);
 
         img_buf->Layout                 = new_image_layout;
 
@@ -2638,7 +2722,7 @@ namespace ZEngine::Hardwares
             image_data[i + 3] = a_byte;
         }
 
-        WriteTextureData(command_buf, tex_handle, image_data.data());
+        WriteTextureData(command_buf_info.Buffer, tex_handle, image_data.data());
 
         ZReleaseScratch(scratch);
 
@@ -2654,9 +2738,9 @@ namespace ZEngine::Hardwares
         barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         barrier_spec_1.LayerCount                                      = spec.LayerCount;
         Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
-        command_buf->TransitionImageLayout(barrier_1);
+        command_buf_info.Buffer->TransitionImageLayout(barrier_1);
 
-        EnqueueInstantCommandBuffer(command_buf);
+        CommandBufferMgr->EndInstantCommandBuffer(command_buf_info);
 
         img_buf->Layout = new_image_layout;
 

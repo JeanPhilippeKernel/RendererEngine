@@ -109,12 +109,12 @@ namespace ZEngine::Hardwares
                         barrier_spec_0.SourceQueueFamily                               = Device->TransferFamilyIndex;
                         barrier_spec_0.DestinationQueueFamily                          = Device->GraphicFamilyIndex;
                         Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-                        auto                           command_buffer_0 = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Device->CurrentFrameIndex);
+                        auto                           command_buffer_0 = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Device->CurrentFrameIndex, 0, 2, true);
                         {
-                            command_buffer_0->TransitionImageLayout(barrier_0);
+                            command_buffer_0.Buffer->TransitionImageLayout(barrier_0);
                             img_buf->Layout = barrier_spec_0.NewLayout;
                         }
-                        BufferManager->EndInstantCommandBuffer(command_buffer_0, Device);
+                        BufferManager->EndInstantCommandBuffer(command_buffer_0);
                     }
 
                     VkAccessFlags                                   access_flag  = Device->HasSeperateTransfertQueueFamily ? VK_ACCESS_NONE : VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -134,12 +134,12 @@ namespace ZEngine::Hardwares
                     barrier_spec.DestinationQueueFamily                          = Device->GraphicFamilyIndex;
                     Primitives::ImageMemoryBarrier barrier{barrier_spec};
 
-                    auto                           command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, Device->CurrentFrameIndex);
+                    auto                           command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, Device->CurrentFrameIndex, 0, 2, true);
                     {
-                        command_buffer->TransitionImageLayout(barrier);
+                        command_buffer.Buffer->TransitionImageLayout(barrier);
                         img_buf->Layout = barrier_spec.NewLayout;
                     }
-                    BufferManager->EndInstantCommandBuffer(command_buffer, Device);
+                    BufferManager->EndInstantCommandBuffer(command_buffer);
 
                     Device->TextureHandleToUpdates.Enqueue(tr.Handle);
                 }
@@ -155,7 +155,7 @@ namespace ZEngine::Hardwares
                     auto     img_buf        = Device->Image2DBufferManager.Access(texture->BufferHandle);
                     uint32_t image_aspect   = (texture->Specification.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
-                    auto     command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Device->CurrentFrameIndex);
+                    auto     command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Device->CurrentFrameIndex, 0, 2, true);
                     {
                         auto                                            image_handle   = img_buf->GetHandle();
                         auto&                                           image_buffer   = img_buf->GetBuffer();
@@ -174,13 +174,13 @@ namespace ZEngine::Hardwares
                         barrier_spec_0.DestinationQueueFamily                          = Device->TransferFamilyIndex;
 
                         Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-                        command_buffer->TransitionImageLayout(barrier_0);
+                        command_buffer.Buffer->TransitionImageLayout(barrier_0);
 
                         img_buf->Layout = barrier_spec_0.NewLayout;
 
-                        Device->WriteTextureData(command_buffer, upload_request.Handle, upload_request.Buffer.data());
+                        Device->WriteTextureData(command_buffer.Buffer, upload_request.Handle, upload_request.Buffer.data());
                     }
-                    BufferManager->EndInstantCommandBuffer(command_buffer, Device, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                    BufferManager->EndInstantCommandBuffer(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
                     UpdateTextureRequest tr = {.Handle = upload_request.Handle};
 

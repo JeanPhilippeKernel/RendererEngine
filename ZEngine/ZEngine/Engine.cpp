@@ -1,6 +1,7 @@
 #include <Applications/AppRenderPipeline.h>
 #include <Applications/GameApplication.h>
 #include <Engine.h>
+#include <Helpers/ThreadPool.h>
 #include <Logging/LoggerDefinition.h>
 #include <Managers/AssetManager.h>
 #include <Windows/GameWindow.h>
@@ -12,6 +13,7 @@ namespace ZEngine
     static EngineContextPtr                   g_engine_ctx        = nullptr;
     static Applications::GameApplicationPtr   g_app               = nullptr;
     static Applications::AppRenderPipelinePtr g_appRenderPipeline = nullptr;
+    static std::thread                        g_render_thread     = {};
 
     void                                      Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
@@ -25,7 +27,7 @@ namespace ZEngine
 
         g_appRenderPipeline  = ZPushStruct(arena, Applications::AppRenderPipeline);
 
-        g_engine_ctx->Device->Initialize(arena, window);
+        g_engine_ctx->Device->Initialize(arena, window, (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2));
         g_appRenderPipeline->Initialize(g_engine_ctx->Device);
 
         Managers::AssetManager::Initialize(arena, g_engine_ctx->Device, app->WorkingSpacePath);
@@ -46,8 +48,8 @@ namespace ZEngine
             g_engine_ctx->Window->Deinitialize();
         }
 
+        g_render_thread.join();
         g_appRenderPipeline->Shutdown();
-
         g_engine_ctx->Device->Deinitialize();
     }
 
@@ -66,11 +68,8 @@ namespace ZEngine
         return true;
     }
 
-    void Engine::Run()
+    void Engine::MainThreadRun()
     {
-        Managers::AssetManager::Run();
-
-        s_request_terminate = false;
         while (auto window = g_engine_ctx->Window)
         {
             if (s_request_terminate)
@@ -87,12 +86,38 @@ namespace ZEngine
                 continue;
             }
 
-            /*On Update*/
             g_app->Update(dt);
+        }
+    }
 
-            /*On Render*/
+    void Engine::RenderThreadRun()
+    {
+        while (true)
+        {
+            if (s_request_terminate)
+            {
+                break;
+            }
+
+            if (auto window = g_engine_ctx->Window)
+            {
+                if (window->IsMinimized())
+                {
+                    continue;
+                }
+            }
+
             g_app->Render();
         }
+    }
+
+    void Engine::Run()
+    {
+        s_request_terminate = false;
+
+        Managers::AssetManager::Run();
+        g_render_thread = Helpers::ThreadPoolHelper::Submit(Engine::RenderThreadRun);
+        MainThreadRun();
 
         if (s_request_terminate)
         {
