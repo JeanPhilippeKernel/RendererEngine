@@ -57,11 +57,11 @@ namespace ZEngine::Rendering::Renderers
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window), false);
 
-        m_vertex_buffer_handle = Device->CreateVertexBufferSet();
-        m_index_buffer_handle  = Device->CreateIndexBufferSet();
+        VBHandle            = Device->CreateVertexBufferSet();
+        IdxBHandle          = Device->CreateIndexBufferSet();
 
-        auto vb_buffer_set     = Device->VertexBufferSetManager.Access(m_vertex_buffer_handle);
-        auto idx_buffer_set    = Device->IndexBufferSetManager.Access(m_index_buffer_handle);
+        auto vb_buffer_set  = Device->VertexBufferSetManager.Access(VBHandle);
+        auto idx_buffer_set = Device->IndexBufferSetManager.Access(IdxBHandle);
         for (unsigned i = 0; i < Device->SwapchainImageCount; ++i)
         {
             vb_buffer_set->At(i)->Allocate(ZMega(5), "ImguiVertexBuffer");
@@ -95,10 +95,10 @@ namespace ZEngine::Rendering::Renderers
 
             .UseSwapchainAsRenderTarget();
 
-        m_ui_pass = Device->CreateRenderPass(pass_builder->Detach());
-        m_ui_pass->SetBindlessInput("TextureArray");
-        m_ui_pass->Verify();
-        m_ui_pass->Bake();
+        UIPass = Device->CreateRenderPass(pass_builder->Detach());
+        UIPass->SetBindlessInput("TextureArray");
+        UIPass->Verify();
+        UIPass->Bake();
         /*
          * Font uploading
          */
@@ -164,7 +164,7 @@ namespace ZEngine::Rendering::Renderers
         auto                        font_image_info       = img_buf->GetDescriptorImageInfo();
         auto                        dummy_image_info      = dummy_tex_buf->GetDescriptorImageInfo();
         uint32_t                    frame_count           = Device->SwapchainImageCount;
-        auto                        shader                = m_ui_pass->Pipeline->Shader;
+        auto                        shader                = UIPass->Pipeline->Shader;
         auto&                       descriptor_set_map    = shader->DescriptorSetMap;
 
         auto                        scratch               = ZGetScratch(Device->Arena);
@@ -193,7 +193,7 @@ namespace ZEngine::Rendering::Renderers
 
     void ImGUIRenderer::Deinitialize()
     {
-        m_ui_pass->Dispose();
+        UIPass->Dispose();
 
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
@@ -245,10 +245,20 @@ namespace ZEngine::Rendering::Renderers
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
     }
-
-    void ImGUIRenderer::DrawFrame(Hardwares::CommandBufferPtr const command_buffer)
+    void ImGUIRenderer::EndFrame()
     {
+        // The render method has EndFrame()
         ImGui::Render();
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+        }
+    }
+
+    void ImGUIRenderer::PreparePayload(RenderOverlayPayload& r_payload)
+    {
         ImDrawData* draw_data = ImGui::GetDrawData();
 
         if (!draw_data)
@@ -272,15 +282,21 @@ namespace ZEngine::Rendering::Renderers
             return;
         }
 
-        auto              scratch     = ZGetScratch(Device->Arena);
+        r_payload.VertexCount         = vertex_count;
+        r_payload.IndexCount          = index_count;
+        r_payload.IsIndexBufferUint16 = sizeof(ImDrawIdx) == 2;
+        r_payload.VBHandle            = VBHandle;
+        r_payload.IdxBHandle          = IdxBHandle;
 
-        Array<ImDrawVert> vertex_data = {};
-        Array<ImDrawIdx>  index_data  = {};
+        r_payload.VertexData.clear();
+        r_payload.IndexData.clear();
+        r_payload.VertexData.shrink_to_fit();
+        r_payload.IndexData.shrink_to_fit();
 
-        vertex_data.init(scratch.Arena, vertex_count, vertex_count);
-        index_data.init(scratch.Arena, index_count, index_count);
+        r_payload.VertexData.resize(vertex_count);
+        r_payload.IndexData.resize(index_count);
 
-        ImDrawVert* vertex_data_ptr = vertex_data.data();
+        UIDrawVert* vertex_data_ptr = r_payload.VertexData.data();
         for (int n = 0; n < draw_data->CmdListsCount; ++n)
         {
             const ImDrawList* cmd_list  = draw_data->CmdLists[n];
@@ -289,7 +305,7 @@ namespace ZEngine::Rendering::Renderers
             vertex_data_ptr += cmd_list->VtxBuffer.Size;
         }
 
-        ImDrawIdx* index_data_ptr = index_data.data();
+        unsigned short* index_data_ptr = r_payload.IndexData.data();
         for (int n = 0; n < draw_data->CmdListsCount; ++n)
         {
             const ImDrawList* cmd_list  = draw_data->CmdLists[n];
@@ -298,35 +314,14 @@ namespace ZEngine::Rendering::Renderers
             index_data_ptr += cmd_list->IdxBuffer.Size;
         }
 
-        auto vtx_data_view     = ArrayView{vertex_data};
-        auto idx_data_view     = ArrayView{index_data};
-
-        auto vertex_buffer_set = Device->VertexBufferSetManager.Access(m_vertex_buffer_handle);
-        auto index_buffer_set  = Device->IndexBufferSetManager.Access(m_index_buffer_handle);
-
-        auto vertex_buffer     = vertex_buffer_set->At(Device->CurrentFrameIndex);
-        auto index_buffer      = index_buffer_set->At(Device->CurrentFrameIndex);
-
-        vertex_buffer->Write(vtx_data_view);
-        index_buffer->Write(idx_data_view);
-
-        ZReleaseScratch(scratch);
-
-        auto current_framebuffer = Device->SwapchainFramebuffers[Device->SwapchainImageIndex];
-
-        command_buffer->BeginRenderPass(m_ui_pass, current_framebuffer);
-        command_buffer->BindVertexBuffer(*vertex_buffer);
-        command_buffer->BindIndexBuffer(*index_buffer, sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
-
         // Setup scale and translation:
         // Our visible imgui space lies from draw_data->DisplayPps (top left) to
         // draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single viewport apps.
 
-        PushConstantData pc_data = {};
-        pc_data.Scale[0]         = 2.0f / draw_data->DisplaySize.x;
-        pc_data.Scale[1]         = 2.0f / draw_data->DisplaySize.y;
-        pc_data.Translate[0]     = -1.0f - draw_data->DisplayPos.x * pc_data.Scale[0];
-        pc_data.Translate[1]     = -1.0f - draw_data->DisplayPos.y * pc_data.Scale[1];
+        r_payload.Pc[0]          = 2.0f / draw_data->DisplaySize.x;
+        r_payload.Pc[1]          = 2.0f / draw_data->DisplaySize.y;
+        r_payload.Pc[2]          = -1.0f - draw_data->DisplayPos.x * r_payload.Pc[0];
+        r_payload.Pc[3]          = -1.0f - draw_data->DisplayPos.y * r_payload.Pc[1];
 
         // Will project scissor/clipping rectangles into framebuffer space
         ImVec2 clip_off          = draw_data->DisplayPos;       // (0,0) unless using multi-viewports
@@ -334,6 +329,7 @@ namespace ZEngine::Rendering::Renderers
 
         // Render command lists
         // (Because we merged all buffers into a single one, we maintain our own offset into them)
+
         int    global_vtx_offset = 0;
         int    global_idx_offset = 0;
         for (int n = 0; n < draw_data->CmdListsCount; n++)
@@ -359,29 +355,21 @@ namespace ZEngine::Rendering::Renderers
                     {
                         // Apply scissor/clipping rectangle
                         VkRect2D scissor;
-                        scissor.offset.x      = (int32_t) (clip_rect.x);
-                        scissor.offset.y      = (int32_t) (clip_rect.y);
-                        scissor.extent.width  = (uint32_t) (clip_rect.z - clip_rect.x);
-                        scissor.extent.height = (uint32_t) (clip_rect.w - clip_rect.y);
-                        command_buffer->SetScissor(scissor.x, scissor.y, scissor.w, scissor.h);
+                        scissor.offset.x                               = (int32_t) (clip_rect.x);
+                        scissor.offset.y                               = (int32_t) (clip_rect.y);
+                        scissor.extent.width                           = (uint32_t) (clip_rect.z - clip_rect.x);
+                        scissor.extent.height                          = (uint32_t) (clip_rect.w - clip_rect.y);
 
-                        pc_data.TextureId = (uint32_t) (intptr_t) pcmd->TextureId;
-                        command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &pc_data);
-                        command_buffer->BindDescriptorSets(Device->CurrentFrameIndex);
-                        command_buffer->DrawIndexed(pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
+                        r_payload.TextureIds[r_payload.DrawDataIndex]  = (uint32_t) (intptr_t) pcmd->TextureId;
+                        r_payload.ScissorCmds[r_payload.DrawDataIndex] = ScissorCmd{scissor.extent.width, scissor.extent.height, scissor.offset.x, scissor.offset.y};
+                        r_payload.IndexedCmds[r_payload.DrawDataIndex] = IndexedCmd{pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, (int32_t) (pcmd->VtxOffset + global_vtx_offset), 0};
+
+                        r_payload.DrawDataIndex++;
                     }
                 }
             }
             global_idx_offset += cmd_list->IdxBuffer.Size;
             global_vtx_offset += cmd_list->VtxBuffer.Size;
-        }
-        command_buffer->EndRenderPass();
-
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
         }
     }
 } // namespace ZEngine::Rendering::Renderers

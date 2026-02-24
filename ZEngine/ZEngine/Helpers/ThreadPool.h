@@ -9,10 +9,14 @@ namespace ZEngine::Helpers
 
     struct ThreadPool
     {
-        size_t MaxThreadCount     = 0;
-        size_t CurrentThreadCount = 0;
+        size_t MaxThreadCount      = 0;
+        size_t CurrentThreadCount  = 0;
+        size_t ReservedThreadCount = 1;
 
-        ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency()) : MaxThreadCount(maxThreadCount), m_taskQueue(CreateRef<ThreadSafeQueue<std::function<void()>>>()) {}
+        ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency()) : MaxThreadCount(maxThreadCount), m_taskQueue(CreateRef<ThreadSafeQueue<std::function<void()>>>())
+        {
+            MaxThreadCount -= ReservedThreadCount;
+        }
 
         ~ThreadPool()
         {

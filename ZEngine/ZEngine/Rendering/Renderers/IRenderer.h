@@ -3,6 +3,49 @@
 
 namespace ZEngine::Rendering::Renderers
 {
+    struct ScissorCmd
+    {
+        uint32_t w = 0;
+        uint32_t h = 0;
+        int32_t  x = 0;
+        int32_t  y = 0;
+    };
+    struct IndexedCmd
+    {
+        uint32_t IdxCount      = 0;
+        uint32_t InstanceCount = 0;
+        uint32_t FirstIndex    = 0;
+        int32_t  VertexOffset  = 0;
+        uint32_t FirstInstance = 0;
+    };
+
+    struct UIDrawVert
+    {
+        typedef struct _vec2
+        {
+            float x, y;
+        } vec2;
+        vec2         pos;
+        vec2         uv;
+        unsigned int col;
+    };
+
+    struct RenderOverlayPayload
+    {
+        bool                             IsIndexBufferUint16 = false;
+        uint32_t                         VertexCount         = 0;
+        uint32_t                         IndexCount          = 0;
+        uint32_t                         DrawDataIndex       = 0;
+        float                            Pc[4]               = {0.0f}; // {Scale}-{Translate}
+        Hardwares::VertexBufferSetHandle VBHandle            = {};
+        Hardwares::IndexBufferSetHandle  IdxBHandle          = {};
+        std::vector<uint32_t>            TextureIds          = {};
+        std::vector<unsigned short>      IndexData           = {};
+        std::vector<UIDrawVert>          VertexData          = {};
+        std::vector<ScissorCmd>          ScissorCmds         = {};
+        std::vector<IndexedCmd>          IndexedCmds         = {};
+    };
+
     struct RendererResourceName
     {
         inline static cstring FrameDepthRenderTargetName = "g_frame_depth_render_target";

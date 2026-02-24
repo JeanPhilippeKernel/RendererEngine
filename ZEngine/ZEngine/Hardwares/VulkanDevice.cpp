@@ -31,6 +31,7 @@ namespace ZEngine::Hardwares
         Arena                     = arena;
         CurrentWindow             = window;
         WorkerThreadCount         = worker_thread_count;
+        ThreadOwnerId             = std::this_thread::get_id();
         ShaderReservedBindingSets = {1}; // Todo: we should introduce HashSet<>
         AsyncResLoader            = ZPushStructCtor(Arena, AsyncResourceLoader);
         CommandBufferMgr          = ZPushStructCtor(Arena, CommandBufferManager);
@@ -1269,14 +1270,14 @@ namespace ZEngine::Hardwares
             }
         }
 
+        /*Transition Image from Undefined to Present_src*/
+        auto command_buffer_info       = CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, CurrentFrameIndex, 0, 2, true);
         scratch                        = ZGetScratch(Arena);
 
         Array<VkImage> SwapchainImages = {};
         SwapchainImages.init(scratch.Arena, SwapchainImageCount, SwapchainImageCount);
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(LogicalDevice, SwapchainHandle, &SwapchainImageCount, SwapchainImages.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
 
-        /*Transition Image from Undefined to Present_src*/
-        auto command_buffer_info = CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, CurrentFrameIndex, 0, 2, true);
         {
             for (int i = 0; i < SwapchainImages.size(); ++i)
             {
@@ -1352,7 +1353,7 @@ namespace ZEngine::Hardwares
         ZENGINE_DESTROY_VULKAN_HANDLE(LogicalDevice, vkDestroySwapchainKHR, SwapchainHandle, nullptr)
     }
 
-    void VulkanDevice::NewFrame()
+    void VulkanDevice::AcquireNextImage()
     {
         Primitives::Fence* signal_fence = SwapchainSignalFences[CurrentFrameIndex];
         if (!signal_fence->IsSignaled())
@@ -1372,7 +1373,15 @@ namespace ZEngine::Hardwares
 
         if (acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
         {
-            ResizeSwapchain();
+            SwapchainResizeRequested = true;
+            if (std::this_thread::get_id() == ThreadOwnerId)
+            {
+                ResizeSwapchain();
+                return;
+            }
+            std::unique_lock l(SwapchainMutex);
+            SwapchainCond.wait(l, [this] { return SwapchainResizeHandled; });
+            SwapchainResizeHandled = false; // Resizing handled
         }
     }
 
@@ -1464,7 +1473,18 @@ namespace ZEngine::Hardwares
 
         if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
         {
-            ResizeSwapchain();
+            SwapchainResizeRequested = true;
+            if (std::this_thread::get_id() == ThreadOwnerId)
+            {
+                ResizeSwapchain();
+            }
+            else
+            {
+                std::unique_lock l(SwapchainMutex);
+                SwapchainCond.wait(l, [this] { return SwapchainResizeHandled; });
+                SwapchainResizeHandled = false; // Resizing handled
+            }
+
             IncrementFrameImageCount();
             return;
         }
@@ -1485,21 +1505,6 @@ namespace ZEngine::Hardwares
         PreviousFrameIndex = CurrentFrameIndex;
         CurrentFrameIndex  = (CurrentFrameIndex + 1) % SwapchainImageCount;
     }
-
-    // CommandBufferManager::InstantCommandBufferInfo VulkanDevice::GetInstantCommandBuffer(Rendering::QueueType type, bool begin)
-    // {
-    //     return m_buffer_manager.GetInstantCommandBuffer(type, CurrentFrameIndex, begin);
-    // }
-
-    // void VulkanDevice::EnqueueInstantCommandBuffer(const CommandBufferManager::InstantCommandBufferInfo& info, int wait_flag)
-    // {
-    //     m_buffer_manager.EndInstantCommandBuffer(info, this, wait_flag);
-    // }
-
-    // void VulkanDevice::EnqueueCommandBuffer(CommandBuffer* const buffer)
-    // {
-    //     m_buffer_manager.EnqueueBuffer(buffer);
-    // }
 
     void VulkanDevice::DirtyCollector()
     {
@@ -1678,9 +1683,10 @@ namespace ZEngine::Hardwares
     /*
      * CommandBufferManager impl
      */
-    CommandBuffer::CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool one_time_usage) : Device(device), QueueType(type), m_command_pool(command_pool)
+    CommandBuffer::CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool primary) : Device(device), QueueType(type), m_command_pool(command_pool)
     {
         Device->Arena->CreateSubArena(ZKilo(120), &LocalArena);
+        BufferType = primary ? CommandBufferType::Primary : CommandBufferType::Secondary;
         Create();
     }
 
@@ -1695,7 +1701,7 @@ namespace ZEngine::Hardwares
 
         VkCommandBufferAllocateInfo command_buffer_allocation_info = {};
         command_buffer_allocation_info.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        command_buffer_allocation_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        command_buffer_allocation_info.level                       = (BufferType == CommandBufferType::Primary) ? VK_COMMAND_BUFFER_LEVEL_PRIMARY : VK_COMMAND_BUFFER_LEVEL_SECONDARY;
         command_buffer_allocation_info.commandBufferCount          = 1;
         command_buffer_allocation_info.commandPool                 = m_command_pool;
 
@@ -1749,6 +1755,7 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(m_command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin the Command Buffer")
 
         m_command_buffer_state = CommanBufferState::Recording;
+        m_active_render_pass   = render_pass;
     }
 
     void CommandBuffer::End()
@@ -2041,7 +2048,7 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void CommandBuffer::SetScissor(int32_t x, int32_t y, uint32_t w, uint32_t h)
+    void CommandBuffer::SetScissor(uint32_t w, uint32_t h, int32_t x, int32_t y)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
         VkRect2D scissor = {};
@@ -2075,34 +2082,32 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void CommandBuffer::ExecuteSecondaryCommandBuffers()
+    void CommandBuffer::ExecuteSecondaryCommandBuffers(Core::Containers::ArrayView<CommandBuffer> buffers)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
         ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Primary, "command buffer must be Primary Buffer Type")
 
-        if (!SecondaryCommandBuffers || SecondaryCommandBufferCount == 0u)
+        if (buffers.size() == 0)
         {
             ZENGINE_CORE_WARN("No secondary buffers to execute")
             return;
         }
 
-        auto                   buffers = ArrayView<CommandBuffer>{SecondaryCommandBuffers, SecondaryCommandBufferCount};
-
         Array<VkCommandBuffer> handles = {};
         auto                   scratch = ZGetScratch(Device->Arena);
 
-        handles.init(scratch.Arena, SecondaryCommandBufferCount, SecondaryCommandBufferCount);
-        for (size_t i = 0; i < SecondaryCommandBufferCount; ++i)
+        handles.init(scratch.Arena, buffers.size(), buffers.size());
+        for (size_t i = 0; i < buffers.size(); ++i)
         {
             handles[i] = buffers[i].GetHandle();
         }
 
-        vkCmdExecuteCommands(m_command_buffer, SecondaryCommandBufferCount, handles.data());
+        vkCmdExecuteCommands(m_command_buffer, handles.size(), handles.data());
 
         ZReleaseScratch(scratch);
     }
 
-    void CommandBufferManager::Initialize(VulkanDevice* device)
+    void CommandBufferManager::Initialize(VulkanDevice* device, uint8_t override_thread_count)
     {
         if (m_is_initialized)
         {
@@ -2111,7 +2116,7 @@ namespace ZEngine::Hardwares
         }
 
         Device                  = device;
-        TotalThreadCount        = device->WorkerThreadCount;
+        TotalThreadCount        = override_thread_count > 0 ? override_thread_count : device->WorkerThreadCount;
         TotalPoolCount          = Device->SwapchainImageCount * TotalThreadCount;
         TotalCommandBufferCount = TotalPoolCount * MaxBufferPerPool;
 
@@ -2120,11 +2125,10 @@ namespace ZEngine::Hardwares
 
         for (uint32_t i = 0; i < TotalPoolCount; ++i)
         {
-            CommandPools[i]    = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE);
-
-            auto& resource     = InstantResources[i];
-            resource.Fence     = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, Device);
-            resource.Semaphore = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, Device);
+            CommandPools[i]                  = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE);
+            InstantResources[i].CommandMutex = ZPushStructCtor(Device->Arena, std::mutex);
+            InstantResources[i].Fence        = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, Device);
+            InstantResources[i].Semaphore    = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, Device);
         }
 
         CommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
@@ -2136,7 +2140,8 @@ namespace ZEngine::Hardwares
             for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
             {
                 uint32_t buffer_idx        = (i * MaxBufferPerPool) + buf_idx;
-                CommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, false);
+                bool     is_primary        = (buffer_idx % 2) == 0;
+                CommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, is_primary);
             }
         }
 
@@ -2195,7 +2200,7 @@ namespace ZEngine::Hardwares
         CommandBuffer*   buffer       = (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[buffer_index] : CommandBuffers[buffer_index];
         InstantResource& resource     = InstantResources[pool_index];
 
-        std::unique_lock l(resource.CommandMutex);
+        std::unique_lock l(*(resource.CommandMutex));
         resource.Cond.wait(l, [&resource] { return !resource.IsExecuting; });
         resource.IsExecuting = true;
 
@@ -2220,7 +2225,7 @@ namespace ZEngine::Hardwares
 
         Device->QueueSubmit(flag, info.Buffer, info.Resource->Semaphore, info.Resource->Fence);
         {
-            std::unique_lock l(info.Resource->CommandMutex);
+            std::unique_lock l(*(info.Resource->CommandMutex));
             info.Resource->IsExecuting = false;
         }
 

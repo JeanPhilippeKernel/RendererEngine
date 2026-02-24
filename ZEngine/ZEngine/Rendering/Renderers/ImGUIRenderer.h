@@ -14,18 +14,19 @@ namespace ZEngine::Rendering::Renderers
 
     struct ImGUIRenderer : public IRenderer
     {
-        void Initialize(Hardwares::VulkanDevicePtr device) override;
-        void Deinitialize() override;
 
-        void StyleDarkTheme();
+        RenderPasses::RenderPass*        UIPass     = nullptr;
+        Hardwares::VertexBufferSetHandle VBHandle   = {};
+        Hardwares::IndexBufferSetHandle  IdxBHandle = {};
 
-        void NewFrame();
-        void DrawFrame(Hardwares::CommandBuffer* const command_buffer);
+        void                             Initialize(Hardwares::VulkanDevicePtr device) override;
+        void                             Deinitialize() override;
 
-    private:
-        Hardwares::VertexBufferSetHandle m_vertex_buffer_handle;
-        Hardwares::IndexBufferSetHandle  m_index_buffer_handle;
-        RenderPasses::RenderPass*        m_ui_pass;
+        void                             StyleDarkTheme();
+
+        void                             NewFrame();
+        void                             EndFrame();
+        void                             PreparePayload(RenderOverlayPayload& payload);
     };
 
     ZDEFINE_PTR(ImGUIRenderer);

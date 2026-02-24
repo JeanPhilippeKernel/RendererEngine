@@ -42,7 +42,7 @@ namespace ZEngine::Applications
         void                              Update(Core::TimeStep dt);
         void                              ProcessEvent(Core::CoreEvent&);
         void                              Run();
-        void                              Render();
+        void                              PrepareScene(RenderPayload&);
         void                              Shutdown();
 
         virtual void                      OverrideWindowConfiguration() = 0;

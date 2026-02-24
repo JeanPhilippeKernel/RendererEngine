@@ -477,10 +477,10 @@ namespace ZEngine::Hardwares
         void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout);
         void                              BindVertexBuffer(Hardwares::VertexBuffer& buffer);
         void                              BindIndexBuffer(const Hardwares::IndexBuffer& buffer, VkIndexType type);
-        void                              SetScissor(int32_t x, int32_t y, uint32_t w, uint32_t h);
-        void                              SetViewport(uint32_t w, uint32_t h, float x, float y, float min_depth, float max_depth);
+        void                              SetScissor(uint32_t w, uint32_t h, int32_t x = 0, int32_t y = 0);
+        void                              SetViewport(uint32_t w, uint32_t h, float x = 0.0f, float y = 0.0f, float min_depth = 0.0f, float max_depth = 1.0f);
         void                              PushConstants(VkShaderStageFlags stage_flags, uint32_t offset, uint32_t size, const void* data);
-        void                              ExecuteSecondaryCommandBuffers();
+        void                              ExecuteSecondaryCommandBuffers(Core::Containers::ArrayView<CommandBuffer> buffers);
 
     private:
         std::atomic_uint8_t m_command_buffer_state{CommanBufferState::Idle};
@@ -499,7 +499,7 @@ namespace ZEngine::Hardwares
         struct InstantResource;
         struct InstantCommandBufferInfo;
 
-        void                                                            Initialize(VulkanDevice* device);
+        void                                                            Initialize(VulkanDevice* device, uint8_t override_thread_count = 0);
         void                                                            Deinitialize();
         CommandBuffer*                                                  GetCommandBuffer(uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
         InstantCommandBufferInfo                                        GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
@@ -533,10 +533,10 @@ namespace ZEngine::Hardwares
     struct CommandBufferManager::InstantResource
     {
         std::atomic_bool                  IsExecuting  = false;
-        std::mutex                        CommandMutex = {};
-        std::condition_variable           Cond         = {};
-        Rendering::Primitives::Semaphore* Semaphore    = nullptr;
-        Rendering::Primitives::Fence*     Fence        = nullptr;
+        std::mutex*                       CommandMutex = nullptr;
+        std::condition_variable           Cond;
+        Rendering::Primitives::Semaphore* Semaphore = nullptr;
+        Rendering::Primitives::Fence*     Fence     = nullptr;
     };
 
     struct CommandBufferManager::InstantCommandBufferInfo
@@ -635,12 +635,17 @@ namespace ZEngine::Hardwares
         Helpers::HandleManager<DirtyResource>                                                                               DirtyResources                              = {};
         Helpers::HandleManager<BufferView>                                                                                  DirtyBuffers                                = {};
         Helpers::HandleManager<BufferImage>                                                                                 DirtyBufferImages                           = {};
+        std::thread::id                                                                                                     ThreadOwnerId                               = {};
         std::atomic_bool                                                                                                    RunningDirtyCollector                       = true;
+        std::atomic_bool                                                                                                    SwapchainResizeRequested                    = false;
+        bool                                                                                                                SwapchainResizeHandled                      = false;
         std::atomic_uint                                                                                                    IdleFrameCount                              = 0;
         std::atomic_uint                                                                                                    IdleFrameThreshold                          = SwapchainImageCount * 3 * 3;
         std::condition_variable                                                                                             DirtyCollectorCond                          = {};
+        std::condition_variable                                                                                             SwapchainCond                               = {};
         std::mutex                                                                                                          DirtyMutex                                  = {};
         std::mutex                                                                                                          Mutex                                       = {};
+        std::mutex                                                                                                          SwapchainMutex                              = {};
         Windows::CoreWindow*                                                                                                CurrentWindow                               = nullptr;
         ZEngine::Core::Memory::ArenaAllocator*                                                                              Arena                                       = nullptr;
         AsyncResourceLoaderPtr                                                                                              AsyncResLoader                              = nullptr;
@@ -674,12 +679,9 @@ namespace ZEngine::Hardwares
         void                                            CreateSwapchain();
         void                                            ResizeSwapchain();
         void                                            DisposeSwapchain();
-        void                                            NewFrame();
+        void                                            AcquireNextImage();
         void                                            Present();
         void                                            IncrementFrameImageCount();
-        // CommandBufferManager::InstantCommandBufferInfo  GetInstantCommandBuffer(Rendering::QueueType type, bool begin = true);
-        // void                                            EnqueueInstantCommandBuffer(const CommandBufferManager::InstantCommandBufferInfo& info, int wait_flag = -1);
-        // void                                            EnqueueCommandBuffer(CommandBuffer* const buffer);
         void                                            DirtyCollector();
 
         Helpers::Handle<Rendering::Shaders::Shader>     CompileShader(Rendering::Specifications::ShaderSpecification& spec);

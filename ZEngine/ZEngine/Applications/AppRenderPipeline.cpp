@@ -1,5 +1,6 @@
 #include <AppRenderPipeline.h>
 #include <Core/Containers/Array.h>
+#include <Rendering/Specifications/FormatSpecification.h>
 
 using namespace ZEngine::Core::Containers;
 
@@ -10,7 +11,6 @@ namespace ZEngine::Applications
         Device                  = device;
         RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount - 1u;
         UICommandBufferIndex    = RenderMainThreadIndex + 1u;
-        ExecutableCommandBuffers.init(Device, RenderWorkerThreadCount, RenderWorkerThreadCount);
         Device->Arena->CreateSubArena(ZMega(30), &LocalArena);
 
         SceneRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
@@ -37,29 +37,26 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::BeginFrame()
     {
-        Device->NewFrame();
+        Device->AcquireNextImage();
 
-        for (uint8_t thread_idx = 0; i < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
+        for (uint8_t thread_idx = 0; thread_idx < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
         {
             Device->CommandBufferMgr->ResetPool(Device->CurrentFrameIndex, thread_idx);
         }
 
-        uint8_t render_worker_thread_idx = RenderThreadIndex + 1;
-        for (uint8_t worker_thread_idx = 0; worker_thread_idx < RenderWorkerThreadCount; ++worker_thread_idx)
-        {
-            auto thread_idx                             = render_worker_thread_idx + worker_thread_idx;
+        // uint8_t render_worker_thread_idx = RenderThreadIndex + 1;
+        // for (uint8_t worker_thread_idx = 0; worker_thread_idx < RenderWorkerThreadCount; ++worker_thread_idx)
+        // {
+        //     auto thread_idx                             = render_worker_thread_idx + worker_thread_idx;
 
-            ExecutableCommandBuffers[worker_thread_idx] = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, thread_idx, 0, false);
-        }
-        CurrentCmdBuf                              = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, RenderMainThreadIndex, 0, true);
-        CurrentCmdBuf->SecondaryCommandBuffers     = ExecutableCommandBuffers.data();
-        CurrentCmdBuf->SecondaryCommandBufferCount = ExecutableCommandBuffers.size();
+        //     ExecutableCommandBuffers[worker_thread_idx] = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, thread_idx, 0, false);
+        // }
+        CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, RenderMainThreadIndex, 0, true);
     }
 
     void AppRenderPipeline::EndFrame()
     {
-        CurrentCmdBuf->ExecuteSecondaryCommandBuffers();
-        Device->CommandBufferMgr->EnqueueCommandBuffer(CurrentCmdBuf);
+        Device->CommandBufferMgr->EnqueueBuffer(CurrentCmdBuf);
         Device->Present();
     }
 
@@ -141,9 +138,73 @@ namespace ZEngine::Applications
         ImguiRenderer->NewFrame();
     }
 
+    void AppRenderPipeline::FillOverlayPayload(Rendering::Renderers::RenderOverlayPayload& payload)
+    {
+        ImguiRenderer->PreparePayload(payload);
+    }
+
+    void AppRenderPipeline::RenderOverlay(const Rendering::Renderers::RenderOverlayPayload& payload)
+    {
+        if (payload.VertexCount == 0 && payload.IndexCount == 0)
+        {
+            return;
+        }
+
+        auto current_framebuffer = Device->SwapchainFramebuffers[Device->SwapchainImageIndex];
+
+        CurrentCmdBuf->BeginRenderPass(ImguiRenderer->UIPass, current_framebuffer, true);
+        {
+            auto vtx_data_view     = ArrayView{payload.VertexData.data(), payload.VertexData.size()};
+            auto idx_data_view     = ArrayView{payload.IndexData.data(), payload.IndexData.size()};
+
+            auto vertex_buffer_set = Device->VertexBufferSetManager.Access(payload.VBHandle);
+            auto index_buffer_set  = Device->IndexBufferSetManager.Access(payload.IdxBHandle);
+
+            auto vertex_buffer     = vertex_buffer_set->At(Device->CurrentFrameIndex);
+            auto index_buffer      = index_buffer_set->At(Device->CurrentFrameIndex);
+
+            vertex_buffer->Write(vtx_data_view);
+            index_buffer->Write(idx_data_view);
+
+            auto ui_second_cb = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, RenderMainThreadIndex, UICommandBufferIndex, false);
+            ui_second_cb->ResetState();
+            ui_second_cb->BeginSecondary(ImguiRenderer->UIPass, current_framebuffer);
+            ui_second_cb->SetViewport(ImguiRenderer->UIPass->GetRenderAreaWidth(), ImguiRenderer->UIPass->GetRenderAreaHeight());
+
+            ui_second_cb->BindPipeline(Rendering::Specifications::PipelineBindPoint::GRAPHIC, ImguiRenderer->UIPass->Pipeline);
+
+            ui_second_cb->BindVertexBuffer(*vertex_buffer);
+            ui_second_cb->BindIndexBuffer(*index_buffer, payload.IsIndexBufferUint16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+
+            Rendering::Renderers::PushConstantData pc_data = {};
+            pc_data.Scale[0]                               = payload.Pc[0];
+            pc_data.Scale[1]                               = payload.Pc[1];
+
+            pc_data.Translate[0]                           = payload.Pc[2];
+            pc_data.Translate[1]                           = payload.Pc[3];
+
+            for (uint32_t i = 0; i < payload.DrawDataIndex; ++i)
+            {
+                const auto& scissor_cmd = payload.ScissorCmds[i];
+                const auto& indexed_cmd = payload.IndexedCmds[i];
+
+                ui_second_cb->SetScissor(scissor_cmd.w, scissor_cmd.h, scissor_cmd.x, scissor_cmd.y);
+                pc_data.TextureId = payload.TextureIds[i];
+                ui_second_cb->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Rendering::Renderers::PushConstantData), &pc_data);
+                ui_second_cb->BindDescriptorSets(Device->CurrentFrameIndex);
+                ui_second_cb->DrawIndexed(indexed_cmd.IdxCount, indexed_cmd.InstanceCount, indexed_cmd.FirstIndex, indexed_cmd.VertexOffset, indexed_cmd.FirstInstance);
+            }
+
+            ui_second_cb->End();
+
+            CurrentCmdBuf->ExecuteSecondaryCommandBuffers(ArrayView<Hardwares::CommandBuffer>{ui_second_cb, 1});
+        }
+
+        CurrentCmdBuf->EndRenderPass();
+    }
+
     void AppRenderPipeline::EndOverlayFrame()
     {
-        auto ui_command_buffer = Device->CommandBufferManager->GetCommandBuffer(Device->CurrentFrameIndex, RenderMainThreadIndex, UICommandBufferIndex, false);
-        ImguiRenderer->DrawFrame(ui_command_buffer);
+        ImguiRenderer->EndFrame();
     }
 } // namespace ZEngine::Applications

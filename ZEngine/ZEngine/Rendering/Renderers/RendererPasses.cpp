@@ -62,7 +62,14 @@ namespace ZEngine::Rendering::Renderers
         auto buffer_set    = device->VertexBufferSetManager.Access(VBHandle);
         auto vertex_buffer = buffer_set->At(device->CurrentFrameIndex);
 
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
+        {
+            uint32_t w = pass->GetRenderAreaWidth();
+            uint32_t h = pass->GetRenderAreaHeight();
+            command_buffer->SetViewport(w, h);
+            command_buffer->SetScissor(w, h);
+        }
+        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
         command_buffer->BindVertexBuffer(*vertex_buffer);
         command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
         command_buffer->Draw(1, 1, 0, 0);
@@ -115,7 +122,14 @@ namespace ZEngine::Rendering::Renderers
         }
 
         auto indirect_buffer = device->IndirectBufferSetManager.Access(scene->IndirectBufferHandle);
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
+        {
+            uint32_t w = pass->GetRenderAreaWidth();
+            uint32_t h = pass->GetRenderAreaHeight();
+            command_buffer->SetViewport(w, h);
+            command_buffer->SetScissor(w, h);
+        }
+        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
         command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
         command_buffer->DrawIndirect(*indirect_buffer->At(device->CurrentFrameIndex));
         command_buffer->EndRenderPass();
@@ -185,7 +199,14 @@ namespace ZEngine::Rendering::Renderers
         auto vertex_buffer = device->VertexBufferSetManager.Access(m_vb_handle);
         auto index_buffer  = device->IndexBufferSetManager.Access(m_ib_handle);
 
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
+        {
+            uint32_t w = pass->GetRenderAreaWidth();
+            uint32_t h = pass->GetRenderAreaHeight();
+            command_buffer->SetViewport(w, h);
+            command_buffer->SetScissor(w, h);
+        }
+        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
         command_buffer->BindVertexBuffer(*vertex_buffer->At(device->CurrentFrameIndex));
         command_buffer->BindIndexBuffer(*index_buffer->At(device->CurrentFrameIndex), VK_INDEX_TYPE_UINT16);
         command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
@@ -274,7 +295,14 @@ namespace ZEngine::Rendering::Renderers
         auto vertex_buffer  = vtx_buffer_set->At(device->CurrentFrameIndex);
         auto index_buffer   = idx_buffer_set->At(device->CurrentFrameIndex);
 
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
+        {
+            uint32_t w = pass->GetRenderAreaWidth();
+            uint32_t h = pass->GetRenderAreaHeight();
+            command_buffer->SetViewport(w, h);
+            command_buffer->SetScissor(w, h);
+        }
+        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
         command_buffer->BindVertexBuffer(*vertex_buffer);
         command_buffer->BindIndexBuffer(*index_buffer, VK_INDEX_TYPE_UINT16);
         command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
@@ -341,7 +369,14 @@ namespace ZEngine::Rendering::Renderers
         CHECK_AND_ESCAPE_NULL(scene->IndirectBufferHandle)
 
         auto indirect_buffer = device->IndirectBufferSetManager.Access(scene->IndirectBufferHandle);
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle);
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
+        {
+            uint32_t w = pass->GetRenderAreaWidth();
+            uint32_t h = pass->GetRenderAreaHeight();
+            command_buffer->SetViewport(w, h);
+            command_buffer->SetScissor(w, h);
+        }
+        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
         command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
         command_buffer->DrawIndirect(*indirect_buffer->At(device->CurrentFrameIndex));
         command_buffer->EndRenderPass();

@@ -25,7 +25,7 @@ namespace ZEngine::Hardwares
         Device        = device;
         BufferManager = ZPushStructCtor(Device->Arena, CommandBufferManager);
 
-        BufferManager->Initialize(Device);
+        BufferManager->Initialize(Device, 1);
         Helpers::ThreadPoolHelper::Submit([this] { Run(); });
     }
 
