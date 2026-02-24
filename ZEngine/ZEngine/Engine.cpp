@@ -6,7 +6,6 @@
 #include <Managers/AssetManager.h>
 #include <Windows/GameWindow.h>
 
-
 #ifdef __APPLE__
 #include <pthread/pthread.h>
 #endif
