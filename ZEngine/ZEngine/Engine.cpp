@@ -24,6 +24,9 @@ namespace ZEngine
     static std::atomic_int                    g_mailbox_ready_idx                       = -1;
     static std::condition_variable            g_mailbox_ready_cv                        = {};
 
+    static int                                g_write_idx                               = 0;
+    static int                                g_pending_idx                             = -1;
+
     void                                      Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
         g_engine_ctx         = ZPushStruct(arena, EngineContext);
@@ -116,11 +119,13 @@ namespace ZEngine
 
             g_app->Update(dt);
 
-            int next_payload_idx = writable_payload_idx++ % k_mailbox_buffer_size;
             {
-                std::lock_guard lg(g_mailbox_mut);
+                std::unique_lock l(g_mailbox_mut);
+                g_mailbox_ready_cv.wait(l, [&] { return g_pending_idx == -1; });
 
-                auto&           r_payload         = g_mailbox_payloads[next_payload_idx];
+                int   next_payload_idx            = g_write_idx;
+
+                auto& r_payload                   = g_mailbox_payloads[next_payload_idx];
                 r_payload.UIOverlay.DrawDataIndex = 0;
 
                 if (g_app->EnableRenderOverlay)
@@ -134,7 +139,9 @@ namespace ZEngine
                 }
 
                 g_app->PrepareScene(r_payload);
-                g_mailbox_ready_idx.store(next_payload_idx, std::memory_order_release);
+
+                g_pending_idx = next_payload_idx;
+                g_write_idx   = (g_write_idx + 1) % k_mailbox_buffer_size;
             }
             g_mailbox_ready_cv.notify_one();
         }
@@ -150,16 +157,18 @@ namespace ZEngine
             int idx = -1;
             {
                 std::unique_lock l(g_mailbox_mut);
-                g_mailbox_ready_cv.wait(l, [&] { return (g_mailbox_ready_idx.load(std::memory_order_acquire) >= 0) || s_request_terminate.load(std::memory_order_acquire); });
+                g_mailbox_ready_cv.wait(l, [&] { return g_pending_idx != -1; });
 
-                if (s_request_terminate.load(std::memory_order_relaxed))
+                if (s_request_terminate.load(std::memory_order_acquire))
                 {
                     break;
                 }
 
-                idx = g_mailbox_ready_idx.load(std::memory_order_relaxed);
-                g_mailbox_ready_idx.store(-1, std::memory_order_release);
+                idx           = g_pending_idx;
+                g_pending_idx = -1;
             }
+
+            ZENGINE_VALIDATE_ASSERT(idx > -1, "Invalid payload index")
 
             Applications::RenderPayload& r_payload = g_mailbox_payloads[idx];
 
@@ -177,6 +186,8 @@ namespace ZEngine
                 pipeline->RenderOverlay(r_payload.UIOverlay);
             }
             pipeline->EndFrame();
+
+            g_mailbox_ready_cv.notify_one();
         }
     }
 
