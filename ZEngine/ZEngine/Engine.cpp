@@ -5,27 +5,29 @@
 #include <Logging/LoggerDefinition.h>
 #include <Managers/AssetManager.h>
 #include <Windows/GameWindow.h>
+#include <chrono>
 
 #ifdef __APPLE__
+#include <mach/mach.h>
 #include <pthread/pthread.h>
 #endif
 
+using namespace std::chrono_literals;
+
 namespace ZEngine
 {
-    static const uint8_t                      k_mailbox_buffer_size = 4;
     static std::atomic_bool                   s_request_terminate   = false;
-    static std::mutex                         g_mailbox_mut;
-    static std::shared_mutex                  g_mutex                                   = {};
-    static EngineContextPtr                   g_engine_ctx                              = nullptr;
-    static Applications::GameApplicationPtr   g_app                                     = nullptr;
-    static Applications::AppRenderPipelinePtr g_appRenderPipeline                       = nullptr;
-    static std::thread                        g_render_thread                           = {};
-    static Applications::RenderPayload        g_mailbox_payloads[k_mailbox_buffer_size] = {};
-    static std::atomic_int                    g_mailbox_ready_idx                       = -1;
-    static std::condition_variable            g_mailbox_ready_cv                        = {};
+    static EngineContextPtr                   g_engine_ctx          = nullptr;
+    static Applications::GameApplicationPtr   g_app                 = nullptr;
+    static Applications::AppRenderPipelinePtr g_appRenderPipeline   = nullptr;
+    static std::thread                        g_render_thread       = {};
 
-    static int                                g_write_idx                               = 0;
-    static int                                g_pending_idx                             = -1;
+    static const uint8_t                      k_mailbox_buffer_size = 3;
+    static std::atomic_int                    g_write_idx           = 0;
+    static std::atomic_int                    g_pending_idx         = -1;
+    static std::mutex                         g_mailbox_mut;
+    static std::condition_variable            g_mailbox_ready_cv                        = {};
+    static Applications::RenderPayload        g_mailbox_payloads[k_mailbox_buffer_size] = {};
 
     void                                      Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
@@ -50,17 +52,15 @@ namespace ZEngine
 
         for (size_t i = 0; i < k_mailbox_buffer_size; ++i)
         {
-            g_mailbox_payloads[i].UIOverlay.IndexedCmds.resize(20);
-            g_mailbox_payloads[i].UIOverlay.ScissorCmds.resize(20);
-            g_mailbox_payloads[i].UIOverlay.TextureIds.resize(20);
+            g_mailbox_payloads[i].UIOverlay.IndexedCmds.resize(100);
+            g_mailbox_payloads[i].UIOverlay.ScissorCmds.resize(100);
+            g_mailbox_payloads[i].UIOverlay.TextureIds.resize(100);
         }
         ZENGINE_CORE_INFO("Engine initialized")
     }
 
     void Engine::Deinitialize()
     {
-        std::unique_lock l(g_mutex);
-
         if (g_engine_ctx->Window)
         {
             g_engine_ctx->Window->Deinitialize();
@@ -82,33 +82,39 @@ namespace ZEngine
 
     bool Engine::OnEngineClosed(Event::EngineClosedEvent& event)
     {
-        s_request_terminate.store(true, std::memory_order_release);
+        {
+            std::lock_guard l(g_mailbox_mut);
+            s_request_terminate.store(true, std::memory_order_release);
+            g_mailbox_ready_cv.notify_all();
+        }
         return true;
     }
 
     void Engine::MainThreadRun()
     {
-        static int writable_payload_idx = 0;
-
-        while (auto window = g_engine_ctx->Window)
+        while (!s_request_terminate.load(std::memory_order_acquire))
         {
-            if (s_request_terminate.load(std::memory_order_acquire))
+            if (!g_engine_ctx || !g_engine_ctx->Window || !g_engine_ctx->Device)
             {
                 break;
             }
 
-            if (g_engine_ctx->Device->SwapchainResizeRequested)
+            auto device = g_engine_ctx->Device;
+
+            if (device->SwapchainResizeRequested)
             {
                 {
                     std::unique_lock l(g_engine_ctx->Device->SwapchainMutex);
-                    g_engine_ctx->Device->ResizeSwapchain();
-                    g_engine_ctx->Device->SwapchainResizeHandled   = true;
-                    g_engine_ctx->Device->SwapchainResizeRequested = false;
+                    device->ResizeSwapchain();
+                    device->SwapchainResizeHandled   = true;
+                    device->SwapchainResizeRequested = false;
                 }
-                g_engine_ctx->Device->SwapchainCond.notify_all();
+                device->SwapchainCond.notify_all();
             }
 
-            float dt = window->GetDeltaTime();
+            auto  window = g_engine_ctx->Window;
+
+            float dt     = window->GetDeltaTime();
 
             window->PollEvent();
 
@@ -121,12 +127,18 @@ namespace ZEngine
 
             {
                 std::unique_lock l(g_mailbox_mut);
-                g_mailbox_ready_cv.wait(l, [&] { return g_pending_idx == -1; });
+                g_mailbox_ready_cv.wait(l, [&] { return s_request_terminate.load(std::memory_order_acquire) || g_pending_idx.load(std::memory_order_acquire) == -1; });
 
-                int   next_payload_idx            = g_write_idx;
+                if (s_request_terminate.load(std::memory_order_acquire))
+                {
+                    break;
+                }
+
+                int   next_payload_idx            = g_write_idx.load(std::memory_order_relaxed);
 
                 auto& r_payload                   = g_mailbox_payloads[next_payload_idx];
                 r_payload.UIOverlay.DrawDataIndex = 0;
+                r_payload.RenderUIOverlay         = false;
 
                 if (g_app->EnableRenderOverlay)
                 {
@@ -140,8 +152,8 @@ namespace ZEngine
 
                 g_app->PrepareScene(r_payload);
 
-                g_pending_idx = next_payload_idx;
-                g_write_idx   = (g_write_idx + 1) % k_mailbox_buffer_size;
+                g_pending_idx.store(next_payload_idx, std::memory_order_release);
+                g_write_idx.store((g_write_idx + 1) % k_mailbox_buffer_size, std::memory_order_relaxed);
             }
             g_mailbox_ready_cv.notify_one();
         }
@@ -151,21 +163,29 @@ namespace ZEngine
     {
 #ifdef __APPLE__
         pthread_setname_np("RenderThread");
+        thread_port_t                        thread_port = pthread_mach_thread_np(pthread_self());
+        thread_time_constraint_policy_data_t policy;
+        policy.period      = 50000;
+        policy.computation = 20000;
+        policy.constraint  = 40000;
+        policy.preemptible = 1;
+
+        kern_return_t kr   = thread_policy_set(thread_port, THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t) &policy, THREAD_TIME_CONSTRAINT_POLICY_COUNT);
 #endif
         while (true)
         {
             int idx = -1;
             {
                 std::unique_lock l(g_mailbox_mut);
-                g_mailbox_ready_cv.wait(l, [&] { return g_pending_idx != -1; });
+                g_mailbox_ready_cv.wait(l, [&] { return s_request_terminate.load(std::memory_order_acquire) || g_pending_idx.load(std::memory_order_acquire) != -1; });
 
                 if (s_request_terminate.load(std::memory_order_acquire))
                 {
                     break;
                 }
 
-                idx           = g_pending_idx;
-                g_pending_idx = -1;
+                idx = g_pending_idx.load(std::memory_order_acquire);
+                g_pending_idx.store(-1, std::memory_order_release);
             }
 
             ZENGINE_VALIDATE_ASSERT(idx > -1, "Invalid payload index")
@@ -177,6 +197,7 @@ namespace ZEngine
             if (r_payload.ResizeRenderTarget)
             {
                 pipeline->ResizeRenderTarget(r_payload.RenderTargetW, r_payload.RenderTargetH);
+                r_payload.ResizeRenderTarget = false;
             }
 
             pipeline->BeginFrame();
@@ -199,7 +220,6 @@ namespace ZEngine
 
         if (s_request_terminate.load(std::memory_order_acquire))
         {
-            g_mailbox_ready_cv.notify_all();
             Deinitialize();
         }
     }
