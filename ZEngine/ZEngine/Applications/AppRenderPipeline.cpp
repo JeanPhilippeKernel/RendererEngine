@@ -37,21 +37,19 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::BeginFrame()
     {
-        Device->AcquireNextImage();
+        Device->SwapchainPtr->AcquireNextImage();
 
         for (uint8_t thread_idx = 0; thread_idx < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
         {
-            Device->CommandBufferMgr->ResetPool(Device->CurrentFrameIndex, thread_idx);
+            Device->CommandBufferMgr->ResetPool(Device->SwapchainPtr->CurrentFrameIndex, thread_idx);
         }
 
         // uint8_t render_worker_thread_idx = RenderThreadIndex + 1;
         // for (uint8_t worker_thread_idx = 0; worker_thread_idx < RenderWorkerThreadCount; ++worker_thread_idx)
         // {
         //     auto thread_idx                             = render_worker_thread_idx + worker_thread_idx;
-
-        //     ExecutableCommandBuffers[worker_thread_idx] = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, thread_idx, 0, false);
         // }
-        CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, RenderMainThreadIndex, 0, true);
+        CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Device->SwapchainPtr->CurrentFrameIndex, RenderMainThreadIndex, 0, true);
     }
 
     void AppRenderPipeline::EndFrame()
@@ -62,7 +60,7 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene)
     {
-        if (scene->TransformBufferDirty[Device->CurrentFrameIndex].load(std::memory_order_acquire) || scene->MeshAllocationDirty[Device->CurrentFrameIndex].load(std::memory_order_acquire))
+        if (scene->TransformBufferDirty[Device->SwapchainPtr->CurrentFrameIndex].load(std::memory_order_acquire) || scene->MeshAllocationDirty[Device->SwapchainPtr->CurrentFrameIndex].load(std::memory_order_acquire))
         {
             auto  gpu_scene_data       = SceneRenderer->RenderSceneData;
 
@@ -73,21 +71,21 @@ namespace ZEngine::Applications
 
             auto  indirect_buffer_set  = Device->IndirectBufferSetManager.Access(gpu_scene_data->IndirectBufferHandle);
 
-            auto  vtx_buffer           = vtx_buffer_set->At(Device->CurrentFrameIndex);
-            auto  idx_buffer           = idx_buffer_set->At(Device->CurrentFrameIndex);
-            auto  transform_buffer     = transform_buffer_set->At(Device->CurrentFrameIndex);
-            auto  rd_buffer            = rd_buffer_set->At(Device->CurrentFrameIndex);
-            auto  indirect_buffer      = indirect_buffer_set->At(Device->CurrentFrameIndex);
+            auto  vtx_buffer           = vtx_buffer_set->At(Device->SwapchainPtr->CurrentFrameIndex);
+            auto  idx_buffer           = idx_buffer_set->At(Device->SwapchainPtr->CurrentFrameIndex);
+            auto  transform_buffer     = transform_buffer_set->At(Device->SwapchainPtr->CurrentFrameIndex);
+            auto  rd_buffer            = rd_buffer_set->At(Device->SwapchainPtr->CurrentFrameIndex);
+            auto  indirect_buffer      = indirect_buffer_set->At(Device->SwapchainPtr->CurrentFrameIndex);
 
             auto& suballocs            = scene->NodeSubMeshesAllocations;
 
-            if (scene->TransformBufferDirty[Device->CurrentFrameIndex].exchange(false, std::memory_order_acquire))
+            if (scene->TransformBufferDirty[Device->SwapchainPtr->CurrentFrameIndex].exchange(false, std::memory_order_acquire))
             {
                 auto transform_data_view = ArrayView{scene->GlobalTransforms};
                 transform_buffer->Write(transform_data_view);
             }
 
-            if (scene->MeshAllocationDirty[Device->CurrentFrameIndex].exchange(false, std::memory_order_acquire))
+            if (scene->MeshAllocationDirty[Device->SwapchainPtr->CurrentFrameIndex].exchange(false, std::memory_order_acquire))
             {
                 auto                                                                            scratch              = ZGetScratch(&LocalArena);
 
@@ -150,7 +148,7 @@ namespace ZEngine::Applications
             return;
         }
 
-        auto current_framebuffer = Device->SwapchainFramebuffers[Device->SwapchainImageIndex];
+        auto current_framebuffer = Device->SwapchainPtr->SwapchainFramebuffers[Device->SwapchainPtr->SwapchainImageIndex];
 
         CurrentCmdBuf->BeginRenderPass(ImguiRenderer->UIPass, current_framebuffer, true);
         {
@@ -160,13 +158,13 @@ namespace ZEngine::Applications
             auto vertex_buffer_set = Device->VertexBufferSetManager.Access(payload.VBHandle);
             auto index_buffer_set  = Device->IndexBufferSetManager.Access(payload.IdxBHandle);
 
-            auto vertex_buffer     = vertex_buffer_set->At(Device->CurrentFrameIndex);
-            auto index_buffer      = index_buffer_set->At(Device->CurrentFrameIndex);
+            auto vertex_buffer     = vertex_buffer_set->At(Device->SwapchainPtr->CurrentFrameIndex);
+            auto index_buffer      = index_buffer_set->At(Device->SwapchainPtr->CurrentFrameIndex);
 
             vertex_buffer->Write(vtx_data_view);
             index_buffer->Write(idx_data_view);
 
-            auto ui_second_cb = Device->CommandBufferMgr->GetCommandBuffer(Device->CurrentFrameIndex, RenderMainThreadIndex, UICommandBufferIndex, false);
+            auto ui_second_cb = Device->CommandBufferMgr->GetCommandBuffer(Device->SwapchainPtr->CurrentFrameIndex, RenderMainThreadIndex, UICommandBufferIndex, false);
             ui_second_cb->ResetState();
             ui_second_cb->BeginSecondary(ImguiRenderer->UIPass, current_framebuffer);
             ui_second_cb->SetViewport(ImguiRenderer->UIPass->GetRenderAreaWidth(), ImguiRenderer->UIPass->GetRenderAreaHeight());
@@ -191,7 +189,7 @@ namespace ZEngine::Applications
                 ui_second_cb->SetScissor(scissor_cmd.w, scissor_cmd.h, scissor_cmd.x, scissor_cmd.y);
                 pc_data.TextureId = payload.TextureIds[i];
                 ui_second_cb->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Rendering::Renderers::PushConstantData), &pc_data);
-                ui_second_cb->BindDescriptorSets(Device->CurrentFrameIndex);
+                ui_second_cb->BindDescriptorSets(Device->SwapchainPtr->CurrentFrameIndex);
                 ui_second_cb->DrawIndexed(indexed_cmd.IdxCount, indexed_cmd.InstanceCount, indexed_cmd.FirstIndex, indexed_cmd.VertexOffset, indexed_cmd.FirstInstance);
             }
 

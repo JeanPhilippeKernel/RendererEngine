@@ -100,19 +100,6 @@ namespace ZEngine
                 break;
             }
 
-            auto device = g_engine_ctx->Device;
-
-            if (device->SwapchainResizeRequested)
-            {
-                {
-                    std::unique_lock l(g_engine_ctx->Device->SwapchainMutex);
-                    device->ResizeSwapchain();
-                    device->SwapchainResizeHandled   = true;
-                    device->SwapchainResizeRequested = false;
-                }
-                device->SwapchainCond.notify_all();
-            }
-
             auto  window = g_engine_ctx->Window;
 
             float dt     = window->GetDeltaTime();

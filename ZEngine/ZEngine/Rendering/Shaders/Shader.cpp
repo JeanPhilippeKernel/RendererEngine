@@ -411,7 +411,7 @@ namespace ZEngine::Rendering::Shaders
          */
         for (auto& pool_size : pool_size_collection)
         {
-            pool_size.descriptorCount *= m_device->SwapchainImageCount;
+            pool_size.descriptorCount *= m_device->SwapchainPtr->SwapchainImageCount;
         }
         /*
          * Create DescriptorPool
@@ -426,7 +426,7 @@ namespace ZEngine::Rendering::Shaders
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags                      = m_device->PhysicalDeviceSupportSampledImageBindless ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
-        pool_info.maxSets                    = m_device->SwapchainImageCount;
+        pool_info.maxSets                    = m_device->SwapchainPtr->SwapchainImageCount;
         pool_info.poolSizeCount              = pool_size_collection.size();
         pool_info.pPoolSizes                 = pool_size_collection.data();
 
@@ -440,12 +440,12 @@ namespace ZEngine::Rendering::Shaders
 
         for (const auto layout : InternalDescriptorSetLayoutMap)
         {
-            DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainImageCount, m_device->SwapchainImageCount);
+            DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainPtr->SwapchainImageCount, m_device->SwapchainPtr->SwapchainImageCount);
 
             if (m_device->ShaderReservedDescriptorSetMap.contains(layout.first))
             {
                 // Since it's a Reserved Set, the Device already created the DescriptorSet
-                for (uint32_t i = 0; i < m_device->SwapchainImageCount; ++i)
+                for (uint32_t i = 0; i < m_device->SwapchainPtr->SwapchainImageCount; ++i)
                 {
                     DescriptorSetMap[layout.first][i] = m_device->ShaderReservedDescriptorSetMap.at(layout.first)[i];
                 }
@@ -455,8 +455,8 @@ namespace ZEngine::Rendering::Shaders
             auto                         scratch    = ZGetScratch(&LocalArena);
 
             Array<VkDescriptorSetLayout> layout_set = {};
-            layout_set.init(scratch.Arena, m_device->SwapchainImageCount, m_device->SwapchainImageCount);
-            for (uint32_t i = 0; i < m_device->SwapchainImageCount; ++i)
+            layout_set.init(scratch.Arena, m_device->SwapchainPtr->SwapchainImageCount, m_device->SwapchainPtr->SwapchainImageCount);
+            for (uint32_t i = 0; i < m_device->SwapchainPtr->SwapchainImageCount; ++i)
             {
                 layout_set[i] = layout.second;
             }
@@ -464,7 +464,7 @@ namespace ZEngine::Rendering::Shaders
             VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
             descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
             descriptor_set_allocate_info.descriptorPool              = m_descriptor_pool;
-            descriptor_set_allocate_info.descriptorSetCount          = m_device->SwapchainImageCount;
+            descriptor_set_allocate_info.descriptorSetCount          = m_device->SwapchainPtr->SwapchainImageCount;
             descriptor_set_allocate_info.pSetLayouts                 = layout_set.data();
             ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_device->LogicalDevice, &descriptor_set_allocate_info, DescriptorSetMap[layout.first].data()) == VK_SUCCESS, "Failed to create DescriptorSet")
 

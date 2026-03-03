@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Renderers
         auto vb_view    = ArrayView{VertexData};
 
         auto buffer_set = device->VertexBufferSetManager.Access(VBHandle);
-        for (unsigned i = 0; i < device->SwapchainImageCount; ++i)
+        for (unsigned i = 0; i < device->SwapchainPtr->SwapchainImageCount; ++i)
         {
             auto buffer = buffer_set->At(i);
             buffer->Allocate(vb_view.size_bytes(), "initial_vertex_buffer");
@@ -60,7 +60,7 @@ namespace ZEngine::Rendering::Renderers
     void InitialPass::Execute(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
         auto buffer_set    = device->VertexBufferSetManager.Access(VBHandle);
-        auto vertex_buffer = buffer_set->At(device->CurrentFrameIndex);
+        auto vertex_buffer = buffer_set->At(device->SwapchainPtr->CurrentFrameIndex);
 
         command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
         {
@@ -71,7 +71,7 @@ namespace ZEngine::Rendering::Renderers
         }
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
         command_buffer->BindVertexBuffer(*vertex_buffer);
-        command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrameIndex);
         command_buffer->Draw(1, 1, 0, 0);
         command_buffer->EndRenderPass();
     }
@@ -130,8 +130,8 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(w, h);
         }
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
-        command_buffer->DrawIndirect(*indirect_buffer->At(device->CurrentFrameIndex));
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrameIndex);
+        command_buffer->DrawIndirect(*indirect_buffer->At(device->SwapchainPtr->CurrentFrameIndex));
         command_buffer->EndRenderPass();
     }
 
@@ -207,9 +207,9 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(w, h);
         }
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindVertexBuffer(*vertex_buffer->At(device->CurrentFrameIndex));
-        command_buffer->BindIndexBuffer(*index_buffer->At(device->CurrentFrameIndex), VK_INDEX_TYPE_UINT16);
-        command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
+        command_buffer->BindVertexBuffer(*vertex_buffer->At(device->SwapchainPtr->CurrentFrameIndex));
+        command_buffer->BindIndexBuffer(*index_buffer->At(device->SwapchainPtr->CurrentFrameIndex), VK_INDEX_TYPE_UINT16);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrameIndex);
         command_buffer->DrawIndexed(36, 1, 0, 0, 0);
         command_buffer->EndRenderPass();
     }
@@ -224,7 +224,7 @@ namespace ZEngine::Rendering::Renderers
         m_vb_handle         = device->CreateVertexBufferSet();
         m_ib_handle         = device->CreateIndexBufferSet();
 
-        auto count          = device->SwapchainImageCount;
+        auto count          = device->SwapchainPtr->SwapchainImageCount;
         auto vtx_buffer_set = device->VertexBufferSetManager.Access(m_vb_handle);
         auto idx_buffer_set = device->IndexBufferSetManager.Access(m_ib_handle);
 
@@ -292,8 +292,8 @@ namespace ZEngine::Rendering::Renderers
         auto vtx_buffer_set = device->VertexBufferSetManager.Access(m_vb_handle);
         auto idx_buffer_set = device->IndexBufferSetManager.Access(m_ib_handle);
 
-        auto vertex_buffer  = vtx_buffer_set->At(device->CurrentFrameIndex);
-        auto index_buffer   = idx_buffer_set->At(device->CurrentFrameIndex);
+        auto vertex_buffer  = vtx_buffer_set->At(device->SwapchainPtr->CurrentFrameIndex);
+        auto index_buffer   = idx_buffer_set->At(device->SwapchainPtr->CurrentFrameIndex);
 
         command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
         {
@@ -305,7 +305,7 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
         command_buffer->BindVertexBuffer(*vertex_buffer);
         command_buffer->BindIndexBuffer(*index_buffer, VK_INDEX_TYPE_UINT16);
-        command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrameIndex);
         command_buffer->DrawIndexed(6, 1, 0, 0, 0);
         command_buffer->EndRenderPass();
     }
@@ -377,8 +377,8 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(w, h);
         }
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindDescriptorSets(device->CurrentFrameIndex);
-        command_buffer->DrawIndirect(*indirect_buffer->At(device->CurrentFrameIndex));
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrameIndex);
+        command_buffer->DrawIndirect(*indirect_buffer->At(device->SwapchainPtr->CurrentFrameIndex));
         command_buffer->EndRenderPass();
     }
 

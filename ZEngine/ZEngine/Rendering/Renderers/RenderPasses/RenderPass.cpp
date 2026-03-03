@@ -22,7 +22,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         if (Specification.SwapchainAsRenderTarget)
         {
-            Specification.PipelineSpecification.Attachment = m_device->SwapchainAttachment; // Todo : Can potential Dispose() issue
+            Specification.PipelineSpecification.Attachment = m_device->SwapchainPtr->SwapchainAttachment; // Todo : Can potential Dispose() issue
             Pipeline                                       = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);
             Pipeline->Initialize(m_device, std::move(Specification.PipelineSpecification));
         }
@@ -147,7 +147,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const auto& spec               = validity_output.second;
         auto        shader             = Pipeline->Shader;
         const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainImageCount;
+        auto        frame_count        = m_device->SwapchainPtr->SwapchainImageCount;
         auto        ubo_buf            = m_device->UniformBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
@@ -178,7 +178,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const auto& spec               = validity_output.second;
         auto        shader             = Pipeline->Shader;
         const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainImageCount;
+        auto        frame_count        = m_device->SwapchainPtr->SwapchainImageCount;
         auto        sbo_buf            = m_device->StorageBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
@@ -210,7 +210,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         auto        shader             = Pipeline->Shader;
         const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainImageCount;
+        auto        frame_count        = m_device->SwapchainPtr->SwapchainImageCount;
         auto        tex_buf            = m_device->GlobalTextures.Access(handle);
         auto        img_buf            = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
@@ -238,7 +238,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         auto        shader             = Pipeline->Shader;
         auto        descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainImageCount;
+        auto        frame_count        = m_device->SwapchainPtr->SwapchainImageCount;
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
@@ -321,17 +321,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     ZRawPtr(Renderers::RenderPasses::Attachment) RenderPass::GetAttachment() const
     {
-        return Specification.SwapchainAsRenderTarget ? m_device->SwapchainAttachment : Attachment;
+        return Specification.SwapchainAsRenderTarget ? m_device->SwapchainPtr->SwapchainAttachment : Attachment;
     }
 
     uint32_t RenderPass::GetRenderAreaWidth() const
     {
-        return Specification.SwapchainAsRenderTarget ? m_device->SwapchainImageWidth : RenderAreaWidth;
+        return Specification.SwapchainAsRenderTarget ? m_device->SwapchainPtr->SwapchainImageWidth : RenderAreaWidth;
     }
 
     uint32_t RenderPass::GetRenderAreaHeight() const
     {
-        return Specification.SwapchainAsRenderTarget ? m_device->SwapchainImageHeight : RenderAreaHeight;
+        return Specification.SwapchainAsRenderTarget ? m_device->SwapchainPtr->SwapchainImageHeight : RenderAreaHeight;
     }
 
     std::pair<bool, Specifications::LayoutBindingSpecification> RenderPass::ValidateInput(std::string_view key)

@@ -25,7 +25,6 @@ namespace ZEngine::Applications
         Rendering::Renderers::GraphicRendererPtr SceneRenderer           = nullptr;
         Rendering::Renderers::ImGUIRendererPtr   ImguiRenderer           = nullptr;
         Hardwares::CommandBufferPtr              CurrentCmdBuf           = nullptr;
-        Helpers::ThreadSafeQueue<RenderPayload>  Payloads                = {};
 
         ZEngine::Core::Memory::ArenaAllocator    LocalArena              = {};
 

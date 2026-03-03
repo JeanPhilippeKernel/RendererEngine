@@ -2,6 +2,7 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 // clang-format off
+#include <Hardwares/DeviceSwapchain.h>
 #include <Hardwares/VulkanLayer.h>
 #include <Helpers/HandleManager.h>
 #include <Helpers/MemoryOperations.h>
@@ -440,11 +441,9 @@ namespace ZEngine::Hardwares
         ~CommandBuffer();
 
         Rendering::QueueType              QueueType;
-        CommandBufferType                 BufferType                  = CommandBufferType::Primary;
-        Hardwares::VulkanDevice*          Device                      = nullptr;
-        Core::Memory::ArenaAllocator      LocalArena                  = {};
-        CommandBuffer*                    SecondaryCommandBuffers     = nullptr;
-        size_t                            SecondaryCommandBufferCount = 0u;
+        CommandBufferType                 BufferType = CommandBufferType::Primary;
+        Hardwares::VulkanDevice*          Device     = nullptr;
+        Core::Memory::ArenaAllocator      LocalArena = {};
 
         void                              Create();
         void                              Free();
@@ -499,7 +498,7 @@ namespace ZEngine::Hardwares
         struct InstantResource;
         struct InstantCommandBufferInfo;
 
-        void                                                            Initialize(VulkanDevice* device, uint8_t override_thread_count = 0);
+        void                                                            Initialize(VulkanDevice* device, uint32_t image_count = 0, uint8_t override_thread_count = 0);
         void                                                            Deinitialize();
         CommandBuffer*                                                  GetCommandBuffer(uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
         InstantCommandBufferInfo                                        GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
@@ -581,14 +580,6 @@ namespace ZEngine::Hardwares
         const char*                                                                                                         ApplicationName                             = "Tetragrama";
         const char*                                                                                                         EngineName                                  = "ZEngine";
         uint32_t                                                                                                            WorkerThreadCount                           = 1;
-        uint32_t                                                                                                            SwapchainImageCount                         = 3;
-        uint32_t                                                                                                            PreviousSwapchainImageCount                 = 3;
-        uint32_t                                                                                                            SwapchainImageCountChangeCount              = 0;
-        uint32_t                                                                                                            SwapchainImageIndex                         = std::numeric_limits<uint8_t>::max();
-        uint32_t                                                                                                            CurrentFrameIndex                           = std::numeric_limits<uint8_t>::max();
-        uint32_t                                                                                                            PreviousFrameIndex                          = std::numeric_limits<uint8_t>::max();
-        uint32_t                                                                                                            SwapchainImageWidth                         = std::numeric_limits<uint32_t>::max();
-        uint32_t                                                                                                            SwapchainImageHeight                        = std::numeric_limits<uint32_t>::max();
         uint32_t                                                                                                            GraphicFamilyIndex                          = std::numeric_limits<uint32_t>::max();
         uint32_t                                                                                                            TransferFamilyIndex                         = std::numeric_limits<uint32_t>::max();
 
@@ -604,17 +595,12 @@ namespace ZEngine::Hardwares
         VkPhysicalDevice                                                                                                    PhysicalDevice                              = VK_NULL_HANDLE;
         VkPhysicalDeviceFeatures2                                                                                           PhysicalDeviceFeature                       = {};
         VkPhysicalDeviceMemoryProperties                                                                                    PhysicalDeviceMemoryProperties              = {};
-        VkSwapchainKHR                                                                                                      SwapchainHandle                             = VK_NULL_HANDLE;
+
         VkDescriptorPool                                                                                                    GlobalDescriptorPoolHandle                  = VK_NULL_HANDLE;
         VmaAllocator                                                                                                        VmaAllocatorValue                           = nullptr;
         CommandBufferManagerPtr                                                                                             CommandBufferMgr                            = {};
+        DeviceSwapchainPtr                                                                                                  SwapchainPtr                                = {};
         Core::Containers::Array<VkFormat>                                                                                   DefaultDepthFormats                         = {};
-        Rendering::Renderers::RenderPasses::Attachment*                                                                     SwapchainAttachment                         = {};
-        Core::Containers::Array<VkImageView>                                                                                SwapchainImageViews                         = {};
-        Core::Containers::Array<VkFramebuffer>                                                                              SwapchainFramebuffers                       = {};
-        Core::Containers::Array<Rendering::Primitives::Semaphore*>                                                          SwapchainAcquiredSemaphores                 = {};
-        Core::Containers::Array<Rendering::Primitives::Semaphore*>                                                          SwapchainRenderCompleteSemaphores           = {};
-        Core::Containers::Array<Rendering::Primitives::Fence*>                                                              SwapchainSignalFences                       = {};
 
         Core::Containers::HashMap<const char*, Helpers::Handle<Rendering::Shaders::Shader>>                                 ShaderCaches                                = {};
         Core::Containers::HashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                                       ShaderReservedDescriptorSetMap              = {}; //<set, vec<descriptorSet>>
@@ -635,17 +621,8 @@ namespace ZEngine::Hardwares
         Helpers::HandleManager<DirtyResource>                                                                               DirtyResources                              = {};
         Helpers::HandleManager<BufferView>                                                                                  DirtyBuffers                                = {};
         Helpers::HandleManager<BufferImage>                                                                                 DirtyBufferImages                           = {};
-        std::thread::id                                                                                                     ThreadOwnerId                               = {};
-        std::atomic_bool                                                                                                    RunningDirtyCollector                       = true;
-        std::atomic_bool                                                                                                    SwapchainResizeRequested                    = false;
-        bool                                                                                                                SwapchainResizeHandled                      = false;
-        std::atomic_uint                                                                                                    IdleFrameCount                              = 0;
-        std::atomic_uint                                                                                                    IdleFrameThreshold                          = SwapchainImageCount * 3 * 3;
-        std::condition_variable                                                                                             DirtyCollectorCond                          = {};
-        std::condition_variable                                                                                             SwapchainCond                               = {};
-        std::mutex                                                                                                          DirtyMutex                                  = {};
+        std::atomic_bool                                                                                                    RunningDirtyCollector                       = {};
         std::mutex                                                                                                          Mutex                                       = {};
-        std::mutex                                                                                                          SwapchainMutex                              = {};
         Windows::CoreWindow*                                                                                                CurrentWindow                               = nullptr;
         ZEngine::Core::Memory::ArenaAllocator*                                                                              Arena                                       = nullptr;
         AsyncResourceLoaderPtr                                                                                              AsyncResLoader                              = nullptr;
@@ -676,10 +653,6 @@ namespace ZEngine::Hardwares
         IndirectBufferSetHandle                         CreateIndirectBufferSet();
         IndexBufferSetHandle                            CreateIndexBufferSet();
         UniformBufferSetHandle                          CreateUniformBufferSet();
-        void                                            CreateSwapchain();
-        void                                            ResizeSwapchain();
-        void                                            DisposeSwapchain();
-        void                                            AcquireNextImage();
         void                                            Present();
         void                                            IncrementFrameImageCount();
         void                                            DirtyCollector();
