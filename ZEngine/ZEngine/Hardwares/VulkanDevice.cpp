@@ -721,22 +721,22 @@ namespace ZEngine::Hardwares
 
     VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDevice::__debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
     {
-        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        if ((messageSeverity & static_cast<decltype(messageSeverity)>(VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
         {
             ZENGINE_CORE_ERROR("{}", pCallbackData->pMessage)
         }
 
-        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        if ((messageSeverity & static_cast<decltype(messageSeverity)>(VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
         {
             ZENGINE_CORE_WARN("{}", pCallbackData->pMessage)
         }
 
-        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+        if ((messageSeverity & static_cast<decltype(messageSeverity)>(VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)) == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
         {
             ZENGINE_CORE_WARN("{}", pCallbackData->pMessage)
         }
 
-        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)
+        if ((messageSeverity & static_cast<decltype(messageSeverity)>(VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)) == VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)
         {
             ZENGINE_CORE_WARN("{}", pCallbackData->pMessage)
         }
@@ -960,6 +960,8 @@ namespace ZEngine::Hardwares
             case BufferType::INDIRECT:
                 dst_access_mask    = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
                 dst_pipeline_stage = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+                break;
+            case UNKNOWN:
                 break;
         }
 
@@ -1583,6 +1585,8 @@ namespace ZEngine::Hardwares
                                 vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Data1), 1, &ds);
                                 break;
                             }
+                            case DeviceResourceType::RESOURCE_COUNT:
+                                break;
                         }
 
                         DirtyResources.Remove(handle);
@@ -2360,7 +2364,7 @@ namespace ZEngine::Hardwares
 
     void Image2DBuffer::Dispose()
     {
-        if (this && m_buffer_image)
+        if (m_buffer_image)
         {
             Device->EnqueueBufferImageForDeletion(m_buffer_image);
             m_buffer_image = {};
@@ -2497,6 +2501,8 @@ namespace ZEngine::Hardwares
                 case BufferType::INDIRECT:
                     dst_access_mask    = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
                     dst_pipeline_stage = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+                    break;
+                case UNKNOWN:
                     break;
             }
 
