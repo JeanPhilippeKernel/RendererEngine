@@ -629,7 +629,6 @@ namespace ZEngine::Hardwares
 
         void                                                                                                                Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count);
         void                                                                                                                Deinitialize();
-        void                                                                                                                Update();
         void                                                                                                                Dispose();
         bool                                                                                                                QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
         void                                                                                                                EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
@@ -653,8 +652,6 @@ namespace ZEngine::Hardwares
         IndirectBufferSetHandle                         CreateIndirectBufferSet();
         IndexBufferSetHandle                            CreateIndexBufferSet();
         UniformBufferSetHandle                          CreateUniformBufferSet();
-        void                                            Present();
-        void                                            IncrementFrameImageCount();
         void                                            DirtyCollector();
 
         Helpers::Handle<Rendering::Shaders::Shader>     CompileShader(Rendering::Specifications::ShaderSpecification& spec);

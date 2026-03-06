@@ -42,7 +42,7 @@ namespace ZEngine::Rendering::Renderers
         auto material_buffer_set                 = Device->StorageBufferSetManager.Access(RenderSceneData->MaterialBufferHandle);
         auto indirect_buffer_set                 = Device->IndirectBufferSetManager.Access(RenderSceneData->IndirectBufferHandle);
 
-        for (int i = 0; i < Device->SwapchainPtr->SwapchainImageCount; ++i)
+        for (int i = 0; i < Device->SwapchainPtr->BufferredFrameCount; ++i)
         {
             scene_camera->At(i)->Allocate(sizeof(UBOCameraLayout), RendererResourceName::SceneCameraBufferName);
 
@@ -106,8 +106,8 @@ namespace ZEngine::Rendering::Renderers
         auto material_buffer_set = Device->StorageBufferSetManager.Access(RenderSceneData->MaterialBufferHandle);
         auto camera_buffer_set   = Device->UniformBufferSetManager.Access(RenderSceneData->SceneCameraBufferHandle);
 
-        auto camera_buf          = camera_buffer_set->At(Device->SwapchainPtr->CurrentFrameIndex);
-        auto material_buffer     = material_buffer_set->At(Device->SwapchainPtr->CurrentFrameIndex);
+        auto camera_buf          = camera_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
+        auto material_buffer     = material_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
 
         material_buffer->Write(ArrayView{asset_manager->GPUMeshMaterials});
         camera_buf->Write(reinterpret_cast<void*>(&ubo_camera_data), sizeof(UBOCameraLayout));

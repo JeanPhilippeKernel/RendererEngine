@@ -17,22 +17,11 @@ using namespace std::chrono_literals;
 
 namespace ZEngine
 {
-
-    struct alignas(std::hardware_destructive_interference_size) PaddedAtomicInt
-    {
-        std::atomic_uint32_t value;
-    };
-
     static std::atomic_bool                   s_request_terminate = false;
     static EngineContextPtr                   g_engine_ctx        = nullptr;
     static Applications::GameApplicationPtr   g_app               = nullptr;
     static Applications::AppRenderPipelinePtr g_appRenderPipeline = nullptr;
     static std::thread                        g_render_thread     = {};
-
-    static PaddedAtomicInt                    g_head{0};
-    static PaddedAtomicInt                    g_tail{0};
-    static constexpr uint8_t                  k_mailbox_buffer_size                     = 3;
-    static Applications::RenderPayload        g_mailbox_payloads[k_mailbox_buffer_size] = {};
 
     void                                      Engine::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
@@ -46,7 +35,7 @@ namespace ZEngine
 
         g_appRenderPipeline  = ZPushStructCtor(arena, Applications::AppRenderPipeline);
 
-        g_engine_ctx->Device->Initialize(arena, window, (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u));
+        g_engine_ctx->Device->Initialize(arena, window, (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u) /*, k_mailbox_buffer_size */);
         g_appRenderPipeline->Initialize(g_engine_ctx->Device);
 
         Managers::AssetManager::Initialize(arena, g_engine_ctx->Device, app->WorkingSpacePath);
@@ -55,12 +44,6 @@ namespace ZEngine
         app->CurrentWindow  = g_engine_ctx->Window;
         g_app               = app;
 
-        for (size_t i = 0; i < k_mailbox_buffer_size; ++i)
-        {
-            g_mailbox_payloads[i].UIOverlay.IndexedCmds.resize(100);
-            g_mailbox_payloads[i].UIOverlay.ScissorCmds.resize(100);
-            g_mailbox_payloads[i].UIOverlay.TextureIds.resize(100);
-        }
         ZENGINE_CORE_INFO("Engine initialized")
     }
 
@@ -113,34 +96,35 @@ namespace ZEngine
 
             g_app->Update(dt);
 
-            uint32_t head = g_head.value.load(std::memory_order_relaxed);
+            auto     pipeline = g_app->RenderPipeline;
 
-            uint32_t next = (head + 1) % k_mailbox_buffer_size;
-
-            uint32_t tail = g_tail.value.load(std::memory_order_acquire);
+            uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_relaxed);
+            uint32_t next     = (head + 1) % pipeline->MaxMailBoxBufferCount;
+            uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
 
             // Buffer full, drop frame (non-blocking)
             if (next == tail)
-                continue;
             {
-                auto& r_payload                   = g_mailbox_payloads[head];
-                r_payload.UIOverlay.DrawDataIndex = 0;
-                r_payload.RenderUIOverlay         = false;
-
-                if (g_app->EnableRenderOverlay)
-                {
-                    g_app->RenderPipeline->BeginOverlayFrame();
-                    g_app->OnRenderUI();
-                    g_app->RenderPipeline->EndOverlayFrame();
-
-                    r_payload.RenderUIOverlay = true;
-                    g_appRenderPipeline->FillOverlayPayload(r_payload.UIOverlay);
-                }
-
-                g_app->PrepareScene(r_payload);
-
-                g_head.value.store(next, std::memory_order_release);
+                continue;
             }
+
+            auto& r_payload                   = pipeline->RenderPayloads[head];
+            r_payload.UIOverlay.DrawDataIndex = 0;
+            r_payload.RenderUIOverlay         = false;
+
+            if (g_app->EnableRenderOverlay)
+            {
+                pipeline->BeginOverlayFrame();
+                g_app->OnRenderUI();
+                pipeline->EndOverlayFrame();
+
+                r_payload.RenderUIOverlay = true;
+                pipeline->FillOverlayPayload(r_payload.UIOverlay);
+            }
+
+            g_app->PrepareScene(r_payload);
+
+            pipeline->MailBoxBufferHead.value.store(next, std::memory_order_release);
         }
     }
 
@@ -164,9 +148,10 @@ namespace ZEngine
                 break;
             }
 
-            uint32_t tail = g_tail.value.load(std::memory_order_relaxed);
+            auto     pipeline = g_app->RenderPipeline;
 
-            uint32_t head = g_head.value.load(std::memory_order_acquire);
+            uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_relaxed);
+            uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
 
             // Buffer empty
             if (tail == head)
@@ -175,9 +160,8 @@ namespace ZEngine
                 continue;
             }
 
-            Applications::RenderPayload& r_payload = g_mailbox_payloads[tail];
-
-            auto                         pipeline  = g_app->RenderPipeline;
+            pipeline->CurrentMailBoxBufferHead     = tail;
+            Applications::RenderPayload& r_payload = pipeline->RenderPayloads[tail];
 
             if (r_payload.ResizeRenderTarget)
             {
@@ -193,9 +177,9 @@ namespace ZEngine
             }
             pipeline->EndFrame();
 
-            uint32_t next = (tail + 1) % k_mailbox_buffer_size;
+            uint32_t next = (tail + 1) % pipeline->MaxMailBoxBufferCount;
 
-            g_tail.value.store(next, std::memory_order_release);
+            pipeline->MailBoxBufferTail.value.store(next, std::memory_order_release);
         }
     }
 

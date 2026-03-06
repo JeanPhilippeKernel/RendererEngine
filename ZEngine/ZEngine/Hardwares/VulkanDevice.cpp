@@ -414,12 +414,13 @@ namespace ZEngine::Hardwares
         /*
          * Creating Swapchain
          */
-        SwapchainPtr->Initialize(this);
+        // todo(jeanphilippekernel): Should pass MaxFrameCount instead of hard-coded 3
+        SwapchainPtr->Initialize(this, 3);
 
         /*
          * Creating Buffer Manager
          */
-        CommandBufferMgr->Initialize(this, SwapchainPtr->SwapchainImageCount);
+        CommandBufferMgr->Initialize(this, SwapchainPtr->BufferredFrameCount);
 
         /*
          * Transition image layout as Present src
@@ -442,7 +443,7 @@ namespace ZEngine::Hardwares
         ShaderReservedDescriptorSetLayoutMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
 
         VkDescriptorPoolSize pool_sizes[] = {
-            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = (MaxGlobalTexture * SwapchainPtr->SwapchainImageCount)}
+            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = (MaxGlobalTexture * SwapchainPtr->BufferredFrameCount)}
         };
 
         for (const auto& layout_binding_set : ShaderReservedLayoutBindingSpecificationMap)
@@ -502,14 +503,14 @@ namespace ZEngine::Hardwares
 
         VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
         pool_info.flags                      = PhysicalDeviceSupportSampledImageBindless ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
-        pool_info.maxSets                    = SwapchainPtr->SwapchainImageCount;
+        pool_info.maxSets                    = SwapchainPtr->BufferredFrameCount;
         pool_info.poolSizeCount              = sizeof(pool_sizes) / sizeof(VkDescriptorPoolSize);
         pool_info.pPoolSizes                 = pool_sizes;
         ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(LogicalDevice, &pool_info, nullptr, &GlobalDescriptorPoolHandle) == VK_SUCCESS, "Failed to create Global DescriptorPool")
 
         for (const auto& layout : ShaderReservedDescriptorSetLayoutMap)
         {
-            ShaderReservedDescriptorSetMap[layout.first].init(Arena, SwapchainPtr->SwapchainImageCount, SwapchainPtr->SwapchainImageCount);
+            ShaderReservedDescriptorSetMap[layout.first].init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
         }
 
         scratch = ZGetScratch(Arena);
@@ -517,8 +518,8 @@ namespace ZEngine::Hardwares
         for (const auto& layout : ShaderReservedDescriptorSetLayoutMap)
         {
             Array<VkDescriptorSetLayout> layout_set = {};
-            layout_set.init(scratch.Arena, SwapchainPtr->SwapchainImageCount, SwapchainPtr->SwapchainImageCount);
-            for (uint32_t i = 0; i < SwapchainPtr->SwapchainImageCount; ++i)
+            layout_set.init(scratch.Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
+            for (uint32_t i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
             {
                 layout_set[i] = layout.second;
             }
@@ -526,7 +527,7 @@ namespace ZEngine::Hardwares
             VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {};
             descriptor_set_allocate_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
             descriptor_set_allocate_info.descriptorPool              = GlobalDescriptorPoolHandle;
-            descriptor_set_allocate_info.descriptorSetCount          = SwapchainPtr->SwapchainImageCount;
+            descriptor_set_allocate_info.descriptorSetCount          = SwapchainPtr->BufferredFrameCount;
             descriptor_set_allocate_info.pSetLayouts                 = layout_set.data();
             ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(LogicalDevice, &descriptor_set_allocate_info, ShaderReservedDescriptorSetMap[layout.first].data()) == VK_SUCCESS, "Failed to create DescriptorSet")
         }
@@ -578,8 +579,6 @@ namespace ZEngine::Hardwares
 
         ZENGINE_DESTROY_VULKAN_HANDLE(Instance, vkDestroySurfaceKHR, Surface, nullptr)
     }
-
-    void VulkanDevice::Update() {}
 
     void VulkanDevice::Dispose()
     {
@@ -643,7 +642,7 @@ namespace ZEngine::Hardwares
     {
         if (handle)
         {
-            DirtyResources.Add({.FrameIndex = SwapchainPtr->CurrentFrameIndex, .Handle = handle, .Type = resource_type});
+            DirtyResources.Add({.FrameIndex = SwapchainPtr->CurrentFrame->Index, .Handle = handle, .Type = resource_type});
         }
     }
 
@@ -861,7 +860,7 @@ namespace ZEngine::Hardwares
         Helpers::secure_memset(allocation_info.pMappedData, 0, byte_size, byte_size);
 
         // Metadata info
-        buffer_view.FrameIndex = SwapchainPtr->CurrentFrameIndex;
+        buffer_view.FrameIndex = SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index;
 
         if (buffer_usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
         {
@@ -889,7 +888,7 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset, VkDeviceSize dst_buffer_offset)
     {
-        CommandBufferManager::InstantCommandBufferInfo command_buffer_info = CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, SwapchainPtr->CurrentFrameIndex, 0, 2, true);
+        CommandBufferManager::InstantCommandBufferInfo command_buffer_info = CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, SwapchainPtr->CurrentFrame->Index, 0, 2, true);
 
         VkBufferMemoryBarrier                          bufMemBarrier       = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
         bufMemBarrier.srcAccessMask                                        = VK_ACCESS_HOST_WRITE_BIT;
@@ -983,7 +982,7 @@ namespace ZEngine::Hardwares
         buffer_image.Sampler    = CreateImageSampler();
 
         // Metadata info
-        buffer_image.FrameIndex = SwapchainPtr->CurrentFrameIndex;
+        buffer_image.FrameIndex = SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index;
 
         return buffer_image;
     }
@@ -1095,9 +1094,9 @@ namespace ZEngine::Hardwares
     {
         auto handle     = VertexBufferSetManager.Create();
         auto buffer_set = VertexBufferSetManager.Access(handle);
-        buffer_set->set.init(Arena, SwapchainPtr->SwapchainImageCount, SwapchainPtr->SwapchainImageCount);
+        buffer_set->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
 
-        for (unsigned i = 0; i < SwapchainPtr->SwapchainImageCount; ++i)
+        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
         {
             buffer_set->set[i] = ZPushStructCtorArgs(Arena, VertexBuffer, this);
         }
@@ -1109,9 +1108,9 @@ namespace ZEngine::Hardwares
     {
         auto handle = StorageBufferSetManager.Create();
         auto buffer = StorageBufferSetManager.Access(handle);
-        buffer->set.init(Arena, SwapchainPtr->SwapchainImageCount, SwapchainPtr->SwapchainImageCount);
+        buffer->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
 
-        for (unsigned i = 0; i < SwapchainPtr->SwapchainImageCount; ++i)
+        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
         {
             buffer->set[i] = ZPushStructCtorArgs(Arena, StorageBuffer, this);
         }
@@ -1122,9 +1121,9 @@ namespace ZEngine::Hardwares
     {
         auto handle = IndirectBufferSetManager.Create();
         auto buffer = IndirectBufferSetManager.Access(handle);
-        buffer->set.init(Arena, SwapchainPtr->SwapchainImageCount, SwapchainPtr->SwapchainImageCount);
+        buffer->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
 
-        for (unsigned i = 0; i < SwapchainPtr->SwapchainImageCount; ++i)
+        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
         {
             buffer->set[i] = ZPushStructCtorArgs(Arena, IndirectBuffer, this);
         }
@@ -1136,9 +1135,9 @@ namespace ZEngine::Hardwares
     {
         auto handle = IndexBufferSetManager.Create();
         auto buffer = IndexBufferSetManager.Access(handle);
-        buffer->set.init(Arena, SwapchainPtr->SwapchainImageCount, SwapchainPtr->SwapchainImageCount);
+        buffer->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
 
-        for (unsigned i = 0; i < SwapchainPtr->SwapchainImageCount; ++i)
+        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
         {
             buffer->set[i] = ZPushStructCtorArgs(Arena, IndexBuffer, this);
         }
@@ -1150,9 +1149,9 @@ namespace ZEngine::Hardwares
     {
         auto handle = UniformBufferSetManager.Create();
         auto buffer = UniformBufferSetManager.Access(handle);
-        buffer->set.init(Arena, SwapchainPtr->SwapchainImageCount, SwapchainPtr->SwapchainImageCount);
+        buffer->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
 
-        for (unsigned i = 0; i < SwapchainPtr->SwapchainImageCount; ++i)
+        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
         {
             buffer->set[i] = ZPushStructCtorArgs(Arena, UniformBuffer, this);
         }
@@ -1160,109 +1159,9 @@ namespace ZEngine::Hardwares
         return handle;
     }
 
-    void VulkanDevice::Present()
-    {
-        uint32_t                idle_count = SwapchainPtr->IdleFrameCount.load(std::memory_order_acquire);
-
-        Textures::TextureHandle tex_handle = {};
-        if (TextureHandleToUpdates.Pop(tex_handle))
-        {
-            auto texture = GlobalTextures.Access(tex_handle);
-
-            if (!texture)
-            {
-                TextureHandleToUpdates.Enqueue(tex_handle);
-                return;
-            }
-
-            else
-            {
-                auto        img_buf    = Image2DBufferManager.Access(texture->BufferHandle);
-                const auto& image_info = img_buf->GetDescriptorImageInfo();
-
-                auto        scratch    = ZGetScratch(Arena);
-                {
-                    Array<VkWriteDescriptorSet> write_descriptor_sets = {};
-                    write_descriptor_sets.init(scratch.Arena, WriteBindlessDescriptorSetRequests.size());
-
-                    for (auto& req : WriteBindlessDescriptorSetRequests)
-                    {
-                        write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = req.DstSet, .dstBinding = req.Binding, .dstArrayElement = (uint32_t) tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-                    }
-
-                    vkUpdateDescriptorSets(LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
-                }
-                ZReleaseScratch(scratch);
-            }
-        }
-
-        Textures::TextureHandle tex_to_dispose = {};
-        if (TextureHandleToDispose.Pop(tex_to_dispose))
-        {
-            auto texture = GlobalTextures.Access(tex_to_dispose);
-            if (texture)
-            {
-                texture->Dispose();
-                GlobalTextures.Remove(tex_to_dispose);
-            }
-        }
-
-        Primitives::Semaphore* acquired_semaphore        = SwapchainPtr->SwapchainAcquiredSemaphores[SwapchainPtr->CurrentFrameIndex];
-        Primitives::Semaphore* render_complete_semaphore = SwapchainPtr->SwapchainRenderCompleteSemaphores[SwapchainPtr->CurrentFrameIndex];
-        Primitives::Fence*     signal_fence              = SwapchainPtr->SwapchainSignalFences[SwapchainPtr->CurrentFrameIndex];
-
-        CommandBufferMgr->EndEnqueuedBuffers();
-        auto                   scratch = ZGetScratch(Arena);
-
-        Array<VkCommandBuffer> buffer  = {};
-        buffer.init(scratch.Arena, CommandBufferMgr->EnqueuedCommandBufferIndex, CommandBufferMgr->EnqueuedCommandBufferIndex);
-        for (int i = 0; i < buffer.size(); ++i)
-        {
-            buffer[i] = CommandBufferMgr->EnqueuedCommandBuffers[i]->GetHandle();
-        }
-
-        ZENGINE_VALIDATE_ASSERT(render_complete_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
-        ZENGINE_VALIDATE_ASSERT(signal_fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
-
-        VkQueue              queue               = m_queue_map.at(Rendering::QueueType::GRAPHIC_QUEUE);
-        VkSemaphore          wait_semaphores[]   = {acquired_semaphore->GetHandle()};
-        VkSemaphore          signal_semaphores[] = {render_complete_semaphore->GetHandle()};
-        VkPipelineStageFlags stage_flags[]       = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-        VkSubmitInfo         submit_info         = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .pNext = nullptr, .waitSemaphoreCount = 1, .pWaitSemaphores = wait_semaphores, .pWaitDstStageMask = stage_flags, .commandBufferCount = (uint32_t) buffer.size(), .pCommandBuffers = buffer.data(), .signalSemaphoreCount = 1, .pSignalSemaphores = signal_semaphores};
-
-        auto                 submit              = vkQueueSubmit(queue, 1, &(submit_info), signal_fence->GetHandle());
-        ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
-
-        ZReleaseScratch(scratch);
-
-        CommandBufferMgr->ResetEnqueuedBufferIndex();
-
-        signal_fence->SetState(FenceState::Submitted);
-        render_complete_semaphore->SetState(SemaphoreState::Submitted);
-
-        VkSwapchainKHR   swapchains[]   = {SwapchainPtr->SwapchainHandle};
-        uint32_t         frames[]       = {SwapchainPtr->SwapchainImageIndex};
-        VkPresentInfoKHR present_info   = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .pNext = nullptr, .waitSemaphoreCount = 1, .pWaitSemaphores = signal_semaphores, .swapchainCount = 1, .pSwapchains = swapchains, .pImageIndices = frames};
-        VkResult         present_result = vkQueuePresentKHR(queue, &present_info);
-
-        acquired_semaphore->SetState(SemaphoreState::Idle);
-        render_complete_semaphore->SetState(SemaphoreState::Idle);
-
-        if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
-        {
-            return;
-        }
-
-        ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS, "Failed to present current frame on Window")
-
-        SwapchainPtr->IncrementFrameImageCount();
-
-        SwapchainPtr->IdleFrameCount.store(idle_count + 1, std::memory_order_release);
-    }
-
     void VulkanDevice::DirtyCollector()
     {
-        using namespace std::chrono_literals;
+        RunningDirtyCollector.store(true, std::memory_order_release);
 
         ZENGINE_CORE_INFO("[*] Dirty Resource Collector started...")
 
@@ -1289,7 +1188,7 @@ namespace ZEngine::Hardwares
                     }
 
                     DirtyResource& res_handle = DirtyResources[handle];
-                    if (res_handle.FrameIndex == SwapchainPtr->CurrentFrameIndex)
+                    if (res_handle.FrameIndex == SwapchainPtr->CurrentFrame->Index)
                     {
                         switch (res_handle.Type)
                         {
@@ -1358,7 +1257,7 @@ namespace ZEngine::Hardwares
                     }
 
                     BufferView& buffer = DirtyBuffers[handle];
-                    if (buffer && buffer.FrameIndex == SwapchainPtr->CurrentFrameIndex)
+                    if (buffer && buffer.FrameIndex == SwapchainPtr->CurrentFrame->Index)
                     {
                         vmaDestroyBuffer(VmaAllocatorValue, buffer.Handle, buffer.Allocation);
                         buffer.Handle     = VK_NULL_HANDLE;
@@ -1382,7 +1281,7 @@ namespace ZEngine::Hardwares
 
                     BufferImage& buffer = DirtyBufferImages[handle];
 
-                    if (buffer && buffer.FrameIndex == SwapchainPtr->CurrentFrameIndex)
+                    if (buffer && buffer.FrameIndex == SwapchainPtr->CurrentFrame->Index)
                     {
                         vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
                         vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
@@ -1393,7 +1292,6 @@ namespace ZEngine::Hardwares
                     }
                 }
             }
-
             SwapchainPtr->IdleFrameCount.store(0, std::memory_order_release);
         }
 
@@ -2327,7 +2225,7 @@ namespace ZEngine::Hardwares
                     break;
             }
 
-            auto                  command_buffer_info = m_device->CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, m_device->SwapchainPtr->CurrentFrameIndex, 0, 2, true);
+            auto                  command_buffer_info = m_device->CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, (m_device->SwapchainPtr->CurrentFrame == nullptr ? 0u : m_device->SwapchainPtr->CurrentFrame->Index), 0, 2, true);
             VkBufferMemoryBarrier bufMemBarrier       = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
             bufMemBarrier.srcAccessMask               = VK_ACCESS_HOST_WRITE_BIT;
             bufMemBarrier.dstAccessMask               = dst_access_mask;
@@ -2441,7 +2339,7 @@ namespace ZEngine::Hardwares
         barrier_spec_0.LayerCount                                        = spec.LayerCount;
         Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
 
-        auto                           command_buf_info = CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, SwapchainPtr->CurrentFrameIndex, 0, 2, true);
+        auto                           command_buf_info = CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, (SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index), 0, 2, true);
         command_buf_info.Buffer->TransitionImageLayout(barrier_0);
 
         img_buf->Layout                 = new_image_layout;

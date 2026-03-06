@@ -147,7 +147,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const auto& spec               = validity_output.second;
         auto        shader             = Pipeline->Shader;
         const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainPtr->SwapchainImageCount;
+        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
         auto        ubo_buf            = m_device->UniformBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
@@ -178,7 +178,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const auto& spec               = validity_output.second;
         auto        shader             = Pipeline->Shader;
         const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainPtr->SwapchainImageCount;
+        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
         auto        sbo_buf            = m_device->StorageBufferSetManager.Access(handle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
 
@@ -210,7 +210,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         auto        shader             = Pipeline->Shader;
         const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainPtr->SwapchainImageCount;
+        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
         auto        tex_buf            = m_device->GlobalTextures.Access(handle);
         auto        img_buf            = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);
         auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
@@ -238,7 +238,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         auto        shader             = Pipeline->Shader;
         auto        descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainPtr->SwapchainImageCount;
+        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
 
         for (unsigned i = 0; i < frame_count; ++i)
         {

@@ -62,7 +62,7 @@ namespace ZEngine::Rendering::Renderers
 
         auto vb_buffer_set  = Device->VertexBufferSetManager.Access(VBHandle);
         auto idx_buffer_set = Device->IndexBufferSetManager.Access(IdxBHandle);
-        for (unsigned i = 0; i < Device->SwapchainPtr->SwapchainImageCount; ++i)
+        for (unsigned i = 0; i < Device->SwapchainPtr->BufferredFrameCount; ++i)
         {
             vb_buffer_set->At(i)->Allocate(ZMega(5), "ImguiVertexBuffer");
             idx_buffer_set->At(i)->Allocate(ZMega(5), "ImguiIndexBuffer");
@@ -117,7 +117,7 @@ namespace ZEngine::Rendering::Renderers
         auto                                            img_buf          = Device->Image2DBufferManager.Access(font_tex_res->BufferHandle);
         auto                                            image_buf_handle = img_buf->GetHandle();
 
-        auto                                            command_buf_info = Device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, Device->SwapchainPtr->CurrentFrameIndex, 0, 2, true);
+        auto                                            command_buf_info = Device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, (Device->SwapchainPtr->CurrentFrame == nullptr ? 0u : Device->SwapchainPtr->CurrentFrame->Index), 0, 2, true);
 
         Specifications::ImageMemoryBarrierSpecification barrier_spec_0   = {};
         barrier_spec_0.ImageHandle                                       = image_buf_handle;
@@ -163,7 +163,7 @@ namespace ZEngine::Rendering::Renderers
 
         auto                        font_image_info       = img_buf->GetDescriptorImageInfo();
         auto                        dummy_image_info      = dummy_tex_buf->GetDescriptorImageInfo();
-        uint32_t                    frame_count           = Device->SwapchainPtr->SwapchainImageCount;
+        uint32_t                    frame_count           = Device->SwapchainPtr->BufferredFrameCount;
         auto                        shader                = UIPass->Pipeline->Shader;
         auto&                       descriptor_set_map    = shader->DescriptorSetMap;
 
