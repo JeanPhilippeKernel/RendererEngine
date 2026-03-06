@@ -5,6 +5,11 @@
 
 namespace ZEngine::Applications
 {
+    struct alignas(std::hardware_destructive_interference_size) PaddedAtomicInt
+    {
+        std::atomic_uint32_t value = 0;
+    };
+
     struct RenderPayload
     {
         bool                                       RenderUIOverlay    = false;
@@ -18,15 +23,19 @@ namespace ZEngine::Applications
 
     struct AppRenderPipeline
     {
-        const uint8_t                            RenderMainThreadIndex   = 0;
-        uint8_t                                  RenderWorkerThreadCount = 0;
-        uint8_t                                  UICommandBufferIndex    = 0xff;
-        Hardwares::VulkanDevicePtr               Device                  = nullptr;
-        Rendering::Renderers::GraphicRendererPtr SceneRenderer           = nullptr;
-        Rendering::Renderers::ImGUIRendererPtr   ImguiRenderer           = nullptr;
-        Hardwares::CommandBufferPtr              CurrentCmdBuf           = nullptr;
-
-        ZEngine::Core::Memory::ArenaAllocator    LocalArena              = {};
+        const uint8_t                            MaxMailBoxBufferCount    = 3;
+        const uint8_t                            RenderMainThreadIndex    = 0;
+        uint8_t                                  RenderWorkerThreadCount  = 0;
+        uint8_t                                  UICommandBufferIndex     = 0xff;
+        uint32_t                                 CurrentMailBoxBufferHead = 0;
+        PaddedAtomicInt                          MailBoxBufferHead        = {};
+        PaddedAtomicInt                          MailBoxBufferTail        = {};
+        RenderPayload                            RenderPayloads[3]        = {};
+        ZEngine::Core::Memory::ArenaAllocator    LocalArena               = {};
+        Hardwares::VulkanDevicePtr               Device                   = nullptr;
+        Rendering::Renderers::GraphicRendererPtr SceneRenderer            = nullptr;
+        Rendering::Renderers::ImGUIRendererPtr   ImguiRenderer            = nullptr;
+        Hardwares::CommandBufferPtr              CurrentCmdBuf            = nullptr;
 
         void                                     Initialize(Hardwares::VulkanDevicePtr device);
         void                                     Shutdown();

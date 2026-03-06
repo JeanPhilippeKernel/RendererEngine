@@ -25,7 +25,7 @@ namespace ZEngine::Hardwares
         Device        = device;
         BufferManager = ZPushStructCtor(Device->Arena, CommandBufferManager);
 
-        BufferManager->Initialize(Device, Device->SwapchainPtr->SwapchainImageCount, 1);
+        BufferManager->Initialize(Device, Device->SwapchainPtr->BufferredFrameCount, 1);
         Helpers::ThreadPoolHelper::Submit([this] { Run(); });
     }
 
@@ -109,7 +109,7 @@ namespace ZEngine::Hardwares
                         barrier_spec_0.SourceQueueFamily                               = Device->TransferFamilyIndex;
                         barrier_spec_0.DestinationQueueFamily                          = Device->GraphicFamilyIndex;
                         Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-                        auto                           command_buffer_0 = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Device->SwapchainPtr->CurrentFrameIndex, 0, 2, true);
+                        auto                           command_buffer_0 = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Device->SwapchainPtr->CurrentFrame->Index, 0, 2, true);
                         {
                             command_buffer_0.Buffer->TransitionImageLayout(barrier_0);
                             img_buf->Layout = barrier_spec_0.NewLayout;
@@ -134,7 +134,7 @@ namespace ZEngine::Hardwares
                     barrier_spec.DestinationQueueFamily                          = Device->GraphicFamilyIndex;
                     Primitives::ImageMemoryBarrier barrier{barrier_spec};
 
-                    auto                           command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, Device->SwapchainPtr->CurrentFrameIndex, 0, 2, true);
+                    auto                           command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, (Device->SwapchainPtr->CurrentFrame == nullptr ? 0u : Device->SwapchainPtr->CurrentFrame->Index), 0, 2, true);
                     {
                         command_buffer.Buffer->TransitionImageLayout(barrier);
                         img_buf->Layout = barrier_spec.NewLayout;
@@ -155,7 +155,8 @@ namespace ZEngine::Hardwares
                     auto     img_buf        = Device->Image2DBufferManager.Access(texture->BufferHandle);
                     uint32_t image_aspect   = (texture->Specification.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
-                    auto     command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Device->SwapchainPtr->CurrentFrameIndex, 0, 2, true);
+                    // todo(jeanphilippekernel): we should weak acquire the frame index
+                    auto     command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, (Device->SwapchainPtr->CurrentFrame == nullptr ? 0u : Device->SwapchainPtr->CurrentFrame->Index), 0, 2, true);
                     {
                         auto                                            image_handle   = img_buf->GetHandle();
                         auto&                                           image_buffer   = img_buf->GetBuffer();
