@@ -13,10 +13,10 @@
                 "CMAKE_CXX_STANDARD": "20",
                 "CMAKE_CXX_STANDARD_REQUIRED": "ON",
                 "CMAKE_CXX_EXTENSIONS": "OFF",
-                "CMAKE_CXX_SCAN_FOR_MODULES": "ON",
                 "BUILD_SHARED_LIBS": "OFF",
                 "FETCHCONTENT_QUIET": "OFF",
 
+                "FMT_MODULE": "OFF",
                 "VULKAN_HEADERS_ENABLE_INSTALL": "ON",
                 "ENTT_INCLUDE_HEADERS": "ON",
 
