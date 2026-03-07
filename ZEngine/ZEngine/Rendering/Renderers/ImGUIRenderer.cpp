@@ -44,7 +44,7 @@ namespace ZEngine::Rendering::Renderers
 
         io.ConfigFlags         |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags         |= ImGuiConfigFlags_DockingEnable;
-        io.ConfigFlags         |= ImGuiConfigFlags_ViewportsEnable;
+        // io.ConfigFlags         |= ImGuiConfigFlags_ViewportsEnable;
 
         auto& style             = ImGui::GetStyle();
         style.WindowBorderSize  = 0.f;
