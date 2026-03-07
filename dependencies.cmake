@@ -4,7 +4,7 @@ FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
   GIT_SHALLOW TRUE
-    )
+  )
 
 FetchContent_Declare(
   imgui
@@ -47,7 +47,7 @@ FetchContent_Declare(
   EnTT 
   GIT_REPOSITORY https://github.com/skypjack/entt.git
   GIT_SHALLOW TRUE 
-  GIT_TAG main
+  GIT_TAG v3.16.0
   )
 
 FetchContent_Declare(

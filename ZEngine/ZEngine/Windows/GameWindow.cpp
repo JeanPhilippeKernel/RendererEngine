@@ -7,7 +7,6 @@
 #include <Logging/LoggerDefinition.h>
 
 #ifdef _WIN32
-#define GLFW_EXPOSE_NATIVE_WIN32
 
 #include <ShObjIdl.h>
 #include <winrt/Windows.Foundation.Collections.h>

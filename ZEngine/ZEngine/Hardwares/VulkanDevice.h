@@ -589,7 +589,7 @@ namespace ZEngine::Hardwares
         VkSurfaceKHR                                                                                                        Surface                                     = VK_NULL_HANDLE;
         VkSurfaceFormatKHR                                                                                                  SurfaceFormat                               = {};
         VkPresentModeKHR                                                                                                    PresentMode                                 = {};
-        VkPhysicalDeviceProperties                                                                                          PhysicalDeviceProperties                    = {};
+        VkPhysicalDeviceProperties2                                                                                         PhysicalDeviceProperties                    = {};
         VkPhysicalDeviceDescriptorIndexingProperties                                                                        PhysicalDeviceDescriptorIndexingProperties  = {};
         VkDevice                                                                                                            LogicalDevice                               = VK_NULL_HANDLE;
         VkPhysicalDevice                                                                                                    PhysicalDevice                              = VK_NULL_HANDLE;

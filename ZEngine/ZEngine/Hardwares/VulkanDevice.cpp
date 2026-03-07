@@ -187,13 +187,11 @@ namespace ZEngine::Hardwares
             VkPhysicalDeviceDescriptorIndexingProperties indexing_properties = {};
             indexing_properties.sType                                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES;
 
-            VkPhysicalDeviceProperties  physical_device_properties;
-            VkPhysicalDeviceProperties2 physical_device_properties2 = {};
-            physical_device_properties2.sType                       = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-            physical_device_properties2.pNext                       = &indexing_properties;
+            VkPhysicalDeviceProperties2 physical_device_properties           = {};
+            physical_device_properties.sType                                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            physical_device_properties.pNext                                 = &indexing_properties;
 
-            vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
-            vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties2);
+            vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties);
 
             VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {};
             descriptor_indexing_features.sType                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
@@ -202,7 +200,7 @@ namespace ZEngine::Hardwares
             physical_device_feature.pNext                                           = &descriptor_indexing_features;
             vkGetPhysicalDeviceFeatures2(physical_device, &physical_device_feature);
 
-            if (/*(physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && */ ((physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
+            if (/*(physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && */ ((physical_device_properties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
                 PhysicalDevice                             = physical_device;
                 PhysicalDeviceProperties                   = physical_device_properties;
@@ -304,16 +302,12 @@ namespace ZEngine::Hardwares
         device_create_info.pQueueCreateInfos                                                    = queue_create_info_collection.data();
         device_create_info.enabledExtensionCount                                                = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
         device_create_info.ppEnabledExtensionNames                                              = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
-        device_create_info.pEnabledFeatures                                                     = nullptr;
 
         VkPhysicalDeviceDescriptorIndexingFeatures physical_device_descriptor_indexing_features = {};
         physical_device_descriptor_indexing_features.sType                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
         VkPhysicalDeviceFeatures2 device_features_2                                             = {};
         device_features_2.sType                                                                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features_2.features.drawIndirectFirstInstance                                    = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
-        device_features_2.features.multiDrawIndirect                                            = PhysicalDeviceFeature.features.multiDrawIndirect;
-        device_features_2.features.samplerAnisotropy                                            = PhysicalDeviceFeature.features.samplerAnisotropy;
-        device_features_2.features.shaderInt64                                                  = PhysicalDeviceFeature.features.shaderInt64;
+        device_features_2.features                                                              = PhysicalDeviceFeature.features;
 
         if (PhysicalDeviceSupportSampledImageBindless || PhysicalDeviceSupportStorageBufferBindless)
         {
@@ -696,24 +690,24 @@ namespace ZEngine::Hardwares
 
     VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDevice::__debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
     {
-        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        if ((messageSeverity & static_cast<decltype(messageSeverity)>(VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
         {
             ZENGINE_CORE_ERROR("{}", pCallbackData->pMessage)
         }
 
-        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        if ((messageSeverity & static_cast<decltype(messageSeverity)>(VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
         {
             ZENGINE_CORE_WARN("{}", pCallbackData->pMessage)
         }
 
-        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+        if ((messageSeverity & static_cast<decltype(messageSeverity)>(VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT)) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT)
         {
-            ZENGINE_CORE_WARN("{}", pCallbackData->pMessage)
+            ZENGINE_CORE_TRACE("{}", pCallbackData->pMessage)
         }
 
-        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) == VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)
+        if ((messageSeverity & static_cast<decltype(messageSeverity)>(VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)) == VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
         {
-            ZENGINE_CORE_WARN("{}", pCallbackData->pMessage)
+            ZENGINE_CORE_INFO("{}", pCallbackData->pMessage)
         }
 
         return VK_FALSE;
@@ -936,6 +930,8 @@ namespace ZEngine::Hardwares
                 dst_access_mask    = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
                 dst_pipeline_stage = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
                 break;
+            case UNKNOWN:
+                break;
         }
 
         VkBufferMemoryBarrier bufMemBarrier2 = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
@@ -999,7 +995,7 @@ namespace ZEngine::Hardwares
         sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.features.samplerAnisotropy;
-        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.limits.maxSamplerAnisotropy : 1.0f;
+        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.properties.limits.maxSamplerAnisotropy : 1.0f;
         sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         sampler_create_info.unnormalizedCoordinates = VK_FALSE;
         sampler_create_info.compareEnable           = VK_FALSE;
@@ -1237,6 +1233,8 @@ namespace ZEngine::Hardwares
                                 vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Data1), 1, &ds);
                                 break;
                             }
+                            case DeviceResourceType::RESOURCE_COUNT:
+                                break;
                         }
 
                         DirtyResources.Remove(handle);
@@ -2085,7 +2083,7 @@ namespace ZEngine::Hardwares
 
     void Image2DBuffer::Dispose()
     {
-        if (this && m_buffer_image)
+        if (m_buffer_image)
         {
             Device->EnqueueBufferImageForDeletion(m_buffer_image);
             m_buffer_image = {};
@@ -2222,6 +2220,8 @@ namespace ZEngine::Hardwares
                 case BufferType::INDIRECT:
                     dst_access_mask    = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
                     dst_pipeline_stage = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+                    break;
+                case UNKNOWN:
                     break;
             }
 
