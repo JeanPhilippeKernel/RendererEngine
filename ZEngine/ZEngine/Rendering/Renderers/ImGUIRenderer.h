@@ -10,6 +10,7 @@ namespace ZEngine::Rendering::Renderers
         float    Scale[2]     = {0};
         float    Translate[2] = {0};
         uint32_t TextureId    = 0xFFFFFFFFu;
+        uint32_t padding      = 0xFFFFFFFFu;
     };
 
     struct ImGUIRenderer : public IRenderer

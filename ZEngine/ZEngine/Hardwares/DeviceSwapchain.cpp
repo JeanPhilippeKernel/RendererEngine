@@ -18,6 +18,9 @@ namespace ZEngine::Hardwares
 
         Device                                                           = device;
 
+        BufferredFrameCount                                              = buffered_frame_size;
+        FrameContextPoolSize                                             = BufferredFrameCount * FrameContextPoolSizeFactor;
+
         Specifications::AttachmentSpecification attachment_specification = {.BindPoint = Specifications::PipelineBindPoint::GRAPHIC};
         attachment_specification.ColorsMap.init(&Arena, 2);
         attachment_specification.ColorsMap[0]                 = {};
@@ -28,15 +31,15 @@ namespace ZEngine::Hardwares
         attachment_specification.ColorsMap[0].Final           = ImageLayout::PRESENT_SRC;
         attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
         SwapchainAttachment                                   = ZPushStructCtorArgs(&Arena, RenderPasses::Attachment, Device, attachment_specification);
-        BufferredFrameCount                                   = buffered_frame_size;
-        IdleFrameThreshold.store(BufferredFrameCount * 3 * 3, std::memory_order_release);
-        FrameContexts.init(&Arena, BufferredFrameCount, BufferredFrameCount);
 
-        for (uint32_t i = 0; i < BufferredFrameCount; ++i)
+        IdleFrameThreshold.store(BufferredFrameCount * 3 * 3 * 3, std::memory_order_release);
+        FrameContexts.init(&Arena, FrameContextPoolSize, FrameContextPoolSize);
+
+        for (uint32_t i = 0; i < FrameContextPoolSize; ++i)
         {
             auto& frame    = FrameContexts[i];
 
-            frame.Index    = i;
+            frame.Index    = (i % BufferredFrameCount);
             frame.Acquired = ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device);
             frame.Fence    = ZPushStructCtorArgs(&Arena, Primitives::Fence, Device, true);
         }
@@ -107,24 +110,33 @@ namespace ZEngine::Hardwares
         {
             SwapchainFramebuffers.init(&Arena, SwapchainImageCount, SwapchainImageCount);
         }
+
+        scratch                         = ZGetScratch(&Arena);
+
+        Array<VkImage> swapchain_images = {};
+        swapchain_images.init(scratch.Arena, SwapchainImageCount, SwapchainImageCount);
+        ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(Device->LogicalDevice, SwapchainHandle, &SwapchainImageCount, swapchain_images.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
+        for (int i = 0; i < SwapchainImageCount; ++i)
+        {
+            SwapchainImageViews[i] = Device->CreateImageView(swapchain_images[i], Device->SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+
+            Array<VkImageView> fb_images_views;
+            fb_images_views.init(scratch.Arena, 1);
+            fb_images_views.push(SwapchainImageViews[i]);
+            SwapchainFramebuffers[i] = Device->CreateFramebuffer(ArrayView{fb_images_views}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
+        }
+
+        ZReleaseScratch(scratch);
     }
 
     void DeviceSwapchain::Clear()
     {
-        for (VkImageView image_view : SwapchainImageViews)
+        for (uint32_t i = 0; i < SwapchainImageCount; ++i)
         {
-            if (image_view)
-            {
-                Device->EnqueueForDeletion(DeviceResourceType::IMAGEVIEW, image_view);
-            }
-        }
-
-        for (VkFramebuffer framebuffer : SwapchainFramebuffers)
-        {
-            if (framebuffer)
-            {
-                Device->EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, framebuffer);
-            }
+            Device->EnqueueForDeletion(DeviceResourceType::IMAGEVIEW, SwapchainImageViews[i]);
+            Device->EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, SwapchainFramebuffers[i]);
+            SwapchainImageViews[i]   = VK_NULL_HANDLE;
+            SwapchainFramebuffers[i] = VK_NULL_HANDLE;
         }
 
         for (uint32_t i = 0; i < SwapchainImageCount; ++i)
@@ -147,6 +159,17 @@ namespace ZEngine::Hardwares
     {
         if (HasRecreationPending)
         {
+            /*
+             * On macOS:
+             * Because of ASYNCHRONOUS communication between MoltenVK and Metal:
+             * 1. vkDeviceWaitIdle() only guarantees Vulkan sees GPU idle
+             * 2. Metal's CAMetalLayer may still have pending present operations
+             * 3. Semaphores can appear "stuck" in Submitted state due to Metal async completion
+             *
+             * Pool of BufferredFrameCount * 4 = 12 contexts rotates every resize.
+             * Skipping 3 ensures we land on fully Idle semaphores/fences even under Metal async.
+             *
+             */
 #ifdef __APPLE__
             vkDeviceWaitIdle(Device->LogicalDevice);
 #endif
@@ -157,26 +180,23 @@ namespace ZEngine::Hardwares
                     ImageInFlights[i]->Wait(UINT64_MAX);
                 }
             }
-            Clear();
-            Create();
-            AsPresentSource();
 
-            for (auto& frame : FrameContexts)
+            for (int i = 0; i < FrameContextPoolSizeFactor; ++i)
             {
-                *(frame.Fence) = Rendering::Primitives::Fence(Device, true);
+                FrameContext& frame = FrameContexts[i + FrameContextOffset];
                 frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
             }
+
+            FrameContextOffset = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
+            Clear();
+            Create();
 
             HasRecreationPending = false;
             ZENGINE_CORE_WARN("Swapchain has been re-created")
         }
 
-        FrameContext& frame = FrameContexts[frame_context_idx];
+        FrameContext& frame = FrameContexts[frame_context_idx + FrameContextOffset];
 
-        if (!(frame.Fence)->IsSignaled())
-        {
-            frame.Fence->Wait(UINT64_MAX);
-        }
         frame.Fence->Reset();
 
         ZENGINE_VALIDATE_ASSERT(frame.Acquired->GetState() != Primitives::SemaphoreState::Submitted, "")
@@ -207,43 +227,25 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::AsPresentSource()
     {
-        auto           command_buffer_info = Device->CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, (CurrentFrame == nullptr) ? 0u : CurrentFrame->Index, 0, 2, true);
+        // auto           command_buffer_info = Device->CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, (CurrentFrame == nullptr) ? 0u : CurrentFrame->Index, 0, 2, true);
 
-        auto           scratch             = ZGetScratch(&Arena);
+        // for (int i = 0; i < SwapchainImages.size(); ++i)
+        // {
+        //     Rendering::Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
+        //     barrier_spec.ImageHandle                                                = SwapchainImages[i];
+        //     barrier_spec.OldLayout                                                  = Specifications::ImageLayout::UNDEFINED;
+        //     barrier_spec.NewLayout                                                  = Specifications::ImageLayout::PRESENT_SRC;
+        //     barrier_spec.ImageAspectMask                                            = VK_IMAGE_ASPECT_COLOR_BIT;
+        //     barrier_spec.SourceAccessMask                                           = 0;
+        //     barrier_spec.DestinationAccessMask                                      = VK_ACCESS_MEMORY_READ_BIT;
+        //     barrier_spec.SourceStageMask                                            = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        //     barrier_spec.DestinationStageMask                                       = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        //     barrier_spec.LayerCount                                                 = 1;
 
-        Array<VkImage> SwapchainImages     = {};
-        SwapchainImages.init(scratch.Arena, SwapchainImageCount, SwapchainImageCount);
-        ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(Device->LogicalDevice, SwapchainHandle, &SwapchainImageCount, SwapchainImages.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
-
-        for (int i = 0; i < SwapchainImages.size(); ++i)
-        {
-            Rendering::Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
-            barrier_spec.ImageHandle                                                = SwapchainImages[i];
-            barrier_spec.OldLayout                                                  = Specifications::ImageLayout::UNDEFINED;
-            barrier_spec.NewLayout                                                  = Specifications::ImageLayout::PRESENT_SRC;
-            barrier_spec.ImageAspectMask                                            = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier_spec.SourceAccessMask                                           = 0;
-            barrier_spec.DestinationAccessMask                                      = VK_ACCESS_MEMORY_READ_BIT;
-            barrier_spec.SourceStageMask                                            = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            barrier_spec.DestinationStageMask                                       = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            barrier_spec.LayerCount                                                 = 1;
-
-            Rendering::Primitives::ImageMemoryBarrier barrier{barrier_spec};
-            command_buffer_info.Buffer->TransitionImageLayout(barrier);
-        }
-        Device->CommandBufferMgr->EndInstantCommandBuffer(command_buffer_info);
-
-        for (int i = 0; i < SwapchainImageCount; ++i)
-        {
-            SwapchainImageViews[i] = Device->CreateImageView(SwapchainImages[i], Device->SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
-
-            Array<VkImageView> fb_images_views;
-            fb_images_views.init(scratch.Arena, 1);
-            fb_images_views.push(SwapchainImageViews[i]);
-            SwapchainFramebuffers[i] = Device->CreateFramebuffer(ArrayView{fb_images_views}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
-        }
-
-        ZReleaseScratch(scratch);
+        //     Rendering::Primitives::ImageMemoryBarrier barrier{barrier_spec};
+        //     command_buffer_info.Buffer->TransitionImageLayout(barrier);
+        // }
+        // Device->CommandBufferMgr->EndInstantCommandBuffer(command_buffer_info);
     }
 
     void DeviceSwapchain::Present()
@@ -336,6 +338,8 @@ namespace ZEngine::Hardwares
 
         CurrentFrame->Acquired->SetState(Rendering::Primitives::SemaphoreState::Idle);
 
+        IdleFrameCount.fetch_add(1);
+
         if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
         {
             HasRecreationPending = true;
@@ -346,7 +350,5 @@ namespace ZEngine::Hardwares
         }
 
         ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS || present_result == VK_SUBOPTIMAL_KHR, "Failed to present current frame on Window")
-
-        IdleFrameCount.fetch_add(1);
     }
 } // namespace ZEngine::Hardwares

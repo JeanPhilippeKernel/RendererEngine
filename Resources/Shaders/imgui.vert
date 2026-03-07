@@ -8,6 +8,7 @@ layout(push_constant) uniform uPushConstant
     vec2 uScale;
     vec2 uTranslate;
     uint index;
+    uint _padding;
 }
 pc;
 
