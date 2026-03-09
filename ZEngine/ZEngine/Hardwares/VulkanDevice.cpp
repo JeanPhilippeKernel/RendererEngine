@@ -417,11 +417,6 @@ namespace ZEngine::Hardwares
         CommandBufferMgr->Initialize(this, SwapchainPtr->BufferredFrameCount);
 
         /*
-         * Transition image layout as Present src
-         */
-        SwapchainPtr->AsPresentSource();
-
-        /*
          * Creating Global Descriptor Pool for : Textures
          */
         MaxGlobalTexture = std::min(MaxGlobalTexture, PhysicalDeviceDescriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers - 1);

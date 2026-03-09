@@ -34,6 +34,9 @@ namespace ZEngine::Hardwares
 
         uint32_t                                                   SwapchainImageWidth            = std::numeric_limits<uint32_t>::max();
         uint32_t                                                   SwapchainImageHeight           = std::numeric_limits<uint32_t>::max();
+        uint32_t                                                   FrameContextOffset             = 0;
+        uint32_t                                                   FrameContextPoolSize           = 0;
+        const uint32_t                                             FrameContextPoolSizeFactor     = 4;
         // Todo Convert atomic_uint as PaddedAtomic..
         std::atomic_uint                                           IdleFrameCount                 = 0;
         std::atomic_uint                                           IdleFrameThreshold             = std::numeric_limits<uint32_t>::max();
