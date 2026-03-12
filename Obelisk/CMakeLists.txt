@@ -53,9 +53,6 @@ install(TARGETS ${TARGET_NAME}
     DESTINATION bin
 )
 
-install(DIRECTORY ../Resources/Editor/Settings DESTINATION bin)
-
-install(DIRECTORY ../Resources/Shaders DESTINATION bin)
 
 
 
