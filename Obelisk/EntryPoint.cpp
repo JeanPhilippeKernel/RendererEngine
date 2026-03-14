@@ -1,10 +1,9 @@
 #include <CLI/CLI.hpp>
+#include <Tetragrama/Editor.h>
+#include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Logging/Logger.h>
-#include <ZEngine/Applications/GameApplication.h>
-
-#include <Tetragrama/Editor.h>
 
 #ifdef ZENGINE_PLATFORM
 
@@ -23,11 +22,9 @@ int applicationEntryPoint(int argc, char* argv[])
     LoggerConfiguration logger_cfg = {};
     Logger::Initialize(arena, logger_cfg);
 
-
     GameApplicationPtr app = nullptr;
 
-
-    CLI::App cli{"ObeliskCLI"};
+    CLI::App           cli{"ObeliskCLI"};
     argv                      = cli.ensure_utf8(argv);
 
     std::string config_file   = "";
@@ -37,10 +34,9 @@ int applicationEntryPoint(int argc, char* argv[])
 
     CLI11_PARSE(cli, argc, argv);
 
-
     if (launch_editor)
     {
-        app = ZPushStructCtor(arena, Tetragrama::Editor);    
+        app                      = ZPushStructCtor(arena, Tetragrama::Editor);
         app->EnableRenderOverlay = true;
     }
 

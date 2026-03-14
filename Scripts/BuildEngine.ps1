@@ -181,7 +181,8 @@ if(-Not $LauncherOnly) {
         [string]$clangFormatScript = Join-Path $PSScriptRoot -ChildPath "ClangFormat.ps1"
         [string[]]$srcDirectories = @(
             (Join-Path $repositoryRootPath -ChildPath "ZEngine"),
-            (Join-Path $repositoryRootPath -ChildPath "Tetragrama")
+            (Join-Path $repositoryRootPath -ChildPath "Obelisk"),
+            (Join-Path $repositoryRootPath -ChildPath "Tetragrama"),
             (Join-Path $repositoryRootPath -ChildPath "Resources/Shaders")
         )
     

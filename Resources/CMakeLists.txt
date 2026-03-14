@@ -31,10 +31,15 @@ foreach(FragmentShader ${FragmentShaders})
     cmake_path(APPEND ShaderOutputPath ${FragmentShaderOutputFileName} OUTPUT_VARIABLE FragmentShaderOutputPath)
 
 
-    add_custom_target("Compile-${shaderfilename}-fragment" ALL COMMAND glslang-standalone "-V" "-I${ShaderPath}" "-o" "${FragmentShaderOutputPath}" "${FragmentShader}")
+    add_custom_target("Compile-${shaderfilename}-fragment" ALL COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags}  "-o" "${FragmentShaderOutputPath}" "${FragmentShader}")
 
 endforeach()
 
 install(DIRECTORY Editor/Settings DESTINATION bin)
-
 install(DIRECTORY Shaders/Cache DESTINATION bin/Shaders)
+
+# This helps for debugging and development
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  install(DIRECTORY Editor/Settings DESTINATION Obelisk/${CMAKE_BUILD_TYPE})
+  install(DIRECTORY Shaders/Cache DESTINATION Obelisk/${CMAKE_BUILD_TYPE}/Shaders)
+endif()
