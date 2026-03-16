@@ -271,7 +271,7 @@ namespace ZEngine::Rendering::Shaders
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
                 Helpers::secure_strcpy(name_c_str, name_c_size, SI_resource.name.c_str());
 
-                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::COMBINED_IMAGE_SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::SAMPLED_IMAGE, .Flags = ShaderStageFlags::FRAGMENT});
             }
         }
     }

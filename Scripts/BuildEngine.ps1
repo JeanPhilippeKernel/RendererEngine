@@ -174,7 +174,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     }
 }
 
-
 if(-Not $LauncherOnly) {
 
     # Run Clang format
@@ -182,7 +181,8 @@ if(-Not $LauncherOnly) {
         [string]$clangFormatScript = Join-Path $PSScriptRoot -ChildPath "ClangFormat.ps1"
         [string[]]$srcDirectories = @(
             (Join-Path $repositoryRootPath -ChildPath "ZEngine"),
-            (Join-Path $repositoryRootPath -ChildPath "Tetragrama")
+            (Join-Path $repositoryRootPath -ChildPath "Obelisk"),
+            (Join-Path $repositoryRootPath -ChildPath "Tetragrama"),
             (Join-Path $repositoryRootPath -ChildPath "Resources/Shaders")
         )
     
@@ -193,13 +193,6 @@ if(-Not $LauncherOnly) {
                 Write-Error "Stopped build process..." -ErrorAction Stop
             }
         }
-    }
-
-
-    # Run Shader Compilation
-    foreach ($config in $Configurations) {
-        $shaderCompileScript = Join-Path $PSScriptRoot -ChildPath "ShaderCompile.ps1"
-        & pwsh -File $shaderCompileScript -Configuration:$config -ForceRebuild:$true
     }
 
     if ($LASTEXITCODE -ne 0) {

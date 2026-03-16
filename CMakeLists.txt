@@ -43,6 +43,10 @@ if (NOT LAUNCHER_ONLY)
     ## Setup Dependencies
     include(dependencies.cmake)
 
+    ## Compile Shaders
+
+    add_subdirectory (Resources)
+
 	# Core engine lib is here
 	#
 	add_subdirectory (ZEngine)

@@ -49,13 +49,4 @@ target_link_libraries(${TARGET_NAME} PUBLIC
 
 set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
 
-install(TARGETS ${TARGET_NAME} 
-    DESTINATION bin
-)
-
-install(DIRECTORY ../Resources/Editor/Settings DESTINATION bin)
-
-install(DIRECTORY ../Resources/Shaders DESTINATION bin)
-
-
-
+install(TARGETS ${TARGET_NAME} DESTINATION bin)

@@ -102,7 +102,6 @@ FetchContent_Declare(
     
 )
 
-
 FetchContent_Declare(
     SPIRV-Tools
     GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Tools.git
@@ -179,14 +178,14 @@ FetchContent_MakeAvailable(
   yaml-cpp
   VulkanMemoryAllocator
   SPIRV-Headers
-  SPIRV-Tools
-  glslang
   spirv_cross_core
-  GTest
   nlohmann_json
   tlsf
   CLI11
   rapidhash
+  SPIRV-Tools
+  glslang
+  GTest
   )
 
 set(IMGUIDIR ${FETCHCONTENT_BASE_DIR}/imgui)
@@ -240,7 +239,6 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     target_link_libraries(External_libs INTERFACE SPIRV-Tools-static)
 else()
     target_link_libraries(External_libs INTERFACE SPIRV-Tools)
-
 endif()
 
 
@@ -261,7 +259,6 @@ target_link_libraries(External_libs
          glslang::glslang
          glslang::glslang-default-resource-limits
          glslang::SPIRV
-         glslang::SPVRemapper
          GPUOpen::VulkanMemoryAllocator 
          nlohmann_json::nlohmann_json
 )

@@ -419,20 +419,22 @@ namespace ZEngine::Hardwares
         /*
          * Creating Global Descriptor Pool for : Textures
          */
-        MaxGlobalTexture = std::min(MaxGlobalTexture, PhysicalDeviceDescriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers - 1);
+        MaxGlobalTexture = std::min(MaxGlobalTexture, PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
 
         GlobalTextures.Initialize(Arena, MaxGlobalTexture);
         Image2DBufferManager.Initialize(Arena, MaxGlobalTexture);
         ShaderReservedLayoutBindingSpecificationMap.init(Arena, 1);
 
-        ShaderReservedLayoutBindingSpecificationMap[1].init(Arena, 1);
-        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 0, .Count = MaxGlobalTexture, .Name = "TextureArray", .DescriptorTypeValue = DescriptorType::COMBINED_IMAGE_SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
+        ShaderReservedLayoutBindingSpecificationMap[1].init(Arena, 2);
+        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 0, .Count = MaxGlobalTexture, .Name = "TextureArray", .DescriptorTypeValue = DescriptorType::SAMPLED_IMAGE, .Flags = ShaderStageFlags::FRAGMENT});
+        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 1, .Count = 1, .Name = "LinearWrapSampler", .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
 
         ShaderReservedDescriptorSetMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
         ShaderReservedDescriptorSetLayoutMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
 
         VkDescriptorPoolSize pool_sizes[] = {
-            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = (MaxGlobalTexture * SwapchainPtr->BufferredFrameCount)}
+            {.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = (MaxGlobalTexture * SwapchainPtr->BufferredFrameCount)},
+            {.type = VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount = (1 * SwapchainPtr->BufferredFrameCount)}
         };
 
         for (const auto& layout_binding_set : ShaderReservedLayoutBindingSpecificationMap)
@@ -985,7 +987,7 @@ namespace ZEngine::Hardwares
         VkSamplerCreateInfo sampler_create_info     = {};
         sampler_create_info.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         sampler_create_info.minFilter               = VK_FILTER_LINEAR;
-        sampler_create_info.magFilter               = VK_FILTER_NEAREST;
+        sampler_create_info.magFilter               = VK_FILTER_LINEAR;
         sampler_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
