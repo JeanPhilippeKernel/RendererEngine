@@ -307,7 +307,9 @@ namespace ZEngine::Hardwares
         physical_device_descriptor_indexing_features.sType                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
         VkPhysicalDeviceFeatures2 device_features_2                                             = {};
         device_features_2.sType                                                                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features_2.features                                                              = PhysicalDeviceFeature.features;
+        device_features_2.features.drawIndirectFirstInstance                                    = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
+        device_features_2.features.multiDrawIndirect                                            = PhysicalDeviceFeature.features.multiDrawIndirect;
+        device_features_2.features.samplerAnisotropy                                            = PhysicalDeviceFeature.features.samplerAnisotropy;
 
         if (PhysicalDeviceSupportSampledImageBindless || PhysicalDeviceSupportStorageBufferBindless)
         {
@@ -417,9 +419,29 @@ namespace ZEngine::Hardwares
         CommandBufferMgr->Initialize(this, SwapchainPtr->BufferredFrameCount);
 
         /*
-         * Creating Global Descriptor Pool for : Textures
+         * Creating Global Descriptor Pool for : Textures, Samplers
          */
-        MaxGlobalTexture = std::min(MaxGlobalTexture, PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
+        VkSamplerCreateInfo sampler_create_info     = {};
+        sampler_create_info.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler_create_info.minFilter               = VK_FILTER_LINEAR;
+        sampler_create_info.magFilter               = VK_FILTER_LINEAR;
+        sampler_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.features.samplerAnisotropy;
+        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.properties.limits.maxSamplerAnisotropy : 1.0f;
+        sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        sampler_create_info.unnormalizedCoordinates = VK_FALSE;
+        sampler_create_info.compareEnable           = VK_FALSE;
+        sampler_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sampler_create_info.mipLodBias              = 0.0f;
+        sampler_create_info.minLod                  = 0.0f;
+        sampler_create_info.maxLod                  = VK_LOD_CLAMP_NONE;
+
+        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(LogicalDevice, &sampler_create_info, nullptr, &GlobalLinearWrapSampler) == VK_SUCCESS, "Failed to create Texture Sampler")
+
+        GlobalLinearWrapSamplerImageInfo = VkDescriptorImageInfo{.sampler = GlobalLinearWrapSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        MaxGlobalTexture                 = std::min(MaxGlobalTexture, PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
 
         GlobalTextures.Initialize(Arena, MaxGlobalTexture);
         Image2DBufferManager.Initialize(Arena, MaxGlobalTexture);
@@ -434,7 +456,7 @@ namespace ZEngine::Hardwares
 
         VkDescriptorPoolSize pool_sizes[] = {
             {.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = (MaxGlobalTexture * SwapchainPtr->BufferredFrameCount)},
-            {.type = VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount = (1 * SwapchainPtr->BufferredFrameCount)}
+            {      .type = VK_DESCRIPTOR_TYPE_SAMPLER,                .descriptorCount = (1 * SwapchainPtr->BufferredFrameCount)}
         };
 
         for (const auto& layout_binding_set : ShaderReservedLayoutBindingSpecificationMap)
@@ -581,11 +603,13 @@ namespace ZEngine::Hardwares
             __destroyDebugMessengerPtr = nullptr;
             __createDebugMessengerPtr  = nullptr;
         }
+        vkDestroySampler(LogicalDevice, GlobalLinearWrapSampler, nullptr);
         vkDestroyDevice(LogicalDevice, nullptr);
         vkDestroyInstance(Instance, nullptr);
 
-        LogicalDevice = VK_NULL_HANDLE;
-        Instance      = VK_NULL_HANDLE;
+        GlobalLinearWrapSampler = VK_NULL_HANDLE;
+        LogicalDevice           = VK_NULL_HANDLE;
+        Instance                = VK_NULL_HANDLE;
     }
 
     bool VulkanDevice::QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, Rendering::Primitives::Fence* const fence)
@@ -726,7 +750,7 @@ namespace ZEngine::Hardwares
             switch (res_handle.Type)
             {
                 case Rendering::DeviceResourceType::SAMPLER:
-                    vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
+                    // vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
                     break;
                 case Rendering::DeviceResourceType::FRAMEBUFFER:
                     vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
@@ -810,7 +834,7 @@ namespace ZEngine::Hardwares
             BufferImage& buffer = DirtyBufferImages[handle];
 
             vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
-            vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
+            // vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
             vmaDestroyImage(VmaAllocatorValue, buffer.Handle, buffer.Allocation);
 
             DirtyBufferImages.Remove(handle);
@@ -972,39 +996,12 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vmaCreateImage(VmaAllocatorValue, &image_create_info, &allocation_create_info, &(buffer_image.Handle), &(buffer_image.Allocation), nullptr) == VK_SUCCESS, "Failed to create buffer");
 
         buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_view_type, image_aspect_flag, layer_count);
-        buffer_image.Sampler    = CreateImageSampler();
+        // buffer_image.Sampler    = GlobalLinearWrapSampler;
 
         // Metadata info
         buffer_image.FrameIndex = SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index;
 
         return buffer_image;
-    }
-
-    VkSampler VulkanDevice::CreateImageSampler()
-    {
-        VkSampler           sampler{VK_NULL_HANDLE};
-
-        VkSamplerCreateInfo sampler_create_info     = {};
-        sampler_create_info.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        sampler_create_info.minFilter               = VK_FILTER_LINEAR;
-        sampler_create_info.magFilter               = VK_FILTER_LINEAR;
-        sampler_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.features.samplerAnisotropy;
-        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.properties.limits.maxSamplerAnisotropy : 1.0f;
-        sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-        sampler_create_info.unnormalizedCoordinates = VK_FALSE;
-        sampler_create_info.compareEnable           = VK_FALSE;
-        sampler_create_info.compareOp               = VK_COMPARE_OP_ALWAYS;
-        sampler_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        sampler_create_info.mipLodBias              = 0.0f;
-        sampler_create_info.minLod                  = -1000.0f;
-        sampler_create_info.maxLod                  = 1000.0f;
-
-        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(LogicalDevice, &sampler_create_info, nullptr, &sampler) == VK_SUCCESS, "Failed to create Texture Sampler")
-
-        return sampler;
     }
 
     VkFormat VulkanDevice::FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags)
@@ -1186,7 +1183,7 @@ namespace ZEngine::Hardwares
                         switch (res_handle.Type)
                         {
                             case Rendering::DeviceResourceType::SAMPLER:
-                                vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
+                                // vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
                                 break;
                             case Rendering::DeviceResourceType::FRAMEBUFFER:
                                 vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
@@ -1279,7 +1276,7 @@ namespace ZEngine::Hardwares
                     if (buffer && buffer.FrameIndex == SwapchainPtr->CurrentFrame->Index)
                     {
                         vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
-                        vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
+                        // vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
                         vmaDestroyImage(VmaAllocatorValue, buffer.Handle, buffer.Allocation);
                         buffer.Handle     = VK_NULL_HANDLE;
                         buffer.Allocation = VK_NULL_HANDLE;

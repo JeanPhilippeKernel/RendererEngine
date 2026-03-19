@@ -595,9 +595,10 @@ namespace ZEngine::Hardwares
         VkPhysicalDevice                                                                                                    PhysicalDevice                              = VK_NULL_HANDLE;
         VkPhysicalDeviceFeatures2                                                                                           PhysicalDeviceFeature                       = {};
         VkPhysicalDeviceMemoryProperties                                                                                    PhysicalDeviceMemoryProperties              = {};
-
+        VkSampler                                                                                                           GlobalLinearWrapSampler                     = VK_NULL_HANDLE;
         VkDescriptorPool                                                                                                    GlobalDescriptorPoolHandle                  = VK_NULL_HANDLE;
         VmaAllocator                                                                                                        VmaAllocatorValue                           = nullptr;
+        VkDescriptorImageInfo                                                                                               GlobalLinearWrapSamplerImageInfo            = {};
         CommandBufferManagerPtr                                                                                             CommandBufferMgr                            = {};
         DeviceSwapchainPtr                                                                                                  SwapchainPtr                                = {};
         Core::Containers::Array<VkFormat>                                                                                   DefaultDepthFormats                         = {};
@@ -642,7 +643,6 @@ namespace ZEngine::Hardwares
         BufferView                                                                                                          CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags = 0);
         void                                                                                                                CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset = 0u, VkDeviceSize dst_buffer_offset = 0u);
         BufferImage                                     CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, VkImageCreateFlags image_create_flag_bit = 0);
-        VkSampler                                       CreateImageSampler();
         VkFormat                                        FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
         VkFormat                                        FindDepthFormat();
         VkImageView                                     CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);

@@ -10,6 +10,7 @@ namespace ZEngine::Hardwares
 
     struct UpdateTextureRequest
     {
+        uint32_t                           FrameOwnerIndex = 0;
         Rendering::Textures::TextureHandle Handle;
         Rendering::Textures::Texture*      Texture;
     };

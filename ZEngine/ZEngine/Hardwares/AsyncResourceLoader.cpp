@@ -65,21 +65,18 @@ namespace ZEngine::Hardwares
         tex_file_req.Handle                   = Device->CreateTexture(tex_file_req.TextureSpec);
 
         m_file_requests.Enqueue(tex_file_req);
-        m_cond.notify_one();
 
         return tex_file_req.Handle;
     }
 
     void AsyncResourceLoader::Run()
     {
-        while (true)
+        while (m_cancellation_token.load(std::memory_order_acquire) == false)
         {
-            std::unique_lock l(m_mutex);
-            m_cond.wait(l, [this] { return !m_file_requests.Empty() || !m_update_texture_request.Empty() || !m_upload_requests.Empty() || m_cancellation_token.load() == true; });
-
-            if (m_cancellation_token.load() == true)
+            if (m_file_requests.Empty() && m_upload_requests.Empty() && m_update_texture_request.Empty())
             {
-                break;
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+                continue;
             }
 
             // Processing update requests
@@ -109,7 +106,7 @@ namespace ZEngine::Hardwares
                         barrier_spec_0.SourceQueueFamily                               = Device->TransferFamilyIndex;
                         barrier_spec_0.DestinationQueueFamily                          = Device->GraphicFamilyIndex;
                         Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-                        auto                           command_buffer_0 = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, Device->SwapchainPtr->CurrentFrame->Index, 0, 2, true);
+                        auto                           command_buffer_0 = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, tr.FrameOwnerIndex, 0, 2, true);
                         {
                             command_buffer_0.Buffer->TransitionImageLayout(barrier_0);
                             img_buf->Layout = barrier_spec_0.NewLayout;
@@ -134,7 +131,7 @@ namespace ZEngine::Hardwares
                     barrier_spec.DestinationQueueFamily                          = Device->GraphicFamilyIndex;
                     Primitives::ImageMemoryBarrier barrier{barrier_spec};
 
-                    auto                           command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, (Device->SwapchainPtr->CurrentFrame == nullptr ? 0u : Device->SwapchainPtr->CurrentFrame->Index), 0, 2, true);
+                    auto                           command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, tr.FrameOwnerIndex, 0, 2, true);
                     {
                         command_buffer.Buffer->TransitionImageLayout(barrier);
                         img_buf->Layout = barrier_spec.NewLayout;
@@ -151,12 +148,12 @@ namespace ZEngine::Hardwares
                 TextureUploadRequest upload_request;
                 if (m_upload_requests.Pop(upload_request))
                 {
-                    auto     texture        = Device->GlobalTextures.Access(upload_request.Handle);
-                    auto     img_buf        = Device->Image2DBufferManager.Access(texture->BufferHandle);
-                    uint32_t image_aspect   = (texture->Specification.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+                    auto     texture           = Device->GlobalTextures.Access(upload_request.Handle);
+                    auto     img_buf           = Device->Image2DBufferManager.Access(texture->BufferHandle);
+                    uint32_t image_aspect      = (texture->Specification.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
-                    // todo(jeanphilippekernel): we should weak acquire the frame index
-                    auto     command_buffer = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, (Device->SwapchainPtr->CurrentFrame == nullptr ? 0u : Device->SwapchainPtr->CurrentFrame->Index), 0, 2, true);
+                    uint32_t frame_owner_index = Device->SwapchainPtr->CurrentFrame ? Device->SwapchainPtr->CurrentFrame->Index : 0u;
+                    auto     command_buffer    = BufferManager->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, frame_owner_index, 0, 2, true);
                     {
                         auto                                            image_handle   = img_buf->GetHandle();
                         auto&                                           image_buffer   = img_buf->GetBuffer();
@@ -183,144 +180,142 @@ namespace ZEngine::Hardwares
                     }
                     BufferManager->EndInstantCommandBuffer(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
-                    UpdateTextureRequest tr = {.Handle = upload_request.Handle};
+                    UpdateTextureRequest tr = {.FrameOwnerIndex = frame_owner_index, .Handle = upload_request.Handle};
 
                     m_update_texture_request.Emplace(std::move(tr));
                 }
             }
 
             // Processing file requests
-            TextureFileRequest file_request;
-            if (m_file_requests.Pop(file_request))
+            if (m_file_requests.Size())
             {
-                TextureUploadRequest upload_req = {};
-
-                int                  width = 0, height = 0, channel = 0;
-                stbi_set_flip_vertically_on_load(1);
-
-                if (file_request.TextureSpec.IsCubemap)
+                TextureFileRequest file_request;
+                if (m_file_requests.Pop(file_request))
                 {
-                    const float* image_data = stbi_loadf(file_request.Filename.data(), &width, &height, &channel, 4);
-                    if (!image_data)
+                    TextureUploadRequest upload_req = {};
+
+                    int                  width = 0, height = 0, channel = 0;
+                    stbi_set_flip_vertically_on_load(1);
+
+                    if (file_request.TextureSpec.IsCubemap)
                     {
-                        ZENGINE_CORE_ERROR("Failed to load texture file : {0}", file_request.Filename.data())
-                        continue;
-                    }
-
-                    bool               perform_convert_rgb_to_rgba = (channel == STBI_rgb);
-
-                    std::vector<float> output_buffer               = {};
-                    if (perform_convert_rgb_to_rgba)
-                    {
-                        size_t total_pixel = width * height;
-                        size_t buffer_size = total_pixel * 4;
-                        output_buffer.resize(buffer_size);
-                        stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, 4);
-
-                        for (int i = 0; i < total_pixel; ++i)
+                        const float* image_data = stbi_loadf(file_request.Filename.data(), &width, &height, &channel, 4);
+                        if (!image_data)
                         {
-                            int offset = i * 4; // RGBA format (4 channels)
+                            ZENGINE_CORE_ERROR("Failed to load texture file : {0}", file_request.Filename.data())
+                            continue;
+                        }
 
-                            if (channel == 1)
+                        bool               perform_convert_rgb_to_rgba = (channel == STBI_rgb);
+
+                        std::vector<float> output_buffer               = {};
+                        if (perform_convert_rgb_to_rgba)
+                        {
+                            size_t total_pixel = width * height;
+                            size_t buffer_size = total_pixel * 4;
+                            output_buffer.resize(buffer_size);
+                            stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, 4);
+
+                            for (int i = 0; i < total_pixel; ++i)
                             {
-                                output_buffer[offset + 3] = 255;
-                            }
-                            else if (channel == 2)
-                            {
-                                output_buffer[offset + 3] = image_data[i * 2 + 1];
-                            }
-                            else if (channel == 3)
-                            {
-                                output_buffer[offset + 3] = 255;
+                                int offset = i * 4; // RGBA format (4 channels)
+
+                                if (channel == 1)
+                                {
+                                    output_buffer[offset + 3] = 255;
+                                }
+                                else if (channel == 2)
+                                {
+                                    output_buffer[offset + 3] = image_data[i * 2 + 1];
+                                }
+                                else if (channel == 3)
+                                {
+                                    output_buffer[offset + 3] = 255;
+                                }
                             }
                         }
-                    }
-                    else
-                    {
-                        size_t total_pixel = width * height;
-                        size_t buffer_size = total_pixel * channel;
-                        output_buffer.resize(buffer_size);
-                        Helpers::secure_memset(output_buffer.data(), 0.f, buffer_size, buffer_size);
-                    }
+                        else
+                        {
+                            size_t total_pixel = width * height;
+                            size_t buffer_size = total_pixel * channel;
+                            output_buffer.resize(buffer_size);
+                            Helpers::secure_memset(output_buffer.data(), 0.f, buffer_size, buffer_size);
+                        }
 
-                    stbi_image_free((void*) image_data);
+                        stbi_image_free((void*) image_data);
 
-                    Buffers::Bitmap in             = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};
-                    Buffers::Bitmap vertical_cross = Buffers::Bitmap::EquirectangularMapToVerticalCross(in);
-                    Buffers::Bitmap cubemap        = Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
+                        Buffers::Bitmap in             = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};
+                        Buffers::Bitmap vertical_cross = Buffers::Bitmap::EquirectangularMapToVerticalCross(in);
+                        Buffers::Bitmap cubemap        = Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
 
-                    // spec.Width                     = cubemap.Width;
-                    // spec.Height                    = cubemap.Height;
-                    size_t          buffer_size    = cubemap.Buffer.size();
-                    size_t          buffer_byte    = buffer_size * sizeof(uint8_t);
-                    upload_req.Buffer.resize(buffer_size);
-                    Helpers::secure_memmove(upload_req.Buffer.data(), buffer_byte, cubemap.Buffer.data(), buffer_byte);
-                }
-                else
-                {
-
-                    stbi_uc* image_data = stbi_load(file_request.Filename.data(), &width, &height, &channel, STBI_rgb_alpha);
-                    if (!image_data)
-                    {
-                        ZENGINE_CORE_ERROR("Failed to load texture file : {0}", file_request.Filename.data())
-                        continue;
-                    }
-
-                    bool perform_convert_rgb_to_rgba = (channel <= STBI_rgb);
-
-                    if (perform_convert_rgb_to_rgba)
-                    {
-                        size_t total_pixel = width * height;
-                        size_t buffer_size = total_pixel * 4;
+                        // spec.Width                     = cubemap.Width;
+                        // spec.Height                    = cubemap.Height;
+                        size_t          buffer_size    = cubemap.Buffer.size();
+                        size_t          buffer_byte    = buffer_size * sizeof(uint8_t);
                         upload_req.Buffer.resize(buffer_size);
-                        stbir_resize_uint8(image_data, width, height, 0, upload_req.Buffer.data(), width, height, 0, 4);
-
-                        for (int i = 0; i < total_pixel; ++i)
-                        {
-                            int offset = i * 4; // RGBA format (4 channels)
-
-                            if (channel == 1)
-                            {
-                                upload_req.Buffer[offset + 3] = 255;
-                            }
-                            else if (channel == 2)
-                            {
-                                upload_req.Buffer[offset + 3] = image_data[i * 2 + 1];
-                            }
-                            else if (channel == 3)
-                            {
-                                upload_req.Buffer[offset + 3] = 255;
-                            }
-                        }
+                        Helpers::secure_memmove(upload_req.Buffer.data(), buffer_byte, cubemap.Buffer.data(), buffer_byte);
                     }
                     else
                     {
-                        size_t total_pixel = width * height;
-                        size_t buffer_size = total_pixel * channel;
-                        upload_req.Buffer.resize(buffer_size, 0);
-                        Helpers::secure_memmove(upload_req.Buffer.data(), buffer_size, image_data, buffer_size);
+
+                        stbi_uc* image_data = stbi_load(file_request.Filename.data(), &width, &height, &channel, STBI_rgb_alpha);
+                        if (!image_data)
+                        {
+                            ZENGINE_CORE_ERROR("Failed to load texture file : {0}", file_request.Filename.data())
+                            continue;
+                        }
+
+                        bool perform_convert_rgb_to_rgba = (channel <= STBI_rgb);
+
+                        if (perform_convert_rgb_to_rgba)
+                        {
+                            size_t total_pixel = width * height;
+                            size_t buffer_size = total_pixel * 4;
+                            upload_req.Buffer.resize(buffer_size);
+                            stbir_resize_uint8(image_data, width, height, 0, upload_req.Buffer.data(), width, height, 0, 4);
+
+                            for (int i = 0; i < total_pixel; ++i)
+                            {
+                                int offset = i * 4; // RGBA format (4 channels)
+
+                                if (channel == 1)
+                                {
+                                    upload_req.Buffer[offset + 3] = 255;
+                                }
+                                else if (channel == 2)
+                                {
+                                    upload_req.Buffer[offset + 3] = image_data[i * 2 + 1];
+                                }
+                                else if (channel == 3)
+                                {
+                                    upload_req.Buffer[offset + 3] = 255;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            size_t total_pixel = width * height;
+                            size_t buffer_size = total_pixel * channel;
+                            upload_req.Buffer.resize(buffer_size, 0);
+                            Helpers::secure_memmove(upload_req.Buffer.data(), buffer_size, image_data, buffer_size);
+                        }
+
+                        stbi_image_free(image_data);
                     }
 
-                    stbi_image_free(image_data);
+                    upload_req.BufferSize  = (upload_req.Buffer.size() * sizeof(uint8_t));
+                    upload_req.Handle      = file_request.Handle;
+                    upload_req.TextureSpec = file_request.TextureSpec;
+
+                    m_upload_requests.Emplace(std::move(upload_req));
                 }
-
-                upload_req.BufferSize  = (upload_req.Buffer.size() * sizeof(uint8_t));
-                upload_req.Handle      = file_request.Handle;
-                upload_req.TextureSpec = file_request.TextureSpec;
-
-                m_upload_requests.Emplace(std::move(upload_req));
             }
         }
     }
 
     void AsyncResourceLoader::Shutdown()
     {
-        {
-            std::unique_lock l(m_mutex);
-            m_cancellation_token = true;
-        }
-        m_cond.notify_one();
-
+        m_cancellation_token.store(true, std::memory_order_release);
         BufferManager->Deinitialize();
     }
 } // namespace ZEngine::Hardwares

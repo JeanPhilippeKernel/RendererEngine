@@ -248,13 +248,69 @@ namespace ZEngine::Rendering::Shaders
 
                 if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
                 {
-                    const auto& binding_specifications = m_device->ShaderReservedLayoutBindingSpecificationMap[set];
-                    LayoutBindingSpecificationMap[set].init(m_device->Arena, binding_specifications.size(), binding_specifications.size());
-
-                    for (uint32_t i = 0; i < binding_specifications.size(); ++i)
+                    const auto&                binding_specifications = m_device->ShaderReservedLayoutBindingSpecificationMap.at(set);
+                    LayoutBindingSpecification binding_spec           = {};
+                    for (size_t i = 0; i < binding_specifications.size(); ++i)
                     {
-                        LayoutBindingSpecificationMap[set][i] = binding_specifications[i];
+                        const auto& spec = binding_specifications[i];
+                        if (Helpers::secure_strcmp(spec.Name, SI_resource.name.c_str()) == 0)
+                        {
+                            binding_spec = spec;
+                            break;
+                        }
                     }
+
+                    if (LayoutBindingSpecificationMap[set].capacity() <= 0)
+                    {
+                        LayoutBindingSpecificationMap[set].init(m_device->Arena, 2);
+                    }
+
+                    LayoutBindingSpecificationMap[set].push(std::move(binding_spec));
+
+                    continue;
+                }
+                uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
+
+                const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
+
+                uint32_t    count   = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+
+                if (LayoutBindingSpecificationMap[set].capacity() <= 0)
+                {
+                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+                }
+                auto name_c_size = (SI_resource.name.size() + 1u);
+                auto name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, SI_resource.name.c_str());
+
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::COMBINED_IMAGE_SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
+            }
+
+            for (const auto& SI_resource : fragment_resources.separate_images)
+            {
+                uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+
+                if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
+                {
+                    const auto&                binding_specifications = m_device->ShaderReservedLayoutBindingSpecificationMap.at(set);
+                    LayoutBindingSpecification binding_spec           = {};
+                    for (size_t i = 0; i < binding_specifications.size(); ++i)
+                    {
+                        const auto& spec = binding_specifications[i];
+                        if (Helpers::secure_strcmp(spec.Name, SI_resource.name.c_str()) == 0)
+                        {
+                            binding_spec = spec;
+                            break;
+                        }
+                    }
+
+                    if (LayoutBindingSpecificationMap[set].capacity() <= 0)
+                    {
+                        LayoutBindingSpecificationMap[set].init(m_device->Arena, 2);
+                    }
+
+                    LayoutBindingSpecificationMap[set].push(std::move(binding_spec));
+
                     continue;
                 }
                 uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
@@ -272,6 +328,50 @@ namespace ZEngine::Rendering::Shaders
                 Helpers::secure_strcpy(name_c_str, name_c_size, SI_resource.name.c_str());
 
                 LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::SAMPLED_IMAGE, .Flags = ShaderStageFlags::FRAGMENT});
+            }
+
+            for (const auto& SI_resource : fragment_resources.separate_samplers)
+            {
+                uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+
+                if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
+                {
+                    const auto&                binding_specifications = m_device->ShaderReservedLayoutBindingSpecificationMap.at(set);
+                    LayoutBindingSpecification binding_spec           = {};
+                    for (size_t i = 0; i < binding_specifications.size(); ++i)
+                    {
+                        const auto& spec = binding_specifications[i];
+                        if (Helpers::secure_strcmp(spec.Name, SI_resource.name.c_str()) == 0)
+                        {
+                            binding_spec = spec;
+                            break;
+                        }
+                    }
+
+                    if (LayoutBindingSpecificationMap[set].capacity() <= 0)
+                    {
+                        LayoutBindingSpecificationMap[set].init(m_device->Arena, 2);
+                    }
+
+                    LayoutBindingSpecificationMap[set].push(std::move(binding_spec));
+
+                    continue;
+                }
+                uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
+
+                const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
+
+                uint32_t    count   = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+
+                if (LayoutBindingSpecificationMap[set].capacity() <= 0)
+                {
+                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+                }
+                auto name_c_size = (SI_resource.name.size() + 1u);
+                auto name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, SI_resource.name.c_str());
+
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
             }
         }
     }

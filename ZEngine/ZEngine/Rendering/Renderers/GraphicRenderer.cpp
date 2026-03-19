@@ -82,7 +82,7 @@ namespace ZEngine::Rendering::Renderers
 
         RenderGraph->AddCallbackPass("Initial Pass", initial_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
-        //   RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
+        RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         //  RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         //      RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);

@@ -68,37 +68,6 @@ namespace ZEngine::Rendering::Renderers
             idx_buffer_set->At(i)->Allocate(ZMega(5), "ImguiIndexBuffer");
         }
 
-        auto pass_builder = RenderGraph->RenderPassBuilder;
-        pass_builder->SetName("Imgui Pass")
-            .SetPipelineName("Imgui-Pipeline")
-            .EnablePipelineBlending(true)
-            .SetInputBindingCount(1)
-            .SetStride(0, sizeof(ImDrawVert))
-            .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
-
-            .SetInputAttributeCount(3)
-            .SetLocation(0, 0)
-            .SetBinding(0, 0)
-            .SetFormat(0, Specifications::ImageFormat::R32G32_SFLOAT)
-            .SetOffset(0, IM_OFFSETOF(ImDrawVert, pos))
-            .SetLocation(1, 1)
-            .SetBinding(1, 0)
-            .SetFormat(1, Specifications::ImageFormat::R32G32_SFLOAT)
-            .SetOffset(1, IM_OFFSETOF(ImDrawVert, uv))
-            .SetLocation(2, 2)
-            .SetBinding(2, 0)
-            .SetFormat(2, Specifications::ImageFormat::R8G8B8A8_UNORM)
-            .SetOffset(2, IM_OFFSETOF(ImDrawVert, col))
-
-            .UseShader("imgui")
-            // .SetShaderOverloadMaxSet(2000) // Todo : deprecated API - should be removed
-
-            .UseSwapchainAsRenderTarget();
-
-        UIPass = Device->CreateRenderPass(pass_builder->Detach());
-        UIPass->SetBindlessInput("TextureArray");
-        UIPass->Verify();
-        UIPass->Bake();
         /*
          * Font uploading
          */
@@ -152,43 +121,44 @@ namespace ZEngine::Rendering::Renderers
         img_buf->Layout = barrier_spec_1.NewLayout;
         Device->CommandBufferMgr->EndInstantCommandBuffer(command_buf_info);
 
-        /*
-         * Dummy Texture
-         */
-        auto dummy_tex_handle                             = Device->CreateTexture(1, 1, 255, 255, 255, 255);
-        auto dummy_tex_res                                = Device->GlobalTextures.Access(dummy_tex_handle);
-        auto dummy_tex_buf                                = Device->Image2DBufferManager.Access(dummy_tex_res->BufferHandle);
+        // We enqueue the tex handle so, we write the DescriptorSet at Present(...)
+        Device->TextureHandleToUpdates.Enqueue(font_tex_handle);
 
-        io.Fonts->TexID                                   = (ImTextureID) font_tex_handle.Index;
+        io.Fonts->TexID   = (ImTextureID) font_tex_handle.Index;
 
-        auto                        font_image_info       = img_buf->GetDescriptorImageInfo();
-        auto                        dummy_image_info      = dummy_tex_buf->GetDescriptorImageInfo();
-        uint32_t                    frame_count           = Device->SwapchainPtr->BufferredFrameCount;
-        auto                        shader                = UIPass->Pipeline->Shader;
-        auto&                       descriptor_set_map    = shader->DescriptorSetMap;
+        auto pass_builder = RenderGraph->RenderPassBuilder;
+        pass_builder->SetName("Imgui Pass")
+            .SetPipelineName("Imgui-Pipeline")
+            .EnablePipelineBlending(true)
+            .SetInputBindingCount(1)
+            .SetStride(0, sizeof(ImDrawVert))
+            .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
 
-        auto                        scratch               = ZGetScratch(Device->Arena);
-        Array<VkWriteDescriptorSet> write_descriptor_sets = {};
-        write_descriptor_sets.init(scratch.Arena, frame_count);
+            .SetInputAttributeCount(3)
+            .SetLocation(0, 0)
+            .SetBinding(0, 0)
+            .SetFormat(0, Specifications::ImageFormat::R32G32_SFLOAT)
+            .SetOffset(0, IM_OFFSETOF(ImDrawVert, pos))
+            .SetLocation(1, 1)
+            .SetBinding(1, 0)
+            .SetFormat(1, Specifications::ImageFormat::R32G32_SFLOAT)
+            .SetOffset(1, IM_OFFSETOF(ImDrawVert, uv))
+            .SetLocation(2, 2)
+            .SetBinding(2, 0)
+            .SetFormat(2, Specifications::ImageFormat::R8G8B8A8_UNORM)
+            .SetOffset(2, IM_OFFSETOF(ImDrawVert, col))
 
-        for (unsigned i = 0; i < frame_count; ++i)
-        {
-            for (const auto& [set, arr] : descriptor_set_map)
-            {
-                auto frame_set = arr[i];
-                if (set == 0) // __unused
-                {
-                    write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = frame_set, .dstBinding = 0, .dstArrayElement = 0u /*(uint32_t) dummy_tex_handle.Index*/, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(dummy_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-                    continue;
-                }
+            .UseShader("imgui")
+            // .SetShaderOverloadMaxSet(2000) // Todo : deprecated API - should be removed
 
-                write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = frame_set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-            }
-        }
+            .UseSwapchainAsRenderTarget();
 
-        vkUpdateDescriptorSets(Device->LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
-
-        ZReleaseScratch(scratch);
+        UIPass = Device->CreateRenderPass(pass_builder->Detach());
+        UIPass->SetBindlessInput("TextureArray");
+        UIPass->SetInput("_unused", Device->GlobalLinearWrapSamplerImageInfo);
+        UIPass->SetInput("LinearWrapSampler", Device->GlobalLinearWrapSamplerImageInfo);
+        UIPass->Verify();
+        UIPass->Bake();
     }
 
     void ImGUIRenderer::Deinitialize()
