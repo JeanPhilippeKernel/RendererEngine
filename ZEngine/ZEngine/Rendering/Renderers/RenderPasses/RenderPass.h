@@ -42,6 +42,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                                    SetInput(std::string_view key_name, const Hardwares::StorageBufferSetHandle& buffer);
         void                                    SetInput(std::string_view key_name, const Textures::TextureHandle& texture);
         void                                    SetBindlessInput(std::string_view key_name);
+        // Todo : This is a temporary solution, we should have a more abstract sampler resource in the future
+        void                                    SetInput(cstring key_name, const VkDescriptorImageInfo& sampler_info);
         void                                    UpdateInputBinding();
         ZRawPtr(Renderers::RenderPasses::Attachment) GetAttachment() const;
         void     UpdateRenderTargets();

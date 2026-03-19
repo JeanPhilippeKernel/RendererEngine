@@ -58,7 +58,7 @@ namespace ZEngine::Applications
         // {
         //     auto thread_idx                             = render_worker_thread_idx + worker_thread_idx;
         // }
-        CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(swpachain->CurrentFrame->Index, RenderMainThreadIndex, 0, true);
+        CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, swpachain->CurrentFrame->Index, RenderMainThreadIndex, 0, true);
     }
 
     void AppRenderPipeline::EndFrame()
@@ -69,6 +69,10 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene)
     {
+        auto swpachain    = Device->SwapchainPtr;
+        auto frame_index  = swpachain->CurrentFrame->Index;
+        auto thread_index = RenderMainThreadIndex;
+
         if (scene->TransformBufferDirty[Device->SwapchainPtr->CurrentFrame->Index].load(std::memory_order_acquire) || scene->MeshAllocationDirty[Device->SwapchainPtr->CurrentFrame->Index].load(std::memory_order_acquire))
         {
             auto  gpu_scene_data       = SceneRenderer->RenderSceneData;
@@ -91,7 +95,7 @@ namespace ZEngine::Applications
             if (scene->TransformBufferDirty[Device->SwapchainPtr->CurrentFrame->Index].exchange(false, std::memory_order_acquire))
             {
                 auto transform_data_view = ArrayView{scene->GlobalTransforms};
-                transform_buffer->Write(transform_data_view);
+                transform_buffer->Write(frame_index, thread_index, transform_data_view);
             }
 
             if (scene->MeshAllocationDirty[Device->SwapchainPtr->CurrentFrame->Index].exchange(false, std::memory_order_acquire))
@@ -124,12 +128,12 @@ namespace ZEngine::Applications
                 auto sub_mesh_alloc_view    = ArrayView{SubMeshAllocations};
                 auto indirect_commands_view = ArrayView{DrawIndirectCommands};
 
-                vtx_buffer->Write(vertex_data_view);
-                idx_buffer->Write(index_data_view);
+                vtx_buffer->Write(frame_index, thread_index, vertex_data_view);
+                idx_buffer->Write(frame_index, thread_index, index_data_view);
 
-                rd_buffer->Write(sub_mesh_alloc_view);
+                rd_buffer->Write(frame_index, thread_index, sub_mesh_alloc_view);
 
-                indirect_buffer->Write(indirect_commands_view);
+                indirect_buffer->Write(frame_index, thread_index, indirect_commands_view);
 
                 ZReleaseScratch(scratch);
             }
@@ -137,7 +141,7 @@ namespace ZEngine::Applications
 
         // Todo (Kernel) : When we'll start considering multithreaded support
         // we might want to renderer->EnqueueAsync({command_buffer, {camera, frame_data} })
-        SceneRenderer->DrawScene(CurrentCmdBuf, camera);
+        SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
     }
 
     void AppRenderPipeline::BeginOverlayFrame()
@@ -157,6 +161,10 @@ namespace ZEngine::Applications
             return;
         }
 
+        auto swpachain           = Device->SwapchainPtr;
+        auto frame_index         = swpachain->CurrentFrame->Index;
+        auto thread_index        = RenderMainThreadIndex;
+
         auto current_framebuffer = Device->SwapchainPtr->SwapchainFramebuffers[Device->SwapchainPtr->CurrentFrame->ImageIndex];
 
         CurrentCmdBuf->BeginRenderPass(ImguiRenderer->UIPass, current_framebuffer, true);
@@ -170,10 +178,10 @@ namespace ZEngine::Applications
             auto vertex_buffer     = vertex_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
             auto index_buffer      = index_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
 
-            vertex_buffer->Write(vtx_data_view);
-            index_buffer->Write(idx_data_view);
+            vertex_buffer->Write(frame_index, thread_index, vtx_data_view);
+            index_buffer->Write(frame_index, thread_index, idx_data_view);
 
-            auto ui_second_cb = Device->CommandBufferMgr->GetCommandBuffer(Device->SwapchainPtr->CurrentFrame->Index, RenderMainThreadIndex, UICommandBufferIndex, false);
+            auto ui_second_cb = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, Device->SwapchainPtr->CurrentFrame->Index, RenderMainThreadIndex, UICommandBufferIndex, false);
             ui_second_cb->ResetState();
             ui_second_cb->BeginSecondary(ImguiRenderer->UIPass, current_framebuffer);
             ui_second_cb->SetViewport(ImguiRenderer->UIPass->GetRenderAreaWidth(), ImguiRenderer->UIPass->GetRenderAreaHeight());

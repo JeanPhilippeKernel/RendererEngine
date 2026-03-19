@@ -2,10 +2,17 @@
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
+#include <new>
 
 namespace ZEngine::Applications
 {
-    struct alignas(std::hardware_destructive_interference_size) PaddedAtomicInt
+#ifdef __cpp_lib_hardware_interference_size
+    constexpr auto CACHE_LINE_SIZE = std::hardware_destructive_interference_size;
+#else
+    constexpr auto CACHE_LINE_SIZE = 64;
+#endif
+
+    struct alignas(CACHE_LINE_SIZE) PaddedAtomicInt
     {
         std::atomic_uint32_t value = 0;
     };

@@ -220,11 +220,38 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             auto  set        = descriptor_set_map.at(spec.Set)[i];
             auto& image_info = img_buf->GetDescriptorImageInfo();
 
-            write_reqs[i]    = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr};
+            write_reqs[i]    = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr};
         }
         vkUpdateDescriptorSets(m_device->LogicalDevice, write_reqs.size(), write_reqs.data(), 0, nullptr);
 
         Inputs.insert(key_name.data());
+    }
+
+    void RenderPass::SetInput(cstring key_name, const VkDescriptorImageInfo& sampler_info)
+    {
+        auto validity_output = ValidateInput(key_name);
+        if (!validity_output.first)
+        {
+            return;
+        }
+
+        const auto& spec               = validity_output.second;
+
+        auto        shader             = Pipeline->Shader;
+        const auto& descriptor_set_map = shader->DescriptorSetMap;
+        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
+
+        auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
+
+        for (unsigned i = 0; i < frame_count; ++i)
+        {
+            auto set      = descriptor_set_map.at(spec.Set)[i];
+
+            write_reqs[i] = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER, .pImageInfo = &(sampler_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr};
+        }
+        vkUpdateDescriptorSets(m_device->LogicalDevice, write_reqs.size(), write_reqs.data(), 0, nullptr);
+
+        Inputs.insert(key_name);
     }
 
     void RenderPass::SetBindlessInput(std::string_view key_name)

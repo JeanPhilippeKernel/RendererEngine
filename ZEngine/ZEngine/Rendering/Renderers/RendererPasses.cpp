@@ -21,7 +21,7 @@ namespace ZEngine::Rendering::Renderers
         {
             auto buffer = buffer_set->At(i);
             buffer->Allocate(vb_view.size_bytes(), "initial_vertex_buffer");
-            buffer->Write(vb_view);
+            buffer->Write(0, 0, vb_view);
         }
 
         RenderGraphRenderPassCreation pass_node = {.Name = name};
@@ -140,11 +140,30 @@ namespace ZEngine::Rendering::Renderers
         m_index_data.init(device->Arena, 36, make_initializer_list<uint16_t>(device->Arena, 0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 5, 4, 7, 7, 6, 5, 4, 0, 3, 3, 7, 4, 3, 2, 6, 6, 7, 3, 4, 5, 1, 1, 0, 4));
         m_vertex_data.init(device->Arena, 24, make_initializer_list(device->Arena, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f));
 
-        auto env_map_res                            = res_builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
+        auto env_map_res    = res_builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
 
-        m_env_map                                   = env_map_res.ResourceInfo.TextureHandle;
-        m_vb_handle                                 = device->CreateVertexBufferSet();
-        m_ib_handle                                 = device->CreateIndexBufferSet();
+        m_env_map           = env_map_res.ResourceInfo.TextureHandle;
+        m_vb_handle         = device->CreateVertexBufferSet();
+        m_ib_handle         = device->CreateIndexBufferSet();
+
+        auto count          = device->SwapchainPtr->BufferredFrameCount;
+        auto vtx_buffer_set = device->VertexBufferSetManager.Access(m_vb_handle);
+        auto idx_buffer_set = device->IndexBufferSetManager.Access(m_ib_handle);
+
+        auto vtx_buf_view   = ArrayView{m_vertex_data};
+        auto idx_buf_view   = ArrayView{m_index_data};
+
+        for (int i = 0; i < count; ++i)
+        {
+            auto vertex_buffer = vtx_buffer_set->At(i);
+            auto index_buffer  = idx_buffer_set->At(i);
+
+            vertex_buffer->Allocate(vtx_buf_view.size_bytes(), "SkyboxPassVtx");
+            index_buffer->Allocate(idx_buf_view.size_bytes(), "SkyboxPassIdx");
+
+            vertex_buffer->Write(0, 0, vtx_buf_view);
+            index_buffer->Write(0, 0, idx_buf_view);
+        }
 
         auto&                         output_skybox = res_builder->CreateRenderTarget("skybox_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
         RenderGraphRenderPassCreation pass_node     = {.Name = name};
@@ -189,6 +208,7 @@ namespace ZEngine::Rendering::Renderers
         {
             (*output_pass)->SetInput("UBCamera", scene->SceneCameraBufferHandle);
             (*output_pass)->SetInput("EnvMap", m_env_map);
+            (*output_pass)->SetInput("LinearWrapSampler", device->GlobalLinearWrapSamplerImageInfo);
         }
 
         (*output_pass)->Verify();
@@ -239,8 +259,8 @@ namespace ZEngine::Rendering::Renderers
             vertex_buffer->Allocate(vtx_buf_view.size_bytes(), "GridPassVtx");
             index_buffer->Allocate(idx_buf_view.size_bytes(), "GridPassIdx");
 
-            vertex_buffer->Write(vtx_buf_view);
-            index_buffer->Write(idx_buf_view);
+            vertex_buffer->Write(0, 0, vtx_buf_view);
+            index_buffer->Write(0, 0, idx_buf_view);
         }
 
         auto&                         output_grid = res_builder->CreateRenderTarget("grid_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});

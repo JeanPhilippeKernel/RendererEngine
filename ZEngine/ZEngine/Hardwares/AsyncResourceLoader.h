@@ -1,28 +1,28 @@
 #pragma once
 #include <Helpers/ThreadSafeQueue.h>
+#include <Rendering/Primitives/Semaphore.h>
 #include <Textures/Texture.h>
 #include <ZEngineDef.h>
 
 namespace ZEngine::Hardwares
 {
     struct VulkanDevice;
-    struct CommandBufferManager;
-
-    struct UpdateTextureRequest
-    {
-        Rendering::Textures::TextureHandle Handle;
-        Rendering::Textures::Texture*      Texture;
-    };
+    struct AsyncGPUOperation;
+    struct BufferView;
 
     struct TextureFileRequest
     {
         std::string                                     Filename;
         Rendering::Textures::TextureHandle              Handle;
         Rendering::Specifications::TextureSpecification TextureSpec;
+        uint8_t                                         FrameIdx  = 0;
+        uint8_t                                         ThreadIdx = 0;
     };
 
     struct TextureUploadRequest
     {
+        uint8_t                                         FrameIdx    = 0;
+        uint8_t                                         ThreadIdx   = 0;
         size_t                                          BufferSize  = 0;
         Rendering::Textures::TextureHandle              Handle      = {};
         Rendering::Specifications::TextureSpecification TextureSpec = {};
@@ -31,21 +31,61 @@ namespace ZEngine::Hardwares
 
     struct AsyncResourceLoader
     {
-        VulkanDevice*                      Device        = nullptr;
-        Hardwares::CommandBufferManager*   BufferManager = nullptr;
+        enum class UploadType : uint8_t
+        {
+            TEXTURE_BUFFER = 0,
+            TEXTURE_FILE,
+            BUFFER,
+            STAGING_BUFFER,
+            BUFFER_CLEAR,
+        };
 
-        void                               Initialize(VulkanDevice* renderer);
-        void                               Run();
-        void                               Shutdown();
+        struct UploadRequest
+        {
+            UploadType UploadType;
+            union
+            {
+                struct
+                {
+                    unsigned char*                     Data      = nullptr;
+                    cstring                            Filename  = nullptr;
+                    Rendering::Textures::TextureHandle TexHandle = {};
+                } TextureUpload;
+                struct
+                {
+                    BufferView* const Buffer     = nullptr;
+                    const void*       Data       = nullptr;
+                    uint32_t          Offset     = 0;
+                    uint32_t          ClearValue = 0;
+                    size_t            ByteSize   = 0;
+                } BufferUpload;
+            };
+        };
 
-        Rendering::Textures::TextureHandle LoadTextureFile(cstring filename);
+        std::atomic_uint64_t                                       NextValue       = 1;
+        Rendering::Primitives::Semaphore*                          TextureTimeline = nullptr;
+        Rendering::Primitives::Semaphore*                          BufferTimeline  = nullptr;
+        VulkanDevice*                                              Device          = nullptr;
+        Core::Containers::Array<Core::Containers::Array<uint64_t>> RetireValues    = {};
+
+        void                                                       Initialize(VulkanDevice* device);
+
+        void                                                       UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data);
+        void                                                       UploadBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const buffer, const void* data, uint32_t offset, size_t byte_size);
+        void                                                       UploadFromStagingBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const destination, const void* data, uint32_t offset, size_t byte_size);
+        void                                                       ClearBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const buffer, uint32_t offset, size_t byte_size, uint32_t clear_value);
+        Rendering::Textures::TextureHandle                         LoadTextureFile(cstring filename) = delete;
+
+        void                                                       Submit(UploadType type, uint8_t frame_index, uint8_t thread_index, const UploadRequest& request);
+        Rendering::Textures::TextureHandle                         Submit(uint8_t frame_index, uint8_t thread_index, const UploadRequest& request);
+
+        void                                                       Run();
+        void                                                       Shutdown();
 
     private:
+        std::atomic_bool                               m_pump_running{false};
         std::atomic_bool                               m_cancellation_token{false};
         std::mutex                                     m_mutex;
-        std::mutex                                     m_mutex_2;
-        std::condition_variable                        m_cond;
-        Helpers::ThreadSafeQueue<UpdateTextureRequest> m_update_texture_request;
         Helpers::ThreadSafeQueue<TextureFileRequest>   m_file_requests;
         Helpers::ThreadSafeQueue<TextureUploadRequest> m_upload_requests;
     };

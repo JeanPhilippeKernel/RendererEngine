@@ -24,6 +24,13 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Hardwares
 {
+    void AsyncGPUOperation::Initialize(VulkanDevice* device, uint32_t total_buffer_count)
+    {
+        NextValue = 0;
+        Timeline  = ZPushStructCtorArgs(device->Arena, Semaphore, device, true);
+        RetireValues.init(device->Arena, total_buffer_count, total_buffer_count);
+    }
+
     void VulkanDevice::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count)
     {
         Arena                     = arena;
@@ -184,31 +191,33 @@ namespace ZEngine::Hardwares
 
         for (VkPhysicalDevice physical_device : physical_device_collection)
         {
-            VkPhysicalDeviceDescriptorIndexingProperties indexing_properties = {};
-            indexing_properties.sType                                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES;
+            VkPhysicalDeviceVulkan12Properties vulkan_1_2_properties = {};
+            vulkan_1_2_properties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
 
-            VkPhysicalDeviceProperties2 physical_device_properties           = {};
-            physical_device_properties.sType                                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-            physical_device_properties.pNext                                 = &indexing_properties;
+            VkPhysicalDeviceProperties2 physical_device_properties   = {};
+            physical_device_properties.sType                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            physical_device_properties.pNext                         = &vulkan_1_2_properties;
 
             vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties);
 
-            VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {};
-            descriptor_indexing_features.sType                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-            VkPhysicalDeviceFeatures2 physical_device_feature                       = {};
-            physical_device_feature.sType                                           = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-            physical_device_feature.pNext                                           = &descriptor_indexing_features;
+            VkPhysicalDeviceVulkan12Features vulkan_1_2_features = {};
+            vulkan_1_2_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+            VkPhysicalDeviceFeatures2 physical_device_feature    = {};
+            physical_device_feature.sType                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            physical_device_feature.pNext                        = &vulkan_1_2_features;
             vkGetPhysicalDeviceFeatures2(physical_device, &physical_device_feature);
 
             if (/*(physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && */ ((physical_device_properties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
             {
                 PhysicalDevice                             = physical_device;
                 PhysicalDeviceProperties                   = physical_device_properties;
-                PhysicalDeviceDescriptorIndexingProperties = indexing_properties;
+                PhysicalDeviceVulkan12Properties           = vulkan_1_2_properties;
                 PhysicalDeviceFeature                      = physical_device_feature;
-                PhysicalDeviceSupportSampledImageBindless  = (descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE && descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE && descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
-                PhysicalDeviceSupportStorageBufferBindless = (descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE && descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE);
+                PhysicalDeviceSupportSampledImageBindless  = (vulkan_1_2_features.runtimeDescriptorArray == VK_TRUE && vulkan_1_2_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE && vulkan_1_2_features.descriptorBindingPartiallyBound == VK_TRUE && vulkan_1_2_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
+                PhysicalDeviceSupportStorageBufferBindless = (vulkan_1_2_features.runtimeDescriptorArray == VK_TRUE && vulkan_1_2_features.descriptorBindingPartiallyBound == VK_TRUE);
                 vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
+                PhysicalDeviceSupportTimelineSemaphore = (vulkan_1_2_features.timelineSemaphore == VK_TRUE);
                 break;
             }
         }
@@ -296,32 +305,39 @@ namespace ZEngine::Hardwares
         /*
          * Enabling some features
          */
-        VkDeviceCreateInfo device_create_info                                                   = {};
-        device_create_info.sType                                                                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        device_create_info.queueCreateInfoCount                                                 = queue_create_info_collection.size();
-        device_create_info.pQueueCreateInfos                                                    = queue_create_info_collection.data();
-        device_create_info.enabledExtensionCount                                                = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
-        device_create_info.ppEnabledExtensionNames                                              = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
+        VkDeviceCreateInfo device_create_info                = {};
+        device_create_info.sType                             = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        device_create_info.queueCreateInfoCount              = queue_create_info_collection.size();
+        device_create_info.pQueueCreateInfos                 = queue_create_info_collection.data();
+        device_create_info.enabledExtensionCount             = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
+        device_create_info.ppEnabledExtensionNames           = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
 
-        VkPhysicalDeviceDescriptorIndexingFeatures physical_device_descriptor_indexing_features = {};
-        physical_device_descriptor_indexing_features.sType                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-        VkPhysicalDeviceFeatures2 device_features_2                                             = {};
-        device_features_2.sType                                                                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features_2.features                                                              = PhysicalDeviceFeature.features;
+        VkPhysicalDeviceVulkan12Features vulkan_1_2_features = {};
+        vulkan_1_2_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        if (PhysicalDeviceSupportTimelineSemaphore)
+        {
+            vulkan_1_2_features.timelineSemaphore = VK_TRUE;
+        }
+
+        VkPhysicalDeviceFeatures2 device_features_2          = {};
+        device_features_2.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        device_features_2.features.drawIndirectFirstInstance = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
+        device_features_2.features.multiDrawIndirect         = PhysicalDeviceFeature.features.multiDrawIndirect;
+        device_features_2.features.samplerAnisotropy         = PhysicalDeviceFeature.features.samplerAnisotropy;
 
         if (PhysicalDeviceSupportSampledImageBindless || PhysicalDeviceSupportStorageBufferBindless)
         {
             if (PhysicalDeviceSupportSampledImageBindless)
             {
-                physical_device_descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending    = VK_TRUE;
-                physical_device_descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
-                physical_device_descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+                vulkan_1_2_features.descriptorBindingUpdateUnusedWhilePending    = VK_TRUE;
+                vulkan_1_2_features.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
+                vulkan_1_2_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
             }
 
-            physical_device_descriptor_indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
-            physical_device_descriptor_indexing_features.runtimeDescriptorArray          = VK_TRUE;
+            vulkan_1_2_features.descriptorBindingPartiallyBound = VK_TRUE;
+            vulkan_1_2_features.runtimeDescriptorArray          = VK_TRUE;
 
-            device_features_2.pNext                                                      = &physical_device_descriptor_indexing_features;
+            device_features_2.pNext                             = &vulkan_1_2_features;
         }
 
         device_create_info.pNext = &device_features_2;
@@ -417,9 +433,29 @@ namespace ZEngine::Hardwares
         CommandBufferMgr->Initialize(this, SwapchainPtr->BufferredFrameCount);
 
         /*
-         * Creating Global Descriptor Pool for : Textures
+         * Creating Global Descriptor Pool for : Textures, Samplers
          */
-        MaxGlobalTexture = std::min(MaxGlobalTexture, PhysicalDeviceDescriptorIndexingProperties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
+        VkSamplerCreateInfo sampler_create_info     = {};
+        sampler_create_info.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler_create_info.minFilter               = VK_FILTER_LINEAR;
+        sampler_create_info.magFilter               = VK_FILTER_LINEAR;
+        sampler_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.features.samplerAnisotropy;
+        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.properties.limits.maxSamplerAnisotropy : 1.0f;
+        sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        sampler_create_info.unnormalizedCoordinates = VK_FALSE;
+        sampler_create_info.compareEnable           = VK_FALSE;
+        sampler_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sampler_create_info.mipLodBias              = 0.0f;
+        sampler_create_info.minLod                  = 0.0f;
+        sampler_create_info.maxLod                  = VK_LOD_CLAMP_NONE;
+
+        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(LogicalDevice, &sampler_create_info, nullptr, &GlobalLinearWrapSampler) == VK_SUCCESS, "Failed to create Texture Sampler")
+
+        GlobalLinearWrapSamplerImageInfo = VkDescriptorImageInfo{.sampler = GlobalLinearWrapSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        MaxGlobalTexture                 = std::min(MaxGlobalTexture, PhysicalDeviceVulkan12Properties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
 
         GlobalTextures.Initialize(Arena, MaxGlobalTexture);
         Image2DBufferManager.Initialize(Arena, MaxGlobalTexture);
@@ -434,7 +470,7 @@ namespace ZEngine::Hardwares
 
         VkDescriptorPoolSize pool_sizes[] = {
             {.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = (MaxGlobalTexture * SwapchainPtr->BufferredFrameCount)},
-            {.type = VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount = (1 * SwapchainPtr->BufferredFrameCount)}
+            {      .type = VK_DESCRIPTOR_TYPE_SAMPLER,                .descriptorCount = (1 * SwapchainPtr->BufferredFrameCount)}
         };
 
         for (const auto& layout_binding_set : ShaderReservedLayoutBindingSpecificationMap)
@@ -581,11 +617,54 @@ namespace ZEngine::Hardwares
             __destroyDebugMessengerPtr = nullptr;
             __createDebugMessengerPtr  = nullptr;
         }
+        vkDestroySampler(LogicalDevice, GlobalLinearWrapSampler, nullptr);
         vkDestroyDevice(LogicalDevice, nullptr);
         vkDestroyInstance(Instance, nullptr);
 
-        LogicalDevice = VK_NULL_HANDLE;
-        Instance      = VK_NULL_HANDLE;
+        GlobalLinearWrapSampler = VK_NULL_HANDLE;
+        LogicalDevice           = VK_NULL_HANDLE;
+        Instance                = VK_NULL_HANDLE;
+    }
+
+    void VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, int wait_flag)
+    {
+        ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
+        ZENGINE_VALIDATE_ASSERT(command_buffer->GetState() == CommandBufferState::Executable, "Command buffer must be in executable state to be submitted.")
+        ZENGINE_VALIDATE_ASSERT(signal_semaphore->IsTimeline == true, "Signal semaphore must be a timeline semaphore.")
+
+        auto flag = (command_buffer->QueueType == QueueType::GRAPHIC_QUEUE) ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+        if (wait_flag != -1)
+        {
+            flag = VkPipelineStageFlagBits(wait_flag);
+        }
+
+        VkCommandBuffer command_buffers[] = {command_buffer->GetHandle()};
+        VkSemaphore     semaphores[]      = {signal_semaphore->GetHandle()};
+        VkSubmitInfo    submit_info       = {
+                     .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                     .pNext                = nullptr,
+                     .waitSemaphoreCount   = 0,
+                     .pWaitSemaphores      = nullptr,
+                     .pWaitDstStageMask    = nullptr,
+                     .commandBufferCount   = 1,
+                     .pCommandBuffers      = command_buffers,
+                     .signalSemaphoreCount = 1,
+                     .pSignalSemaphores    = semaphores,
+        };
+
+        VkTimelineSemaphoreSubmitInfo timeline_semaphore_submit_info = {
+            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+            .pNext                     = nullptr,
+            .waitSemaphoreValueCount   = 0,
+            .pWaitSemaphoreValues      = nullptr,
+            .signalSemaphoreValueCount = 1,
+            .pSignalSemaphoreValues    = &signal_value,
+        };
+        submit_info.pNext = &timeline_semaphore_submit_info;
+        ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit queue")
+        command_buffer->SetState(CommandBufferState::Pending);
+        signal_semaphore->SetState(SemaphoreState::Submitted);
     }
 
     bool VulkanDevice::QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, Rendering::Primitives::Fence* const fence)
@@ -611,7 +690,7 @@ namespace ZEngine::Hardwares
         };
 
         ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, fence->GetHandle()) == VK_SUCCESS, "Failed to submit queue")
-        command_buffer->SetState(CommanBufferState::Pending);
+        command_buffer->SetState(CommandBufferState::Pending);
 
         fence->SetState(FenceState::Submitted);
         signal_semaphore->SetState(SemaphoreState::Submitted);
@@ -624,7 +703,7 @@ namespace ZEngine::Hardwares
 
         fence->Reset();
         signal_semaphore->SetState(Rendering::Primitives::SemaphoreState::Idle);
-        command_buffer->SetState(CommanBufferState::Invalid);
+        command_buffer->SetState(CommandBufferState::Invalid);
 
         return true;
     }
@@ -726,7 +805,7 @@ namespace ZEngine::Hardwares
             switch (res_handle.Type)
             {
                 case Rendering::DeviceResourceType::SAMPLER:
-                    vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
+                    // vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
                     break;
                 case Rendering::DeviceResourceType::FRAMEBUFFER:
                     vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
@@ -810,7 +889,7 @@ namespace ZEngine::Hardwares
             BufferImage& buffer = DirtyBufferImages[handle];
 
             vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
-            vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
+            // vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
             vmaDestroyImage(VmaAllocatorValue, buffer.Handle, buffer.Allocation);
 
             DirtyBufferImages.Remove(handle);
@@ -877,27 +956,25 @@ namespace ZEngine::Hardwares
         return buffer_view;
     }
 
-    void VulkanDevice::CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset, VkDeviceSize dst_buffer_offset)
+    VkPipelineStageFlags VulkanDevice::CopyBuffer(CommandBuffer* command_buffer, const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset, VkDeviceSize dst_buffer_offset)
     {
-        CommandBufferManager::InstantCommandBufferInfo command_buffer_info = CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, SwapchainPtr->CurrentFrame->Index, 0, 2, true);
+        VkBufferMemoryBarrier bufMemBarrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        bufMemBarrier.srcAccessMask         = VK_ACCESS_HOST_WRITE_BIT;
+        bufMemBarrier.dstAccessMask         = VK_ACCESS_TRANSFER_READ_BIT;
+        bufMemBarrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+        bufMemBarrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+        bufMemBarrier.buffer                = source.Handle;
+        bufMemBarrier.offset                = 0;
+        bufMemBarrier.size                  = VK_WHOLE_SIZE;
 
-        VkBufferMemoryBarrier                          bufMemBarrier       = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        bufMemBarrier.srcAccessMask                                        = VK_ACCESS_HOST_WRITE_BIT;
-        bufMemBarrier.dstAccessMask                                        = VK_ACCESS_TRANSFER_READ_BIT;
-        bufMemBarrier.srcQueueFamilyIndex                                  = VK_QUEUE_FAMILY_IGNORED;
-        bufMemBarrier.dstQueueFamilyIndex                                  = VK_QUEUE_FAMILY_IGNORED;
-        bufMemBarrier.buffer                                               = source.Handle;
-        bufMemBarrier.offset                                               = 0;
-        bufMemBarrier.size                                                 = VK_WHOLE_SIZE;
-
-        vkCmdPipelineBarrier(command_buffer_info.Buffer->GetHandle(), VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &bufMemBarrier, 0, nullptr);
+        vkCmdPipelineBarrier(command_buffer->GetHandle(), VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &bufMemBarrier, 0, nullptr);
 
         VkBufferCopy buffer_copy = {};
         buffer_copy.srcOffset    = src_buffer_offset;
         buffer_copy.dstOffset    = dst_buffer_offset;
         buffer_copy.size         = byte_size;
 
-        vkCmdCopyBuffer(command_buffer_info.Buffer->GetHandle(), source.Handle, destination.Handle, 1, &buffer_copy);
+        vkCmdCopyBuffer(command_buffer->GetHandle(), source.Handle, destination.Handle, 1, &buffer_copy);
 
         VkAccessFlags        dst_access_mask    = VK_ACCESS_NONE;
         VkPipelineStageFlags dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -940,9 +1017,9 @@ namespace ZEngine::Hardwares
         bufMemBarrier2.offset                = 0;
         bufMemBarrier2.size                  = VK_WHOLE_SIZE;
 
-        vkCmdPipelineBarrier(command_buffer_info.Buffer->GetHandle(), VK_PIPELINE_STAGE_TRANSFER_BIT, dst_pipeline_stage, 0, 0, nullptr, 1, &bufMemBarrier2, 0, nullptr);
+        vkCmdPipelineBarrier(command_buffer->GetHandle(), VK_PIPELINE_STAGE_TRANSFER_BIT, dst_pipeline_stage, 0, 0, nullptr, 1, &bufMemBarrier2, 0, nullptr);
 
-        CommandBufferMgr->EndInstantCommandBuffer(command_buffer_info, dst_pipeline_stage);
+        return dst_pipeline_stage;
     }
 
     BufferImage VulkanDevice::CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, VkImageCreateFlags image_create_flag_bit)
@@ -972,39 +1049,12 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vmaCreateImage(VmaAllocatorValue, &image_create_info, &allocation_create_info, &(buffer_image.Handle), &(buffer_image.Allocation), nullptr) == VK_SUCCESS, "Failed to create buffer");
 
         buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_view_type, image_aspect_flag, layer_count);
-        buffer_image.Sampler    = CreateImageSampler();
+        // buffer_image.Sampler    = GlobalLinearWrapSampler;
 
         // Metadata info
         buffer_image.FrameIndex = SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index;
 
         return buffer_image;
-    }
-
-    VkSampler VulkanDevice::CreateImageSampler()
-    {
-        VkSampler           sampler{VK_NULL_HANDLE};
-
-        VkSamplerCreateInfo sampler_create_info     = {};
-        sampler_create_info.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        sampler_create_info.minFilter               = VK_FILTER_LINEAR;
-        sampler_create_info.magFilter               = VK_FILTER_LINEAR;
-        sampler_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.features.samplerAnisotropy;
-        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.properties.limits.maxSamplerAnisotropy : 1.0f;
-        sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-        sampler_create_info.unnormalizedCoordinates = VK_FALSE;
-        sampler_create_info.compareEnable           = VK_FALSE;
-        sampler_create_info.compareOp               = VK_COMPARE_OP_ALWAYS;
-        sampler_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        sampler_create_info.mipLodBias              = 0.0f;
-        sampler_create_info.minLod                  = -1000.0f;
-        sampler_create_info.maxLod                  = 1000.0f;
-
-        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(LogicalDevice, &sampler_create_info, nullptr, &sampler) == VK_SUCCESS, "Failed to create Texture Sampler")
-
-        return sampler;
     }
 
     VkFormat VulkanDevice::FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags)
@@ -1186,7 +1236,7 @@ namespace ZEngine::Hardwares
                         switch (res_handle.Type)
                         {
                             case Rendering::DeviceResourceType::SAMPLER:
-                                vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
+                                // vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
                                 break;
                             case Rendering::DeviceResourceType::FRAMEBUFFER:
                                 vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
@@ -1279,7 +1329,7 @@ namespace ZEngine::Hardwares
                     if (buffer && buffer.FrameIndex == SwapchainPtr->CurrentFrame->Index)
                     {
                         vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
-                        vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
+                        // vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
                         vmaDestroyImage(VmaAllocatorValue, buffer.Handle, buffer.Allocation);
                         buffer.Handle     = VK_NULL_HANDLE;
                         buffer.Allocation = VK_NULL_HANDLE;
@@ -1353,7 +1403,7 @@ namespace ZEngine::Hardwares
         command_buffer_allocation_info.commandPool                 = m_command_pool;
 
         ZENGINE_VALIDATE_ASSERT(vkAllocateCommandBuffers(Device->LogicalDevice, &command_buffer_allocation_info, &m_command_buffer) == VK_SUCCESS, "Failed to allocate command buffer!")
-        m_command_buffer_state = CommanBufferState::Idle;
+        m_command_buffer_state = CommandBufferState::Idle;
     }
 
     void CommandBuffer::Free()
@@ -1373,7 +1423,7 @@ namespace ZEngine::Hardwares
 
     void CommandBuffer::Begin()
     {
-        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Idle, "command buffer must be in Idle state")
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommandBufferState::Idle, "command buffer must be in Idle state")
         ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Primary, "command buffer must be Primary Buffer Type")
 
         VkCommandBufferBeginInfo command_buffer_begin_info = {};
@@ -1381,12 +1431,12 @@ namespace ZEngine::Hardwares
         command_buffer_begin_info.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(m_command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin the Command Buffer")
 
-        m_command_buffer_state = CommanBufferState::Recording;
+        m_command_buffer_state = CommandBufferState::Recording;
     }
 
     void CommandBuffer::BeginSecondary(Rendering::Renderers::RenderPasses::RenderPass* const render_pass, VkFramebuffer framebuffer)
     {
-        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Idle, "command buffer must be in Idle state")
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommandBufferState::Idle, "command buffer must be in Idle state")
         ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Secondary, "command buffer must be Secondary Buffer Type")
 
         VkCommandBufferInheritanceInfo inheritance_info    = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO};
@@ -1401,16 +1451,16 @@ namespace ZEngine::Hardwares
 
         ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(m_command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin the Command Buffer")
 
-        m_command_buffer_state = CommanBufferState::Recording;
+        m_command_buffer_state = CommandBufferState::Recording;
         m_active_render_pass   = render_pass;
     }
 
     void CommandBuffer::End()
     {
-        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommanBufferState::Recording, "command buffer must be in Idle state")
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommandBufferState::Recording, "command buffer must be in Idle state")
         ZENGINE_VALIDATE_ASSERT(vkEndCommandBuffer(m_command_buffer) == VK_SUCCESS, "Failed to end recording command buffer!")
 
-        m_command_buffer_state = CommanBufferState::Executable;
+        m_command_buffer_state = CommandBufferState::Executable;
     }
 
     bool CommandBuffer::Completed()
@@ -1420,27 +1470,27 @@ namespace ZEngine::Hardwares
 
     bool CommandBuffer::IsExecutable()
     {
-        return m_command_buffer_state == CommanBufferState::Executable;
+        return m_command_buffer_state == CommandBufferState::Executable;
     }
 
     bool CommandBuffer::IsRecording()
     {
-        return m_command_buffer_state == CommanBufferState::Recording;
+        return m_command_buffer_state == CommandBufferState::Recording;
     }
 
-    CommanBufferState CommandBuffer::GetState() const
+    CommandBufferState CommandBuffer::GetState() const
     {
-        return CommanBufferState{m_command_buffer_state.load()};
+        return CommandBufferState{m_command_buffer_state.load()};
     }
 
     void CommandBuffer::ResetState()
     {
-        m_command_buffer_state = CommanBufferState::Idle;
+        m_command_buffer_state = CommandBufferState::Idle;
         m_signal_fence         = {};
         m_signal_semaphore     = {};
     }
 
-    void CommandBuffer::SetState(const CommanBufferState& state)
+    void CommandBuffer::SetState(const CommandBufferState& state)
     {
         m_command_buffer_state = state;
     }
@@ -1746,52 +1796,64 @@ namespace ZEngine::Hardwares
             return;
         }
 
-        Device                  = device;
-        TotalThreadCount        = override_thread_count > 0 ? override_thread_count : device->WorkerThreadCount;
-        TotalPoolCount          = image_count * TotalThreadCount;
-        TotalCommandBufferCount = TotalPoolCount * MaxBufferPerPool;
+        Device                         = device;
+        TotalThreadCount               = override_thread_count > 0 ? override_thread_count : device->WorkerThreadCount;
+        TotalPoolCount                 = image_count * TotalThreadCount;
+        TotalCommandBufferCount        = TotalPoolCount * MaxBufferPerPool;
+        TotalInstantCommandBufferCount = MaxBufferPerPool * MaxBufferPerPool * TotalPoolCount; // We want to have enough instant command buffers for each pool, so we can guarantee that there will always be an instant command buffer available for each pool when needed
 
-        InstantResources.init(Device->Arena, TotalPoolCount, TotalPoolCount);
+        InstantGraphicsPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
+        InstantGraphicsCommandBuffers.init(Device->Arena, TotalInstantCommandBufferCount, TotalInstantCommandBufferCount);
         CommandPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
-
-        for (uint32_t i = 0; i < TotalPoolCount; ++i)
-        {
-            CommandPools[i]                  = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE);
-            InstantResources[i].CommandMutex = ZPushStructCtor(Device->Arena, std::mutex);
-            InstantResources[i].Fence        = ZPushStructCtorArgs(Device->Arena, Primitives::Fence, Device);
-            InstantResources[i].Semaphore    = ZPushStructCtorArgs(Device->Arena, Primitives::Semaphore, Device);
-        }
-
         CommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
         EnqueuedCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
 
         for (uint32_t i = 0; i < TotalPoolCount; ++i)
         {
-            auto pool = CommandPools[i];
+            InstantGraphicsPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, QueueType::GRAPHIC_QUEUE);
+
+            for (uint32_t buf_idx = 0; buf_idx < (MaxBufferPerPool * MaxBufferPerPool); ++buf_idx)
+            {
+                uint32_t buffer_idx                       = (i * (MaxBufferPerPool * MaxBufferPerPool)) + buf_idx;
+                InstantGraphicsCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, InstantGraphicsPools[i]->Handle, InstantGraphicsPools[i]->QueueType, true);
+            }
+        }
+
+        for (uint32_t i = 0; i < TotalPoolCount; ++i)
+        {
+            CommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, QueueType::GRAPHIC_QUEUE);
             for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
             {
                 uint32_t buffer_idx        = (i * MaxBufferPerPool) + buf_idx;
                 bool     is_primary        = (buffer_idx % 2) == 0;
-                CommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, is_primary);
+                CommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, CommandPools[i]->Handle, CommandPools[i]->QueueType, is_primary);
             }
         }
 
         if (Device->HasSeperateTransfertQueueFamily)
         {
+            InstantTransferPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
             TransferCommandPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
-            for (int i = 0; i < TotalPoolCount; ++i)
-            {
-                TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
-            }
-
             TransferCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
+            InstantTransferCommandBuffers.init(Device->Arena, TotalInstantCommandBufferCount, TotalInstantCommandBufferCount);
+
             for (uint32_t i = 0; i < TotalPoolCount; ++i)
             {
-                auto pool = TransferCommandPools[i];
+                InstantTransferPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
+                for (uint32_t buf_idx = 0; buf_idx < (MaxBufferPerPool * MaxBufferPerPool); ++buf_idx)
+                {
+                    uint32_t buffer_idx                       = (i * (MaxBufferPerPool * MaxBufferPerPool)) + buf_idx;
+                    InstantTransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, InstantTransferPools[i]->Handle, InstantTransferPools[i]->QueueType, true);
+                }
+            }
+
+            for (uint32_t i = 0; i < TotalPoolCount; ++i)
+            {
+                TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
                 for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
                 {
                     uint32_t buffer_idx                = (i * MaxBufferPerPool) + buf_idx;
-                    TransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true);
+                    TransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, TransferCommandPools[i]->Handle, TransferCommandPools[i]->QueueType, true);
                 }
             }
         }
@@ -1801,19 +1863,23 @@ namespace ZEngine::Hardwares
 
     void CommandBufferManager::Deinitialize()
     {
+        InstantGraphicsPools.clear();
+        InstantGraphicsCommandBuffers.clear();
         CommandBuffers.clear();
         TransferCommandBuffers.clear();
-        EnqueuedCommandBuffers.clear();
+        InstantTransferCommandBuffers.clear();
 
         CommandPools.clear();
-        InstantResources.clear();
         TransferCommandPools.clear();
+        InstantTransferPools.clear();
+
+        EnqueuedCommandBuffers.clear();
     }
 
-    CommandBuffer* CommandBufferManager::GetCommandBuffer(uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin)
+    CommandBuffer* CommandBufferManager::GetCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin)
     {
         auto           buffer_index = ((frame_index * TotalThreadCount) + thread_index) * MaxBufferPerPool + buffer_per_pool_index;
-        CommandBuffer* buffer       = CommandBuffers[buffer_index];
+        CommandBuffer* buffer       = (type == Rendering::QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[buffer_index] : CommandBuffers[buffer_index];
 
         if (begin)
         {
@@ -1823,44 +1889,20 @@ namespace ZEngine::Hardwares
         return buffer;
     }
 
-    CommandBufferManager::InstantCommandBufferInfo CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin)
+    CommandBuffer* CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint32_t buffer_per_pool_index, bool begin)
     {
-        auto             pool_index   = ((frame_index * TotalThreadCount) + thread_index);
-        auto             buffer_index = (pool_index * MaxBufferPerPool) + buffer_per_pool_index;
-
-        CommandBuffer*   buffer       = (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[buffer_index] : CommandBuffers[buffer_index];
-        InstantResource& resource     = InstantResources[pool_index];
-
-        std::unique_lock l(*(resource.CommandMutex));
-        resource.Cond.wait(l, [&resource] { return !resource.IsExecuting; });
-        resource.IsExecuting = true;
+        // MaxBufferPerPool * MaxBufferPerPool is the total number of instant command buffers per pool
+        auto           buffer_index = ((frame_index * TotalThreadCount) + thread_index) * (MaxBufferPerPool * MaxBufferPerPool) + buffer_per_pool_index;
+        CommandBuffer* buffer       = (type == Rendering::QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? InstantTransferCommandBuffers[buffer_index] : InstantGraphicsCommandBuffers[buffer_index];
 
         if (begin)
         {
             buffer->ResetState();
+            // Todo : We want to merge vkResetCommandBuffer with ResetState() when buffer is instant type
+            vkResetCommandBuffer(buffer->GetHandle(), 0);
             buffer->Begin();
         }
-        return CommandBufferManager::InstantCommandBufferInfo{.Buffer = buffer, .Resource = &resource};
-    }
-
-    void CommandBufferManager::EndInstantCommandBuffer(const CommandBufferManager::InstantCommandBufferInfo& info, int wait_flag)
-    {
-        info.Buffer->End();
-
-        auto flag = info.Buffer->QueueType == QueueType::GRAPHIC_QUEUE ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
-
-        if (wait_flag != -1)
-        {
-            flag = VkPipelineStageFlagBits(wait_flag);
-        }
-
-        Device->QueueSubmit(flag, info.Buffer, info.Resource->Semaphore, info.Resource->Fence);
-        {
-            std::unique_lock l(*(info.Resource->CommandMutex));
-            info.Resource->IsExecuting = false;
-        }
-
-        info.Resource->Cond.notify_one();
+        return buffer;
     }
 
     Rendering::Pools::CommandPool* CommandBufferManager::GetCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index)
@@ -1885,7 +1927,7 @@ namespace ZEngine::Hardwares
         {
             if (EnqueuedCommandBuffers[i])
             {
-                EnqueuedCommandBuffers[i]->SetState(CommanBufferState::Pending);
+                EnqueuedCommandBuffers[i]->SetState(CommandBufferState::Pending);
             }
         }
         EnqueuedCommandBufferIndex = 0u;
@@ -1997,7 +2039,7 @@ namespace ZEngine::Hardwares
         return m_device->CreateBuffer(static_cast<VkDeviceSize>(m_total_size), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
     }
 
-    void IndirectBuffer::Upload(const VkDrawIndirectCommand* data, size_t byte_size)
+    void IndirectBuffer::Upload(uint8_t frame_index, uint8_t thread_index, const VkDrawIndirectCommand* data, size_t byte_size)
     {
         if (byte_size == 0)
         {
@@ -2005,12 +2047,12 @@ namespace ZEngine::Hardwares
         }
 
         CommandCount = byte_size / sizeof(VkDrawIndirectCommand);
-        IGraphicBuffer::Upload(data, byte_size);
+        IGraphicBuffer::Upload(frame_index, thread_index, data, byte_size);
     }
 
-    void IndirectBuffer::Write(const void* data, size_t byte_size)
+    void IndirectBuffer::Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size)
     {
-        IGraphicBuffer::Write(data, byte_size);
+        IGraphicBuffer::Write(frame_index, thread_index, data, byte_size);
         CommandCount = byte_size / sizeof(VkDrawIndirectCommand);
     }
 
@@ -2117,13 +2159,13 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void IGraphicBuffer::Clear()
+    void IGraphicBuffer::Clear(uint8_t frame_index, uint8_t thread_index)
     {
         m_current_offset = 0;
-        ClearRange(0, m_current_offset, m_total_size);
+        ClearRange(frame_index, thread_index, 0, m_current_offset, m_total_size);
     }
 
-    void IGraphicBuffer::ClearRange(uint8_t value, uint32_t offset, size_t byte_size)
+    void IGraphicBuffer::ClearRange(uint8_t frame_index, uint8_t thread_index, uint8_t value, uint32_t offset, size_t byte_size)
     {
         if (byte_size == 0)
         {
@@ -2137,39 +2179,13 @@ namespace ZEngine::Hardwares
             return;
         }
 
-        VkMemoryPropertyFlags mem_prop_flags;
-        vmaGetAllocationMemoryProperties(m_device->VmaAllocatorValue, Buffer.Allocation, &mem_prop_flags);
-
-        if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-        {
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocatorValue, Buffer.Allocation, &allocation_info);
-            if (allocation_info.pMappedData)
-            {
-                auto mapped_buf = reinterpret_cast<uint8_t*>(allocation_info.pMappedData);
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memset((mapped_buf + offset), value, allocation_info.size, byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-            }
-        }
-        else
-        {
-            BufferView        staging_buffer  = m_device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(m_device->VmaAllocatorValue, staging_buffer.Allocation, &allocation_info);
-
-            if (allocation_info.pMappedData)
-            {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memset(allocation_info.pMappedData, value, allocation_info.size, byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-                ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(m_device->VmaAllocatorValue, staging_buffer.Allocation, 0, byte_size) == VK_SUCCESS, "Failed to flush allocation")
-                m_device->CopyBuffer(staging_buffer, Buffer, byte_size, 0u, offset);
-            }
-
-            /* Cleanup resource */
-            m_device->EnqueueBufferForDeletion(staging_buffer);
-        }
+        AsyncResourceLoader::UploadRequest request = {
+            .BufferUpload = {.Buffer = &Buffer, .Offset = offset, .ClearValue = value, .ByteSize = byte_size}
+        };
+        m_device->AsyncResLoader->Submit(AsyncResourceLoader::UploadType::BUFFER_CLEAR, frame_index, thread_index, request);
     }
 
-    void IGraphicBuffer::UploadRange(const void* data, uint32_t offset, size_t byte_size)
+    void IGraphicBuffer::UploadRange(uint8_t frame_index, uint8_t thread_index, const void* data, uint32_t offset, size_t byte_size)
     {
         if (byte_size == 0)
         {
@@ -2183,82 +2199,21 @@ namespace ZEngine::Hardwares
             return;
         }
 
-        VkMemoryPropertyFlags mem_prop_flags;
-        vmaGetAllocationMemoryProperties(m_device->VmaAllocatorValue, Buffer.Allocation, &mem_prop_flags);
-
-        if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-        {
-            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->VmaAllocatorValue, data, Buffer.Allocation, offset, byte_size) == VK_SUCCESS, "Failed to perform memory copy operation")
-
-            VkAccessFlags        dst_access_mask    = VK_ACCESS_NONE;
-            VkPipelineStageFlags dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            switch (Buffer.Type)
-            {
-                case BufferType::VERTEX:
-                    dst_access_mask    = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-                    dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-                    break;
-
-                case BufferType::INDEX:
-                    dst_access_mask    = VK_ACCESS_INDEX_READ_BIT;
-                    dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-                    break;
-
-                case BufferType::UNIFORM:
-                    dst_access_mask    = VK_ACCESS_UNIFORM_READ_BIT;
-                    dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
-                    break;
-
-                case BufferType::STORAGE:
-                    dst_access_mask    = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-                    dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-                    break;
-
-                case BufferType::INDIRECT:
-                    dst_access_mask    = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
-                    dst_pipeline_stage = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-                    break;
-                case UNKNOWN:
-                    break;
-            }
-
-            auto                  command_buffer_info = m_device->CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, (m_device->SwapchainPtr->CurrentFrame == nullptr ? 0u : m_device->SwapchainPtr->CurrentFrame->Index), 0, 2, true);
-            VkBufferMemoryBarrier bufMemBarrier       = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-            bufMemBarrier.srcAccessMask               = VK_ACCESS_HOST_WRITE_BIT;
-            bufMemBarrier.dstAccessMask               = dst_access_mask;
-            bufMemBarrier.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
-            bufMemBarrier.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
-            bufMemBarrier.buffer                      = Buffer.Handle;
-            bufMemBarrier.offset                      = 0;
-            bufMemBarrier.size                        = VK_WHOLE_SIZE;
-
-            // It's important to insert a buffer memory barrier here to ensure writing to the buffer has finished.
-            vkCmdPipelineBarrier(command_buffer_info.Buffer->GetHandle(), VK_PIPELINE_STAGE_HOST_BIT, dst_pipeline_stage, 0, 0, nullptr, 1, &bufMemBarrier, 0, nullptr);
-
-            m_device->CommandBufferMgr->EndInstantCommandBuffer(command_buffer_info, dst_pipeline_stage);
-        }
-        else
-        {
-            BufferView staging_buffer = m_device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
-            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->VmaAllocatorValue, data, staging_buffer.Allocation, offset, byte_size) == VK_SUCCESS, "Failed to perform memory copy operation")
-
-            m_device->CopyBuffer(staging_buffer, Buffer, byte_size, 0u, offset);
-
-            /* Cleanup resource */
-            m_device->EnqueueBufferForDeletion(staging_buffer);
-        }
+        AsyncResourceLoader::UploadRequest request = {
+            .BufferUpload = {.Buffer = &Buffer, .Data = data, .Offset = offset, .ByteSize = byte_size}
+        };
+        m_device->AsyncResLoader->Submit(AsyncResourceLoader::UploadType::BUFFER, frame_index, thread_index, request);
     }
 
-    void IGraphicBuffer::Upload(const void* data, size_t byte_size)
+    void IGraphicBuffer::Upload(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size)
     {
-        UploadRange(data, m_current_offset, byte_size);
+        UploadRange(frame_index, thread_index, data, m_current_offset, byte_size);
         m_current_offset += byte_size;
     }
 
-    void IGraphicBuffer::Write(const void* data, size_t byte_size)
+    void IGraphicBuffer::Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size)
     {
-        UploadRange(data, 0, byte_size);
+        UploadRange(frame_index, thread_index, data, 0, byte_size);
         m_current_offset = byte_size;
     }
 
@@ -2311,36 +2266,6 @@ namespace ZEngine::Hardwares
             return Rendering::Textures::TextureHandle{};
         }
 
-        auto resource = GlobalTextures.Access(tex_handle);
-
-        if (!resource)
-        {
-            return Rendering::Textures::TextureHandle{};
-        }
-
-        auto                                            img_buf          = Image2DBufferManager.Access(resource->BufferHandle);
-        auto                                            image_buf_handle = img_buf->GetHandle();
-        auto                                            image_buf_aspect = (resource->Specification.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-
-        auto                                            new_image_layout = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-
-        Specifications::ImageMemoryBarrierSpecification barrier_spec_0   = {};
-        barrier_spec_0.ImageHandle                                       = image_buf_handle;
-        barrier_spec_0.OldLayout                                         = img_buf->Layout;
-        barrier_spec_0.NewLayout                                         = new_image_layout;
-        barrier_spec_0.ImageAspectMask                                   = VkImageAspectFlagBits(image_buf_aspect);
-        barrier_spec_0.SourceAccessMask                                  = VK_ACCESS_NONE;
-        barrier_spec_0.DestinationAccessMask                             = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier_spec_0.SourceStageMask                                   = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        barrier_spec_0.DestinationStageMask                              = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        barrier_spec_0.LayerCount                                        = spec.LayerCount;
-        Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-
-        auto                           command_buf_info = CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, (SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index), 0, 2, true);
-        command_buf_info.Buffer->TransitionImageLayout(barrier_0);
-
-        img_buf->Layout                 = new_image_layout;
-
         auto                 scratch    = ZGetScratch(Arena);
 
         size_t               data_size  = width * height * byte_per_pixel;
@@ -2360,27 +2285,13 @@ namespace ZEngine::Hardwares
             image_data[i + 3] = a_byte;
         }
 
-        WriteTextureData(command_buf_info.Buffer, tex_handle, image_data.data());
+        // todo : maybe we want to review how we handle threading here, for now we assume its creation on MainRenderThread
+        AsyncResourceLoader::UploadRequest request = {
+            .TextureUpload = {.Data = image_data.data(), .TexHandle = tex_handle}
+        };
 
+        AsyncResLoader->Submit(AsyncResourceLoader::UploadType::TEXTURE_BUFFER, 0, 0, request);
         ZReleaseScratch(scratch);
-
-        new_image_layout                                               = (image_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-        Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
-        barrier_spec_1.ImageHandle                                     = image_buf_handle;
-        barrier_spec_1.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-        barrier_spec_1.NewLayout                                       = new_image_layout;
-        barrier_spec_1.ImageAspectMask                                 = image_buf_aspect;
-        barrier_spec_1.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier_spec_1.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
-        barrier_spec_1.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        barrier_spec_1.LayerCount                                      = spec.LayerCount;
-        Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
-        command_buf_info.Buffer->TransitionImageLayout(barrier_1);
-
-        CommandBufferMgr->EndInstantCommandBuffer(command_buf_info);
-
-        img_buf->Layout = new_image_layout;
 
         return tex_handle;
     }
@@ -2451,6 +2362,11 @@ namespace ZEngine::Hardwares
         auto pass = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::RenderPass);
         pass->Initialize(this, spec);
         return pass;
+    }
+
+    void VulkanDevice::EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& operation)
+    {
+        AsyncGPUOperations.Enqueue(operation);
     }
 
 } // namespace ZEngine::Hardwares

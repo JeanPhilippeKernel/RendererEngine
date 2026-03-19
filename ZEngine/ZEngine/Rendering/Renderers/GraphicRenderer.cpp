@@ -82,7 +82,7 @@ namespace ZEngine::Rendering::Renderers
 
         RenderGraph->AddCallbackPass("Initial Pass", initial_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
-        //   RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
+        RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         //  RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         //      RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
@@ -98,7 +98,7 @@ namespace ZEngine::Rendering::Renderers
         Device->GlobalTextures.Remove(FrameDepthRenderTarget);
     }
 
-    void GraphicRenderer::DrawScene(Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera)
+    void GraphicRenderer::DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera)
     {
         auto asset_manager       = Managers::AssetManager::Instance();
         auto ubo_camera_data     = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = Vec4f(camera->GetPosition(), 1.0f)};
@@ -109,9 +109,10 @@ namespace ZEngine::Rendering::Renderers
         auto camera_buf          = camera_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
         auto material_buffer     = material_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
 
-        material_buffer->Write(ArrayView{asset_manager->GPUMeshMaterials});
-        camera_buf->Write(reinterpret_cast<void*>(&ubo_camera_data), sizeof(UBOCameraLayout));
+        material_buffer->Write(frame_index, thread_index, ArrayView{asset_manager->GPUMeshMaterials});
+        camera_buf->Write(frame_index, thread_index, reinterpret_cast<void*>(&ubo_camera_data), sizeof(UBOCameraLayout));
 
+        // todo : expand F, T to the render graph
         RenderGraph->Execute(cb);
     }
 

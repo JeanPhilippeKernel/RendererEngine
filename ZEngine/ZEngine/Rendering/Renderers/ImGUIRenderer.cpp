@@ -68,6 +68,31 @@ namespace ZEngine::Rendering::Renderers
             idx_buffer_set->At(i)->Allocate(ZMega(5), "ImguiIndexBuffer");
         }
 
+        /*
+         * Font uploading
+         */
+        unsigned char* pixels;
+        int            width, height;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        size_t                               upload_size   = width * height * 4 * sizeof(uint8_t);
+
+        Specifications::TextureSpecification font_tex_spec = {};
+        font_tex_spec.Width                                = width;
+        font_tex_spec.Height                               = height;
+        font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
+
+        auto                               font_tex_handle = Device->CreateTexture(font_tex_spec);
+
+        AsyncResourceLoader::UploadRequest request         = {
+                    .TextureUpload = {.Data = pixels, .TexHandle = font_tex_handle}
+        };
+        Device->AsyncResLoader->Submit(AsyncResourceLoader::UploadType::TEXTURE_BUFFER, 0, 0, request);
+
+        // We enqueue the tex handle so, we write the DescriptorSet at Present(...)
+        Device->TextureHandleToUpdates.Enqueue(font_tex_handle);
+
+        io.Fonts->TexID   = (ImTextureID) font_tex_handle.Index;
+
         auto pass_builder = RenderGraph->RenderPassBuilder;
         pass_builder->SetName("Imgui Pass")
             .SetPipelineName("Imgui-Pipeline")
@@ -97,98 +122,10 @@ namespace ZEngine::Rendering::Renderers
 
         UIPass = Device->CreateRenderPass(pass_builder->Detach());
         UIPass->SetBindlessInput("TextureArray");
+        UIPass->SetInput("_unused", Device->GlobalLinearWrapSamplerImageInfo);
+        UIPass->SetInput("LinearWrapSampler", Device->GlobalLinearWrapSamplerImageInfo);
         UIPass->Verify();
         UIPass->Bake();
-        /*
-         * Font uploading
-         */
-        unsigned char* pixels;
-        int            width, height;
-        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        size_t                               upload_size                 = width * height * 4 * sizeof(uint8_t);
-
-        Specifications::TextureSpecification font_tex_spec               = {};
-        font_tex_spec.Width                                              = width;
-        font_tex_spec.Height                                             = height;
-        font_tex_spec.Format                                             = Specifications::ImageFormat::R8G8B8A8_UNORM;
-
-        auto                                            font_tex_handle  = Device->CreateTexture(font_tex_spec);
-        auto                                            font_tex_res     = Device->GlobalTextures.Access(font_tex_handle);
-        auto                                            img_buf          = Device->Image2DBufferManager.Access(font_tex_res->BufferHandle);
-        auto                                            image_buf_handle = img_buf->GetHandle();
-
-        auto                                            command_buf_info = Device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, (Device->SwapchainPtr->CurrentFrame == nullptr ? 0u : Device->SwapchainPtr->CurrentFrame->Index), 0, 2, true);
-
-        Specifications::ImageMemoryBarrierSpecification barrier_spec_0   = {};
-        barrier_spec_0.ImageHandle                                       = image_buf_handle;
-        barrier_spec_0.OldLayout                                         = img_buf->Layout;
-        barrier_spec_0.NewLayout                                         = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-        barrier_spec_0.ImageAspectMask                                   = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier_spec_0.SourceAccessMask                                  = VK_ACCESS_NONE;
-        barrier_spec_0.DestinationAccessMask                             = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier_spec_0.SourceStageMask                                   = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        barrier_spec_0.DestinationStageMask                              = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        barrier_spec_0.LayerCount                                        = font_tex_res->Specification.LayerCount;
-        Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-        command_buf_info.Buffer->TransitionImageLayout(barrier_0);
-
-        img_buf->Layout = barrier_spec_0.NewLayout;
-
-        Device->WriteTextureData(command_buf_info.Buffer, font_tex_handle, pixels);
-
-        Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
-        barrier_spec_1.ImageHandle                                     = image_buf_handle;
-        barrier_spec_1.OldLayout                                       = img_buf->Layout;
-        barrier_spec_1.NewLayout                                       = Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-        barrier_spec_1.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier_spec_1.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier_spec_1.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
-        barrier_spec_1.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        barrier_spec_1.LayerCount                                      = font_tex_res->Specification.LayerCount;
-        Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
-        command_buf_info.Buffer->TransitionImageLayout(barrier_1);
-
-        img_buf->Layout = barrier_spec_1.NewLayout;
-        Device->CommandBufferMgr->EndInstantCommandBuffer(command_buf_info);
-
-        /*
-         * Dummy Texture
-         */
-        auto dummy_tex_handle                             = Device->CreateTexture(1, 1, 255, 255, 255, 255);
-        auto dummy_tex_res                                = Device->GlobalTextures.Access(dummy_tex_handle);
-        auto dummy_tex_buf                                = Device->Image2DBufferManager.Access(dummy_tex_res->BufferHandle);
-
-        io.Fonts->TexID                                   = (ImTextureID) font_tex_handle.Index;
-
-        auto                        font_image_info       = img_buf->GetDescriptorImageInfo();
-        auto                        dummy_image_info      = dummy_tex_buf->GetDescriptorImageInfo();
-        uint32_t                    frame_count           = Device->SwapchainPtr->BufferredFrameCount;
-        auto                        shader                = UIPass->Pipeline->Shader;
-        auto&                       descriptor_set_map    = shader->DescriptorSetMap;
-
-        auto                        scratch               = ZGetScratch(Device->Arena);
-        Array<VkWriteDescriptorSet> write_descriptor_sets = {};
-        write_descriptor_sets.init(scratch.Arena, frame_count);
-
-        for (unsigned i = 0; i < frame_count; ++i)
-        {
-            for (const auto& [set, arr] : descriptor_set_map)
-            {
-                auto frame_set = arr[i];
-                if (set == 0) // __unused
-                {
-                    write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = frame_set, .dstBinding = 0, .dstArrayElement = 0u /*(uint32_t) dummy_tex_handle.Index*/, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(dummy_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-                    continue;
-                }
-
-                write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = frame_set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-            }
-        }
-
-        vkUpdateDescriptorSets(Device->LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
-
-        ZReleaseScratch(scratch);
     }
 
     void ImGUIRenderer::Deinitialize()
