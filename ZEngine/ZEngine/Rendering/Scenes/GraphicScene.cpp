@@ -209,7 +209,7 @@ namespace ZEngine::Rendering::Scenes
 
             if (!std::string_view(mat_files.AlbedoTexture).empty())
             {
-                auto handle = async_loader->LoadTextureFile(mat_files.AlbedoTexture);
+                auto handle = async_loader->Submit(0, 0, {.TextureUpload = {.Filename = mat_files.AlbedoTexture}});
                 if (handle)
                 {
                     mat.AlbedoMap = handle.Index;
@@ -218,7 +218,7 @@ namespace ZEngine::Rendering::Scenes
 
             if (!std::string_view(mat_files.EmissiveTexture).empty())
             {
-                auto handle = async_loader->LoadTextureFile(mat_files.EmissiveTexture);
+                auto handle = async_loader->Submit(0, 0, {.TextureUpload = {.Filename = mat_files.EmissiveTexture}});
                 if (handle)
                 {
                     mat.EmissiveMap = handle.Index;
@@ -227,7 +227,7 @@ namespace ZEngine::Rendering::Scenes
 
             if (!std::string_view(mat_files.NormalTexture).empty())
             {
-                auto handle = async_loader->LoadTextureFile(mat_files.NormalTexture);
+                auto handle = async_loader->Submit(0, 0, {.TextureUpload = {.Filename = mat_files.NormalTexture}});
                 if (handle)
                 {
                     mat.NormalMap = handle.Index;
@@ -236,7 +236,7 @@ namespace ZEngine::Rendering::Scenes
 
             if (!std::string_view(mat_files.OpacityTexture).empty())
             {
-                auto handle = async_loader->LoadTextureFile(mat_files.OpacityTexture);
+                auto handle = async_loader->Submit(0, 0, {.TextureUpload = {.Filename = mat_files.OpacityTexture}});
                 if (handle)
                 {
                     mat.OpacityMap = handle.Index;
@@ -245,7 +245,7 @@ namespace ZEngine::Rendering::Scenes
 
             if (!std::string_view(mat_files.SpecularTexture).empty())
             {
-                auto handle = async_loader->LoadTextureFile(mat_files.SpecularTexture);
+                auto handle = async_loader->Submit(0, 0, {.TextureUpload = {.Filename = mat_files.SpecularTexture}});
                 if (handle)
                 {
                     mat.SpecularMap = handle.Index;

@@ -74,52 +74,19 @@ namespace ZEngine::Rendering::Renderers
         unsigned char* pixels;
         int            width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        size_t                               upload_size                 = width * height * 4 * sizeof(uint8_t);
+        size_t                               upload_size   = width * height * 4 * sizeof(uint8_t);
 
-        Specifications::TextureSpecification font_tex_spec               = {};
-        font_tex_spec.Width                                              = width;
-        font_tex_spec.Height                                             = height;
-        font_tex_spec.Format                                             = Specifications::ImageFormat::R8G8B8A8_UNORM;
+        Specifications::TextureSpecification font_tex_spec = {};
+        font_tex_spec.Width                                = width;
+        font_tex_spec.Height                               = height;
+        font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
 
-        auto                                            font_tex_handle  = Device->CreateTexture(font_tex_spec);
-        auto                                            font_tex_res     = Device->GlobalTextures.Access(font_tex_handle);
-        auto                                            img_buf          = Device->Image2DBufferManager.Access(font_tex_res->BufferHandle);
-        auto                                            image_buf_handle = img_buf->GetHandle();
+        auto                               font_tex_handle = Device->CreateTexture(font_tex_spec);
 
-        auto                                            command_buf_info = Device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, (Device->SwapchainPtr->CurrentFrame == nullptr ? 0u : Device->SwapchainPtr->CurrentFrame->Index), 0, 2, true);
-
-        Specifications::ImageMemoryBarrierSpecification barrier_spec_0   = {};
-        barrier_spec_0.ImageHandle                                       = image_buf_handle;
-        barrier_spec_0.OldLayout                                         = img_buf->Layout;
-        barrier_spec_0.NewLayout                                         = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-        barrier_spec_0.ImageAspectMask                                   = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier_spec_0.SourceAccessMask                                  = VK_ACCESS_NONE;
-        barrier_spec_0.DestinationAccessMask                             = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier_spec_0.SourceStageMask                                   = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        barrier_spec_0.DestinationStageMask                              = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        barrier_spec_0.LayerCount                                        = font_tex_res->Specification.LayerCount;
-        Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-        command_buf_info.Buffer->TransitionImageLayout(barrier_0);
-
-        img_buf->Layout = barrier_spec_0.NewLayout;
-
-        Device->WriteTextureData(command_buf_info.Buffer, font_tex_handle, pixels);
-
-        Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
-        barrier_spec_1.ImageHandle                                     = image_buf_handle;
-        barrier_spec_1.OldLayout                                       = img_buf->Layout;
-        barrier_spec_1.NewLayout                                       = Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-        barrier_spec_1.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier_spec_1.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier_spec_1.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
-        barrier_spec_1.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        barrier_spec_1.LayerCount                                      = font_tex_res->Specification.LayerCount;
-        Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
-        command_buf_info.Buffer->TransitionImageLayout(barrier_1);
-
-        img_buf->Layout = barrier_spec_1.NewLayout;
-        Device->CommandBufferMgr->EndInstantCommandBuffer(command_buf_info);
+        AsyncResourceLoader::UploadRequest request         = {
+                    .TextureUpload = {.Data = pixels, .TexHandle = font_tex_handle}
+        };
+        Device->AsyncResLoader->Submit(AsyncResourceLoader::UploadType::TEXTURE_BUFFER, 0, 0, request);
 
         // We enqueue the tex handle so, we write the DescriptorSet at Present(...)
         Device->TextureHandleToUpdates.Enqueue(font_tex_handle);

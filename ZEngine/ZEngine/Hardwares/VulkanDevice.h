@@ -52,6 +52,8 @@ namespace ZEngine::Hardwares
     struct WriteDescriptorSetRequestKey;
     struct WriteDescriptorSetRequest;
     struct CommandBufferManager;
+    struct AsyncGPUOperation;
+    struct AsyncGPUOperationHandle;
     /*
      * Vertex | Index | Uniform | Storage Buffers
      */
@@ -112,23 +114,23 @@ namespace ZEngine::Hardwares
         virtual BufferView CreateBuffer() = 0;
 
         virtual void       Allocate(uint64_t size, const char* debug_name);
-        virtual void       Clear();
-        virtual void       ClearRange(uint8_t value, uint32_t offset, size_t size);
-        virtual void       UploadRange(const void* data, uint32_t offset, size_t size);
-        virtual void       Upload(const void* data, size_t size);
+        virtual void       Clear(uint8_t frame_index, uint8_t thread_index);
+        virtual void       ClearRange(uint8_t frame_index, uint8_t thread_index, uint8_t value, uint32_t offset, size_t size);
+        virtual void       UploadRange(uint8_t frame_index, uint8_t thread_index, const void* data, uint32_t offset, size_t size);
+        virtual void       Upload(uint8_t frame_index, uint8_t thread_index, const void* data, size_t size);
 
-        virtual void       Write(const void* data, size_t byte_size);
+        virtual void       Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size);
 
         template <typename T>
-        inline void Write(Core::Containers::ArrayView<T> content)
+        inline void Write(uint8_t frame_index, uint8_t thread_index, Core::Containers::ArrayView<T> content)
         {
-            Write(content.data(), content.size_bytes());
+            Write(frame_index, thread_index, content.data(), content.size_bytes());
         }
 
         template <typename T>
-        inline void Upload(Core::Containers::ArrayView<T> content)
+        inline void Upload(uint8_t frame_index, uint8_t thread_index, Core::Containers::ArrayView<T> content)
         {
-            Upload(content.data(), content.size_bytes());
+            Upload(frame_index, thread_index, content.data(), content.size_bytes());
         }
 
         virtual void                          CleanUpMemory();
@@ -252,13 +254,13 @@ namespace ZEngine::Hardwares
 
         virtual BufferView CreateBuffer() override;
         virtual void       CleanUpMemory() override;
-        virtual void       Upload(const VkDrawIndirectCommand* data, size_t byte_size);
+        virtual void       Upload(uint8_t frame_index, uint8_t thread_index, const VkDrawIndirectCommand* data, size_t byte_size);
 
-        virtual void       Write(const void* data, size_t byte_size) override;
+        virtual void       Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size) override;
 
-        inline void        Write(Core::Containers::ArrayView<VkDrawIndirectCommand> content)
+        inline void        Write(uint8_t frame_index, uint8_t thread_index, Core::Containers::ArrayView<VkDrawIndirectCommand> content)
         {
-            Write(content.data(), content.size_bytes());
+            Write(frame_index, thread_index, content.data(), content.size_bytes());
         }
 
         virtual ~IndirectBuffer() {}
@@ -421,7 +423,7 @@ namespace ZEngine::Hardwares
     /*
      * Command Buffer definition
      */
-    enum CommanBufferState : uint8_t
+    enum CommandBufferState : uint8_t
     {
         Idle = 0,
         Recording,
@@ -454,9 +456,9 @@ namespace ZEngine::Hardwares
         bool                              Completed();
         bool                              IsExecutable();
         bool                              IsRecording();
-        CommanBufferState                 GetState() const;
+        CommandBufferState                GetState() const;
         void                              ResetState();
-        void                              SetState(const CommanBufferState& state);
+        void                              SetState(const CommandBufferState& state);
         void                              SetSignalFence(Rendering::Primitives::Fence* const semaphore);
         void                              SetSignalSemaphore(Rendering::Primitives::Semaphore* const semaphore);
         Rendering::Primitives::Semaphore* GetSignalSemaphore() const;
@@ -482,7 +484,7 @@ namespace ZEngine::Hardwares
         void                              ExecuteSecondaryCommandBuffers(Core::Containers::ArrayView<CommandBuffer> buffers);
 
     private:
-        std::atomic_uint8_t m_command_buffer_state{CommanBufferState::Idle};
+        std::atomic_uint8_t m_command_buffer_state{CommandBufferState::Idle};
         VkCommandBuffer     m_command_buffer{VK_NULL_HANDLE};
         VkCommandPool       m_command_pool{VK_NULL_HANDLE};
         VkClearValue        m_clear_value[2] = {0};
@@ -495,14 +497,12 @@ namespace ZEngine::Hardwares
 
     struct CommandBufferManager
     {
-        struct InstantResource;
         struct InstantCommandBufferInfo;
 
         void                                                            Initialize(VulkanDevice* device, uint32_t image_count = 0, uint8_t override_thread_count = 0);
         void                                                            Deinitialize();
-        CommandBuffer*                                                  GetCommandBuffer(uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
-        InstantCommandBufferInfo                                        GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
-        void                                                            EndInstantCommandBuffer(const InstantCommandBufferInfo& info, int wait_flag = -1);
+        CommandBuffer*                                                  GetCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
+        CommandBuffer*                                                  GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint32_t buffer_per_pool_index, bool begin = true);
         Rendering::Pools::CommandPool*                                  GetCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index);
         void                                                            ResetPool(uint8_t frame_index, uint8_t thread_index);
         void                                                            IncreaseBuffers();
@@ -511,38 +511,29 @@ namespace ZEngine::Hardwares
         void                                                            ResetEnqueuedBufferIndex();
         bool                                                            IsInitialized() const;
 
-        uint32_t                                                        TotalCommandBufferCount    = 0;
-        uint32_t                                                        TotalPoolCount             = 0;
-        uint32_t                                                        TotalThreadCount           = 0;
-        uint32_t                                                        EnqueuedCommandBufferIndex = 0;
-        const uint32_t                                                  MaxBufferPerPool           = 4;
-        VulkanDevice*                                                   Device                     = nullptr;
-        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> CommandPools               = {};
-        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> TransferCommandPools       = {};
-        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 CommandBuffers             = {};
-        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 TransferCommandBuffers     = {};
-        Core::Containers::Array<InstantResource>                        InstantResources           = {};
-        Core::Containers::Array<CommandBuffer*>                         EnqueuedCommandBuffers     = {};
+        uint32_t                                                        TotalCommandBufferCount        = 0;
+        uint32_t                                                        TotalInstantCommandBufferCount = 0;
+        uint32_t                                                        TotalPoolCount                 = 0;
+        uint32_t                                                        TotalThreadCount               = 0;
+        uint32_t                                                        EnqueuedCommandBufferIndex     = 0;
+        const uint32_t                                                  MaxBufferPerPool               = 4;
+        VulkanDevice*                                                   Device                         = nullptr;
+
+        Core::Containers::Array<Rendering::Pools::CommandPool*>         InstantGraphicsPools           = {};
+        Core::Containers::Array<Rendering::Pools::CommandPool*>         InstantTransferPools           = {};
+        Core::Containers::Array<CommandBuffer*>                         InstantGraphicsCommandBuffers  = {};
+        Core::Containers::Array<CommandBuffer*>                         InstantTransferCommandBuffers  = {};
+
+        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> CommandPools                   = {};
+        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> TransferCommandPools           = {};
+        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 CommandBuffers                 = {};
+        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 TransferCommandBuffers         = {};
+        Core::Containers::Array<CommandBuffer*>                         EnqueuedCommandBuffers         = {};
 
     private:
         bool m_is_initialized = false;
     };
     ZDEFINE_PTR(CommandBufferManager);
-
-    struct CommandBufferManager::InstantResource
-    {
-        std::atomic_bool                  IsExecuting  = false;
-        std::mutex*                       CommandMutex = nullptr;
-        std::condition_variable           Cond;
-        Rendering::Primitives::Semaphore* Semaphore = nullptr;
-        Rendering::Primitives::Fence*     Fence     = nullptr;
-    };
-
-    struct CommandBufferManager::InstantCommandBufferInfo
-    {
-        CommandBuffer*   Buffer   = nullptr;
-        InstantResource* Resource = nullptr;
-    };
 
     struct WriteDescriptorSetRequestKey
     {
@@ -570,6 +561,23 @@ namespace ZEngine::Hardwares
     };
 
     /*
+     * Async GPU operation handle and definition
+     */
+    struct AsyncGPUOperationHandle
+    {
+        uint64_t                          SignalValue = 0;
+        Rendering::Primitives::Semaphore* Timeline    = nullptr;
+    };
+
+    struct AsyncGPUOperation
+    {
+        uint64_t                          NextValue    = 0;
+        Rendering::Primitives::Semaphore* Timeline     = nullptr;
+        Core::Containers::Array<uint64_t> RetireValues = {};
+
+        void                              Initialize(VulkanDevice* device, uint32_t total_buffer_count);
+    };
+    /*
      *  Device definition
      */
     struct VulkanDevice
@@ -577,6 +585,7 @@ namespace ZEngine::Hardwares
         bool                                                                                                                HasSeperateTransfertQueueFamily             = false;
         bool                                                                                                                PhysicalDeviceSupportSampledImageBindless   = false;
         bool                                                                                                                PhysicalDeviceSupportStorageBufferBindless  = false;
+        bool                                                                                                                PhysicalDeviceSupportTimelineSemaphore      = false;
         const char*                                                                                                         ApplicationName                             = "Tetragrama";
         const char*                                                                                                         EngineName                                  = "ZEngine";
         uint32_t                                                                                                            WorkerThreadCount                           = 1;
@@ -590,7 +599,7 @@ namespace ZEngine::Hardwares
         VkSurfaceFormatKHR                                                                                                  SurfaceFormat                               = {};
         VkPresentModeKHR                                                                                                    PresentMode                                 = {};
         VkPhysicalDeviceProperties2                                                                                         PhysicalDeviceProperties                    = {};
-        VkPhysicalDeviceDescriptorIndexingProperties                                                                        PhysicalDeviceDescriptorIndexingProperties  = {};
+        VkPhysicalDeviceVulkan12Properties                                                                                  PhysicalDeviceVulkan12Properties            = {};
         VkDevice                                                                                                            LogicalDevice                               = VK_NULL_HANDLE;
         VkPhysicalDevice                                                                                                    PhysicalDevice                              = VK_NULL_HANDLE;
         VkPhysicalDeviceFeatures2                                                                                           PhysicalDeviceFeature                       = {};
@@ -613,6 +622,7 @@ namespace ZEngine::Hardwares
         Helpers::HandleManager<Image2DBuffer>                                                                               Image2DBufferManager                        = {};
         Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                                                        TextureHandleToUpdates                      = {};
         Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                                                        TextureHandleToDispose                      = {};
+        Helpers::ThreadSafeQueue<AsyncGPUOperationHandle>                                                                   AsyncGPUOperations                          = {};
         Helpers::HandleManager<Rendering::Shaders::Shader>                                                                  ShaderManager                               = {};
         Helpers::HandleManager<VertexBufferSet>                                                                             VertexBufferSetManager                      = {};
         Helpers::HandleManager<StorageBufferSet>                                                                            StorageBufferSetManager                     = {};
@@ -631,7 +641,9 @@ namespace ZEngine::Hardwares
         void                                                                                                                Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count);
         void                                                                                                                Deinitialize();
         void                                                                                                                Dispose();
+        void                                                                                                                QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, int wait_flag = -1);
         bool                                                                                                                QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
+        void                                                                                                                EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
         void                                                                                                                EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
         void                                                                                                                EnqueueForDeletion(Rendering::DeviceResourceType resource_type, DirtyResource resource);
         void                                                                                                                EnqueueBufferForDeletion(BufferView& buffer);
@@ -641,7 +653,7 @@ namespace ZEngine::Hardwares
         void                                                                                                                QueueWaitAll();
         void                                                                                                                MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data);
         BufferView                                                                                                          CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags = 0);
-        void                                                                                                                CopyBuffer(const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset = 0u, VkDeviceSize dst_buffer_offset = 0u);
+        VkPipelineStageFlags                                                                                                CopyBuffer(CommandBuffer* const command_buffer, const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset = 0u, VkDeviceSize dst_buffer_offset = 0u);
         BufferImage                                     CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, VkImageCreateFlags image_create_flag_bit = 0);
         VkFormat                                        FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
         VkFormat                                        FindDepthFormat();

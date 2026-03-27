@@ -18,10 +18,11 @@ namespace ZEngine::Rendering::Primitives
 
     struct Semaphore
     {
-        Semaphore(Hardwares::VulkanDevice* const device);
+        Semaphore(Hardwares::VulkanDevice* const device, bool is_timeline = false);
         ~Semaphore();
 
-        Hardwares::VulkanDevice* Device = nullptr;
+        bool                     IsTimeline = false;
+        Hardwares::VulkanDevice* Device     = nullptr;
         void                     Wait(const uint64_t value, const uint64_t timeout = UINT64_MAX);
         void                     Signal(const uint64_t value);
         VkSemaphore              GetHandle() const;

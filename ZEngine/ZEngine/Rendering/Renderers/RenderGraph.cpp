@@ -430,7 +430,7 @@ namespace ZEngine::Rendering::Renderers
     {
         Graph->ResourceMap[name].Name                       = name;
         Graph->ResourceMap[name].Type                       = RenderGraphResourceType::TEXTURE;
-        Graph->ResourceMap[name].ResourceInfo.TextureHandle = Graph->Device->AsyncResLoader->LoadTextureFile(filename);
+        Graph->ResourceMap[name].ResourceInfo.TextureHandle = Graph->Device->AsyncResLoader->Submit(0, 1 /* 1 : just for testing*/, {.TextureUpload = {.Filename = filename}});
         return Graph->ResourceMap[name];
     }
 

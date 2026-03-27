@@ -21,7 +21,7 @@ namespace ZEngine::Rendering::Renderers
         {
             auto buffer = buffer_set->At(i);
             buffer->Allocate(vb_view.size_bytes(), "initial_vertex_buffer");
-            buffer->Write(vb_view);
+            buffer->Write(0, 0, vb_view);
         }
 
         RenderGraphRenderPassCreation pass_node = {.Name = name};
@@ -161,8 +161,8 @@ namespace ZEngine::Rendering::Renderers
             vertex_buffer->Allocate(vtx_buf_view.size_bytes(), "SkyboxPassVtx");
             index_buffer->Allocate(idx_buf_view.size_bytes(), "SkyboxPassIdx");
 
-            vertex_buffer->Write(vtx_buf_view);
-            index_buffer->Write(idx_buf_view);
+            vertex_buffer->Write(0, 0, vtx_buf_view);
+            index_buffer->Write(0, 0, idx_buf_view);
         }
 
         auto&                         output_skybox = res_builder->CreateRenderTarget("skybox_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
@@ -259,8 +259,8 @@ namespace ZEngine::Rendering::Renderers
             vertex_buffer->Allocate(vtx_buf_view.size_bytes(), "GridPassVtx");
             index_buffer->Allocate(idx_buf_view.size_bytes(), "GridPassIdx");
 
-            vertex_buffer->Write(vtx_buf_view);
-            index_buffer->Write(idx_buf_view);
+            vertex_buffer->Write(0, 0, vtx_buf_view);
+            index_buffer->Write(0, 0, idx_buf_view);
         }
 
         auto&                         output_grid = res_builder->CreateRenderTarget("grid_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});

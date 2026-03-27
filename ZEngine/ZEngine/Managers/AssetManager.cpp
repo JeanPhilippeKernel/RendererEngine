@@ -193,7 +193,7 @@ namespace ZEngine::Managers
         new_tex.TextureUUID          = gen();
 
         const auto tex_absolute_path = absolute ? std::string(file) : fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, file);
-        new_tex.Handle               = s_Instance->Device->AsyncResLoader->LoadTextureFile(tex_absolute_path.c_str());
+        new_tex.Handle               = s_Instance->Device->AsyncResLoader->Submit(0, 0, {.TextureUpload = {.Filename = tex_absolute_path.c_str()}});
         new_tex.Path.init(&(s_Instance->Arena), file);
 
         RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, asset_id);
@@ -313,7 +313,7 @@ namespace ZEngine::Managers
                     new_tex.TextureUUID          = tex.TextureUUID;
 
                     const auto tex_absolute_path = fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, tex.Path.c_str());
-                    new_tex.Handle               = s_Instance->Device->AsyncResLoader->LoadTextureFile(tex_absolute_path.c_str());
+                    new_tex.Handle               = s_Instance->Device->AsyncResLoader->Submit(0, 0, {.TextureUpload = {.Filename = tex_absolute_path.c_str()}});
                     new_tex.Path.init(&(s_Instance->Arena), tex.Path.c_str());
 
                     RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, asset_id);
