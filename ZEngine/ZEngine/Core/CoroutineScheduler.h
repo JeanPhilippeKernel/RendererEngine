@@ -14,11 +14,12 @@ namespace ZEngine::Core
 
         ReadyCallback   Ready  = nullptr;
         ExecuteCallback Action = nullptr;
-
+        // clang-format off
         operator bool() noexcept
         {
             return (Ready && Action);
         }
+        // clang-format on
     };
 
     struct CoroutineScheduler

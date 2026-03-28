@@ -26,6 +26,9 @@ jobs:
       - name: Install NuGet CLI
         run: brew install nuget
 
+      - name: Update LLVM
+        run: brew install llvm
+
       - name: CMake Build
         run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}} -Architecture ${{inputs.architecture}} -RunClangFormat 0
         shell: pwsh

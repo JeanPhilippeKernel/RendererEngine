@@ -14,6 +14,9 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
+            - name: update llvm to version 22
+              run: choco upgrade llvm
+
             - name: Checking formatting
               run: .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/${{ inputs.srcDirectory }} -RunAsCheck 1
               shell: pwsh

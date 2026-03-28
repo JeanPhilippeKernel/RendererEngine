@@ -76,11 +76,12 @@ namespace ZEngine::Hardwares
         BufferType    Type       = BufferType::UNKNOWN;
         VkBuffer      Handle     = VK_NULL_HANDLE;
         VmaAllocation Allocation = nullptr;
-
+        // clang-format off
         operator bool() const
         {
             return (Handle != VK_NULL_HANDLE);
         }
+        // clang-format on
     };
 
     struct BufferImage
@@ -90,11 +91,12 @@ namespace ZEngine::Hardwares
         VkImageView   ViewHandle{VK_NULL_HANDLE};
         VkSampler     Sampler{VK_NULL_HANDLE};
         VmaAllocation Allocation{nullptr};
-
+        // clang-format off
         operator bool() const
         {
             return (Handle != VK_NULL_HANDLE);
         }
+        // clang-format on
     };
 
     struct IGraphicBuffer
