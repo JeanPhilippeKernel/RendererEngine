@@ -271,7 +271,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            node.CallbackPass->Execute(Device, SceneData, node.Handle, node.Framebuffer, command_buffer);
+            node.CallbackPass->Execute(Device, ResourceInspector, SceneData, node.Handle, node.Framebuffer, command_buffer);
         }
     }
 

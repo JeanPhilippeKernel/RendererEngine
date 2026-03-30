@@ -98,7 +98,7 @@ namespace ZEngine
 
             auto     pipeline = g_app->RenderPipeline;
 
-            uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_relaxed);
+            uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
             uint32_t next     = (head + 1) % pipeline->MaxMailBoxBufferCount;
             uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
 
@@ -150,7 +150,7 @@ namespace ZEngine
 
             auto     pipeline = g_app->RenderPipeline;
 
-            uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_relaxed);
+            uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
             uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
 
             // Buffer empty

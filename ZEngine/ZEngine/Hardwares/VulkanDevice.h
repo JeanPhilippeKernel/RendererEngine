@@ -565,6 +565,7 @@ namespace ZEngine::Hardwares
      */
     struct AsyncGPUOperationHandle
     {
+        uint32_t                          StageFlags  = 0;
         uint64_t                          SignalValue = 0;
         Rendering::Primitives::Semaphore* Timeline    = nullptr;
     };
@@ -641,7 +642,7 @@ namespace ZEngine::Hardwares
         void                                                                                                                Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count);
         void                                                                                                                Deinitialize();
         void                                                                                                                Dispose();
-        void                                                                                                                QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, int wait_flag = -1);
+        void                                                                                                                QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, uint32_t wait_flag = UINT32_MAX);
         bool                                                                                                                QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
         void                                                                                                                EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
         void                                                                                                                EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);

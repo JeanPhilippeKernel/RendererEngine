@@ -9,6 +9,7 @@ namespace ZEngine::Hardwares
     struct VulkanDevice;
     struct AsyncGPUOperation;
     struct BufferView;
+    struct CommandBuffer;
 
     struct TextureFileRequest
     {
@@ -62,11 +63,30 @@ namespace ZEngine::Hardwares
             };
         };
 
-        std::atomic_uint64_t                                       NextValue       = 1;
-        Rendering::Primitives::Semaphore*                          TextureTimeline = nullptr;
-        Rendering::Primitives::Semaphore*                          BufferTimeline  = nullptr;
-        VulkanDevice*                                              Device          = nullptr;
-        Core::Containers::Array<Core::Containers::Array<uint64_t>> RetireValues    = {};
+        struct TimelineJob
+        {
+            CommandBuffer*                    Buffer      = nullptr;
+            Rendering::Primitives::Semaphore* Timeline    = nullptr;
+            uint32_t                          WaitFlag    = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            uint64_t                          SignalValue = 0;
+        };
+
+        struct DeferralUpload
+        {
+            UploadType                         UploadType;
+            uint8_t                            FrameIdx  = 0;
+            uint8_t                            ThreadIdx = 0;
+            unsigned char*                     Data      = nullptr;
+            Rendering::Textures::TextureHandle TexHandle = {};
+        };
+
+        std::atomic_uint64_t                                       NextValue             = 1;
+        std::atomic_uint32_t                                       Counter               = 0;
+        Rendering::Primitives::Semaphore*                          Timeline              = nullptr;
+        VulkanDevice*                                              Device                = nullptr;
+        Core::Containers::Array<Core::Containers::Array<uint64_t>> RetireValues          = {};
+        Helpers::ThreadSafeQueue<TimelineJob>                      AsyncTimelineJobQueue = {};
+        Helpers::ThreadSafeQueue<DeferralUpload>                   DeferralUploadQueue   = {};
 
         void                                                       Initialize(VulkanDevice* device);
 
@@ -77,7 +97,12 @@ namespace ZEngine::Hardwares
         Rendering::Textures::TextureHandle                         LoadTextureFile(cstring filename) = delete;
 
         void                                                       Submit(UploadType type, uint8_t frame_index, uint8_t thread_index, const UploadRequest& request);
+        void                                                       SubmitDeferral(DeferralUpload&& deferral);
         Rendering::Textures::TextureHandle                         Submit(uint8_t frame_index, uint8_t thread_index, const UploadRequest& request);
+
+        void                                                       CompleteDeferrals();
+        void                                                       SubmitAsyncJobs();
+        void                                                       ResetCommandBuffers(uint8_t frame_index, uint8_t thread_index);
 
         void                                                       Run();
         void                                                       Shutdown();

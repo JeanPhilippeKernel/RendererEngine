@@ -300,6 +300,7 @@ namespace ZEngine::Hardwares
         }
 
         Device->CommandBufferMgr->EndEnqueuedBuffers();
+        Device->AsyncResLoader->SubmitAsyncJobs();
 
         auto                   scratch = ZGetScratch(&Arena);
 
@@ -315,43 +316,73 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(render_complete->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
         ZENGINE_VALIDATE_ASSERT(CurrentFrame->Fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
 
-        Array<VkSemaphore> wait_semaphores = {};
-        wait_semaphores.init(scratch.Arena, 10);
+        struct TimelineAggregate
+        {
+            uint64_t             MaxValue  = 0;
+            VkPipelineStageFlags StageMask = 0;
+        };
 
-        HashMap<Primitives::Semaphore*, uint64_t> max_val_timeline_semaphores = {};
-        Array<uint64_t>                           timeline_values             = {};
+        Array<VkSemaphore>                                 wait_semaphores             = {};
+        Array<uint64_t>                                    wait_values                 = {};
+        HashMap<Primitives::Semaphore*, TimelineAggregate> max_val_timeline_semaphores = {};
+        Array<VkPipelineStageFlags>                        stage_flags                 = {};
 
+        wait_semaphores.init(scratch.Arena, 5);
+        stage_flags.init(scratch.Arena, 5);
+        wait_values.init(scratch.Arena, 5);
         max_val_timeline_semaphores.init(scratch.Arena);
-        timeline_values.init(scratch.Arena, 10);
+
+        wait_semaphores.push(CurrentFrame->Acquired->GetHandle());
+        stage_flags.push(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
         while (!Device->AsyncGPUOperations.Empty())
         {
             Hardwares::AsyncGPUOperationHandle op;
             if (Device->AsyncGPUOperations.Pop(op))
             {
-                max_val_timeline_semaphores[op.Timeline] = std::max(max_val_timeline_semaphores[op.Timeline], op.SignalValue);
+                if (!max_val_timeline_semaphores.contains(op.Timeline))
+                {
+                    max_val_timeline_semaphores.insert(op.Timeline, {op.SignalValue, op.StageFlags});
+                    continue;
+                }
+                auto& val      = max_val_timeline_semaphores[op.Timeline];
+                val.MaxValue   = std::max(val.MaxValue, op.SignalValue);
+                val.StageMask |= op.StageFlags;
             }
         }
 
         for (auto [sem, val] : max_val_timeline_semaphores)
         {
             wait_semaphores.push(sem->GetHandle());
-            timeline_values.push(val);
+            wait_values.push(val.MaxValue);
+            stage_flags.push(val.StageMask);
         }
-
-        wait_semaphores.push(CurrentFrame->Acquired->GetHandle());
-        timeline_values.push(0);
 
         QueueView                     queue               = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
         VkSemaphore                   signal_semaphores[] = {render_complete->GetHandle()};
-        VkPipelineStageFlags          stage_flags[]       = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, /* we can adjust this later*/ VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
-        VkSubmitInfo                  submit_info         = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .waitSemaphoreCount = (uint32_t) wait_semaphores.size(), .pWaitSemaphores = wait_semaphores.data(), .pWaitDstStageMask = stage_flags, .commandBufferCount = (uint32_t) buffer.size(), .pCommandBuffers = buffer.data(), .signalSemaphoreCount = 1, .pSignalSemaphores = signal_semaphores};
 
-        VkTimelineSemaphoreSubmitInfo timeline_info       = {.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, .waitSemaphoreValueCount = (uint32_t) timeline_values.size(), .pWaitSemaphoreValues = timeline_values.data()};
+        VkTimelineSemaphoreSubmitInfo timeline_info       = {
+                  .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+                  .pNext                     = nullptr,
+                  .waitSemaphoreValueCount   = (uint32_t) wait_values.size(),
+                  .pWaitSemaphoreValues      = wait_values.data(),
+                  .signalSemaphoreValueCount = 0,
+                  .pSignalSemaphoreValues    = nullptr,
+        };
 
-        submit_info.pNext                                 = &timeline_info;
+        VkSubmitInfo submit_info = {
+            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext                = &timeline_info,
+            .waitSemaphoreCount   = (uint32_t) wait_semaphores.size(),
+            .pWaitSemaphores      = wait_semaphores.data(),
+            .pWaitDstStageMask    = stage_flags.data(),
+            .commandBufferCount   = (uint32_t) buffer.size(),
+            .pCommandBuffers      = buffer.data(),
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores    = signal_semaphores,
+        };
 
-        auto submit                                       = vkQueueSubmit(queue.Handle, 1, &(submit_info), CurrentFrame->Fence->GetHandle());
+        auto submit = vkQueueSubmit(queue.Handle, 1, &(submit_info), CurrentFrame->Fence->GetHandle());
         ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
 
         ZReleaseScratch(scratch);

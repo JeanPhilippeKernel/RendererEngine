@@ -5,16 +5,17 @@ namespace ZEngine::Rendering::Primitives
 {
     Semaphore::Semaphore(Hardwares::VulkanDevice* const device, bool is_timeline)
     {
-        IsTimeline                                     = is_timeline;
-        Device                                         = device;
-        VkSemaphoreTypeCreateInfo timeline_create_info = {};
-        timeline_create_info.sType                     = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
-        timeline_create_info.semaphoreType             = is_timeline ? VK_SEMAPHORE_TYPE_TIMELINE : VK_SEMAPHORE_TYPE_BINARY;
-        timeline_create_info.initialValue              = 0;
+        IsTimeline                                      = is_timeline;
+        Device                                          = device;
+        VkSemaphoreTypeCreateInfo timeline_create_info  = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
 
-        VkSemaphoreCreateInfo semaphore_create_info    = {};
-        semaphore_create_info.sType                    = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        semaphore_create_info.pNext                    = &timeline_create_info;
+        VkSemaphoreCreateInfo     semaphore_create_info = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        if (is_timeline)
+        {
+            timeline_create_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+            timeline_create_info.initialValue  = 0;
+            semaphore_create_info.pNext        = &timeline_create_info;
+        }
 
         ZENGINE_VALIDATE_ASSERT(vkCreateSemaphore(Device->LogicalDevice, &semaphore_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Semaphore")
     }

@@ -71,9 +71,12 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Font uploading
          */
+        AsyncResourceLoader::DeferralUpload deferral = {};
+        deferral.UploadType                          = AsyncResourceLoader::UploadType::TEXTURE_BUFFER;
+
         unsigned char* pixels;
         int            width, height;
-        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        io.Fonts->GetTexDataAsRGBA32(&(deferral.Data), &width, &height);
         size_t                               upload_size   = width * height * 4 * sizeof(uint8_t);
 
         Specifications::TextureSpecification font_tex_spec = {};
@@ -81,12 +84,10 @@ namespace ZEngine::Rendering::Renderers
         font_tex_spec.Height                               = height;
         font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
 
-        auto                               font_tex_handle = Device->CreateTexture(font_tex_spec);
+        auto font_tex_handle                               = Device->CreateTexture(font_tex_spec);
+        deferral.TexHandle                                 = font_tex_handle;
 
-        AsyncResourceLoader::UploadRequest request         = {
-                    .TextureUpload = {.Data = pixels, .TexHandle = font_tex_handle}
-        };
-        Device->AsyncResLoader->Submit(AsyncResourceLoader::UploadType::TEXTURE_BUFFER, 0, 0, request);
+        Device->AsyncResLoader->SubmitDeferral(std::move(deferral));
 
         // We enqueue the tex handle so, we write the DescriptorSet at Present(...)
         Device->TextureHandleToUpdates.Enqueue(font_tex_handle);

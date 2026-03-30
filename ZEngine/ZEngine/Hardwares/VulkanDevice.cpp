@@ -626,45 +626,39 @@ namespace ZEngine::Hardwares
         Instance                = VK_NULL_HANDLE;
     }
 
-    void VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, int wait_flag)
+    void VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, uint32_t wait_flag)
     {
-        ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
         ZENGINE_VALIDATE_ASSERT(command_buffer->GetState() == CommandBufferState::Executable, "Command buffer must be in executable state to be submitted.")
         ZENGINE_VALIDATE_ASSERT(signal_semaphore->IsTimeline == true, "Signal semaphore must be a timeline semaphore.")
 
-        auto flag = (command_buffer->QueueType == QueueType::GRAPHIC_QUEUE) ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
+        VkPipelineStageFlags flag              = (wait_flag == UINT32_MAX) ? 0 : VkPipelineStageFlagBits(wait_flag);
 
-        if (wait_flag != -1)
-        {
-            flag = VkPipelineStageFlagBits(wait_flag);
-        }
-
-        VkCommandBuffer command_buffers[] = {command_buffer->GetHandle()};
-        VkSemaphore     semaphores[]      = {signal_semaphore->GetHandle()};
-        VkSubmitInfo    submit_info       = {
-                     .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                     .pNext                = nullptr,
-                     .waitSemaphoreCount   = 0,
-                     .pWaitSemaphores      = nullptr,
-                     .pWaitDstStageMask    = nullptr,
-                     .commandBufferCount   = 1,
-                     .pCommandBuffers      = command_buffers,
-                     .signalSemaphoreCount = 1,
-                     .pSignalSemaphores    = semaphores,
+        VkCommandBuffer      command_buffers[] = {command_buffer->GetHandle()};
+        VkSemaphore          semaphores[]      = {signal_semaphore->GetHandle()};
+        VkSubmitInfo         submit_info       = {
+                          .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                          .pNext                = nullptr,
+                          .waitSemaphoreCount   = 0,
+                          .pWaitSemaphores      = nullptr,
+                          .pWaitDstStageMask    = &flag,
+                          .commandBufferCount   = 1,
+                          .pCommandBuffers      = command_buffers,
+                          .signalSemaphoreCount = 1,
+                          .pSignalSemaphores    = semaphores,
         };
 
+        uint64_t                      signal_values[]                = {signal_value};
         VkTimelineSemaphoreSubmitInfo timeline_semaphore_submit_info = {
             .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
             .pNext                     = nullptr,
             .waitSemaphoreValueCount   = 0,
             .pWaitSemaphoreValues      = nullptr,
             .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = &signal_value,
+            .pSignalSemaphoreValues    = signal_values,
         };
         submit_info.pNext = &timeline_semaphore_submit_info;
         ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit queue")
         command_buffer->SetState(CommandBufferState::Pending);
-        signal_semaphore->SetState(SemaphoreState::Submitted);
     }
 
     bool VulkanDevice::QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, Rendering::Primitives::Fence* const fence)
@@ -1215,6 +1209,7 @@ namespace ZEngine::Hardwares
 
             if (idle_count < threshold)
             {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 continue;
             }
 
@@ -1899,7 +1894,7 @@ namespace ZEngine::Hardwares
         {
             buffer->ResetState();
             // Todo : We want to merge vkResetCommandBuffer with ResetState() when buffer is instant type
-            vkResetCommandBuffer(buffer->GetHandle(), 0);
+            // vkResetCommandBuffer(buffer->GetHandle(), VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
             buffer->Begin();
         }
         return buffer;

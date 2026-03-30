@@ -44,21 +44,24 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::BeginFrame()
     {
-        auto swpachain = Device->SwapchainPtr;
+        auto swapchain = Device->SwapchainPtr;
 
-        swpachain->AcquireNextImage(CurrentMailBoxBufferHead);
+        swapchain->AcquireNextImage(CurrentMailBoxBufferHead);
 
         for (uint8_t thread_idx = 0; thread_idx < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
         {
-            Device->CommandBufferMgr->ResetPool(swpachain->CurrentFrame->Index, thread_idx);
+            Device->CommandBufferMgr->ResetPool(swapchain->CurrentFrame->Index, thread_idx);
+            // Device->AsyncResLoader->ResetCommandBuffers(swapchain->CurrentFrame->Index, thread_idx);
         }
+
+        Device->AsyncResLoader->CompleteDeferrals();
 
         // uint8_t render_worker_thread_idx = RenderThreadIndex + 1;
         // for (uint8_t worker_thread_idx = 0; worker_thread_idx < RenderWorkerThreadCount; ++worker_thread_idx)
         // {
         //     auto thread_idx                             = render_worker_thread_idx + worker_thread_idx;
         // }
-        CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, swpachain->CurrentFrame->Index, RenderMainThreadIndex, 0, true);
+        CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, swapchain->CurrentFrame->Index, RenderMainThreadIndex, 0, true);
     }
 
     void AppRenderPipeline::EndFrame()
