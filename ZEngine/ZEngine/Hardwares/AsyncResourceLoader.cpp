@@ -428,9 +428,6 @@ namespace ZEngine::Hardwares
             if (AsyncTimelineJobQueue.Pop(job))
             {
                 Device->QueueSubmit(job.Buffer, job.Timeline, job.SignalValue, job.WaitFlag);
-                // Verify completion before enqueueing
-                uint64_t current_value = 0;
-                vkGetSemaphoreCounterValue(Device->LogicalDevice, job.Timeline->GetHandle(), &current_value);
                 Device->EnqueueAsyncGPUOperation({job.WaitFlag, job.SignalValue, job.Timeline});
             }
         }

@@ -21,6 +21,8 @@ namespace ZEngine::Hardwares
         BufferredFrameCount                                              = buffered_frame_size;
         FrameContextPoolSize                                             = BufferredFrameCount * FrameContextPoolSizeFactor;
 
+        RenderTimeline = ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device, true);
+        
         Specifications::AttachmentSpecification attachment_specification = {.BindPoint = Specifications::PipelineBindPoint::GRAPHIC};
         attachment_specification.ColorsMap.init(&Arena, 2);
         attachment_specification.ColorsMap[0]                 = {};
@@ -198,6 +200,7 @@ namespace ZEngine::Hardwares
         FrameContext& frame = FrameContexts[frame_context_idx + FrameContextOffset];
 
         frame.Fence->Reset();
+        Device->AsyncResLoader->ResetCommandBuffers(frame.Index, 0);
 
         ZENGINE_VALIDATE_ASSERT(frame.Acquired->GetState() != Primitives::SemaphoreState::Submitted, "")
 
@@ -334,6 +337,7 @@ namespace ZEngine::Hardwares
 
         wait_semaphores.push(CurrentFrame->Acquired->GetHandle());
         stage_flags.push(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        wait_values.push(0);
 
         while (!Device->AsyncGPUOperations.Empty())
         {
@@ -358,16 +362,17 @@ namespace ZEngine::Hardwares
             stage_flags.push(val.StageMask);
         }
 
-        QueueView                     queue               = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
-        VkSemaphore                   signal_semaphores[] = {render_complete->GetHandle()};
+        QueueView                     queue           = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
 
-        VkTimelineSemaphoreSubmitInfo timeline_info       = {
-                  .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-                  .pNext                     = nullptr,
-                  .waitSemaphoreValueCount   = (uint32_t) wait_values.size(),
-                  .pWaitSemaphoreValues      = wait_values.data(),
-                  .signalSemaphoreValueCount = 0,
-                  .pSignalSemaphoreValues    = nullptr,
+        uint64_t                      signal_value    = ++RenderTimelineNextValue;
+        VkSemaphore                   timeline_signal = RenderTimeline->GetHandle();
+        VkTimelineSemaphoreSubmitInfo timeline_info   = {
+              .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+              .pNext                     = nullptr,
+              .waitSemaphoreValueCount   = (uint32_t) wait_values.size(),
+              .pWaitSemaphoreValues      = wait_values.data(),
+              .signalSemaphoreValueCount = 1,
+              .pSignalSemaphoreValues    = &signal_value,
         };
 
         VkSubmitInfo submit_info = {
@@ -379,7 +384,7 @@ namespace ZEngine::Hardwares
             .commandBufferCount   = (uint32_t) buffer.size(),
             .pCommandBuffers      = buffer.data(),
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = signal_semaphores,
+            .pSignalSemaphores    = &timeline_signal,
         };
 
         auto submit = vkQueueSubmit(queue.Handle, 1, &(submit_info), CurrentFrame->Fence->GetHandle());
@@ -390,11 +395,38 @@ namespace ZEngine::Hardwares
         Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
 
         CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
+
+        VkSemaphore                   timeline_wait       = RenderTimeline->GetHandle();
+        VkSemaphore                   binary_semaphores[] = {render_complete->GetHandle()};
+
+        VkPipelineStageFlags          wait_stage          = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+
+        uint64_t                      wait_value          = signal_value;
+
+        VkTimelineSemaphoreSubmitInfo timeline_info2      = {
+                 .sType                   = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+                 .waitSemaphoreValueCount = 1,
+                 .pWaitSemaphoreValues    = &wait_value,
+        };
+
+        VkSubmitInfo submit2 = {
+            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext                = &timeline_info2,
+            .waitSemaphoreCount   = 1,
+            .pWaitSemaphores      = &timeline_wait,
+            .pWaitDstStageMask    = &wait_stage,
+            .commandBufferCount   = 0,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores    = binary_semaphores,
+        };
+
+        vkQueueSubmit(queue.Handle, 1, &submit2, VK_NULL_HANDLE);
+
         render_complete->SetState(Rendering::Primitives::SemaphoreState::Submitted);
 
         VkSwapchainKHR   swapchains[]   = {SwapchainHandle};
         uint32_t         frames[]       = {CurrentFrame->ImageIndex};
-        VkPresentInfoKHR present_info   = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .pNext = nullptr, .waitSemaphoreCount = 1, .pWaitSemaphores = signal_semaphores, .swapchainCount = 1, .pSwapchains = swapchains, .pImageIndices = frames};
+        VkPresentInfoKHR present_info   = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .pNext = nullptr, .waitSemaphoreCount = 1, .pWaitSemaphores = binary_semaphores, .swapchainCount = 1, .pSwapchains = swapchains, .pImageIndices = frames};
         VkResult         present_result = vkQueuePresentKHR(queue.Handle, &present_info);
 
         CurrentFrame->Acquired->SetState(Rendering::Primitives::SemaphoreState::Idle);
