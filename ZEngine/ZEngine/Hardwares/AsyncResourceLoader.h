@@ -3,6 +3,7 @@
 #include <Rendering/Primitives/Semaphore.h>
 #include <Textures/Texture.h>
 #include <ZEngineDef.h>
+#include <variant>
 
 namespace ZEngine::Hardwares
 {
@@ -35,6 +36,7 @@ namespace ZEngine::Hardwares
         enum class UploadType : uint8_t
         {
             TEXTURE_BUFFER = 0,
+            TEXTURE_BUFFER_LARGE,
             TEXTURE_FILE,
             BUFFER,
             STAGING_BUFFER,
@@ -67,23 +69,24 @@ namespace ZEngine::Hardwares
         {
             CommandBuffer*                    Buffer      = nullptr;
             Rendering::Primitives::Semaphore* Timeline    = nullptr;
-            uint32_t                          WaitFlag    = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            uint32_t                          WaitFlag    = 0;
             uint64_t                          SignalValue = 0;
+            uint64_t                          WaitValue   = UINT64_MAX;
         };
 
         struct DeferralUpload
         {
-            UploadType                         UploadType;
-            uint8_t                            FrameIdx  = 0;
-            uint8_t                            ThreadIdx = 0;
-            unsigned char*                     Data      = nullptr;
-            Rendering::Textures::TextureHandle TexHandle = {};
+            UploadType                                         UploadType;
+            uint8_t                                            FrameIdx  = 0;
+            uint8_t                                            ThreadIdx = 0;
+            std::variant<unsigned char*, std::vector<uint8_t>> Buffer;
+            Rendering::Textures::TextureHandle                 TexHandle = {};
         };
 
-        std::atomic_uint64_t                                       NextValue             = 1;
-        std::atomic_uint32_t                                       Counter               = 0;
-        Rendering::Primitives::Semaphore*                          Timeline              = nullptr;
         VulkanDevice*                                              Device                = nullptr;
+
+        Core::Containers::Array<std::atomic_uint64_t>              NextValues            = {};
+        Core::Containers::Array<Rendering::Primitives::Semaphore*> Timelines             = {};
         Core::Containers::Array<Core::Containers::Array<uint64_t>> RetireValues          = {};
         Helpers::ThreadSafeQueue<TimelineJob>                      AsyncTimelineJobQueue = {};
         Helpers::ThreadSafeQueue<DeferralUpload>                   DeferralUploadQueue   = {};
@@ -108,7 +111,6 @@ namespace ZEngine::Hardwares
         void                                                       Shutdown();
 
     private:
-        std::atomic_bool                               m_pump_running{false};
         std::atomic_bool                               m_cancellation_token{false};
         std::mutex                                     m_mutex;
         Helpers::ThreadSafeQueue<TextureFileRequest>   m_file_requests;

@@ -71,12 +71,12 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Font uploading
          */
-        AsyncResourceLoader::DeferralUpload deferral = {};
+        AsyncResourceLoader::DeferralUpload deferral = {.Buffer = nullptr};
         deferral.UploadType                          = AsyncResourceLoader::UploadType::TEXTURE_BUFFER;
 
         unsigned char* pixels;
         int            width, height;
-        io.Fonts->GetTexDataAsRGBA32(&(deferral.Data), &width, &height);
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
         size_t                               upload_size   = width * height * 4 * sizeof(uint8_t);
 
         Specifications::TextureSpecification font_tex_spec = {};
@@ -86,6 +86,7 @@ namespace ZEngine::Rendering::Renderers
 
         auto font_tex_handle                               = Device->CreateTexture(font_tex_spec);
         deferral.TexHandle                                 = font_tex_handle;
+        deferral.Buffer                                    = pixels;
 
         Device->AsyncResLoader->SubmitDeferral(std::move(deferral));
 

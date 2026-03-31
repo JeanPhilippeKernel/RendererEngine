@@ -51,7 +51,6 @@ namespace ZEngine::Applications
         for (uint8_t thread_idx = 0; thread_idx < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
         {
             Device->CommandBufferMgr->ResetPool(swapchain->CurrentFrame->Index, thread_idx);
-            // Device->AsyncResLoader->ResetCommandBuffers(swapchain->CurrentFrame->Index, thread_idx);
         }
 
         Device->AsyncResLoader->CompleteDeferrals();

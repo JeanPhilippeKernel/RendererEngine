@@ -40,9 +40,11 @@ namespace ZEngine::Hardwares
         // Todo Convert atomic_uint as PaddedAtomic..
         std::atomic_uint                                           IdleFrameCount                 = 0;
         std::atomic_uint                                           IdleFrameThreshold             = std::numeric_limits<uint32_t>::max();
+        uint64_t                                                   RenderTimelineNextValue        = 0;
         VkSwapchainKHR                                             SwapchainHandle                = VK_NULL_HANDLE;
         FrameContextPtr                                            CurrentFrame                   = nullptr;
-        Rendering::Renderers::RenderPasses::Attachment*            SwapchainAttachment            = {};
+        Rendering::Primitives::Semaphore*                          RenderTimeline                 = nullptr;
+        Rendering::Renderers::RenderPasses::Attachment*            SwapchainAttachment            = nullptr;
         Core::Containers::Array<FrameContext>                      FrameContexts                  = {};
         Core::Containers::Array<VkImageView>                       SwapchainImageViews            = {};
         Core::Containers::Array<VkFramebuffer>                     SwapchainFramebuffers          = {};
@@ -55,7 +57,6 @@ namespace ZEngine::Hardwares
         void                                                       Dispose();
 
         void                                                       AcquireNextImage(uint32_t frame_context_idx);
-        void                                                       AsPresentSource();
         void                                                       Present();
     };
     ZDEFINE_PTR(DeviceSwapchain);
