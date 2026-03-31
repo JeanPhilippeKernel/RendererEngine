@@ -52,7 +52,7 @@ namespace ZEngine::Rendering::Renderers
                                  .EnablePipelineDepthTest(true)
                                  .UseShader("initial")
                                  .Detach();
-            *output_pass = device->CreateRenderPass(pass_spec);
+            *output_pass   = device->CreateRenderPass(pass_spec);
             (*output_pass)->Bake();
         }
     }
@@ -90,8 +90,9 @@ namespace ZEngine::Rendering::Renderers
 
                                  .UseShader("depth_prepass_scene")
                                  .Detach();
-
+            // clang-format off
             *output_pass = device->CreateRenderPass(pass_spec);
+            // clang-format on
             (*output_pass)->Bake();
         }
 
@@ -166,8 +167,9 @@ namespace ZEngine::Rendering::Renderers
 
                                  .UseShader("skybox")
                                  .Detach();
-
+            // clang-format off
             *output_pass = device->CreateRenderPass(pass_spec);
+            // clang-format on
             (*output_pass)->Bake();
         }
 
@@ -255,7 +257,9 @@ namespace ZEngine::Rendering::Renderers
                                  .EnablePipelineDepthTest(true)
                                  .UseShader("infinite_grid")
                                  .Detach();
+            // clang-format off
             *output_pass = device->CreateRenderPass(pass_spec);
+            // clang-format on
             (*output_pass)->Bake();
         }
 
