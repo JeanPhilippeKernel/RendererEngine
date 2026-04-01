@@ -313,14 +313,14 @@ namespace ZEngine::Hardwares
         VkSemaphore                   acquire_wait_semaphores[]   = {CurrentFrame->Acquired->GetHandle()};
         VkSemaphore                   acquire_signal_semaphores[] = {RenderTimeline->GetHandle()};
         VkSubmitInfo                  submit_0                    = {
-                                                .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                                                .pNext                = &timeline_info0,
-                                                .waitSemaphoreCount   = 1,
-                                                .pWaitSemaphores      = acquire_wait_semaphores,
-                                                .pWaitDstStageMask    = &acquire_wait_stage,
-                                                .commandBufferCount   = 0,
-                                                .signalSemaphoreCount = 1,
-                                                .pSignalSemaphores    = acquire_signal_semaphores,
+            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext                = &timeline_info0,
+            .waitSemaphoreCount   = 1,
+            .pWaitSemaphores      = acquire_wait_semaphores,
+            .pWaitDstStageMask    = &acquire_wait_stage,
+            .commandBufferCount   = 0,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores    = acquire_signal_semaphores,
         };
         vkQueueSubmit(queue.Handle, 1, &submit_0, VK_NULL_HANDLE);
 
@@ -370,11 +370,11 @@ namespace ZEngine::Hardwares
         uint64_t                      work_complete_value      = ++RenderTimelineNextValue;
         VkSemaphore                   work_signal_semaphores[] = {RenderTimeline->GetHandle()};
         VkTimelineSemaphoreSubmitInfo timeline_info_1          = {
-                     .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-                     .waitSemaphoreValueCount   = (uint32_t) wait_values.size(),
-                     .pWaitSemaphoreValues      = wait_values.data(),
-                     .signalSemaphoreValueCount = 1,
-                     .pSignalSemaphoreValues    = &work_complete_value,
+            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+            .waitSemaphoreValueCount   = (uint32_t) wait_values.size(),
+            .pWaitSemaphoreValues      = wait_values.data(),
+            .signalSemaphoreValueCount = 1,
+            .pSignalSemaphoreValues    = &work_complete_value,
         };
 
         VkSubmitInfo submit_info_1 = {
@@ -402,9 +402,9 @@ namespace ZEngine::Hardwares
         VkSemaphore                   present_wait_semaphores[]   = {RenderTimeline->GetHandle()};
         VkSemaphore                   present_signal_semaphores[] = {render_complete->GetHandle()};
         VkTimelineSemaphoreSubmitInfo timeline_info2              = {
-                         .sType                   = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-                         .waitSemaphoreValueCount = 1,
-                         .pWaitSemaphoreValues    = &work_complete_value,
+            .sType                   = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+            .waitSemaphoreValueCount = 1,
+            .pWaitSemaphoreValues    = &work_complete_value,
         };
 
         VkSubmitInfo submit2 = {

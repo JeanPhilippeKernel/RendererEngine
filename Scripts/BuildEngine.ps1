@@ -140,7 +140,9 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     
         Write-Host "Building $systemName $architecture $configuration"
 
-        $buildArguments = "--build --preset $configName"
+        $processorCount = [ENVIRONMENT]::ProcessorCount
+
+        $buildArguments = "--build --preset $configName --parallel $processorCount"
 
         $buildProcess = Start-Process $cMakeProgram -ArgumentList $buildArguments -NoNewWindow -PassThru
 

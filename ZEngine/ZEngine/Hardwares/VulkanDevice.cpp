@@ -636,15 +636,15 @@ namespace ZEngine::Hardwares
         VkCommandBuffer      command_buffers[] = {command_buffer->GetHandle()};
         VkSemaphore          semaphores[]      = {signal_semaphore->GetHandle()};
         VkSubmitInfo         submit_info       = {
-                          .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                          .pNext                = nullptr,
-                          .waitSemaphoreCount   = 0,
-                          .pWaitSemaphores      = nullptr,
-                          .pWaitDstStageMask    = &flag,
-                          .commandBufferCount   = 1,
-                          .pCommandBuffers      = command_buffers,
-                          .signalSemaphoreCount = 1,
-                          .pSignalSemaphores    = semaphores,
+            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext                = nullptr,
+            .waitSemaphoreCount   = 0,
+            .pWaitSemaphores      = nullptr,
+            .pWaitDstStageMask    = &flag,
+            .commandBufferCount   = 1,
+            .pCommandBuffers      = command_buffers,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores    = semaphores,
         };
 
         uint64_t                      signal_values[]                = {signal_value};
@@ -672,6 +672,7 @@ namespace ZEngine::Hardwares
         VkSemaphore          semaphores[] = {signal_semaphore->GetHandle()};
         VkCommandBuffer      buffers[]    = {command_buffer->GetHandle()};
         VkSubmitInfo         submit_info  = {
+            // clang-format off
                      .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                      .pNext                = nullptr,
                      .waitSemaphoreCount   = 0,
@@ -681,6 +682,7 @@ namespace ZEngine::Hardwares
                      .pCommandBuffers      = buffers,
                      .signalSemaphoreCount = 0,
                      .pSignalSemaphores    = 0,
+            //clang-format on
         };
 
         ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, fence->GetHandle()) == VK_SUCCESS, "Failed to submit queue")
@@ -2254,10 +2256,12 @@ namespace ZEngine::Hardwares
         uint32_t                             byte_per_pixel = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(Specifications::ImageFormat::R8G8B8A8_SRGB)];
 
         Specifications::TextureSpecification spec           = {
+          // clang-format off
                       .Width        = width,
                       .Height       = height,
                       .BytePerPixel = byte_per_pixel,
                       .Format       = Specifications::ImageFormat::R8G8B8A8_SRGB,
+            // clang-format on
         };
 
         auto tex_handle = CreateTexture(spec);

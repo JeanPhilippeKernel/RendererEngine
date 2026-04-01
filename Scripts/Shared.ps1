@@ -201,6 +201,8 @@ function Find-ClangFormat () {
         }
         if ($IsLinux) {
             '/usr/bin/clang-format'
+            '/usr/bin/clang-format-22'
+            '/usr/bin/clang-format-21'
             '/usr/bin/clang-format-20'
         }
         'clang-format'
