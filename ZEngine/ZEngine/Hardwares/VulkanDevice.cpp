@@ -636,15 +636,15 @@ namespace ZEngine::Hardwares
         VkCommandBuffer      command_buffers[] = {command_buffer->GetHandle()};
         VkSemaphore          semaphores[]      = {signal_semaphore->GetHandle()};
         VkSubmitInfo         submit_info       = {
-                          .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                          .pNext                = nullptr,
-                          .waitSemaphoreCount   = 0,
-                          .pWaitSemaphores      = nullptr,
-                          .pWaitDstStageMask    = &flag,
-                          .commandBufferCount   = 1,
-                          .pCommandBuffers      = command_buffers,
-                          .signalSemaphoreCount = 1,
-                          .pSignalSemaphores    = semaphores,
+            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext                = nullptr,
+            .waitSemaphoreCount   = 0,
+            .pWaitSemaphores      = nullptr,
+            .pWaitDstStageMask    = &flag,
+            .commandBufferCount   = 1,
+            .pCommandBuffers      = command_buffers,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores    = semaphores,
         };
 
         uint64_t                      signal_values[]                = {signal_value};

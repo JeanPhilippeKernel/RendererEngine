@@ -76,7 +76,7 @@ namespace ZEngine::Rendering::Renderers
                                  .EnablePipelineDepthTest(true)
                                  .UseShader("initial")
                                  .Detach();
-            *output_pass = device->CreateRenderPass(pass_spec);
+            *output_pass   = device->CreateRenderPass(pass_spec);
             (*output_pass)->Bake();
         }
     }
@@ -147,7 +147,7 @@ namespace ZEngine::Rendering::Renderers
                                  .EnablePipelineDepthTest(true)
                                  .UseShader("initial")
                                  .Detach();
-            *output_pass = device->CreateRenderPass(pass_spec);
+            *output_pass   = device->CreateRenderPass(pass_spec);
             (*output_pass)->Bake();
         }
     }
