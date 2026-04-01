@@ -84,11 +84,12 @@ namespace ZEngine::Hardwares
         BufferType    Type       = BufferType::UNKNOWN;
         VkBuffer      Handle     = VK_NULL_HANDLE;
         VmaAllocation Allocation = nullptr;
-
+        // clang-format off
         operator bool() const
         {
             return (Handle != VK_NULL_HANDLE);
         }
+        // clang-format on
     };
 
     struct BufferImage
@@ -98,11 +99,12 @@ namespace ZEngine::Hardwares
         VkImageView   ViewHandle{VK_NULL_HANDLE};
         VkSampler     Sampler{VK_NULL_HANDLE};
         VmaAllocation Allocation{nullptr};
-
+        // clang-format off
         operator bool() const
         {
             return (Handle != VK_NULL_HANDLE);
         }
+        // clang-format on
     };
 
     struct IGraphicBuffer
@@ -504,6 +506,7 @@ namespace ZEngine::Hardwares
         CommandBuffer*                                                  GetCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
         CommandBuffer*                                                  GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint32_t buffer_per_pool_index, bool begin = true);
         Rendering::Pools::CommandPool*                                  GetCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index);
+        Rendering::Pools::CommandPool*                                  GetInstantCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index);
         void                                                            ResetPool(uint8_t frame_index, uint8_t thread_index);
         void                                                            IncreaseBuffers();
         void                                                            EnqueueBuffer(CommandBufferPtr const buffer);
@@ -642,7 +645,7 @@ namespace ZEngine::Hardwares
         void                                                                                                                Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count);
         void                                                                                                                Deinitialize();
         void                                                                                                                Dispose();
-        void                                                                                                                QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, uint32_t wait_flag = UINT32_MAX);
+        void                                                                                                                QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value);
         bool                                                                                                                QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
         void                                                                                                                EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
         void                                                                                                                EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);

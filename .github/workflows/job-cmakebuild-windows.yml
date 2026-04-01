@@ -18,10 +18,13 @@ on:
 jobs:
   cmake-build:
     name: cmake-build-windows-${{ inputs.configuration }}
-    runs-on: windows-2022
+    runs-on: windows-2025
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: update llvm to version 22
+        run: choco upgrade llvm
 
       - name: CMake Build
         run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}} -RunClangFormat 0

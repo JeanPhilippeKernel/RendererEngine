@@ -21,8 +21,8 @@ namespace ZEngine::Hardwares
         BufferredFrameCount                                              = buffered_frame_size;
         FrameContextPoolSize                                             = BufferredFrameCount * FrameContextPoolSizeFactor;
 
-        RenderTimeline = ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device, true);
-        
+        RenderTimeline                                                   = ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device, true);
+
         Specifications::AttachmentSpecification attachment_specification = {.BindPoint = Specifications::PipelineBindPoint::GRAPHIC};
         attachment_specification.ColorsMap.init(&Arena, 2);
         attachment_specification.ColorsMap[0]                 = {};
@@ -228,29 +228,6 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void DeviceSwapchain::AsPresentSource()
-    {
-        // auto           command_buffer_info = Device->CommandBufferMgr->GetInstantCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, (CurrentFrame == nullptr) ? 0u : CurrentFrame->Index, 0, 2, true);
-
-        // for (int i = 0; i < SwapchainImages.size(); ++i)
-        // {
-        //     Rendering::Specifications::ImageMemoryBarrierSpecification barrier_spec = {};
-        //     barrier_spec.ImageHandle                                                = SwapchainImages[i];
-        //     barrier_spec.OldLayout                                                  = Specifications::ImageLayout::UNDEFINED;
-        //     barrier_spec.NewLayout                                                  = Specifications::ImageLayout::PRESENT_SRC;
-        //     barrier_spec.ImageAspectMask                                            = VK_IMAGE_ASPECT_COLOR_BIT;
-        //     barrier_spec.SourceAccessMask                                           = 0;
-        //     barrier_spec.DestinationAccessMask                                      = VK_ACCESS_MEMORY_READ_BIT;
-        //     barrier_spec.SourceStageMask                                            = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        //     barrier_spec.DestinationStageMask                                       = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        //     barrier_spec.LayerCount                                                 = 1;
-
-        //     Rendering::Primitives::ImageMemoryBarrier barrier{barrier_spec};
-        //     command_buffer_info.Buffer->TransitionImageLayout(barrier);
-        // }
-        // Device->CommandBufferMgr->EndInstantCommandBuffer(command_buffer_info);
-    }
-
     void DeviceSwapchain::Present()
     {
         if (HasRecreationPending)
@@ -319,6 +296,34 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(render_complete->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
         ZENGINE_VALIDATE_ASSERT(CurrentFrame->Fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
 
+        QueueView                     queue                       = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
+
+        // for the rendering and presentation, we use the 3-submit pattern
+        // This is due to Intel drivers bug that deosn't support well the combinaison of Timeline + Binary Semaphore.
+        //
+        // 1 - Acquire bridge
+        // 2 - Rendering work
+        // 3 - Present bridge
+
+        // 1- Binary Acquire to a Timeline value
+        uint64_t                      frame_start_value           = ++RenderTimelineNextValue;
+        VkTimelineSemaphoreSubmitInfo timeline_info0              = {.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, .signalSemaphoreValueCount = 1, .pSignalSemaphoreValues = &frame_start_value};
+
+        VkPipelineStageFlags          acquire_wait_stage          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        VkSemaphore                   acquire_wait_semaphores[]   = {CurrentFrame->Acquired->GetHandle()};
+        VkSemaphore                   acquire_signal_semaphores[] = {RenderTimeline->GetHandle()};
+        VkSubmitInfo                  submit_0                    = {
+                                                .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                                                .pNext                = &timeline_info0,
+                                                .waitSemaphoreCount   = 1,
+                                                .pWaitSemaphores      = acquire_wait_semaphores,
+                                                .pWaitDstStageMask    = &acquire_wait_stage,
+                                                .commandBufferCount   = 0,
+                                                .signalSemaphoreCount = 1,
+                                                .pSignalSemaphores    = acquire_signal_semaphores,
+        };
+        vkQueueSubmit(queue.Handle, 1, &submit_0, VK_NULL_HANDLE);
+
         struct TimelineAggregate
         {
             uint64_t             MaxValue  = 0;
@@ -330,14 +335,14 @@ namespace ZEngine::Hardwares
         HashMap<Primitives::Semaphore*, TimelineAggregate> max_val_timeline_semaphores = {};
         Array<VkPipelineStageFlags>                        stage_flags                 = {};
 
-        wait_semaphores.init(scratch.Arena, 5);
-        stage_flags.init(scratch.Arena, 5);
-        wait_values.init(scratch.Arena, 5);
+        wait_semaphores.init(scratch.Arena, 10);
+        stage_flags.init(scratch.Arena, 10);
+        wait_values.init(scratch.Arena, 10);
         max_val_timeline_semaphores.init(scratch.Arena);
 
-        wait_semaphores.push(CurrentFrame->Acquired->GetHandle());
+        wait_semaphores.push(RenderTimeline->GetHandle());
+        wait_values.push(frame_start_value);
         stage_flags.push(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-        wait_values.push(0);
 
         while (!Device->AsyncGPUOperations.Empty())
         {
@@ -362,32 +367,29 @@ namespace ZEngine::Hardwares
             stage_flags.push(val.StageMask);
         }
 
-        QueueView                     queue           = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
-
-        uint64_t                      signal_value    = ++RenderTimelineNextValue;
-        VkSemaphore                   timeline_signal = RenderTimeline->GetHandle();
-        VkTimelineSemaphoreSubmitInfo timeline_info   = {
-              .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-              .pNext                     = nullptr,
-              .waitSemaphoreValueCount   = (uint32_t) wait_values.size(),
-              .pWaitSemaphoreValues      = wait_values.data(),
-              .signalSemaphoreValueCount = 1,
-              .pSignalSemaphoreValues    = &signal_value,
+        uint64_t                      work_complete_value      = ++RenderTimelineNextValue;
+        VkSemaphore                   work_signal_semaphores[] = {RenderTimeline->GetHandle()};
+        VkTimelineSemaphoreSubmitInfo timeline_info_1          = {
+                     .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+                     .waitSemaphoreValueCount   = (uint32_t) wait_values.size(),
+                     .pWaitSemaphoreValues      = wait_values.data(),
+                     .signalSemaphoreValueCount = 1,
+                     .pSignalSemaphoreValues    = &work_complete_value,
         };
 
-        VkSubmitInfo submit_info = {
+        VkSubmitInfo submit_info_1 = {
             .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext                = &timeline_info,
+            .pNext                = &timeline_info_1,
             .waitSemaphoreCount   = (uint32_t) wait_semaphores.size(),
             .pWaitSemaphores      = wait_semaphores.data(),
             .pWaitDstStageMask    = stage_flags.data(),
             .commandBufferCount   = (uint32_t) buffer.size(),
             .pCommandBuffers      = buffer.data(),
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = &timeline_signal,
+            .pSignalSemaphores    = work_signal_semaphores,
         };
 
-        auto submit = vkQueueSubmit(queue.Handle, 1, &(submit_info), CurrentFrame->Fence->GetHandle());
+        auto submit = vkQueueSubmit(queue.Handle, 1, &(submit_info_1), CurrentFrame->Fence->GetHandle());
         ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
 
         ZReleaseScratch(scratch);
@@ -396,38 +398,43 @@ namespace ZEngine::Hardwares
 
         CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
 
-        VkSemaphore                   timeline_wait       = RenderTimeline->GetHandle();
-        VkSemaphore                   binary_semaphores[] = {render_complete->GetHandle()};
-
-        VkPipelineStageFlags          wait_stage          = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-
-        uint64_t                      wait_value          = signal_value;
-
-        VkTimelineSemaphoreSubmitInfo timeline_info2      = {
-                 .sType                   = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-                 .waitSemaphoreValueCount = 1,
-                 .pWaitSemaphoreValues    = &wait_value,
+        VkPipelineStageFlags          present_wait_stage          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        VkSemaphore                   present_wait_semaphores[]   = {RenderTimeline->GetHandle()};
+        VkSemaphore                   present_signal_semaphores[] = {render_complete->GetHandle()};
+        VkTimelineSemaphoreSubmitInfo timeline_info2              = {
+                         .sType                   = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+                         .waitSemaphoreValueCount = 1,
+                         .pWaitSemaphoreValues    = &work_complete_value,
         };
 
         VkSubmitInfo submit2 = {
             .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .pNext                = &timeline_info2,
             .waitSemaphoreCount   = 1,
-            .pWaitSemaphores      = &timeline_wait,
-            .pWaitDstStageMask    = &wait_stage,
+            .pWaitSemaphores      = present_wait_semaphores,
+            .pWaitDstStageMask    = &present_wait_stage,
             .commandBufferCount   = 0,
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = binary_semaphores,
+            .pSignalSemaphores    = present_signal_semaphores,
         };
 
         vkQueueSubmit(queue.Handle, 1, &submit2, VK_NULL_HANDLE);
 
         render_complete->SetState(Rendering::Primitives::SemaphoreState::Submitted);
 
-        VkSwapchainKHR   swapchains[]   = {SwapchainHandle};
-        uint32_t         frames[]       = {CurrentFrame->ImageIndex};
-        VkPresentInfoKHR present_info   = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .pNext = nullptr, .waitSemaphoreCount = 1, .pWaitSemaphores = binary_semaphores, .swapchainCount = 1, .pSwapchains = swapchains, .pImageIndices = frames};
-        VkResult         present_result = vkQueuePresentKHR(queue.Handle, &present_info);
+        VkSwapchainKHR   swapchains[] = {SwapchainHandle};
+        uint32_t         frames[]     = {CurrentFrame->ImageIndex};
+        VkSemaphore      semaphores[] = {render_complete->GetHandle()};
+        VkPresentInfoKHR present_info = {
+            .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext              = nullptr,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores    = semaphores,
+            .swapchainCount     = 1,
+            .pSwapchains        = swapchains,
+            .pImageIndices      = frames,
+        };
+        VkResult present_result = vkQueuePresentKHR(queue.Handle, &present_info);
 
         CurrentFrame->Acquired->SetState(Rendering::Primitives::SemaphoreState::Idle);
 

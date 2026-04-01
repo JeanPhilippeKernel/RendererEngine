@@ -626,7 +626,7 @@ namespace ZEngine::Hardwares
         Instance                = VK_NULL_HANDLE;
     }
 
-    void VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, uint32_t wait_flag)
+    void VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer->GetState() == CommandBufferState::Executable, "Command buffer must be in executable state to be submitted.")
         ZENGINE_VALIDATE_ASSERT(signal_semaphore->IsTimeline == true, "Signal semaphore must be a timeline semaphore.")
@@ -651,8 +651,8 @@ namespace ZEngine::Hardwares
         VkTimelineSemaphoreSubmitInfo timeline_semaphore_submit_info = {
             .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
             .pNext                     = nullptr,
-            .waitSemaphoreValueCount   = 0,
-            .pWaitSemaphoreValues      = nullptr,
+            .waitSemaphoreValueCount   = (wait_value != UINT64_MAX) ? 1u : 0u,
+            .pWaitSemaphoreValues      = (wait_value != UINT64_MAX) ? &wait_value : nullptr,
             .signalSemaphoreValueCount = 1,
             .pSignalSemaphoreValues    = signal_values,
         };
@@ -672,6 +672,7 @@ namespace ZEngine::Hardwares
         VkSemaphore          semaphores[] = {signal_semaphore->GetHandle()};
         VkCommandBuffer      buffers[]    = {command_buffer->GetHandle()};
         VkSubmitInfo         submit_info  = {
+            // clang-format off
                      .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                      .pNext                = nullptr,
                      .waitSemaphoreCount   = 0,
@@ -681,6 +682,7 @@ namespace ZEngine::Hardwares
                      .pCommandBuffers      = buffers,
                      .signalSemaphoreCount = 0,
                      .pSignalSemaphores    = 0,
+            //clang-format on
         };
 
         ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, fence->GetHandle()) == VK_SUCCESS, "Failed to submit queue")
@@ -1906,6 +1908,12 @@ namespace ZEngine::Hardwares
         return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandPools[pool_index] : CommandPools[pool_index];
     }
 
+    Rendering::Pools::CommandPool* CommandBufferManager::GetInstantCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index)
+    {
+        uint32_t pool_index = (frame_index * TotalThreadCount) + thread_index;
+        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? InstantTransferPools[pool_index] : InstantGraphicsPools[pool_index];
+    }
+
     void CommandBufferManager::ResetPool(uint8_t frame_index, uint8_t thread_index)
     {
         uint32_t pool_index = (frame_index * TotalThreadCount) + thread_index;
@@ -2248,10 +2256,12 @@ namespace ZEngine::Hardwares
         uint32_t                             byte_per_pixel = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(Specifications::ImageFormat::R8G8B8A8_SRGB)];
 
         Specifications::TextureSpecification spec           = {
+          // clang-format off
                       .Width        = width,
                       .Height       = height,
                       .BytePerPixel = byte_per_pixel,
                       .Format       = Specifications::ImageFormat::R8G8B8A8_SRGB,
+            // clang-format on
         };
 
         auto tex_handle = CreateTexture(spec);

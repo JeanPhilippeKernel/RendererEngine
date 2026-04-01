@@ -43,7 +43,7 @@ namespace ZEngine::Hardwares
         uint64_t                                                   RenderTimelineNextValue        = 0;
         VkSwapchainKHR                                             SwapchainHandle                = VK_NULL_HANDLE;
         FrameContextPtr                                            CurrentFrame                   = nullptr;
-        Rendering::Primitives::Semaphore*                           RenderTimeline                 = nullptr;
+        Rendering::Primitives::Semaphore*                          RenderTimeline                 = nullptr;
         Rendering::Renderers::RenderPasses::Attachment*            SwapchainAttachment            = nullptr;
         Core::Containers::Array<FrameContext>                      FrameContexts                  = {};
         Core::Containers::Array<VkImageView>                       SwapchainImageViews            = {};
@@ -57,7 +57,6 @@ namespace ZEngine::Hardwares
         void                                                       Dispose();
 
         void                                                       AcquireNextImage(uint32_t frame_context_idx);
-        void                                                       AsPresentSource();
         void                                                       Present();
     };
     ZDEFINE_PTR(DeviceSwapchain);
