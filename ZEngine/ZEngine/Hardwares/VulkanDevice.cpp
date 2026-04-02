@@ -626,37 +626,42 @@ namespace ZEngine::Hardwares
         Instance                = VK_NULL_HANDLE;
     }
 
-    void VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value)
+    void VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_semaphore)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer->GetState() == CommandBufferState::Executable, "Command buffer must be in executable state to be submitted.")
         ZENGINE_VALIDATE_ASSERT(signal_semaphore->IsTimeline == true, "Signal semaphore must be a timeline semaphore.")
 
-        VkPipelineStageFlags flag              = (wait_flag == UINT32_MAX) ? 0 : VkPipelineStageFlagBits(wait_flag);
+        bool                          has_wait                       = (wait_semaphore != nullptr && wait_value != UINT64_MAX);
 
-        VkCommandBuffer      command_buffers[] = {command_buffer->GetHandle()};
-        VkSemaphore          semaphores[]      = {signal_semaphore->GetHandle()};
-        VkSubmitInfo         submit_info       = {
+        VkPipelineStageFlags          flag                           = VkPipelineStageFlagBits(wait_flag);
+
+        VkCommandBuffer               command_buffers[]              = {command_buffer->GetHandle()};
+        VkSemaphore                   semaphores[]                   = {signal_semaphore->GetHandle()};
+        VkSemaphore                   wait_sems[]                    = {has_wait ? wait_semaphore->GetHandle() : VK_NULL_HANDLE};
+        uint64_t                      wait_values[]                  = {wait_value};
+        uint64_t                      signal_values[]                = {signal_value};
+
+        VkTimelineSemaphoreSubmitInfo timeline_semaphore_submit_info = {
+            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+            .pNext                     = nullptr,
+            .waitSemaphoreValueCount   = has_wait ? 1u : 0u,
+            .pWaitSemaphoreValues      = has_wait ? wait_values : nullptr,
+            .signalSemaphoreValueCount = 1,
+            .pSignalSemaphoreValues    = signal_values,
+        };
+
+        VkSubmitInfo submit_info = {
             .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext                = nullptr,
-            .waitSemaphoreCount   = 0,
-            .pWaitSemaphores      = nullptr,
-            .pWaitDstStageMask    = &flag,
+            .pNext                = &timeline_semaphore_submit_info,
+            .waitSemaphoreCount   = has_wait ? 1u : 0u,
+            .pWaitSemaphores      = has_wait ? wait_sems : nullptr,
+            .pWaitDstStageMask    = has_wait ? &flag : nullptr,
             .commandBufferCount   = 1,
             .pCommandBuffers      = command_buffers,
             .signalSemaphoreCount = 1,
             .pSignalSemaphores    = semaphores,
         };
 
-        uint64_t                      signal_values[]                = {signal_value};
-        VkTimelineSemaphoreSubmitInfo timeline_semaphore_submit_info = {
-            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .pNext                     = nullptr,
-            .waitSemaphoreValueCount   = (wait_value != UINT64_MAX) ? 1u : 0u,
-            .pWaitSemaphoreValues      = (wait_value != UINT64_MAX) ? &wait_value : nullptr,
-            .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = signal_values,
-        };
-        submit_info.pNext = &timeline_semaphore_submit_info;
         ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit queue")
         command_buffer->SetState(CommandBufferState::Pending);
     }

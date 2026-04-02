@@ -67,11 +67,12 @@ namespace ZEngine::Hardwares
 
         struct TimelineJob
         {
-            CommandBuffer*                    Buffer      = nullptr;
-            Rendering::Primitives::Semaphore* Timeline    = nullptr;
-            uint32_t                          WaitFlag    = 0;
-            uint64_t                          SignalValue = 0;
-            uint64_t                          WaitValue   = UINT64_MAX;
+            CommandBuffer*                    Buffer       = nullptr;
+            Rendering::Primitives::Semaphore* Timeline     = nullptr;
+            Rendering::Primitives::Semaphore* WaitTimeline = nullptr;
+            uint32_t                          WaitFlag     = 0;
+            uint64_t                          SignalValue  = 0;
+            uint64_t                          WaitValue    = UINT64_MAX;
         };
 
         struct DeferralUpload
@@ -86,8 +87,11 @@ namespace ZEngine::Hardwares
         VulkanDevice*                                              Device                = nullptr;
 
         Core::Containers::Array<std::atomic_uint64_t>              NextValues            = {};
+        Core::Containers::Array<std::atomic_uint64_t>              TransferNextValues    = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*> Timelines             = {};
+        Core::Containers::Array<Rendering::Primitives::Semaphore*> TransferTimelines     = {};
         Core::Containers::Array<Core::Containers::Array<uint64_t>> RetireValues          = {};
+        Core::Containers::Array<Core::Containers::Array<uint64_t>> TransferRetireValues  = {};
         Helpers::ThreadSafeQueue<TimelineJob>                      AsyncTimelineJobQueue = {};
         Helpers::ThreadSafeQueue<DeferralUpload>                   DeferralUploadQueue   = {};
 
