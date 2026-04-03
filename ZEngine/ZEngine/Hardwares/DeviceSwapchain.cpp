@@ -189,6 +189,15 @@ namespace ZEngine::Hardwares
                 frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
             }
 
+            Device->AsyncResLoader->ClearAsyncJobs();
+
+            uint64_t timeline_value = 0;
+            vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &timeline_value);
+
+            ZENGINE_VALIDATE_ASSERT(timeline_value >= RenderTimelineNextValue, "Render Timeline value is behind the last submitted value, this should never happen.")
+            ZENGINE_VALIDATE_ASSERT(timeline_value < UINT64_MAX, "Render Timeline value is corrupted, this should never happen.")
+            RenderTimelineNextValue = timeline_value;
+
             FrameContextOffset = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
             Clear();
             Create();
@@ -280,14 +289,16 @@ namespace ZEngine::Hardwares
             }
         }
 
-        Textures::TextureHandle tex_to_dispose = {};
-        if (Device->TextureHandleToDispose.Pop(tex_to_dispose))
         {
-            auto texture = Device->GlobalTextures.Access(tex_to_dispose);
-            if (texture)
+            Textures::TextureHandle tex_to_dispose = {};
+            while (Device->TextureHandleToDispose.Pop(tex_to_dispose))
             {
-                texture->Dispose();
-                Device->GlobalTextures.Remove(tex_to_dispose);
+                auto texture = Device->GlobalTextures.Access(tex_to_dispose);
+                if (texture)
+                {
+                    texture->Dispose();
+                    Device->GlobalTextures.Remove(tex_to_dispose);
+                }
             }
         }
 
@@ -364,10 +375,9 @@ namespace ZEngine::Hardwares
         wait_values.push(frame_start_value);
         stage_flags.push(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-        while (!Device->AsyncGPUOperations.Empty())
         {
             Hardwares::AsyncGPUOperationHandle op;
-            if (Device->AsyncGPUOperations.Pop(op))
+            while (Device->AsyncGPUOperations.Pop(op))
             {
                 if (!max_val_timeline_semaphores.contains(op.Timeline))
                 {

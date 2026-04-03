@@ -502,6 +502,12 @@ namespace ZEngine::Hardwares
         return tex_file_req.Handle;
     }
 
+    void AsyncResourceLoader::ClearAsyncJobs()
+    {
+        AsyncTimelineJobQueue.Clear();
+        Device->AsyncGPUOperations.Clear();
+    }
+
     void AsyncResourceLoader::SubmitAsyncJobs()
     {
         while (!AsyncTimelineJobQueue.Empty())

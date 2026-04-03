@@ -110,6 +110,7 @@ namespace ZEngine::Hardwares
         void                                                       CompleteDeferrals();
         void                                                       SubmitAsyncJobs();
         void                                                       ResetCommandBuffers(uint8_t frame_index, uint8_t thread_index);
+        void ClearAsyncJobs();
 
         void                                                       Run();
         void                                                       Shutdown();
