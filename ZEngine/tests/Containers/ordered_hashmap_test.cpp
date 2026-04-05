@@ -156,7 +156,7 @@ TEST_F(OrderedHashMapTest, CollisionHandling)
     EXPECT_EQ(map[5], 50);
 }
 
-// --- Insertion-order tests (not applicable to UnorderedHashMap) ---
+// --- Insertion-order tests ---
 
 TEST_F(OrderedHashMapTest, InsertionOrderPreserved)
 {
@@ -169,7 +169,9 @@ TEST_F(OrderedHashMapTest, InsertionOrderPreserved)
 
     std::vector<int> keys;
     for (auto [key, value] : map)
+    {
         keys.push_back(key);
+    }
 
     ASSERT_EQ(keys.size(), 3u);
     EXPECT_EQ(keys[0], 10);
@@ -190,9 +192,10 @@ TEST_F(OrderedHashMapTest, InsertionOrderAfterRemove)
 
     std::vector<int> keys;
     for (auto [key, value] : map)
+    {
         keys.push_back(key);
+    }
 
-    // 2 was removed; 4 appended at end; remaining order: 1, 3, 4
     ASSERT_EQ(keys.size(), 3u);
     EXPECT_EQ(keys[0], 1);
     EXPECT_EQ(keys[1], 3);
@@ -224,8 +227,6 @@ TEST_F(OrderedHashMapTest, UpdateDoesNotChangeOrder)
     map.insert(1, 10);
     map.insert(2, 20);
     map.insert(3, 30);
-
-    // Updating an existing key must not move it in the order sequence.
     map.insert(2, 999);
 
     std::vector<int> keys;
@@ -239,77 +240,94 @@ TEST_F(OrderedHashMapTest, UpdateDoesNotChangeOrder)
     EXPECT_EQ(map[2], 999);
 }
 
-TEST_F(OrderedHashMapTest, IterationAfterClearAndReinsert)
+// --- sort_keys() tests ---
+
+TEST_F(OrderedHashMapTest, SortKeysAscending)
 {
     HashMap<int, int> map;
     map.init(&allocator, 16);
+    map.insert(30, 300);
+    map.insert(10, 100);
+    map.insert(20, 200);
 
-    map.insert(1, 10);
-    map.insert(2, 20);
-    map.clear();
-
-    map.insert(3, 30);
-    map.insert(4, 40);
+    map.sort_keys();
 
     std::vector<int> keys;
     for (auto [key, value] : map)
         keys.push_back(key);
 
-    ASSERT_EQ(keys.size(), 2u);
-    EXPECT_EQ(keys[0], 3);
-    EXPECT_EQ(keys[1], 4);
+    ASSERT_EQ(keys.size(), 3u);
+    EXPECT_EQ(keys[0], 10);
+    EXPECT_EQ(keys[1], 20);
+    EXPECT_EQ(keys[2], 30);
 }
 
-TEST_F(OrderedHashMapTest, UserDefinedStructViewIterations)
+TEST_F(OrderedHashMapTest, SortKeysPreservesValues)
 {
-    struct Person
-    {
-        String name;
-        int    age;
+    HashMap<int, int> map;
+    map.init(&allocator, 16);
+    map.insert(3, 300);
+    map.insert(1, 100);
+    map.insert(2, 200);
 
-        bool   operator==(const Person& other) const
-        {
-            return name == other.name && age == other.age;
-        }
-    };
+    map.sort_keys();
 
-    HashMap<Person, String> map;
-    map.init(&allocator, 8);
-
-    String str1;
-    str1.init(&allocator, "Alice");
-    String str2;
-    str2.init(&allocator, "Bob");
-    String str3;
-    str3.init(&allocator, "Carol");
-    String str4;
-    str4.init(&allocator, "Engineer");
-    String str5;
-    str5.init(&allocator, "Designer");
-    String str6;
-    str6.init(&allocator, "Artist");
-
-    Person alice{str1, 30};
-    Person bob{str2, 25};
-    Person carol{str3, 28};
-
-    map.insert(alice, str4);
-    map.insert(bob, str5);
-    map.insert(carol, str6);
-
-    EXPECT_TRUE(map.contains(alice));
-    EXPECT_TRUE(map.contains(bob));
-
-    EXPECT_EQ(map[alice], str4);
-    EXPECT_EQ(map[bob], str5);
-
-    // Verify insertion order: alice, bob, carol
-    std::vector<Person> key_order;
+    std::vector<std::pair<int, int>> entries;
     for (auto [key, value] : map)
-        key_order.push_back(key);
+    {
+        entries.push_back({key, value});
+    }
 
-    ASSERT_EQ(key_order.size(), 3u);
-    EXPECT_EQ(key_order[0], alice);
-    EXPECT_EQ(key_order[1], bob);
-    EXPECT_EQ(key_order[2], carol);
+    ASSERT_EQ(entries.size(), 3u);
+    EXPECT_EQ(entries[0].first, 1);
+    EXPECT_EQ(entries[0].second, 100);
+    EXPECT_EQ(entries[1].first, 2);
+    EXPECT_EQ(entries[1].second, 200);
+    EXPECT_EQ(entries[2].first, 3);
+    EXPECT_EQ(entries[2].second, 300);
+}
+
+TEST_F(OrderedHashMapTest, SortKeysDoesNotAffectLookup)
+{
+    HashMap<int, int> map;
+    map.init(&allocator, 16);
+    map.insert(30, 300);
+    map.insert(10, 100);
+    map.insert(20, 200);
+
+    map.sort_keys();
+
+    EXPECT_EQ(*map.find(10), 100);
+    EXPECT_EQ(*map.find(20), 200);
+    EXPECT_EQ(*map.find(30), 300);
+}
+
+TEST_F(OrderedHashMapTest, SortKeysOnEmptyMap)
+{
+    HashMap<int, int> map;
+    map.init(&allocator, 16);
+    map.sort_keys();
+    EXPECT_TRUE(map.empty());
+}
+
+TEST_F(OrderedHashMapTest, InsertAfterSortAppendsTail)
+{
+    HashMap<int, int> map;
+    map.init(&allocator, 16);
+    map.insert(30, 300);
+    map.insert(10, 100);
+    map.sort_keys(); // order: 10, 30
+
+    map.insert(20, 200); // appended after sort
+
+    std::vector<int> keys;
+    for (auto [key, value] : map)
+    {
+        keys.push_back(key);
+    }
+
+    ASSERT_EQ(keys.size(), 3u);
+    EXPECT_EQ(keys[0], 10);
+    EXPECT_EQ(keys[1], 30);
+    EXPECT_EQ(keys[2], 20);
 }

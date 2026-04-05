@@ -4,6 +4,7 @@
 #include <Helpers/MemoryOperations.h>
 #include <ZEngineDef.h>
 #include <rapidhash.h>
+#include <algorithm>
 #include <cstddef>
 #include <iterator>
 #include <stdexcept>
@@ -232,6 +233,38 @@ namespace ZEngine::Core::Containers
             m_tail = size_type(-1);
         }
 
+        void sort_keys()
+        {
+            if (m_size < 2)
+            {
+                return;
+            }
+
+            // Collect occupied slot indices into a scratch array.
+            Array<size_type> indices;
+            indices.init(m_allocator, m_size);
+
+            size_type cur = m_head;
+            while (cur != size_type(-1))
+            {
+                indices.push(cur);
+                cur = m_entries[cur].next;
+            }
+
+            // Sort indices by key.
+            std::sort(indices.data(), indices.data() + indices.size(), [this](size_type a, size_type b) { return key_less(m_entries[a].key, m_entries[b].key); });
+
+            // Rebuild linked list in the new order.
+            m_head = indices[0];
+            m_tail = indices[indices.size() - 1];
+
+            for (size_type i = 0; i < indices.size(); ++i)
+            {
+                m_entries[indices[i]].prev = (i > 0) ? indices[i - 1] : size_type(-1);
+                m_entries[indices[i]].next = (i + 1 < indices.size()) ? indices[i + 1] : size_type(-1);
+            }
+        }
+
         // Checks if the hash map is empty.
         // @return True if the map contains no key-value pairs, false otherwise.
         bool empty() const
@@ -368,6 +401,18 @@ namespace ZEngine::Core::Containers
             else
             {
                 return a == b;
+            }
+        }
+
+        bool key_less(const K& a, const K& b) const
+        {
+            if constexpr (std::is_same_v<K, const char*>)
+            {
+                return Helpers::secure_strcmp(a, b) < 0;
+            }
+            else
+            {
+                return a < b;
             }
         }
 
