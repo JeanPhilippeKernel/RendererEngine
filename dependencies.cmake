@@ -3,6 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+  GIT_TAG main
   GIT_SHALLOW TRUE
   GIT_TAG main
     )

@@ -25,21 +25,21 @@ namespace ZEngine::Rendering::Scenes
 
     struct RenderScene
     {
-        std::atomic_bool                                                          MeshAllocationDirty[3]   = {false, false, false};
-        std::atomic_bool                                                          TransformBufferDirty[3]  = {false, false, false};
+        std::atomic_bool                                                                   MeshAllocationDirty[3]   = {false, false, false};
+        std::atomic_bool                                                                   TransformBufferDirty[3]  = {false, false, false};
 
-        uint32_t                                                                  CurrentTransformOffset   = 0;
-        uint32_t                                                                  CurrentVertexOffset      = 0;
-        uint32_t                                                                  CurrentIndexOffset       = 0;
+        uint32_t                                                                           CurrentTransformOffset   = 0;
+        uint32_t                                                                           CurrentVertexOffset      = 0;
+        uint32_t                                                                           CurrentIndexOffset       = 0;
 
-        Core::Containers::Array<Helpers::NodeHierarchy>                           Hierarchies              = {};
-        Core::Containers::Array<Core::Maths::Mat4f>                               LocalTransforms          = {};
-        Core::Containers::Array<Core::Maths::Mat4f>                               GlobalTransforms         = {};
+        Core::Containers::Array<Helpers::NodeHierarchy>                                    Hierarchies              = {};
+        Core::Containers::Array<Core::Maths::Mat4f>                                        LocalTransforms          = {};
+        Core::Containers::Array<Core::Maths::Mat4f>                                        GlobalTransforms         = {};
 
-        Core::Containers::Array<float>                                            Vertices                 = {};
-        Core::Containers::Array<uint32_t>                                         Indices                  = {};
-        Core::Containers::HashMap<uuids::uuid, Rendering::Meshes::MeshAllocation> MeshAllocations          = {};
-        Core::Containers::HashMap<uint32_t, Rendering::Meshes::SubMeshAllocation> NodeSubMeshesAllocations = {};
+        Core::Containers::Array<float>                                                     Vertices                 = {};
+        Core::Containers::Array<uint32_t>                                                  Indices                  = {};
+        Core::Containers::UnorderedHashMap<uuids::uuid, Rendering::Meshes::MeshAllocation> MeshAllocations          = {};
+        Core::Containers::UnorderedHashMap<uint32_t, Rendering::Meshes::SubMeshAllocation> NodeSubMeshesAllocations = {};
     };
     ZDEFINE_PTR(RenderScene);
 

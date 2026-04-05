@@ -1,7 +1,7 @@
 #pragma once
 #include <Buffers/Framebuffer.h>
 #include <Core/Containers/Array.h>
-#include <Core/Containers/HashMap.h>
+#include <Core/Containers/UnorderedHashMap.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/Scenes/GraphicScene.h>
@@ -101,26 +101,26 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph() {}
         ~RenderGraph() {}
 
-        Hardwares::VulkanDevicePtr                              Device            = nullptr;
+        Hardwares::VulkanDevicePtr                                       Device            = nullptr;
 
-        Core::Containers::Array<cstring>                        SortedNodesMap    = {};
-        Core::Containers::HashMap<cstring, RenderGraphNode>     NodeMap           = {};
-        Core::Containers::HashMap<cstring, RenderGraphResource> ResourceMap       = {};
+        Core::Containers::Array<cstring>                                 SortedNodesMap    = {};
+        Core::Containers::UnorderedHashMap<cstring, RenderGraphNode>     NodeMap           = {};
+        Core::Containers::UnorderedHashMap<cstring, RenderGraphResource> ResourceMap       = {};
 
-        RenderGraphResourceBuilderPtr                           ResourceBuilder   = nullptr;
-        RenderGraphResourceInspectorPtr                         ResourceInspector = nullptr;
-        RenderPasses::RenderPassBuilder*                        RenderPassBuilder = nullptr;
+        RenderGraphResourceBuilderPtr                                    ResourceBuilder   = nullptr;
+        RenderGraphResourceInspectorPtr                                  ResourceInspector = nullptr;
+        RenderPasses::RenderPassBuilder*                                 RenderPassBuilder = nullptr;
 
-        Scenes::SceneDataPtr                                    SceneData         = nullptr;
+        Scenes::SceneDataPtr                                             SceneData         = nullptr;
 
-        void                                                    Initialize(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr data = nullptr);
+        void                                                             Initialize(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr data = nullptr);
 
-        void                                                    Setup();
-        void                                                    Compile();
-        void                                                    Execute(Hardwares::CommandBufferPtr const command_buffer);
-        void                                                    Resize(uint32_t width, uint32_t height);
-        void                                                    Dispose();
-        void                                                    AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const pass_callback, bool enabled = true);
+        void                                                             Setup();
+        void                                                             Compile();
+        void                                                             Execute(Hardwares::CommandBufferPtr const command_buffer);
+        void                                                             Resize(uint32_t width, uint32_t height);
+        void                                                             Dispose();
+        void                                                             AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const pass_callback, bool enabled = true);
     };
 
     struct RenderGraphResourceInspector

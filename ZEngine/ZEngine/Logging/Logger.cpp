@@ -1,5 +1,5 @@
 #include <Core/Containers/Array.h>
-#include <Core/Containers/HashMap.h>
+#include <Core/Containers/UnorderedHashMap.h>
 #include <Core/Memory/Allocator.h>
 #include <Logging/Logger.h>
 #include <Logging/LoggerDefinition.h>
@@ -13,13 +13,13 @@ using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::Logging
 {
-    static std::atomic_uint32_t                                                  g_cookie             = 0;
-    static spdlog::sink_ptr                                                      s_sink               = nullptr;
-    static std::recursive_mutex                                                  s_mutex              = {};
-    static ZEngine::Core::Containers::Array<std::shared_ptr<spdlog::logger>>     s_logger_collection  = {};
-    static ZEngine::Core::Containers::HashMap<uint32_t, Logger::LogEventHandler> s_log_event_handlers = {};
+    static std::atomic_uint32_t                                                           g_cookie             = 0;
+    static spdlog::sink_ptr                                                               s_sink               = nullptr;
+    static std::recursive_mutex                                                           s_mutex              = {};
+    static ZEngine::Core::Containers::Array<std::shared_ptr<spdlog::logger>>              s_logger_collection  = {};
+    static ZEngine::Core::Containers::UnorderedHashMap<uint32_t, Logger::LogEventHandler> s_log_event_handlers = {};
 
-    void                                                                         Logger::Initialize(void* arena, const LoggerConfiguration& configuration)
+    void                                                                                  Logger::Initialize(void* arena, const LoggerConfiguration& configuration)
     {
         s_logger_collection.init(reinterpret_cast<ArenaAllocator*>(arena), 1);
         s_log_event_handlers.init(reinterpret_cast<ArenaAllocator*>(arena), 3);

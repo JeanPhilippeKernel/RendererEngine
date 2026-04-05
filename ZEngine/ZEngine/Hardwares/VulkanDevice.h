@@ -16,7 +16,7 @@
 #include <Rendering/Specifications/RenderPassSpecification.h>
 #include <Rendering/Textures/Texture.h>
 #include <Core/Containers/Array.h>
-#include <Core/Containers/HashMap.h>
+#include <Core/Containers/UnorderedHashMap.h>
 #include <Core/Containers/Strings.h>
 #include <Core/Memory/Allocator.h>
 #include <AsyncResourceLoader.h>
