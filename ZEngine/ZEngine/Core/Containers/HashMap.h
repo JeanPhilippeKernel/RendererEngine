@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <Allocator.h>
 #include <Array.h>
 #include <Helpers/MemoryOperations.h>
@@ -20,46 +20,41 @@ namespace ZEngine::Core::Containers
     };
 
     template <typename K, typename V>
-    struct HashEntry
+    struct OrderedHashEntry
     {
-        K          key;
-        V          value;
-        EntryState state = EntryState::Empty;
+        K           key;
+        V           value;
+        EntryState  state = EntryState::Empty;
+        std::size_t prev  = std::size_t(-1);
+        std::size_t next  = std::size_t(-1);
     };
 
     template <typename K, typename V, bool IsConst>
-    class HashMapIterator
+    class OrderedHashMapIterator
     {
     public:
-        using Entry             = HashEntry<K, V>;
+        using Entry             = OrderedHashEntry<K, V>;
         using EntryPointer      = std::conditional_t<IsConst, const Entry*, Entry*>;
         using value_type        = std::conditional_t<IsConst, std::pair<const K, const V>, std::pair<const K, V>>;
         using reference         = value_type;
         using pointer           = value_type*;
-        using iterator_category = std::input_iterator_tag;
+        using iterator_category = std::forward_iterator_tag;
         using difference_type   = std::ptrdiff_t;
 
-        // Constructs an iterator for the hash map's entries, starting at the given index.
-        // @param entries Value to the array of hash map entries.
-        // @param index Starting index for iteration.
-        HashMapIterator(EntryPointer entries, std::size_t index, std::size_t size) : m_entries(entries), m_index(index), m_size(size)
+        // Constructs an iterator for the hash map's entries,
+        // @param entries Pointer to the hash table slot array.
+        // @param index   Current slot index;
+        OrderedHashMapIterator(EntryPointer entries, std::size_t index) : m_entries(entries), m_index(index) {}
+        OrderedHashMapIterator& operator++()
         {
-            advance_to_valid();
-        }
-
-        // Advances the iterator to the next occupied entry.
-        // @return Reference to the incremented iterator.
-        HashMapIterator& operator++()
-        {
-            ++m_index;
-            advance_to_valid();
+            m_index = m_entries[m_index].next;
             return *this;
         }
 
         // Checks if two iterators are not equal based on their index.
         // @param other The iterator to compare with.
         // @return True if the iterators point to different indices, false otherwise.
-        bool operator!=(const HashMapIterator& other) const
+        bool operator!=(const OrderedHashMapIterator& other) const
         {
             return m_index != other.m_index;
         }
@@ -67,7 +62,7 @@ namespace ZEngine::Core::Containers
         // Checks if two iterators are equal based on their index.
         // @param other The iterator to compare with.
         // @return True if the iterators point to the same index, false otherwise.
-        bool operator==(const HashMapIterator& other) const
+        bool operator==(const OrderedHashMapIterator& other) const
         {
             return m_index == other.m_index;
         }
@@ -95,28 +90,18 @@ namespace ZEngine::Core::Containers
         }
 
     private:
-        // Advances the iterator to the next occupied entry, skipping empty or deleted entries.
-        void advance_to_valid()
-        {
-            while (m_index < m_size && m_entries[m_index].state != EntryState::Occupied)
-            {
-                ++m_index;
-            }
-        }
-
         EntryPointer m_entries;
         std::size_t  m_index;
-        std::size_t  m_size;
     };
 
     template <typename K, typename V>
     class HashMap
     {
     public:
-        using Entry          = HashEntry<K, V>;
+        using Entry          = OrderedHashEntry<K, V>;
         using size_type      = std::size_t;
-        using iterator       = HashMapIterator<K, V, false>;
-        using const_iterator = HashMapIterator<K, V, true>;
+        using iterator       = OrderedHashMapIterator<K, V, false>;
+        using const_iterator = OrderedHashMapIterator<K, V, true>;
 
         // Initializes the hash map with an allocator, initial capacity, and load factor.
         // @param allocator Pointer to the arena allocator for memory management.
@@ -132,6 +117,8 @@ namespace ZEngine::Core::Containers
                 m_entries.push({});
             }
             m_size = 0;
+            m_head = size_type(-1);
+            m_tail = size_type(-1);
         }
 
         // Inserts a key-value pair into the hash map, updating the value if the key exists.
@@ -151,6 +138,7 @@ namespace ZEngine::Core::Containers
                 entry.key   = key;
                 entry.value = value;
                 entry.state = EntryState::Occupied;
+                link_tail(index);
                 ++m_size;
             }
             else
@@ -171,6 +159,7 @@ namespace ZEngine::Core::Containers
                 entry.key   = key;
                 entry.value = V{};
                 entry.state = EntryState::Occupied;
+                link_tail(index);
                 ++m_size;
             }
             return entry.value;
@@ -216,28 +205,31 @@ namespace ZEngine::Core::Containers
             return find(key) != nullptr;
         }
 
-        // Removes a key-value pair from the hash map.
-        // @param key The key to remove.
-        // @note Marks the entry as Deleted; does not shrink the table.
+        // Removes the entry for a key, preserving insertion order of remaining entries.
+        // @note Marks the slot as Deleted; does not shrink the table.
         void remove(const K& key)
         {
             size_type index = probe_for_key(key);
             if (index != size_type(-1))
             {
+                unlink(index);
                 m_entries[index].state = EntryState::Deleted;
                 --m_size;
             }
         }
 
-        // Clears all entries in the hash map, resetting it to an empty state.
-        // @note Sets all entries to Empty; does not change capacity.
+        // Clears all entries, resetting insertion-order state without changing capacity.
         void clear()
         {
-            for (auto& entry : m_entries)
+            for (size_type i = 0; i < m_entries.size(); ++i)
             {
-                entry.state = EntryState::Empty;
+                m_entries[i].state = EntryState::Empty;
+                m_entries[i].prev  = size_type(-1);
+                m_entries[i].next  = size_type(-1);
             }
             m_size = 0;
+            m_head = size_type(-1);
+            m_tail = size_type(-1);
         }
 
         // Checks if the hash map is empty.
@@ -266,14 +258,14 @@ namespace ZEngine::Core::Containers
         // @note Iterators are invalidated by insert, remove, or reserve operations.
         iterator begin()
         {
-            return iterator(m_entries.data(), 0, m_entries.size());
+            return iterator(m_entries.data(), m_head);
         }
 
         // Returns an iterator to the end of the hash map.
         // @return Iterator representing the past-the-end position.
         iterator end()
         {
-            return iterator(m_entries.data(), m_entries.size(), m_entries.size());
+            return iterator(m_entries.data(), size_type(-1));
         }
 
         // Returns a const iterator to the first occupied entry.
@@ -281,14 +273,14 @@ namespace ZEngine::Core::Containers
         // @note Iterators are invalidated by insert, remove, or reserve operations.
         const_iterator begin() const
         {
-            return const_iterator(m_entries.data(), 0, m_entries.size());
+            return const_iterator(m_entries.data(), m_head);
         }
 
         // Returns a const iterator to the end of the hash map.
         // @return Const iterator representing the past-the-end position.
         const_iterator end() const
         {
-            return const_iterator(m_entries.data(), m_entries.size(), m_entries.size());
+            return const_iterator(m_entries.data(), size_type(-1));
         }
 
         // Returns a const iterator to the first occupied entry (alias for begin() const).
@@ -317,13 +309,51 @@ namespace ZEngine::Core::Containers
         }
 
     private:
-        // Checks if the hash map needs to grow based on the load factor and resizes if necessary.
-        // @note Triggers rehashing if (m_size + 1) / capacity > load_factor.
+        // Appends slot index to the tail of the insertion-order linked list.
+        void link_tail(size_type index)
+        {
+            m_entries[index].prev = m_tail;
+            m_entries[index].next = size_type(-1);
+            if (m_tail != size_type(-1))
+            {
+                m_entries[m_tail].next = index;
+            }
+            else
+            {
+                m_head = index;
+            }
+            m_tail = index;
+        }
+
+        // Removes slot index from the insertion-order linked list.
+        void unlink(size_type index)
+        {
+            auto& entry = m_entries[index];
+            if (entry.prev != size_type(-1))
+            {
+                m_entries[entry.prev].next = entry.next;
+            }
+            else
+            {
+                m_head = entry.next;
+            }
+            if (entry.next != size_type(-1))
+            {
+                m_entries[entry.next].prev = entry.prev;
+            }
+            else
+            {
+                m_tail = entry.prev;
+            }
+            entry.prev = size_type(-1);
+            entry.next = size_type(-1);
+        }
+
         void maybe_grow()
         {
             if (static_cast<float>(m_size + 1) / m_entries.size() > m_load_factor)
             {
-                size_type new_capacity = std::max<size_type>(16, static_cast<size_type>(m_entries.size() * 1.5f)); // Growth factor 1.5
+                size_type new_capacity = std::max<size_type>(16, static_cast<size_type>(m_entries.size() * 1.5f));
                 rehash(new_capacity);
             }
         }
@@ -346,23 +376,32 @@ namespace ZEngine::Core::Containers
         // @note Moves the old entries to avoid copying and skips Deleted entries.
         void rehash(size_type new_capacity)
         {
-            Array<Entry> old_entries = m_entries; // Move to avoid copying
+            Array<Entry> old_entries = m_entries;
+            size_type    old_head    = m_head;
+
             m_entries                = Array<Entry>{};
             m_entries.init(m_allocator, new_capacity);
             for (size_type i = 0; i < new_capacity; ++i)
             {
                 m_entries.push({});
             }
-            m_size = 0;
+            m_size        = 0;
 
-            for (size_type i = 0; i < old_entries.size(); ++i)
+            m_head        = size_type(-1);
+            m_tail        = size_type(-1);
+
+            size_type cur = old_head;
+            while (cur != size_type(-1))
             {
-                if (old_entries[i].state == EntryState::Occupied)
-                {
-                    size_type index  = probe_for_insert(old_entries[i].key);
-                    m_entries[index] = old_entries[i]; // Direct assignment
-                    ++m_size;
-                }
+                size_type old_next = old_entries[cur].next;
+                size_type index    = probe_for_insert(old_entries[cur].key);
+                auto&     entry    = m_entries[index];
+                entry.key          = old_entries[cur].key;
+                entry.value        = old_entries[cur].value;
+                entry.state        = EntryState::Occupied;
+                link_tail(index);
+                ++m_size;
+                cur = old_next;
             }
         }
 
@@ -461,6 +500,8 @@ namespace ZEngine::Core::Containers
         Array<Entry>            m_entries;
         size_type               m_size        = 0;
         float                   m_load_factor = 0.75f;
+        size_type               m_head        = size_type(-1);
+        size_type               m_tail        = size_type(-1);
     };
 
     // Computes a hash value for a C-string using rapidhash.
