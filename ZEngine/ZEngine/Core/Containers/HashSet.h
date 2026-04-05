@@ -41,29 +41,44 @@ namespace ZEngine::Core::Containers
         using iterator_category = std::forward_iterator_tag;
         using difference_type   = std::ptrdiff_t;
 
-        // @param entries Pointer to the hash table slot array.
+        // Constructs an iterator at the given slot index.
+        // @param entries Pointer to the hash set slot array.
         // @param index   Current slot index; std::size_t(-1) represents end.
         OrderedHashSetIterator(EntryPointer entries, std::size_t index) : m_entries(entries), m_index(index) {}
 
+        // Advances the iterator to the next entry in insertion order.
+        // @return Reference to the incremented iterator.
         OrderedHashSetIterator& operator++()
         {
             m_index = m_entries[m_index].next;
             return *this;
         }
 
+        // Checks if two iterators are not equal based on their index.
+        // @param other The iterator to compare with.
+        // @return True if the iterators point to different indices, false otherwise.
         bool operator!=(const OrderedHashSetIterator& other) const
         {
             return m_index != other.m_index;
         }
+
+        // Checks if two iterators are equal based on their index.
+        // @param other The iterator to compare with.
+        // @return True if the iterators point to the same index, false otherwise.
         bool operator==(const OrderedHashSetIterator& other) const
         {
             return m_index == other.m_index;
         }
 
+        // Dereferences the iterator to return a const reference to the current key.
+        // @return Const reference to the key at the current position.
         const K& operator*() const
         {
             return m_entries[m_index].key;
         }
+
+        // Provides pointer-like access to the current key.
+        // @return Const pointer to the key at the current position.
         const K* operator->() const
         {
             return &m_entries[m_index].key;
@@ -99,6 +114,10 @@ namespace ZEngine::Core::Containers
             m_tail = size_type(-1);
         }
 
+        // Inserts a key into the set.
+        // New keys are appended to the end of the insertion-order sequence.
+        // Resizes the set if the load factor would be exceeded.
+        // @param key The key to insert.
         void insert(const K& key)
         {
             maybe_grow();
@@ -115,6 +134,9 @@ namespace ZEngine::Core::Containers
             }
         }
 
+        // Finds a key in the set.
+        // @param key The key to look up.
+        // @return Const pointer to the stored key if found, nullptr otherwise.
         const K* find(const K& key) const
         {
             size_type index = probe_for_key(key);
@@ -129,6 +151,9 @@ namespace ZEngine::Core::Containers
             return probe_for_key(key) != size_type(-1);
         }
 
+        // Removes a key from the set, preserving insertion order of remaining keys.
+        // @param key The key to remove.
+        // @note Marks the slot as Deleted.
         void remove(const K& key)
         {
             size_type index = probe_for_key(key);
@@ -140,6 +165,8 @@ namespace ZEngine::Core::Containers
             }
         }
 
+        // Clears all entries, resetting insertion-order state without changing capacity.
+        // @note Sets all entries to Empty; does not change capacity.
         void clear()
         {
             for (size_type i = 0; i < m_entries.size(); ++i)
@@ -153,6 +180,9 @@ namespace ZEngine::Core::Containers
             m_tail = size_type(-1);
         }
 
+        // Reorders the iteration sequence so keys are visited in ascending order (operator<).
+        // For const char* keys, strcmp ordering is used.
+        // Does not affect slot positions or lookup performance — only the linked-list order.
         void sort_keys()
         {
             if (m_size < 2)
@@ -182,44 +212,70 @@ namespace ZEngine::Core::Containers
             }
         }
 
+        // Checks if the hash set is empty.
+        // @return True if the set contains no keys, false otherwise.
         bool empty() const
         {
             return m_size == 0;
         }
+
+        // Returns the number of keys in the hash set.
+        // @return The number of occupied entries.
         size_type size() const
         {
             return m_size;
         }
+
+        // Returns the current capacity of the hash set.
+        // @return The number of slots in the underlying array.
         size_type capacity() const
         {
             return m_entries.size();
         }
 
+        // Returns an iterator to the first entry in the current iteration order.
+        // @note Iterators are invalidated by insert, remove, or reserve operations.
         iterator begin()
         {
             return iterator(m_entries.data(), m_head);
         }
+
+        // Returns an iterator to the end of the hash set.
+        // @return Iterator representing the past-the-end position.
         iterator end()
         {
             return iterator(m_entries.data(), size_type(-1));
         }
+
+        // Returns a const iterator to the first entry in the current iteration order.
+        // @note Iterators are invalidated by insert, remove, or reserve operations.
         const_iterator begin() const
         {
             return const_iterator(m_entries.data(), m_head);
         }
+
+        // Returns a const iterator to the end of the hash set.
+        // @return Const iterator representing the past-the-end position.
         const_iterator end() const
         {
             return const_iterator(m_entries.data(), size_type(-1));
         }
+
+        // Returns a const iterator to the first entry (alias for begin() const).
         const_iterator cbegin() const
         {
             return begin();
         }
+
+        // Returns a const iterator to the end (alias for end() const).
         const_iterator cend() const
         {
             return end();
         }
 
+        // Ensures the hash set has at least the specified capacity.
+        // @param new_capacity Desired minimum number of slots.
+        // @note Rehashes the set if the new capacity is greater than the current capacity.
         void reserve(size_type new_capacity)
         {
             if (new_capacity > m_entries.size())

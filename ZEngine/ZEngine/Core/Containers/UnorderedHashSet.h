@@ -38,11 +38,17 @@ namespace ZEngine::Core::Containers
         using iterator_category = std::input_iterator_tag;
         using difference_type   = std::ptrdiff_t;
 
+        // Constructs an iterator starting at the given slot index, advancing to the first occupied entry.
+        // @param entries Pointer to the hash set slot array.
+        // @param index   Starting slot index for iteration.
+        // @param size    Total number of slots.
         HashSetIterator(EntryPointer entries, std::size_t index, std::size_t size) : m_entries(entries), m_index(index), m_size(size)
         {
             advance_to_valid();
         }
 
+        // Advances the iterator to the next occupied entry.
+        // @return Reference to the incremented iterator.
         HashSetIterator& operator++()
         {
             ++m_index;
@@ -50,10 +56,17 @@ namespace ZEngine::Core::Containers
             return *this;
         }
 
+        // Checks if two iterators are not equal based on their index.
+        // @param other The iterator to compare with.
+        // @return True if the iterators point to different indices, false otherwise.
         bool operator!=(const HashSetIterator& other) const
         {
             return m_index != other.m_index;
         }
+
+        // Checks if two iterators are equal based on their index.
+        // @param other The iterator to compare with.
+        // @return True if the iterators point to the same index, false otherwise.
         bool operator==(const HashSetIterator& other) const
         {
             return m_index == other.m_index;
@@ -91,6 +104,7 @@ namespace ZEngine::Core::Containers
         using iterator       = HashSetIterator<K, false>;
         using const_iterator = HashSetIterator<K, true>;
 
+        // Initializes the hash set with an allocator and initial slot capacity.
         // @param allocator        Arena allocator for memory management.
         // @param initial_capacity Initial number of slots (default: 16).
         void init(Memory::ArenaAllocator* allocator, size_type initial_capacity = 16)
@@ -105,6 +119,9 @@ namespace ZEngine::Core::Containers
             m_size = 0;
         }
 
+        // Inserts a key into the set. No-op if the key already exists.
+        // Resizes the set if the load factor would be exceeded.
+        // @param key The key to insert.
         void insert(const K& key)
         {
             maybe_grow();
@@ -120,13 +137,16 @@ namespace ZEngine::Core::Containers
             }
         }
 
+        // Finds a key in the set.
+        // @param key The key to look up.
+        // @return Const pointer to the stored key if found, nullptr otherwise.
         const K* find(const K& key) const
         {
             size_type index = probe_for_key(key);
             return (index != size_type(-1)) ? &m_entries[index].key : nullptr;
         }
 
-        // Checks if a key exists in the hash map.
+        // Checks if a key exists in the hash set.
         // @param key The key to check.
         // @return True if the key exists, false otherwise.
         bool contains(const K& key) const
@@ -134,7 +154,9 @@ namespace ZEngine::Core::Containers
             return probe_for_key(key) != size_type(-1);
         }
 
-        // Removes a key.
+        // Removes a key from the set.
+        // @param key The key to remove.
+        // @note Marks the slot as Deleted; does not shrink the table.
         void remove(const K& key)
         {
             size_type index = probe_for_key(key);
@@ -145,6 +167,8 @@ namespace ZEngine::Core::Containers
             }
         }
 
+        // Clears all entries in the hash set, resetting it to an empty state.
+        // @note Sets all entries to Empty; does not change capacity.
         void clear()
         {
             for (auto& entry : m_entries)
@@ -154,45 +178,72 @@ namespace ZEngine::Core::Containers
             m_size = 0;
         }
 
+        // Checks if the hash set is empty.
+        // @return True if the set contains no keys, false otherwise.
         bool empty() const
         {
             return m_size == 0;
         }
+
+        // Returns the number of keys in the hash set.
+        // @return The number of occupied entries.
         size_type size() const
         {
             return m_size;
         }
+
+        // Returns the current capacity of the hash set.
+        // @return The number of slots in the underlying array.
         size_type capacity() const
         {
             return m_entries.size();
         }
 
+        // Returns an iterator to the first occupied entry.
+        // @return Iterator pointing to the first key or end() if empty.
+        // @note Iterators are invalidated by insert, remove, or reserve operations.
         iterator begin()
         {
             return iterator(m_entries.data(), 0, m_entries.size());
         }
+
+        // Returns an iterator to the end of the hash set.
+        // @return Iterator representing the past-the-end position.
         iterator end()
         {
             return iterator(m_entries.data(), m_entries.size(), m_entries.size());
         }
 
+        // Returns a const iterator to the first occupied entry.
+        // @return Const iterator pointing to the first key or end() if empty.
+        // @note Iterators are invalidated by insert, remove, or reserve operations.
         const_iterator begin() const
         {
             return const_iterator(m_entries.data(), 0, m_entries.size());
         }
+
+        // Returns a const iterator to the end of the hash set.
+        // @return Const iterator representing the past-the-end position.
         const_iterator end() const
         {
             return const_iterator(m_entries.data(), m_entries.size(), m_entries.size());
         }
+
+        // Returns a const iterator to the first entry (alias for begin() const).
         const_iterator cbegin() const
         {
             return begin();
         }
+
+        // Returns a const iterator to the end (alias for end() const).
         const_iterator cend() const
         {
             return end();
         }
 
+        // Ensures the hash set has at least the specified capacity.
+        // @param new_capacity Desired minimum number of slots.
+        // @note Rehashes the set if the new capacity is greater than the current capacity.
         void reserve(size_type new_capacity)
         {
             if (new_capacity > m_entries.size())
