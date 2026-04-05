@@ -147,7 +147,9 @@ namespace ZEngine::Rendering::Renderers
                                  .EnablePipelineDepthTest(true)
                                  .UseShader("initial")
                                  .Detach();
+            // clang-format off
             *output_pass = device->CreateRenderPass(pass_spec);
+            // clang-format on
             (*output_pass)->Bake();
         }
     }
