@@ -18,7 +18,7 @@ jobs:
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-latest' }}
     steps:
       - name: Download Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: Build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
 

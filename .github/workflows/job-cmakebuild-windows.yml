@@ -21,7 +21,7 @@ jobs:
     runs-on: windows-2025
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: update llvm to version 22
         run: choco upgrade llvm
@@ -31,7 +31,7 @@ jobs:
         shell: pwsh
 
       - name: Publish Build Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Build-Windows-x64-${{inputs.configuration}}
           if-no-files-found: error

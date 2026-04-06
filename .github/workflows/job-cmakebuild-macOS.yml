@@ -21,7 +21,7 @@ jobs:
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-latest' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: Install NuGet CLI
         run: brew install nuget
@@ -34,7 +34,7 @@ jobs:
         shell: pwsh
 
       - name: Publish Build Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Build-macOS-${{ inputs.architecture }}-${{inputs.configuration}}
           if-no-files-found: error

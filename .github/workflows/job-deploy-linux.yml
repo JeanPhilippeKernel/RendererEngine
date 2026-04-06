@@ -17,13 +17,13 @@ jobs:
     name: deploy-linux-${{ inputs.configuration }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           name: Build-linux-Release
           path: Result.Linux.x64.${{ inputs.configuration }}
 
       - name: Publish Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: linux-${{ inputs.configuration }}
           if-no-files-found: error
