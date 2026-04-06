@@ -40,11 +40,16 @@ list( APPEND CMAKE_INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib )
 #
 if (NOT LAUNCHER_ONLY)
 
-    ## Setup Dependencies
+    # Enable CMake's CTest Functionality
+    #
+    include(CTest)
+
+    # Setup Dependencies
+    #
     include(dependencies.cmake)
 
-    ## Compile Shaders
-
+    # Compile Shaders
+    #
     add_subdirectory (Resources)
 
 	# Core engine lib is here
