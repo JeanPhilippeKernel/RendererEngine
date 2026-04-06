@@ -52,9 +52,9 @@ namespace ZEngine::Applications
         RenderTargetResizeRequest request = {};
         if (State->RenderTargetResizeRequests.Pop(request))
         {
-            payload.ResizeRenderTarget = true;
-            payload.RenderTargetW      = request.Width;
-            payload.RenderTargetH      = request.Height;
+            payload.ResizeRenderTarget.value.store(true, std::memory_order_release);
+            payload.RenderTargetW = request.Width;
+            payload.RenderTargetH = request.Height;
         }
 
         payload.Scene  = CurrentScene;

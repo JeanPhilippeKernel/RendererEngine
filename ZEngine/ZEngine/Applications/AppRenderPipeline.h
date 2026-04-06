@@ -2,27 +2,15 @@
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/GraphicRenderer.h>
 #include <Rendering/Renderers/ImGUIRenderer.h>
-#include <new>
 
 namespace ZEngine::Applications
 {
-#ifdef __cpp_lib_hardware_interference_size
-    constexpr auto CACHE_LINE_SIZE = std::hardware_destructive_interference_size;
-#else
-    constexpr auto CACHE_LINE_SIZE = 64;
-#endif
-
-    struct alignas(CACHE_LINE_SIZE) PaddedAtomicInt
-    {
-        std::atomic_uint32_t value = 0;
-    };
-
     struct RenderPayload
     {
-        bool                                       RenderUIOverlay    = false;
-        bool                                       ResizeRenderTarget = false;
         uint32_t                                   RenderTargetW      = 0;
         uint32_t                                   RenderTargetH      = 0;
+        PaddedAtomic<bool>                         RenderUIOverlay    = {.value = false};
+        PaddedAtomic<bool>                         ResizeRenderTarget = {.value = false};
         Rendering::Cameras::CameraPtr              Camera             = nullptr;
         Rendering::Scenes::RenderScenePtr          Scene              = nullptr;
         Rendering::Renderers::RenderOverlayPayload UIOverlay          = {};
@@ -35,8 +23,8 @@ namespace ZEngine::Applications
         uint8_t                                  RenderWorkerThreadCount  = 0;
         uint8_t                                  UICommandBufferIndex     = 0xff;
         uint32_t                                 CurrentMailBoxBufferHead = 0;
-        PaddedAtomicInt                          MailBoxBufferHead        = {};
-        PaddedAtomicInt                          MailBoxBufferTail        = {};
+        PaddedAtomic<int>                        MailBoxBufferHead        = {.value = 0};
+        PaddedAtomic<int>                        MailBoxBufferTail        = {.value = 0};
         RenderPayload                            RenderPayloads[3]        = {};
         ZEngine::Core::Memory::ArenaAllocator    LocalArena               = {};
         Hardwares::VulkanDevicePtr               Device                   = nullptr;

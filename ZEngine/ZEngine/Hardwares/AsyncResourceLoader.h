@@ -84,16 +84,16 @@ namespace ZEngine::Hardwares
             Rendering::Textures::TextureHandle                 TexHandle = {};
         };
 
-        VulkanDevice*                                              Device                = nullptr;
-
-        Core::Containers::Array<std::atomic_uint64_t>              NextValues            = {};
-        Core::Containers::Array<std::atomic_uint64_t>              TransferNextValues    = {};
-        Core::Containers::Array<Rendering::Primitives::Semaphore*> Timelines             = {};
-        Core::Containers::Array<Rendering::Primitives::Semaphore*> TransferTimelines     = {};
-        Core::Containers::Array<Core::Containers::Array<uint64_t>> RetireValues          = {};
-        Core::Containers::Array<Core::Containers::Array<uint64_t>> TransferRetireValues  = {};
-        Helpers::ThreadSafeQueue<TimelineJob>                      AsyncTimelineJobQueue = {};
-        Helpers::ThreadSafeQueue<DeferralUpload>                   DeferralUploadQueue   = {};
+        VulkanDevice*                                              Device                  = nullptr;
+        uint32_t                                                   TotalCommandBufferCount = 0;
+        Core::Containers::Array<std::atomic_uint64_t>              NextValues              = {};
+        Core::Containers::Array<std::atomic_uint64_t>              TransferNextValues      = {};
+        Core::Containers::Array<Rendering::Primitives::Semaphore*> Timelines               = {};
+        Core::Containers::Array<Rendering::Primitives::Semaphore*> TransferTimelines       = {};
+        Core::Containers::Array<Core::Containers::Array<uint64_t>> RetireValues            = {};
+        Core::Containers::Array<Core::Containers::Array<uint64_t>> TransferRetireValues    = {};
+        Helpers::ThreadSafeQueue<TimelineJob>                      AsyncTimelineJobQueue   = {};
+        Helpers::ThreadSafeQueue<DeferralUpload>                   DeferralUploadQueue     = {};
 
         void                                                       Initialize(VulkanDevice* device);
 
@@ -110,10 +110,11 @@ namespace ZEngine::Hardwares
         void                                                       CompleteDeferrals();
         void                                                       SubmitAsyncJobs();
         void                                                       ResetCommandBuffers(uint8_t frame_index, uint8_t thread_index);
-        void ClearAsyncJobs();
+        void                                                       ClearAsyncJobs();
 
         void                                                       Run();
         void                                                       Shutdown();
+        void                                                       Reset();
 
     private:
         std::atomic_bool                               m_cancellation_token{false};

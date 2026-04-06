@@ -51,6 +51,7 @@ namespace ZEngine::Applications
         for (uint8_t thread_idx = 0; thread_idx < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
         {
             Device->CommandBufferMgr->ResetPool(swapchain->CurrentFrame->Index, thread_idx);
+            Device->AsyncResLoader->ResetCommandBuffers(swapchain->CurrentFrame->Index, thread_idx);
         }
 
         Device->AsyncResLoader->CompleteDeferrals();
@@ -60,12 +61,18 @@ namespace ZEngine::Applications
         // {
         //     auto thread_idx                             = render_worker_thread_idx + worker_thread_idx;
         // }
-        CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, swapchain->CurrentFrame->Index, RenderMainThreadIndex, 0, true);
+        CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, swapchain->CurrentFrame->Index, RenderMainThreadIndex, 0, false);
+        vkResetCommandBuffer(CurrentCmdBuf->GetHandle(), 0);
+        CurrentCmdBuf->ResetState();
+        CurrentCmdBuf->Begin();
     }
 
     void AppRenderPipeline::EndFrame()
     {
+        Device->AsyncResLoader->SubmitAsyncJobs();
         Device->CommandBufferMgr->EnqueueBuffer(CurrentCmdBuf);
+        Device->CommandBufferMgr->EndEnqueuedBuffers();
+
         Device->SwapchainPtr->Present();
     }
 

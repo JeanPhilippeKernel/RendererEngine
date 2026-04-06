@@ -50,10 +50,12 @@ namespace ZEngine::Hardwares
 
         ImageInFlights.init(&Arena, SwapchainImageCount, SwapchainImageCount);
         RenderCompletes.init(&Arena, SwapchainImageCount, SwapchainImageCount);
+        PresentCompletes.init(&Arena, SwapchainImageCount, SwapchainImageCount);
         for (uint32_t i = 0; i < SwapchainImageCount; ++i)
         {
-            ImageInFlights[i]  = nullptr;
-            RenderCompletes[i] = ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device);
+            ImageInFlights[i]   = nullptr;
+            RenderCompletes[i]  = ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device);
+            PresentCompletes[i] = ZPushStructCtorArgs(&Arena, Primitives::Fence, Device);
         }
     }
 
@@ -67,6 +69,7 @@ namespace ZEngine::Hardwares
             SwapchainImageHeight = capabilities.currentExtent.height;
         }
 
+        VkSwapchainKHR           old_swapchain         = (SwapchainHandle != VK_NULL_HANDLE) ? SwapchainHandle : VK_NULL_HANDLE;
         auto                     min_image_count       = std::clamp(capabilities.minImageCount, capabilities.minImageCount, capabilities.maxImageCount == 0 ? capabilities.minImageCount + 1 : capabilities.maxImageCount);
         VkSwapchainCreateInfoKHR swapchain_create_info = {
             .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -82,7 +85,7 @@ namespace ZEngine::Hardwares
             .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
             .presentMode      = Device->PresentMode,
             .clipped          = VK_TRUE,
-            .oldSwapchain     = (SwapchainHandle != VK_NULL_HANDLE) ? SwapchainHandle : VK_NULL_HANDLE
+            .oldSwapchain     = old_swapchain,
         };
 
         auto            scratch             = ZGetScratch(&Arena);
@@ -129,6 +132,11 @@ namespace ZEngine::Hardwares
         }
 
         ZReleaseScratch(scratch);
+
+        if (old_swapchain != VK_NULL_HANDLE)
+        {
+            ZENGINE_DESTROY_VULKAN_HANDLE(Device->LogicalDevice, vkDestroySwapchainKHR, old_swapchain, nullptr)
+        }
     }
 
     void DeviceSwapchain::Clear()
@@ -183,6 +191,15 @@ namespace ZEngine::Hardwares
                 }
             }
 
+            for (uint32_t i = 0; i < PresentCompletes.size(); ++i)
+            {
+                if (PresentCompletes[i]->GetState() == Rendering::Primitives::FenceState::Submitted)
+                {
+                    PresentCompletes[i]->Wait(UINT64_MAX);
+                    PresentCompletes[i]->Reset();
+                }
+            }
+
             for (int i = 0; i < FrameContextPoolSizeFactor; ++i)
             {
                 FrameContext& frame = FrameContexts[i + FrameContextOffset];
@@ -190,6 +207,7 @@ namespace ZEngine::Hardwares
             }
 
             Device->AsyncResLoader->ClearAsyncJobs();
+            Device->AsyncResLoader->Reset();
 
             uint64_t timeline_value = 0;
             vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &timeline_value);
@@ -198,7 +216,9 @@ namespace ZEngine::Hardwares
             ZENGINE_VALIDATE_ASSERT(timeline_value < UINT64_MAX, "Render Timeline value is corrupted, this should never happen.")
             RenderTimelineNextValue = timeline_value;
 
-            FrameContextOffset = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
+            FrameContextOffset      = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
+            // CurrentFrame            = nullptr;
+
             Clear();
             Create();
 
@@ -207,17 +227,22 @@ namespace ZEngine::Hardwares
         }
 
         FrameContext& frame = FrameContexts[frame_context_idx + FrameContextOffset];
-
+        if (frame.Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
+        {
+            frame.Fence->Wait(UINT64_MAX);
+        }
         frame.Fence->Reset();
         frame.Acquired->SetState(Rendering::Primitives::SemaphoreState::Idle);
-        Device->AsyncResLoader->ResetCommandBuffers(frame.Index, 0);
-
-        ZENGINE_VALIDATE_ASSERT(frame.Acquired->GetState() != Primitives::SemaphoreState::Submitted, "")
 
         uint32_t image_idx            = 0;
         VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, UINT64_MAX, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &(image_idx));
         frame.Acquired->SetState(Primitives::SemaphoreState::Submitted);
-        RenderCompletes[image_idx]->SetState(Rendering::Primitives::SemaphoreState::Idle);
+
+        if (PresentCompletes[image_idx]->GetState() == Rendering::Primitives::FenceState::Submitted)
+        {
+            PresentCompletes[image_idx]->Wait(UINT64_MAX);
+            PresentCompletes[image_idx]->Reset();
+        }
 
         if (ImageInFlights[image_idx] != nullptr)
         {
@@ -226,6 +251,7 @@ namespace ZEngine::Hardwares
                 ImageInFlights[image_idx]->Wait(UINT64_MAX);
             }
         }
+        RenderCompletes[image_idx]->SetState(Rendering::Primitives::SemaphoreState::Idle);
 
         ImageInFlights[image_idx] = frame.Fence;
         frame.ImageIndex          = image_idx;
@@ -243,7 +269,6 @@ namespace ZEngine::Hardwares
         if (HasRecreationPending)
         {
             IdleFrameCount.fetch_add(1);
-            Device->CommandBufferMgr->EndEnqueuedBuffers();
             Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
             return;
         }
@@ -302,9 +327,6 @@ namespace ZEngine::Hardwares
             }
         }
 
-        Device->CommandBufferMgr->EndEnqueuedBuffers();
-        Device->AsyncResLoader->SubmitAsyncJobs();
-
         auto                   scratch = ZGetScratch(&Arena);
 
         Array<VkCommandBuffer> buffer  = {};
@@ -314,7 +336,8 @@ namespace ZEngine::Hardwares
             buffer[i] = Device->CommandBufferMgr->EnqueuedCommandBuffers[i]->GetHandle();
         }
 
-        auto render_complete = RenderCompletes[CurrentFrame->ImageIndex];
+        auto render_complete  = RenderCompletes[CurrentFrame->ImageIndex];
+        auto present_complete = PresentCompletes[CurrentFrame->ImageIndex];
 
         ZENGINE_VALIDATE_ASSERT(render_complete->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
         ZENGINE_VALIDATE_ASSERT(CurrentFrame->Fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
@@ -450,8 +473,11 @@ namespace ZEngine::Hardwares
             .pSignalSemaphores    = present_signal_semaphores,
         };
 
-        VkResult r2 = vkQueueSubmit(queue.Handle, 1, &submit2, VK_NULL_HANDLE);
+        VkResult r2 = vkQueueSubmit(queue.Handle, 1, &submit2, present_complete->GetHandle());
         ZENGINE_VALIDATE_ASSERT(r2 == VK_SUCCESS, "Failed to submit present bridge")
+
+        render_complete->SetState(Rendering::Primitives::SemaphoreState::Submitted);
+        present_complete->SetState(Rendering::Primitives::FenceState::Submitted);
 
         VkSwapchainKHR   swapchains[] = {SwapchainHandle};
         uint32_t         frames[]     = {CurrentFrame->ImageIndex};
@@ -466,7 +492,6 @@ namespace ZEngine::Hardwares
             .pImageIndices      = frames,
         };
         VkResult present_result = vkQueuePresentKHR(queue.Handle, &present_info);
-        render_complete->SetState(Rendering::Primitives::SemaphoreState::Submitted);
 
         IdleFrameCount.fetch_add(1);
 

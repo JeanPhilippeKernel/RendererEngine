@@ -30,7 +30,6 @@ namespace ZEngine::Hardwares
         uint32_t                                                   SwapchainImageCount            = 3;
         uint32_t                                                   PreviousSwapchainImageCount    = 3;
         uint32_t                                                   SwapchainImageCountChangeCount = 0;
-        uint32_t                                                   CurrentFrameIndex              = std::numeric_limits<uint8_t>::max();
 
         uint32_t                                                   SwapchainImageWidth            = std::numeric_limits<uint32_t>::max();
         uint32_t                                                   SwapchainImageHeight           = std::numeric_limits<uint32_t>::max();
@@ -49,6 +48,7 @@ namespace ZEngine::Hardwares
         Core::Containers::Array<VkImageView>                       SwapchainImageViews            = {};
         Core::Containers::Array<VkFramebuffer>                     SwapchainFramebuffers          = {};
         Core::Containers::Array<Rendering::Primitives::Fence*>     ImageInFlights                 = {};
+        Core::Containers::Array<Rendering::Primitives::Fence*>     PresentCompletes               = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes                = {};
 
         void                                                       Initialize(VulkanDevice* const device, uint32_t buffered_frame_size);

@@ -110,7 +110,7 @@ namespace ZEngine
 
             auto& r_payload                   = pipeline->RenderPayloads[head];
             r_payload.UIOverlay.DrawDataIndex = 0;
-            r_payload.RenderUIOverlay         = false;
+            r_payload.RenderUIOverlay.value.store(false, std::memory_order_release);
 
             if (g_app->EnableRenderOverlay)
             {
@@ -118,7 +118,7 @@ namespace ZEngine
                 g_app->OnRenderUI();
                 pipeline->EndOverlayFrame();
 
-                r_payload.RenderUIOverlay = true;
+                r_payload.RenderUIOverlay.value.store(true, std::memory_order_release);
                 pipeline->FillOverlayPayload(r_payload.UIOverlay);
             }
 
@@ -163,15 +163,15 @@ namespace ZEngine
             pipeline->CurrentMailBoxBufferHead     = tail;
             Applications::RenderPayload& r_payload = pipeline->RenderPayloads[tail];
 
-            if (r_payload.ResizeRenderTarget)
+            if (r_payload.ResizeRenderTarget.value.load(std::memory_order_acquire))
             {
                 pipeline->ResizeRenderTarget(r_payload.RenderTargetW, r_payload.RenderTargetH);
-                r_payload.ResizeRenderTarget = false;
+                r_payload.ResizeRenderTarget.value.store(false, std::memory_order_release);
             }
 
             pipeline->BeginFrame();
             pipeline->RenderScene(r_payload.Camera, r_payload.Scene);
-            if (r_payload.RenderUIOverlay)
+            if (r_payload.RenderUIOverlay.value.load(std::memory_order_acquire))
             {
                 pipeline->RenderOverlay(r_payload.UIOverlay);
             }

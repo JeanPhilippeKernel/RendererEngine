@@ -104,3 +104,18 @@
 #define SCENE_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
 
 typedef const char* cstring;
+
+#ifdef __cpp_lib_hardware_interference_size
+#include <atomic>
+#include <new>
+constexpr auto CACHE_LINE_SIZE = std::hardware_destructive_interference_size;
+#else
+#include <atomic>
+constexpr auto CACHE_LINE_SIZE = 64;
+#endif
+
+template <typename T>
+struct alignas(CACHE_LINE_SIZE) PaddedAtomic
+{
+    std::atomic<T> value = {};
+};

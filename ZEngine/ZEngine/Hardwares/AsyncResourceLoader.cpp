@@ -25,8 +25,9 @@ namespace ZEngine::Hardwares
 
     void AsyncResourceLoader::Initialize(VulkanDevice* device)
     {
-        Device           = device;
-        auto max_buffers = Device->CommandBufferMgr->MaxBufferPerPool * Device->CommandBufferMgr->MaxBufferPerPool;
+        Device                  = device;
+        TotalCommandBufferCount = Device->CommandBufferMgr->MaxBufferPerPool * Device->CommandBufferMgr->MaxBufferPerPool;
+
         Timelines.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
         NextValues.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
         RetireValues.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
@@ -34,7 +35,7 @@ namespace ZEngine::Hardwares
         for (uint32_t i = 0; i < Device->CommandBufferMgr->TotalPoolCount; ++i)
         {
             Timelines[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Primitives::Semaphore, Device, true);
-            RetireValues[i].init(Device->Arena, max_buffers, max_buffers);
+            RetireValues[i].init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
             NextValues[i].store(1, std::memory_order_release);
         }
 
@@ -47,7 +48,7 @@ namespace ZEngine::Hardwares
             for (uint32_t i = 0; i < Device->CommandBufferMgr->TotalPoolCount; ++i)
             {
                 TransferTimelines[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Primitives::Semaphore, Device, true);
-                TransferRetireValues[i].init(Device->Arena, max_buffers, max_buffers);
+                TransferRetireValues[i].init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
                 TransferNextValues[i].store(1, std::memory_order_release);
             }
         }
@@ -524,10 +525,9 @@ namespace ZEngine::Hardwares
     void AsyncResourceLoader::ResetCommandBuffers(uint8_t frame_index, uint8_t thread_index)
     {
         uint32_t pool_index     = (frame_index * Device->CommandBufferMgr->TotalThreadCount) + thread_index;
-        auto&    retire_values  = RetireValues[pool_index];
 
-        // Check graphics timeline
         uint64_t graphics_value = 0;
+        auto&    retire_values  = RetireValues[pool_index];
         vkGetSemaphoreCounterValue(Device->LogicalDevice, Timelines[pool_index]->GetHandle(), &graphics_value);
 
         for (int i = 0; i < retire_values.size(); ++i)
@@ -723,5 +723,32 @@ namespace ZEngine::Hardwares
         m_cancellation_token.store(true, std::memory_order_release);
         // We are safe to call destructor to clean up semaphore resources
         // Timeline->~Semaphore();
+    }
+
+    void AsyncResourceLoader::Reset()
+    {
+        auto total_thread_count = Device->CommandBufferMgr->TotalThreadCount;
+        auto frame_count        = Device->SwapchainPtr->BufferredFrameCount;
+
+        for (uint32_t f = 0; f < frame_count; ++f)
+        {
+            for (uint32_t t = 0; t < total_thread_count; ++t)
+            {
+                ResetCommandBuffers(f, t);
+
+                uint32_t pool_index   = (f * Device->CommandBufferMgr->TotalThreadCount) + t;
+
+                uint64_t grahic_value = 0;
+                vkGetSemaphoreCounterValue(Device->LogicalDevice, Timelines[pool_index]->GetHandle(), &grahic_value);
+                NextValues[pool_index].store(grahic_value + 1, std::memory_order_release);
+
+                if (Device->HasSeperateTransfertQueueFamily)
+                {
+                    uint64_t transfer_value = 0;
+                    vkGetSemaphoreCounterValue(Device->LogicalDevice, TransferTimelines[pool_index]->GetHandle(), &transfer_value);
+                    TransferNextValues[pool_index].store(transfer_value + 1, std::memory_order_release);
+                }
+            }
+        }
     }
 } // namespace ZEngine::Hardwares
