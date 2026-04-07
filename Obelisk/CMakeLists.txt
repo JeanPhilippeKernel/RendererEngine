@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.17)
 
 project (Obelisk 
-	VERSION 1.0
+	VERSION 1.0.1.0
 	DESCRIPTION "Obelisk, The game application entry point"
 	LANGUAGES CXX
 )
