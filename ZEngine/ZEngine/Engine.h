@@ -22,6 +22,9 @@ namespace ZEngine
         static void Dispose();
         static bool OnEngineClosed(Event::EngineClosedEvent&);
 
+        static void MainThreadRun();
+        static void RenderThreadRun();
+
     private:
         Engine()              = delete;
         Engine(const Engine&) = delete;

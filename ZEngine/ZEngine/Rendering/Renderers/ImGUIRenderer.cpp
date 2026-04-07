@@ -44,7 +44,7 @@ namespace ZEngine::Rendering::Renderers
 
         io.ConfigFlags         |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags         |= ImGuiConfigFlags_DockingEnable;
-        io.ConfigFlags         |= ImGuiConfigFlags_ViewportsEnable;
+        // io.ConfigFlags         |= ImGuiConfigFlags_ViewportsEnable;
 
         auto& style             = ImGui::GetStyle();
         style.WindowBorderSize  = 0.f;
@@ -57,16 +57,43 @@ namespace ZEngine::Rendering::Renderers
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window), false);
 
-        m_vertex_buffer_handle = Device->CreateVertexBufferSet();
-        m_index_buffer_handle  = Device->CreateIndexBufferSet();
+        VBHandle            = Device->CreateVertexBufferSet();
+        IdxBHandle          = Device->CreateIndexBufferSet();
 
-        auto vb_buffer_set     = Device->VertexBufferSetManager.Access(m_vertex_buffer_handle);
-        auto idx_buffer_set    = Device->IndexBufferSetManager.Access(m_index_buffer_handle);
-        for (unsigned i = 0; i < Device->SwapchainImageCount; ++i)
+        auto vb_buffer_set  = Device->VertexBufferSetManager.Access(VBHandle);
+        auto idx_buffer_set = Device->IndexBufferSetManager.Access(IdxBHandle);
+        for (unsigned i = 0; i < Device->SwapchainPtr->BufferredFrameCount; ++i)
         {
             vb_buffer_set->At(i)->Allocate(ZMega(5), "ImguiVertexBuffer");
             idx_buffer_set->At(i)->Allocate(ZMega(5), "ImguiIndexBuffer");
         }
+
+        /*
+         * Font uploading
+         */
+        AsyncResourceLoader::DeferralUpload deferral = {.Buffer = nullptr};
+        deferral.Type                                = AsyncResourceLoader::UploadType::TEXTURE_BUFFER;
+
+        unsigned char* pixels;
+        int            width, height;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        size_t                               upload_size   = width * height * 4 * sizeof(uint8_t);
+
+        Specifications::TextureSpecification font_tex_spec = {};
+        font_tex_spec.Width                                = width;
+        font_tex_spec.Height                               = height;
+        font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
+
+        auto font_tex_handle                               = Device->CreateTexture(font_tex_spec);
+        deferral.TexHandle                                 = font_tex_handle;
+        deferral.Buffer                                    = pixels;
+
+        Device->AsyncResLoader->SubmitDeferral(std::move(deferral));
+
+        // We enqueue the tex handle so, we write the DescriptorSet at Present(...)
+        Device->TextureHandleToUpdates.Enqueue(font_tex_handle);
+
+        io.Fonts->TexID   = (ImTextureID) font_tex_handle.Index;
 
         auto pass_builder = RenderGraph->RenderPassBuilder;
         pass_builder->SetName("Imgui Pass")
@@ -95,105 +122,17 @@ namespace ZEngine::Rendering::Renderers
 
             .UseSwapchainAsRenderTarget();
 
-        m_ui_pass = Device->CreateRenderPass(pass_builder->Detach());
-        m_ui_pass->SetBindlessInput("TextureArray");
-        m_ui_pass->Verify();
-        m_ui_pass->Bake();
-        /*
-         * Font uploading
-         */
-        unsigned char* pixels;
-        int            width, height;
-        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        size_t                               upload_size                 = width * height * 4 * sizeof(uint8_t);
-
-        Specifications::TextureSpecification font_tex_spec               = {};
-        font_tex_spec.Width                                              = width;
-        font_tex_spec.Height                                             = height;
-        font_tex_spec.Format                                             = Specifications::ImageFormat::R8G8B8A8_UNORM;
-
-        auto                                            font_tex_handle  = Device->CreateTexture(font_tex_spec);
-        auto                                            font_tex_res     = Device->GlobalTextures.Access(font_tex_handle);
-        auto                                            img_buf          = Device->Image2DBufferManager.Access(font_tex_res->BufferHandle);
-        auto                                            image_buf_handle = img_buf->GetHandle();
-
-        auto                                            command_buf      = Device->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE);
-
-        Specifications::ImageMemoryBarrierSpecification barrier_spec_0   = {};
-        barrier_spec_0.ImageHandle                                       = image_buf_handle;
-        barrier_spec_0.OldLayout                                         = img_buf->Layout;
-        barrier_spec_0.NewLayout                                         = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-        barrier_spec_0.ImageAspectMask                                   = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier_spec_0.SourceAccessMask                                  = VK_ACCESS_NONE;
-        barrier_spec_0.DestinationAccessMask                             = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier_spec_0.SourceStageMask                                   = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        barrier_spec_0.DestinationStageMask                              = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        barrier_spec_0.LayerCount                                        = font_tex_res->Specification.LayerCount;
-        Primitives::ImageMemoryBarrier barrier_0{barrier_spec_0};
-        command_buf->TransitionImageLayout(barrier_0);
-
-        img_buf->Layout = barrier_spec_0.NewLayout;
-
-        Device->WriteTextureData(command_buf, font_tex_handle, pixels);
-
-        Specifications::ImageMemoryBarrierSpecification barrier_spec_1 = {};
-        barrier_spec_1.ImageHandle                                     = image_buf_handle;
-        barrier_spec_1.OldLayout                                       = img_buf->Layout;
-        barrier_spec_1.NewLayout                                       = Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-        barrier_spec_1.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier_spec_1.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier_spec_1.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
-        barrier_spec_1.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        barrier_spec_1.DestinationStageMask                            = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        barrier_spec_1.LayerCount                                      = font_tex_res->Specification.LayerCount;
-        Primitives::ImageMemoryBarrier barrier_1{barrier_spec_1};
-        command_buf->TransitionImageLayout(barrier_1);
-
-        img_buf->Layout = barrier_spec_1.NewLayout;
-        Device->EnqueueInstantCommandBuffer(command_buf);
-
-        /*
-         * Dummy Texture
-         */
-        auto dummy_tex_handle                             = Device->CreateTexture(1, 1, 255, 255, 255, 255);
-        auto dummy_tex_res                                = Device->GlobalTextures.Access(dummy_tex_handle);
-        auto dummy_tex_buf                                = Device->Image2DBufferManager.Access(dummy_tex_res->BufferHandle);
-
-        io.Fonts->TexID                                   = (ImTextureID) font_tex_handle.Index;
-
-        auto                        font_image_info       = img_buf->GetDescriptorImageInfo();
-        auto                        dummy_image_info      = dummy_tex_buf->GetDescriptorImageInfo();
-        uint32_t                    frame_count           = Device->SwapchainImageCount;
-        auto                        shader                = m_ui_pass->Pipeline->Shader;
-        auto&                       descriptor_set_map    = shader->DescriptorSetMap;
-
-        auto                        scratch               = ZGetScratch(Device->Arena);
-        Array<VkWriteDescriptorSet> write_descriptor_sets = {};
-        write_descriptor_sets.init(scratch.Arena, frame_count);
-
-        for (unsigned i = 0; i < frame_count; ++i)
-        {
-            for (const auto& [set, arr] : descriptor_set_map)
-            {
-                auto frame_set = arr[i];
-                if (set == 0) // __unused
-                {
-                    write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = frame_set, .dstBinding = 0, .dstArrayElement = 0u /*(uint32_t) dummy_tex_handle.Index*/, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(dummy_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-                    continue;
-                }
-
-                write_descriptor_sets.push(VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = frame_set, .dstBinding = 0, .dstArrayElement = (uint32_t) font_tex_handle.Index, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &(font_image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr});
-            }
-        }
-
-        vkUpdateDescriptorSets(Device->LogicalDevice, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
-
-        ZReleaseScratch(scratch);
+        UIPass = Device->CreateRenderPass(pass_builder->Detach());
+        UIPass->SetBindlessInput("TextureArray");
+        UIPass->SetInput("_unused", Device->GlobalLinearWrapSamplerImageInfo);
+        UIPass->SetInput("LinearWrapSampler", Device->GlobalLinearWrapSamplerImageInfo);
+        UIPass->Verify();
+        UIPass->Bake();
     }
 
     void ImGUIRenderer::Deinitialize()
     {
-        m_ui_pass->Dispose();
+        UIPass->Dispose();
 
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
@@ -245,10 +184,20 @@ namespace ZEngine::Rendering::Renderers
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
     }
-
-    void ImGUIRenderer::DrawFrame(Hardwares::CommandBufferPtr const command_buffer)
+    void ImGUIRenderer::EndFrame()
     {
+        // The render method has EndFrame()
         ImGui::Render();
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+        }
+    }
+
+    void ImGUIRenderer::PreparePayload(RenderOverlayPayload& r_payload)
+    {
         ImDrawData* draw_data = ImGui::GetDrawData();
 
         if (!draw_data)
@@ -272,15 +221,21 @@ namespace ZEngine::Rendering::Renderers
             return;
         }
 
-        auto              scratch     = ZGetScratch(Device->Arena);
+        r_payload.VertexCount         = vertex_count;
+        r_payload.IndexCount          = index_count;
+        r_payload.IsIndexBufferUint16 = sizeof(ImDrawIdx) == 2;
+        r_payload.VBHandle            = VBHandle;
+        r_payload.IdxBHandle          = IdxBHandle;
 
-        Array<ImDrawVert> vertex_data = {};
-        Array<ImDrawIdx>  index_data  = {};
+        r_payload.VertexData.clear();
+        r_payload.IndexData.clear();
+        r_payload.VertexData.shrink_to_fit();
+        r_payload.IndexData.shrink_to_fit();
 
-        vertex_data.init(scratch.Arena, vertex_count, vertex_count);
-        index_data.init(scratch.Arena, index_count, index_count);
+        r_payload.VertexData.resize(vertex_count);
+        r_payload.IndexData.resize(index_count);
 
-        ImDrawVert* vertex_data_ptr = vertex_data.data();
+        UIDrawVert* vertex_data_ptr = r_payload.VertexData.data();
         for (int n = 0; n < draw_data->CmdListsCount; ++n)
         {
             const ImDrawList* cmd_list  = draw_data->CmdLists[n];
@@ -289,7 +244,7 @@ namespace ZEngine::Rendering::Renderers
             vertex_data_ptr += cmd_list->VtxBuffer.Size;
         }
 
-        ImDrawIdx* index_data_ptr = index_data.data();
+        unsigned short* index_data_ptr = r_payload.IndexData.data();
         for (int n = 0; n < draw_data->CmdListsCount; ++n)
         {
             const ImDrawList* cmd_list  = draw_data->CmdLists[n];
@@ -298,35 +253,14 @@ namespace ZEngine::Rendering::Renderers
             index_data_ptr += cmd_list->IdxBuffer.Size;
         }
 
-        auto vtx_data_view     = ArrayView{vertex_data};
-        auto idx_data_view     = ArrayView{index_data};
-
-        auto vertex_buffer_set = Device->VertexBufferSetManager.Access(m_vertex_buffer_handle);
-        auto index_buffer_set  = Device->IndexBufferSetManager.Access(m_index_buffer_handle);
-
-        auto vertex_buffer     = vertex_buffer_set->At(Device->CurrentFrameIndex);
-        auto index_buffer      = index_buffer_set->At(Device->CurrentFrameIndex);
-
-        vertex_buffer->Write(vtx_data_view);
-        index_buffer->Write(idx_data_view);
-
-        ZReleaseScratch(scratch);
-
-        auto current_framebuffer = Device->SwapchainFramebuffers[Device->SwapchainImageIndex];
-
-        command_buffer->BeginRenderPass(m_ui_pass, current_framebuffer);
-        command_buffer->BindVertexBuffer(*vertex_buffer);
-        command_buffer->BindIndexBuffer(*index_buffer, sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
-
         // Setup scale and translation:
         // Our visible imgui space lies from draw_data->DisplayPps (top left) to
         // draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single viewport apps.
 
-        PushConstantData pc_data = {};
-        pc_data.Scale[0]         = 2.0f / draw_data->DisplaySize.x;
-        pc_data.Scale[1]         = 2.0f / draw_data->DisplaySize.y;
-        pc_data.Translate[0]     = -1.0f - draw_data->DisplayPos.x * pc_data.Scale[0];
-        pc_data.Translate[1]     = -1.0f - draw_data->DisplayPos.y * pc_data.Scale[1];
+        r_payload.Pc[0]          = 2.0f / draw_data->DisplaySize.x;
+        r_payload.Pc[1]          = 2.0f / draw_data->DisplaySize.y;
+        r_payload.Pc[2]          = -1.0f - draw_data->DisplayPos.x * r_payload.Pc[0];
+        r_payload.Pc[3]          = -1.0f - draw_data->DisplayPos.y * r_payload.Pc[1];
 
         // Will project scissor/clipping rectangles into framebuffer space
         ImVec2 clip_off          = draw_data->DisplayPos;       // (0,0) unless using multi-viewports
@@ -334,6 +268,7 @@ namespace ZEngine::Rendering::Renderers
 
         // Render command lists
         // (Because we merged all buffers into a single one, we maintain our own offset into them)
+
         int    global_vtx_offset = 0;
         int    global_idx_offset = 0;
         for (int n = 0; n < draw_data->CmdListsCount; n++)
@@ -359,29 +294,21 @@ namespace ZEngine::Rendering::Renderers
                     {
                         // Apply scissor/clipping rectangle
                         VkRect2D scissor;
-                        scissor.offset.x      = (int32_t) (clip_rect.x);
-                        scissor.offset.y      = (int32_t) (clip_rect.y);
-                        scissor.extent.width  = (uint32_t) (clip_rect.z - clip_rect.x);
-                        scissor.extent.height = (uint32_t) (clip_rect.w - clip_rect.y);
-                        command_buffer->SetScissor(scissor);
+                        scissor.offset.x                               = (int32_t) (clip_rect.x);
+                        scissor.offset.y                               = (int32_t) (clip_rect.y);
+                        scissor.extent.width                           = (uint32_t) (clip_rect.z - clip_rect.x);
+                        scissor.extent.height                          = (uint32_t) (clip_rect.w - clip_rect.y);
 
-                        pc_data.TextureId = (uint32_t) (intptr_t) pcmd->TextureId;
-                        command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &pc_data);
-                        command_buffer->BindDescriptorSets(Device->CurrentFrameIndex);
-                        command_buffer->DrawIndexed(pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
+                        r_payload.TextureIds[r_payload.DrawDataIndex]  = (uint32_t) (intptr_t) pcmd->TextureId;
+                        r_payload.ScissorCmds[r_payload.DrawDataIndex] = ScissorCmd{scissor.extent.width, scissor.extent.height, scissor.offset.x, scissor.offset.y};
+                        r_payload.IndexedCmds[r_payload.DrawDataIndex] = IndexedCmd{pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, (int32_t) (pcmd->VtxOffset + global_vtx_offset), 0};
+
+                        r_payload.DrawDataIndex++;
                     }
                 }
             }
             global_idx_offset += cmd_list->IdxBuffer.Size;
             global_vtx_offset += cmd_list->VtxBuffer.Size;
-        }
-        command_buffer->EndRenderPass();
-
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
         }
     }
 } // namespace ZEngine::Rendering::Renderers

@@ -16,6 +16,7 @@
                 "BUILD_SHARED_LIBS": "OFF",
                 "FETCHCONTENT_QUIET": "OFF",
 
+                "FMT_MODULE": "OFF",
                 "VULKAN_HEADERS_ENABLE_INSTALL": "ON",
                 "ENTT_INCLUDE_HEADERS": "ON",
 

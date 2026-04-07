@@ -10,22 +10,24 @@ namespace ZEngine::Rendering::Renderers
         float    Scale[2]     = {0};
         float    Translate[2] = {0};
         uint32_t TextureId    = 0xFFFFFFFFu;
+        uint32_t padding      = 0xFFFFFFFFu;
     };
 
     struct ImGUIRenderer : public IRenderer
     {
-        void Initialize(Hardwares::VulkanDevicePtr device) override;
-        void Deinitialize() override;
 
-        void StyleDarkTheme();
+        RenderPasses::RenderPass*        UIPass     = nullptr;
+        Hardwares::VertexBufferSetHandle VBHandle   = {};
+        Hardwares::IndexBufferSetHandle  IdxBHandle = {};
 
-        void NewFrame();
-        void DrawFrame(Hardwares::CommandBuffer* const command_buffer);
+        void                             Initialize(Hardwares::VulkanDevicePtr device) override;
+        void                             Deinitialize() override;
 
-    private:
-        Hardwares::VertexBufferSetHandle m_vertex_buffer_handle;
-        Hardwares::IndexBufferSetHandle  m_index_buffer_handle;
-        RenderPasses::RenderPass*        m_ui_pass;
+        void                             StyleDarkTheme();
+
+        void                             NewFrame();
+        void                             EndFrame();
+        void                             PreparePayload(RenderOverlayPayload& payload);
     };
 
     ZDEFINE_PTR(ImGUIRenderer);

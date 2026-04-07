@@ -24,18 +24,18 @@ void main()
     if (material.AlbedoMap < INVALID_MAP_HANDLE)
     {
         uint texId = uint(material.AlbedoMap);
-        OutAlbedo  = texture(TextureArray[nonuniformEXT(texId)], TexCoord);
+        OutAlbedo  = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearWrapSampler), TexCoord);
     }
 
     if (material.SpecularMap < INVALID_MAP_HANDLE)
     {
         uint texId  = uint(material.SpecularMap);
-        OutSpecular = texture(TextureArray[nonuniformEXT(texId)], TexCoord);
+        OutSpecular = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearWrapSampler), TexCoord);
     }
 
     if (material.NormalMap < INVALID_MAP_HANDLE)
     {
         uint texId = uint(material.NormalMap);
-        OutNormal  = texture(TextureArray[nonuniformEXT(texId)], TexCoord).rgb;
+        OutNormal  = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearWrapSampler), TexCoord).rgb;
     }
 }

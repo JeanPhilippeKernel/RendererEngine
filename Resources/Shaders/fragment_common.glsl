@@ -61,7 +61,8 @@ layout(std140, set = 0, binding = 5) readonly buffer MatSB
 }
 MaterialDataBuffer;
 
-layout(set = 1, binding = 0) uniform sampler2D TextureArray[];
+layout(set = 1, binding = 0) uniform texture2D TextureArray[];
+layout(set = 1, binding = 1) uniform sampler LinearWrapSampler;
 
 MaterialData FetchMaterial(uint dataIndex)
 {

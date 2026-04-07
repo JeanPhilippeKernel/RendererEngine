@@ -47,28 +47,18 @@ namespace ZEngine::Applications
         OnEvent(e);
     }
 
-    void GameApplication::Render()
+    void GameApplication::PrepareScene(RenderPayload& payload)
     {
         RenderTargetResizeRequest request = {};
         if (State->RenderTargetResizeRequests.Pop(request))
         {
-            RenderPipeline->ResizeRenderTarget(request.Width, request.Height);
+            payload.ResizeRenderTarget.value.store(true, std::memory_order_release);
+            payload.RenderTargetW = request.Width;
+            payload.RenderTargetH = request.Height;
         }
 
-        RenderPipeline->BeginFrame();
-
-        OnPreRender();
-        RenderPipeline->RenderScene(CameraController->GetCamera(), CurrentScene);
-        OnPostRender();
-
-        if (EnableRenderOverlay)
-        {
-            RenderPipeline->BeginOverlayFrame();
-            OnRenderUI();
-            RenderPipeline->EndOverlayFrame();
-        }
-
-        RenderPipeline->EndFrame();
+        payload.Scene  = CurrentScene;
+        payload.Camera = CameraController->GetCamera();
     }
 
     void GameApplication::Shutdown()

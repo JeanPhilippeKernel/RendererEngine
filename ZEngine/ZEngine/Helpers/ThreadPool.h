@@ -7,10 +7,16 @@
 namespace ZEngine::Helpers
 {
 
-    class ThreadPool
+    struct ThreadPool
     {
-    public:
-        ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency()) : m_maxThreadCount(maxThreadCount), m_taskQueue(CreateRef<ThreadSafeQueue<std::function<void()>>>()) {}
+        size_t MaxThreadCount      = 0;
+        size_t CurrentThreadCount  = 0;
+        size_t ReservedThreadCount = 1;
+
+        ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency()) : MaxThreadCount(maxThreadCount), m_taskQueue(CreateRef<ThreadSafeQueue<std::function<void()>>>())
+        {
+            MaxThreadCount -= ReservedThreadCount;
+        }
 
         ~ThreadPool()
         {
@@ -33,8 +39,6 @@ namespace ZEngine::Helpers
         }
 
     private:
-        size_t                                      m_maxThreadCount;
-        size_t                                      m_currentThreadCount{0};
         std::atomic_bool                            m_cancellationToken{false};
         std::mutex                                  m_mutex;
         Ref<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
@@ -45,7 +49,8 @@ namespace ZEngine::Helpers
             {
                 queue->Wait(cancellationToken);
 
-                if (cancellationToken == true)
+                auto op_canceled = cancellationToken.load(std::memory_order_relaxed);
+                if (op_canceled == true)
                 {
                     break;
                 }
@@ -55,6 +60,7 @@ namespace ZEngine::Helpers
                 {
                     continue;
                 }
+
                 task();
             }
         }
@@ -63,10 +69,10 @@ namespace ZEngine::Helpers
         {
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
-                if (m_currentThreadCount < m_maxThreadCount)
+                if (CurrentThreadCount < MaxThreadCount)
                 {
                     std::thread(ThreadPool::WorkerThread, m_taskQueue.Weak(), std::cref(m_cancellationToken)).detach();
-                    m_currentThreadCount++;
+                    CurrentThreadCount++;
                 }
             }
         }
@@ -74,20 +80,24 @@ namespace ZEngine::Helpers
 
     struct ThreadPoolHelper
     {
+        static Scope<ThreadPool> Pool;
+
+        static void              Initialize()
+        {
+            if (!Pool)
+            {
+                Pool = CreateScope<ThreadPool>();
+            }
+        }
+
         template <typename T>
         static void Submit(T&& f)
         {
-            if (!m_threadPool)
-            {
-                m_threadPool = CreateScope<ThreadPool>();
-            }
-            m_threadPool->Enqueue(std::move(f));
+            Pool->Enqueue(std::move(f));
         }
 
     private:
         ThreadPoolHelper()  = delete;
         ~ThreadPoolHelper() = delete;
-
-        static Scope<ThreadPool> m_threadPool;
     };
 } // namespace ZEngine::Helpers

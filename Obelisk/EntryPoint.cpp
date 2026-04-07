@@ -3,6 +3,7 @@
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/EngineConfiguration.h>
+#include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/Logger.h>
 
 #ifdef ZENGINE_PLATFORM
@@ -21,6 +22,8 @@ int applicationEntryPoint(int argc, char* argv[])
 
     LoggerConfiguration logger_cfg = {};
     Logger::Initialize(arena, logger_cfg);
+
+    Helpers::ThreadPoolHelper::Initialize();
 
     GameApplicationPtr app = nullptr;
 
