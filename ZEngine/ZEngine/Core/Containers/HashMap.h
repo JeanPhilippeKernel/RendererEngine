@@ -90,6 +90,12 @@ namespace ZEngine::Core::Containers
             return std::addressof(**this);
         }
 
+        // Returns a const reference to the key at the current position.
+        const K& key() const
+        {
+            return m_entries[m_index].key;
+        }
+
     private:
         EntryPointer m_entries;
         std::size_t  m_index;
@@ -198,6 +204,14 @@ namespace ZEngine::Core::Containers
             return (index != size_type(-1)) ? &m_entries[index].value : nullptr;
         }
 
+        // Returns a pointer to the stored key if found, nullptr otherwise.
+        // Useful for callers that need a stable pointer into the map's key storage.
+        const K* find_key(const K& key) const
+        {
+            size_type index = probe_for_key(key);
+            return (index != size_type(-1)) ? &m_entries[index].key : nullptr;
+        }
+
         // Checks if a key exists in the hash map.
         // @param key The key to check.
         // @return True if the key exists, false otherwise.
@@ -240,9 +254,10 @@ namespace ZEngine::Core::Containers
                 return;
             }
 
-            // Collect occupied slot indices into a scratch array.
+            auto             scratch = ZGetScratch(m_allocator);
+
             Array<size_type> indices;
-            indices.init(m_allocator, m_size);
+            indices.init(scratch.Arena, m_size);
 
             size_type cur = m_head;
             while (cur != size_type(-1))
@@ -263,6 +278,8 @@ namespace ZEngine::Core::Containers
                 m_entries[indices[i]].prev = (i > 0) ? indices[i - 1] : size_type(-1);
                 m_entries[indices[i]].next = (i + 1 < indices.size()) ? indices[i + 1] : size_type(-1);
             }
+
+            ZReleaseScratch(scratch);
         }
 
         // Checks if the hash map is empty.
@@ -529,16 +546,6 @@ namespace ZEngine::Core::Containers
             {
                 return rapidhash(&key, sizeof(K));
             }
-        }
-
-        // Computes a secondary hash for double hashing to determine probe step size.
-        // @param key The key to hash.
-        // @return A non-zero step size for probing.
-        size_type double_hash(const K& key) const
-        {
-            size_type h = hash(key);
-            // Ensure step is non-zero and relatively prime to capacity
-            return (h % m_entries.size()) | 1; // Odd step size
         }
 
         Memory::ArenaAllocator* m_allocator = nullptr;

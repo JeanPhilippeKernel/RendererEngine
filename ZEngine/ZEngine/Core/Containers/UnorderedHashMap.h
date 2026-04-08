@@ -94,6 +94,12 @@ namespace ZEngine::Core::Containers
             return std::addressof(**this);
         }
 
+        // Returns a const reference to the key at the current position.
+        const K& key() const
+        {
+            return m_entries[m_index].key;
+        }
+
     private:
         // Advances the iterator to the next occupied entry, skipping empty or deleted entries.
         void advance_to_valid()
@@ -206,6 +212,13 @@ namespace ZEngine::Core::Containers
         {
             size_type index = probe_for_key(key);
             return (index != size_type(-1)) ? &m_entries[index].value : nullptr;
+        }
+
+        // Returns a pointer to the stored key if found, nullptr otherwise.
+        const K* find_key(const K& key) const
+        {
+            size_type index = probe_for_key(key);
+            return (index != size_type(-1)) ? &m_entries[index].key : nullptr;
         }
 
         // Checks if a key exists in the hash map.
@@ -445,16 +458,6 @@ namespace ZEngine::Core::Containers
             {
                 return rapidhash(&key, sizeof(K));
             }
-        }
-
-        // Computes a secondary hash for double hashing to determine probe step size.
-        // @param key The key to hash.
-        // @return A non-zero step size for probing.
-        size_type double_hash(const K& key) const
-        {
-            size_type h = hash(key);
-            // Ensure step is non-zero and relatively prime to capacity
-            return (h % m_entries.size()) | 1; // Odd step size
         }
 
         Memory::ArenaAllocator* m_allocator = nullptr;
