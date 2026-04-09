@@ -1,5 +1,5 @@
-#include <Core/Containers/HashMap.h>
 #include <Core/Containers/Strings.h>
+#include <Core/Containers/UnorderedHashMap.h>
 #include <gtest/gtest.h>
 #include <string>
 
@@ -22,7 +22,7 @@ protected:
 
 TEST_F(HashMapTest, InitialState)
 {
-    HashMap<int, int> array;
+    UnorderedHashMap<int, int> array;
     array.init(&allocator, 10);
     EXPECT_EQ(array.size(), 0);
     EXPECT_EQ(array.capacity(), 10);
@@ -31,7 +31,7 @@ TEST_F(HashMapTest, InitialState)
 
 TEST_F(HashMapTest, Contains)
 {
-    HashMap<int, int> map;
+    UnorderedHashMap<int, int> map;
     map.init(&allocator, 10);
     map.insert(1, 10);
     EXPECT_TRUE(map.contains(1));
@@ -40,7 +40,7 @@ TEST_F(HashMapTest, Contains)
 
 TEST_F(HashMapTest, BracketOperator)
 {
-    HashMap<int, int> map;
+    UnorderedHashMap<int, int> map;
     map.init(&allocator, 10);
     map[1] = 10;
     EXPECT_EQ(map[1], 10);
@@ -54,7 +54,7 @@ TEST_F(HashMapTest, BracketOperator)
 
 TEST_F(HashMapTest, Remove)
 {
-    HashMap<int, int> map;
+    UnorderedHashMap<int, int> map;
     map.init(&allocator, 10);
     map.insert(1, 10);
     map.insert(2, 20);
@@ -67,7 +67,7 @@ TEST_F(HashMapTest, Remove)
 
 TEST_F(HashMapTest, Find)
 {
-    HashMap<int, int> map;
+    UnorderedHashMap<int, int> map;
     map.init(&allocator, 10);
     map.insert(1, 10);
     int* value = map.find(1);
@@ -79,7 +79,7 @@ TEST_F(HashMapTest, Find)
 
 TEST_F(HashMapTest, Clear)
 {
-    HashMap<int, int> map;
+    UnorderedHashMap<int, int> map;
     map.init(&allocator, 10);
 
     // Insert multiple elements
@@ -101,7 +101,7 @@ TEST_F(HashMapTest, Clear)
 
 TEST_F(HashMapTest, Resize)
 {
-    HashMap<int, int> map;
+    UnorderedHashMap<int, int> map;
     map.init(&allocator, 2);
 
     for (int i = 0; i < 10; ++i)
@@ -122,7 +122,7 @@ TEST_F(HashMapTest, Resize)
 
 TEST_F(HashMapTest, OverwriteValue)
 {
-    HashMap<int, String> map;
+    UnorderedHashMap<int, String> map;
     map.init(&allocator, 10);
 
     String str1;
@@ -140,7 +140,7 @@ TEST_F(HashMapTest, OverwriteValue)
 
 TEST_F(HashMapTest, CollisionHandling)
 {
-    HashMap<int, int> map;
+    UnorderedHashMap<int, int> map;
     map.init(&allocator, 2);
 
     map.insert(1, 10);
@@ -158,7 +158,7 @@ TEST_F(HashMapTest, CollisionHandling)
 
 TEST_F(HashMapTest, ViewIteration)
 {
-    HashMap<int, int> map;
+    UnorderedHashMap<int, int> map;
     map.init(&allocator, 8);
 
     map.insert(10, 100);
@@ -195,7 +195,7 @@ TEST_F(HashMapTest, UserDefinedStructViewIterations)
         }
     };
 
-    HashMap<Person, String> map;
+    UnorderedHashMap<Person, String> map;
     map.init(&allocator, 8);
 
     String str1;

@@ -1,7 +1,7 @@
 #pragma once
 #include <Core/Containers/Array.h>
-#include <Core/Containers/HashMap.h>
 #include <Core/Containers/Strings.h>
+#include <Core/Containers/UnorderedHashMap.h>
 #include <Core/Memory/Allocator.h>
 #include <Helpers/ThreadSafeQueue.h>
 #include <Importers/AssetTypes.h>
@@ -21,64 +21,64 @@ namespace ZEngine::Managers
 
     struct AssetManager
     {
-        using AssetHandle                                                                                  = uint32_t;
+        using AssetHandle                                                                                           = uint32_t;
 
-        Core::Memory::ArenaAllocator                                               Arena                   = {};
-        Core::Memory::ArenaAllocator                                               ThreadLocalArena        = {};
+        Core::Memory::ArenaAllocator                                                        Arena                   = {};
+        Core::Memory::ArenaAllocator                                                        ThreadLocalArena        = {};
 
-        cstring                                                                    CurrentWorkingSpacePath = "";
+        cstring                                                                             CurrentWorkingSpacePath = "";
 
-        std::atomic_bool                                                           IsLoading               = false;
-        std::atomic_bool                                                           RequestShutdown         = false;
+        std::atomic_bool                                                                    IsLoading               = false;
+        std::atomic_bool                                                                    RequestShutdown         = false;
 
-        Core::Containers::Array<Importers::AssetNodeHierarchy>                     NodeHierarchies         = {};
-        Core::Containers::Array<Importers::AssetMesh>                              Meshes                  = {};
-        Core::Containers::Array<Importers::AssetMaterial>                          Materials               = {};
-        Core::Containers::Array<Importers::AssetTexture>                           Textures                = {};
+        Core::Containers::Array<Importers::AssetNodeHierarchy>                              NodeHierarchies         = {};
+        Core::Containers::Array<Importers::AssetMesh>                                       Meshes                  = {};
+        Core::Containers::Array<Importers::AssetMaterial>                                   Materials               = {};
+        Core::Containers::Array<Importers::AssetTexture>                                    Textures                = {};
 
-        Core::Containers::Array<Rendering::Meshes::MeshMaterial>                   GPUMeshMaterials        = {};
+        Core::Containers::Array<Rendering::Meshes::MeshMaterial>                            GPUMeshMaterials        = {};
 
-        Core::Containers::HashMap<uuids::uuid, AssetHandle>                        UUIDToHandle            = {};
-        Core::Containers::HashMap<AssetHandle, uuids::uuid>                        HandleToUUID            = {};
-        Core::Containers::HashMap<uuids::uuid, uuids::uuid>                        MeshToNodeHierarchy     = {};
-        Core::Containers::HashMap<uuids::uuid, uuids::uuid>                        NodeHierarchyToMesh     = {};
+        Core::Containers::UnorderedHashMap<uuids::uuid, AssetHandle>                        UUIDToHandle            = {};
+        Core::Containers::UnorderedHashMap<AssetHandle, uuids::uuid>                        HandleToUUID            = {};
+        Core::Containers::UnorderedHashMap<uuids::uuid, uuids::uuid>                        MeshToNodeHierarchy     = {};
+        Core::Containers::UnorderedHashMap<uuids::uuid, uuids::uuid>                        NodeHierarchyToMesh     = {};
 
-        Core::Containers::HashMap<uuids::uuid, Rendering::Textures::TextureHandle> UUIDToTextureHandle     = {};
+        Core::Containers::UnorderedHashMap<uuids::uuid, Rendering::Textures::TextureHandle> UUIDToTextureHandle     = {};
 
-        Hardwares::StorageBufferSetHandle                                          MaterialBufferHandle    = {};
+        Hardwares::StorageBufferSetHandle                                                   MaterialBufferHandle    = {};
 
-        std::mutex                                                                 Mut;
-        std::condition_variable                                                    Cond;
-        Helpers::ThreadSafeQueue<Importers::AssetImporterOutput>                   PendingAssetFiles           = {};
+        std::mutex                                                                          Mut;
+        std::condition_variable                                                             Cond;
+        Helpers::ThreadSafeQueue<Importers::AssetImporterOutput>                            PendingAssetFiles           = {};
 
-        Helpers::ThreadSafeQueue<Importers::AssetMesh>                             PendingAssetMeshes          = {};
-        Helpers::ThreadSafeQueue<Importers::AssetNodeHierarchy>                    PendingAssetNodeHierarchies = {};
-        Helpers::ThreadSafeQueue<Importers::AssetMaterial>                         PendingAssetMaterials       = {};
-        Helpers::ThreadSafeQueue<Core::Containers::Array<Importers::AssetTexture>> PendingAssetTextures        = {};
+        Helpers::ThreadSafeQueue<Importers::AssetMesh>                                      PendingAssetMeshes          = {};
+        Helpers::ThreadSafeQueue<Importers::AssetNodeHierarchy>                             PendingAssetNodeHierarchies = {};
+        Helpers::ThreadSafeQueue<Importers::AssetMaterial>                                  PendingAssetMaterials       = {};
+        Helpers::ThreadSafeQueue<Core::Containers::Array<Importers::AssetTexture>>          PendingAssetTextures        = {};
 
-        Hardwares::VulkanDevice*                                                   Device                      = nullptr;
+        Hardwares::VulkanDevice*                                                            Device                      = nullptr;
 
-        Importers::AssetMesh*                                                      GetMeshAsset(const uuids::uuid& id);
-        Importers::AssetNodeHierarchy*                                             GetMeshNodeHierarchy(const uuids::uuid& id);
-        AssetHandle                                                                GetMeshNodeHierarchyHandle(const uuids::uuid& id);
-        AssetHandle                                                                GetMaterialHandleFromUUID(const uuids::uuid& material_uuid);
+        Importers::AssetMesh*                                                               GetMeshAsset(const uuids::uuid& id);
+        Importers::AssetNodeHierarchy*                                                      GetMeshNodeHierarchy(const uuids::uuid& id);
+        AssetHandle                                                                         GetMeshNodeHierarchyHandle(const uuids::uuid& id);
+        AssetHandle                                                                         GetMaterialHandleFromUUID(const uuids::uuid& material_uuid);
 
-        Importers::AssetTexture*                                                   LoadTextureFileAsAsset(cstring file, bool absolute);
+        Importers::AssetTexture*                                                            LoadTextureFileAsAsset(cstring file, bool absolute);
 
-        static AssetManager*                                                       Instance();
+        static AssetManager*                                                                Instance();
 
-        static AssetHandle                                                         CreateHandle(uint32_t, AssetType);
-        static uint32_t                                                            ReadAssetHandleIndex(AssetHandle);
-        static AssetType                                                           ReadAssetHandleType(AssetHandle);
+        static AssetHandle                                                                  CreateHandle(uint32_t, AssetType);
+        static uint32_t                                                                     ReadAssetHandleIndex(AssetHandle);
+        static AssetType                                                                    ReadAssetHandleType(AssetHandle);
 
-        static void                                                                Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path);
-        static void                                                                Run();
-        static void                                                                Shutdown();
+        static void                                                                         Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path);
+        static void                                                                         Run();
+        static void                                                                         Shutdown();
 
-        static bool                                                                IsLoadingAsset();
-        static AssetHandle                                                         RegisterAsset(AssetType type, const uuids::uuid& uid, uint32_t asset_id);
+        static bool                                                                         IsLoadingAsset();
+        static AssetHandle                                                                  RegisterAsset(AssetType type, const uuids::uuid& uid, uint32_t asset_id);
 
-        static void                                                                LoadAssetFile(const Importers::AssetImporterOutput& file);
+        static void                                                                         LoadAssetFile(const Importers::AssetImporterOutput& file);
 
         template <typename T, typename K>
         static T* GetAsset(K key)

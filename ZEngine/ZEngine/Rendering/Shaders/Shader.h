@@ -1,6 +1,6 @@
 #pragma once
 #include <Core/Containers/Array.h>
-#include <Core/Containers/HashMap.h>
+#include <Core/Containers/UnorderedHashMap.h>
 #include <Core/Memory/Allocator.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Specifications/ShaderSpecification.h>
@@ -13,23 +13,23 @@ namespace ZEngine::Rendering::Shaders
         Shader();
         ~Shader();
 
-        void                                                                                                     Initialize(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec);
-        void                                                                                                     Dispose();
-        Specifications::LayoutBindingSpecification                                                               GetLayoutBindingSpecification(cstring name);
+        void                                                                                                              Initialize(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec);
+        void                                                                                                              Dispose();
+        Specifications::LayoutBindingSpecification                                                                        GetLayoutBindingSpecification(cstring name);
 
-        VkDescriptorPool                                                                                         m_descriptor_pool              = VK_NULL_HANDLE;
-        Specifications::ShaderSpecification                                                                      m_specification                = {};
-        Core::Memory::ArenaAllocator                                                                             LocalArena                     = {};
+        VkDescriptorPool                                                                                                  m_descriptor_pool              = VK_NULL_HANDLE;
+        Specifications::ShaderSpecification                                                                               m_specification                = {};
+        Core::Memory::ArenaAllocator                                                                                      LocalArena                     = {};
 
-        Core::Containers::Array<Specifications::PushConstantSpecification>                                       PushConstantSpecifications     = {};
-        Core::Containers::Array<VkPipelineShaderStageCreateInfo>                                                 ShaderCreateInfos              = {};
-        Core::Containers::Array<VkShaderModule>                                                                  ShaderModules                  = {};
-        Core::Containers::Array<VkDescriptorSetLayout>                                                           SetLayouts                     = {};
-        Core::Containers::Array<Specifications::LayoutBindingSpecification>                                      LayoutBindingSpecifications    = {};
-        Core::Containers::Array<VkPushConstantRange>                                                             PushConstants                  = {};
-        Core::Containers::HashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                            DescriptorSetMap               = {}; //<set, vec<descriptorSet>>
-        Core::Containers::HashMap<uint32_t, VkDescriptorSetLayout>                                               InternalDescriptorSetLayoutMap = {}; // <set, layout>
-        Core::Containers::HashMap<uint32_t, Core::Containers::Array<Specifications::LayoutBindingSpecification>> LayoutBindingSpecificationMap  = {};
+        Core::Containers::Array<Specifications::PushConstantSpecification>                                                PushConstantSpecifications     = {};
+        Core::Containers::Array<VkPipelineShaderStageCreateInfo>                                                          ShaderCreateInfos              = {};
+        Core::Containers::Array<VkShaderModule>                                                                           ShaderModules                  = {};
+        Core::Containers::Array<VkDescriptorSetLayout>                                                                    SetLayouts                     = {};
+        Core::Containers::Array<Specifications::LayoutBindingSpecification>                                               LayoutBindingSpecifications    = {};
+        Core::Containers::Array<VkPushConstantRange>                                                                      PushConstants                  = {};
+        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                            DescriptorSetMap               = {}; //<set, vec<descriptorSet>>
+        Core::Containers::UnorderedHashMap<uint32_t, VkDescriptorSetLayout>                                               InternalDescriptorSetLayoutMap = {}; // <set, layout>
+        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<Specifications::LayoutBindingSpecification>> LayoutBindingSpecificationMap  = {};
 
     private:
         void CreateModule();
