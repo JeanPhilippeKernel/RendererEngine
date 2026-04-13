@@ -384,10 +384,10 @@ namespace ZEngine::Hardwares
             VkPipelineStageFlags StageMask = 0;
         };
 
-        Array<VkSemaphore>                                 wait_semaphores             = {};
-        Array<uint64_t>                                    wait_values                 = {};
-        Array<VkPipelineStageFlags>                        stage_flags                 = {};
-        HashMap<Primitives::Semaphore*, TimelineAggregate> max_val_timeline_semaphores = {};
+        Array<VkSemaphore>                                          wait_semaphores             = {};
+        Array<uint64_t>                                             wait_values                 = {};
+        Array<VkPipelineStageFlags>                                 stage_flags                 = {};
+        UnorderedHashMap<Primitives::Semaphore*, TimelineAggregate> max_val_timeline_semaphores = {};
 
         wait_semaphores.init(scratch.Arena, 10);
         stage_flags.init(scratch.Arena, 10);
