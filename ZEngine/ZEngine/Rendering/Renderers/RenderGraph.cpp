@@ -335,8 +335,13 @@ namespace ZEngine::Rendering::Renderers
             node.Handle->UpdateRenderTargets();
             node.Handle->UpdateInputBinding();
 
-            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {.Width = node.Handle->RenderAreaWidth, .Height = node.Handle->RenderAreaHeight, .RenderTargets = node.Handle->RenderTargets, .Attachment = node.Handle->Attachment};
-            node.Framebuffer                                               = ZPushStructCtorArgs(Device->Arena, Buffers::FramebufferVNext, Device, framebuffer_spec);
+            Specifications::FrameBufferSpecificationVNext framebuffer_spec = {
+                .Width         = node.Handle->RenderAreaWidth,
+                .Height        = node.Handle->RenderAreaHeight,
+                .RenderTargets = node.Handle->RenderTargets,
+                .Attachment    = node.Handle->Attachment,
+            };
+            node.Framebuffer = ZPushStructCtorArgs(Device->Arena, Buffers::FramebufferVNext, Device, framebuffer_spec);
         }
     }
 
