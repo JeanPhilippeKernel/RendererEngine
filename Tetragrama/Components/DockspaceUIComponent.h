@@ -35,6 +35,13 @@ namespace Tetragrama::Components
         static void                           OnAssetImporterLog(void* const, std::string_view);
 
         /*
+         * Environment Map Importer Funcs
+         */
+        void                                  RenderEnvironmentMapImporter();
+        void                                  ResetEnvironmentMapImporterBuffers();
+        std::future<void>                     OnImportEnvironmentMapAsync(const char* filename);
+
+        /*
          * Editor Scene Funcs
          */
         void                                  RenderLoadScene();
@@ -60,8 +67,13 @@ namespace Tetragrama::Components
         static char        s_save_as_input_buffer[1024];
         static float       s_editor_scene_serializer_progress;
 
+        static ImVec4      s_env_map_importer_report_msg_color;
+        static std::string s_env_map_importer_report_msg;
+        static char        s_env_map_importer_input_buffer[1024];
+
     private:
         bool                                    m_open_asset_importer{false};
+        bool                                    m_open_env_map_importer{false};
         bool                                    m_open_exit{false};
         bool                                    m_pending_shutdown{false};
         bool                                    m_open_save_scene{false};

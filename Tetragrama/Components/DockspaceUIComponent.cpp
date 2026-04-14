@@ -14,15 +14,19 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    ImVec4        DockspaceUIComponent::s_asset_importer_report_msg_color   = {1, 1, 1, 1};
-    char          DockspaceUIComponent::s_asset_importer_input_buffer[1024] = {0};
-    char          DockspaceUIComponent::s_save_as_input_buffer[1024]        = {0};
-    std::string   DockspaceUIComponent::s_asset_importer_report_msg         = "";
-    float         DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
+    ImVec4        DockspaceUIComponent::s_asset_importer_report_msg_color     = {1, 1, 1, 1};
+    char          DockspaceUIComponent::s_asset_importer_input_buffer[1024]   = {0};
+    char          DockspaceUIComponent::s_save_as_input_buffer[1024]          = {0};
+    std::string   DockspaceUIComponent::s_asset_importer_report_msg           = "";
+    float         DockspaceUIComponent::s_editor_scene_serializer_progress    = 0.0f;
 
-    static bool   s_is_scene_loading                                        = false;
-    static char   s_scene_serializer_log[DEFAULT_STR_BUFFER]                = {0};
-    static ImVec4 s_scene_serializer_log_color                              = {1, 1, 1, 1};
+    ImVec4        DockspaceUIComponent::s_env_map_importer_report_msg_color   = {1, 1, 1, 1};
+    char          DockspaceUIComponent::s_env_map_importer_input_buffer[1024] = {0};
+    std::string   DockspaceUIComponent::s_env_map_importer_report_msg         = "";
+
+    static bool   s_is_scene_loading                                          = false;
+    static char   s_scene_serializer_log[DEFAULT_STR_BUFFER]                  = {0};
+    static ImVec4 s_scene_serializer_log_color                                = {1, 1, 1, 1};
 
     DockspaceUIComponent::DockspaceUIComponent() {}
 
@@ -120,6 +124,7 @@ namespace Tetragrama::Components
         RenderSaveSceneAs();
 
         RenderImporter();
+        RenderEnvironmentMapImporter();
 
         RenderExitPopup();
 
@@ -423,6 +428,115 @@ namespace Tetragrama::Components
         ZEngine::Helpers::secure_memset(s_asset_importer_input_buffer, 0, IM_ARRAYSIZE(s_asset_importer_input_buffer), IM_ARRAYSIZE(s_asset_importer_input_buffer));
     }
 
+    void DockspaceUIComponent::RenderEnvironmentMapImporter()
+    {
+        if (!m_open_env_map_importer)
+        {
+            std::string_view buffer_view = s_env_map_importer_input_buffer;
+            if (!buffer_view.empty())
+            {
+                ResetEnvironmentMapImporterBuffers();
+            }
+            return;
+        }
+
+        const char* str_id = "Environment Map Importer";
+        ImGui::OpenPopup(str_id);
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(700, 100), ImGuiCond_Always);
+
+        if (ImGui::BeginPopupModal(str_id, NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::PushItemWidth(620);
+            ImGui::InputText("##EnvMapImporterUI", s_env_map_importer_input_buffer, IM_ARRAYSIZE(s_env_map_importer_input_buffer), ImGuiInputTextFlags_ReadOnly);
+            ImGui::PopItemWidth();
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("...", ImVec2(50, 0)))
+            {
+                Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
+                    if (ParentLayer && ParentLayer->CurrentApp)
+                    {
+                        auto                          window = ParentLayer->CurrentApp->CurrentWindow;
+                        std::vector<std::string_view> filters{".hdr", ".exr"};
+                        std::string                   filename = co_await window->OpenFileDialogAsync(filters);
+
+                        if (!filename.empty())
+                        {
+                            ZEngine::Helpers::secure_memset(s_env_map_importer_input_buffer, 0, IM_ARRAYSIZE(s_env_map_importer_input_buffer), IM_ARRAYSIZE(s_env_map_importer_input_buffer));
+                            ZEngine::Helpers::secure_memcpy(s_env_map_importer_input_buffer, IM_ARRAYSIZE(s_env_map_importer_input_buffer), filename.c_str(), filename.size());
+                        }
+                    }
+                });
+            }
+
+            ImGui::Separator();
+
+            ImGui::SetCursorPosX(ImGui::GetWindowSize().x - 180);
+            ImGui::SetCursorPosY(ImGui::GetWindowSize().y - ImGui::GetFrameHeightWithSpacing() - 5);
+
+            bool is_import_button_enabled = !std::string_view(s_env_map_importer_input_buffer).empty();
+
+            if (!is_import_button_enabled)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+            }
+
+            if (ImGui::Button("Import", ImVec2(80, 0)) && is_import_button_enabled)
+            {
+                Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> { co_await OnImportEnvironmentMapAsync(s_env_map_importer_input_buffer); });
+            }
+
+            if (!is_import_button_enabled)
+            {
+                ImGui::PopStyleColor(3);
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Close", ImVec2(80, 0)))
+            {
+                m_open_env_map_importer = false;
+                ResetEnvironmentMapImporterBuffers();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+            ImGui::SetCursorPos(ImVec2(10, ImGui::GetWindowSize().y - 30));
+            ImGui::TextColored(s_env_map_importer_report_msg_color, "%s", s_env_map_importer_report_msg.c_str());
+            ImGui::PopFont();
+
+            ImGui::EndPopup();
+        }
+    }
+
+    void DockspaceUIComponent::ResetEnvironmentMapImporterBuffers()
+    {
+        s_env_map_importer_report_msg       = "";
+        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
+        ZEngine::Helpers::secure_memset(s_env_map_importer_input_buffer, 0, IM_ARRAYSIZE(s_env_map_importer_input_buffer), IM_ARRAYSIZE(s_env_map_importer_input_buffer));
+    }
+
+    std::future<void> DockspaceUIComponent::OnImportEnvironmentMapAsync(const char* filename)
+    {
+        if (ZEngine::Helpers::secure_strlen(filename) == 0)
+        {
+            co_return;
+        }
+
+        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
+        s_env_map_importer_report_msg       = "Importing...";
+
+        // TODO: invoke the EnvironmentMapImporter here once it is implemented
+
+        s_env_map_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
+        s_env_map_importer_report_msg       = "Completed";
+        co_return;
+    }
+
     void DockspaceUIComponent::ResetSaveAsBuffers()
     {
         ZEngine::Helpers::secure_memset(s_save_as_input_buffer, 0, IM_ARRAYSIZE(s_save_as_input_buffer), IM_ARRAYSIZE(s_save_as_input_buffer));
@@ -516,6 +630,8 @@ namespace Tetragrama::Components
                 if (ImGui::MenuItem("Renderer"))
                 {
                 }
+
+                ImGui::MenuItem("Import Environment Map", NULL, &m_open_env_map_importer);
                 ImGui::EndMenu();
             }
 
