@@ -1,7 +1,7 @@
 #pragma once
 #include <Core/Containers/Array.h>
-#include <Core/Containers/HashMap.h>
 #include <Core/Containers/Strings.h>
+#include <Core/Containers/UnorderedHashMap.h>
 #include <Core/Memory/Allocator.h>
 #include <ZEngineDef.h>
 #include <iostream>
@@ -66,7 +66,7 @@ namespace ZEngine::Helpers
     }
 
     template <class T, class U>
-    static void WriteBinaryHashMap(std::ostream& writer, ZEngine::Core::Containers::HashMap<T, U>& map)
+    static void WriteBinaryHashMap(std::ostream& writer, ZEngine::Core::Containers::UnorderedHashMap<T, U>& map)
     {
         size_t size = map.size();
         WriteBinary(writer, size);
@@ -134,7 +134,7 @@ namespace ZEngine::Helpers
     }
 
     template <class T, class U>
-    static void ReadHashMap(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::HashMap<T, U>& map)
+    static void ReadHashMap(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::UnorderedHashMap<T, U>& map)
     {
         size_t size = 0;
         ReadBinary(in, size);

@@ -1,7 +1,7 @@
 #pragma once
 #include <Core/Containers/Array.h>
-#include <Core/Containers/HashMap.h>
 #include <Core/Containers/Strings.h>
+#include <Core/Containers/UnorderedHashMap.h>
 #include <Core/Maths/Matrix.h>
 #include <Helpers/NodeHierarchyHelper.h>
 #include <Rendering/Textures/Texture.h>
@@ -65,16 +65,16 @@ namespace ZEngine::Importers
 
     struct AssetNodeHierarchy
     {
-        uuids::uuid                                       NodeHierarchyUUID = {};
-        uuids::uuid                                       MeshUUID          = {};
-        Core::Containers::Array<Helpers::NodeHierarchy>   Hierarchies       = {};
-        Core::Containers::Array<Core::Maths::Mat4f>       LocalTransforms   = {};
-        Core::Containers::Array<Core::Maths::Mat4f>       GlobalTransforms  = {};
-        Core::Containers::Array<Core::Containers::String> Names             = {};
-        Core::Containers::Array<Core::Containers::String> MaterialNames     = {};
-        Core::Containers::HashMap<uint32_t, uint32_t>     NodeNames         = {};
-        Core::Containers::HashMap<uint32_t, uint32_t>     NodeMeshes        = {};
-        Core::Containers::HashMap<uint32_t, uint32_t>     NodeMaterials     = {};
+        uuids::uuid                                            NodeHierarchyUUID = {};
+        uuids::uuid                                            MeshUUID          = {};
+        Core::Containers::Array<Helpers::NodeHierarchy>        Hierarchies       = {};
+        Core::Containers::Array<Core::Maths::Mat4f>            LocalTransforms   = {};
+        Core::Containers::Array<Core::Maths::Mat4f>            GlobalTransforms  = {};
+        Core::Containers::Array<Core::Containers::String>      Names             = {};
+        Core::Containers::Array<Core::Containers::String>      MaterialNames     = {};
+        Core::Containers::UnorderedHashMap<uint32_t, uint32_t> NodeNames         = {};
+        Core::Containers::UnorderedHashMap<uint32_t, uint32_t> NodeMeshes        = {};
+        Core::Containers::UnorderedHashMap<uint32_t, uint32_t> NodeMaterials     = {};
     };
 
     struct AssetNodeRef

@@ -1,6 +1,6 @@
 #pragma once
 #include <Core/Containers/Array.h>
-#include <Core/Containers/HashMap.h>
+#include <Core/Containers/UnorderedHashMap.h>
 #include <Rendering/Specifications/FormatSpecification.h>
 #include <vulkan/vulkan.h>
 
@@ -26,11 +26,11 @@ namespace ZEngine::Rendering::Specifications
 
     struct AttachmentSpecification
     {
-        PipelineBindPoint                                        BindPoint;
-        Core::Containers::HashMap<uint32_t, ColorAttachment>     ColorsMap;
-        Core::Containers::HashMap<uint32_t, VkSubpassDependency> DependenciesMap;
-        Core::Containers::Array<VkAttachmentDescription>         ColorAttachements;
-        Core::Containers::Array<SubPassSpecification>            SubpassSpecifications;
-        Core::Containers::Array<VkSubpassDependency>             SubpassDependencies;
+        PipelineBindPoint                                                 BindPoint;
+        Core::Containers::UnorderedHashMap<uint32_t, ColorAttachment>     ColorsMap;
+        Core::Containers::UnorderedHashMap<uint32_t, VkSubpassDependency> DependenciesMap;
+        Core::Containers::Array<VkAttachmentDescription>                  ColorAttachements;
+        Core::Containers::Array<SubPassSpecification>                     SubpassSpecifications;
+        Core::Containers::Array<VkSubpassDependency>                      SubpassDependencies;
     };
 } // namespace ZEngine::Rendering::Specifications

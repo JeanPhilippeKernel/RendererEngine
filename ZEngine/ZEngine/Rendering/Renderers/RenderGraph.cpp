@@ -31,7 +31,7 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::Setup()
     {
-        for (auto [name, _] : NodeMap) // Todo HashMap needs to support for (auto& [key, val]) {....}
+        for (auto [name, _] : NodeMap) // Todo UnorderedHashMap needs to support for (auto& [key, val]) {....}
         {
             NodeMap[name].EdgeNodes.init(Device->Arena, 5);
             NodeMap[name].CallbackPass->Setup(Device, name, ResourceBuilder, ResourceInspector);
@@ -61,11 +61,11 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Topological Sorting
          */
-        auto                       scratch       = ZGetScratch(Device->Arena);
+        auto                                scratch       = ZGetScratch(Device->Arena);
 
-        Array<cstring>             sorted_nodes  = {};
-        HashMap<cstring, uint32_t> visited_nodes = {};
-        Array<cstring>             stack         = {};
+        Array<cstring>                      sorted_nodes  = {};
+        UnorderedHashMap<cstring, uint32_t> visited_nodes = {};
+        Array<cstring>                      stack         = {};
 
         sorted_nodes.init(scratch.Arena, 6);
         stack.init(scratch.Arena, 6);

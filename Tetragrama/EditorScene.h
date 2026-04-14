@@ -29,10 +29,10 @@ namespace Tetragrama
         std::atomic_int                                                                                        SelectedSceneNode        = -1;
         ZEngine::Core::Containers::Array<ZEngine::Importers::AssetNodeRef>                                     HierarchiesNodeRef       = {};
         ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String>                                    Names                    = {};
-        ZEngine::Core::Containers::HashMap<uint32_t, uint32_t>                                                 NodeNames                = {};
+        ZEngine::Core::Containers::UnorderedHashMap<uint32_t, uint32_t>                                        NodeNames                = {};
 
         ZEngine::Helpers::Ref<ZEngine::Helpers::ThreadSafeQueue<ZEngine::Managers::AssetManager::AssetHandle>> PendingOnLoadHierarchies = nullptr;
-        ZEngine::Core::Containers::HashMap<uint64_t, uint32_t>                                                 HashToAssetFile          = {};
+        ZEngine::Core::Containers::UnorderedHashMap<uint64_t, uint32_t>                                        HashToAssetFile          = {};
         ZEngine::Core::Containers::Array<EditorAssetSceneFiles>                                                AssetFiles               = {};
 
         ZEngine::Core::Memory::ArenaAllocator                                                                  LocalArena               = {};
