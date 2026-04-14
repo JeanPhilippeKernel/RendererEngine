@@ -2,6 +2,7 @@
 #include <Editor.h>
 #include <Helpers/UIDispatcher.h>
 #include <Importers/AssimpImporter.h>
+#include <Importers/EnvironmentMapImporter.h>
 #include <MessageToken.h>
 #include <Messengers/Messenger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -23,6 +24,7 @@ namespace Tetragrama::Components
     ImVec4        DockspaceUIComponent::s_env_map_importer_report_msg_color   = {1, 1, 1, 1};
     char          DockspaceUIComponent::s_env_map_importer_input_buffer[1024] = {0};
     std::string   DockspaceUIComponent::s_env_map_importer_report_msg         = "";
+    bool          DockspaceUIComponent::s_env_map_is_importing                = false;
 
     static bool   s_is_scene_loading                                          = false;
     static char   s_scene_serializer_log[DEFAULT_STR_BUFFER]                  = {0};
@@ -477,7 +479,7 @@ namespace Tetragrama::Components
             ImGui::SetCursorPosX(ImGui::GetWindowSize().x - 180);
             ImGui::SetCursorPosY(ImGui::GetWindowSize().y - ImGui::GetFrameHeightWithSpacing() - 5);
 
-            bool is_import_button_enabled = !std::string_view(s_env_map_importer_input_buffer).empty();
+            bool is_import_button_enabled = !std::string_view(s_env_map_importer_input_buffer).empty() && !s_env_map_is_importing;
 
             if (!is_import_button_enabled)
             {
@@ -494,6 +496,12 @@ namespace Tetragrama::Components
             if (!is_import_button_enabled)
             {
                 ImGui::PopStyleColor(3);
+            }
+
+            if (s_env_map_is_importing)
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(importing...)");
             }
 
             ImGui::SameLine();
@@ -527,13 +535,31 @@ namespace Tetragrama::Components
             co_return;
         }
 
+        s_env_map_is_importing              = true;
         s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
         s_env_map_importer_report_msg       = "Importing...";
 
-        // TODO: invoke the EnvironmentMapImporter here once it is implemented
+        auto        app                     = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        std::string output_dir              = fmt::format("{}{}Settings{}EnvironmentMaps", app->Configuration->WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, PLATFORM_OS_BACKSLASH);
 
-        s_env_map_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
-        s_env_map_importer_report_msg       = "Completed";
+        std::string out_filepath, out_error;
+        bool        success    = ZEngine::Importers::EnvironmentMapImporter::Import(filename, output_dir.c_str(), out_filepath, out_error);
+
+        s_env_map_is_importing = false;
+
+        if (success)
+        {
+            ZENGINE_CORE_INFO("Environment map imported to: {}", out_filepath)
+            s_env_map_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
+            s_env_map_importer_report_msg       = fmt::format("Saved: {}", out_filepath);
+        }
+        else
+        {
+            ZENGINE_CORE_ERROR("Environment map import failed: {}", out_error)
+            s_env_map_importer_report_msg_color = {1.0f, 0.0f, 0.0f, 1.0f};
+            s_env_map_importer_report_msg       = out_error;
+        }
+
         co_return;
     }
 

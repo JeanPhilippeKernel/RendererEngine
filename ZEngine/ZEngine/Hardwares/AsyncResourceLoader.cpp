@@ -1,5 +1,6 @@
 #include <AsyncResourceLoader.h>
 #include <Helpers/ThreadPool.h>
+#include <Importers/EnvironmentMapImporter.h>
 #include <Rendering/Buffers/Bitmap.h>
 #include <VulkanDevice.h>
 
@@ -461,31 +462,52 @@ namespace ZEngine::Hardwares
 
     Textures::TextureHandle AsyncResourceLoader::Submit(uint8_t frame_index, uint8_t thread_index, const UploadRequest& request)
     {
-        std::unique_lock l(m_mutex);
+        std::unique_lock                     l(m_mutex);
 
-        auto             abs_filename = std::filesystem::absolute(request.TextureUpload.Filename).string();
+        auto                                 abs_filename = std::filesystem::absolute(request.TextureUpload.Filename).string();
+        auto                                 file_ext     = std::filesystem::path(abs_filename).extension().string();
 
-        int              w, h, ch;
-        if (!stbi_info(abs_filename.c_str(), &w, &h, &ch))
+        Specifications::TextureSpecification spec{};
+
+        if (file_ext == ".zenvmap")
         {
-            return {};
-        }
-
-        const std::set<std::string_view>     known_cubmap_file_ext = {".hdr", ".exr"};
-        auto                                 file_ext              = std::filesystem::path(request.TextureUpload.Filename).extension().string();
-
-        Specifications::TextureSpecification spec{.Width = (uint32_t) w, .Height = (uint32_t) h, .Format = Specifications::ImageFormat::R8G8B8A8_SRGB};
-
-        if (known_cubmap_file_ext.contains(file_ext))
-        {
-            int face_size   = w / 4;
+            Importers::EnvironmentMapFileHeader env_header{};
+            if (!Importers::EnvironmentMapImporter::ReadHeader(abs_filename.c_str(), env_header))
+            {
+                ZENGINE_CORE_ERROR("Failed to read .zenvmap header: {}", abs_filename)
+                return {};
+            }
 
             spec.IsCubemap  = true;
-            spec.LayerCount = 6;
+            spec.LayerCount = static_cast<uint32_t>(env_header.LayerCount);
             spec.Format     = Specifications::ImageFormat::R32G32B32A32_SFLOAT;
+            spec.Width      = static_cast<uint32_t>(env_header.FaceWidth);
+            spec.Height     = static_cast<uint32_t>(env_header.FaceHeight);
+        }
+        else
+        {
+            int w, h, ch;
+            if (!stbi_info(abs_filename.c_str(), &w, &h, &ch))
+            {
+                return {};
+            }
 
-            spec.Width      = face_size;
-            spec.Height     = face_size;
+            const std::set<std::string_view> known_cubmap_file_ext = {".hdr", ".exr"};
+            spec.Width                                             = static_cast<uint32_t>(w);
+            spec.Height                                            = static_cast<uint32_t>(h);
+            spec.Format                                            = Specifications::ImageFormat::R8G8B8A8_SRGB;
+
+            if (known_cubmap_file_ext.contains(file_ext))
+            {
+                int face_size   = w / 4;
+
+                spec.IsCubemap  = true;
+                spec.LayerCount = 6;
+                spec.Format     = Specifications::ImageFormat::R32G32B32A32_SFLOAT;
+
+                spec.Width      = static_cast<uint32_t>(face_size);
+                spec.Height     = static_cast<uint32_t>(face_size);
+            }
         }
 
         TextureFileRequest tex_file_req       = {};
@@ -602,61 +624,77 @@ namespace ZEngine::Hardwares
 
                     if (file_request.TextureSpec.IsCubemap)
                     {
-                        const float* image_data = stbi_loadf(file_request.Filename.data(), &width, &height, &channel, 4);
-                        if (!image_data)
+                        auto cubemap_ext = std::filesystem::path(file_request.Filename.data()).extension().string();
+
+                        if (cubemap_ext == ".zenvmap")
                         {
-                            ZENGINE_CORE_ERROR("Failed to load texture file : {0}", file_request.Filename.data())
-                            continue;
-                        }
-
-                        bool               perform_convert_rgb_to_rgba = (channel == STBI_rgb);
-
-                        std::vector<float> output_buffer               = {};
-                        if (perform_convert_rgb_to_rgba)
-                        {
-                            size_t total_pixel = width * height;
-                            size_t buffer_size = total_pixel * 4;
-                            output_buffer.resize(buffer_size);
-                            stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, 4);
-
-                            for (int i = 0; i < total_pixel; ++i)
+                            Buffers::Bitmap cubemap{};
+                            if (!Importers::EnvironmentMapImporter::Deserialize(file_request.Filename.data(), cubemap))
                             {
-                                int offset = i * 4; // RGBA format (4 channels)
-
-                                if (channel == 1)
-                                {
-                                    output_buffer[offset + 3] = 255;
-                                }
-                                else if (channel == 2)
-                                {
-                                    output_buffer[offset + 3] = image_data[i * 2 + 1];
-                                }
-                                else if (channel == 3)
-                                {
-                                    output_buffer[offset + 3] = 255;
-                                }
+                                ZENGINE_CORE_ERROR("Failed to deserialize .zenvmap: {}", file_request.Filename.data())
+                                continue;
                             }
+
+                            size_t buffer_byte = cubemap.Buffer.size() * sizeof(uint8_t);
+                            upload_req.Buffer.resize(cubemap.Buffer.size());
+                            Helpers::secure_memmove(upload_req.Buffer.data(), buffer_byte, cubemap.Buffer.data(), buffer_byte);
                         }
                         else
                         {
-                            size_t total_pixel = width * height;
-                            size_t buffer_size = total_pixel * channel;
-                            output_buffer.resize(buffer_size);
-                            Helpers::secure_memset(output_buffer.data(), 0.f, buffer_size, buffer_size);
+                            const float* image_data = stbi_loadf(file_request.Filename.data(), &width, &height, &channel, 4);
+                            if (!image_data)
+                            {
+                                ZENGINE_CORE_ERROR("Failed to load texture file : {0}", file_request.Filename.data())
+                                continue;
+                            }
+
+                            bool               perform_convert_rgb_to_rgba = (channel == STBI_rgb);
+
+                            std::vector<float> output_buffer               = {};
+                            if (perform_convert_rgb_to_rgba)
+                            {
+                                size_t total_pixel = width * height;
+                                size_t buffer_size = total_pixel * 4;
+                                output_buffer.resize(buffer_size);
+                                stbir_resize_float(image_data, width, height, 0, output_buffer.data(), width, height, 0, 4);
+
+                                for (int i = 0; i < total_pixel; ++i)
+                                {
+                                    int offset = i * 4;
+
+                                    if (channel == 1)
+                                    {
+                                        output_buffer[offset + 3] = 255;
+                                    }
+                                    else if (channel == 2)
+                                    {
+                                        output_buffer[offset + 3] = image_data[i * 2 + 1];
+                                    }
+                                    else if (channel == 3)
+                                    {
+                                        output_buffer[offset + 3] = 255;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                size_t total_pixel = width * height;
+                                size_t buffer_size = total_pixel * channel;
+                                output_buffer.resize(buffer_size);
+                                Helpers::secure_memset(output_buffer.data(), 0.f, buffer_size, buffer_size);
+                            }
+
+                            stbi_image_free((void*) image_data);
+
+                            Buffers::Bitmap in             = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};
+                            Buffers::Bitmap vertical_cross = Buffers::Bitmap::EquirectangularMapToVerticalCross(in);
+                            Buffers::Bitmap cubemap        = Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
+
+                            size_t          buffer_size    = cubemap.Buffer.size();
+                            size_t          buffer_byte    = buffer_size * sizeof(uint8_t);
+                            upload_req.Buffer.resize(buffer_size);
+                            Helpers::secure_memmove(upload_req.Buffer.data(), buffer_byte, cubemap.Buffer.data(), buffer_byte);
                         }
-
-                        stbi_image_free((void*) image_data);
-
-                        Buffers::Bitmap in             = {width, height, 4, Buffers::BitmapFormat::FLOAT, output_buffer.data()};
-                        Buffers::Bitmap vertical_cross = Buffers::Bitmap::EquirectangularMapToVerticalCross(in);
-                        Buffers::Bitmap cubemap        = Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
-
-                        // spec.Width                     = cubemap.Width;
-                        // spec.Height                    = cubemap.Height;
-                        size_t          buffer_size    = cubemap.Buffer.size();
-                        size_t          buffer_byte    = buffer_size * sizeof(uint8_t);
-                        upload_req.Buffer.resize(buffer_size);
-                        Helpers::secure_memmove(upload_req.Buffer.data(), buffer_byte, cubemap.Buffer.data(), buffer_byte);
                     }
                     else
                     {

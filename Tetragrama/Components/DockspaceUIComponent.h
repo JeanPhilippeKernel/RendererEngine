@@ -70,6 +70,7 @@ namespace Tetragrama::Components
         static ImVec4      s_env_map_importer_report_msg_color;
         static std::string s_env_map_importer_report_msg;
         static char        s_env_map_importer_input_buffer[1024];
+        static bool        s_env_map_is_importing;
 
     private:
         bool                                    m_open_asset_importer{false};
