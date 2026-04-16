@@ -32,6 +32,8 @@ namespace Tetragrama::Components
 
     void SceneViewportUIComponent::Update(ZEngine::Core::TimeStep dt)
     {
+        auto app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+
         if ((m_viewport_size.x != m_content_region_available_size.x) || (m_viewport_size.y != m_content_region_available_size.y))
         {
             if (!m_is_resizing)
@@ -45,14 +47,13 @@ namespace Tetragrama::Components
         else if (m_is_resizing)
         {
             m_idle_frame_count++;
-            if (m_idle_frame_count >= m_idle_frame_threshold)
+            if (m_idle_frame_count >= app->RenderPipeline->Device->SwapchainPtr->IdleFrameThreshold)
             {
                 m_is_resizing             = false;
                 m_request_renderer_resize = true;
             }
         }
 
-        auto app               = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
         auto camera_controller = reinterpret_cast<Controllers::EditorCameraControllerPtr>(app->CameraController);
 
         if (m_request_renderer_resize)
@@ -101,7 +102,10 @@ namespace Tetragrama::Components
             m_refresh_texture_handle = false;
         }
 
-        ImGui::Image((ImTextureID) m_scene_texture.Index, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+        if (m_scene_texture.Valid())
+        {
+            ImGui::Image((ImTextureID) m_scene_texture.Index, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+        }
         // ViewPort bound computation
         ImVec2 viewport_windows_size  = ImGui::GetWindowSize();
         ImVec2 minimum_bound          = ImGui::GetWindowPos();
