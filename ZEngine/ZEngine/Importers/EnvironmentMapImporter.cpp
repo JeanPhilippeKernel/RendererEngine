@@ -1,125 +1,99 @@
+#include <Core/Coroutine.h>
 #include <EnvironmentMapImporter.h>
-#include <Helpers/MemoryOperations.h>
-#include <ZEngineDef.h>
+#include <Helpers/ThreadPool.h>
 #include <fmt/format.h>
 
 // stb_image implementation is defined once in AsyncResourceLoader.cpp.
-// Only include the header here.
 #include <stb/stb_image.h>
-#include <filesystem>
-#include <fstream>
 
-namespace fs = std::filesystem;
-
+using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Buffers;
+using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Importers
 {
-
-    bool EnvironmentMapImporter::WriteToFile(const Bitmap& cubemap, const char* output_path, std::string& out_error)
+    std::future<void> EnvironmentMapImporter::ImportAsync(const char* filename, const ImportConfiguration& cfg)
     {
-        std::ofstream out(output_path, std::ios::binary | std::ios::trunc);
-        if (!out.is_open())
-        {
-            out_error = fmt::format("Failed to open output file for writing: {}", output_path);
-            return false;
-        }
+        ThreadPoolHelper::Submit([this, path = std::string(filename), cfg] {
+            std::unique_lock l(m_mutex);
 
-        EnvironmentMapFileHeader header{
-            .MagicNumber    = ZENVMAP_MAGIC,
-            .Version        = ASSET_FILE_VERSION,
-            .FaceWidth      = cubemap.Width,
-            .FaceHeight     = cubemap.Height,
-            .Channel        = cubemap.Channel,
-            .LayerCount     = cubemap.Depth,
-            .BufferByteSize = static_cast<uint64_t>(cubemap.Buffer.size()),
-        };
+            Arena.Clear();
+            auto                thread_local_arena = &Arena;
+            ImportConfiguration config             = {};
 
-        out.write(reinterpret_cast<const char*>(&header), sizeof(header));
-        out.write(reinterpret_cast<const char*>(cubemap.Buffer.data()), static_cast<std::streamsize>(cubemap.Buffer.size()));
+            config.OutputWorkingSpacePath.init(thread_local_arena, cfg.OutputWorkingSpacePath.c_str());
+            config.OutputAssetsPath.init(thread_local_arena, cfg.OutputAssetsPath.c_str());
+            config.AssetName.init(thread_local_arena, cfg.AssetName.c_str());
+            config.OutputAssetFile.init(thread_local_arena, cfg.OutputAssetFile.c_str());
 
-        if (!out.good())
-        {
-            out_error = fmt::format("Write error while serializing environment map: {}", output_path);
-            return false;
-        }
+            m_is_importing.store(true, std::memory_order_release);
 
-        out.close();
-        return true;
-    }
+            REPORT_LOG(Context, fmt::format("Decoding environment map: {}", path))
 
-    bool EnvironmentMapImporter::Import(const char* input_filename, const char* output_dir, std::string& out_filepath, std::string& out_error)
-    {
-        std::error_code ec;
-        fs::create_directories(output_dir, ec);
-        if (ec)
-        {
-            out_error = fmt::format("Failed to create output directory '{}': {}", output_dir, ec.message());
-            return false;
-        }
+            int width = 0, height = 0, channel = 0;
+            stbi_set_flip_vertically_on_load(1);
+            const float* image_data = stbi_loadf(path.c_str(), &width, &height, &channel, 4);
 
-        int width = 0, height = 0, channel = 0;
-        stbi_set_flip_vertically_on_load(1);
-        const float* image_data = stbi_loadf(input_filename, &width, &height, &channel, 4);
-        if (!image_data)
-        {
-            out_error = fmt::format("stbi_loadf failed to decode '{}': {}", input_filename, stbi_failure_reason());
-            return false;
-        }
+            if (!image_data)
+            {
+                if (m_error_callback)
+                {
+                    m_error_callback(Context, fmt::format("Failed to decode '{}': {}", path, stbi_failure_reason()));
+                }
+                m_is_importing.store(false, std::memory_order_release);
+                return;
+            }
 
-        Bitmap equirect = {width, height, 4, BitmapFormat::FLOAT, image_data};
-        stbi_image_free(const_cast<float*>(image_data));
+            if (m_progress_callback)
+            {
+                m_progress_callback(Context, 0.33f);
+            }
 
-        Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(equirect);
-        Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
+            Bitmap equirect = {width, height, 4, BitmapFormat::FLOAT, image_data};
+            stbi_image_free(const_cast<float*>(image_data));
 
-        auto   asset_name     = fs::path(input_filename).filename().replace_extension().string();
-        auto   output_file    = fmt::format("{}{}{}.zenvmap", output_dir, PLATFORM_OS_BACKSLASH, asset_name.c_str());
+            REPORT_LOG(Context, "Converting equirectangular map to cubemap faces...")
 
-        if (!WriteToFile(cubemap, output_file.c_str(), out_error))
-        {
-            return false;
-        }
+            Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(equirect);
+            Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
 
-        out_filepath = std::move(output_file);
-        return true;
-    }
+            if (m_progress_callback)
+            {
+                m_progress_callback(Context, 0.75f);
+            }
 
-    bool EnvironmentMapImporter::ReadHeader(const char* zenvmap_file, EnvironmentMapFileHeader& out_header)
-    {
-        std::ifstream input(zenvmap_file, std::ios::binary);
-        if (!input.is_open())
-        {
-            return false;
-        }
+            REPORT_LOG(Context, fmt::format("Saving .zenvmap to: {}", config.OutputAssetsPath.c_str()))
 
-        input.read(reinterpret_cast<char*>(&out_header), sizeof(EnvironmentMapFileHeader));
+            auto output = IAssetImporter::SerializeEnvironmentMapFile(cubemap, config);
 
-        return input.good() && (out_header.MagicNumber == ZENVMAP_MAGIC);
-    }
+            m_is_importing.store(false, std::memory_order_release);
 
-    bool EnvironmentMapImporter::Deserialize(const char* zenvmap_file, Bitmap& out_cubemap)
-    {
-        std::ifstream input(zenvmap_file, std::ios::binary);
-        if (!input.is_open())
-        {
-            return false;
-        }
+            if (output.Type == AssetFileType::ENVIRONMENT_MAP)
+            {
+                if (m_progress_callback)
+                {
+                    m_progress_callback(Context, 1.0f);
+                }
 
-        EnvironmentMapFileHeader header{};
-        input.read(reinterpret_cast<char*>(&header), sizeof(header));
+                Array<AssetImporterOutput> outputs = {};
+                outputs.init(thread_local_arena, 1);
+                outputs.push(output);
 
-        if (!input.good() || header.MagicNumber != ZENVMAP_MAGIC)
-        {
-            return false;
-        }
+                if (m_complete_callback)
+                {
+                    m_complete_callback(Context, ArrayView{outputs});
+                }
+            }
+            else
+            {
+                if (m_error_callback)
+                {
+                    m_error_callback(Context, fmt::format("Failed to write .zenvmap for '{}'", path));
+                }
+            }
+        });
 
-        out_cubemap      = Bitmap(header.FaceWidth, header.FaceHeight, header.LayerCount, header.Channel, BitmapFormat::FLOAT);
-        out_cubemap.Type = BitmapType::CUBE;
-
-        input.read(reinterpret_cast<char*>(out_cubemap.Buffer.data()), static_cast<std::streamsize>(header.BufferByteSize));
-
-        return input.good();
+        co_return;
     }
 
 } // namespace ZEngine::Importers

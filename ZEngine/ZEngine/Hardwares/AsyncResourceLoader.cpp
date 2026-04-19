@@ -472,7 +472,7 @@ namespace ZEngine::Hardwares
         if (file_ext == ".zenvmap")
         {
             Importers::EnvironmentMapFileHeader env_header{};
-            if (!Importers::EnvironmentMapImporter::ReadHeader(abs_filename.c_str(), env_header))
+            if (!Importers::EnvironmentMapImporter::ReadEnvironmentMapFileHeader(abs_filename.c_str(), env_header))
             {
                 ZENGINE_CORE_ERROR("Failed to read .zenvmap header: {}", abs_filename)
                 return {};
@@ -629,7 +629,7 @@ namespace ZEngine::Hardwares
                         if (cubemap_ext == ".zenvmap")
                         {
                             Buffers::Bitmap cubemap{};
-                            if (!Importers::EnvironmentMapImporter::Deserialize(file_request.Filename.data(), cubemap))
+                            if (!Importers::EnvironmentMapImporter::DeserializeEnvironmentMapFile(file_request.Filename.data(), cubemap))
                             {
                                 ZENGINE_CORE_ERROR("Failed to deserialize .zenvmap: {}", file_request.Filename.data())
                                 continue;

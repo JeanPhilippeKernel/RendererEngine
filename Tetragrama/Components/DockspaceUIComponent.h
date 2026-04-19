@@ -40,6 +40,10 @@ namespace Tetragrama::Components
         void                                  RenderEnvironmentMapImporter();
         void                                  ResetEnvironmentMapImporterBuffers();
         std::future<void>                     OnImportEnvironmentMapAsync(const char* filename);
+        static void                           OnEnvMapImporterComplete(void* const context, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> result);
+        static void                           OnEnvMapImporterProgress(void* const, float value);
+        static void                           OnEnvMapImporterError(void* const, std::string_view);
+        static void                           OnEnvMapImporterLog(void* const, std::string_view);
 
         /*
          * Editor Scene Funcs
@@ -70,7 +74,6 @@ namespace Tetragrama::Components
         static ImVec4      s_env_map_importer_report_msg_color;
         static std::string s_env_map_importer_report_msg;
         static char        s_env_map_importer_input_buffer[1024];
-        static bool        s_env_map_is_importing;
 
     private:
         bool                                    m_open_asset_importer{false};
@@ -84,6 +87,7 @@ namespace Tetragrama::Components
         ImGuiWindowFlags                        m_window_flags;
         ZEngine::Importers::ImportConfiguration m_default_import_configuration;
         ZRawPtr(ZEngine::Importers::IAssetImporter) m_asset_importer;
+        ZRawPtr(ZEngine::Importers::IAssetImporter) m_env_map_importer;
         ZRawPtr(Serializers::EditorSceneSerializer) m_editor_serializer;
     };
 } // namespace Tetragrama::Components

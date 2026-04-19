@@ -430,4 +430,75 @@ namespace ZEngine::Importers
         in.close();
         return output;
     }
+
+    AssetImporterOutput IAssetImporter::SerializeEnvironmentMapFile(const Rendering::Buffers::Bitmap& cubemap, const ImportConfiguration& config)
+    {
+        AssetImporterOutput output = {};
+
+        if (config.OutputAssetFile.empty())
+        {
+            return output;
+        }
+
+        std::string   fullname_path = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
+        std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
+
+        if (!out.is_open())
+        {
+            return output;
+        }
+
+        EnvironmentMapFileHeader header{
+            .MagicNumber    = ZENVMAP_MAGIC,
+            .Version        = ASSET_FILE_VERSION,
+            .FaceWidth      = cubemap.Width,
+            .FaceHeight     = cubemap.Height,
+            .Channel        = cubemap.Channel,
+            .LayerCount     = cubemap.Depth,
+            .BufferByteSize = static_cast<uint64_t>(cubemap.Buffer.size()),
+        };
+
+        out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        out.write(reinterpret_cast<const char*>(cubemap.Buffer.data()), static_cast<std::streamsize>(cubemap.Buffer.size()));
+        out.close();
+
+        output = {.Type = AssetFileType::ENVIRONMENT_MAP, .Path = fullname_path, .RootPath = config.OutputWorkingSpacePath.c_str()};
+        return output;
+    }
+
+    bool IAssetImporter::DeserializeEnvironmentMapFile(const char* zenvmap_file, Rendering::Buffers::Bitmap& out_cubemap)
+    {
+        std::ifstream in(zenvmap_file, std::ios::binary);
+        if (!in.is_open())
+        {
+            return false;
+        }
+
+        EnvironmentMapFileHeader header{};
+        in.read(reinterpret_cast<char*>(&header), sizeof(header));
+
+        if (!in.good() || header.MagicNumber != ZENVMAP_MAGIC)
+        {
+            return false;
+        }
+
+        out_cubemap      = Rendering::Buffers::Bitmap(header.FaceWidth, header.FaceHeight, header.LayerCount, header.Channel, Rendering::Buffers::BitmapFormat::FLOAT);
+        out_cubemap.Type = Rendering::Buffers::BitmapType::CUBE;
+
+        in.read(reinterpret_cast<char*>(out_cubemap.Buffer.data()), static_cast<std::streamsize>(header.BufferByteSize));
+        return in.good();
+    }
+
+    bool IAssetImporter::ReadEnvironmentMapFileHeader(const char* zenvmap_file, EnvironmentMapFileHeader& out_header)
+    {
+        std::ifstream in(zenvmap_file, std::ios::binary);
+        if (!in.is_open())
+        {
+            return false;
+        }
+
+        in.read(reinterpret_cast<char*>(&out_header), sizeof(EnvironmentMapFileHeader));
+        return in.good() && (out_header.MagicNumber == ZENVMAP_MAGIC);
+    }
+
 } // namespace ZEngine::Importers
