@@ -26,9 +26,16 @@ namespace ZEngine::Importers
             config.AssetName.init(thread_local_arena, cfg.AssetName.c_str());
             config.OutputAssetFile.init(thread_local_arena, cfg.OutputAssetFile.c_str());
 
-            m_is_importing.store(true, std::memory_order_release);
+            std::string dir_path      = fmt::format("{0}{1}{2}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetsPath.c_str());
+            std::string fullname_path = fmt::format("{0}{1}{2}", dir_path, PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
 
-            REPORT_LOG(Context, fmt::format("Decoding environment map: {}", path))
+            if (std::filesystem::exists(fullname_path))
+            {
+                REPORT_LOG(Context, fmt::format("Environment map already exists"))
+                return;
+            }
+
+            m_is_importing.store(true, std::memory_order_release);
 
             int width = 0, height = 0, channel = 0;
             stbi_set_flip_vertically_on_load(1);
@@ -52,8 +59,6 @@ namespace ZEngine::Importers
             Bitmap equirect = {width, height, 4, BitmapFormat::FLOAT, image_data};
             stbi_image_free(const_cast<float*>(image_data));
 
-            REPORT_LOG(Context, "Converting equirectangular map to cubemap faces...")
-
             Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(equirect);
             Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
 
@@ -61,8 +66,6 @@ namespace ZEngine::Importers
             {
                 m_progress_callback(Context, 0.75f);
             }
-
-            REPORT_LOG(Context, fmt::format("Saving .zenvmap to: {}", config.OutputAssetsPath.c_str()))
 
             auto output = IAssetImporter::SerializeEnvironmentMapFile(cubemap, config);
 

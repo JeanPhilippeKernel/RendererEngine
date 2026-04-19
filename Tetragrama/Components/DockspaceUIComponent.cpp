@@ -567,7 +567,7 @@ namespace Tetragrama::Components
         if (result.size() > 0)
         {
             s_env_map_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
-            s_env_map_importer_report_msg       = fmt::format("Saved: {}", result[0].Path);
+            s_env_map_importer_report_msg       = fmt::format("Saved");
         }
     }
 

@@ -440,7 +440,11 @@ namespace ZEngine::Importers
             return output;
         }
 
-        std::string   fullname_path = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
+        std::string     dir_path      = fmt::format("{0}{1}{2}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetsPath.c_str());
+        std::string     fullname_path = fmt::format("{0}{1}{2}", dir_path, PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
+
+        std::error_code ec;
+        std::filesystem::create_directories(dir_path, ec);
         std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
 
         if (!out.is_open())
