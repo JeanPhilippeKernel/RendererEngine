@@ -91,7 +91,7 @@ namespace ZEngine::Importers
             {
                 if (m_error_callback)
                 {
-                    m_error_callback(Context, fmt::format("Failed to write .zenvmap for '{}'", path));
+                    m_error_callback(Context, fmt::format("Failed to write .zenvmap"));
                 }
             }
         });

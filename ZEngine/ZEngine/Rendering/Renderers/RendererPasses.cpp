@@ -237,7 +237,7 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        auto env_map_res                            = res_builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
+        auto env_map_res                            = res_builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.zenvmap");
 
         m_env_map                                   = env_map_res.ResourceInfo.TextureHandle;
         // m_vb_handle         = device->CreateVertexBufferSet();
