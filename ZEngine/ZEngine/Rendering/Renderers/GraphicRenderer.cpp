@@ -58,7 +58,6 @@ namespace ZEngine::Rendering::Renderers
          * Renderer Passes
          */
         auto upload_pass         = ZPushStructCtor(Device->Arena, UploadPass);
-        auto initial_pass        = ZPushStructCtor(Device->Arena, InitialPass);
         auto scene_depth_prepass = ZPushStructCtor(Device->Arena, DepthPrePass);
         auto skybox_pass         = ZPushStructCtor(Device->Arena, SkyboxPass);
         auto grid_pass           = ZPushStructCtor(Device->Arena, GridPass);
@@ -82,7 +81,6 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_spot_light_buffer");
 
         RenderGraph->AddCallbackPass("Upload Pass", upload_pass);
-        // RenderGraph->AddCallbackPass("Initial Pass", initial_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);

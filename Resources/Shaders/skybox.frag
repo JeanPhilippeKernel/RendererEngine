@@ -7,5 +7,5 @@ layout(set = 1, binding = 1) uniform sampler LinearWrapSampler;
 
 void main()
 {
-    outColor = texture(samplerCube(EnvMap, LinearWrapSampler), dir);
+    outColor = texture(samplerCube(EnvMap, LinearWrapSampler), normalize(dir));
 }

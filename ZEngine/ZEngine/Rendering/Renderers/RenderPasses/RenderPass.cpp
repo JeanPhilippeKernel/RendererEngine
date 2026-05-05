@@ -430,6 +430,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
+    RenderPassBuilder& RenderPassBuilder::SetCullMode(uint32_t mode)
+    {
+        m_spec.PipelineSpecification.CullMode = mode;
+        return *this;
+    }
+
     RenderPassBuilder& RenderPassBuilder::SetInputBindingCount(uint32_t count)
     {
         m_spec.PipelineSpecification.VertexInputBindingSpecifications.init(Arena, count, count);

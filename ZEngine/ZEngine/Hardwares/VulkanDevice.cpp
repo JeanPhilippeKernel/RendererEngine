@@ -1747,8 +1747,8 @@ namespace ZEngine::Hardwares
         VkViewport viewport = {};
         viewport.x          = x;
         viewport.y          = y;
-        viewport.width      = w;
-        viewport.height     = h;
+        viewport.width      = (float)w;
+        viewport.height     = (float)h;
         viewport.minDepth   = min_depth;
         viewport.maxDepth   = max_depth;
         vkCmdSetViewport(m_command_buffer, 0, 1, &viewport);
