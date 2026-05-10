@@ -46,35 +46,6 @@ namespace ZEngine::Controllers
         m_perspective_camera->SetPosition(position);
     }
 
-    float PerspectiveCameraController::GetFieldOfView() const
-    {
-        return m_perspective_camera->Fov;
-    }
-
-    void PerspectiveCameraController::SetFieldOfView(float rad_fov)
-    {
-        m_perspective_camera->Fov = rad_fov;
-    }
-
-    float PerspectiveCameraController::GetNear() const
-    {
-        return m_perspective_camera->ClipNear;
-    }
-
-    void PerspectiveCameraController::SetNear(float value)
-    {
-        m_perspective_camera->ClipNear = value;
-    }
-
-    float PerspectiveCameraController::GetFar() const
-    {
-        return m_perspective_camera->ClipFar;
-    }
-    void PerspectiveCameraController::SetFar(float value)
-    {
-        m_perspective_camera->ClipFar = value;
-    }
-
     void PerspectiveCameraController::SetViewport(float width, float height)
     {
         m_perspective_camera->SetViewport(width, height);
@@ -105,8 +76,6 @@ namespace ZEngine::Controllers
     {
         return m_perspective_camera;
     }
-
-    void PerspectiveCameraController::UpdateProjectionMatrix() {}
 
     bool PerspectiveCameraController::OnEvent(Core::CoreEvent& e)
     {

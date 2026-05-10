@@ -100,6 +100,7 @@
 #define ZEMATERIAL_MAGIC                                       MAKE_MAGIC('Z', 'M', 'A', 'T')
 #define ZETEXTURES_MAGIC                                       MAKE_MAGIC('Z', 'T', 'E', 'X')
 #define ZESCENE_MAGIC                                          MAKE_MAGIC('Z', 'S', 'C', 'N')
+#define ZENVMAP_MAGIC                                          MAKE_MAGIC('Z', 'E', 'N', 'V')
 #define ASSET_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
 #define SCENE_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
 

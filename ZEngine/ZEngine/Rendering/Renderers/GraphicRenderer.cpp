@@ -107,7 +107,7 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera)
     {
         auto asset_manager       = Managers::AssetManager::Instance();
-        auto ubo_camera_data     = UBOCameraLayout{.View = camera->GetViewMatrix(), .Projection = camera->GetPerspectiveMatrix(), .Position = Vec4f(camera->GetPosition(), 1.0f)};
+        auto ubo_camera_data     = UBOCameraLayout{.View = camera->GetView(), .Projection = camera->GetProjection(), .Position = Vec4f(camera->GetPosition(), 1.0f)};
 
         auto material_buffer_set = Device->StorageBufferSetManager.Access(RenderSceneData->MaterialBufferHandle);
         auto camera_buffer_set   = Device->UniformBufferSetManager.Access(RenderSceneData->SceneCameraBufferHandle);

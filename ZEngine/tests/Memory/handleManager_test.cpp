@@ -81,9 +81,9 @@ TEST_F(HandleManagerTest, RemoveHandle)
 TEST_F(HandleManagerTest, FullCapacity)
 {
     std::vector<ZEngine::Helpers::Handle<int*>> handles;
-    std::vector<int>                            values(handle_manager.Size());
+    std::vector<int>                            values(handle_manager.Capacity());
 
-    for (size_t i = 0; i < handle_manager.Size(); ++i)
+    for (size_t i = 0; i < handle_manager.Capacity(); ++i)
     {
         values[i]   = static_cast<int>(i);
         auto handle = handle_manager.Add(&values[i]);

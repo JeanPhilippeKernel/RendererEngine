@@ -280,12 +280,17 @@ namespace ZEngine::Windows
         }
     }
 
-    void GameWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xoffset, double yoffset)
+    void GameWindow::__OnGlfwCursorMoved(GLFWwindow* window, double xpos, double ypos)
     {
+        static double   lastX = 0, lastY = 0; // Initial center
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
-            MouseButtonMovedEvent e{xoffset, yoffset};
+            double xoffset = (xpos - lastX);
+            double yoffset = (ypos - lastY);
+            lastX          = xpos;
+            lastY          = ypos;
+            MouseButtonMovedEvent e{xpos, ypos, xoffset, yoffset};
             property->CallbackFn(e);
         }
     }

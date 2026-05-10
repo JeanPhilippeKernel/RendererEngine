@@ -214,4 +214,27 @@ namespace ZEngine::Core::Maths
         return sin<T>(x) / c;
     }
 
+    inline static float smoothstep(float t)
+    {
+        // Ken Perlin's improved smoothstep (C2 continuous)
+        return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
+    }
+
+    inline static float lerpAngle(float a, float b, float t)
+    {
+        float diff = b - a;
+        // Wrap to [-180, 180]
+        while (diff > 180.0f)
+            diff -= 360.0f;
+        while (diff < -180.0f)
+            diff += 360.0f;
+        return a + diff * t;
+    }
+
+    template <typename T, typename F>
+    constexpr T lerp(T a, T b, F t)
+    {
+        return a + (b - a) * t;
+    }
+
 } // namespace ZEngine::Core::Maths

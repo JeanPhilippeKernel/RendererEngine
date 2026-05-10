@@ -204,7 +204,7 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        auto env_map_res                            = res_builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.hdr");
+        auto env_map_res                            = res_builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.zenvmap");
 
         m_env_map                                   = env_map_res.ResourceInfo.TextureHandle;
 
@@ -370,6 +370,7 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->BindVertexBuffer(*vertex_buffer);
         command_buffer->BindIndexBuffer(*index_buffer, VK_INDEX_TYPE_UINT16);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
+        command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GridPushConstantData), &PushData);
         command_buffer->DrawIndexed(6, 1, 0, 0, 0);
         command_buffer->EndRenderPass();
     }

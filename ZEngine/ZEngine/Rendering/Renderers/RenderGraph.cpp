@@ -66,11 +66,13 @@ namespace ZEngine::Rendering::Renderers
         Array<cstring>            sorted_nodes    = {};
         UnorderedHashSet<cstring> processed_nodes = {};
         UnorderedHashSet<cstring> visited_nodes   = {};
+        UnorderedHashSet<cstring> in_stack_nodes  = {};
         std::stack<cstring>       stack           = {};
 
         sorted_nodes.init(scratch.Arena, NodeMap.size());
         visited_nodes.init(scratch.Arena);
         processed_nodes.init(scratch.Arena);
+        in_stack_nodes.init(scratch.Arena);
 
         for (const auto& [name, _] : NodeMap)
         {
@@ -83,21 +85,27 @@ namespace ZEngine::Rendering::Renderers
 
             while (!stack.empty())
             {
-                const auto& top = stack.top();
+                // Copy, not reference: pushing to the stack can invalidate a top() ref.
+                const auto top = stack.top();
 
                 if (!visited_nodes.contains(top))
                 {
                     visited_nodes.insert(top);
+                    in_stack_nodes.insert(top);
+                    // Re-push self below its children so it is emitted only after all
+                    // descendants are processed (post-order).
+                    stack.push(top);
 
-                    auto& graph_node = NodeMap[top];
-                    if (!graph_node.EdgeNodes.empty())
+                    for (auto edge : NodeMap[top].EdgeNodes)
                     {
-                        for (auto edge : graph_node.EdgeNodes)
+                        if (in_stack_nodes.contains(edge))
                         {
-                            if (!visited_nodes.contains(edge))
-                            {
-                                stack.push(edge);
-                            }
+                            ZENGINE_CORE_ERROR("RenderGraph: cycle detected between '{}' and '{}'", top, edge)
+                            continue;
+                        }
+                        if (!visited_nodes.contains(edge))
+                        {
+                            stack.push(edge);
                         }
                     }
                 }
@@ -109,6 +117,7 @@ namespace ZEngine::Rendering::Renderers
                     {
                         sorted_nodes.push(top);
                         processed_nodes.insert(top);
+                        in_stack_nodes.remove(top);
                     }
                 }
             }

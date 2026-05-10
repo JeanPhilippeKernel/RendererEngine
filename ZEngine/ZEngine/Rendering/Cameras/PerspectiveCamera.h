@@ -4,7 +4,7 @@
 
 namespace ZEngine::Rendering::Cameras
 {
-
+    // Todo (@jeanphilippekernel): Need to revisit this class - for now we use FlyCamera
     class PerspectiveCamera : public Camera
     {
     public:
@@ -24,8 +24,6 @@ namespace ZEngine::Rendering::Cameras
         virtual std::pair<float, float>         PanSpeed() const;
         virtual void                            SetViewport(float width, float height);
 
-        virtual ZEngine::Core::Maths::Mat4f     GetViewMatrix() override;
-        virtual ZEngine::Core::Maths::Mat4f     GetPerspectiveMatrix() const override;
         virtual ZEngine::Core::Maths::Vec3f     GetPosition() const override;
 
         ZEngine::Core::Maths::Quaternion<float> GetOrientation();
