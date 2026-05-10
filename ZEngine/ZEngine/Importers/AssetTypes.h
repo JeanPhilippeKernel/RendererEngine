@@ -14,7 +14,8 @@ namespace ZEngine::Importers
         UNKNOWN = 0,
         MESH,
         MATERIAL,
-        TEXTURES
+        TEXTURES,
+        ENVIRONMENT_MAP
     };
 
     struct AssetSubMesh

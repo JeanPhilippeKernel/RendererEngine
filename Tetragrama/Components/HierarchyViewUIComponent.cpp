@@ -223,8 +223,8 @@ namespace Tetragrama::Components
         if (app->CameraController)
         {
             auto       camera             = app->CameraController->GetCamera();
-            const auto camera_projection  = camera->GetPerspectiveMatrix();
-            const auto camera_view_matrix = camera->GetViewMatrix();
+            const auto camera_projection  = camera->GetProjection();
+            const auto camera_view_matrix = camera->GetView();
 
             auto&      global_transform   = current_scene->GlobalTransforms[selected_node];
             auto       initial_transform  = global_transform;
@@ -233,7 +233,7 @@ namespace Tetragrama::Components
             if (camera && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, app->CurrentWindow))
             {
                 auto active_editor_camera = reinterpret_cast<Controllers::EditorCameraControllerPtr>(app->CameraController);
-                active_editor_camera->SetTarget(Vec3f(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
+                // active_editor_camera->SetFocus(Vec3f(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
             }
 
             // snapping

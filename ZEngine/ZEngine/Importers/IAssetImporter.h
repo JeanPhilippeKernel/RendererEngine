@@ -4,6 +4,7 @@
 #include <Core/Containers/Strings.h>
 #include <Core/Memory/Allocator.h>
 #include <Helpers/IntrusivePtr.h>
+#include <Rendering/Buffers/Bitmap.h>
 #include <Rendering/Meshes/Mesh.h>
 #include <Rendering/Scenes/GraphicScene.h>
 #include <atomic>
@@ -37,6 +38,17 @@ namespace ZEngine::Importers
         uint32_t    MagicNumber = 0xFFFFFF;
         uint32_t    Version     = 0xFFFFFF;
         uuids::uuid Id          = {};
+    };
+
+    struct EnvironmentMapFileHeader
+    {
+        uint32_t MagicNumber    = 0;
+        uint32_t Version        = 0;
+        int32_t  FaceWidth      = 0;
+        int32_t  FaceHeight     = 0;
+        int32_t  Channel        = 0;
+        int32_t  LayerCount     = 0;
+        uint64_t BufferByteSize = 0;
     };
 
     struct AssetImporterOutput
@@ -85,5 +97,9 @@ namespace ZEngine::Importers
         static void                DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>&);
 
         static bool                ReadAssetMeshFileHeader(cstring asset_file, AssetMeshFileHeader&);
+
+        static AssetImporterOutput SerializeEnvironmentMapFile(const Rendering::Buffers::Bitmap& cubemap, const ImportConfiguration& config);
+        static bool                DeserializeEnvironmentMapFile(const char* zenvmap_file, Rendering::Buffers::Bitmap& out_cubemap);
+        static bool                ReadEnvironmentMapFileHeader(const char* zenvmap_file, EnvironmentMapFileHeader& out_header);
     };
 } // namespace ZEngine::Importers

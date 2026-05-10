@@ -348,4 +348,22 @@ namespace ZEngine::Core::Maths
         return Mat4<T>(T(1) - (yy + zz), xy - wz, xz + wy, T(0), xy + wz, T(1) - (xx + zz), yz - wx, T(0), xz - wy, yz + wx, T(1) - (xx + yy), T(0), T(0), T(0), T(0), T(1));
     }
 
+    template <typename T>
+    inline Vec3f QuaternionToForwardVec(const Quaternion<T>& quat)
+    {
+        return Vec3f(2 * ((quat.x * quat.z) + (quat.w * quat.y)), 2 * ((quat.y * quat.z) - (quat.w * quat.x)), 1 - 2 * ((quat.x * quat.x) + (quat.y * quat.y)));
+    }
+
+    template <typename T>
+    inline Vec3f QuaternionToRightVec(const Quaternion<T>& quat)
+    {
+        return Vec3f(1 - 2 * ((quat.y * quat.y) + (quat.z * quat.z)), 2 * ((quat.x * quat.y) + (quat.w * quat.z)), 2 * ((quat.x * quat.z) - (quat.w * quat.y)));
+    }
+
+    template <typename T>
+    inline Vec3f QuaternionToUpVec(const Quaternion<T>& quat)
+    {
+        return Vec3f(2 * ((quat.x * quat.y) - (quat.w * quat.z)), 1 - 2 * ((quat.x * quat.x) + (quat.z * quat.z)), 2 * ((quat.y * quat.z) + (quat.w * quat.x)));
+    }
+
 } // namespace ZEngine::Core::Maths

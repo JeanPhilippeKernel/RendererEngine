@@ -7,17 +7,12 @@ using namespace ZEngine::Core::Maths;
 
 namespace Tetragrama::Controllers
 {
-    void EditorCameraController::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Windows::CoreWindow* window, double distance, float yaw_degree, float pitch_degree)
+    void EditorCameraController::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Windows::CoreWindow* window)
     {
-        m_position           = {0.0f, 0.0f, 1.5f};
-        m_process_event      = true;
-        m_controller_type    = ZEngine::Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;
-        m_window             = window;
+        m_window              = window;
+        m_controller_type     = ZEngine::Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;
 
-        m_perspective_camera = ZPushStructCtor(arena, PerspectiveCamera);
-        m_perspective_camera->Initialize(m_camera_fov, m_aspect_ratio, m_camera_near, m_camera_far, radians(yaw_degree), radians(pitch_degree));
-        m_perspective_camera->SetDistance(distance);
-
-        m_window = window;
+        const auto& win_props = m_window->GetWindowProperty();
+        m_camera              = ZPushStructCtorArgs(arena, FlyCamera, win_props.AspectRatio);
     }
 } // namespace Tetragrama::Controllers

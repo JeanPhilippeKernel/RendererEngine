@@ -34,7 +34,7 @@ namespace ZEngine::Hardwares
         attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
         SwapchainAttachment                                   = ZPushStructCtorArgs(&Arena, RenderPasses::Attachment, Device, attachment_specification);
 
-        IdleFrameThreshold.store(BufferredFrameCount * 3 * 3 * 3, std::memory_order_release);
+        IdleFrameThreshold                                    = (BufferredFrameCount * 3 * 3 * 3);
         FrameContexts.init(&Arena, FrameContextPoolSize, FrameContextPoolSize);
 
         for (uint32_t i = 0; i < FrameContextPoolSize; ++i)
@@ -268,7 +268,7 @@ namespace ZEngine::Hardwares
     {
         if (HasRecreationPending)
         {
-            IdleFrameCount.fetch_add(1);
+            IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
             Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
             return;
         }
@@ -493,7 +493,7 @@ namespace ZEngine::Hardwares
         };
         VkResult present_result = vkQueuePresentKHR(queue.Handle, &present_info);
 
-        IdleFrameCount.fetch_add(1);
+        IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
 
         if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
         {

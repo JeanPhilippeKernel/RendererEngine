@@ -3,7 +3,6 @@
 #include <Core/Memory/Allocator.h>
 #include <MemoryOperations.h>
 #include <ZEngineDef.h>
-#include <shared_mutex>
 
 #define INVALID_HANDLE_INDEX -1
 
@@ -18,7 +17,8 @@ namespace ZEngine::Helpers
     template <typename T>
     struct Handle
     {
-        uint64_t Index = UINT64_MAX;
+        uint64_t Index      = UINT64_MAX;
+        uint64_t Generation = 0u;
 
         bool     Valid() const
         {
@@ -27,64 +27,90 @@ namespace ZEngine::Helpers
 
         operator bool() const
         {
-            return this->Valid();
+            return Valid();
         }
     };
 
     template <typename T>
     class HandleManager
     {
-        uint32_t                         m_count           = 0;
-        uint32_t                         m_head            = 0;
-        uint32_t                         m_free_slot_index = 0;
-        Core::Containers::Array<T>       m_memory          = {};
-        Core::Containers::Array<uint8_t> m_free_slot       = {};
+        union FreeHead
+        {
+            struct
+            {
+                uint32_t index;
+                uint32_t tag;
+            };
+            uint64_t raw;
+        };
+        static_assert(sizeof(FreeHead) == 8, "FreeHead must be 8 bytes");
 
-        mutable std::shared_mutex        m_mutex;
+        uint32_t                                        m_count       = 0;
+        PaddedAtomic<uint32_t>                          m_head        = {.value = 0};
+        PaddedAtomic<uint64_t>                          m_live_count  = {.value = 0};
+        PaddedAtomic<uint64_t>                          m_free_head   = {}; // FreeHead packed
+
+        Core::Containers::Array<T>                      m_memory      = {};
+        Core::Containers::Array<uint32_t>               m_next        = {}; // free-list next pointers
+        Core::Containers::Array<PaddedAtomic<uint64_t>> m_generations = {};
 
     public:
         void Initialize(Core::Memory::ArenaAllocator* arena, uint32_t count = 0)
         {
+            m_count = count;
             m_memory.init(arena, count, count);
-            m_free_slot.init(arena, count, count);
-            m_count           = count;
-            m_head            = 0;
-            m_free_slot_index = 0;
+            m_next.init(arena, count, count);
+            m_generations.init(arena, count, count);
+
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                m_generations[i].value.store(0, std::memory_order_relaxed);
+            }
+
+            FreeHead empty{UINT32_MAX, 0};
+            m_free_head.value.store(empty.raw, std::memory_order_relaxed);
+            m_head.value.store(0, std::memory_order_relaxed);
+            m_live_count.value.store(0, std::memory_order_relaxed);
         }
 
         T& operator[](const Handle<T>& handle)
         {
-            return *Access(handle);
+            ZENGINE_VALIDATE_ASSERT(IsLive(handle), "Trying to access an invalid handle")
+            return *(&m_memory[handle.Index]);
         }
 
         Handle<T> Create()
         {
-            std::unique_lock<std::shared_mutex> lock(m_mutex);
-            Handle<T>                           handle = {};
+            Handle<T> handle = {};
+            uint64_t  index  = TryPopFree();
 
-            if (m_free_slot_index > 0 && m_free_slot_index >= m_head)
+            if (index == UINT64_MAX)
             {
-                m_head            = 0;
-                m_free_slot_index = 0;
+                index = m_head.value.fetch_add(1, std::memory_order_acq_rel);
+                if (index >= m_count)
+                {
+                    m_head.value.fetch_sub(1, std::memory_order_acq_rel);
+                    return {};
+                }
+            }
+            else
+            {
+                uint64_t gen = m_generations[index].value.load(std::memory_order_acquire);
+                ZENGINE_VALIDATE_ASSERT((gen & 1) == 1, "Popped a slot that wasn't freed")
+
+                m_generations[index].value.store(gen + 1, std::memory_order_release);
             }
 
-            if (m_free_slot_index > 0)
-            {
-                handle.Index = m_free_slot[--m_free_slot_index];
-            }
-            else if (m_head < m_count)
-            {
-                handle.Index = m_head++;
-            }
+            handle.Index      = index;
+            handle.Generation = m_generations[index].value.load(std::memory_order_acquire);
+            m_live_count.value.fetch_add(1, std::memory_order_acq_rel);
             return handle;
         }
 
         T* Access(const Handle<T>& handle)
         {
-            std::shared_lock<std::shared_mutex> lock(m_mutex);
-            T*                                  ptr = nullptr;
-
-            if (handle && (handle.Index < m_count))
+            T* ptr = nullptr;
+            if (IsLive(handle))
             {
                 ptr = &m_memory[handle.Index];
             }
@@ -117,15 +143,16 @@ namespace ZEngine::Helpers
             return handle;
         }
 
-        Handle<T> ToHandle(uint32_t index)
+        Handle<T> ToHandle(uint64_t index)
         {
-            std::shared_lock<std::shared_mutex> lock(m_mutex);
-            Handle<T>                           handle{};
-            ZENGINE_VALIDATE_ASSERT(index != UINT32_MAX && index < m_count, "Handle Index is invalid")
+            Handle<T> handle{};
+            ZENGINE_VALIDATE_ASSERT(index != UINT64_MAX && index < m_count, "Handle Index is invalid")
 
-            if (!(index >= m_head))
+            uint64_t gen = m_generations[index].value.load(std::memory_order_acquire);
+            if ((gen & 1) == 0 && index < m_head.value.load(std::memory_order_acquire))
             {
-                handle.Index = index;
+                handle.Index      = index;
+                handle.Generation = gen;
             }
 
             return handle;
@@ -133,8 +160,7 @@ namespace ZEngine::Helpers
 
         void Update(Handle<T>& handle, T& data)
         {
-            std::unique_lock<std::shared_mutex> lock(m_mutex);
-            ZENGINE_VALIDATE_ASSERT((handle) && handle.Index < m_count, "Handle Index is invalid")
+            ZENGINE_VALIDATE_ASSERT(IsLive(handle), "Handle Index is invalid")
 
             T* ptr = &m_memory[handle.Index];
             *ptr   = data;
@@ -142,45 +168,81 @@ namespace ZEngine::Helpers
 
         void Update(Handle<T>& handle, T&& data)
         {
-            std::unique_lock<std::shared_mutex> lock(m_mutex);
-            ZENGINE_VALIDATE_ASSERT((handle) && handle.Index < m_count, "Handle Index is invalid")
+            ZENGINE_VALIDATE_ASSERT(IsLive(handle), "Handle Index is invalid")
 
             T* ptr = &m_memory[handle.Index];
             *ptr   = std::move(data);
         }
 
-        bool CanRemove()
+        bool IsLive(const Handle<T>& handle) const
         {
-            return !(m_free_slot_index >= m_head);
+            if (!handle || handle.Index >= m_count)
+            {
+                return false;
+            }
+
+            uint64_t gen = m_generations[handle.Index].value.load(std::memory_order_acquire);
+            return (gen & 1) == 0 && gen == handle.Generation;
         }
 
         void Remove(Handle<T>& handle)
         {
-            std::unique_lock<std::shared_mutex> lock(m_mutex);
-            if (!handle || !(handle.Index < m_count))
+            if (!IsLive(handle))
             {
                 return;
             }
 
-            if (!CanRemove())
-            {
-                return;
-            }
+            uint64_t gen = m_generations[handle.Index].value.load(std::memory_order_acquire);
+            ZENGINE_VALIDATE_ASSERT((gen & 1) == 0, "Trying to remove a handle that is already freed")
+            m_generations[handle.Index].value.store(gen + 1, std::memory_order_release);
 
-            m_free_slot[m_free_slot_index++] = handle.Index;
-            handle                           = Handle<T>{};
+            PushFree(handle.Index);
+            m_live_count.value.fetch_sub(1, std::memory_order_acq_rel);
+            handle = Handle<T>{};
         }
 
         size_t Size() const
         {
-            std::shared_lock<std::shared_mutex> lock(m_mutex);
-            return m_count;
+            return m_live_count.value.load(std::memory_order_acquire);
         }
 
         uint32_t Head() const
         {
-            std::shared_lock<std::shared_mutex> lock(m_mutex);
-            return m_head;
+            return m_head.value.load(std::memory_order_acquire);
+        }
+
+        uint32_t Capacity() const
+        {
+            return m_count;
+        }
+
+        void PushFree(uint64_t index)
+        {
+            FreeHead expected, desired;
+            expected.raw = m_free_head.value.load(std::memory_order_acquire);
+            do
+            {
+                m_next[index] = expected.index;
+                desired.index = static_cast<uint32_t>(index);
+                desired.tag   = expected.tag + 1;
+            } while (!m_free_head.value.compare_exchange_weak(expected.raw, desired.raw, std::memory_order_release, std::memory_order_relaxed));
+        }
+
+        uint64_t TryPopFree()
+        {
+            FreeHead expected, desired;
+            expected.raw = m_free_head.value.load(std::memory_order_acquire);
+            do
+            {
+                if (expected.index == UINT32_MAX)
+                {
+                    return UINT64_MAX; // No free slots
+                }
+                desired.index = m_next[expected.index];
+                desired.tag   = expected.tag + 1;
+            } while (!m_free_head.value.compare_exchange_weak(expected.raw, desired.raw, std::memory_order_acquire, std::memory_order_relaxed));
+
+            return expected.index;
         }
 
         void Dispose() {}
