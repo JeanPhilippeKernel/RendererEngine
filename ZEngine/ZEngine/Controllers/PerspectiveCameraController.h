@@ -59,7 +59,7 @@ namespace ZEngine::Controllers
 
     protected:
         float                m_camera_fov                                   = 90.0f;
-        float                m_camera_near                                  = 1.f;
+        float                m_camera_near                                  = 0.1f;
         float                m_camera_far                                   = 1000.0f;
         bool                 m_process_event                                = true;
         Core::Maths::Vec3f   m_camera_target                                = {0.0f, 0.0f, 0.0f};

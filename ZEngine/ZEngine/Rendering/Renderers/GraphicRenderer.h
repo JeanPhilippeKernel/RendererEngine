@@ -10,14 +10,15 @@ namespace ZEngine::Rendering::Renderers
         GraphicRenderer();
         ~GraphicRenderer();
 
-        cstring                 VertexBufferName       = "VertexStorageBuffer";
-        cstring                 IndexBufferName        = "IndexStorageBuffer";
-        cstring                 TransformBufferName    = "TransformStorageBuffer";
-        cstring                 RenderDataBufferName   = "RenderDataStorageBuffer";
-        cstring                 MaterialBufferName     = "MaterialStorageBuffer";
+        cstring                 VertexBufferName        = "VertexStorageBuffer";
+        cstring                 IndexBufferName         = "IndexStorageBuffer";
+        cstring                 TransformBufferName     = "TransformStorageBuffer";
+        cstring                 RenderDataBufferName    = "RenderDataStorageBuffer";
+        cstring                 MaterialBufferName      = "MaterialStorageBuffer";
 
-        Textures::TextureHandle FrameColorRenderTarget = {};
-        Textures::TextureHandle FrameDepthRenderTarget = {};
+        Textures::TextureHandle FrameSharedRenderTarget = {};
+        Textures::TextureHandle FrameColorRenderTarget  = {};
+        Textures::TextureHandle FrameDepthRenderTarget  = {};
 
         void                    Initialize(Hardwares::VulkanDevicePtr device) override;
         void                    Deinitialize() override;

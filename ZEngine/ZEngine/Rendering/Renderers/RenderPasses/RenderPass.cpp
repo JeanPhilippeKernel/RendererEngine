@@ -18,6 +18,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         m_device      = device;
         Specification = specification;
+
+        if ((specification.Type != Specifications::RenderPassType::GRAPHIC) && (specification.Type != Specifications::RenderPassType::COMPUTE))
+        {
+            return;
+        }
+
         RenderTargets.init(device->Arena, 4);
 
         if (Specification.SwapchainAsRenderTarget)
@@ -95,7 +101,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             m_device->GlobalTextures.Remove(handle);
         }
 
-        Pipeline->Dispose();
+        if (Pipeline)
+        {
+            Pipeline->Dispose();
+        }
 
         if (!(Specification.SwapchainAsRenderTarget) && Attachment)
         {
@@ -105,6 +114,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     void RenderPass::Bake()
     {
+        if ((Specification.Type != Specifications::RenderPassType::GRAPHIC) && (Specification.Type != Specifications::RenderPassType::COMPUTE))
+        {
+            return;
+        }
         Pipeline->Bake();
     }
 
@@ -128,7 +141,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             auto        end          = missing_names.end();
             std::string unset_inputs = std::accumulate(std::next(start), end, *start, [](std::string_view a, std::string_view b) { return fmt::format("{}, {}", a.data(), b.data()); });
 
-            ZENGINE_CORE_WARN("Shader '{}': {} unset input(s): {}", Specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs.c_str());
+            ZENGINE_CORE_WARN("Pipeline '{}': {} unset input(s): {}", Specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs.c_str());
 
             verify = false;
         }

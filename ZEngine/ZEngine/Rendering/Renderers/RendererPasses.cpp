@@ -13,7 +13,7 @@ namespace ZEngine::Rendering::Renderers
 
         SkyboxVertexData.init(device->Arena, 24, make_initializer_list(device->Arena, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f));
         SkyboxIndexData.init(device->Arena, 36, make_initializer_list<uint16_t>(device->Arena, 0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 5, 4, 7, 7, 6, 5, 4, 0, 3, 3, 7, 4, 3, 2, 6, 6, 7, 3, 4, 5, 1, 1, 0, 4));
-        GridVertexData.init(device->Arena, 12, make_initializer_list<float>(device->Arena, -1.0f, 0.0f, -1.0f, 1.0f, 0.0f, -1.0f, 1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f));
+        GridVertexData.init(device->Arena, 12, make_initializer_list<float>(device->Arena, -1000.0f, 0.01f, -1000.0f, 1000.0f, 0.01f, -1000.0f, 1000.0f, 0.01f, 1000.0f, -1000.0f, 0.01f, 1000.0f));
         GridIndexData.init(device->Arena, 6, make_initializer_list<uint16_t>(device->Arena, 0, 1, 2, 2, 3, 0));
 
         const auto& skybox_res_vb_info = res_builder->CreateBufferSet("SkyboxVbSet", BufferSetCreationType::VERTEX);
@@ -49,36 +49,25 @@ namespace ZEngine::Rendering::Renderers
         RenderGraphRenderPassCreation pass_node = {.Name = name};
 
         pass_node.Inputs.init(device->Arena, 1);
-        pass_node.Outputs.init(device->Arena, 2);
-        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
-        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
+        pass_node.Outputs.init(device->Arena, 4);
+
+        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = skybox_res_vb_info.Name, .Type = RenderGraphResourceType::BUFFER_SET});
+        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = skybox_res_ib_info.Name, .Type = RenderGraphResourceType::BUFFER_SET});
+        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = grid_res_vb_info.Name, .Type = RenderGraphResourceType::BUFFER_SET});
+        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = grid_res_ib_info.Name, .Type = RenderGraphResourceType::BUFFER_SET});
 
         res_builder->CreateRenderPassNode(pass_node);
     }
 
     void UploadPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
     {
-        // this compile action is purely fake, as this pass is only used to upload data to the buffers,
-        // and doesn't actually need a render pass. However, we need to create a dummy render pass to be able to execute this pass in the render graph.
+        CHECK_AND_ESCAPE_NULL(output_pass)
+
         if (output_pass && !(*output_pass))
         {
-            auto pass_spec = pass_builder->SetPipelineName("Initial-Pipeline")
-                                 .SetInputBindingCount(1)
-                                 .SetStride(0, sizeof(float) * 3)
-                                 .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
-                                 .SetInputAttributeCount(1)
-                                 .SetLocation(0, 0)
-
-                                 .SetBinding(0, 0)
-                                 .SetFormat(0, Specifications::ImageFormat::R32G32B32_SFLOAT)
-                                 .SetOffset(0, 0)
-
-                                 .EnablePipelineDepthTest(true)
-                                 .UseShader("initial")
-                                 .Detach();
-            // clang-format off
-            *output_pass = device->CreateRenderPass(pass_spec);
-            // clang-format on
+            auto pass_spec = pass_builder->Detach();
+            pass_spec.Type = Specifications::RenderPassType::TRANSFER;
+            *output_pass   = device->CreateRenderPass(pass_spec);
             (*output_pass)->Bake();
         }
     }
@@ -104,12 +93,61 @@ namespace ZEngine::Rendering::Renderers
         WriteOnceControl[device->SwapchainPtr->CurrentFrame->Index] = 1;
     }
 
+    void BasePass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
+    {
+        RenderGraphRenderPassCreation pass_node = {.Name = name};
+
+        pass_node.Inputs.init(device->Arena, 1);
+        pass_node.Outputs.init(device->Arena, 1);
+
+        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
+        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
+
+        res_builder->CreateRenderPassNode(pass_node);
+    }
+
+    void BasePass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
+    {
+        CHECK_AND_ESCAPE_NULL(output_pass)
+
+        if (output_pass && !(*output_pass))
+        {
+            auto pass_spec = pass_builder->SetPipelineName("Base-Pipeline")
+                                 .SetInputBindingCount(0)
+                                 .EnablePipelineDepthTest(true)
+
+                                 .UseShader("base")
+                                 .Detach();
+            // clang-format off
+            *output_pass = device->CreateRenderPass(pass_spec);
+            // clang-format on
+            (*output_pass)->Bake();
+        }
+        (*output_pass)->Verify();
+    }
+
+    void BasePass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
+    {
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
+        {
+            uint32_t w = pass->GetRenderAreaWidth();
+            uint32_t h = pass->GetRenderAreaHeight();
+            command_buffer->SetViewport(w, h);
+            command_buffer->SetScissor(w, h);
+        }
+        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
+        command_buffer->Draw(3, 1, 0, 0);
+        command_buffer->EndRenderPass();
+    }
+
     void DepthPrePass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
         RenderGraphRenderPassCreation pass_node = {.Name = name};
 
         pass_node.Inputs.init(device->Arena, 1);
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
+        pass_node.Outputs.init(device->Arena, 1);
+        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
 
         res_builder->CreateRenderPassNode(pass_node);
     }
@@ -170,15 +208,18 @@ namespace ZEngine::Rendering::Renderers
 
         m_env_map                                   = env_map_res.ResourceInfo.TextureHandle;
 
-        auto&                         output_skybox = res_builder->CreateRenderTarget("skybox_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
+        const auto&                   skybox_vb_set = res_inspector->GetResource("SkyboxVbSet");
+        const auto&                   skybox_ib_set = res_inspector->GetResource("SkyboxIbSet");
+
         RenderGraphRenderPassCreation pass_node     = {.Name = name};
 
-        pass_node.Inputs.init(device->Arena, 2);
+        pass_node.Inputs.init(device->Arena, 4);
         pass_node.Outputs.init(device->Arena, 1);
 
+        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = skybox_vb_set.Name, .Type = skybox_vb_set.Type});
+        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = skybox_ib_set.Name, .Type = skybox_ib_set.Type});
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = output_skybox.Name});
 
         res_builder->CreateRenderPassNode(pass_node);
     }
@@ -201,8 +242,11 @@ namespace ZEngine::Rendering::Renderers
                                  .SetOffset(0, 0)
                                  .EnablePipelineDepthTest(true)
                                  .EnablePipelineDepthWrite(false)
-                                 .SetCullMode(0)
+                                 .PipelineDepthCompareOp(2)
 
+                                 .EnablePipelineBlending(false)
+
+                                 .SetCullMode(0)
                                  .UseShader("skybox")
                                  .Detach();
             // clang-format off
@@ -215,7 +259,7 @@ namespace ZEngine::Rendering::Renderers
         {
             (*output_pass)->SetInput("UBCamera", scene->SceneCameraBufferHandle);
             (*output_pass)->SetInput("EnvMap", m_env_map);
-            (*output_pass)->SetInput("LinearWrapSampler", device->GlobalLinearWrapSamplerImageInfo);
+            (*output_pass)->SetInput("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
         }
 
         (*output_pass)->Verify();
@@ -248,15 +292,18 @@ namespace ZEngine::Rendering::Renderers
     {
         auto                          arena       = device->Arena;
 
-        auto&                         output_grid = res_builder->CreateRenderTarget("grid_render_target", {.Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
+        const auto&                   grid_vb_set = res_inspector->GetResource("GridVbSet");
+        const auto&                   grid_ib_set = res_inspector->GetResource("GridIbSet");
+
         RenderGraphRenderPassCreation pass_node   = {.Name = name};
 
-        pass_node.Inputs.init(arena, 2);
+        pass_node.Inputs.init(arena, 4);
         pass_node.Outputs.init(arena, 1);
 
+        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = grid_vb_set.Name, .Type = grid_vb_set.Type});
+        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = grid_ib_set.Name, .Type = grid_ib_set.Type});
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = output_grid.Name});
 
         res_builder->CreateRenderPassNode(pass_node);
     }
@@ -279,6 +326,12 @@ namespace ZEngine::Rendering::Renderers
                                  .SetOffset(0, 0)
 
                                  .EnablePipelineDepthTest(true)
+                                 .EnablePipelineDepthWrite(false)
+                                 .PipelineDepthCompareOp(3)
+
+                                 .EnablePipelineBlending(true)
+
+                                 .SetCullMode(0)
                                  .UseShader("infinite_grid")
                                  .Detach();
             // clang-format off
@@ -290,8 +343,8 @@ namespace ZEngine::Rendering::Renderers
         if (scene)
         {
             (*output_pass)->SetInput("UBCamera", scene->SceneCameraBufferHandle);
-            (*output_pass)->Verify();
         }
+        (*output_pass)->Verify();
     }
 
     void GridPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
@@ -339,7 +392,6 @@ namespace ZEngine::Rendering::Renderers
         pass_node.Outputs.init(device->Arena, 4);
 
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
 
         pass_node.Outputs.push({.Name = gbuffer_albedo.Name});
         pass_node.Outputs.push({.Name = gbuffer_specular.Name});
@@ -483,5 +535,64 @@ namespace ZEngine::Rendering::Renderers
         // command_buffer->BindDescriptorSets(scene->FrameIndex);
         // command_buffer->DrawIndirect(*indirect_buffer->At(scene->FrameIndex));
         // command_buffer->EndRenderPass();
+    }
+
+    void CompositePass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
+    {
+        auto                          arena     = device->Arena;
+
+        // auto&                         gbuffer_albedo   = res_inspector->GetResource("gbuffer_albedo_render_target");
+        // auto&                         gbuffer_specular = res_inspector->GetResource("gbuffer_specular_render_target");
+        // auto&                         gbuffer_normals  = res_inspector->GetResource("gbuffer_normals_render_target");
+        // auto&                         gbuffer_position = res_inspector->GetResource("gbuffer_position_render_target");
+
+        RenderGraphRenderPassCreation pass_node = {.Name = name};
+
+        const auto&                   shared_rt = res_inspector->GetResource(RendererResourceName::FrameSharedRenderTargetName);
+
+        pass_node.Inputs.init(arena, 3);
+        pass_node.Outputs.init(arena, 1);
+
+        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
+        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = shared_rt.Name, .BindingInputKeyName = "sharedRTAsTex", .Type = RenderGraphResourceType::TEXTURE});
+
+        // pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = gbuffer_albedo.Name});
+        // pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = gbuffer_specular.Name});
+        // pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = gbuffer_normals.Name});
+        // pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = gbuffer_position.Name});
+
+        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
+
+        res_builder->CreateRenderPassNode(pass_node);
+    }
+
+    void CompositePass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
+    {
+        CHECK_AND_ESCAPE_NULL(output_pass)
+
+        if (output_pass && !(*output_pass))
+        {
+            auto pass_spec = pass_builder->SetPipelineName("Composite-Pipeline").SetInputBindingCount(0).EnablePipelineDepthTest(true).UseShader("composite").Detach();
+            *output_pass   = device->CreateRenderPass(pass_spec);
+            (*output_pass)->Bake();
+        }
+
+        (*output_pass)->SetInput("LinearWrapSampler", device->GlobalLinearWrapSamplerImageInfo);
+        (*output_pass)->Verify();
+    }
+
+    void CompositePass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
+    {
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
+        {
+            uint32_t w = pass->GetRenderAreaWidth();
+            uint32_t h = pass->GetRenderAreaHeight();
+            command_buffer->SetViewport(w, h);
+            command_buffer->SetScissor(w, h);
+        }
+        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
+        command_buffer->Draw(3, 1, 0, 0);
+        command_buffer->EndRenderPass();
     }
 } // namespace ZEngine::Rendering::Renderers

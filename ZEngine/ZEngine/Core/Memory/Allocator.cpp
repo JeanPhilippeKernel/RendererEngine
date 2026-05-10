@@ -84,12 +84,12 @@ namespace ZEngine::Core::Memory
     void ArenaAllocator::CreateSubArena(size_t size, ArenaAllocator* out_arena)
     {
         out_arena->m_memory                  = reinterpret_cast<uint8_t*>(Allocate(size));
-        out_arena->m_initial_previous_offset = m_previous_offset;
-        out_arena->m_initial_current_offset  = m_previous_offset;
+        out_arena->m_initial_previous_offset = 0;
+        out_arena->m_initial_current_offset  = 0;
 
-        out_arena->m_previous_offset         = out_arena->m_initial_previous_offset;
-        out_arena->m_current_offset          = out_arena->m_initial_current_offset;
-        out_arena->m_total_size              = m_previous_offset + size;
+        out_arena->m_previous_offset         = 0;
+        out_arena->m_current_offset          = 0;
+        out_arena->m_total_size              = size;
     }
 
     ArenaTemp BeginTempArena(ArenaAllocator* arena)

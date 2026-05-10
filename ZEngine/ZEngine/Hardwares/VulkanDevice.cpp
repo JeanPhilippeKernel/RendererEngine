@@ -435,27 +435,46 @@ namespace ZEngine::Hardwares
         /*
          * Creating Global Descriptor Pool for : Textures, Samplers
          */
-        VkSamplerCreateInfo sampler_create_info     = {};
-        sampler_create_info.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        sampler_create_info.minFilter               = VK_FILTER_LINEAR;
-        sampler_create_info.magFilter               = VK_FILTER_LINEAR;
-        sampler_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_create_info.anisotropyEnable        = PhysicalDeviceFeature.features.samplerAnisotropy;
-        sampler_create_info.maxAnisotropy           = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.properties.limits.maxSamplerAnisotropy : 1.0f;
-        sampler_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-        sampler_create_info.unnormalizedCoordinates = VK_FALSE;
-        sampler_create_info.compareEnable           = VK_FALSE;
-        sampler_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        sampler_create_info.mipLodBias              = 0.0f;
-        sampler_create_info.minLod                  = 0.0f;
-        sampler_create_info.maxLod                  = VK_LOD_CLAMP_NONE;
+        VkSamplerCreateInfo linear_sampler_create_info                   = {};
+        linear_sampler_create_info.sType                                 = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        linear_sampler_create_info.minFilter                             = VK_FILTER_LINEAR;
+        linear_sampler_create_info.magFilter                             = VK_FILTER_LINEAR;
+        linear_sampler_create_info.addressModeU                          = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        linear_sampler_create_info.addressModeV                          = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        linear_sampler_create_info.addressModeW                          = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        linear_sampler_create_info.anisotropyEnable                      = PhysicalDeviceFeature.features.samplerAnisotropy;
+        linear_sampler_create_info.maxAnisotropy                         = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.properties.limits.maxSamplerAnisotropy : 1.0f;
+        linear_sampler_create_info.borderColor                           = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        linear_sampler_create_info.unnormalizedCoordinates               = VK_FALSE;
+        linear_sampler_create_info.compareEnable                         = VK_FALSE;
+        linear_sampler_create_info.mipmapMode                            = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        linear_sampler_create_info.mipLodBias                            = 0.0f;
+        linear_sampler_create_info.minLod                                = 0.0f;
+        linear_sampler_create_info.maxLod                                = VK_LOD_CLAMP_NONE;
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(LogicalDevice, &sampler_create_info, nullptr, &GlobalLinearWrapSampler) == VK_SUCCESS, "Failed to create Texture Sampler")
+        VkSamplerCreateInfo linear_sampler_clamp_to_edge_create_info     = {};
+        linear_sampler_clamp_to_edge_create_info.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        linear_sampler_clamp_to_edge_create_info.minFilter               = VK_FILTER_LINEAR;
+        linear_sampler_clamp_to_edge_create_info.magFilter               = VK_FILTER_LINEAR;
+        linear_sampler_clamp_to_edge_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        linear_sampler_clamp_to_edge_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        linear_sampler_clamp_to_edge_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        linear_sampler_clamp_to_edge_create_info.anisotropyEnable        = VK_FALSE;
+        linear_sampler_clamp_to_edge_create_info.maxAnisotropy           = 1.0f;
+        linear_sampler_clamp_to_edge_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        linear_sampler_clamp_to_edge_create_info.unnormalizedCoordinates = VK_FALSE;
+        linear_sampler_clamp_to_edge_create_info.compareEnable           = VK_FALSE;
+        linear_sampler_clamp_to_edge_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        linear_sampler_clamp_to_edge_create_info.mipLodBias              = 0.0f;
+        linear_sampler_clamp_to_edge_create_info.minLod                  = 0.0f;
+        linear_sampler_clamp_to_edge_create_info.maxLod                  = VK_LOD_CLAMP_NONE;
 
-        GlobalLinearWrapSamplerImageInfo = VkDescriptorImageInfo{.sampler = GlobalLinearWrapSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
-        MaxGlobalTexture                 = std::min(MaxGlobalTexture, PhysicalDeviceVulkan12Properties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
+        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(LogicalDevice, &linear_sampler_create_info, nullptr, &GlobalLinearWrapSampler) == VK_SUCCESS, "Failed to create Texture Sampler")
+        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(LogicalDevice, &linear_sampler_clamp_to_edge_create_info, nullptr, &GlobalLinearClampToEdgeSampler) == VK_SUCCESS, "Failed to create Texture Sampler")
+
+        GlobalLinearWrapSamplerImageInfo        = VkDescriptorImageInfo{.sampler = GlobalLinearWrapSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        GlobalLinearClampToEdgeSamplerImageInfo = VkDescriptorImageInfo{.sampler = GlobalLinearClampToEdgeSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        MaxGlobalTexture                        = std::min(MaxGlobalTexture, PhysicalDeviceVulkan12Properties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
 
         GlobalTextures.Initialize(Arena, MaxGlobalTexture);
         Image2DBufferManager.Initialize(Arena, MaxGlobalTexture);
@@ -618,12 +637,14 @@ namespace ZEngine::Hardwares
             __createDebugMessengerPtr  = nullptr;
         }
         vkDestroySampler(LogicalDevice, GlobalLinearWrapSampler, nullptr);
+        vkDestroySampler(LogicalDevice, GlobalLinearClampToEdgeSampler, nullptr);
         vkDestroyDevice(LogicalDevice, nullptr);
         vkDestroyInstance(Instance, nullptr);
 
-        GlobalLinearWrapSampler = VK_NULL_HANDLE;
-        LogicalDevice           = VK_NULL_HANDLE;
-        Instance                = VK_NULL_HANDLE;
+        GlobalLinearWrapSampler        = VK_NULL_HANDLE;
+        GlobalLinearClampToEdgeSampler = VK_NULL_HANDLE;
+        LogicalDevice                  = VK_NULL_HANDLE;
+        Instance                       = VK_NULL_HANDLE;
     }
 
     void VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_semaphore)
@@ -1366,12 +1387,18 @@ namespace ZEngine::Hardwares
 
             if (std::filesystem::exists(vertex_file))
             {
-                spec.VertexFilename = vertex_file.c_str();
+                                auto name_c_size = (vertex_file.size() + 1u);
+                auto name_c_str  = ZPushString(Arena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, vertex_file.c_str());
+                spec.VertexFilename = name_c_str;
             }
 
             if (std::filesystem::exists(fragment_file))
             {
-                spec.FragmentFilename = fragment_file.c_str();
+                                                auto name_c_size = (fragment_file.size() + 1u);
+                auto name_c_str  = ZPushString(Arena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, fragment_file.c_str());
+                spec.FragmentFilename = name_c_str;
             }
 
             shader->Initialize(this, spec);
@@ -1618,10 +1645,16 @@ namespace ZEngine::Hardwares
             // We're safe to use index as Set
             for (uint32_t i = 0; i < set_layout.size(); ++i)
             {
-                frame_sets.push(descriptor_set_map.at(i)[frame_index]);
+                if (descriptor_set_map.contains(i))
+                {
+                    frame_sets.push(descriptor_set_map.at(i)[frame_index]);
+                }
             }
 
-            vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, frame_sets.size(), frame_sets.data(), 0, nullptr);
+            if(!frame_sets.empty())
+            {
+                vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, frame_sets.size(), frame_sets.data(), 0, nullptr);
+            }
             ZReleaseScratch(scratch);
         }
     }

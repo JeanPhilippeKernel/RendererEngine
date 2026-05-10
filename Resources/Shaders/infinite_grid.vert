@@ -13,9 +13,9 @@ Camera;
 
 void main()
 {
-    scaleFactor   = 50.0;
+    scaleFactor   = 1000.0f;
+    vec3 worldPos = pos + vec3(Camera.Position.x, 0.0, Camera.Position.z);
 
-    vec3 posScale = pos * scaleFactor;
-    uv            = posScale.xz;
-    gl_Position   = Camera.Projection * Camera.View * vec4(posScale, 1.0);
+    uv            = worldPos.xz;
+    gl_Position   = Camera.Projection * Camera.View * vec4(worldPos, 1.0);
 }

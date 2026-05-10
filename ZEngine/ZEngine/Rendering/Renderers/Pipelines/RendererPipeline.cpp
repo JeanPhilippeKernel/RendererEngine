@@ -123,14 +123,34 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         color_blend_attachment_states.init(scratch.Arena, attachment_count, attachment_count);
         for (uint32_t i = 0; i < attachment_count; ++i)
         {
-            color_blend_attachment_states[i].colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            color_blend_attachment_states[i].blendEnable         = Specification.EnableBlending ? VK_TRUE : VK_FALSE;
-            color_blend_attachment_states[i].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            color_blend_attachment_states[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            color_blend_attachment_states[i].colorBlendOp        = VK_BLEND_OP_ADD;
-            color_blend_attachment_states[i].srcAlphaBlendFactor = Specification.EnableBlending ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE;
-            color_blend_attachment_states[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-            color_blend_attachment_states[i].alphaBlendOp        = VK_BLEND_OP_ADD;
+            color_blend_attachment_states[i].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+            if (Specification.EnableBlending)
+            {
+                color_blend_attachment_states[i].blendEnable         = VK_TRUE;
+
+                // todo (jpkernel): those config should be expose at the pass builder level
+                // Color: Standard Alpha Blending
+                color_blend_attachment_states[i].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+                color_blend_attachment_states[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                color_blend_attachment_states[i].colorBlendOp        = VK_BLEND_OP_ADD;
+
+                // Alpha: Accumulate opaqueness
+                color_blend_attachment_states[i].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+                color_blend_attachment_states[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                color_blend_attachment_states[i].alphaBlendOp        = VK_BLEND_OP_ADD;
+            }
+            else
+            {
+                color_blend_attachment_states[i].blendEnable         = VK_FALSE;
+                // Standard "Opaque" settings
+                color_blend_attachment_states[i].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+                color_blend_attachment_states[i].dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+                color_blend_attachment_states[i].colorBlendOp        = VK_BLEND_OP_ADD;
+                color_blend_attachment_states[i].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+                color_blend_attachment_states[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+                color_blend_attachment_states[i].alphaBlendOp        = VK_BLEND_OP_ADD;
+            }
         }
 
         VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {};

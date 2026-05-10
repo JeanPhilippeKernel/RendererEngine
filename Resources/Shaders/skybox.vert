@@ -14,6 +14,8 @@ void main()
 {
     dir               = pos; // normalize(vec3(pos.x, -pos.y, pos.z));
     mat4 rotScaleView = mat4(mat3(Camera.View));
-    vec4 position     = Camera.Projection * rotScaleView * vec4(pos, 1.0f);
-    gl_Position       = vec4(position.xy, position.w, position.w); // position.xyww;
+
+    vec4 position     = Camera.Projection * rotScaleView * vec4(pos * 10.0f, 1.0f);
+
+    gl_Position       = position.xyww;
 }

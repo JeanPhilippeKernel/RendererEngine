@@ -2,6 +2,7 @@
 #include <Buffers/Framebuffer.h>
 #include <Core/Containers/Array.h>
 #include <Core/Containers/UnorderedHashMap.h>
+#include <Core/Containers/UnorderedHashSet.h>
 #include <Hardwares/VulkanDevice.h>
 #include <Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <Rendering/Scenes/GraphicScene.h>
@@ -88,12 +89,12 @@ namespace ZEngine::Rendering::Renderers
 
     struct RenderGraphNode
     {
-        bool                             Enabled       = true;
-        RenderGraphRenderPassCreation    Creation      = {};
-        Core::Containers::Array<cstring> EdgeNodes     = {};
-        ZRawPtr(RenderPasses::RenderPass) Handle       = nullptr;
-        ZRawPtr(Buffers::FramebufferVNext) Framebuffer = nullptr;
-        IRenderGraphCallbackPassPtr CallbackPass       = nullptr;
+        bool                                        Enabled   = true;
+        RenderGraphRenderPassCreation               Creation  = {};
+        Core::Containers::UnorderedHashSet<cstring> EdgeNodes = {};
+        RenderPasses::RenderPassPtr                 Handle    = nullptr;
+        ZRawPtr(Buffers::FramebufferVNext) Framebuffer        = nullptr;
+        IRenderGraphCallbackPassPtr CallbackPass              = nullptr;
     };
 
     struct RenderGraph

@@ -102,25 +102,25 @@ namespace ZEngine::Rendering::Cameras
     ZEngine::Core::Maths::Mat4f PerspectiveCamera::GetPerspectiveMatrix() const
     {
         /*
-         * Ref : https://johannesugb.github.io/gpu-programming/why-do-opengl-proj-matrices-fail-in-vulkan/
-         * Unlike the article, for our implementation we decided to use have the y-axis Up.
          * For future Gfx API we may want to revisit/adapt it.
          */
-        ZEngine::Core::Maths::Mat4f I              = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
-        I[2][2]                                    = -1;
-
-        float                       inv_a          = m_viewport_height / m_viewport_width;
-        float                       tan_half_fov   = ZEngine::Core::Maths::tan(Fov / 2);
+        float                       a              = m_viewport_width / m_viewport_height;
+        float                       tan_half_fov   = ZEngine::Core::Maths::tan(Fov / 2.0f);
         float                       far_minus_near = ClipFar - ClipNear;
 
-        ZEngine::Core::Maths::Mat4f P(ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>());
-        P[0][0] = (inv_a / tan_half_fov);
-        P[1][1] = (1.0f / tan_half_fov);
+        ZEngine::Core::Maths::Mat4f P{};
+        P[0][0] = 1.0f / (a * tan_half_fov);
+
+        // Y scale (Vulkan Y is Down, so we use a negative here to keep Y-Up in world space)
+        P[1][1] = (-1.0f / tan_half_fov);
+
         P[2][2] = (ClipFar / far_minus_near);
-        P[2][3] = 1;
+
+        P[2][3] = 1.0f;
+
         P[3][2] = (-(ClipFar * ClipNear) / far_minus_near);
 
-        return P * I;
+        return P;
     }
 
     ZEngine::Core::Maths::Vec3f PerspectiveCamera::GetPosition() const

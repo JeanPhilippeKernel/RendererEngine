@@ -57,13 +57,16 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Renderer Passes
          */
+        auto base_pass           = ZPushStructCtor(Device->Arena, BasePass);
         auto upload_pass         = ZPushStructCtor(Device->Arena, UploadPass);
         auto scene_depth_prepass = ZPushStructCtor(Device->Arena, DepthPrePass);
         auto skybox_pass         = ZPushStructCtor(Device->Arena, SkyboxPass);
         auto grid_pass           = ZPushStructCtor(Device->Arena, GridPass);
         auto gbuffer_pass        = ZPushStructCtor(Device->Arena, GbufferPass);
         auto lighting_pass       = ZPushStructCtor(Device->Arena, LightingPass);
+        auto composite_pass      = ZPushStructCtor(Device->Arena, CompositePass);
 
+        // FrameSharedRenderTarget  = Device->CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
         FrameColorRenderTarget   = Device->CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
         FrameDepthRenderTarget   = Device->CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
 
@@ -73,6 +76,7 @@ namespace ZEngine::Rendering::Renderers
          */
         RenderGraph->Initialize(Device, RenderSceneData);
 
+        // RenderGraph->ResourceBuilder->AttachRenderTarget(RendererResourceName::FrameSharedRenderTargetName, FrameSharedRenderTarget);
         RenderGraph->ResourceBuilder->AttachRenderTarget(RendererResourceName::FrameDepthRenderTargetName, FrameDepthRenderTarget);
         RenderGraph->ResourceBuilder->AttachRenderTarget(RendererResourceName::FrameColorRenderTargetName, FrameColorRenderTarget);
 
@@ -81,11 +85,13 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_spot_light_buffer");
 
         RenderGraph->AddCallbackPass("Upload Pass", upload_pass);
+        RenderGraph->AddCallbackPass("Base Pass", base_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         //  RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         //      RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
+        // RenderGraph->AddCallbackPass("Composite Pass", composite_pass);
 
         RenderGraph->Setup();
         RenderGraph->Compile();
