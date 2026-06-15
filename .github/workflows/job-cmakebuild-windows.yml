@@ -18,7 +18,7 @@ on:
 jobs:
   cmake-build:
     name: cmake-build-windows-${{ inputs.configuration }}
-    runs-on: windows-2025
+    runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
