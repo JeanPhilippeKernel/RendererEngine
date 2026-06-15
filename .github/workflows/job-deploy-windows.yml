@@ -15,7 +15,7 @@ on:
 jobs:
   deploy:
     name: deploy-windows-x64-${{ inputs.configuration }}
-    runs-on: windows-2025
+    runs-on: windows-latest
     steps:
       - uses: actions/download-artifact@v6
         with:

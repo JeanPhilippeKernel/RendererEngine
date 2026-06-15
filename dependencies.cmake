@@ -55,7 +55,7 @@ FetchContent_Declare(
   assimp
   GIT_REPOSITORY https://github.com/assimp/assimp.git
   GIT_SHALLOW TRUE
-   
+  GIT_TAG v6.0.5
   )
 
 FetchContent_Declare(
@@ -188,6 +188,21 @@ FetchContent_MakeAvailable(
   glslang
   GTest
   )
+
+foreach(_spirv_target IN ITEMS
+    SPIRV-Tools SPIRV-Tools-static SPIRV-Tools-shared
+    SPIRV-Tools-opt SPIRV-Tools-reduce SPIRV-Tools-link
+    SPIRV-Tools-lint SPIRV-Tools-diff SPIRV-Tools-fuzz
+    spirv-val spirv-opt spirv-dis spirv-as spirv-cfg)
+
+    if(TARGET ${_spirv_target})
+        get_target_property(_real ${_spirv_target} ALIASED_TARGET)
+        if(NOT _real)
+            set(_real ${_spirv_target})
+        endif()
+        set_target_properties(${_real} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+    endif()
+endforeach()
 
 set(IMGUIDIR ${FETCHCONTENT_BASE_DIR}/imgui)
 

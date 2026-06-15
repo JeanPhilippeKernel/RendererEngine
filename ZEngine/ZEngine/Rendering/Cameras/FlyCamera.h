@@ -13,26 +13,26 @@ namespace ZEngine::Rendering::Cameras
         FlyCamera() = default;
         FlyCamera(float aspectRatio, CameraSetting settings = {});
 
-        CameraSetting              Settings = {};
+        CameraSetting                       Settings = {};
 
-        void                       OnUpdate(float dt);
+        void                                OnUpdate(float dt);
 
-        void                       OnMouseMove(float deltaX, float deltaY);
-        void                       OnMouseScroll(float delta, float mouseX, float mouseY);
-        void                       OnMouseButtonDown(int button);
-        void                       OnMouseButtonUp(int button);
-        void                       OnKeyDown(int key);
-        void                       OnKeyUp(int key);
+        void                                OnMouseMove(float deltaX, float deltaY);
+        void                                OnMouseScroll(float delta, float mouseX, float mouseY);
+        void                                OnMouseButtonDown(int button);
+        void                                OnMouseButtonUp(int button);
+        void                                OnKeyDown(int key);
+        void                                OnKeyUp(int key);
 
-        void                       FocusOn(Core::Maths::Vec3f center, float radius);
-        void                       FocusOn(Core::Maths::Vec3f point);
+        void                                FocusOn(Core::Maths::Vec3f center, float radius);
+        void                                FocusOn(Core::Maths::Vec3f point);
 
-        void                       SetViewportSize(float width, float height);
+        void                                SetViewportSize(float width, float height);
 
-        void                       SetPosition(Core::Maths::Vec3f position);
-        void                       SetOrientation(float pitchDeg, float yawDeg);
+        void                                SetPosition(Core::Maths::Vec3f position);
+        void                                SetOrientation(float pitchDeg, float yawDeg);
 
-        virtual Core::Maths::Vec3f GetPosition() const override;
+        virtual Core::Maths::Vec3f          GetPosition() const override;
         virtual ZEngine::Core::Maths::Vec3f GetForward() override;
         virtual ZEngine::Core::Maths::Vec3f GetUp() override;
         virtual ZEngine::Core::Maths::Vec3f GetRight() override;

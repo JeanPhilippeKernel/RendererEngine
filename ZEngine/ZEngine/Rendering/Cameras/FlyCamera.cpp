@@ -33,7 +33,7 @@ namespace ZEngine::Rendering::Cameras
     {
         return Position;
     }
-    
+
     Vec3f FlyCamera::GetForward()
     {
         return rotate(GetOrientation(), Vec3f(0.0f, 0.0f, -1.0f));

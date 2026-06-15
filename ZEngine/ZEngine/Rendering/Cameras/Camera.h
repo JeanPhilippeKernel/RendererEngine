@@ -60,7 +60,7 @@ namespace ZEngine::Rendering::Cameras
         {
             return View;
         }
-        
+
         virtual const ZEngine::Core::Maths::Mat4f& GetProjection() const
         {
             return Projection;

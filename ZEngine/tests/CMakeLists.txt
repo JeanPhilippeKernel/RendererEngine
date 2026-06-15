@@ -18,6 +18,13 @@ set_target_properties(ZEngineTests PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREF
 install(TARGETS ZEngineTests 
     RUNTIME DESTINATION tests)
 
+if(APPLE)
+    add_custom_command(TARGET ZEngineTests POST_BUILD
+        COMMAND codesign --force --sign - $<TARGET_FILE:ZEngineTests>
+        COMMENT "Ad-hoc signing ZEngineTests"
+    )
+endif()
+
 if(BUILD_TESTING)
     include(GoogleTest)
     gtest_discover_tests(ZEngineTests)
