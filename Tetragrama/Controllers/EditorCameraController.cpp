@@ -13,6 +13,6 @@ namespace Tetragrama::Controllers
         m_controller_type     = ZEngine::Controllers::CameraControllerType::PERSPECTIVE_CONTROLLER;
 
         const auto& win_props = m_window->GetWindowProperty();
-        m_camera              = ZPushStructCtorArgs(arena, FlyCamera, win_props.AspectRatio);
+        m_camera              = ZPushStructCtorArgs(arena, FlyCamera, win_props.AspectRatio, CameraSetting{});
     }
 } // namespace Tetragrama::Controllers

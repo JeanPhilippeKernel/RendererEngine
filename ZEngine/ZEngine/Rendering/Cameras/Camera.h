@@ -33,48 +33,46 @@ namespace ZEngine::Rendering::Cameras
 
     struct Camera
     {
-        CameraType                                 Type           = CameraType::UNDEFINED;
+        Camera()                                                    = default;
+        virtual ~Camera()                                           = default;
 
-        float                                      AspectRatio    = 16.0f / 9.0f;
-        float                                      Pitch          = 0.0f;
-        float                                      Yaw            = 0.0f;
+        CameraType                                      Type        = CameraType::UNDEFINED;
+        CameraMode                                      Mode        = CameraMode::Free;
+
+        float                                           AspectRatio = 16.0f / 9.0f;
+        float                                           Pitch       = 0.0f;
+        float                                           Yaw         = 0.0f;
         /*
          * Coordinate Vectors
          */
-        ZEngine::Core::Maths::Vec3f                Position       = {0.0f, 5.f, 10.0f};
-        ZEngine::Core::Maths::Vec3f                Up             = {0.0f, 1.0f, 0.0f};
-        const ZEngine::Core::Maths::Vec3f          WorldUp        = {0.0f, 1.0f, 0.0f};
-        ZEngine::Core::Maths::Vec3f                Right          = {0.0f, 0.0f, 0.0f};
-        ZEngine::Core::Maths::Vec3f                Forward        = {0.0f, 0.0f, 0.0f};
-        ZEngine::Core::Maths::Vec3f                Target         = {0.0f, 0.0f, -1.0f};
-        /*
-         * Matrices
-         */
-        ZEngine::Core::Maths::Mat4f                View           = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
-        ZEngine::Core::Maths::Mat4f                Projection     = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
-        ZEngine::Core::Maths::Mat4f                ViewProjection = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+        inline static const ZEngine::Core::Maths::Vec3f WorldUp     = {0.0f, 1.0f, 0.0f};
 
-        CameraSetting                              Settings       = {};
+        ZEngine::Core::Maths::Vec3f                     Position    = {0.0f, 5.f, 10.0f};
+        ZEngine::Core::Maths::Vec3f                     Target      = {0.0f, 0.0f, -1.0f};
 
-        virtual const ZEngine::Core::Maths::Mat4f& GetView() const
+        CameraSetting                                   Settings    = {};
+
+        virtual const ZEngine::Core::Maths::Mat4f&      GetView() const
         {
             return View;
         }
-
         virtual const ZEngine::Core::Maths::Mat4f& GetProjection() const
         {
             return Projection;
         }
-
         virtual ZEngine::Core::Maths::Mat4f GetViewProjection() const
         {
             return Projection * View;
         }
 
         virtual ZEngine::Core::Maths::Vec3f GetPosition() const = 0;
-        virtual ZEngine::Core::Maths::Vec3f GetForward()        = 0;
-        virtual ZEngine::Core::Maths::Vec3f GetUp()             = 0;
-        virtual ZEngine::Core::Maths::Vec3f GetRight()          = 0;
+        virtual ZEngine::Core::Maths::Vec3f GetForward() const  = 0;
+        virtual ZEngine::Core::Maths::Vec3f GetUp() const       = 0;
+        virtual ZEngine::Core::Maths::Vec3f GetRight() const    = 0;
+
+    protected:
+        ZEngine::Core::Maths::Mat4f View       = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+        ZEngine::Core::Maths::Mat4f Projection = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
     };
     ZDEFINE_PTR(Camera);
 } // namespace ZEngine::Rendering::Cameras

@@ -64,7 +64,7 @@ namespace ZEngine::Rendering::Renderers
         auto grid_pass           = ZPushStructCtor(Device->Arena, GridPass);
         auto gbuffer_pass        = ZPushStructCtor(Device->Arena, GbufferPass);
         auto lighting_pass       = ZPushStructCtor(Device->Arena, LightingPass);
-        auto composite_pass      = ZPushStructCtor(Device->Arena, CompositePass);
+        // auto composite_pass      = ZPushStructCtor(Device->Arena, CompositePass);
 
         // FrameSharedRenderTarget  = Device->CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
         FrameColorRenderTarget   = Device->CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
@@ -91,7 +91,6 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         //  RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         //      RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
-        // RenderGraph->AddCallbackPass("Composite Pass", composite_pass);
 
         RenderGraph->Setup();
         RenderGraph->Compile();

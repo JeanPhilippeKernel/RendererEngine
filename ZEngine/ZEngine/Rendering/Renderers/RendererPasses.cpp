@@ -204,7 +204,7 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        auto env_map_res                            = res_builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k-tt.zenvmap");
+        auto env_map_res                            = res_builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.zenvmap");
 
         m_env_map                                   = env_map_res.ResourceInfo.TextureHandle;
 
@@ -536,64 +536,5 @@ namespace ZEngine::Rendering::Renderers
         // command_buffer->BindDescriptorSets(scene->FrameIndex);
         // command_buffer->DrawIndirect(*indirect_buffer->At(scene->FrameIndex));
         // command_buffer->EndRenderPass();
-    }
-
-    void CompositePass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
-    {
-        auto                          arena     = device->Arena;
-
-        // auto&                         gbuffer_albedo   = res_inspector->GetResource("gbuffer_albedo_render_target");
-        // auto&                         gbuffer_specular = res_inspector->GetResource("gbuffer_specular_render_target");
-        // auto&                         gbuffer_normals  = res_inspector->GetResource("gbuffer_normals_render_target");
-        // auto&                         gbuffer_position = res_inspector->GetResource("gbuffer_position_render_target");
-
-        RenderGraphRenderPassCreation pass_node = {.Name = name};
-
-        const auto&                   shared_rt = res_inspector->GetResource(RendererResourceName::FrameSharedRenderTargetName);
-
-        pass_node.Inputs.init(arena, 3);
-        pass_node.Outputs.init(arena, 1);
-
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = shared_rt.Name, .BindingInputKeyName = "sharedRTAsTex", .Type = RenderGraphResourceType::TEXTURE});
-
-        // pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = gbuffer_albedo.Name});
-        // pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = gbuffer_specular.Name});
-        // pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = gbuffer_normals.Name});
-        // pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = gbuffer_position.Name});
-
-        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-
-        res_builder->CreateRenderPassNode(pass_node);
-    }
-
-    void CompositePass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
-    {
-        CHECK_AND_ESCAPE_NULL(output_pass)
-
-        if (output_pass && !(*output_pass))
-        {
-            auto pass_spec = pass_builder->SetPipelineName("Composite-Pipeline").SetInputBindingCount(0).EnablePipelineDepthTest(true).UseShader("composite").Detach();
-            *output_pass   = device->CreateRenderPass(pass_spec);
-            (*output_pass)->Bake();
-        }
-
-        (*output_pass)->SetInput("LinearWrapSampler", device->GlobalLinearWrapSamplerImageInfo);
-        (*output_pass)->Verify();
-    }
-
-    void CompositePass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
-    {
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
-        {
-            uint32_t w = pass->GetRenderAreaWidth();
-            uint32_t h = pass->GetRenderAreaHeight();
-            command_buffer->SetViewport(w, h);
-            command_buffer->SetScissor(w, h);
-        }
-        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
-        command_buffer->Draw(3, 1, 0, 0);
-        command_buffer->EndRenderPass();
     }
 } // namespace ZEngine::Rendering::Renderers
