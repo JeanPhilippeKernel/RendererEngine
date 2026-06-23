@@ -47,7 +47,7 @@ namespace Tetragrama
         UILayer                    = ZPushStructCtor(Arena, ImguiLayer);
 
         UILayer->Initialize(Arena, this);
-        editor_cam_controller->Initialize(Arena, CurrentWindow, 150.0, 0.f, 45.f);
+        editor_cam_controller->Initialize(Arena, CurrentWindow);
         editor_scene->Initialize(Arena, Configuration->ActiveSceneName.c_str());
 
         CameraController = editor_cam_controller;

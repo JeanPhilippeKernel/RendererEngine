@@ -7,10 +7,18 @@
 
 namespace ZEngine::Rendering::Specifications
 {
+    enum class RenderPassType
+    {
+        GRAPHIC,
+        COMPUTE,
+        TRANSFER
+    };
+
     struct RenderPassSpecification
     {
         const char*                                                              DebugName               = {};
         bool                                                                     SwapchainAsRenderTarget = false;
+        RenderPassType                                                           Type                    = {RenderPassType::GRAPHIC};
         Specifications::GraphicRendererPipelineSpecification                     PipelineSpecification   = {};
         Core::Containers::Array<Textures::TextureHandle>                         Inputs                  = {};
         Core::Containers::UnorderedHashMap<const char*, Textures::TextureHandle> InputTextures           = {};

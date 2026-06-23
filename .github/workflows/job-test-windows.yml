@@ -12,7 +12,7 @@ on:
 jobs:
   test:
     name: test-windows-${{ inputs.configuration }}
-    runs-on: windows-2025
+    runs-on: windows-latest
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v6

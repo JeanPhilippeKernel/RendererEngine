@@ -104,7 +104,7 @@ namespace Tetragrama::Components
 
         if (m_scene_texture.Valid())
         {
-            ImGui::Image((ImTextureID) m_scene_texture.Index, m_viewport_size, ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image((ImTextureID) m_scene_texture.Index, m_viewport_size, ImVec2(0, 0), ImVec2(1, 1));
         }
         // ViewPort bound computation
         ImVec2 viewport_windows_size  = ImGui::GetWindowSize();

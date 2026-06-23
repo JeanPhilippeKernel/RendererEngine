@@ -620,7 +620,6 @@ namespace ZEngine::Hardwares
                     TextureUploadRequest upload_req = {};
 
                     int                  width = 0, height = 0, channel = 0;
-                    stbi_set_flip_vertically_on_load(1);
 
                     if (file_request.TextureSpec.IsCubemap)
                     {
@@ -698,6 +697,7 @@ namespace ZEngine::Hardwares
                     }
                     else
                     {
+                        stbi_set_flip_vertically_on_load(1);
 
                         stbi_uc* image_data = stbi_load(file_request.Filename.data(), &width, &height, &channel, STBI_rgb_alpha);
                         if (!image_data)

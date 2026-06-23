@@ -5,10 +5,10 @@ namespace ZEngine::Rendering::Cameras
 {
     void PerspectiveCamera::Initialize(float field_of_view, float aspect_ratio, float clip_near, float clip_far, float yaw_rad, float pitch_rad)
     {
-        Fov           = ZEngine::Core::Maths::radians(field_of_view);
+        // Fov           = ZEngine::Core::Maths::radians(field_of_view);
         AspectRatio   = aspect_ratio;
-        ClipNear      = clip_near;
-        ClipFar       = clip_far;
+        // ClipNear      = clip_near;
+        // ClipFar       = clip_far;
         Target        = {0.f, 0.f, 0.f};
         Type          = CameraType::PERSPECTIVE;
         m_yaw_angle   = yaw_rad;
@@ -64,7 +64,7 @@ namespace ZEngine::Rendering::Cameras
         speed           = std::min(speed, 100.0f);
 
         m_distance     -= delta * speed;
-        m_distance      = ZEngine::Core::Maths::clamp(static_cast<float>(m_distance), 3.0f, ClipFar);
+        // m_distance      = ZEngine::Core::Maths::clamp(static_cast<float>(m_distance), 3.0f, ClipFar);
     }
 
     void PerspectiveCamera::SetDistance(double distance)
@@ -90,38 +90,38 @@ namespace ZEngine::Rendering::Cameras
         m_viewport_height = height;
     }
 
-    ZEngine::Core::Maths::Mat4f PerspectiveCamera::GetViewMatrix()
-    {
-        Position                                = Target - GetForward() * static_cast<float>(m_distance);
-        auto                        orientation = GetOrientation();
-        ZEngine::Core::Maths::Mat4f view        = ZEngine::Core::Maths::translate(ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>(), Position) * ZEngine::Core::Maths::quaternionToMat4(orientation);
-        view                                    = view.Inverse();
-        return view;
-    }
+    // ZEngine::Core::Maths::Mat4f PerspectiveCamera::GetViewMatrix()
+    //{
+    //     Position                                = Target - GetForward() * static_cast<float>(m_distance);
+    //     auto                        orientation = GetOrientation();
+    //     ZEngine::Core::Maths::Mat4f view        = ZEngine::Core::Maths::translate(ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>(), Position) * ZEngine::Core::Maths::quaternionToMat4(orientation);
+    //     view                                    = view.Inverse();
+    //     return view;
+    // }
 
-    ZEngine::Core::Maths::Mat4f PerspectiveCamera::GetPerspectiveMatrix() const
-    {
-        /*
-         * Ref : https://johannesugb.github.io/gpu-programming/why-do-opengl-proj-matrices-fail-in-vulkan/
-         * Unlike the article, for our implementation we decided to use have the y-axis Up.
-         * For future Gfx API we may want to revisit/adapt it.
-         */
-        ZEngine::Core::Maths::Mat4f I              = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
-        I[2][2]                                    = -1;
+    // ZEngine::Core::Maths::Mat4f PerspectiveCamera::GetPerspectiveMatrix() const
+    //{
+    //     /*
+    //      * For future Gfx API we may want to revisit/adapt it.
+    //      */
+    //     //float                       a = m_viewport_width / m_viewport_height;
+    //     // float                       tan_half_fov   = ZEngine::Core::Maths::tan(Fov / 2.0f);
+    //     // float                       far_minus_near = ClipFar - ClipNear;
 
-        float                       inv_a          = m_viewport_height / m_viewport_width;
-        float                       tan_half_fov   = ZEngine::Core::Maths::tan(Fov / 2);
-        float                       far_minus_near = ClipFar - ClipNear;
+    //    ZEngine::Core::Maths::Mat4f P{};
+    //    // P[0][0] = 1.0f / (a * tan_half_fov);
 
-        ZEngine::Core::Maths::Mat4f P(ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>());
-        P[0][0] = (inv_a / tan_half_fov);
-        P[1][1] = (1.0f / tan_half_fov);
-        P[2][2] = (ClipFar / far_minus_near);
-        P[2][3] = 1;
-        P[3][2] = (-(ClipFar * ClipNear) / far_minus_near);
+    //    // Y scale (Vulkan Y is Down, so we use a negative here to keep Y-Up in world space)
+    //    // P[1][1] = (-1.0f / tan_half_fov);
 
-        return P * I;
-    }
+    //    // P[2][2] = (ClipFar / far_minus_near);
+
+    //    P[2][3] = 1.0f;
+
+    //    // P[3][2] = (-(ClipFar * ClipNear) / far_minus_near);
+
+    //    return P;
+    //}
 
     ZEngine::Core::Maths::Vec3f PerspectiveCamera::GetPosition() const
     {

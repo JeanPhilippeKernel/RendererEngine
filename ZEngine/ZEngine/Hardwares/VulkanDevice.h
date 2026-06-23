@@ -609,9 +609,11 @@ namespace ZEngine::Hardwares
         VkPhysicalDeviceFeatures2                                                                                                    PhysicalDeviceFeature                       = {};
         VkPhysicalDeviceMemoryProperties                                                                                             PhysicalDeviceMemoryProperties              = {};
         VkSampler                                                                                                                    GlobalLinearWrapSampler                     = VK_NULL_HANDLE;
+        VkSampler                                                                                                                    GlobalLinearClampToEdgeSampler              = VK_NULL_HANDLE;
         VkDescriptorPool                                                                                                             GlobalDescriptorPoolHandle                  = VK_NULL_HANDLE;
         VmaAllocator                                                                                                                 VmaAllocatorValue                           = nullptr;
         VkDescriptorImageInfo                                                                                                        GlobalLinearWrapSamplerImageInfo            = {};
+        VkDescriptorImageInfo                                                                                                        GlobalLinearClampToEdgeSamplerImageInfo     = {};
         CommandBufferManagerPtr                                                                                                      CommandBufferMgr                            = {};
         DeviceSwapchainPtr                                                                                                           SwapchainPtr                                = {};
         Core::Containers::Array<VkFormat>                                                                                            DefaultDepthFormats                         = {};

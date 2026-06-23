@@ -28,6 +28,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         uint32_t                                RenderAreaWidth  = 0;
         uint32_t                                RenderAreaHeight = 0;
+
         Specifications::RenderPassSpecification Specification    = {};
         std::set<std::string>                   Inputs           = {};
         Core::Containers::Array<uint32_t>       RenderTargets    = {};
@@ -57,6 +58,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         bool                     m_perform_update{false};
         Hardwares::VulkanDevice* m_device;
     };
+    ZDEFINE_PTR(RenderPass);
 
     struct RenderPassBuilder
     {
@@ -72,6 +74,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder&                      PipelineDepthCompareOp(uint32_t value);
         RenderPassBuilder&                      SetShaderOverloadMaxSet(uint32_t count);
         RenderPassBuilder&                      SetOverloadPoolSize(uint32_t count);
+        RenderPassBuilder&                      SetCullMode(uint32_t);
 
         RenderPassBuilder&                      SetInputBindingCount(uint32_t count);
         RenderPassBuilder&                      SetStride(uint32_t input_binding_index, uint32_t value);

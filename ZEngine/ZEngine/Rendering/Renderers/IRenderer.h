@@ -48,10 +48,11 @@ namespace ZEngine::Rendering::Renderers
 
     struct RendererResourceName
     {
-        inline static cstring FrameDepthRenderTargetName = "g_frame_depth_render_target";
-        inline static cstring FrameColorRenderTargetName = "g_frame_color_render_target";
+        inline static cstring FrameDepthRenderTargetName  = "g_frame_depth_render_target";
+        inline static cstring FrameSharedRenderTargetName = "g_frame_shared_render_target";
+        inline static cstring FrameColorRenderTargetName  = "g_frame_color_render_target";
 
-        inline static cstring SceneCameraBufferName      = "SceneCamera";
+        inline static cstring SceneCameraBufferName       = "SceneCamera";
     };
 
     struct IRenderer

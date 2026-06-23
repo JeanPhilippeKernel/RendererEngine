@@ -73,7 +73,7 @@ namespace ZEngine::Windows::Events
     class MouseButtonMovedEvent : public MouseEvent
     {
     public:
-        MouseButtonMovedEvent(double xpos, double ypos) : m_xpos(xpos), m_ypos(ypos) {}
+        MouseButtonMovedEvent(double xpos, double ypos, double xoffset, double yoffset) : m_xpos(xpos), m_ypos(ypos), m_xoffset(xoffset), m_yoffset(yoffset) {}
 
         double GetPosX() const
         {
@@ -83,6 +83,16 @@ namespace ZEngine::Windows::Events
         double GetPosY() const
         {
             return m_ypos;
+        }
+
+        double GetXOffset() const
+        {
+            return m_xoffset;
+        }
+
+        double GetYOffset() const
+        {
+            return m_yoffset;
         }
 
         EVENT_TYPE(MouseMoved)
@@ -105,6 +115,8 @@ namespace ZEngine::Windows::Events
     private:
         double m_xpos{0};
         double m_ypos{0};
+        double m_xoffset{0};
+        double m_yoffset{0};
     };
 
     class MouseButtonWheelEvent : public MouseEvent

@@ -37,8 +37,8 @@ namespace ZEngine::Importers
 
             m_is_importing.store(true, std::memory_order_release);
 
-            int width = 0, height = 0, channel = 0;
-            stbi_set_flip_vertically_on_load(1);
+            int          width = 0, height = 0, channel = 0;
+            // stbi_set_flip_vertically_on_load(1);
             const float* image_data = stbi_loadf(path.c_str(), &width, &height, &channel, 4);
 
             if (!image_data)

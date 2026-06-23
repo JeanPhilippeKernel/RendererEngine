@@ -43,7 +43,7 @@ param (
 
     [Parameter(HelpMessage = "VS version use to build, default to 2022")]
     [ValidateSet('2022', '2026')]
-    [int] $VsVersion = 2022,
+    [int] $VsVersion = 2026,
 
     [Parameter(HelpMessage = "Build Launcher only")]
     [switch] $LauncherOnly
