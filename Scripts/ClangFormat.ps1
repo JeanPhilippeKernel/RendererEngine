@@ -34,7 +34,7 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot Shared.ps1)
 
-$srcFiles = Get-ChildItem -Path $SourceDirectory -Recurse -File | Where-Object { $_.Name -notlike "CMakeLists*" -and $_.Name -notlike "*.json" -and $_.Name -notlike "*.spv"}
+$srcFiles = Get-ChildItem -Path $SourceDirectory -Recurse -File | Where-Object { $_.Name -notlike "CMakeLists*" -and $_.Name -notlike "*.json" -and $_.Name -notlike "*.spv" -and $_.Name -notlike "*.md"}
 
 if ($srcFiles.Count -eq 0) {
     Write-Host "No source files found in the specified directory."
