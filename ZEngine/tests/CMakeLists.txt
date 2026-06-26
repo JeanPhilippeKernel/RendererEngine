@@ -1,6 +1,7 @@
-file ( GLOB TEST_SOURCES 
+file ( GLOB TEST_SOURCES
             Memory/*.cpp
             Containers/*.cpp
+            VFS/*.cpp
             Maths/*.cpp
             Misc/*.cpp)
 

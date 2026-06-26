@@ -1,5 +1,6 @@
 #include <Core/Containers/Strings.h>
 #include <Core/Containers/UnorderedHashSet.h>
+#include <Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
 #include <unordered_set>
 
@@ -11,19 +12,19 @@ class UnorderedHashSetTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        allocator.Initialize(2000);
+        manager.Initialize({.BufferSize = 2000});
     }
     void TearDown() override
     {
-        allocator.Shutdown();
+        manager.Shutdown();
     }
-    ArenaAllocator allocator;
+    MemoryManager manager;
 };
 
 TEST_F(UnorderedHashSetTest, InitialState)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     EXPECT_EQ(set.size(), 0);
     EXPECT_EQ(set.capacity(), 10);
     EXPECT_TRUE(set.empty());
@@ -32,7 +33,7 @@ TEST_F(UnorderedHashSetTest, InitialState)
 TEST_F(UnorderedHashSetTest, InsertAndContains)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.insert(2);
     EXPECT_TRUE(set.contains(1));
@@ -43,7 +44,7 @@ TEST_F(UnorderedHashSetTest, InsertAndContains)
 TEST_F(UnorderedHashSetTest, InsertDuplicateDoesNotGrow)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.insert(1);
     EXPECT_EQ(set.size(), 1);
@@ -52,7 +53,7 @@ TEST_F(UnorderedHashSetTest, InsertDuplicateDoesNotGrow)
 TEST_F(UnorderedHashSetTest, Remove)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.insert(2);
     EXPECT_EQ(set.size(), 2);
@@ -65,7 +66,7 @@ TEST_F(UnorderedHashSetTest, Remove)
 TEST_F(UnorderedHashSetTest, RemoveNonExistentIsNoOp)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.remove(99);
     EXPECT_EQ(set.size(), 1);
@@ -75,7 +76,7 @@ TEST_F(UnorderedHashSetTest, RemoveNonExistentIsNoOp)
 TEST_F(UnorderedHashSetTest, Find)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(42);
     const int* found = set.find(42);
     ASSERT_NE(found, nullptr);
@@ -86,7 +87,7 @@ TEST_F(UnorderedHashSetTest, Find)
 TEST_F(UnorderedHashSetTest, Clear)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.insert(2);
     set.insert(3);
@@ -102,7 +103,7 @@ TEST_F(UnorderedHashSetTest, Clear)
 TEST_F(UnorderedHashSetTest, Resize)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 2);
+    set.init(&manager.MainArena, 2);
     for (int i = 0; i < 10; ++i)
     {
         set.insert(i);
@@ -118,7 +119,7 @@ TEST_F(UnorderedHashSetTest, Resize)
 TEST_F(UnorderedHashSetTest, CollisionHandling)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 2);
+    set.init(&manager.MainArena, 2);
     set.insert(1);
     set.insert(3);
     set.insert(5);
@@ -130,7 +131,7 @@ TEST_F(UnorderedHashSetTest, CollisionHandling)
 TEST_F(UnorderedHashSetTest, Iteration)
 {
     UnorderedHashSet<int> set;
-    set.init(&allocator, 8);
+    set.init(&manager.MainArena, 8);
     set.insert(10);
     set.insert(20);
     set.insert(30);
@@ -148,12 +149,12 @@ TEST_F(UnorderedHashSetTest, Iteration)
 TEST_F(UnorderedHashSetTest, StringKeys)
 {
     UnorderedHashSet<String> set;
-    set.init(&allocator, 8);
+    set.init(&manager.MainArena, 8);
 
     String a, b, c;
-    a.init(&allocator, "alpha");
-    b.init(&allocator, "beta");
-    c.init(&allocator, "gamma");
+    a.init(&manager.MainArena, "alpha");
+    b.init(&manager.MainArena, "beta");
+    c.init(&manager.MainArena, "gamma");
 
     set.insert(a);
     set.insert(b);

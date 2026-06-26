@@ -20,6 +20,33 @@ namespace ZEngine::Core::Containers
         using iterator        = T*;
         using const_iterator  = const T*;
 
+        Array() : m_allocator(nullptr), m_size(0), m_capacity(0), m_data(nullptr) {}
+
+        Array(const Array&)            = default;
+        Array& operator=(const Array&) = default;
+
+        Array(Array&& other) noexcept : m_allocator(other.m_allocator), m_size(other.m_size), m_capacity(other.m_capacity), m_data(other.m_data)
+        {
+            other.m_size     = 0;
+            other.m_capacity = 0;
+            other.m_data     = nullptr;
+        }
+
+        Array& operator=(Array&& other) noexcept
+        {
+            if (this != &other)
+            {
+                m_allocator      = other.m_allocator;
+                m_size           = other.m_size;
+                m_capacity       = other.m_capacity;
+                m_data           = other.m_data;
+                other.m_size     = 0;
+                other.m_capacity = 0;
+                other.m_data     = nullptr;
+            }
+            return *this;
+        }
+
         void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, size_type initial_size)
         {
             m_allocator = allocator;

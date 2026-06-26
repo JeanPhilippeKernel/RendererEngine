@@ -8,15 +8,16 @@ using namespace ZEngine::Core::Memory;
 
 TEST(AllocatorTest, ArenaInit)
 {
-    ArenaAllocator arena{};
-    arena.Initialize(200);
-    arena.Shutdown();
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = 200});
+    manager.Shutdown();
 }
 
 TEST(AllocatorTest, ArenaAllocate)
 {
-    ArenaAllocator arena{};
-    arena.Initialize(200);
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = 200});
+    auto arena = manager.MainArena;
 
     for (int i = 0; i < 10; ++i)
     {
@@ -45,8 +46,7 @@ TEST(AllocatorTest, ArenaAllocate)
         EXPECT_EQ(*x, 123);
         EXPECT_EQ(*f, 987.0f);
     }
-
-    arena.Shutdown();
+    manager.Shutdown();
 }
 
 TEST(AllocatorTest, ArenaStruct)
@@ -58,14 +58,15 @@ TEST(AllocatorTest, ArenaStruct)
         void  Func() {}
     };
 
-    ArenaAllocator a{};
-    a.Initialize(200);
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = 200});
+    auto arena  = &(manager.MainArena);
 
-    auto fooPtr = (Foo*) a.Allocate(sizeof(Foo));
+    auto fooPtr = (Foo*) arena->Allocate(sizeof(Foo));
     fooPtr->x   = 23;
     fooPtr->y   = 100.f;
 
-    a.Shutdown();
+    manager.Shutdown();
     fooPtr = nullptr;
 }
 
@@ -73,7 +74,7 @@ TEST(AllocatorTest, ArenaMemoryManager)
 {
     MemoryManager manager{};
 
-    manager.Initialize(MemoryConfiguration{.DefaultSize = ZKilo(8)});
+    manager.Initialize(MemoryConfiguration{.BufferSize = ZKilo(8)});
 
     struct Foo
     {
@@ -82,14 +83,14 @@ TEST(AllocatorTest, ArenaMemoryManager)
         void  Func() {}
     };
 
-    int* intPtr    = ZPushArray(&(manager.Allocator), int, 1);
-    auto structPtr = ZPushStruct(&(manager.Allocator), Foo);
+    int* intPtr    = ZPushArray(&(manager.MainArena), int, 1);
+    auto structPtr = ZPushStruct(&(manager.MainArena), Foo);
 
     *intPtr        = 12;
     structPtr->x   = 12;
     structPtr->y   = 798.0f;
 
-    char* str      = ZPushString(&(manager.Allocator), 12);
+    char* str      = ZPushString(&(manager.MainArena), 12);
     Helpers::secure_memmove(str, 12, "hello", 5);
 
     EXPECT_EQ(*intPtr, 12);
@@ -97,7 +98,7 @@ TEST(AllocatorTest, ArenaMemoryManager)
     EXPECT_EQ(structPtr->y, 798.0f);
     EXPECT_STREQ(str, "hello");
 
-    manager.Shutdowm();
+    manager.Shutdown();
 }
 
 struct Foo
@@ -120,8 +121,8 @@ void ComPareFoo(ArenaAllocator* arena, const Foo& f)
 TEST(AllocatorTest, ArenaMemoryTemp)
 {
     MemoryManager manager{};
-    manager.Initialize({.DefaultSize = ZKilo(10)});
-    auto arena = &(manager.Allocator);
+    manager.Initialize({.BufferSize = ZKilo(10)});
+    auto arena = &(manager.MainArena);
     {
         auto fooPtr  = ZPushStruct(arena, Foo);
         fooPtr->x    = 10;
@@ -135,14 +136,14 @@ TEST(AllocatorTest, ArenaMemoryTemp)
         EXPECT_EQ(fooPtr->y, 789.f);
         EXPECT_STREQ(fooPtr->name, "Foo::Name");
     }
-    manager.Shutdowm();
+    manager.Shutdown();
 }
 
 TEST(AllocatorTest, ArenaMemoryPool)
 {
     MemoryManager manager{};
-    manager.Initialize({.DefaultSize = ZKilo(10)});
-    auto arena = &(manager.Allocator);
+    manager.Initialize({.BufferSize = ZKilo(10)});
+    auto arena = &(manager.MainArena);
     {
         PoolAllocator pool;
         pool.Initialize(arena, sizeof(Foo) * 100, sizeof(Foo));
@@ -157,5 +158,232 @@ TEST(AllocatorTest, ArenaMemoryPool)
 
         pool.Free(fooPtr);
     }
-    manager.Shutdowm();
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateAlignment)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto arena = &(manager.MainArena);
+
+    for (size_t alignment : {1u, 8u, 16u, 64u})
+    {
+        arena->Clear();
+        void* ptr = arena->Allocate(1, alignment);
+        ASSERT_NE(ptr, nullptr);
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(ptr) % alignment, 0u) << "misaligned for alignment=" << alignment;
+    }
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateZeroesMemory)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto             arena = &(manager.MainArena);
+
+    constexpr size_t sz    = 64;
+    auto*            ptr   = reinterpret_cast<uint8_t*>(arena->Allocate(sz));
+    ASSERT_NE(ptr, nullptr);
+    for (size_t i = 0; i < sz; ++i)
+    {
+        EXPECT_EQ(ptr[i], 0u) << "non-zero byte at index " << i;
+    }
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateOOM)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = 128});
+    auto  arena = &(manager.MainArena);
+
+    void* ptr   = arena->Allocate(256);
+    EXPECT_EQ(ptr, nullptr);
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaResizeSlowPath)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto arena = &(manager.MainArena);
+
+    int* a     = reinterpret_cast<int*>(arena->Allocate(sizeof(int)));
+    int* b     = reinterpret_cast<int*>(arena->Allocate(sizeof(int)));
+    *a         = 42;
+    *b         = 99;
+
+    int* a2    = reinterpret_cast<int*>(arena->Resize(a, sizeof(int), sizeof(int) * 4));
+    ASSERT_NE(a2, nullptr);
+    EXPECT_NE(a2, a);
+    EXPECT_EQ(*a2, 42);
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaResizeInPlaceShrink)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto             arena  = &(manager.MainArena);
+
+    constexpr size_t old_sz = 32;
+    constexpr size_t new_sz = 16;
+    auto*            ptr    = reinterpret_cast<uint8_t*>(arena->Allocate(old_sz));
+    ASSERT_NE(ptr, nullptr);
+
+    auto* ptr2 = reinterpret_cast<uint8_t*>(arena->Resize(ptr, old_sz, new_sz));
+    EXPECT_EQ(ptr2, ptr);
+    for (size_t i = new_sz; i < old_sz; ++i)
+    {
+        EXPECT_EQ(ptr[i], 0u) << "tail byte " << i << " not zeroed after shrink";
+    }
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaResizeNullDelegatesToAllocate)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto  arena = &(manager.MainArena);
+
+    void* ptr   = arena->Resize(nullptr, 0, sizeof(int));
+    EXPECT_NE(ptr, nullptr);
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaShutdownIdempotent)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Shutdown();
+    EXPECT_NO_FATAL_FAILURE(manager.Shutdown());
+}
+
+TEST(AllocatorTest, ArenaSubArenaLifecycle)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(64)});
+    auto           parent = &(manager.MainArena);
+
+    ArenaAllocator sub{};
+    parent->CreateSubArena(ZKilo(4), &sub);
+
+    ASSERT_NE(sub.m_memory, nullptr);
+    EXPECT_TRUE(sub.m_is_sub_arena);
+    EXPECT_EQ(sub.m_total_size, ZKilo(4));
+
+    int* val = reinterpret_cast<int*>(sub.Allocate(sizeof(int)));
+    ASSERT_NE(val, nullptr);
+    *val = 77;
+    EXPECT_EQ(*val, 77);
+
+    sub.Shutdown();
+    EXPECT_EQ(sub.m_memory, nullptr);
+
+    void* after = parent->Allocate(sizeof(int));
+    EXPECT_NE(after, nullptr);
+
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, TempArenaRestoresOffsets)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto arena = &(manager.MainArena);
+
+    arena->Allocate(32);
+    size_t saved_current  = arena->m_current_offset;
+    size_t saved_previous = arena->m_previous_offset;
+
+    {
+        auto scratch = ZGetScratch(arena);
+        arena->Allocate(64);
+        arena->Allocate(128);
+        ZReleaseScratch(scratch);
+    }
+
+    EXPECT_EQ(arena->m_current_offset, saved_current);
+    EXPECT_EQ(arena->m_previous_offset, saved_previous);
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, PoolExhaustion)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto             arena       = &(manager.MainArena);
+
+    constexpr size_t chunk_count = 4;
+    PoolAllocator    pool;
+    pool.Initialize(arena, sizeof(Foo) * chunk_count, sizeof(Foo));
+
+    for (size_t i = 0; i < chunk_count; ++i)
+    {
+        EXPECT_NE(pool.Allocate(), nullptr) << "expected valid slot at i=" << i;
+    }
+    EXPECT_EQ(pool.Allocate(), nullptr) << "expected nullptr on exhausted pool";
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, PoolFreeRestoresSlot)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto          arena = &(manager.MainArena);
+
+    PoolAllocator pool;
+    pool.Initialize(arena, sizeof(Foo) * 2, sizeof(Foo));
+
+    auto* slot = reinterpret_cast<Foo*>(pool.Allocate());
+    ASSERT_NE(slot, nullptr);
+    slot->x = 99;
+    pool.Free(slot);
+
+    auto* reused = reinterpret_cast<Foo*>(pool.Allocate());
+    ASSERT_NE(reused, nullptr);
+    EXPECT_EQ(reused->x, 0);
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, PoolClearResetsAllSlots)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto             arena       = &(manager.MainArena);
+
+    constexpr size_t chunk_count = 8;
+    PoolAllocator    pool;
+    pool.Initialize(arena, sizeof(Foo) * chunk_count, sizeof(Foo));
+
+    for (size_t i = 0; i < chunk_count; ++i)
+    {
+        ASSERT_NE(pool.Allocate(), nullptr);
+    }
+    EXPECT_EQ(pool.Allocate(), nullptr);
+
+    pool.Clear();
+
+    for (size_t i = 0; i < chunk_count; ++i)
+    {
+        EXPECT_NE(pool.Allocate(), nullptr) << "slot " << i << " unavailable after Clear";
+    }
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, PoolChunkSizeAlignedUp)
+{
+    MemoryManager manager{};
+    manager.Initialize({.BufferSize = ZKilo(4)});
+    auto             arena     = &(manager.MainArena);
+
+    constexpr size_t raw_chunk = 3;
+    constexpr size_t alignment = 8;
+    PoolAllocator    pool;
+    pool.Initialize(arena, alignment * 16, raw_chunk, alignment);
+
+    EXPECT_EQ(pool.chunk_size, alignment);
+    manager.Shutdown();
 }

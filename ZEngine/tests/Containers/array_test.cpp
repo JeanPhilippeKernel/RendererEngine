@@ -1,5 +1,7 @@
 #include <Core/Containers/Array.h>
+#include <Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
+#include <utility>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Memory;
@@ -9,21 +11,20 @@ class ArrayTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        allocator.Initialize(200);
+        manager.Initialize({.BufferSize = 200});
     }
 
     void TearDown() override
     {
-        allocator.Shutdown();
+        manager.Shutdown();
     }
-
-    ArenaAllocator allocator;
+    MemoryManager manager;
 };
 
 TEST_F(ArrayTest, InitialState)
 {
     Array<int> array;
-    array.init(&allocator, 10);
+    array.init(&manager.MainArena, 10);
 
     EXPECT_EQ(array.size(), 0);
     EXPECT_EQ(array.capacity(), 10);
@@ -33,7 +34,7 @@ TEST_F(ArrayTest, InitialState)
 TEST_F(ArrayTest, PushBack)
 {
     Array<int> array;
-    array.init(&allocator, 4, make_initializer_list(&allocator, 1, 2, 3));
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
 
     EXPECT_EQ(array.size(), 3);
     EXPECT_FALSE(array.empty());
@@ -45,7 +46,7 @@ TEST_F(ArrayTest, PushBack)
 TEST_F(ArrayTest, AutoResize)
 {
     Array<int> array;
-    array.init(&allocator, 2);
+    array.init(&manager.MainArena, 2);
 
     EXPECT_EQ(array.capacity(), 2);
 
@@ -61,7 +62,7 @@ TEST_F(ArrayTest, AutoResize)
 TEST_F(ArrayTest, PopBack)
 {
     Array<int> array;
-    array.init(&allocator, 4, make_initializer_list(&allocator, 1, 2, 3));
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
 
     EXPECT_EQ(array.size(), 3);
 
@@ -79,7 +80,7 @@ TEST_F(ArrayTest, PopBack)
 TEST_F(ArrayTest, Clear)
 {
     Array<int> array;
-    array.init(&allocator, 4, make_initializer_list(&allocator, 1, 2, 3));
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
 
     EXPECT_EQ(array.size(), 3);
 
@@ -93,7 +94,7 @@ TEST_F(ArrayTest, Clear)
 TEST_F(ArrayTest, Reserve)
 {
     Array<int> array;
-    array.init(&allocator, 4);
+    array.init(&manager.MainArena, 4);
 
     EXPECT_EQ(array.capacity(), 4);
 
@@ -107,7 +108,7 @@ TEST_F(ArrayTest, Reserve)
 TEST_F(ArrayTest, FrontAndBack)
 {
     Array<int> array;
-    array.init(&allocator, 4);
+    array.init(&manager.MainArena, 4);
 
     array.push(10);
     EXPECT_EQ(array.front(), 10);
@@ -123,7 +124,7 @@ TEST_F(ArrayTest, FrontAndBack)
 TEST_F(ArrayTest, ArrayViewWrap)
 {
     Array<int> array;
-    array.init(&allocator, 4, make_initializer_list(&allocator, 10, 20, 30));
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 10, 20, 30));
 
     ArrayView<int> view(array);
 
@@ -134,4 +135,81 @@ TEST_F(ArrayTest, ArrayViewWrap)
 
     view[1] = 99;
     EXPECT_EQ(array[1], 99);
+}
+
+TEST_F(ArrayTest, MoveConstructorTransfersBufferAndEmptiesSource)
+{
+    Array<int> src;
+    src.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
+
+    const int*   src_data = src.data();
+    const size_t src_cap  = src.capacity();
+
+    Array<int>   dst      = std::move(src);
+
+    EXPECT_EQ(dst.data(), src_data);
+    EXPECT_EQ(dst.size(), 3u);
+    EXPECT_EQ(dst.capacity(), src_cap);
+    EXPECT_EQ(dst[0], 1);
+    EXPECT_EQ(dst[1], 2);
+    EXPECT_EQ(dst[2], 3);
+
+    EXPECT_EQ(src.size(), 0u);
+    EXPECT_EQ(src.capacity(), 0u);
+    EXPECT_EQ(src.data(), nullptr);
+}
+
+TEST_F(ArrayTest, MoveAssignmentTransfersBufferAndEmptiesSource)
+{
+    Array<int> src;
+    src.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 5, 6, 7));
+    const int* src_data = src.data();
+
+    Array<int> dst;
+    dst.init(&manager.MainArena, 2);
+    dst.push(99);
+
+    dst = std::move(src);
+
+    EXPECT_EQ(dst.data(), src_data);
+    EXPECT_EQ(dst.size(), 3u);
+    EXPECT_EQ(dst[0], 5);
+    EXPECT_EQ(dst[2], 7);
+
+    EXPECT_EQ(src.size(), 0u);
+    EXPECT_EQ(src.capacity(), 0u);
+    EXPECT_EQ(src.data(), nullptr);
+}
+
+TEST_F(ArrayTest, MoveAssignmentSelfIsSafe)
+{
+    Array<int> array;
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
+
+    const int*  data  = array.data();
+
+    // Guarded by (this != &other); aliased through a reference to dodge -Wself-move.
+    Array<int>& alias = array;
+    array             = std::move(alias);
+
+    EXPECT_EQ(array.size(), 3u);
+    EXPECT_EQ(array.data(), data);
+    EXPECT_EQ(array[0], 1);
+    EXPECT_EQ(array[2], 3);
+}
+
+TEST_F(ArrayTest, MovedFromArrayIsReusable)
+{
+    Array<int> src;
+    src.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
+
+    Array<int> dst = std::move(src);
+
+    // The moved-from array is empty but valid — re-init and use it again.
+    src.init(&manager.MainArena, 2);
+    src.push(42);
+
+    EXPECT_EQ(src.size(), 1u);
+    EXPECT_EQ(src[0], 42);
+    EXPECT_EQ(dst.size(), 3u); // dst unaffected by src's reuse
 }

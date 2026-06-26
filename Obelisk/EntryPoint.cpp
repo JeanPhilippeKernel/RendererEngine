@@ -16,9 +16,9 @@ using namespace ZEngine::Applications;
 int applicationEntryPoint(int argc, char* argv[])
 {
     MemoryManager       manager = {};
-    MemoryConfiguration config  = {.DefaultSize = ZGiga(3u)};
+    MemoryConfiguration config  = {.BufferSize = ZGiga(3u)};
     manager.Initialize(config);
-    auto                arena      = &(manager.Allocator);
+    auto                arena      = &(manager.MainArena);
 
     LoggerConfiguration logger_cfg = {};
     Logger::Initialize(arena, logger_cfg);
@@ -51,7 +51,7 @@ int applicationEntryPoint(int argc, char* argv[])
 
     Logger::Dispose();
 
-    manager.Shutdowm();
+    manager.Shutdown();
 
     return 0;
 }

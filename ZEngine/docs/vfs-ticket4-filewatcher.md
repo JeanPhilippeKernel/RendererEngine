@@ -1,5 +1,10 @@
 # Ticket 4 — VFSFileWatcher: Platform File-Watch + Debounce
 
+**Priority:** P2 — Implement after Ticket 3  
+**Status:** Ready for implementation  
+**Depends on:** `vfs-ticket3-scanner-memory-backend.md`  
+**Blocks:** `vfs-ticket5`, `vfs-ticket6`, `import-pipeline.md` (OnStale hook)
+
 **Goal**: Deliver a cross-platform file-watcher that fires debounced `VFSWatchEvent` notifications
 into the engine's existing callback system, driving `VFSDirectoryCache::Invalidate()` and
 `VFSScanner::RequestScan()` without polling the filesystem from user code.
@@ -393,7 +398,7 @@ void VFSContext::InitWatcher()
         /*recursive=*/true,
         [this](const VFSWatchEvent& ev) {
             m_directory_cache->Invalidate(ev.Path);
-            m_scanner->RequestScan(VFSPath::FromNative(ev.Path).Value());
+            m_scanner->Scan(VFSPath::FromNative(ev.Path).Value());
         });
 
     m_platform_watcher->StartThread();

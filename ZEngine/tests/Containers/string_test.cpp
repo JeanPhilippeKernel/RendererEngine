@@ -1,4 +1,5 @@
 #include <Core/Containers/Strings.h>
+#include <Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
 
 using namespace ZEngine::Core::Containers;
@@ -9,28 +10,27 @@ class StringTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        arena.Initialize(200);
+        manager.Initialize({.BufferSize = 200});
     }
 
     void TearDown() override
     {
-        arena.Shutdown();
+        manager.Shutdown();
     }
-
-    ArenaAllocator arena;
+    MemoryManager manager;
 };
 
 TEST_F(StringTest, DefaultConstructor)
 {
     String str1;
-    str1.init(&arena);
+    str1.init(&manager.MainArena);
     EXPECT_EQ(str1.size(), 0);
     EXPECT_TRUE(str1.empty());
     EXPECT_STREQ(str1.c_str(), "");
     EXPECT_GE(str1.capacity(), 16);
 
     String str2;
-    str2.init(&arena, nullptr);
+    str2.init(&manager.MainArena, nullptr);
 
     EXPECT_EQ(str2.size(), 0);
     EXPECT_TRUE(str2.empty());
@@ -41,7 +41,7 @@ TEST_F(StringTest, DefaultConstructor)
 TEST_F(StringTest, AppendCString)
 {
     String str;
-    str.init(&arena);
+    str.init(&manager.MainArena);
 
     str.append("Hello");
     EXPECT_STREQ(str.c_str(), "Hello");
@@ -55,9 +55,9 @@ TEST_F(StringTest, AppendCString)
 TEST_F(StringTest, AppendString)
 {
     String str1;
-    str1.init(&arena, "Hello");
+    str1.init(&manager.MainArena, "Hello");
     String str2;
-    str2.init(&arena, ", World!");
+    str2.init(&manager.MainArena, ", World!");
 
     str1.append(str2);
     EXPECT_STREQ(str1.c_str(), "Hello, World!");
@@ -67,7 +67,7 @@ TEST_F(StringTest, AppendString)
 TEST_F(StringTest, AppendChar)
 {
     String str;
-    str.init(&arena, "Hello");
+    str.init(&manager.MainArena, "Hello");
 
     str.append('!');
     EXPECT_STREQ(str.c_str(), "Hello!");
@@ -82,7 +82,7 @@ TEST_F(StringTest, AppendChar)
 TEST_F(StringTest, ElementAccess)
 {
     String str;
-    str.init(&arena, "Hello");
+    str.init(&manager.MainArena, "Hello");
 
     EXPECT_EQ(str[0], 'H');
     EXPECT_EQ(str[1], 'e');
@@ -95,7 +95,7 @@ TEST_F(StringTest, ElementAccess)
 TEST_F(StringTest, Clear)
 {
     String str;
-    str.init(&arena, "Hello, World!");
+    str.init(&manager.MainArena, "Hello, World!");
 
     EXPECT_FALSE(str.empty());
     EXPECT_EQ(str.size(), 13);
@@ -114,7 +114,7 @@ TEST_F(StringTest, Clear)
 TEST_F(StringTest, Reserve)
 {
     String str;
-    str.init(&arena);
+    str.init(&manager.MainArena);
 
     str.reserve(50);
     EXPECT_GE(str.capacity(), 50);
@@ -150,7 +150,7 @@ TEST_F(StringTest, StringViewFromCString)
 TEST_F(StringTest, StringViewFromString)
 {
     String str;
-    str.init(&arena, "Hello, World!");
+    str.init(&manager.MainArena, "Hello, World!");
     StringView view(str);
 
     EXPECT_EQ(view.size(), 13);
@@ -182,7 +182,7 @@ TEST_F(StringTest, StringViewSet)
     EXPECT_EQ(view.data(), text);
 
     String str;
-    str.init(&arena, "Another string");
+    str.init(&manager.MainArena, "Another string");
     view.set(str);
     EXPECT_EQ(view.size(), 14);
     EXPECT_EQ(view.data(), str.c_str());

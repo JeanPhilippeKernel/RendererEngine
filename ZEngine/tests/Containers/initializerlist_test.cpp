@@ -1,6 +1,7 @@
 #include <Core/Containers/Array.h>
 #include <Core/Containers/InitializerList.h>
 #include <Core/Containers/Strings.h>
+#include <Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
 
 using namespace ZEngine::Core::Containers;
@@ -11,21 +12,20 @@ class InitializerListTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        arena.Initialize(512);
+        manager.Initialize({.BufferSize = 512});
     }
 
     void TearDown() override
     {
-        arena.Shutdown();
+        manager.Shutdown();
     }
-
-    ArenaAllocator arena;
+    MemoryManager manager;
 };
 
 TEST_F(InitializerListTest, WithArray)
 {
     Array<int> array;
-    array.init(&arena, 4, make_initializer_list(&arena, 1, 2, 3, 4));
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3, 4));
 
     InitializerList<int> list(array.data(), array.size());
 
@@ -45,12 +45,12 @@ TEST_F(InitializerListTest, WithArray)
 TEST_F(InitializerListTest, WithStrings)
 {
     Array<String> str_array;
-    str_array.init(&arena, 3);
-    str_array.init(&arena, 3, make_initializer_list(&arena, String(), String(), String()));
+    str_array.init(&manager.MainArena, 3);
+    str_array.init(&manager.MainArena, 3, make_initializer_list(&manager.MainArena, String(), String(), String()));
 
-    str_array[0].init(&arena, "Alpha");
-    str_array[1].init(&arena, "Beta");
-    str_array[2].init(&arena, "Gamma");
+    str_array[0].init(&manager.MainArena, "Alpha");
+    str_array[1].init(&manager.MainArena, "Beta");
+    str_array[2].init(&manager.MainArena, "Gamma");
 
     InitializerList<String> list(str_array.data(), str_array.size());
 
@@ -68,7 +68,7 @@ TEST_F(InitializerListTest, WithStrings)
 TEST_F(InitializerListTest, EmptyFromArray)
 {
     Array<int> empty_array;
-    empty_array.init(&arena, 0);
+    empty_array.init(&manager.MainArena, 0);
 
     InitializerList<int> list(empty_array.data(), empty_array.size());
 

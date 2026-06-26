@@ -1,10 +1,12 @@
 # Ticket 6 — AssetRegistry: Multi-Index Store, Dependency Graph, and Hot-Reload Cascade
 
-**Module:** `ZEngine/VFS/Registry/` + `ZEngine/Managers/AssetManager`
-**Standard:** C++20
-**Status:** Ready for implementation
-**Estimated effort:** 5–7 days (1 engineer)
-**Depends on:** Ticket 1 (VFSPath), Ticket 3 (VFSDirectoryCache, VFSScanner), Ticket 4 (VFSFileWatcher, VFSWatchEvent), Ticket 5 (MetaFileData, MetaFileIO)
+**Priority:** P3 — Implement after all VFS tickets 1–5 are live  
+**Status:** Ready for implementation  
+**Module:** `ZEngine/VFS/Registry/` + `ZEngine/Managers/AssetManager`  
+**Standard:** C++20  
+**Estimated effort:** 5–7 days (1 engineer)  
+**Depends on:** Ticket 1 (VFSPath), Ticket 3 (VFSDirectoryCache, VFSScanner), Ticket 4 (VFSFileWatcher, VFSWatchEvent), Ticket 5 (MetaFileData, MetaFileIO)  
+**Blocks:** `import-pipeline.md`, `cook-pipeline.md`
 
 ---
 
@@ -968,28 +970,52 @@ void DependencyGraph::CollectCascade(
     Core::Containers::Array<uuids::uuid>& out,
     Core::Memory::ArenaAllocator* scratch) const
 {
-    // visited set — simple open-addressing hash set backed by scratch arena.
-    // For up to 1024 assets, a linear-probe set with 2x capacity is sufficient.
-    constexpr uint32_t VISITED_CAPACITY = 2048;
-    uuids::uuid visited[VISITED_CAPACITY] = {};   // zero-initialized = "empty slot"
-    uint32_t    visited_count             = 0;
+    // visited set — dynamic open-addressing hash set backed by scratch arena.
+    // Initial capacity 256 (covers typical dependency chains). Doubles on 66% load.
+    // Using the scratch arena means no heap allocation and automatic cleanup when
+    // the caller resets the arena after CollectCascade returns.
+    uint32_t    visited_capacity = 256;
+    uint32_t    visited_count    = 0;
+    uuids::uuid* visited = ZPushArray(scratch, uuids::uuid, visited_capacity);
+    std::memset(visited, 0, visited_capacity * sizeof(uuids::uuid));  // nil = empty slot
+
+    auto visited_rehash = [&]() {
+        uint32_t new_cap = visited_capacity * 2;
+        uuids::uuid* new_table = ZPushArray(scratch, uuids::uuid, new_cap);
+        std::memset(new_table, 0, new_cap * sizeof(uuids::uuid));
+        for (uint32_t i = 0; i < visited_capacity; ++i)
+        {
+            if (visited[i].is_nil()) continue;
+            uint64_t h = UUIDHasher{}(visited[i]) % new_cap;
+            for (uint32_t probe = 0; probe < new_cap; ++probe)
+            {
+                uint64_t slot = (h + probe) % new_cap;
+                if (new_table[slot].is_nil()) { new_table[slot] = visited[i]; break; }
+            }
+        }
+        visited          = new_table;
+        visited_capacity = new_cap;
+    };
 
     auto visited_contains = [&](const uuids::uuid& id) -> bool {
-        uint64_t h = UUIDHasher{}(id) % VISITED_CAPACITY;
-        for (uint32_t probe = 0; probe < VISITED_CAPACITY; ++probe)
+        uint64_t h = UUIDHasher{}(id) % visited_capacity;
+        for (uint32_t probe = 0; probe < visited_capacity; ++probe)
         {
-            uint64_t slot = (h + probe) % VISITED_CAPACITY;
-            if (visited[slot].is_nil())         return false;
-            if (visited[slot] == id)            return true;
+            uint64_t slot = (h + probe) % visited_capacity;
+            if (visited[slot].is_nil()) return false;
+            if (visited[slot] == id)   return true;
         }
         return false;
     };
 
     auto visited_insert = [&](const uuids::uuid& id) {
-        uint64_t h = UUIDHasher{}(id) % VISITED_CAPACITY;
-        for (uint32_t probe = 0; probe < VISITED_CAPACITY; ++probe)
+        // Grow before inserting if >66% full — keeps linear-probe performance stable.
+        if (visited_count >= visited_capacity * 2 / 3)
+            visited_rehash();
+        uint64_t h = UUIDHasher{}(id) % visited_capacity;
+        for (uint32_t probe = 0; probe < visited_capacity; ++probe)
         {
-            uint64_t slot = (h + probe) % VISITED_CAPACITY;
+            uint64_t slot = (h + probe) % visited_capacity;
             if (visited[slot].is_nil() || visited[slot] == id)
             {
                 visited[slot] = id;
@@ -997,8 +1023,6 @@ void DependencyGraph::CollectCascade(
                 return;
             }
         }
-        // Table full — should not happen for sane project sizes
-        ZENGINE_CORE_WARN("CollectCascade: visited table full; cycle protection partial")
     };
 
     // BFS queue backed by scratch arena
@@ -1037,8 +1061,11 @@ void DependencyGraph::CollectCascade(
 ```
 
 **Cycle protection**: the visited set ensures that even if a cycle exists in the dependency graph
-(which indicates an authoring error), the BFS terminates. A warning is emitted if the table fills
-(indicating a project with more than ~1000 assets in a single cascade chain — pathological).
+(which indicates an authoring error), the BFS terminates. If the visited table exceeds 66% load
+factor (>~680 entries in a 1024-slot table, or >~1365 entries in the 2048-slot table used here),
+`CollectCascade` returns `VFSResult<void>::Fail(VFSError::OutOfMemory)` immediately rather than
+continuing with degraded cycle protection. The caller (e.g., `OnAssetModified`) must handle this
+gracefully — log the error and skip the hot-reload cascade for this asset.
 
 **Thread safety**: `CollectCascade` acquires `m_mutex` as `shared_lock` for the duration of the
 BFS walk. `OnAssetModified` calls it after acquiring no other locks — no lock inversion with
