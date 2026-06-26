@@ -1,10 +1,12 @@
 # Ticket 6 — AssetRegistry: Multi-Index Store, Dependency Graph, and Hot-Reload Cascade
 
-**Module:** `ZEngine/VFS/Registry/` + `ZEngine/Managers/AssetManager`
-**Standard:** C++20
-**Status:** Ready for implementation
-**Estimated effort:** 5–7 days (1 engineer)
-**Depends on:** Ticket 1 (VFSPath), Ticket 3 (VFSDirectoryCache, VFSScanner), Ticket 4 (VFSFileWatcher, VFSWatchEvent), Ticket 5 (MetaFileData, MetaFileIO)
+**Priority:** P3 — Implement after all VFS tickets 1–5 are live  
+**Status:** Ready for implementation  
+**Module:** `ZEngine/VFS/Registry/` + `ZEngine/Managers/AssetManager`  
+**Standard:** C++20  
+**Estimated effort:** 5–7 days (1 engineer)  
+**Depends on:** Ticket 1 (VFSPath), Ticket 3 (VFSDirectoryCache, VFSScanner), Ticket 4 (VFSFileWatcher, VFSWatchEvent), Ticket 5 (MetaFileData, MetaFileIO)  
+**Blocks:** `import-pipeline.md`, `cook-pipeline.md`
 
 ---
 
@@ -986,6 +988,24 @@ void DependencyGraph::CollectCascade(
     };
 
     auto visited_insert = [&](const uuids::uuid& id) {
+        // Visited table capacity check:
+        // If the table is full (> ~680 entries in a 1024-slot open-addressing table),
+        // we CANNOT continue BFS safely — nodes would be visited multiple times,
+        // violating the "each node appears exactly once" contract and potentially
+        // causing infinite loops in cyclic graphs.
+        //
+        // On table full: return Fail(VFSError::OutOfMemory) immediately.
+        // The caller must handle this gracefully (e.g., log error, skip hot-reload cascade).
+        //
+        // To handle large dependency graphs: increase VISITED_CAPACITY or switch to
+        // a dynamic UnorderedHashSet<uuids::uuid> from Core::Containers.
+        if (visited_count >= VISITED_CAPACITY * 2 / 3) {  // >66% full — linear probe degrades
+            ZENGINE_CORE_ERROR(
+                "AssetRegistry::CollectCascade: visited table full (%u slots). "
+                "Cascade aborted. Increase VISITED_CAPACITY or reduce dependency depth.",
+                VISITED_CAPACITY);
+            return VFSResult<void>::Fail(VFSError::OutOfMemory);
+        }
         uint64_t h = UUIDHasher{}(id) % VISITED_CAPACITY;
         for (uint32_t probe = 0; probe < VISITED_CAPACITY; ++probe)
         {
@@ -997,8 +1017,6 @@ void DependencyGraph::CollectCascade(
                 return;
             }
         }
-        // Table full — should not happen for sane project sizes
-        ZENGINE_CORE_WARN("CollectCascade: visited table full; cycle protection partial")
     };
 
     // BFS queue backed by scratch arena
@@ -1037,8 +1055,11 @@ void DependencyGraph::CollectCascade(
 ```
 
 **Cycle protection**: the visited set ensures that even if a cycle exists in the dependency graph
-(which indicates an authoring error), the BFS terminates. A warning is emitted if the table fills
-(indicating a project with more than ~1000 assets in a single cascade chain — pathological).
+(which indicates an authoring error), the BFS terminates. If the visited table exceeds 66% load
+factor (>~680 entries in a 1024-slot table, or >~1365 entries in the 2048-slot table used here),
+`CollectCascade` returns `VFSResult<void>::Fail(VFSError::OutOfMemory)` immediately rather than
+continuing with degraded cycle protection. The caller (e.g., `OnAssetModified`) must handle this
+gracefully — log the error and skip the hot-reload cascade for this asset.
 
 **Thread safety**: `CollectCascade` acquires `m_mutex` as `shared_lock` for the duration of the
 BFS walk. `OnAssetModified` calls it after acquiring no other locks — no lock inversion with

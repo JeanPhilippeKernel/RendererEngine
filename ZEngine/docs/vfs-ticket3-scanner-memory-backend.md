@@ -1,10 +1,12 @@
 # ZEngine VFS — Ticket 3: Async Scanner and VFSMemoryBackend
 
-**Module:** `ZEngine/Core/VFS/` + `Tetragrama/Components/`
-**Standard:** C++20
-**Status:** Ready for implementation
-**Estimated effort:** 3–4 days (1 engineer)
-**Depends on:** Ticket 1 (VFSPath, IVFSFile, IVFSBackend, IVFSContext), Ticket 2 (VFSContext, VFSDiskBackend)
+**Priority:** P2 — Implement after Ticket 2  
+**Status:** Ready for implementation  
+**Module:** `ZEngine/Core/VFS/` + `Tetragrama/Components/`  
+**Standard:** C++20  
+**Estimated effort:** 3–4 days (1 engineer)  
+**Depends on:** Ticket 1 (VFSPath, IVFSFile, IVFSBackend, IVFSContext), Ticket 2 (VFSContext, VFSDiskBackend)  
+**Blocks:** `vfs-ticket4`, `vfs-ticket5`, `vfs-ticket6`
 
 ---
 
