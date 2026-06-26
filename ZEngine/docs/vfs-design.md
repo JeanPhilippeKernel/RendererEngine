@@ -1,9 +1,11 @@
-#VFS Path Abstraction — Architecture Design
+# VFS Path Abstraction — Architecture Design
 
-**Module:** `ZEngine/Core/VFS/`
-**Standard:** C++20
-**Status:** Ready for implementation
-**Estimated effort:** 2–3 days (1 engineer)
+**Priority:** P1 — Implement in parallel with ECS core (Phase 6 of migration-plan.md)  
+**Status:** Ready for implementation  
+**Module:** `ZEngine/Core/VFS/`  
+**Standard:** C++20  
+**Estimated effort:** 2–3 days (1 engineer)  
+**Blocks:** `vfs-ticket2`, `vfs-ticket3`, `vfs-ticket4`, `vfs-ticket5`, `vfs-ticket6`, `import-pipeline.md`
 
 ---
 
@@ -315,13 +317,13 @@ namespace ZEngine::Core::VFS
         // Normalize and validate `raw`. Accepts absolute or relative input;
         // always produces an absolute VFS path.
         // Returns InvalidPath if input cannot be normalized (e.g. root escape).
-        static VFSResult<VFSPath> Parse(cstring raw);
-        static VFSResult<VFSPath> Parse(const char* raw, size_t length);
+        [[nodiscard]] static VFSResult<VFSPath> Parse(cstring raw);
+        [[nodiscard]] static VFSResult<VFSPath> Parse(const char* raw, size_t length);
 
         // Convert an OS-native path to a VFSPath.
         //   Windows : strips drive letter (e.g. "C:"), converts '\' to '/'.
         //   POSIX   : accepted as-is after normalization.
-        static VFSResult<VFSPath> FromNative(cstring native_path);
+        [[nodiscard]] static VFSResult<VFSPath> FromNative(cstring native_path);
 
         // Returns the root path "/".
         static VFSPath            Root();
@@ -372,8 +374,8 @@ namespace ZEngine::Core::VFS
         // ---- Composition ---------------------------------------------------
 
         // Append a relative segment. Returns InvalidPath if result exceeds VFS_MAX_PATH.
-        VFSResult<VFSPath> Append(cstring segment) const;
-        VFSResult<VFSPath> Append(const VFSPath& other) const;
+        [[nodiscard]] VFSResult<VFSPath> Append(cstring segment) const;
+        [[nodiscard]] VFSResult<VFSPath> Append(const VFSPath& other) const;
 
         // Operator form — asserts on failure. Use only when path is known valid
         // (e.g. compiled-in asset paths). Prefer Append() in runtime code.
@@ -526,15 +528,15 @@ namespace ZEngine::Core::VFS
 
         // Read up to `buffer.size()` bytes starting at `offset`.
         // Returns bytes actually read (may be < buffer.size() at EOF).
-        virtual VFSResult<size_t>                   Read(std::span<uint8_t> buffer, uint64_t offset)        = 0;
+        [[nodiscard]] virtual VFSResult<size_t>                   Read(std::span<uint8_t> buffer, uint64_t offset)        = 0;
 
         // Write `buffer.size()` bytes at `offset`.
         // Returns Unsupported on read-only files.
-        virtual VFSResult<size_t>                   Write(std::span<const uint8_t> buffer, uint64_t offset) = 0;
+        [[nodiscard]] virtual VFSResult<size_t>                   Write(std::span<const uint8_t> buffer, uint64_t offset) = 0;
 
-        virtual VFSResult<uint64_t>                 Size() const                                            = 0;
-        virtual VFSResult<VFSFileStat>              Stat() const                                            = 0;
-        virtual VFSResult<void>                     Flush()                                                 = 0;
+        [[nodiscard]] virtual VFSResult<uint64_t>                 Size() const                                            = 0;
+        [[nodiscard]] virtual VFSResult<VFSFileStat>              Stat() const                                            = 0;
+        [[nodiscard]] virtual VFSResult<void>                     Flush()                                                 = 0;
         virtual const VFSPath&                      Path() const                                            = 0;
 
         // Optional zero-copy read. Returns a span directly into the backend's
@@ -548,7 +550,7 @@ namespace ZEngine::Core::VFS
 
         // Convenience: read entire file into `out_buffer` in one call.
         // Caller owns and sizes the buffer. Returns total bytes read.
-        VFSResult<size_t> ReadAll(std::span<uint8_t> out_buffer);
+        [[nodiscard]] VFSResult<size_t> ReadAll(std::span<uint8_t> out_buffer);
     };
 
 } // namespace ZEngine::Core::VFS
@@ -612,24 +614,24 @@ namespace ZEngine::Core::VFS
     {
         virtual ~IVFSBackend()                                                                                                      = default;
 
-        virtual VFSResult<IVFSFile*>                            Open(const VFSPath& path, VFSOpenFlags flags)                       = 0;
+        [[nodiscard]] virtual VFSResult<IVFSFile*>                            Open(const VFSPath& path, VFSOpenFlags flags)                       = 0;
         virtual void                                            Close(IVFSFile* file)                                               = 0;
-        virtual VFSResult<VFSFileStat>                          Stat(const VFSPath& path) const                                     = 0;
+        [[nodiscard]] virtual VFSResult<VFSFileStat>                          Stat(const VFSPath& path) const                                     = 0;
         virtual bool                                            Exists(const VFSPath& path) const                                   = 0;
 
         // `arena` used to allocate the returned Array — lifetime tied to arena.
-        virtual VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const = 0;
+        [[nodiscard]] virtual VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const = 0;
 
         // Write operations. Return Unsupported on read-only backends.
-        virtual VFSResult<void>                                 CreateDir(const VFSPath& path)
+        [[nodiscard]] virtual VFSResult<void>                                 CreateDir(const VFSPath& path)
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
-        virtual VFSResult<void> Remove(const VFSPath& path)
+        [[nodiscard]] virtual VFSResult<void> Remove(const VFSPath& path)
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
-        virtual VFSResult<void> Rename(const VFSPath& from, const VFSPath& to)
+        [[nodiscard]] virtual VFSResult<void> Rename(const VFSPath& from, const VFSPath& to)
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
@@ -673,17 +675,17 @@ namespace ZEngine::Core::VFS
     {
         virtual ~IVFSContext()                                                                                                             = default;
 
-        virtual VFSResult<IVFSFile*>                            Open(const VFSPath& path, VFSOpenFlags flags)                              = 0;
+        [[nodiscard]] virtual VFSResult<IVFSFile*>                            Open(const VFSPath& path, VFSOpenFlags flags)                              = 0;
         virtual void                                            Close(IVFSFile* file)                                                      = 0;
-        virtual VFSResult<VFSFileStat>                          Stat(const VFSPath& path) const                                            = 0;
+        [[nodiscard]] virtual VFSResult<VFSFileStat>                          Stat(const VFSPath& path) const                                            = 0;
         virtual bool                                            Exists(const VFSPath& path) const                                          = 0;
 
-        virtual VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const        = 0;
+        [[nodiscard]] virtual VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const        = 0;
 
         // Mount table — stubs in this ticket, full impl in next ticket.
         // `priority`: higher value = checked first on path resolution.
-        virtual VFSResult<void>                                 Mount(IVFSBackend* backend, const VFSPath& logical_root, int priority = 0) = 0;
-        virtual VFSResult<void>                                 Unmount(const VFSPath& logical_root)                                       = 0;
+        [[nodiscard]] virtual VFSResult<void>                                 Mount(IVFSBackend* backend, const VFSPath& logical_root, int priority = 0) = 0;
+        [[nodiscard]] virtual VFSResult<void>                                 Unmount(const VFSPath& logical_root)                                       = 0;
     };
 
     // -------------------------------------------------------------------------
@@ -700,16 +702,26 @@ namespace ZEngine::Core::VFS
         explicit VFSDiskContext(cstring native_root);
         ~VFSDiskContext() override;
 
-        VFSResult<IVFSFile*>                            Open(const VFSPath& path, VFSOpenFlags flags) override;
+        // ATOMIC WRITE PROTOCOL: For critical files (scenes, saves, pak manifests),
+        // callers MUST NOT use Open(path, Write | Truncate) directly.
+        // Instead, write to a temporary path and rename atomically:
+        //   VFSPath tmp = path.Parent() / (path.Filename().Data + String(".tmp"));
+        //   auto f = ctx.Open(tmp, Write | Create | Truncate);
+        //   // ... write all data ...
+        //   ctx.Close(f);
+        //   ctx.Rename(tmp, path);  // atomic on POSIX; uses ReplaceFileW on Windows
+        // This ensures the file is either fully new or unchanged on crash.
+        // A helper VFSAtomicWrite(ctx, path, data, size) is provided in VFSUtils.h.
+        [[nodiscard]] VFSResult<IVFSFile*>                            Open(const VFSPath& path, VFSOpenFlags flags) override;
         void                                            Close(IVFSFile* file) override;
-        VFSResult<VFSFileStat>                          Stat(const VFSPath& path) const override;
+        [[nodiscard]] VFSResult<VFSFileStat>                          Stat(const VFSPath& path) const override;
         bool                                            Exists(const VFSPath& path) const override;
 
-        VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const override;
+        [[nodiscard]] VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const override;
 
         // Stubs — log warning, return Ok. Full impl replaces this next ticket.
-        VFSResult<void>                                 Mount(IVFSBackend*, const VFSPath&, int) override;
-        VFSResult<void>                                 Unmount(const VFSPath&) override;
+        [[nodiscard]] VFSResult<void>                                 Mount(IVFSBackend*, const VFSPath&, int) override;
+        [[nodiscard]] VFSResult<void>                                 Unmount(const VFSPath&) override;
 
     private:
         // Writes the absolute OS path for `vfs_path` into `out_buffer`.

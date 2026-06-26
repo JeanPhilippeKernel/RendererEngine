@@ -1,5 +1,10 @@
 # Ticket 5 — .meta Sidecars, MetaFileIO, and Stable UUID Persistence
 
+**Priority:** P2 — Implement after Ticket 4  
+**Status:** Ready for implementation  
+**Depends on:** `vfs-ticket4-filewatcher.md`  
+**Blocks:** `vfs-ticket6`, `scene-serialization.md`, `import-pipeline.md`
+
 **Goal**: Assign a stable UUID to every project asset on first import; persist that UUID in a
 `.meta` sidecar file (JSON, committed to VCS); load the UUID on subsequent imports instead of
 generating a new one. This fixes `AssetManager`'s current UUID-per-launch instability and
@@ -98,6 +103,15 @@ namespace ZEngine::VFS
         static VFSResult<MetaFileData> Read(IVFSContext& ctx, const VFSPath& asset_path);
 
         // Write MetaFileData to .meta (creates or overwrites).
+        // MetaFileIO::Write uses the atomic write protocol:
+        //   1. Serialize JSON to a memory buffer
+        //   2. Open <path>.tmp for Write | Create | Truncate
+        //   3. Write the buffer
+        //   4. Flush and close
+        //   5. Rename <path>.tmp → <path> (atomic on POSIX via rename(2); uses ReplaceFileW on Windows)
+        // If the process crashes between steps 2-4, <path>.tmp is left on disk and
+        // cleaned up on the next VFSScanner run (tmp files older than 60s are deleted).
+        // The original <path>.meta is never modified until the rename succeeds.
         static VFSResult<void> Write(IVFSContext& ctx, const VFSPath& asset_path,
                                      const MetaFileData& data);
 

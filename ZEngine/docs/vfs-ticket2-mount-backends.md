@@ -1,5 +1,10 @@
 # ZEngine VFS System — Ticket 2 Implementation Specification
 
+**Priority:** P2 — Implement after VFS Ticket 1 is live  
+**Status:** Ready for implementation  
+**Depends on:** `vfs-design.md` (Ticket 1)  
+**Blocks:** `vfs-ticket3`, `import-pipeline.md`
+
 ## Mount Table, VFSContext, VFSDiskBackend, VFSZipBackend
 
 ---
@@ -101,26 +106,32 @@ namespace ZEngine::Core::VFS
     // -------------------------------------------------------------------------
     struct VFSMountTable
     {
+        static constexpr uint32_t kMaxMountPoints = 256;
+
+        // In Mount(): add before inserting
+        // ZENGINE_VALIDATE_ASSERT(m_mounts.Size() < kMaxMountPoints,
+        //     "VFSMountTable: maximum mount point count (256) exceeded");
+
         // Initialize the table. arena must outlive this object.
         void Initialize(Memory::ArenaAllocator* arena, size_t initial_capacity = 16);
 
         // Mount a backend at logical_root with the given priority.
         // Returns AlreadyExists if a mount with the same logical_root already exists.
         // Inserts the new entry in sorted position (descending priority).
-        VFSResult<void> Mount(IVFSBackend* backend, const VFSPath& logical_root, int priority);
+        [[nodiscard]] VFSResult<void> Mount(IVFSBackend* backend, const VFSPath& logical_root, int priority);
 
         // Unmount by logical_root string. Returns NotFound if not present.
-        VFSResult<void> Unmount(const VFSPath& logical_root);
+        [[nodiscard]] VFSResult<void> Unmount(const VFSPath& logical_root);
 
         // Returns the highest-priority backend whose logical_root is a prefix
         // of `path`, and strips that prefix to produce RelativePath.
         // Returns NotFound if no mount matches.
-        VFSResult<ResolveResult> Resolve(const VFSPath& path) const;
+        [[nodiscard]] VFSResult<ResolveResult> Resolve(const VFSPath& path) const;
 
         // Returns ALL backends whose logical_root is a prefix of `dir_path`,
         // ordered descending by priority. Used for overlay directory listing.
         // Caller provides the output array (arena-allocated by caller).
-        VFSResult<void> ResolveAll(
+        [[nodiscard]] VFSResult<void> ResolveAll(
             const VFSPath&                              dir_path,
             Containers::Array<ResolveResult>&           out_results) const;
 
@@ -135,7 +146,7 @@ namespace ZEngine::Core::VFS
         // Strips the prefix from path, returning the relative sub-path.
         // e.g. prefix="/assets", path="/assets/tex/foo.png" -> "tex/foo.png"
         // If prefix == path, returns VFSPath representing "./" (empty relative).
-        static VFSResult<VFSPath> StripPrefix(const VFSPath& prefix, const VFSPath& path);
+        [[nodiscard]] static VFSResult<VFSPath> StripPrefix(const VFSPath& prefix, const VFSPath& path);
 
         Memory::ArenaAllocator*       m_arena    = nullptr;
         Containers::Array<MountPoint> m_mounts;
@@ -275,42 +286,42 @@ namespace ZEngine::Core::VFS
         // ---- IVFSContext overrides ------------------------------------------
 
         // Resolves path to a backend, strips prefix, calls backend->Open.
-        VFSResult<IVFSFile*>  Open(const VFSPath& absolute_path, VFSOpenFlags flags) override;
+        [[nodiscard]] VFSResult<IVFSFile*>  Open(const VFSPath& absolute_path, VFSOpenFlags flags) override;
 
         // Calls ResolveAll, merges DirEntry lists from all backends.
         // Higher-priority backend entries win on filename collision.
-        VFSResult<Containers::Array<VFSDirEntry>> List(
+        [[nodiscard]] VFSResult<Containers::Array<VFSDirEntry>> List(
             const VFSPath&          absolute_dir,
             Memory::ArenaAllocator* out_arena) override;
 
         // Resolves to backend, delegates Stat.
-        VFSResult<VFSFileStat>    Stat(const VFSPath& absolute_path) override;
+        [[nodiscard]] VFSResult<VFSFileStat>    Stat(const VFSPath& absolute_path) override;
 
         // Stat followed by error-check.
-        VFSResult<bool>           Exists(const VFSPath& absolute_path) override;
+        [[nodiscard]] VFSResult<bool>           Exists(const VFSPath& absolute_path) override;
 
         // Mount a backend at the logical root with given priority.
-        VFSResult<void>           Mount(IVFSBackend* backend,
+        [[nodiscard]] VFSResult<void>           Mount(IVFSBackend* backend,
                                         const VFSPath& logical_root,
                                         int priority) override;
 
         // Unmount by logical root.
-        VFSResult<void>           Unmount(const VFSPath& logical_root) override;
+        [[nodiscard]] VFSResult<void>           Unmount(const VFSPath& logical_root) override;
 
         // Routes to the highest-priority WRITABLE backend only.
-        VFSResult<void>           CreateDir(const VFSPath& absolute_path) override;
+        [[nodiscard]] VFSResult<void>           CreateDir(const VFSPath& absolute_path) override;
 
         // Routes to the highest-priority WRITABLE backend only.
-        VFSResult<void>           Remove(const VFSPath& absolute_path) override;
+        [[nodiscard]] VFSResult<void>           Remove(const VFSPath& absolute_path) override;
 
         // Routes to the highest-priority WRITABLE backend only.
         // src and dst must resolve to the same backend.
-        VFSResult<void>           Rename(const VFSPath& src, const VFSPath& dst) override;
+        [[nodiscard]] VFSResult<void>           Rename(const VFSPath& src, const VFSPath& dst) override;
 
     private:
         // Find the first backend that has VFSBackendCaps::Write set.
         // Used by CreateDir, Remove, Rename.
-        VFSResult<ResolveResult>  ResolveWritable(const VFSPath& path) const;
+        [[nodiscard]] VFSResult<ResolveResult>  ResolveWritable(const VFSPath& path) const;
 
         VFSMountTable             m_mount_table;
         Memory::ArenaAllocator*   m_arena    = nullptr;
@@ -333,37 +344,24 @@ return backend->Open(rel, flags)
 **`List(absolute_dir, out_arena)`**
 
 ```
-// Allocate a scratch arena for temporary per-backend results
-scratch = ZGetScratch(m_arena)
+// CORRECT ordering — release the lock before calling backends:
 
-// Collect all matching backends in priority order
+// Step 1: Resolve all matching mount points under the shared lock.
 Array<ResolveResult> resolves;
-resolves.init(scratch.Arena, 8)
-r = m_mount_table.ResolveAll(absolute_dir, resolves)
-if r.Failed(): ZReleaseScratch(scratch); return Fail(r.Error())
-if resolves.empty(): ZReleaseScratch(scratch); return Fail(VFSError::NotFound)
+{
+    std::shared_lock lock(m_mount_table.m_mutex);  // hold lock only for the lookup
+    m_mount_table.ResolveAll(dir_path, resolves);
+}
+// Lock released here. Mount/Unmount can now proceed if needed.
 
-// seen_names: UnorderedHashMap<uint64_t /*FNV hash of filename*/, bool>
-// used to deduplicate by filename across backends
-UnorderedHashMap<uint64_t, bool> seen;
-seen.init(scratch.Arena, 64)
-
-// Output array allocated on caller's arena
-Array<VFSDirEntry> result;
-result.init(out_arena, 32)
-
-// Iterate backends in descending priority order (already sorted by ResolveAll)
-for each rr in resolves:
-    sub_result = rr.Backend->List(rr.RelativePath, scratch.Arena)
-    if sub_result.Failed(): continue   // backend may not support List; skip
-    for each entry in sub_result.Value():
-        filename_hash = entry.Path.Hash()   // FNV-1a hash from VFSPath
-        if not seen.contains(filename_hash):
-            seen.insert(filename_hash, true)
-            result.push(entry)
-
-ZReleaseScratch(scratch)
-return Ok(result)
+// Step 2: Call backends WITHOUT holding any lock.
+// Backend List() calls may stall (ZIP decompression, network I/O).
+// Holding the mount table lock during this would starve Mount/Unmount callers.
+for (auto& rr : resolves) {
+    auto sub_result = rr.Backend->List(scratch_arena, rr.RelativePath);
+    if (sub_result.Failed()) continue;
+    // ... dedup and merge results ...
+}
 ```
 
 **Key deduplication rule:** Because backends are visited in descending priority order, the first backend to contribute an entry for a given filename wins. Subsequent lower-priority backends that have the same filename are skipped.
@@ -492,14 +490,14 @@ namespace ZEngine::Core::VFS
                         Memory::ArenaAllocator* arena);
 
         // IVFSBackend overrides
-        VFSResult<IVFSFile*>  Open(const VFSPath& relative_path, VFSOpenFlags flags) override;
-        VFSResult<void>       Close(IVFSFile* file) override;
-        VFSResult<VFSFileStat> Stat(const VFSPath& relative_path) override;
-        VFSResult<Containers::Array<VFSDirEntry>> List(const VFSPath& relative_dir,
+        [[nodiscard]] VFSResult<IVFSFile*>  Open(const VFSPath& relative_path, VFSOpenFlags flags) override;
+        [[nodiscard]] VFSResult<void>       Close(IVFSFile* file) override;
+        [[nodiscard]] VFSResult<VFSFileStat> Stat(const VFSPath& relative_path) override;
+        [[nodiscard]] VFSResult<Containers::Array<VFSDirEntry>> List(const VFSPath& relative_dir,
                                                        Memory::ArenaAllocator* out_arena) override;
-        VFSResult<void>       CreateDir(const VFSPath& relative_path) override;
-        VFSResult<void>       Remove(const VFSPath& relative_path) override;
-        VFSResult<void>       Rename(const VFSPath& rel_src, const VFSPath& rel_dst) override;
+        [[nodiscard]] VFSResult<void>       CreateDir(const VFSPath& relative_path) override;
+        [[nodiscard]] VFSResult<void>       Remove(const VFSPath& relative_path) override;
+        [[nodiscard]] VFSResult<void>       Rename(const VFSPath& rel_src, const VFSPath& rel_dst) override;
         VFSBackendCaps        Capabilities() const override;
 
     private:
@@ -808,19 +806,19 @@ namespace ZEngine::Core::VFS
         void Shutdown();
 
         // IVFSBackend overrides
-        VFSResult<IVFSFile*>  Open(const VFSPath& relative_path, VFSOpenFlags flags) override;
-        VFSResult<void>       Close(IVFSFile* file) override;
-        VFSResult<VFSFileStat> Stat(const VFSPath& relative_path) override;
-        VFSResult<Containers::Array<VFSDirEntry>> List(const VFSPath& relative_dir,
+        [[nodiscard]] VFSResult<IVFSFile*>  Open(const VFSPath& relative_path, VFSOpenFlags flags) override;
+        [[nodiscard]] VFSResult<void>       Close(IVFSFile* file) override;
+        [[nodiscard]] VFSResult<VFSFileStat> Stat(const VFSPath& relative_path) override;
+        [[nodiscard]] VFSResult<Containers::Array<VFSDirEntry>> List(const VFSPath& relative_dir,
                                                        Memory::ArenaAllocator* out_arena) override;
-        VFSResult<void>       CreateDir(const VFSPath&) override;   // always Fail(Unsupported)
-        VFSResult<void>       Remove(const VFSPath&) override;       // always Fail(Unsupported)
-        VFSResult<void>       Rename(const VFSPath&, const VFSPath&) override; // Fail(Unsupported)
+        [[nodiscard]] VFSResult<void>       CreateDir(const VFSPath&) override;   // always Fail(Unsupported)
+        [[nodiscard]] VFSResult<void>       Remove(const VFSPath&) override;       // always Fail(Unsupported)
+        [[nodiscard]] VFSResult<void>       Rename(const VFSPath&, const VFSPath&) override; // Fail(Unsupported)
         VFSBackendCaps        Capabilities() const override;         // Read | List | MemoryMap
 
         // Used by VFSZipFile::EnsureDecompressed to read raw compressed bytes.
         // offset is absolute byte offset into the archive file.
-        VFSResult<size_t> ReadArchiveBytes(void* buf, size_t count, uint64_t offset) const;
+        [[nodiscard]] VFSResult<size_t> ReadArchiveBytes(void* buf, size_t count, uint64_t offset) const;
 
     private:
         // Normalize a ZIP entry filename to the same format used by VFSPath.
@@ -872,6 +870,21 @@ m_case_sensitive = case_sensitive
 // Open raw fd for concurrent reads (kept open for lifetime of backend)
 #POSIX:  m_archive_fd = open(archive_path, O_RDONLY)
 #Windows: m_archive_handle = CreateFileA(archive_path, GENERIC_READ, FILE_SHARE_READ, ...)
+
+// THREAD SAFETY NOTE:
+// mz_zip_archive maintains internal seek state and is NOT thread-safe for concurrent reads.
+//
+// In VFSZipBackend::Initialize():
+//   1. Use m_mz_archive to read the central directory and build the m_entries table.
+//   2. Call mz_zip_reader_end(&m_mz_archive) IMMEDIATELY after building m_entries.
+//      This closes the archive handle — do not use it again after this point.
+//   3. Keep m_archive_fd open (platform file descriptor) for subsequent concurrent reads.
+//
+// In VFSZipFile::EnsureDecompressed():
+//   - Use ReadArchiveBytes(offset, size) which uses pread() / ReadFile() at an explicit
+//     offset — this is thread-safe and does not require a seek.
+//   - Decompress using tinfl_decompress_mem_to_mem() — pure CPU computation, thread-safe.
+//   - Do NOT call mz_zip_reader_extract_*() after Initialize() completes.
 
 // Use miniz to read the central directory
 memset(&m_mz_archive, 0, sizeof(m_mz_archive))
@@ -1160,6 +1173,15 @@ Condition 2 prevents a false positive where `m_native_root = "/assets"` passes f
 ---
 
 ## 9. Unit Tests
+
+NOTE: All test bodies marked with TODO must be implemented before Phase 2 (ECS+VFS)
+ships. Tests with empty bodies will not be accepted in code review.
+The following pattern must be used for each test:
+  1. Set up a concrete VFSDiskContext or VFSMemoryBackend
+  2. Register the system under test
+  3. Exercise the specific code path
+  4. Assert all invariants via EXPECT_* macros
+  5. Verify no ASAN/UBSAN errors under sanitizer builds
 
 **File:** `ZEngine/tests/VFS/vfs_mount_test.cpp`
 
@@ -1453,8 +1475,8 @@ In the miniz v1.15 header present at `__externals/assimp/contrib/zip/src/miniz.h
 
 ### Critical Files for Implementation
 
-- `/Users/konan.kouassi/source/personals/RendererEngine/ZEngine/ZEngine/Core/Containers/UnorderedHashMap.h`
-- `/Users/konan.kouassi/source/personals/RendererEngine/ZEngine/ZEngine/Core/Memory/Allocator.h`
-- `/Users/konan.kouassi/source/personals/RendererEngine/ZEngine/ZEngine/ZEngineDef.h`
-- `/Users/konan.kouassi/source/personals/RendererEngine/ZEngine/ZEngine/CMakeLists.txt`
-- `/Users/konan.kouassi/source/personals/RendererEngine/__externals/assimp/contrib/zip/src/miniz.h`
+- `ZEngine/Core/Containers/UnorderedHashMap.h`
+- `ZEngine/Core/Memory/Allocator.h`
+- `ZEngine/ZEngineDef.h`
+- `ZEngine/CMakeLists.txt`
+- `__externals/assimp/contrib/zip/src/miniz.h`
