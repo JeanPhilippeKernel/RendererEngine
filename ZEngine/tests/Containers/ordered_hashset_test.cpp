@@ -1,5 +1,6 @@
 #include <Core/Containers/HashSet.h>
 #include <Core/Containers/Strings.h>
+#include <Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
 #include <vector>
 
@@ -11,19 +12,19 @@ class OrderedHashSetTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        allocator.Initialize(2000);
+        manager.Initialize({.BufferSize = 2000});
     }
     void TearDown() override
     {
-        allocator.Shutdown();
+        manager.Shutdown();
     }
-    ArenaAllocator allocator;
+    MemoryManager manager;
 };
 
 TEST_F(OrderedHashSetTest, InitialState)
 {
     HashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     EXPECT_EQ(set.size(), 0);
     EXPECT_EQ(set.capacity(), 10);
     EXPECT_TRUE(set.empty());
@@ -32,7 +33,7 @@ TEST_F(OrderedHashSetTest, InitialState)
 TEST_F(OrderedHashSetTest, InsertAndContains)
 {
     HashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.insert(2);
     EXPECT_TRUE(set.contains(1));
@@ -43,7 +44,7 @@ TEST_F(OrderedHashSetTest, InsertAndContains)
 TEST_F(OrderedHashSetTest, InsertDuplicateDoesNotGrow)
 {
     HashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.insert(1);
     EXPECT_EQ(set.size(), 1);
@@ -52,7 +53,7 @@ TEST_F(OrderedHashSetTest, InsertDuplicateDoesNotGrow)
 TEST_F(OrderedHashSetTest, Remove)
 {
     HashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.insert(2);
     EXPECT_EQ(set.size(), 2);
@@ -65,7 +66,7 @@ TEST_F(OrderedHashSetTest, Remove)
 TEST_F(OrderedHashSetTest, RemoveNonExistentIsNoOp)
 {
     HashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.remove(99);
     EXPECT_EQ(set.size(), 1);
@@ -75,7 +76,7 @@ TEST_F(OrderedHashSetTest, RemoveNonExistentIsNoOp)
 TEST_F(OrderedHashSetTest, Find)
 {
     HashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(42);
     const int* found = set.find(42);
     ASSERT_NE(found, nullptr);
@@ -86,7 +87,7 @@ TEST_F(OrderedHashSetTest, Find)
 TEST_F(OrderedHashSetTest, Clear)
 {
     HashSet<int> set;
-    set.init(&allocator, 10);
+    set.init(&manager.MainArena, 10);
     set.insert(1);
     set.insert(2);
     set.insert(3);
@@ -102,7 +103,7 @@ TEST_F(OrderedHashSetTest, Clear)
 TEST_F(OrderedHashSetTest, Resize)
 {
     HashSet<int> set;
-    set.init(&allocator, 2);
+    set.init(&manager.MainArena, 2);
     for (int i = 0; i < 10; ++i)
     {
         set.insert(i);
@@ -118,7 +119,7 @@ TEST_F(OrderedHashSetTest, Resize)
 TEST_F(OrderedHashSetTest, CollisionHandling)
 {
     HashSet<int> set;
-    set.init(&allocator, 2);
+    set.init(&manager.MainArena, 2);
     set.insert(1);
     set.insert(3);
     set.insert(5);
@@ -132,7 +133,7 @@ TEST_F(OrderedHashSetTest, CollisionHandling)
 TEST_F(OrderedHashSetTest, InsertionOrderPreserved)
 {
     HashSet<int> set;
-    set.init(&allocator, 16);
+    set.init(&manager.MainArena, 16);
     set.insert(30);
     set.insert(10);
     set.insert(20);
@@ -152,7 +153,7 @@ TEST_F(OrderedHashSetTest, InsertionOrderPreserved)
 TEST_F(OrderedHashSetTest, InsertionOrderAfterRemove)
 {
     HashSet<int> set;
-    set.init(&allocator, 16);
+    set.init(&manager.MainArena, 16);
     set.insert(1);
     set.insert(2);
     set.insert(3);
@@ -174,7 +175,7 @@ TEST_F(OrderedHashSetTest, InsertionOrderAfterRemove)
 TEST_F(OrderedHashSetTest, InsertionOrderPreservedAfterResize)
 {
     HashSet<int> set;
-    set.init(&allocator, 2);
+    set.init(&manager.MainArena, 2);
     for (int i = 0; i < 10; ++i)
     {
         set.insert(i);
@@ -196,7 +197,7 @@ TEST_F(OrderedHashSetTest, InsertionOrderPreservedAfterResize)
 TEST_F(OrderedHashSetTest, DuplicateInsertDoesNotChangeOrder)
 {
     HashSet<int> set;
-    set.init(&allocator, 16);
+    set.init(&manager.MainArena, 16);
     set.insert(1);
     set.insert(2);
     set.insert(3);
@@ -219,7 +220,7 @@ TEST_F(OrderedHashSetTest, DuplicateInsertDoesNotChangeOrder)
 TEST_F(OrderedHashSetTest, SortKeysAscending)
 {
     HashSet<int> set;
-    set.init(&allocator, 16);
+    set.init(&manager.MainArena, 16);
     set.insert(30);
     set.insert(10);
     set.insert(20);
@@ -241,7 +242,7 @@ TEST_F(OrderedHashSetTest, SortKeysAscending)
 TEST_F(OrderedHashSetTest, SortKeysDoesNotAffectLookup)
 {
     HashSet<int> set;
-    set.init(&allocator, 16);
+    set.init(&manager.MainArena, 16);
     set.insert(30);
     set.insert(10);
     set.insert(20);
@@ -259,7 +260,7 @@ TEST_F(OrderedHashSetTest, SortKeysDoesNotAffectLookup)
 TEST_F(OrderedHashSetTest, SortKeysOnEmptySet)
 {
     HashSet<int> set;
-    set.init(&allocator, 16);
+    set.init(&manager.MainArena, 16);
     set.sort_keys();
     EXPECT_TRUE(set.empty());
 }
@@ -267,7 +268,7 @@ TEST_F(OrderedHashSetTest, SortKeysOnEmptySet)
 TEST_F(OrderedHashSetTest, InsertAfterSortAppendsTail)
 {
     HashSet<int> set;
-    set.init(&allocator, 16);
+    set.init(&manager.MainArena, 16);
     set.insert(30);
     set.insert(10);
     set.sort_keys();

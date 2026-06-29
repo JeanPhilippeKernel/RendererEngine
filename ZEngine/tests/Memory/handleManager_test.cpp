@@ -9,14 +9,14 @@ class HandleManagerTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        manager.Initialize({.DefaultSize = ZKilo(10)});
-        auto arena = &(manager.Allocator);
+        manager.Initialize({.BufferSize = ZKilo(10)});
+        auto arena = &(manager.MainArena);
         handle_manager.Initialize(arena, 10);
     }
 
     void TearDown() override
     {
-        manager.Shutdowm();
+        manager.Shutdown();
     }
 
     MemoryManager                         manager{};
@@ -113,8 +113,10 @@ TEST_F(HandleManagerTest, ReuseSlot)
 
 TEST_F(HandleManagerTest, ConcurrentAccess)
 {
+    MemoryManager concurrent_manager{};
+    concurrent_manager.Initialize({.BufferSize = ZKilo(64)});
     ZEngine::Helpers::HandleManager<int*> h_manager;
-    h_manager.Initialize(&(manager.Allocator), 40);
+    h_manager.Initialize(&(concurrent_manager.MainArena), 40);
     const int                numThreads             = 4;
     const int                numOperationsPerThread = 10;
     std::vector<std::thread> threads;
@@ -145,4 +147,5 @@ TEST_F(HandleManagerTest, ConcurrentAccess)
     {
         thread.join();
     }
+    concurrent_manager.Shutdown();
 }
