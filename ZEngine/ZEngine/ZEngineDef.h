@@ -7,13 +7,17 @@
 #define ZENGINE_KEYCODE        ZEngine::Windows::Inputs::GlfwKeyCode
 
 #ifdef _MSC_VER
-#define ZENGINE_DEBUG_BREAK() __debugbreak();
+#define ZENGINE_DEBUG_BREAK() \
+    __debugbreak();           \
+    __assume(false);
 #elif defined(__APPLE__)
 #include <signal.h>
 #define ZENGINE_DEBUG_BREAK() __builtin_trap();
 #else
 #include <signal.h>
-#define ZENGINE_DEBUG_BREAK() raise(SIGTRAP);
+#define ZENGINE_DEBUG_BREAK() \
+    raise(SIGTRAP);           \
+    __builtin_unreachable();
 #endif
 
 #ifdef _MSC_VER
@@ -29,7 +33,6 @@
         if (!(condition))                           \
         {                                           \
             ZENGINE_CORE_CRITICAL(message)          \
-            assert(condition && message);           \
             ZENGINE_DEBUG_BREAK()                   \
         }                                           \
     }

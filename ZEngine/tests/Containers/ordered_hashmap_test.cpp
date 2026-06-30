@@ -1,5 +1,6 @@
 #include <Core/Containers/HashMap.h>
 #include <Core/Containers/Strings.h>
+#include <Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
@@ -12,19 +13,19 @@ class OrderedHashMapTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        allocator.Initialize(2000);
+        manager.Initialize({.BufferSize = 2000});
     }
     void TearDown() override
     {
-        allocator.Shutdown();
+        manager.Shutdown();
     }
-    ArenaAllocator allocator;
+    MemoryManager manager;
 };
 
 TEST_F(OrderedHashMapTest, InitialState)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
     EXPECT_EQ(map.size(), 0);
     EXPECT_EQ(map.capacity(), 10);
     EXPECT_TRUE(map.empty());
@@ -33,7 +34,7 @@ TEST_F(OrderedHashMapTest, InitialState)
 TEST_F(OrderedHashMapTest, Contains)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
     map.insert(1, 10);
     EXPECT_TRUE(map.contains(1));
     EXPECT_FALSE(map.contains(2));
@@ -42,7 +43,7 @@ TEST_F(OrderedHashMapTest, Contains)
 TEST_F(OrderedHashMapTest, BracketOperator)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
     map[1] = 10;
     EXPECT_EQ(map[1], 10);
 
@@ -56,7 +57,7 @@ TEST_F(OrderedHashMapTest, BracketOperator)
 TEST_F(OrderedHashMapTest, Remove)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
     map.insert(1, 10);
     map.insert(2, 20);
     EXPECT_EQ(map.size(), 2);
@@ -69,7 +70,7 @@ TEST_F(OrderedHashMapTest, Remove)
 TEST_F(OrderedHashMapTest, Find)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
     map.insert(1, 10);
     int* value = map.find(1);
     ASSERT_NE(value, nullptr);
@@ -81,7 +82,7 @@ TEST_F(OrderedHashMapTest, Find)
 TEST_F(OrderedHashMapTest, Clear)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
 
     map.insert(1, 10);
     map.insert(2, 20);
@@ -102,7 +103,7 @@ TEST_F(OrderedHashMapTest, Clear)
 TEST_F(OrderedHashMapTest, Resize)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 2);
+    map.init(&manager.MainArena, 2);
 
     for (int i = 0; i < 10; ++i)
     {
@@ -123,13 +124,13 @@ TEST_F(OrderedHashMapTest, Resize)
 TEST_F(OrderedHashMapTest, OverwriteValue)
 {
     HashMap<int, String> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
 
     String str1;
-    str1.init(&allocator, "first");
+    str1.init(&manager.MainArena, "first");
 
     String str2;
-    str2.init(&allocator, "updated");
+    str2.init(&manager.MainArena, "updated");
 
     map.insert(1, str1);
     EXPECT_STREQ(map[1].c_str(), str1.c_str());
@@ -141,7 +142,7 @@ TEST_F(OrderedHashMapTest, OverwriteValue)
 TEST_F(OrderedHashMapTest, CollisionHandling)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 2);
+    map.init(&manager.MainArena, 2);
 
     map.insert(1, 10);
     map.insert(3, 30);
@@ -161,7 +162,7 @@ TEST_F(OrderedHashMapTest, CollisionHandling)
 TEST_F(OrderedHashMapTest, InsertionOrderPreserved)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 16);
+    map.init(&manager.MainArena, 16);
 
     map.insert(10, 100);
     map.insert(20, 200);
@@ -182,7 +183,7 @@ TEST_F(OrderedHashMapTest, InsertionOrderPreserved)
 TEST_F(OrderedHashMapTest, InsertionOrderAfterRemove)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 16);
+    map.init(&manager.MainArena, 16);
 
     map.insert(1, 10);
     map.insert(2, 20);
@@ -205,7 +206,7 @@ TEST_F(OrderedHashMapTest, InsertionOrderAfterRemove)
 TEST_F(OrderedHashMapTest, InsertionOrderPreservedAfterResize)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 2);
+    map.init(&manager.MainArena, 2);
 
     for (int i = 0; i < 10; ++i)
         map.insert(i, i * 10);
@@ -222,7 +223,7 @@ TEST_F(OrderedHashMapTest, InsertionOrderPreservedAfterResize)
 TEST_F(OrderedHashMapTest, UpdateDoesNotChangeOrder)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 16);
+    map.init(&manager.MainArena, 16);
 
     map.insert(1, 10);
     map.insert(2, 20);
@@ -245,7 +246,7 @@ TEST_F(OrderedHashMapTest, UpdateDoesNotChangeOrder)
 TEST_F(OrderedHashMapTest, SortKeysAscending)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 16);
+    map.init(&manager.MainArena, 16);
     map.insert(30, 300);
     map.insert(10, 100);
     map.insert(20, 200);
@@ -265,7 +266,7 @@ TEST_F(OrderedHashMapTest, SortKeysAscending)
 TEST_F(OrderedHashMapTest, SortKeysPreservesValues)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 16);
+    map.init(&manager.MainArena, 16);
     map.insert(3, 300);
     map.insert(1, 100);
     map.insert(2, 200);
@@ -290,7 +291,7 @@ TEST_F(OrderedHashMapTest, SortKeysPreservesValues)
 TEST_F(OrderedHashMapTest, SortKeysDoesNotAffectLookup)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 16);
+    map.init(&manager.MainArena, 16);
     map.insert(30, 300);
     map.insert(10, 100);
     map.insert(20, 200);
@@ -305,7 +306,7 @@ TEST_F(OrderedHashMapTest, SortKeysDoesNotAffectLookup)
 TEST_F(OrderedHashMapTest, SortKeysOnEmptyMap)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 16);
+    map.init(&manager.MainArena, 16);
     map.sort_keys();
     EXPECT_TRUE(map.empty());
 }
@@ -313,7 +314,7 @@ TEST_F(OrderedHashMapTest, SortKeysOnEmptyMap)
 TEST_F(OrderedHashMapTest, InsertAfterSortAppendsTail)
 {
     HashMap<int, int> map;
-    map.init(&allocator, 16);
+    map.init(&manager.MainArena, 16);
     map.insert(30, 300);
     map.insert(10, 100);
     map.sort_keys(); // order: 10, 30

@@ -1,5 +1,6 @@
 #include <Core/Containers/Strings.h>
 #include <Core/Containers/UnorderedHashMap.h>
+#include <Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
 #include <string>
 
@@ -11,19 +12,19 @@ class HashMapTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        allocator.Initialize(2000);
+        manager.Initialize({.BufferSize = 2000});
     }
     void TearDown() override
     {
-        allocator.Shutdown();
+        manager.Shutdown();
     }
-    ArenaAllocator allocator;
+    MemoryManager manager;
 };
 
 TEST_F(HashMapTest, InitialState)
 {
     UnorderedHashMap<int, int> array;
-    array.init(&allocator, 10);
+    array.init(&manager.MainArena, 10);
     EXPECT_EQ(array.size(), 0);
     EXPECT_EQ(array.capacity(), 10);
     EXPECT_TRUE(array.empty());
@@ -32,7 +33,7 @@ TEST_F(HashMapTest, InitialState)
 TEST_F(HashMapTest, Contains)
 {
     UnorderedHashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
     map.insert(1, 10);
     EXPECT_TRUE(map.contains(1));
     EXPECT_FALSE(map.contains(2));
@@ -41,7 +42,7 @@ TEST_F(HashMapTest, Contains)
 TEST_F(HashMapTest, BracketOperator)
 {
     UnorderedHashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
     map[1] = 10;
     EXPECT_EQ(map[1], 10);
 
@@ -55,7 +56,7 @@ TEST_F(HashMapTest, BracketOperator)
 TEST_F(HashMapTest, Remove)
 {
     UnorderedHashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
     map.insert(1, 10);
     map.insert(2, 20);
     EXPECT_EQ(map.size(), 2);
@@ -68,7 +69,7 @@ TEST_F(HashMapTest, Remove)
 TEST_F(HashMapTest, Find)
 {
     UnorderedHashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
     map.insert(1, 10);
     int* value = map.find(1);
     ASSERT_NE(value, nullptr);
@@ -80,7 +81,7 @@ TEST_F(HashMapTest, Find)
 TEST_F(HashMapTest, Clear)
 {
     UnorderedHashMap<int, int> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
 
     // Insert multiple elements
     map.insert(1, 10);
@@ -102,7 +103,7 @@ TEST_F(HashMapTest, Clear)
 TEST_F(HashMapTest, Resize)
 {
     UnorderedHashMap<int, int> map;
-    map.init(&allocator, 2);
+    map.init(&manager.MainArena, 2);
 
     for (int i = 0; i < 10; ++i)
     {
@@ -123,13 +124,13 @@ TEST_F(HashMapTest, Resize)
 TEST_F(HashMapTest, OverwriteValue)
 {
     UnorderedHashMap<int, String> map;
-    map.init(&allocator, 10);
+    map.init(&manager.MainArena, 10);
 
     String str1;
-    str1.init(&allocator, "first");
+    str1.init(&manager.MainArena, "first");
 
     String str2;
-    str2.init(&allocator, "updated");
+    str2.init(&manager.MainArena, "updated");
 
     map.insert(1, str1);
     EXPECT_STREQ(map[1].c_str(), str1.c_str());
@@ -141,7 +142,7 @@ TEST_F(HashMapTest, OverwriteValue)
 TEST_F(HashMapTest, CollisionHandling)
 {
     UnorderedHashMap<int, int> map;
-    map.init(&allocator, 2);
+    map.init(&manager.MainArena, 2);
 
     map.insert(1, 10);
     map.insert(3, 30);
@@ -159,7 +160,7 @@ TEST_F(HashMapTest, CollisionHandling)
 TEST_F(HashMapTest, ViewIteration)
 {
     UnorderedHashMap<int, int> map;
-    map.init(&allocator, 8);
+    map.init(&manager.MainArena, 8);
 
     map.insert(10, 100);
     map.insert(20, 200);
@@ -196,20 +197,20 @@ TEST_F(HashMapTest, UserDefinedStructViewIterations)
     };
 
     UnorderedHashMap<Person, String> map;
-    map.init(&allocator, 8);
+    map.init(&manager.MainArena, 8);
 
     String str1;
-    str1.init(&allocator, "Alice");
+    str1.init(&manager.MainArena, "Alice");
     String str2;
-    str2.init(&allocator, "Bob");
+    str2.init(&manager.MainArena, "Bob");
     String str3;
-    str3.init(&allocator, "Carol");
+    str3.init(&manager.MainArena, "Carol");
     String str4;
-    str4.init(&allocator, "Engineer");
+    str4.init(&manager.MainArena, "Engineer");
     String str5;
-    str5.init(&allocator, "Designer");
+    str5.init(&manager.MainArena, "Designer");
     String str6;
-    str6.init(&allocator, "Artist");
+    str6.init(&manager.MainArena, "Artist");
 
     Person alice{str1, 30};
     Person bob{str2, 25};

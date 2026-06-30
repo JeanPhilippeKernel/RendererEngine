@@ -90,7 +90,9 @@ namespace ZEngine::Helpers
         errno_t err = strncpy_s(dest, destSize, src, count);
         return (err == 0) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
 #else
-        return (std::strncpy(dest, src, count) == dest) ? MEMORY_OP_SUCCESS : MEMORY_OP_FAILURE;
+        std::strncpy(dest, src, count);
+        dest[count] = '\0';
+        return MEMORY_OP_SUCCESS;
 #endif
     }
     inline size_t secure_strlen(const char* str)
@@ -160,7 +162,7 @@ namespace ZEngine::Helpers
 
     inline bool is_power_of_two(uintptr_t x)
     {
-        return (x & (x - 1)) == 0;
+        return (x != 0) && ((x & (x - 1)) == 0);
     }
 
     inline uintptr_t memory_align(uintptr_t ptr, size_t align)

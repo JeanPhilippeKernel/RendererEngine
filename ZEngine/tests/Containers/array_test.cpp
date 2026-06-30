@@ -1,4 +1,5 @@
 #include <Core/Containers/Array.h>
+#include <Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
 
 using namespace ZEngine::Core::Containers;
@@ -9,21 +10,20 @@ class ArrayTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        allocator.Initialize(200);
+        manager.Initialize({.BufferSize = 200});
     }
 
     void TearDown() override
     {
-        allocator.Shutdown();
+        manager.Shutdown();
     }
-
-    ArenaAllocator allocator;
+    MemoryManager manager;
 };
 
 TEST_F(ArrayTest, InitialState)
 {
     Array<int> array;
-    array.init(&allocator, 10);
+    array.init(&manager.MainArena, 10);
 
     EXPECT_EQ(array.size(), 0);
     EXPECT_EQ(array.capacity(), 10);
@@ -33,7 +33,7 @@ TEST_F(ArrayTest, InitialState)
 TEST_F(ArrayTest, PushBack)
 {
     Array<int> array;
-    array.init(&allocator, 4, make_initializer_list(&allocator, 1, 2, 3));
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
 
     EXPECT_EQ(array.size(), 3);
     EXPECT_FALSE(array.empty());
@@ -45,7 +45,7 @@ TEST_F(ArrayTest, PushBack)
 TEST_F(ArrayTest, AutoResize)
 {
     Array<int> array;
-    array.init(&allocator, 2);
+    array.init(&manager.MainArena, 2);
 
     EXPECT_EQ(array.capacity(), 2);
 
@@ -61,7 +61,7 @@ TEST_F(ArrayTest, AutoResize)
 TEST_F(ArrayTest, PopBack)
 {
     Array<int> array;
-    array.init(&allocator, 4, make_initializer_list(&allocator, 1, 2, 3));
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
 
     EXPECT_EQ(array.size(), 3);
 
@@ -79,7 +79,7 @@ TEST_F(ArrayTest, PopBack)
 TEST_F(ArrayTest, Clear)
 {
     Array<int> array;
-    array.init(&allocator, 4, make_initializer_list(&allocator, 1, 2, 3));
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
 
     EXPECT_EQ(array.size(), 3);
 
@@ -93,7 +93,7 @@ TEST_F(ArrayTest, Clear)
 TEST_F(ArrayTest, Reserve)
 {
     Array<int> array;
-    array.init(&allocator, 4);
+    array.init(&manager.MainArena, 4);
 
     EXPECT_EQ(array.capacity(), 4);
 
@@ -107,7 +107,7 @@ TEST_F(ArrayTest, Reserve)
 TEST_F(ArrayTest, FrontAndBack)
 {
     Array<int> array;
-    array.init(&allocator, 4);
+    array.init(&manager.MainArena, 4);
 
     array.push(10);
     EXPECT_EQ(array.front(), 10);
@@ -123,7 +123,7 @@ TEST_F(ArrayTest, FrontAndBack)
 TEST_F(ArrayTest, ArrayViewWrap)
 {
     Array<int> array;
-    array.init(&allocator, 4, make_initializer_list(&allocator, 10, 20, 30));
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 10, 20, 30));
 
     ArrayView<int> view(array);
 
