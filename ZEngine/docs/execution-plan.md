@@ -33,7 +33,7 @@ nothing else can safely start until they are done.
 |---|---|---|
 | Fix allocator P0 bugs 1, 3, 4, 9, 13 (`memory-allocator-audit.md`) | 3 | None — start here |
 | Fix allocator remaining bugs 2, 5–8, 10–12, 14–16 | 2 | P0 bugs done |
-| Rewrite `Engine::Initialize` per `engine-lifecycle.md` — Obelisk scope vs Engine scope | 3 | Allocator bugs |
+| Rewrite `Engine::Initialize` per `engine-lifecycle.md` §6 — **Sprint 1 scope only: Steps 6–10, 12, 22–25** (pre-conditions, Window, Device, AssetManager, AppRenderPipeline, RenderThread, MainThreadRun). Steps 11 (VFS), 13–21 (ECS/Physics/Audio/Network) are commented placeholders that increment `g_init_step` only — do not implement until their subsystem sprint. | 3 | Allocator bugs |
 | Add `CrashHandler::Install/Uninstall` to `Obelisk/EntryPoint.cpp` + fix typo | 0.5 | None |
 | `MemoryBudgetConfig::Default()` + `CreateBudgetedArena` helper | 1.5 | Allocator bugs |
 
@@ -46,8 +46,7 @@ nothing else can safely start until they are done.
 | `build-integration.md`: CMake structure, toolchain files, dependency strategy | 2 | None |
 | Fix minor logging gaps: `LogMessage` struct, `LogEventFn` fn-pointer, `shared_mutex` | 1.5 | None |
 
-**Sprint 1 exit gate:** Allocator is safe. Engine initializes without singleton assumptions.
-VFS path layer compiles. Build system defined.
+**Sprint 1 exit gate:** Allocator is safe. `Engine::Initialize` wires Steps 6–10, 12, 22–25 (Window, Device, AssetManager, RenderPipeline, RenderThread). Steps 11 and 13–21 are placeholder stubs. VFS path layer compiles. Build system defined.
 
 ---
 

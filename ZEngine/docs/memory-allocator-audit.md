@@ -416,9 +416,13 @@ void ArenaAllocator::Initialize(uint64_t size)
 
 void ArenaAllocator::CreateSubArena(size_t size, ArenaAllocator* out_arena)
 {
-    out_arena->m_memory      = reinterpret_cast<uint8_t*>(Allocate(size));
-    out_arena->m_owns_memory = false;   // does NOT own — parent does
-    // ...
+    out_arena->m_memory                = reinterpret_cast<uint8_t*>(Allocate(size));
+    out_arena->m_total_size            = size;
+    out_arena->m_current_offset        = 0;
+    out_arena->m_previous_offset       = 0;
+    out_arena->m_initial_current_offset  = 0;   // explicit — Clear() resets to this
+    out_arena->m_initial_previous_offset = 0;   // explicit — Clear() resets to this
+    out_arena->m_owns_memory           = false;  // does NOT own — parent does
 }
 
 void ArenaAllocator::Shutdown()

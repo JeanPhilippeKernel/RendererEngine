@@ -286,7 +286,7 @@ namespace ZEngine::Core::VFS
 1. acquire shared_lock lock(m_mutex)
 2. node = FindNode(relative)  →  if null: return Fail(NotFound)
 3. assert node->NodeKind == Kind::File, else return Fail(IOError)
-4. heap-allocate VFSMemoryFile file (new VFSMemoryFile)
+4. file = new VFSMemoryFile   ← heap-allocated; owned by caller until Close(file) deletes it
 5. file->m_node           = node
    file->m_flags          = flags
    file->m_backend_mutex  = &m_mutex
@@ -305,7 +305,7 @@ The shared_lock moves into the file handle. The backend's local `lock` variable 
        call EnsureParentExists(relative)
        call AddChildToParent(relative)
 3. node = FindNode(relative)  →  if still null: return Fail(NotFound)
-4. heap-allocate VFSMemoryFile file
+4. file = new VFSMemoryFile   ← heap-allocated; owned by caller until Close(file) deletes it
 5. file->m_node          = node
    file->m_flags         = flags
    file->m_backend_mutex = &m_mutex
@@ -606,8 +606,8 @@ VFSScanner::Scan(context, root, arena, cache):
 
     ScanContext ctx = { context, root, arena, cache }
 
-    ThreadPoolHelper::Submit([this, ctx]() {
-        ScanDirectory(ctx, ctx.Root)
+    ThreadPoolHelper::Submit([this, ctx, root]() {
+        ScanDirectory(ctx, root)
         OnTaskComplete(m_cancel_requested.load(relaxed))
     })
 

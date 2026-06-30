@@ -58,12 +58,15 @@ sides include.
 
 // Forward declarations — the game DLL receives pointers; it does not need full types
 // unless it accesses members (in which case it includes the relevant engine header).
-namespace ZEngine::ECS     { class Scene;        }
-namespace ZEngine::ECS     { class WorldTick;    }
-namespace ZEngine::ECS     { class ActorManager; }
-namespace ZEngine::Audio   { class AudioEngine;  }
-namespace ZEngine::VFS     { class IVFSContext;  }
-namespace ZEngine::Physics { class PhysicsWorld; }
+namespace ZEngine::ECS       { class Scene;               }
+namespace ZEngine::ECS       { class WorldTick;           }
+namespace ZEngine::ECS       { class ActorManager;        }
+namespace ZEngine::Audio     { class AudioEngine;         }
+namespace ZEngine::VFS       { class IVFSContext;         }
+namespace ZEngine::Physics   { class PhysicsWorld;        }
+namespace ZEngine::Animation { class AnimationManager;    }
+namespace ZEngine::Input     { class InputManager;        }
+namespace ZEngine::Network   { class NetworkSession;      }
 namespace ZEngine::Rendering { class RenderResourceManager; }
 
 namespace ZEngine::Scripting {
@@ -88,6 +91,9 @@ namespace ZEngine::Scripting {
         Audio::AudioEngine*                Audio;
         VFS::IVFSContext*                  VFS;
         Physics::PhysicsWorld*             Physics;
+        Animation::AnimationManager*       Animation;
+        Input::InputManager*               Input;
+        Network::NetworkSession*           Network;    // null in single-player builds
         Rendering::RenderResourceManager*  RRM;
 
         // Engine version fields — used to detect stale game DLL after engine rebuild.
@@ -390,17 +396,25 @@ do not create unsafe patterns.
 | DLL-local static variables | DLL `.bss` / `.data` | No | Destroyed on unload |
 | DLL-local heap allocations | DLL heap (if CRT is shared) | Depends | See below |
 
-CONSTRAINT: All Ref<Actor> pointers stored in ECS components or other containers
-must be cleared before ActorManager::DestroyAllActors() is called during reload.
-Failure to do so leaves Ref<Actor> objects alive whose vtable points into the
-unloaded DLL — calling any virtual method on them after DLL unload is undefined behavior.
+CONSTRAINT: ECS components are plain data and must NOT store Ref<Actor> (or any
+pointer into a game DLL type). Cross-entity actor references must be stored as
+EntityID values, not as Ref<Actor> pointers. This is consistent with the
+actor-ecs-architecture.md component ownership rules.
 
-Game code must null out cross-entity actor references in Actor::OnDestroy():
+However, DLL-local globals and game-code variables (not ECS components) may
+hold Ref<Actor>. These must be cleared before ActorManager::DestroyAllActors()
+is called during reload. Failure to do so leaves Ref<Actor> objects alive whose
+vtable points into the unloaded DLL — calling any virtual method after DLL
+unload is undefined behavior.
+
+Game code must release DLL-local actor references in Actor::OnDestroy():
     void MyActor::OnDestroy() override {
-        // Clear any Ref<Actor> stored in components or globals
-        if (auto* target = scene.GetComponent<TargetComponent>(m_entity_id))
-            target->Target = nullptr;
+        // Clear any DLL-local Ref<Actor> (NOT ECS component fields)
+        m_cached_target_actor = nullptr;   // DLL-local member, not a component
     }
+
+To resolve a cross-entity actor reference at runtime, store the EntityID in a
+plain-data component and call ActorManager::GetActor(entity_id) each time:
 
 ### ECS component data — safe
 
