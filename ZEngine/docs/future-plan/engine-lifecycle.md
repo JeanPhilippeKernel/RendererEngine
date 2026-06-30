@@ -451,83 +451,68 @@ bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, 
     //     "Engine::Initialize: VFSDiskContext::Initialize failed")
     g_init_step = 11;
 
-    // Step 12 — AssetManager (EXISTING, updated to store in context)
+    // Step 10 — AssetManager (EXISTING, updated to store in context)
     ZENGINE_VALIDATE_ASSERT(
         Managers::AssetManager::Initialize(arena, context->Device, app->WorkingSpacePath),
         "Engine::Initialize: AssetManager::Initialize failed")
 
-    // Step 13 — ECS::Scene (NEW) — PLACEHOLDER — Sprint 2
-    // Uncomment when ECS::Scene exists:
-    // arena->CreateSubArena(budget.ECSScene, &context->ECSArena);
-    // context->Scene = ECS::Scene::Create(&context->ECSArena);
-    // ZENGINE_VALIDATE_ASSERT(
-    //     context->Scene->Initialize(),
-    //     "Engine::Initialize: ECS::Scene::Initialize failed")
-    g_init_step = 13;
+    // Step 13 — ECS::Scene (NEW)
+    arena->CreateSubArena(budget.ECSScene, &context->ECSArena);
+    context->Scene = ECS::Scene::Create(&context->ECSArena);
+    ZENGINE_VALIDATE_ASSERT(
+        context->Scene->Initialize(),
+        "Engine::Initialize: ECS::Scene::Initialize failed")
 
-    // Step 14 — WorldTick (NEW) — PLACEHOLDER — Sprint 3
-    // Uncomment when ECS::WorldTick exists:
-    // context->WorldTick = ECS::WorldTick::Create(context->Scene);
-    // ZENGINE_VALIDATE_ASSERT(
-    //     context->WorldTick->Initialize(),
-    //     "Engine::Initialize: WorldTick::Initialize failed")
-    g_init_step = 14;
+    // Step 14 — WorldTick (NEW)
+    context->WorldTick = ECS::WorldTick::Create(context->Scene);
+    ZENGINE_VALIDATE_ASSERT(
+        context->WorldTick->Initialize(),
+        "Engine::Initialize: WorldTick::Initialize failed")
 
-    // Step 15 — ActorManager (NEW) — PLACEHOLDER — Sprint 3
-    // Uncomment when ECS::ActorManager exists:
-    // context->ActorManager = ECS::ActorManager::Create(context->Scene, context->WorldTick);
-    // ZENGINE_VALIDATE_ASSERT(
-    //     context->ActorManager->Initialize(),
-    //     "Engine::Initialize: ActorManager::Initialize failed")
-    g_init_step = 15;
+    // Step 15 — ActorManager (NEW)
+    context->ActorManager = ECS::ActorManager::Create(context->Scene, context->WorldTick);
+    ZENGINE_VALIDATE_ASSERT(
+        context->ActorManager->Initialize(),
+        "Engine::Initialize: ActorManager::Initialize failed")
 
-    // Step 16 — AnimationManager (NEW) — PLACEHOLDER — Sprint 7
-    // Uncomment when Animation::AnimationManager exists:
-    // arena->CreateSubArena(budget.AnimationManager, &context->AnimationArena);
-    // context->AnimMgr = Animation::AnimationManager::Create(&context->AnimationArena, context->Device, context->Scene);
-    // ZENGINE_VALIDATE_ASSERT(
-    //     context->AnimMgr->Initialize(),
-    //     "Engine::Initialize: AnimationManager::Initialize failed")
-    g_init_step = 16;
+    // Step 16 — AnimationManager (NEW)
+    arena->CreateSubArena(budget.AnimationManager, &context->AnimationArena);
+    context->AnimMgr = Animation::AnimationManager::Create(&context->AnimationArena, context->Device, context->Scene);
+    ZENGINE_VALIDATE_ASSERT(
+        context->AnimMgr->Initialize(),
+        "Engine::Initialize: AnimationManager::Initialize failed")
 
-    // Step 17 — PhysicsWorld (NEW) — PLACEHOLDER — Sprint 6
-    // Uncomment when Physics::PhysicsWorld exists:
-    // arena->CreateSubArena(budget.PhysicsWorld, &context->PhysicsArena);
-    // context->PhysicsWorld = Physics::PhysicsWorld::Create(&context->PhysicsArena, context->Scene);
-    // ZENGINE_VALIDATE_ASSERT(
-    //     context->PhysicsWorld->Initialize(),
-    //     "Engine::Initialize: PhysicsWorld::Initialize failed")
-    g_init_step = 17;
+    // Step 17 — PhysicsWorld (NEW)
+    arena->CreateSubArena(budget.PhysicsWorld, &context->PhysicsArena);
+    context->PhysicsWorld = Physics::PhysicsWorld::Create(&context->PhysicsArena, context->Scene);
+    ZENGINE_VALIDATE_ASSERT(
+        context->PhysicsWorld->Initialize(),
+        "Engine::Initialize: PhysicsWorld::Initialize failed")
 
-    // Step 18 — AudioEngine (NEW) — PLACEHOLDER — Sprint 6
-    // Uncomment when Audio::AudioEngine exists:
-    // arena->CreateSubArena(budget.AudioEngine, &context->AudioArena);
-    // context->AudioEngine = Audio::AudioEngine::Create(&context->AudioArena, context->VFS);
-    // ZENGINE_VALIDATE_ASSERT(
-    //     context->AudioEngine->Initialize(),
-    //     "Engine::Initialize: AudioEngine::Initialize failed")
-    g_init_step = 18;
+    // Step 18 — AudioEngine (NEW)
+    arena->CreateSubArena(budget.AudioEngine, &context->AudioArena);
+    context->AudioEngine = Audio::AudioEngine::Create(&context->AudioArena, context->VFS);
+    ZENGINE_VALIDATE_ASSERT(
+        context->AudioEngine->Initialize(),
+        "Engine::Initialize: AudioEngine::Initialize failed")
 
-    // Step 19 — NetworkSession (conditional) (NEW) — PLACEHOLDER — Sprint 11
-    // Uncomment when Network::NetworkSession exists:
-    // if (app->RequiresNetworking())
-    // {
-    //     arena->CreateSubArena(budget.Network, &context->NetworkArena);
-    //     context->NetworkSession = Network::NetworkSession::Create(&context->NetworkArena, context->Scene);
-    //     ZENGINE_VALIDATE_ASSERT(
-    //         context->NetworkSession->Initialize(),
-    //         "Engine::Initialize: NetworkSession::Initialize failed")
-    // }
-    g_init_step = 19;
+    // Step 19 — NetworkSession (conditional) (NEW)
+    if (app->RequiresNetworking())
+    {
+        arena->CreateSubArena(budget.Network, &context->NetworkArena);
+        context->NetworkSession = Network::NetworkSession::Create(&context->NetworkArena, context->Scene);
+        ZENGINE_VALIDATE_ASSERT(
+            context->NetworkSession->Initialize(),
+            "Engine::Initialize: NetworkSession::Initialize failed")
+    }
 
     // Expose context to app (EXISTING pattern, extended)
     app->CurrentWindow     = context->Window;
 
-    // Step 20 — OnInitialized (hook in GameApplication::Initialize, after Engine::Initialize returns)
-    //            PLACEHOLDER — Sprint 3 (requires WorldTick to exist before Commit is meaningful)
+    // Step 20 — OnInitialized (EXISTING hook — called in GameApplication::Initialize after this returns)
 
     // Step 21 — WorldTick::Commit (NEW — called in GameApplication::Initialize after OnInitialized)
-    //            PLACEHOLDER — Sprint 3. See GameApplication::Initialize for the precise call site.
+    // See GameApplication::Initialize for the precise call site.
 
     // Step 22 — AppRenderPipeline (EXISTING, kept in place)
     app->RenderPipeline = ZPushStructCtor(arena, Applications::AppRenderPipeline);
