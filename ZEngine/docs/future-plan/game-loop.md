@@ -609,7 +609,8 @@ Key invariants:
   with `FixedDeltaSeconds` set, not `DeltaSeconds`. Systems that need the raw frame
   delta (e.g., audio fade, camera spring) should use `DeltaSeconds`.
 - `m_GameApplication->Update(timestep)` replaces the existing call; the signature
-  changes from `Update(TimeStep dt)` to `Update(const Core::TimeStep& ts)`.
+  changes from `Update(float dt)` to `Update(const Core::TimeStep& ts)`, matching
+  the `OnUpdate(const Core::TimeStep& ts)` contract in engine-lifecycle.md §5.
 
 ---
 

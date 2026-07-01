@@ -177,40 +177,40 @@ Step 12: AssetManager::Initialize()
          Rationale: mesh, texture, and material loading required before scene population.
                     Depends on Step 10 (GPU uploads), Step 11 (VFS), Step 2 (sub-arena).
 
-Step 11: ECS::Scene::Initialize()
+Step 13: ECS::Scene::Initialize()
          Rationale: entity and component storage required by all game systems.
                     ActorManager, WorldTick, and AnimationManager all write into the scene.
-                    Depends on Step 4 (ECS sub-arena).
+                    Depends on Step 2 (ECS sub-arena).
 
-Step 12: ECS::WorldTick::Initialize()
+Step 14: ECS::WorldTick::Initialize()
          Rationale: system registration and dependency declaration requires a live scene.
-                    Game DLL registers its own systems in OnInitialized() (Step 15),
+                    Game DLL registers its own systems in OnInitialized() (Step 19),
                     so Commit() must not be called here — only registration infra is set up.
-                    Depends on Step 11.
+                    Depends on Step 13.
 
-Step 13: ECS::ActorManager::Initialize()
+Step 15: ECS::ActorManager::Initialize()
          Rationale: actor lifecycle management requires a live scene and WorldTick.
-                    Depends on Steps 11 and 12.
+                    Depends on Steps 13 and 14.
 
-Step 14: Animation::AnimationManager::Initialize()
+Step 16: Animation::AnimationManager::Initialize()
          Rationale: skeleton and clip data requires live ECS scene for component queries.
-                    Depends on Steps 8 (GPU skinning buffers), 11 (scene components),
-                    10 (asset loading for animation clips).
+                    Depends on Steps 10 (GPU skinning buffers), 13 (scene components),
+                    12 (asset loading for animation clips).
 
-Step 15: Physics::PhysicsWorld::Initialize()
+Step 17: Physics::PhysicsWorld::Initialize()
          Rationale: Jolt body data requires live ECS scene for transform components.
                     Has no GPU dependency — CPU-only.
-                    Depends on Step 11.
+                    Depends on Step 13.
 
-Step 16: Audio::AudioEngine::Initialize()
+Step 18: Audio::AudioEngine::Initialize()
          Rationale: miniaudio state and clip pool require VFS for asset path resolution.
                     Has no GPU dependency — CPU-only.
-                    Depends on Step 9 (VFS).
+                    Depends on Step 11 (VFS).
 
-Step 17: Network::NetworkSession::Initialize()   [conditional: multiplayer only]
+Step 19: Network::NetworkSession::Initialize()   [conditional: multiplayer only]
          Rationale: peer state and snapshot ring buffers require ECS scene for rollback.
                     Skipped entirely in single-player builds.
-                    Depends on Step 11.
+                    Depends on Step 13.
 
          Contract: Games optionally override `GameApplication::RequiresNetworking()` which
          returns false by default. If it returns true, Engine::Initialize() allocates the
@@ -219,31 +219,31 @@ Step 17: Network::NetworkSession::Initialize()   [conditional: multiplayer only]
          context->NetworkSession null. All engine code that uses NetworkSession must guard:
          `if (context->NetworkSession) { ... }`
 
-Step 18: GameApplication::OnInitialized()
+Step 20: GameApplication::OnInitialized()
          Rationale: game DLL entry point (ZGame_Initialize). Registers custom ECS systems,
                     loads the initial scene, sets up UI. All engine subsystems are live.
                     Must precede WorldTick::Commit() so game systems are included in the DAG.
 
-Step 19: ECS::WorldTick::Commit()
+Step 21: ECS::WorldTick::Commit()
          Rationale: builds the execution DAG from all registered systems and their
                     declared Read/Write/After/Before dependencies.
-                    Must occur after all system registration (Steps 12 and 18).
+                    Must occur after all system registration (Steps 14 and 20).
                     Must occur before MainThreadRun() dispatches any tick.
 
-Step 20: AppRenderPipeline::Initialize()
+Step 22: AppRenderPipeline::Initialize()
          Rationale: render graph compilation references scene components, resource manager
                     handles, and GPU device state. Built after scene and resources are ready.
-                    Depends on Steps 8, 10, 11, 19.
+                    Depends on Steps 10, 13, 21.
 
-Step 21: AssetManager::Run()
+Step 23: AssetManager::Run()
          Rationale: starts the async import queue. Placed after AppRenderPipeline so the
                     pipeline can consume freshly imported assets on the first frame.
 
-Step 22: spawn g_render_thread (RenderThreadRun)
+Step 24: spawn g_render_thread (RenderThreadRun)
          Rationale: render thread accesses AppRenderPipeline, VulkanDevice, GameWindow.
                     All three must be fully initialized.
 
-Step 23: MainThreadRun()   [blocks until shutdown is requested]
+Step 25: MainThreadRun()   [blocks until shutdown is requested]
          Rationale: game loop starts only after all systems and the render thread are live.
 ```
 
@@ -345,22 +345,47 @@ The table below maps each virtual hook to the initialization/shutdown step at wh
 
 | Hook | Fires at | Engine state at call time | Permitted operations |
 |---|---|---|---|
-| `OnInitializing()` | Before Step 7 (window) | Logger + CrashHandler + ThreadPool + MemoryManager live | Configure `WindowCfg` fields; set arena size overrides |
-| `OverrideWindowConfiguration()` | Between `OnInitializing` and Step 7 | Same as above | Override title, resolution, MSAA, fullscreen flags |
-| `OnInitialized()` | After Step 18 (ActorManager initialized, before Commit) | All subsystems live except WorldTick DAG not yet committed | Register ECS systems; load initial scene; set up UI; bind input |
-| `OnUpdate(float dt)` | Each iteration of `MainThreadRun()` | Full engine live | `dt` is the FIXED timestep duration (1/60 sec by default). Do NOT call `WorldTick::Tick()` yourself — the engine calls it before `OnUpdate()`. Use `dt` for gameplay logic that must remain frame-rate independent. `Actor::OnTick` receives the full `Core::TimeStep` (with Alpha for interpolation). |
+| `OnInitializing()` | Before Step 9 (window) | Logger + CrashHandler + ThreadPool + MemoryManager live | Configure `WindowCfg` fields; set arena size overrides |
+| `OverrideWindowConfiguration()` | Between `OnInitializing` and Step 9 | Same as above | Override title, resolution, MSAA, fullscreen flags |
+| `OnInitialized()` | After Step 19 (NetworkSession, before Commit) | All subsystems live except WorldTick DAG not yet committed | Register ECS systems; load initial scene; set up UI; bind input |
+| `OnUpdate(const Core::TimeStep& ts)` | Each fixed-step iteration inside `MainThreadRun()` | Full engine live | `ts.FixedDeltaSeconds` is the fixed timestep (1/60 s by default). `ts.DeltaSeconds` is the raw frame delta. Do NOT call `WorldTick::Tick()` yourself — the engine calls it before `OnUpdate()`. `Actor::OnTick` receives the same `TimeStep` (use `ts.Alpha` for interpolation). |
 | `OnEvent(CoreEvent&)` | On each OS event in `MainThreadRun()` | Full engine live | Handle window resize, key/mouse events, close request |
 | `OnPreRender()` | Each frame in `RenderThreadRun()`, before render graph execution | AppRenderPipeline live | Update per-frame uniform buffers; push debug geometry |
 | `OnPostRender()` | Each frame in `RenderThreadRun()`, after render graph execution | Swapchain image ready for present | Read-back queries; overlay debug stats |
 | `OnRenderUI()` | Each frame in `RenderThreadRun()`, after `OnPostRender()` | UIContext live | Issue UIContext draw calls |
-| `OnClosing()` | Before Step 1 (before terminate flag) | Full engine live | Save game state; flush network; close sockets |
-| `OnClosed()` | After Step 17, before Step 18 | MemoryManager freed; Logger flushing | OS-level resource release only; no arena use |
+| `OnClosing()` | Before shutdown Step 1 (before terminate flag) | Full engine live | Save game state; flush network; close sockets |
+| `OnClosed()` | After shutdown Step 17, before shutdown Step 18 | MemoryManager freed; Logger flushing | OS-level resource release only; no arena use |
 
 ---
 
 ## 6. Engine::Initialize Rewrite
 
-The rewrite below inserts the missing initialization steps (Steps 1–4, 9, 11–17, 19) around the existing working code. Lines marked `// EXISTING` are kept verbatim. Lines marked `// NEW` are additions.
+> **PHASED IMPLEMENTATION — Sprint 1 scope is Steps 6–12 only.**
+>
+> This code block is the **final target** for `Engine::Initialize`. Not all
+> subsystems exist yet. Do not add a step until its subsystem is implemented:
+>
+> | Steps | Available from |
+> |---|---|
+> | 6–10 (pre-conditions, Window, Device) | Sprint 1 — implement now |
+> | 11 (VFS) | Sprint 1 end (Engineer B) — add when VFS T1 lands |
+> | 12 (AssetManager) | Sprint 1 — implement now |
+> | 13–15 (Scene, WorldTick, ActorManager) | Sprint 2–3 |
+> | 16 (AnimationManager) | Sprint 7 |
+> | 17 (PhysicsWorld) | Sprint 6 |
+> | 18 (AudioEngine) | Sprint 6 |
+> | 19 (NetworkSession) | Sprint 11 |
+> | 20–21 (OnInitialized, WorldTick::Commit) | Sprint 3 |
+> | 22 (AppRenderPipeline) | Sprint 1 — implement now (already exists) |
+> | 23–25 (AssetManager::Run, RenderThread, MainThreadRun) | Sprint 1 — implement now |
+>
+> Until a subsystem exists, leave its step slot as a commented placeholder so
+> `g_init_step` numbering stays stable and `PanicShutdown` case numbers never shift.
+>
+> **Sprint 1 deliverable:** Steps 6–10, 12, 22–25 wired. Steps 11, 13–21 are
+> placeholder comments incrementing `g_init_step` with no-op bodies.
+
+The rewrite below is the complete final form. Lines marked `// EXISTING` are kept verbatim. Lines marked `// NEW` are additions. Lines marked `// PLACEHOLDER — <Sprint N>` must not be implemented until that sprint.
 
 ```cpp
 // ─────────────────────────────────────────────────────────────────────────────
@@ -400,14 +425,14 @@ bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, 
     // Called by GameApplication::Initialize before Engine::Initialize is invoked.
 
     // Step 7 — GameWindow (EXISTING)
-    auto context       = CreateRef<EngineContext>();
-    context->Window    = CreateRef<GameWindow>();
+    auto context       = ZPushStruct(arena, EngineContext);
+    context->Window    = ZPushStructCtor(arena, Windows::GameWindow);
     ZENGINE_VALIDATE_ASSERT(
         context->Window->Initialize(arena, *window_cfg),
         "Engine::Initialize: GameWindow::Initialize failed")
 
     // Step 8 — VulkanDevice (EXISTING)
-    context->Device = CreateRef<VulkanDevice>();
+    context->Device = ZPushStructCtor(arena, Hardwares::VulkanDevice);
     ZENGINE_VALIDATE_ASSERT(
         context->Device->Initialize(arena),
         "Engine::Initialize: VulkanDevice::Initialize failed")
@@ -417,86 +442,100 @@ bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, 
     // they would be destroyed when the function returns, leaving dangling pointers
     // in all subsystems that were initialized from them.
 
-    // Step 9 — VFS (NEW)
-    // VFS sub-arena (stored in EngineContext — lives as long as context):
-    arena->CreateSubArena(budget.VFS, &context->VFSArena);
-    context->VFS = VFS::VFSDiskContext::Create(&context->VFSArena);
-    ZENGINE_VALIDATE_ASSERT(
-        context->VFS->Initialize(),
-        "Engine::Initialize: VFSDiskContext::Initialize failed")
+    // Step 11 — VFS (NEW) — PLACEHOLDER — Sprint 1 end (VFS T1, Engineer B)
+    // Uncomment when VFSDiskContext exists:
+    // arena->CreateSubArena(budget.VFS, &context->VFSArena);
+    // context->VFS = VFS::VFSDiskContext::Create(&context->VFSArena);
+    // ZENGINE_VALIDATE_ASSERT(
+    //     context->VFS->Initialize(),
+    //     "Engine::Initialize: VFSDiskContext::Initialize failed")
+    g_init_step = 11;
 
-    // Step 10 — AssetManager (EXISTING, updated to store in context)
-    g_asset_manager = CreateRef<AssetManager>(context->Device);
+    // Step 12 — AssetManager (EXISTING, updated to store in context)
     ZENGINE_VALIDATE_ASSERT(
-        g_asset_manager->Initialize(arena),
+        Managers::AssetManager::Initialize(arena, context->Device, app->WorkingSpacePath),
         "Engine::Initialize: AssetManager::Initialize failed")
 
-    // Step 11 — ECS::Scene (NEW)
-    arena->CreateSubArena(budget.ECSScene, &context->ECSArena);
-    context->Scene = ECS::Scene::Create(&context->ECSArena);
-    ZENGINE_VALIDATE_ASSERT(
-        context->Scene->Initialize(),
-        "Engine::Initialize: ECS::Scene::Initialize failed")
+    // Step 13 — ECS::Scene (NEW) — PLACEHOLDER — Sprint 2
+    // Uncomment when ECS::Scene exists:
+    // arena->CreateSubArena(budget.ECSScene, &context->ECSArena);
+    // context->Scene = ECS::Scene::Create(&context->ECSArena);
+    // ZENGINE_VALIDATE_ASSERT(
+    //     context->Scene->Initialize(),
+    //     "Engine::Initialize: ECS::Scene::Initialize failed")
+    g_init_step = 13;
 
-    // Step 12 — WorldTick (NEW)
-    context->WorldTick = ECS::WorldTick::Create(context->Scene);
-    ZENGINE_VALIDATE_ASSERT(
-        context->WorldTick->Initialize(),
-        "Engine::Initialize: WorldTick::Initialize failed")
+    // Step 14 — WorldTick (NEW) — PLACEHOLDER — Sprint 3
+    // Uncomment when ECS::WorldTick exists:
+    // context->WorldTick = ECS::WorldTick::Create(context->Scene);
+    // ZENGINE_VALIDATE_ASSERT(
+    //     context->WorldTick->Initialize(),
+    //     "Engine::Initialize: WorldTick::Initialize failed")
+    g_init_step = 14;
 
-    // Step 13 — ActorManager (NEW)
-    context->ActorManager = ECS::ActorManager::Create(context->Scene, context->WorldTick);
-    ZENGINE_VALIDATE_ASSERT(
-        context->ActorManager->Initialize(),
-        "Engine::Initialize: ActorManager::Initialize failed")
+    // Step 15 — ActorManager (NEW) — PLACEHOLDER — Sprint 3
+    // Uncomment when ECS::ActorManager exists:
+    // context->ActorManager = ECS::ActorManager::Create(context->Scene, context->WorldTick);
+    // ZENGINE_VALIDATE_ASSERT(
+    //     context->ActorManager->Initialize(),
+    //     "Engine::Initialize: ActorManager::Initialize failed")
+    g_init_step = 15;
 
-    // Step 14 — AnimationManager (NEW)
-    arena->CreateSubArena(budget.AnimationManager, &context->AnimationArena);
-    context->AnimMgr = Animation::AnimationManager::Create(&context->AnimationArena, context->Device, context->Scene);
-    ZENGINE_VALIDATE_ASSERT(
-        context->AnimMgr->Initialize(),
-        "Engine::Initialize: AnimationManager::Initialize failed")
+    // Step 16 — AnimationManager (NEW) — PLACEHOLDER — Sprint 7
+    // Uncomment when Animation::AnimationManager exists:
+    // arena->CreateSubArena(budget.AnimationManager, &context->AnimationArena);
+    // context->AnimMgr = Animation::AnimationManager::Create(&context->AnimationArena, context->Device, context->Scene);
+    // ZENGINE_VALIDATE_ASSERT(
+    //     context->AnimMgr->Initialize(),
+    //     "Engine::Initialize: AnimationManager::Initialize failed")
+    g_init_step = 16;
 
-    // Step 15 — PhysicsWorld (NEW)
-    arena->CreateSubArena(budget.PhysicsWorld, &context->PhysicsArena);
-    context->PhysicsWorld = Physics::PhysicsWorld::Create(&context->PhysicsArena, context->Scene);
-    ZENGINE_VALIDATE_ASSERT(
-        context->PhysicsWorld->Initialize(),
-        "Engine::Initialize: PhysicsWorld::Initialize failed")
+    // Step 17 — PhysicsWorld (NEW) — PLACEHOLDER — Sprint 6
+    // Uncomment when Physics::PhysicsWorld exists:
+    // arena->CreateSubArena(budget.PhysicsWorld, &context->PhysicsArena);
+    // context->PhysicsWorld = Physics::PhysicsWorld::Create(&context->PhysicsArena, context->Scene);
+    // ZENGINE_VALIDATE_ASSERT(
+    //     context->PhysicsWorld->Initialize(),
+    //     "Engine::Initialize: PhysicsWorld::Initialize failed")
+    g_init_step = 17;
 
-    // Step 16 — AudioEngine (NEW)
-    arena->CreateSubArena(budget.AudioEngine, &context->AudioArena);
-    context->AudioEngine = Audio::AudioEngine::Create(&context->AudioArena, context->VFS);
-    ZENGINE_VALIDATE_ASSERT(
-        context->AudioEngine->Initialize(),
-        "Engine::Initialize: AudioEngine::Initialize failed")
+    // Step 18 — AudioEngine (NEW) — PLACEHOLDER — Sprint 6
+    // Uncomment when Audio::AudioEngine exists:
+    // arena->CreateSubArena(budget.AudioEngine, &context->AudioArena);
+    // context->AudioEngine = Audio::AudioEngine::Create(&context->AudioArena, context->VFS);
+    // ZENGINE_VALIDATE_ASSERT(
+    //     context->AudioEngine->Initialize(),
+    //     "Engine::Initialize: AudioEngine::Initialize failed")
+    g_init_step = 18;
 
-    // Step 17 — NetworkSession (conditional) (NEW)
-    if (app->RequiresNetworking())
-    {
-        arena->CreateSubArena(budget.Network, &context->NetworkArena);
-        context->NetworkSession = Network::NetworkSession::Create(&context->NetworkArena, context->Scene);
-        ZENGINE_VALIDATE_ASSERT(
-            context->NetworkSession->Initialize(),
-            "Engine::Initialize: NetworkSession::Initialize failed")
-    }
+    // Step 19 — NetworkSession (conditional) (NEW) — PLACEHOLDER — Sprint 11
+    // Uncomment when Network::NetworkSession exists:
+    // if (app->RequiresNetworking())
+    // {
+    //     arena->CreateSubArena(budget.Network, &context->NetworkArena);
+    //     context->NetworkSession = Network::NetworkSession::Create(&context->NetworkArena, context->Scene);
+    //     ZENGINE_VALIDATE_ASSERT(
+    //         context->NetworkSession->Initialize(),
+    //         "Engine::Initialize: NetworkSession::Initialize failed")
+    // }
+    g_init_step = 19;
 
     // Expose context to app (EXISTING pattern, extended)
-    app->Context           = context;
     app->CurrentWindow     = context->Window;
 
-    // Step 18 — OnInitialized (EXISTING hook — called in GameApplication::Initialize after this returns)
+    // Step 20 — OnInitialized (hook in GameApplication::Initialize, after Engine::Initialize returns)
+    //            PLACEHOLDER — Sprint 3 (requires WorldTick to exist before Commit is meaningful)
 
-    // Step 19 — WorldTick::Commit (NEW — called in GameApplication::Initialize after OnInitialized)
-    // See GameApplication::Initialize for the precise call site.
+    // Step 21 — WorldTick::Commit (NEW — called in GameApplication::Initialize after OnInitialized)
+    //            PLACEHOLDER — Sprint 3. See GameApplication::Initialize for the precise call site.
 
-    // Step 20 — AppRenderPipeline (EXISTING, kept in place)
-    app->RenderPipeline = CreateRef<AppRenderPipeline>(context->Device, context->Window);
+    // Step 22 — AppRenderPipeline (EXISTING, kept in place)
+    app->RenderPipeline = ZPushStructCtor(arena, Applications::AppRenderPipeline);
     ZENGINE_VALIDATE_ASSERT(
-        app->RenderPipeline->Initialize(arena),
+        app->RenderPipeline->Initialize(context->Device),
         "Engine::Initialize: AppRenderPipeline::Initialize failed")
 
-    g_engine_context = context;
+    g_engine_ctx = context;
     return true;
 }
 ```
@@ -509,10 +548,10 @@ void GameApplication::Initialize(ArenaAllocator* arena)
     Arena = arena;
     OnInitializing();
     OverrideWindowConfiguration();
-    Engine::Initialize(arena, &WindowCfg, this);   // Steps 1–20 above
-    OnInitialized();                               // Step 18: game registers systems
-    Context->WorldTick->Commit();                  // Step 19: DAG built
-    // Step 20 (AppRenderPipeline) is inside Engine::Initialize, after OnInitialized
+    Engine::Initialize(arena, &WindowCfg, this);   // Steps 1–22 above
+    OnInitialized();                               // Step 20: game registers systems
+    Context->WorldTick->Commit();                  // Step 21: DAG built
+    // Step 22 (AppRenderPipeline) is inside Engine::Initialize, after OnInitialized
     // via the existing placement — see note below.
 }
 ```
@@ -555,33 +594,35 @@ static void PanicShutdown()
     // Each case falls through to the one below it (reverse cascade).
     switch (g_init_step)
     {
-    case 22: /* render thread not yet spawned in Initialize; handled in Deinitialize */
+    case 24: /* render thread not yet spawned in Initialize; handled in Deinitialize */
              // If render thread was already spawned, join it before releasing GPU resources
              if (g_render_thread.joinable()) {
                  s_request_terminate.store(true, std::memory_order_release);
                  g_render_thread.join();
              }
-    case 21: if (g_asset_manager) g_asset_manager->Shutdown();                   [[fallthrough]];
-    case 20: if (g_engine_context.RenderPipeline) g_engine_context.RenderPipeline->Shutdown(); [[fallthrough]];
-    case 19: /* WorldTick::Commit is not reversible; Scene handles cleanup */     [[fallthrough]];
-    case 18: /* OnInitialized: game DLL cleanup — call OnClosing if reachable */  [[fallthrough]];
-    case 17: if (g_engine_context.NetworkSession) g_engine_context.NetworkSession->Shutdown(); [[fallthrough]];
-    case 16: if (g_engine_context.AudioEngine)    g_engine_context.AudioEngine->Shutdown();    [[fallthrough]];
-    case 15: if (g_engine_context.PhysicsWorld)   g_engine_context.PhysicsWorld->Shutdown();   [[fallthrough]];
-    case 14: if (g_engine_context.AnimMgr)        g_engine_context.AnimMgr->Shutdown();        [[fallthrough]];
-    case 13: if (g_engine_context.ActorManager)   g_engine_context.ActorManager->Shutdown();   [[fallthrough]];
-    case 12: if (g_engine_context.WorldTick)      g_engine_context.WorldTick->Shutdown();      [[fallthrough]];
-    case 11: if (g_engine_context.Scene)          g_engine_context.Scene->Shutdown();          [[fallthrough]];
-    case 10: if (g_asset_manager)                 g_asset_manager->Shutdown();                 [[fallthrough]];
-    case  9: if (g_engine_context.VFS)            g_engine_context.VFS->Shutdown();            [[fallthrough]];
-    case  8: if (g_engine_context.Device)         g_engine_context.Device->Deinitialize();     [[fallthrough]];
-    case  7: if (g_engine_context.Window)         g_engine_context.Window->Deinitialize();     [[fallthrough]];
-    case  6: /* OverrideWindowConfiguration: no cleanup */                        [[fallthrough]];
-    case  5: /* OnInitializing: no cleanup */                                     [[fallthrough]];
-    // Steps 4 (ThreadPool), 3 (Logger), 2 (MemoryManager), 1 (CrashHandler)
+    case 23: Managers::AssetManager::Shutdown();                                              [[fallthrough]];
+    case 22: if (g_app && g_app->RenderPipeline) g_app->RenderPipeline->Shutdown();          [[fallthrough]];
+    case 21: /* WorldTick::Commit is not reversible; Scene handles cleanup */                 [[fallthrough]];
+    case 20: /* OnInitialized: game DLL cleanup — call OnClosing if reachable */              [[fallthrough]];
+    case 19: if (g_engine_ctx->NetworkSession) g_engine_ctx->NetworkSession->Shutdown();     [[fallthrough]];
+    case 18: if (g_engine_ctx->AudioEngine)    g_engine_ctx->AudioEngine->Shutdown();        [[fallthrough]];
+    case 17: if (g_engine_ctx->PhysicsWorld)   g_engine_ctx->PhysicsWorld->Shutdown();       [[fallthrough]];
+    case 16: if (g_engine_ctx->AnimMgr)        g_engine_ctx->AnimMgr->Shutdown();            [[fallthrough]];
+    case 15: if (g_engine_ctx->ActorManager)   g_engine_ctx->ActorManager->Shutdown();       [[fallthrough]];
+    case 14: if (g_engine_ctx->WorldTick)      g_engine_ctx->WorldTick->Shutdown();          [[fallthrough]];
+    case 13: if (g_engine_ctx->Scene)          g_engine_ctx->Scene->Shutdown();              [[fallthrough]];
+    case 12: /* AssetManager::Initialize has no individual teardown — Shutdown() at case 23 covers it */ [[fallthrough]];
+    case 11: if (g_engine_ctx->VFS)            g_engine_ctx->VFS->Shutdown();                [[fallthrough]];
+    case 10: if (g_engine_ctx->Device)         g_engine_ctx->Device->Deinitialize();         [[fallthrough]];
+    case  9: if (g_engine_ctx->Window)         g_engine_ctx->Window->Deinitialize();         [[fallthrough]];
+    case  8: /* Assert pre-conditions: no cleanup */                              [[fallthrough]];
+    case  7: /* OverrideWindowConfiguration: no cleanup */                        [[fallthrough]];
+    case  6: /* OnInitializing: no cleanup */                                     [[fallthrough]];
+    // Steps 5 (CLI), 4 (ThreadPool), 3 (Logger), 2 (MemoryManager), 1 (CrashHandler)
     // are owned by Obelisk — cleaned up in applicationEntryPoint after app->Shutdown().
     // PanicShutdown cannot touch them; they may not be in a valid state.
     // Obelisk detects crash via CrashHandler and handles its own teardown.
+    case  5: /* CLI parsing — Obelisk-owned, not touched here */                  [[fallthrough]];
     case  4: /* ThreadPool — Obelisk-owned, not touched here */                   [[fallthrough]];
     case  3: /* Logger     — Obelisk-owned, not touched here */                   [[fallthrough]];
     case  2: /* Memory     — Obelisk-owned, not touched here */                   [[fallthrough]];

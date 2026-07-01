@@ -255,7 +255,10 @@ VFSResult<MetaFileData> MetaFileIO::GetOrCreate(
         return VFSResult<MetaFileData>::Ok(existing);
     }
 
-    // No .meta → first import: generate UUID
+    // No .meta, or .meta is corrupt/invalid → generate a fresh UUID.
+    // Both VFSError::NotFound (file absent) and VFSError::InvalidData (corrupt JSON
+    // or missing uuid field) fall through here. In both cases we treat this as a
+    // first-import: generate a new UUID and write a clean .meta file.
     MetaFileData fresh{};
     fresh.AssetUUID = uuids::uuid_random_generator{}();
     std::strncpy(fresh.ImporterName,     importer_name,   sizeof(fresh.ImporterName) - 1);

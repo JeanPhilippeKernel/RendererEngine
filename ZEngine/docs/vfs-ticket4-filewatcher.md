@@ -398,7 +398,7 @@ void VFSContext::InitWatcher()
         /*recursive=*/true,
         [this](const VFSWatchEvent& ev) {
             m_directory_cache->Invalidate(ev.Path);
-            m_scanner->RequestScan(VFSPath::FromNative(ev.Path).Value());
+            m_scanner->Scan(VFSPath::FromNative(ev.Path).Value());
         });
 
     m_platform_watcher->StartThread();
