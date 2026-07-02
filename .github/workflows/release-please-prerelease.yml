@@ -22,33 +22,43 @@ jobs:
                   manifest-file: .release-please-manifest-prerelease.json
                   token: ${{ secrets.GITHUB_TOKEN }}
 
-    publish:
+    publish-windows:
         needs: release-please
         if: ${{ needs.release-please.outputs.release_created }}
-        strategy:
-            matrix:
-                include:
-                    - os: windows-2022
-                      artifact: windows
-                      targetFramework: net8.0
-                    - os: macos-latest
-                      artifact: macOS
-                    - os: ubuntu-latest
-                      artifact: linux
-        runs-on: ${{ matrix.os }}
+        uses: ./.github/workflows/job-cmakebuild-windows.yml
+        with:
+            targetFramework: net8.0
+            configuration: Release
+
+    publish-macos:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.release_created }}
+        uses: ./.github/workflows/job-cmakebuild-macOS.yml
+        with:
+            targetFramework: net8.0
+            configuration: Release
+
+    publish-linux:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.release_created }}
+        uses: ./.github/workflows/job-cmakebuild-linux.yml
+        with:
+            targetFramework: net8.0
+            configuration: Release
+
+    upload-artifacts:
+        needs: [release-please, publish-windows, publish-macos, publish-linux]
+        if: ${{ needs.release-please.outputs.release_created }}
+        runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
-
-            - name: Build (${{ matrix.artifact }})
-              uses: ./.github/workflows/job-cmakebuild-${{ matrix.artifact }}.yml
+            - name: Download all build artifacts
+              uses: actions/download-artifact@v4
               with:
-                  targetFramework: ${{ matrix.targetFramework }}
+                  path: artifacts
 
-            - name: Upload pre-release artifacts
+            - name: Upload to GitHub Pre-release
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: ${{ needs.release-please.outputs.tag_name }}
                   prerelease: true
-                  files: |
-                      build/**/*.zip
-                      build/**/*.tar.gz
+                  files: artifacts/**/*
