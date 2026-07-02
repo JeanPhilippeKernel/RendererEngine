@@ -105,12 +105,12 @@ Merges into `main` are picked up by Release Please, which opens a **Release PR**
 
 ### Pre-releases (`develop`)
 
-Pushes to `develop` follow the same process but produce alpha versions:
+Pushes to `develop` follow the same process but produce rc versions:
 
 - Release Please opens a **Pre-release PR** on `develop`
-- When merged: `VERSION.txt` is set to e.g. `0.4.0-alpha.1`, tag `v0.4.0-alpha.1` is created
+- When merged: `VERSION.txt` is set to e.g. `0.4.0-rc.1`, tag `v0.4.0-rc.1` is created
 - A GitHub Pre-release is published (marked as pre-release in the GitHub UI)
-- Each subsequent batch of commits increments the alpha counter: `alpha.1` → `alpha.2` → …
+- Each subsequent batch of commits increments the rc counter: `rc.1` → `rc.2` → …
 
 ### Promoting a pre-release to stable
 
@@ -120,7 +120,7 @@ Once `develop` is stable enough to ship:
 2. Merge it — Release Please on `main` sees all the accumulated `feat:`/`fix:` commits and opens a stable Release PR
 3. Merge the Release PR → `v0.4.0` stable is tagged and published
 
-The `ZENGINE_VERSION_PRERELEASE` macro in the generated `Core/version.h` will be non-empty on alpha builds and empty on stable, so engine code can detect this at compile time.
+The `ZENGINE_VERSION_PRERELEASE` macro in the generated `Core/version.h` will be non-empty on rc builds and empty on stable, so engine code can detect this at compile time.
 
 ## Pull Request Process
 
