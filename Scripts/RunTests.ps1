@@ -63,7 +63,7 @@ function RunTests {
         [string]$Configuration
     )
  
-    [string] $testExecutablePath = Join-Path $OutputBuildDirectory -ChildPath "tests/ZEngineTests")
+    [string] $testExecutablePath = Join-Path $OutputBuildDirectory -ChildPath "tests/ZEngineTests"
 
     
     # Check if the executable exists
