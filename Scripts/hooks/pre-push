@@ -1,0 +1,37 @@
+#!/usr/bin/env sh
+# pre-push: runs clang-format check on ZEngine and Tetragrama before a push.
+# Mirrors the job-clangformat.yml CI check so formatting issues are caught locally.
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+if ! command -v pwsh > /dev/null 2>&1; then
+    echo "[pre-push] pwsh (PowerShell Core) not found — skipping clang-format check."
+    echo "[pre-push] Install it from https://github.com/PowerShell/PowerShell/releases"
+    exit 0
+fi
+
+FAILED=0
+for DIR in ZEngine Tetragrama Obelisk Resources/Shaders; do
+    echo "[pre-push] Checking clang-format: $DIR ..."
+    pwsh -NonInteractive -NoProfile -File \
+        "$REPO_ROOT/Scripts/ClangFormat.ps1" \
+        -SourceDirectory "$REPO_ROOT/$DIR" -RunAsCheck
+    if [ $? -ne 0 ]; then
+        echo "[pre-push] clang-format violations found in $DIR. Run the formatter and re-stage."
+        FAILED=1
+    fi
+done
+
+if [ $FAILED -ne 0 ]; then
+    echo ""
+    echo "[pre-push] Push blocked. Fix formatting by running:"
+    echo "  pwsh Scripts/ClangFormat.ps1 -SourceDirectory ZEngine"
+    echo "  pwsh Scripts/ClangFormat.ps1 -SourceDirectory Tetragrama"
+    echo "  pwsh Scripts/ClangFormat.ps1 -SourceDirectory Obelisk"
+    echo "  pwsh Scripts/ClangFormat.ps1 -SourceDirectory Resources/Shaders"
+    echo ""
+    exit 1
+fi
+
+echo "[pre-push] clang-format OK."
+exit 0

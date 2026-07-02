@@ -5,28 +5,35 @@ on:
     branches: [ master, develop, arena-integration ]
 
 jobs:
+  commitlint:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/job-commitlint.yml
+
   clang-format:
     strategy:
       matrix:
-        directories: [ZEngine, Tetragrama]
+        directories: [ZEngine, Tetragrama, Obelisk]
     uses: ./.github/workflows/job-clangformat.yml
     with:
       srcDirectory: ${{ matrix.directories }}
 
   windows:
-    needs: clang-format
+    needs: [commitlint, clang-format]
+    if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/windows-build.yml
     with:
       targetFramework: net8.0
 
   macOS:
-    needs: clang-format
+    needs: [commitlint, clang-format]
+    if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/macOS-build.yml
     with:
       targetFramework: net8.0
 
   linux:
-    needs: clang-format
+    needs: [commitlint, clang-format]
+    if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/linux-build.yml
     with:
       targetFramework: net8.0

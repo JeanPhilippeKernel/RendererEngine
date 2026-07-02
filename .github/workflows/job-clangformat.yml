@@ -18,5 +18,5 @@ jobs:
               run: choco upgrade llvm
 
             - name: Checking formatting
-              run: .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/${{ inputs.srcDirectory }} -RunAsCheck 1
+              run: .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/${{ inputs.srcDirectory }} -RunAsCheck
               shell: pwsh

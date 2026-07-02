@@ -1,0 +1,19 @@
+name: Commit Lint
+
+on:
+    workflow_call:
+
+jobs:
+    commitlint:
+        name: commitlint
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Lint commit messages
+              uses: wagoid/commitlint-github-action@v6
+              with:
+                  configFile: .commitlintrc.json
+                  failOnWarnings: false
