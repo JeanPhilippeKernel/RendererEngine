@@ -54,13 +54,46 @@ jobs:
         permissions:
             contents: write
         steps:
-            - name: Download all build artifacts
+            - name: Download Windows artifact
               uses: actions/download-artifact@v6
               with:
-                  path: artifacts
+                  name: Windows-x64-Release
+                  path: artifacts/Windows-x64-Release
+
+            - name: Download macOS x64 artifact
+              uses: actions/download-artifact@v6
+              with:
+                  name: macOS-x64-Release
+                  path: artifacts/macOS-x64-Release
+
+            - name: Download macOS arm64 artifact
+              uses: actions/download-artifact@v6
+              with:
+                  name: macOS-arm64-Release
+                  path: artifacts/macOS-arm64-Release
+
+            - name: Download Linux artifact
+              uses: actions/download-artifact@v6
+              with:
+                  name: linux-Release
+                  path: artifacts/linux-Release
+
+            - name: Package artifacts
+              run: |
+                  VERSION="${{ needs.release-please.outputs.tag_name }}"
+                  VERSION="${VERSION#v}"
+                  cd artifacts
+                  zip -r "ZEngine-${VERSION}-Windows-x64.zip"   Windows-x64-Release/
+                  zip -r "ZEngine-${VERSION}-macOS-x64.zip"     macOS-x64-Release/
+                  zip -r "ZEngine-${VERSION}-macOS-arm64.zip"   macOS-arm64-Release/
+                  tar -czf "ZEngine-${VERSION}-Linux-x64.tar.gz" linux-Release/
 
             - name: Upload to GitHub Release
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: ${{ needs.release-please.outputs.tag_name }}
-                  files: artifacts/**/*
+                  files: |
+                      artifacts/ZEngine-*-Windows-x64.zip
+                      artifacts/ZEngine-*-macOS-x64.zip
+                      artifacts/ZEngine-*-macOS-arm64.zip
+                      artifacts/ZEngine-*-Linux-x64.tar.gz
