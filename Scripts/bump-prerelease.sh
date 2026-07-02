@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Computes the next rc version from conventional commits since the last tag,
-# writes VERSION.txt, and prints the new version to stdout.
+# Computes the next rc version from conventional commits since the last tag
+# and prints it to stdout. Does not modify any files.
 #
 # Usage: bump-prerelease.sh
 # Output: the new version string, e.g. 0.3.0-rc.2
@@ -68,5 +68,4 @@ fi
 ALPHA_N=$((ALPHA_N + 1))
 NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}-rc.${ALPHA_N}"
 
-printf '%s\n' "$NEW_VERSION" > "$VERSION_FILE"
 echo "$NEW_VERSION"
