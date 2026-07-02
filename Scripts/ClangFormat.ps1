@@ -27,7 +27,7 @@ param (
     [string]$SourceDirectory,
 
     [Parameter(HelpMessage = "Whether clang-format should only check if the source code is well-formatted")]
-    [bool]$RunAsCheck=$False
+    [switch]$RunAsCheck
 )
 
 $ErrorActionPreference = "Stop"

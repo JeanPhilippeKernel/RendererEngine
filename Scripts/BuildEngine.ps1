@@ -189,7 +189,9 @@ if(-Not $LauncherOnly) {
         )
     
         foreach ($directory in $srcDirectories) {
-            & pwsh -File $clangFormatScript -SourceDirectory $directory -RunAsCheck:$VerifyFormatting
+            [string[]]$clangFormatArgs = @('-File', $clangFormatScript, '-SourceDirectory', $directory)
+            if ($VerifyFormatting) { $clangFormatArgs += '-RunAsCheck' }
+            & pwsh @clangFormatArgs
     
             if ($LASTEXITCODE -ne 0) {
                 Write-Error "Stopped build process..." -ErrorAction Stop

@@ -1,12 +1,29 @@
 cmake_minimum_required (VERSION 3.17 FATAL_ERROR)
 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" ZENGINE_VERSION)
+string(STRIP "${ZENGINE_VERSION}" ZENGINE_VERSION)
+
 project (RendererEngine
-	VERSION 1.0
+	VERSION ${ZENGINE_VERSION}
 	DESCRIPTION "Renderer Engine is an open-source 2D - 3D rendering engine written in C/C++"
 	LANGUAGES CXX C
 )
 
 set_property (GLOBAL PROPERTY USE_FOLDERS ON)
+
+# Install git hooks automatically at configure time so contributors don't need
+# to run install-hooks.sh manually.
+#
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    file(GLOB _hook_files "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/hooks/*")
+    foreach(_hook ${_hook_files})
+        get_filename_component(_hook_name "${_hook}" NAME)
+        set(_dst "${CMAKE_CURRENT_SOURCE_DIR}/.git/hooks/${_hook_name}")
+        file(COPY "${_hook}" DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/.git/hooks")
+        file(CHMOD "${_dst}" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+        message(STATUS "Installed git hook: ${_hook_name}")
+    endforeach()
+endif()
 
 # Core invariants
 #
