@@ -22,6 +22,8 @@ jobs:
                   config-file: release-please-config-prerelease.json
                   manifest-file: .release-please-manifest-prerelease.json
                   token: ${{ secrets.GITHUB_TOKEN }}
+                  prerelease: true
+                  prerelease-type: alpha
 
     publish-windows:
         needs: release-please
