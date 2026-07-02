@@ -51,9 +51,11 @@ jobs:
         needs: [release-please, publish-windows, publish-macos, publish-linux]
         if: ${{ needs.release-please.outputs.release_created }}
         runs-on: ubuntu-latest
+        permissions:
+            contents: write
         steps:
             - name: Download all build artifacts
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v6
               with:
                   path: artifacts
 
