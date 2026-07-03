@@ -6,32 +6,64 @@ on:
       targetFramework:
         type: string
         required: true
+      run_debug:
+        type: boolean
+        default: true
+      run_release:
+        type: boolean
+        default: false
+      run_deploy:
+        type: boolean
+        default: false
 
 jobs:
-  cmake-build:
+  cmake-build-debug:
+    if: ${{ inputs.run_debug }}
     strategy:
       matrix:
-        buildConfiguration: [Debug, Release]
         architecture: [x64, arm64]
     uses: ./.github/workflows/job-cmakebuild-macOS.yml
     with:
-      configuration: ${{matrix.buildConfiguration}}
+      configuration: Debug
       architecture: ${{ matrix.architecture }}
-      targetFramework: ${{inputs.targetFramework}}
+      targetFramework: ${{ inputs.targetFramework }}
 
-  test:
-    needs: cmake-build
+  cmake-build-release:
+    if: ${{ inputs.run_release || inputs.run_deploy }}
     strategy:
       matrix:
-        testConfiguration: [Debug, Release]
+        architecture: [x64, arm64]
+    uses: ./.github/workflows/job-cmakebuild-macOS.yml
+    with:
+      configuration: Release
+      architecture: ${{ matrix.architecture }}
+      targetFramework: ${{ inputs.targetFramework }}
+
+  test-debug:
+    needs: cmake-build-debug
+    if: ${{ inputs.run_debug }}
+    strategy:
+      matrix:
         architecture: [x64, arm64]
     uses: ./.github/workflows/job-test-macOS.yml
     with:
-      configuration: ${{matrix.testConfiguration}}
+      configuration: Debug
+      architecture: ${{ matrix.architecture }}
+
+  test-release:
+    needs: cmake-build-release
+    if: ${{ inputs.run_release || inputs.run_deploy }}
+    strategy:
+      matrix:
+        architecture: [x64, arm64]
+    uses: ./.github/workflows/job-test-macOS.yml
+    with:
+      configuration: Release
       architecture: ${{ matrix.architecture }}
 
   deploy:
-    needs: test
+    needs: test-release
+    if: ${{ inputs.run_deploy }}
     strategy:
       matrix:
         architecture: [x64, arm64]
@@ -39,4 +71,4 @@ jobs:
     with:
       configuration: Release
       architecture: ${{ matrix.architecture }}
-      targetFramework: ${{inputs.targetFramework}}
+      targetFramework: ${{ inputs.targetFramework }}

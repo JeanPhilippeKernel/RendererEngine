@@ -26,26 +26,32 @@ jobs:
     publish-windows:
         needs: release-please
         if: ${{ needs.release-please.outputs.release_created }}
-        uses: ./.github/workflows/job-cmakebuild-windows.yml
+        uses: ./.github/workflows/windows-build.yml
         with:
             targetFramework: net8.0
-            configuration: Release
+            run_debug: false
+            run_release: false
+            run_deploy: true
 
     publish-macos:
         needs: release-please
         if: ${{ needs.release-please.outputs.release_created }}
-        uses: ./.github/workflows/job-cmakebuild-macOS.yml
+        uses: ./.github/workflows/macOS-build.yml
         with:
             targetFramework: net8.0
-            configuration: Release
+            run_debug: false
+            run_release: false
+            run_deploy: true
 
     publish-linux:
         needs: release-please
         if: ${{ needs.release-please.outputs.release_created }}
-        uses: ./.github/workflows/job-cmakebuild-linux.yml
+        uses: ./.github/workflows/linux-build.yml
         with:
             targetFramework: net8.0
-            configuration: Release
+            run_debug: false
+            run_release: false
+            run_deploy: true
 
     upload-artifacts:
         needs: [release-please, publish-windows, publish-macos, publish-linux]
@@ -83,9 +89,9 @@ jobs:
                   VERSION="${{ needs.release-please.outputs.tag_name }}"
                   VERSION="${VERSION#v}"
                   cd artifacts
-                  zip -r "ZEngine-${VERSION}-Windows-x64.zip"   Windows-x64-Release/
-                  zip -r "ZEngine-${VERSION}-macOS-x64.zip"     macOS-x64-Release/
-                  zip -r "ZEngine-${VERSION}-macOS-arm64.zip"   macOS-arm64-Release/
+                  zip -r "ZEngine-${VERSION}-Windows-x64.zip"    Windows-x64-Release/
+                  zip -r "ZEngine-${VERSION}-macOS-x64.zip"      macOS-x64-Release/
+                  zip -r "ZEngine-${VERSION}-macOS-arm64.zip"    macOS-arm64-Release/
                   tar -czf "ZEngine-${VERSION}-Linux-x64.tar.gz" linux-Release/
 
             - name: Upload to GitHub Release

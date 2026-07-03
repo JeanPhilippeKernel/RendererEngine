@@ -1,8 +1,24 @@
+name: Engine CI
+
 on:
   push:
     branches: [ master, develop ]
   pull_request:
     branches: [ master, develop ]
+  workflow_dispatch:
+    inputs:
+      run_debug:
+        description: 'Build and test Debug'
+        type: boolean
+        default: true
+      run_release:
+        description: 'Build and test Release'
+        type: boolean
+        default: false
+      run_deploy:
+        description: 'Deploy artifacts'
+        type: boolean
+        default: false
 
 jobs:
   commitlint:
@@ -23,6 +39,9 @@ jobs:
     uses: ./.github/workflows/windows-build.yml
     with:
       targetFramework: net8.0
+      run_debug: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_debug)) }}
+      run_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_release)) }}
+      run_deploy: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_deploy)) }}
 
   macOS:
     needs: [commitlint, clang-format]
@@ -30,6 +49,9 @@ jobs:
     uses: ./.github/workflows/macOS-build.yml
     with:
       targetFramework: net8.0
+      run_debug: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_debug)) }}
+      run_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_release)) }}
+      run_deploy: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_deploy)) }}
 
   linux:
     needs: [commitlint, clang-format]
@@ -37,90 +59,6 @@ jobs:
     uses: ./.github/workflows/linux-build.yml
     with:
       targetFramework: net8.0
-
-  publish-prerelease:
-    needs: [windows, macOS, linux]
-    if: ${{ !failure() && !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Check for rc tag on HEAD
-        id: check-tag
-        run: |
-          git fetch --tags --quiet
-          TAG="$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$' | head -1 || true)"
-          if [ -z "$TAG" ]; then
-            echo "No rc tag on HEAD — skipping publish."
-            echo "skipped=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-            echo "skipped=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Generate release notes
-        if: steps.check-tag.outputs.skipped != 'true'
-        run: |
-          PREV_TAG="$(git describe --tags --abbrev=0 "${{ steps.check-tag.outputs.tag }}^" 2>/dev/null || echo "")"
-          bash Scripts/generate-changelog.sh \
-              "$PREV_TAG" \
-              "${{ steps.check-tag.outputs.tag }}" \
-              "${{ steps.check-tag.outputs.version }}" > /tmp/release-notes.md
-
-      - name: Download Windows artifact
-        if: steps.check-tag.outputs.skipped != 'true'
-        uses: actions/download-artifact@v6
-        with:
-          name: Windows-x64-Release
-          path: artifacts/Windows-x64-Release
-
-      - name: Download macOS x64 artifact
-        if: steps.check-tag.outputs.skipped != 'true'
-        uses: actions/download-artifact@v6
-        with:
-          name: macOS-x64-Release
-          path: artifacts/macOS-x64-Release
-
-      - name: Download macOS arm64 artifact
-        if: steps.check-tag.outputs.skipped != 'true'
-        uses: actions/download-artifact@v6
-        with:
-          name: macOS-arm64-Release
-          path: artifacts/macOS-arm64-Release
-
-      - name: Download Linux artifact
-        if: steps.check-tag.outputs.skipped != 'true'
-        uses: actions/download-artifact@v6
-        with:
-          name: linux-Release
-          path: artifacts/linux-Release
-
-      - name: Package artifacts
-        if: steps.check-tag.outputs.skipped != 'true'
-        run: |
-          VERSION="${{ steps.check-tag.outputs.version }}"
-          cd artifacts
-          zip -r "ZEngine-${VERSION}-Windows-x64.zip"   Windows-x64-Release/
-          zip -r "ZEngine-${VERSION}-macOS-x64.zip"     macOS-x64-Release/
-          zip -r "ZEngine-${VERSION}-macOS-arm64.zip"   macOS-arm64-Release/
-          tar -czf "ZEngine-${VERSION}-Linux-x64.tar.gz" linux-Release/
-
-      - name: Publish GitHub Pre-release
-        if: steps.check-tag.outputs.skipped != 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.check-tag.outputs.tag }}
-          name: ${{ steps.check-tag.outputs.version }}
-          prerelease: true
-          generate_release_notes: false
-          body_path: /tmp/release-notes.md
-          files: |
-            artifacts/ZEngine-${{ steps.check-tag.outputs.version }}-Windows-x64.zip
-            artifacts/ZEngine-${{ steps.check-tag.outputs.version }}-macOS-x64.zip
-            artifacts/ZEngine-${{ steps.check-tag.outputs.version }}-macOS-arm64.zip
-            artifacts/ZEngine-${{ steps.check-tag.outputs.version }}-Linux-x64.tar.gz
+      run_debug: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_debug)) }}
+      run_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_release)) }}
+      run_deploy: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_deploy)) }}
