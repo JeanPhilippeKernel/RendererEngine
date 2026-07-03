@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Generates a markdown changelog from conventional commits between two refs.
+# When GITHUB_TOKEN and GITHUB_REPOSITORY are set, commit authors are resolved
+# to GitHub usernames via the API. Otherwise falls back to git author name.
 #
 # Usage: generate-changelog.sh <from-ref> <to-ref> <version>
 # Output: markdown string printed to stdout
@@ -16,29 +18,49 @@ else
     COMMIT_RANGE="$FROM_REF..$TO_REF"
 fi
 
+# Resolve a commit SHA to a GitHub username, falling back to git author name.
+github_username() {
+    local sha="$1"
+    local fallback="$2"
+    if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+        local username
+        username="$(curl -sf \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${sha}" \
+            | jq -r '.author.login // empty' 2>/dev/null || true)"
+        if [ -n "$username" ]; then
+            echo "@${username}"
+            return
+        fi
+    fi
+    echo "$fallback"
+}
+
 declare -a BREAKING=()
 declare -a FEATURES=()
 declare -a FIXES=()
 declare -a PERF=()
 declare -a REFACTORS=()
-declare -a OTHER=()
 
-while IFS= read -r line; do
-    [ -z "$line" ] && continue
+while IFS='|' read -r sha subject author; do
+    [ -z "$subject" ] && continue
+    contributor="$(github_username "$sha" "$author")"
+    entry="$subject ($contributor)"
 
-    if echo "$line" | grep -qE '^(feat|fix|perf|refactor|build|ci|revert)(\(.+\))?!:' || \
-       echo "$line" | grep -qE 'BREAKING CHANGE:'; then
-        BREAKING+=("$line")
-    elif echo "$line" | grep -qE '^feat(\(.+\))?:'; then
-        FEATURES+=("$line")
-    elif echo "$line" | grep -qE '^fix(\(.+\))?:'; then
-        FIXES+=("$line")
-    elif echo "$line" | grep -qE '^perf(\(.+\))?:'; then
-        PERF+=("$line")
-    elif echo "$line" | grep -qE '^refactor(\(.+\))?:'; then
-        REFACTORS+=("$line")
+    if echo "$subject" | grep -qE '^(feat|fix|perf|refactor|build|ci|revert)(\(.+\))?!:' || \
+       echo "$subject" | grep -qE 'BREAKING CHANGE:'; then
+        BREAKING+=("$entry")
+    elif echo "$subject" | grep -qE '^feat(\(.+\))?:'; then
+        FEATURES+=("$entry")
+    elif echo "$subject" | grep -qE '^fix(\(.+\))?:'; then
+        FIXES+=("$entry")
+    elif echo "$subject" | grep -qE '^perf(\(.+\))?:'; then
+        PERF+=("$entry")
+    elif echo "$subject" | grep -qE '^refactor(\(.+\))?:'; then
+        REFACTORS+=("$entry")
     fi
-done < <(git log "$COMMIT_RANGE" --format="%s" 2>/dev/null)
+done < <(git log "$COMMIT_RANGE" --format="%H|%s|%an" 2>/dev/null)
 
 echo "## $VERSION"
 echo ""
