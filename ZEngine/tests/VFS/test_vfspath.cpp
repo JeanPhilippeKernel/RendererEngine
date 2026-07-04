@@ -78,7 +78,6 @@ TEST(VFSPathParse, NullFails)
 
 TEST(VFSPathFromNative, StripsWindowsDrive)
 {
-    // Backslashes -> '/', drive prefix dropped. Works on any platform.
     EXPECT_STREQ(VFSPath::FromNative("C:\\Assets\\rock.png").Value().CStr(), "/Assets/rock.png");
 }
 
@@ -164,7 +163,7 @@ TEST(VFSPathCompose, AppendOntoRoot)
 {
     VFSResult<VFSPath> r = VFSPath::Root().Append("rock.png");
     ASSERT_TRUE(r.Succeeded());
-    EXPECT_STREQ(r.Value().CStr(), "/rock.png"); // no double slash
+    EXPECT_STREQ(r.Value().CStr(), "/rock.png");
 }
 
 TEST(VFSPathCompose, AppendResolvesDotDot)

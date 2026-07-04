@@ -44,6 +44,7 @@ namespace ZEngine::Core::VFS
         virtual VFSResult<VFSFileStat> Stat() const                                                              = 0;
         virtual VFSResult<void>        Flush()                                                                   = 0;
         virtual const VFSPath&         Path() const                                                              = 0;
+        virtual VFSResult<void>        Close()                                                                   = 0;
 
         // Read the whole file into out_buffer
         VFSResult<size_t>              ReadAll(Core::Containers::ArrayView<uint8_t> out_buffer)
