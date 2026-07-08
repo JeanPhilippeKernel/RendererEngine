@@ -1,4 +1,4 @@
-#include <Rendering/Geometries/QuadGeometry.h>
+#include <ZEngine/Rendering/Geometries/QuadGeometry.h>
 
 namespace ZEngine::Rendering::Geometries
 {

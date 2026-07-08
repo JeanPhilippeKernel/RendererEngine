@@ -1,5 +1,5 @@
 #pragma once
-#include <Core/Maths/Vec.h>
+#include <ZEngine/Core/Maths/Vec.h>
 
 namespace ZEngine::Rendering
 {

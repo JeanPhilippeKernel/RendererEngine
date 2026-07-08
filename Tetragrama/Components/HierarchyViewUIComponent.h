@@ -1,5 +1,6 @@
 #pragma once
-#include <UIComponent.h>
+#include <Tetragrama/Components/UIComponent.h>
+#include <Tetragrama/EditorScene.h>
 #include <imgui.h>
 
 namespace Tetragrama::Components

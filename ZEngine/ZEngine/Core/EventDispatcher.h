@@ -1,6 +1,6 @@
 #pragma once
-#include <CoreEvent.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/CoreEvent.h>
+#include <ZEngine/ZEngineDef.h>
 #include <functional>
 
 namespace ZEngine::Core

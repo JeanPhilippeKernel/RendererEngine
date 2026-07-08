@@ -1,6 +1,6 @@
 #pragma once
-#include <Rendering/Shaders/Compilers/ICompilerStage.h>
-#include <Rendering/Shaders/ShaderIncluder.h>
+#include <ZEngine/Rendering/Shaders/Compilers/ICompilerStage.h>
+#include <ZEngine/Rendering/Shaders/ShaderIncluder.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/SPIRV/GlslangToSpv.h>

@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Lights/Light.h>
+#include <ZEngine/Rendering/Lights/Light.h>
 
 namespace ZEngine::Rendering::Components
 {

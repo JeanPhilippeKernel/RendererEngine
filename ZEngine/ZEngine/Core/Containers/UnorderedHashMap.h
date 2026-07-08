@@ -1,14 +1,12 @@
 ﻿#pragma once
-#include <Allocator.h>
-#include <Array.h>
-#include <Helpers/MemoryOperations.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/ZEngineDef.h>
 #include <rapidhash.h>
 #include <cstddef>
-#include <iterator>
 #include <stdexcept>
 #include <type_traits>
-#include <utility>
 
 namespace ZEngine::Core::Containers
 {

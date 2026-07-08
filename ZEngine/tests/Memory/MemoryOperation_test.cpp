@@ -1,5 +1,5 @@
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
-#include "Helpers/MemoryOperations.h"
 
 using namespace ZEngine::Helpers;
 

@@ -1,5 +1,5 @@
 #pragma once
-#include <Logging/LoggerConfiguration.h>
+#include <ZEngine/Logging/LoggerConfiguration.h>
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/spdlog.h>
 #include <map>

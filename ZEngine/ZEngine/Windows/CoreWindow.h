@@ -1,15 +1,15 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Containers/Strings.h>
-#include <Core/CoreEvent.h>
-#include <Core/EventDispatcher.h>
-#include <Core/IEventable.h>
-#include <Core/IInitializable.h>
-#include <Core/Memory/Allocator.h>
-#include <Core/TimeStep.h>
-#include <Inputs/IInputEventCallback.h>
-#include <WindowConfiguration.h>
-#include <WindowProperty.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Core/CoreEvent.h>
+#include <ZEngine/Core/EventDispatcher.h>
+#include <ZEngine/Core/IEventable.h>
+#include <ZEngine/Core/IInitializable.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/TimeStep.h>
+#include <ZEngine/Windows/Inputs/IInputEventCallback.h>
+#include <ZEngine/Windows/WindowConfiguration.h>
+#include <ZEngine/Windows/WindowProperty.h>
 #include <future>
 #include <span>
 

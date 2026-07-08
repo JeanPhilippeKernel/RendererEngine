@@ -1,8 +1,8 @@
-#include <Managers/AssetManager.h>
-#include <RendererPasses.h>
-#include <Rendering/Renderers/Contracts/RendererDataContract.h>
-#include <Rendering/Renderers/GraphicRenderer.h>
-#include <Specifications/FormatSpecification.h>
+#include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/Rendering/Renderers/RendererPasses.h>
+#include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering::Renderers::Contracts;

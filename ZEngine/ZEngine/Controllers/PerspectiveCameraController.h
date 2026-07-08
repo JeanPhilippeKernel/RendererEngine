@@ -1,8 +1,8 @@
 #pragma once
-#include <Controllers/ICameraController.h>
-#include <Core/Memory/Allocator.h>
-#include <Rendering/Cameras/PerspectiveCamera.h>
-#include <Windows/Inputs/IInputEventCallback.h>
+#include <ZEngine/Controllers/ICameraController.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Rendering/Cameras/PerspectiveCamera.h>
+#include <ZEngine/Windows/Inputs/IInputEventCallback.h>
 #include <mutex>
 
 namespace ZEngine::Controllers

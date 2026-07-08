@@ -1,6 +1,6 @@
 #pragma once
-#include <Core/Memory/Allocator.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/ZEngineDef.h>
 #include <atomic>
 #include <future>
 #include <mutex>

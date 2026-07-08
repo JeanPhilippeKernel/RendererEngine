@@ -11,7 +11,7 @@
 #error Compiler support for coroutines missing!
 #endif
 
-#include <CoroutineScheduler.h>
+#include <ZEngine/Core/CoroutineScheduler.h>
 
 #if defined(__cpp_impl_coroutine) || !defined(_MSC_VER)
 namespace ZENGINE_COROUTINE_NAMESPACE

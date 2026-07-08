@@ -1,6 +1,6 @@
 #pragma once
-#include <Rendering/ResourceTypes.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Rendering/ResourceTypes.h>
+#include <ZEngine/ZEngineDef.h>
 #include <vulkan/vulkan.h>
 #include <deque>
 

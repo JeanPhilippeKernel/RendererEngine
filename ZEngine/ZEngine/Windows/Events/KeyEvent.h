@@ -1,7 +1,7 @@
 #pragma once
-#include <Core/CoreEvent.h>
-#include <Inputs/KeyCode.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/CoreEvent.h>
+#include <ZEngine/Windows/Inputs/KeyCode.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::Windows::Events
 {

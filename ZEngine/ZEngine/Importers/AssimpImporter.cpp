@@ -1,9 +1,11 @@
-#include <AssimpImporter.h>
-#include <Core/Coroutine.h>
-#include <Helpers/MemoryOperations.h>
-#include <Helpers/ThreadPool.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/AssimpImporter.h>
 #include <assimp/postprocess.h>
 #include <fmt/format.h>
+#include <filesystem>
+#include <fstream>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Meshes;

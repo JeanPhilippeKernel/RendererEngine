@@ -1,5 +1,5 @@
-#include <Rendering/Shaders/ShaderReader.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Rendering/Shaders/ShaderReader.h>
+#include <ZEngine/ZEngineDef.h>
 #include <glslang/Public/ShaderLang.h>
 #include <filesystem>
 #include <fstream>

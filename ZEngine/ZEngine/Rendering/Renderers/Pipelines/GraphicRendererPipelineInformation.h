@@ -1,9 +1,9 @@
 #pragma once
-#include <Rendering/Geometries/IGeometry.h>
-#include <Rendering/Materials/ShaderMaterial.h>
-#include <Rendering/Meshes/Mesh.h>
-#include <Rendering/Shaders/ShaderEnums.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Rendering/Geometries/IGeometry.h>
+#include <ZEngine/Rendering/Materials/ShaderMaterial.h>
+#include <ZEngine/Rendering/Meshes/Mesh.h>
+#include <ZEngine/Rendering/Shaders/ShaderEnums.h>
+#include <ZEngine/ZEngineDef.h>
 #include <queue>
 #include <vector>
 

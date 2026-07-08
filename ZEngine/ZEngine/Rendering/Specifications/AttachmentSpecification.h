@@ -1,7 +1,7 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Containers/UnorderedHashMap.h>
-#include <Rendering/Specifications/FormatSpecification.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/UnorderedHashMap.h>
+#include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Specifications

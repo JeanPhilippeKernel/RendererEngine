@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Meshes/Mesh.h>
+#include <ZEngine/Rendering/Meshes/Mesh.h>
 
 namespace ZEngine::Rendering::Components
 {

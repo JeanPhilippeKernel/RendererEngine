@@ -1,7 +1,7 @@
-#include <Core/Containers/Array.h>
-#include <Hardwares/VulkanDevice.h>
-#include <Rendering/Renderers/RenderPasses/Attachment.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngine/ZEngineDef.h>
 
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Rendering::Specifications;

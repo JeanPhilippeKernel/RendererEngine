@@ -1,6 +1,6 @@
-#include <Core/Containers/HashSet.h>
-#include <Core/Containers/Strings.h>
-#include <Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/Containers/HashSet.h>
+#include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
 #include <vector>
 

@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Shaders/Compilers/ICompilerStage.h>
+#include <ZEngine/Rendering/Shaders/Compilers/ICompilerStage.h>
 #include <spirv-tools/libspirv.hpp>
 #include <spirv-tools/optimizer.hpp>
 

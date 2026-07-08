@@ -1,6 +1,6 @@
-#include <Hardwares/VulkanLayer.h>
-#include <Helpers/MemoryOperations.h>
-#include <Logging/LoggerDefinition.h>
+#include <ZEngine/Hardwares/VulkanLayer.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 
 using namespace ZEngine::Core::Containers;
 

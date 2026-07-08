@@ -1,6 +1,6 @@
 #pragma once
-#include <Rendering/GPUTypes.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Rendering/GPUTypes.h>
+#include <ZEngine/ZEngineDef.h>
 
 #define INVALID_MAP_HANDLE 0xFFFFFFFFu
 

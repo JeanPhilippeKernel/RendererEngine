@@ -1,8 +1,8 @@
 #pragma once
-#include <Hardwares/VulkanDevice.h>
-#include <Rendering/Shaders/Shader.h>
-#include <Rendering/Specifications/GraphicRendererPipelineSpecification.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/Shaders/Shader.h>
+#include <ZEngine/Rendering/Specifications/GraphicRendererPipelineSpecification.h>
+#include <ZEngine/ZEngineDef.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Renderers::Pipelines

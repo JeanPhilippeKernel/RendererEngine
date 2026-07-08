@@ -1,6 +1,6 @@
 #pragma once
-#include <MathUtils.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Maths/MathUtils.h>
+#include <ZEngine/ZEngineDef.h>
 #include <type_traits>
 
 namespace ZEngine::Core::Maths

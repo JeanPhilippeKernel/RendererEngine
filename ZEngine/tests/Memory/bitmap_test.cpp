@@ -1,5 +1,5 @@
-#include <Core/Maths/Vec.h>
-#include <Rendering/Buffers/Bitmap.h>
+#include <ZEngine/Core/Maths/Vec.h>
+#include <ZEngine/Rendering/Buffers/Bitmap.h>
 #include <gtest/gtest.h>
 #include <stb/stb_image.h>
 #include <stb/stb_image_write.h>

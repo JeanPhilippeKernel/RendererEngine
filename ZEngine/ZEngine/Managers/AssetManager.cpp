@@ -1,8 +1,8 @@
-#include <AssetManager.h>
-#include <Helpers/MemoryOperations.h>
-#include <Helpers/ThreadPool.h>
-#include <Importers/IAssetImporter.h>
-#include <Rendering/Meshes/Mesh.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/Meshes/Mesh.h>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Importers;

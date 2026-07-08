@@ -1,12 +1,12 @@
 #pragma once
-#include <AppRenderPipeline.h>
-#include <Controllers/ICameraController.h>
-#include <Core/Memory/Allocator.h>
-#include <Core/TimeStep.h>
-#include <Rendering/Scenes/GraphicScene.h>
-#include <Windows/CoreWindow.h>
-#include <Windows/WindowConfiguration.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Applications/AppRenderPipeline.h>
+#include <ZEngine/Controllers/ICameraController.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/TimeStep.h>
+#include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/Windows/CoreWindow.h>
+#include <ZEngine/Windows/WindowConfiguration.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::Applications
 {

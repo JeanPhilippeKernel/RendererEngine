@@ -1,6 +1,6 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Memory/Allocator.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/Allocator.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Hardwares

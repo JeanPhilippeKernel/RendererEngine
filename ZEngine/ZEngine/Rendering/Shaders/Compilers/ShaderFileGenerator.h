@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Shaders/Compilers/ICompilerStage.h>
+#include <ZEngine/Rendering/Shaders/Compilers/ICompilerStage.h>
 #include <fmt/format.h>
 #include <string_view>
 

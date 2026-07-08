@@ -1,6 +1,6 @@
 #pragma once
-#include <Helpers/IntrusivePtr.h>
-#include <Rendering/Specifications/AttachmentSpecification.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Rendering/Specifications/AttachmentSpecification.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Hardwares

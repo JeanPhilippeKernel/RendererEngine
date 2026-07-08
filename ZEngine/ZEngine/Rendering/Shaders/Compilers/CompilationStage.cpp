@@ -1,7 +1,7 @@
-#include <Core/Coroutine.h>
-#include <Logging/LoggerDefinition.h>
-#include <Rendering/Shaders/Compilers/CompilationStage.h>
-#include <Rendering/Shaders/Compilers/ValidationStage.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Rendering/Shaders/Compilers/CompilationStage.h>
+#include <ZEngine/Rendering/Shaders/Compilers/ValidationStage.h>
 
 using namespace ZEngine::Helpers;
 

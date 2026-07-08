@@ -1,11 +1,8 @@
 #pragma once
-#include <Message.h>
-#include <UIComponent.h>
+#include <Tetragrama/Components/UIComponent.h>
+#include <Tetragrama/Messengers/Message.h>
 #include <ZEngine/ZEngineDef.h>
 #include <imgui.h>
-#include <future>
-#include <mutex>
-#include <string>
 
 namespace Tetragrama::Components
 {

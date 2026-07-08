@@ -1,6 +1,6 @@
 #pragma once
-#include <EditorScene.h>
-#include <Layers/ImguiLayer.h>
+#include <Tetragrama/EditorScene.h>
+#include <Tetragrama/Layers/ImguiLayer.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Managers/AssetManager.h>

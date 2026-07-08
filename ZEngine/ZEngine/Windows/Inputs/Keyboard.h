@@ -1,6 +1,6 @@
 #pragma once
 #include <GLFW/glfw3.h>
-#include <IDevice.h>
+#include <ZEngine/Windows/Inputs/IDevice.h>
 
 namespace ZEngine::Windows::Inputs
 {

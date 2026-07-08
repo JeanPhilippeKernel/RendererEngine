@@ -1,8 +1,8 @@
 #pragma once
-#include <Helpers/ThreadSafeQueue.h>
-#include <Rendering/Primitives/Semaphore.h>
-#include <Textures/Texture.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Helpers/ThreadSafeQueue.h>
+#include <ZEngine/Rendering/Primitives/Semaphore.h>
+#include <ZEngine/Rendering/Textures/Texture.h>
+#include <ZEngine/ZEngineDef.h>
 #include <variant>
 
 namespace ZEngine::Hardwares

@@ -1,7 +1,7 @@
-#include <Controllers/FlyCameraController.h>
-#include <Inputs/KeyCodeDefinition.h>
-#include <Inputs/Keyboard.h>
-#include <Inputs/Mouse.h>
+#include <ZEngine/Controllers/FlyCameraController.h>
+#include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
+#include <ZEngine/Windows/Inputs/Keyboard.h>
+#include <ZEngine/Windows/Inputs/Mouse.h>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Windows::Inputs;

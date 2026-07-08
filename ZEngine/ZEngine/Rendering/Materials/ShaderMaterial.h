@@ -1,6 +1,6 @@
 #pragma once
-#include <Rendering/Materials/IMaterial.h>
-#include <Rendering/Shaders/Shader.h>
+#include <ZEngine/Rendering/Materials/IMaterial.h>
+#include <ZEngine/Rendering/Shaders/Shader.h>
 
 namespace ZEngine::Rendering::Materials
 {

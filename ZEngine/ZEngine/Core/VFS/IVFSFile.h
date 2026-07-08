@@ -1,7 +1,7 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <VFSError.h>
-#include <VFSPath.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/VFS/VFSError.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
 #include <cstddef>
 #include <cstdint>
 

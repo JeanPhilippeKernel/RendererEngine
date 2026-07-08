@@ -1,8 +1,9 @@
-#include <AsyncResourceLoader.h>
-#include <Helpers/ThreadPool.h>
-#include <Importers/EnvironmentMapImporter.h>
-#include <Rendering/Buffers/Bitmap.h>
-#include <VulkanDevice.h>
+#include <ZEngine/Hardwares/AsyncResourceLoader.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/EnvironmentMapImporter.h>
+#include <ZEngine/Rendering/Buffers/Bitmap.h>
+#include <filesystem>
 
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__

@@ -1,6 +1,6 @@
 #pragma once
-#include <AssetTypes.h>
-#include <IAssetImporter.h>
+#include <ZEngine/Importers/AssetTypes.h>
+#include <ZEngine/Importers/IAssetImporter.h>
 #include <assimp/Importer.hpp>
 #include <assimp/ProgressHandler.hpp>
 #include <assimp/scene.h>

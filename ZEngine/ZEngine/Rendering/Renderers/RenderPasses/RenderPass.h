@@ -1,10 +1,10 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Helpers/IntrusivePtr.h>
-#include <Rendering/Buffers/Framebuffer.h>
-#include <Rendering/Renderers/Pipelines/RendererPipeline.h>
-#include <Rendering/Specifications/RenderPassSpecification.h>
-#include <Rendering/Textures/Texture.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Rendering/Buffers/Framebuffer.h>
+#include <ZEngine/Rendering/Renderers/Pipelines/RendererPipeline.h>
+#include <ZEngine/Rendering/Specifications/RenderPassSpecification.h>
+#include <ZEngine/Rendering/Textures/Texture.h>
 #include <vulkan/vulkan.h>
 #include <set>
 #include <unordered_set>

@@ -4,8 +4,8 @@
 #include <sys/mman.h>
 #endif
 
-#include <Allocator.h>
-#include <MemoryOperations.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 
 namespace ZEngine::Core::Memory
 {

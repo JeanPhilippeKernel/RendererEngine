@@ -1,7 +1,7 @@
 #pragma once
-#include <Helpers/HandleManager.h>
-#include <Helpers/IntrusivePtr.h>
-#include <Specifications/TextureSpecification.h>
+#include <ZEngine/Helpers/HandleManager.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Rendering/Specifications/TextureSpecification.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Hardwares

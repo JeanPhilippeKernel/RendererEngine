@@ -1,5 +1,5 @@
 #pragma once
-#include <Core/Containers/Strings.h>
+#include <ZEngine/Core/Containers/Strings.h>
 
 namespace ZEngine::Windows
 {

@@ -1,9 +1,9 @@
 #pragma once
-#include <Applications/GameApplication.h>
-#include <EngineConfiguration.h>
-#include <Event/EngineClosedEvent.h>
-#include <Hardwares/VulkanDevice.h>
-#include <Windows/CoreWindow.h>
+#include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/EngineConfiguration.h>
+#include <ZEngine/Event/EngineClosedEvent.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Windows/CoreWindow.h>
 
 namespace ZEngine
 {

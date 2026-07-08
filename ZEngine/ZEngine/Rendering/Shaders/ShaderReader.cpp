@@ -1,6 +1,6 @@
-#include <Core/Coroutine.h>
-#include <Logging/LoggerDefinition.h>
-#include <Rendering/Shaders/ShaderReader.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Rendering/Shaders/ShaderReader.h>
 
 namespace ZEngine::Rendering::Shaders
 {

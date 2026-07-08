@@ -1,6 +1,6 @@
 ﻿#pragma once
-#include <Core/Maths/Quaternion.h>
-#include <Rendering/Cameras/Camera.h>
+#include <ZEngine/Core/Maths/Quaternion.h>
+#include <ZEngine/Rendering/Cameras/Camera.h>
 
 namespace ZEngine::Rendering::Cameras
 {

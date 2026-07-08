@@ -1,13 +1,16 @@
-#include <Controllers/EditorCameraController.h>
-#include <Editor.h>
-#include <HierarchyViewUIComponent.h>
+// clang-format off
+#include <Tetragrama/Components/HierarchyViewUIComponent.h>
+#include <Tetragrama/Controllers/EditorCameraController.h>
 #include <ImGuizmo/ImGuizmo.h>
+#include <Tetragrama/Editor.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 #include <ZEngine/Windows/Inputs/Keyboard.h>
 #include <ZEngine/Windows/Inputs/Mouse.h>
+// clang-format on
+#include <stack>
 
 using namespace ZEngine;
 using namespace ZEngine::Helpers;

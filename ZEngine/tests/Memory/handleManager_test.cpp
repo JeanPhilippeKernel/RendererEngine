@@ -1,6 +1,6 @@
-#include <Core/Memory/Allocator.h>
-#include <Core/Memory/MemoryManager.h>
-#include <Helpers/HandleManager.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Helpers/HandleManager.h>
 #include <gtest/gtest.h>
 #include <thread>
 

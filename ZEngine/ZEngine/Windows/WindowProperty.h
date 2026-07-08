@@ -1,6 +1,6 @@
 #pragma once
-#include <Core/Containers/Strings.h>
-#include <Core/CoreEvent.h>
+#include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Core/CoreEvent.h>
 
 namespace ZEngine::Windows
 {

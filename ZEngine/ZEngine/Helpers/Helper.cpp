@@ -1,9 +1,8 @@
-#include <pch.h>
-#include <Core/Coroutine.h>
-#include <Hardwares/VulkanDevice.h>
-#include <Helpers/MeshHelper.h>
-#include <Rendering/Renderers/Storages/IVertex.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Helpers/MeshHelper.h>
+#include <ZEngine/Rendering/Renderers/Storages/IVertex.h>
+#include <ZEngine/ZEngineDef.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 

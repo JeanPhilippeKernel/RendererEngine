@@ -1,5 +1,5 @@
 #pragma once
-#include <UIComponent.h>
+#include <Tetragrama/Components/UIComponent.h>
 #include <ZEngine/Applications/Layer.h>
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/Strings.h>

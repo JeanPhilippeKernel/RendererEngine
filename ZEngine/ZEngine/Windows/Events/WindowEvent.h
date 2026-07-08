@@ -1,5 +1,5 @@
 #pragma once
-#include <Core/CoreEvent.h>
+#include <ZEngine/Core/CoreEvent.h>
 #include <fmt/format.h>
 
 namespace ZEngine::Windows::Events

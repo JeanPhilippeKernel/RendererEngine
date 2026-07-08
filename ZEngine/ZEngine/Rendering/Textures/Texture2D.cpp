@@ -1,7 +1,7 @@
-#include <Core/Coroutine.h>
-#include <Rendering/Buffers/Bitmap.h>
-#include <Rendering/Primitives/ImageMemoryBarrier.h>
-#include <Rendering/Textures/Texture2D.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Rendering/Buffers/Bitmap.h>
+#include <ZEngine/Rendering/Primitives/ImageMemoryBarrier.h>
+#include <ZEngine/Rendering/Textures/Texture2D.h>
 
 // #define STB_IMAGE_IMPLEMENTATION
 // #ifdef __GNUC__

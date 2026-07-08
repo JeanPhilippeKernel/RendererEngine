@@ -1,7 +1,7 @@
 #pragma once
-#include <Core/IPipeline.h>
-#include <Helpers/IntrusivePtr.h>
-#include <Rendering/Shaders/ShaderReader.h>
+#include <ZEngine/Core/IPipeline.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Rendering/Shaders/ShaderReader.h>
 #include <future>
 #include <mutex>
 

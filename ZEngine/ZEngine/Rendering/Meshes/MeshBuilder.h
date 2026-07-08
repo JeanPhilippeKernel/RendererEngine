@@ -1,8 +1,8 @@
 // #pragma once
-// #include <Rendering/Meshes/Mesh.h>
-// #include <Rendering/Lights/Light.h>
-// #include <Rendering/Textures/Texture2D.h>
-// #include <ZEngineDef.h>
+// #include <ZEngine/Rendering/Meshes/Mesh.h>
+// #include <ZEngine/Rendering/Lights/Light.h>
+// #include <ZEngine/Rendering/Textures/Texture2D.h>
+// #include <ZEngine/ZEngineDef.h>
 //
 // namespace ZEngine::Rendering::Meshes {
 //

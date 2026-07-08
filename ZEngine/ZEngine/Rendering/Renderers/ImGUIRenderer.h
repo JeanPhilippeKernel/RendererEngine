@@ -1,7 +1,7 @@
 #pragma once
-#include <IRenderer.h>
-#include <Rendering/Renderers/RenderPasses/RenderPass.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Rendering/Renderers/IRenderer.h>
+#include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::Rendering::Renderers
 {

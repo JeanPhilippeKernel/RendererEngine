@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Geometries/IGeometry.h>
+#include <ZEngine/Rendering/Geometries/IGeometry.h>
 
 namespace ZEngine::Rendering::Geometries
 {

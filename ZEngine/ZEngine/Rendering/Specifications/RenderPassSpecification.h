@@ -1,9 +1,9 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Containers/UnorderedHashMap.h>
-#include <Rendering/Specifications/GraphicRendererPipelineSpecification.h>
-#include <Rendering/Specifications/TextureSpecification.h>
-#include <Rendering/Textures/Texture.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/UnorderedHashMap.h>
+#include <ZEngine/Rendering/Specifications/GraphicRendererPipelineSpecification.h>
+#include <ZEngine/Rendering/Specifications/TextureSpecification.h>
+#include <ZEngine/Rendering/Textures/Texture.h>
 
 namespace ZEngine::Rendering::Specifications
 {
