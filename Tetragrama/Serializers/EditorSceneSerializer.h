@@ -1,5 +1,5 @@
 #pragma once
-#include <EditorScene.h>
+#include <Tetragrama/EditorScene.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Serializers/Serializer.h>
 

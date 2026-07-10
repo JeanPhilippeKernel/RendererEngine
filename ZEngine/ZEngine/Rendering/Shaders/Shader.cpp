@@ -1,10 +1,9 @@
-#include <Hardwares/VulkanDevice.h>
-#include <Helpers/IntrusivePtr.h>
-#include <Helpers/MemoryOperations.h>
-#include <Logging/LoggerDefinition.h>
-#include <Rendering/Renderers/GraphicRenderer.h>
-#include <Rendering/Shaders/Shader.h>
-#include <Rendering/Shaders/ShaderReader.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/Rendering/Shaders/Shader.h>
+#include <ZEngine/Rendering/Shaders/ShaderReader.h>
 #include <spirv_cross.hpp>
 #include <vulkan/vulkan.h>
 

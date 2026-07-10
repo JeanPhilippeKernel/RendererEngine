@@ -1,6 +1,6 @@
-#include <Core/Memory/Allocator.h>
-#include <Core/Memory/MemoryManager.h>
-#include <Helpers/MemoryOperations.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
 
 using namespace ZEngine;

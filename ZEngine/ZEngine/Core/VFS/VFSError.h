@@ -1,5 +1,5 @@
 #pragma once
-#include <ZEngineDef.h>
+#include <ZEngine/ZEngineDef.h>
 #include <cstdint>
 
 namespace ZEngine::Core::VFS

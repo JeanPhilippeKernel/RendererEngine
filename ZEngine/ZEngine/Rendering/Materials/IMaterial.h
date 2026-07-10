@@ -1,7 +1,7 @@
 #pragma once
-#include <Rendering/Shaders/ShaderEnums.h>
-#include <Rendering/Textures/Texture.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Rendering/Shaders/ShaderEnums.h>
+#include <ZEngine/Rendering/Textures/Texture.h>
+#include <ZEngine/ZEngineDef.h>
 #include <string>
 #include <typeinfo>
 

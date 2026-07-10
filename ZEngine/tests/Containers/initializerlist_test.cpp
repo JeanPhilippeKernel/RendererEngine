@@ -1,7 +1,7 @@
-#include <Core/Containers/Array.h>
-#include <Core/Containers/InitializerList.h>
-#include <Core/Containers/Strings.h>
-#include <Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/InitializerList.h>
+#include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
 #include <gtest/gtest.h>
 
 using namespace ZEngine::Core::Containers;

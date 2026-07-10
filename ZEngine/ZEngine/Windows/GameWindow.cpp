@@ -1,10 +1,10 @@
-#include <Core/Coroutine.h>
-#include <Engine.h>
-#include <Event/EngineClosedEvent.h>
-#include <GameWindow.h>
-#include <Inputs/IDevice.h>
-#include <Inputs/KeyCode.h>
-#include <Logging/LoggerDefinition.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Event/EngineClosedEvent.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Windows/GameWindow.h>
+#include <ZEngine/Windows/Inputs/IDevice.h>
+#include <ZEngine/Windows/Inputs/KeyCode.h>
 
 #ifdef _WIN32
 

@@ -1,6 +1,6 @@
 #pragma once
-#include <Core/IPipeline.h>
-#include <Rendering/Shaders/ShaderInformation.h>
+#include <ZEngine/Core/IPipeline.h>
+#include <ZEngine/Rendering/Shaders/ShaderInformation.h>
 #include <future>
 
 namespace ZEngine::Rendering::Shaders::Compilers

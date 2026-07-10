@@ -1,5 +1,5 @@
-#include <Core/CoroutineScheduler.h>
-#include <Helpers/ThreadPool.h>
+#include <ZEngine/Core/CoroutineScheduler.h>
+#include <ZEngine/Helpers/ThreadPool.h>
 #include <thread>
 
 using namespace ZEngine::Helpers;

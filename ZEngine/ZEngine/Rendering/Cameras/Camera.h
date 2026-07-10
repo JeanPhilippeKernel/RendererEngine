@@ -1,7 +1,7 @@
 #pragma once
-#include <Core/Maths/Matrix.h>
-#include <Rendering/Cameras/CameraEnum.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Maths/Matrix.h>
+#include <ZEngine/Rendering/Cameras/CameraEnum.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::Rendering::Cameras
 {

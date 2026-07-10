@@ -1,8 +1,9 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Memory/Allocator.h>
-#include <MemoryOperations.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/ZEngineDef.h>
+#include <shared_mutex>
 
 #define INVALID_HANDLE_INDEX -1
 

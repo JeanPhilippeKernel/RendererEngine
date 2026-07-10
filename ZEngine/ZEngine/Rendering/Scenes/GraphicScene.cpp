@@ -1,9 +1,9 @@
-﻿#include <Core/Coroutine.h>
-#include <Renderers/GraphicRenderer.h>
-#include <Rendering/Components/CameraComponent.h>
-#include <Rendering/Components/LightComponent.h>
-#include <Rendering/Components/UUIComponent.h>
-#include <Rendering/Scenes/GraphicScene.h>
+﻿#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Rendering/Components/CameraComponent.h>
+#include <ZEngine/Rendering/Components/LightComponent.h>
+#include <ZEngine/Rendering/Components/UUIComponent.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/Rendering/Scenes/GraphicScene.h>
 
 #define NODE_PARENT_ID  -1
 #define INVALID_NODE_ID -1

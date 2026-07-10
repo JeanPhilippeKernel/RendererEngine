@@ -1,8 +1,8 @@
 #pragma once
-#include <Events/KeyEvent.h>
-#include <Events/MouseEvent.h>
-#include <Events/TextInputEvent.h>
-#include <Events/WindowEvent.h>
+#include <ZEngine/Windows/Events/KeyEvent.h>
+#include <ZEngine/Windows/Events/MouseEvent.h>
+#include <ZEngine/Windows/Events/TextInputEvent.h>
+#include <ZEngine/Windows/Events/WindowEvent.h>
 
 namespace ZEngine::Windows::Inputs
 {

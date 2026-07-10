@@ -1,7 +1,7 @@
 #pragma once
-#include <Controllers/ICameraController.h>
-#include <Core/Memory/Allocator.h>
-#include <Rendering/Cameras/FlyCamera.h>
+#include <ZEngine/Controllers/ICameraController.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Rendering/Cameras/FlyCamera.h>
 
 namespace ZEngine::Controllers
 {

@@ -1,5 +1,5 @@
 #pragma once
-#include <ZEngineDef.h>
+#include <ZEngine/ZEngineDef.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Specifications

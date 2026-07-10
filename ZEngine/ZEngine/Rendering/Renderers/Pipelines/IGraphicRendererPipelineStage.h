@@ -1,6 +1,6 @@
 #pragma once
-#include <Core/IPipeline.h>
-#include <Rendering/Renderers/Pipelines/GraphicRendererPipelineInformation.h>
+#include <ZEngine/Core/IPipeline.h>
+#include <ZEngine/Rendering/Renderers/Pipelines/GraphicRendererPipelineInformation.h>
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {

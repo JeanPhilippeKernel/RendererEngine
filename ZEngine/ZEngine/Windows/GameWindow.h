@@ -1,9 +1,9 @@
 #pragma once
-#include <Core/Memory/Allocator.h>
-#include <CoreWindow.h>
 #include <GLFW/glfw3.h>
-#include <WindowConfiguration.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Windows/CoreWindow.h>
+#include <ZEngine/Windows/WindowConfiguration.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::Windows
 {

@@ -1,9 +1,9 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <RenderGraph.h>
-#include <Rendering/Renderers/RenderPasses/RenderPass.h>
-#include <Rendering/Scenes/GraphicScene.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Rendering/Renderers/RenderGraph.h>
+#include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
+#include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/ZEngineDef.h>
 
 #define WRITE_BUFFERS_ONCE(frame_index, body)          \
     if (!m_write_once_control.contains(frame_index))   \

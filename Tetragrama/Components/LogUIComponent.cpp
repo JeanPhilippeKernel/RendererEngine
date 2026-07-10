@@ -1,7 +1,7 @@
-#include <Helpers/MemoryOperations.h>
-#include <LogUIComponent.h>
-#include <SearchPatternAlgorithm.h>
+#include <Tetragrama/Components/LogUIComponent.h>
+#include <Tetragrama/Helpers/SearchPatternAlgorithm.h>
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <imgui.h>
 
 using namespace ZEngine::Logging;

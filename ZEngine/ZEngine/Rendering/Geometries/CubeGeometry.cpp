@@ -1,4 +1,4 @@
-#include <Rendering/Geometries/CubeGeometry.h>
+#include <ZEngine/Rendering/Geometries/CubeGeometry.h>
 
 namespace ZEngine::Rendering::Geometries
 {

@@ -1,10 +1,10 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Containers/UnorderedHashMap.h>
-#include <Core/Memory/Allocator.h>
-#include <Hardwares/VulkanDevice.h>
-#include <Rendering/Specifications/ShaderSpecification.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/UnorderedHashMap.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/Specifications/ShaderSpecification.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::Rendering::Shaders
 {

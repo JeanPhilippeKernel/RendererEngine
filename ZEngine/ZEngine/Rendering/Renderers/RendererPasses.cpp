@@ -1,5 +1,5 @@
-#include <GraphicRenderer.h>
-#include <RendererPasses.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/Rendering/Renderers/RendererPasses.h>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;

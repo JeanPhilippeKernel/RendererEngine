@@ -1,5 +1,5 @@
 #pragma once
-#include <HashMap.h>
+#include <ZEngine/Core/Containers/HashMap.h>
 
 namespace ZEngine::Core::Containers
 {

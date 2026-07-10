@@ -1,5 +1,5 @@
-#include <Hardwares/VulkanDevice.h>
-#include <Texture.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/Textures/Texture.h>
 
 namespace ZEngine::Rendering::Textures
 {

@@ -1,9 +1,8 @@
 #pragma once
-#include <Core/Maths/Matrix.h>
-#include <Helpers/IntrusivePtr.h>
-#include <Rendering/Geometries/GeometryEnum.h>
-#include <Rendering/Renderers/Storages/GraphicVertex.h>
-#include <algorithm>
+#include <ZEngine/Core/Maths/Matrix.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Rendering/Geometries/GeometryEnum.h>
+#include <ZEngine/Rendering/Renderers/Storages/GraphicVertex.h>
 #include <vector>
 
 namespace ZEngine::Rendering::Geometries

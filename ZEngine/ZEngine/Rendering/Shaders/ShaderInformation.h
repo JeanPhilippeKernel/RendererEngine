@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Shaders/ShaderEnums.h>
+#include <ZEngine/Rendering/Shaders/ShaderEnums.h>
 #include <vulkan/vulkan.h>
 #include <string>
 #include <vector>

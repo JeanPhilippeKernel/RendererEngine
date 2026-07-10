@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Shaders/ShaderInformation.h>
+#include <ZEngine/Rendering/Shaders/ShaderInformation.h>
 #include <glslang/Public/ShaderLang.h>
 #include <filesystem>
 #include <fstream>

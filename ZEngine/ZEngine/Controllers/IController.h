@@ -1,10 +1,10 @@
 #pragma once
 
-#include <Core/IEventable.h>
-#include <Core/IInitializable.h>
-#include <Core/IRenderable.h>
-#include <Core/IUpdatable.h>
-#include <Helpers/IntrusivePtr.h>
+#include <ZEngine/Core/IEventable.h>
+#include <ZEngine/Core/IInitializable.h>
+#include <ZEngine/Core/IRenderable.h>
+#include <ZEngine/Core/IUpdatable.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
 
 namespace ZEngine::Controllers
 {

@@ -1,6 +1,6 @@
-#include <Hardwares/VulkanDevice.h>
-#include <Rendering/Pools/CommandPool.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/Pools/CommandPool.h>
+#include <ZEngine/ZEngineDef.h>
 
 using namespace ZEngine::Helpers;
 namespace ZEngine::Rendering::Pools

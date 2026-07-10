@@ -1,5 +1,5 @@
 #pragma once
-#include <Logging/Logger.h>
+#include <ZEngine/Logging/Logger.h>
 #include <fmt/format.h>
 
 #define ZENGINE_CORE_INFO(...)     ::ZEngine::Logging::Logger::Info(fmt::format(__VA_ARGS__));

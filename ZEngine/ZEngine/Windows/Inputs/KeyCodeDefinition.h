@@ -1,5 +1,5 @@
 #pragma once
-#include <ZEngineDef.h>
+#include <ZEngine/ZEngineDef.h>
 
 #define ZENGINE_KEY_UNKNOWN       ZEngine::Windows::Inputs::GlfwKey::KEY_UNKNOWN
 #define ZENGINE_KEY_SPACE         ZEngine::Windows::Inputs::GlfwKey::KEY_SPACE

@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Materials/ShaderMaterial.h>
+#include <ZEngine/Rendering/Materials/ShaderMaterial.h>
 
 namespace ZEngine::Rendering::Materials
 {

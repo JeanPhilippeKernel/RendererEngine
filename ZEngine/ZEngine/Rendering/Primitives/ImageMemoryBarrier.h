@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Specifications/ImageMemoryBarrierSpecification.h>
+#include <ZEngine/Rendering/Specifications/ImageMemoryBarrierSpecification.h>
 #include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Primitives

@@ -1,7 +1,9 @@
-#include <Core/Coroutine.h>
-#include <EnvironmentMapImporter.h>
-#include <Helpers/ThreadPool.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/AssetTypes.h>
+#include <ZEngine/Importers/EnvironmentMapImporter.h>
 #include <fmt/format.h>
+#include <filesystem>
 
 // stb_image implementation is defined once in AsyncResourceLoader.cpp.
 #include <stb/stb_image.h>

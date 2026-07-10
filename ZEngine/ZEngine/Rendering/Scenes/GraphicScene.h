@@ -1,10 +1,10 @@
 ﻿#pragma once
-#include <Core/Maths/Matrix.h>
-#include <Hardwares/VulkanDevice.h>
-#include <Helpers/NodeHierarchyHelper.h>
-#include <Rendering/Meshes/Mesh.h>
-#include <Rendering/Textures/Texture.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Maths/Matrix.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Helpers/NodeHierarchyHelper.h>
+#include <ZEngine/Rendering/Meshes/Mesh.h>
+#include <ZEngine/Rendering/Textures/Texture.h>
+#include <ZEngine/ZEngineDef.h>
 #include <entt/entt.hpp>
 #include <uuid.h>
 

@@ -1,6 +1,6 @@
 #pragma once
-#include <Logging/LoggerDefinition.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/ZEngineDef.h>
 #include <entt/entt.hpp>
 #include <type_traits>
 

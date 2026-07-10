@@ -1,6 +1,6 @@
-#include <Core/Maths/MathUtils.h>
-#include <Rendering/Cameras/FlyCamera.h>
-#include <Windows/Inputs/KeyCode.h>
+#include <ZEngine/Core/Maths/MathUtils.h>
+#include <ZEngine/Rendering/Cameras/FlyCamera.h>
+#include <ZEngine/Windows/Inputs/KeyCode.h>
 #include <cmath>
 
 using namespace ZEngine::Core::Maths;

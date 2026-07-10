@@ -1,6 +1,6 @@
 #pragma once
-#include <Rendering/Specifications/FormatSpecification.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Rendering/Specifications/FormatSpecification.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::Rendering::Specifications
 {

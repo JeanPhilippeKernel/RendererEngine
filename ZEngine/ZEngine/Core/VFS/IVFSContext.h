@@ -1,8 +1,8 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Memory/Allocator.h>
-#include <IVFSFile.h>
-#include <VFSPath.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/VFS/IVFSFile.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
 
 namespace ZEngine::Core::VFS
 {

@@ -1,5 +1,5 @@
 #pragma once
-#include <Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 
 namespace ZEngine::Core
 {

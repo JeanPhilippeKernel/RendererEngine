@@ -1,4 +1,4 @@
-#include <Rendering/Primitives/ImageMemoryBarrier.h>
+#include <ZEngine/Rendering/Primitives/ImageMemoryBarrier.h>
 
 using namespace ZEngine::Rendering::Specifications;
 

@@ -1,7 +1,7 @@
 #pragma once
-#include <Core/ISerializer.h>
-#include <Rendering/Scenes/GraphicScene.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/ISerializer.h>
+#include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/ZEngineDef.h>
 #include <filesystem>
 
 namespace ZEngine::Serializers

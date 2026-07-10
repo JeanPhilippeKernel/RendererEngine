@@ -1,5 +1,5 @@
 #pragma once
-#include <Logging/LoggerDefinition.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 
 #define BIT(x)                 (1 << (x))
 #define ZENGINE_EXIT_FAILURE() exit(EXIT_FAILURE);

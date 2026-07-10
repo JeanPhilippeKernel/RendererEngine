@@ -1,8 +1,8 @@
 #pragma once
-#include <Components/UIComponent.h>
-#include <Message.h>
+#include <Tetragrama/Components/UIComponent.h>
+#include <Tetragrama/Messengers/Message.h>
 #include <ZEngine/Core/Coroutine.h>
-#include <ZEngineDef.h>
+#include <ZEngine/ZEngineDef.h>
 #include <functional>
 #include <mutex>
 #include <string_view>

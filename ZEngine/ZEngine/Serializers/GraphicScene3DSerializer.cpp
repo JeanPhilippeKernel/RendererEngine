@@ -1,17 +1,18 @@
-#include <Core/Coroutine.h>
-#include <Helpers/MeshHelper.h>
-#include <Rendering/Components/CameraComponent.h>
-#include <Rendering/Components/GeometryComponent.h>
-#include <Rendering/Components/LightComponent.h>
-#include <Rendering/Components/MaterialComponent.h>
-#include <Rendering/Components/NameComponent.h>
-#include <Rendering/Components/TransformComponent.h>
-#include <Rendering/Components/UUIComponent.h>
-#include <Rendering/Geometries/CubeGeometry.h>
-#include <Rendering/Materials/BasicMaterial.h>
-#include <Rendering/Materials/StandardMaterial.h>
-#include <Rendering/Textures/Texture.h>
-#include <Serializers/GraphicScene3DSerializer.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Helpers/MeshHelper.h>
+#include <ZEngine/Rendering/Components/CameraComponent.h>
+#include <ZEngine/Rendering/Components/GeometryComponent.h>
+#include <ZEngine/Rendering/Components/LightComponent.h>
+#include <ZEngine/Rendering/Components/MaterialComponent.h>
+#include <ZEngine/Rendering/Components/NameComponent.h>
+#include <ZEngine/Rendering/Components/TransformComponent.h>
+#include <ZEngine/Rendering/Components/UUIComponent.h>
+#include <ZEngine/Rendering/Geometries/CubeGeometry.h>
+#include <ZEngine/Rendering/Materials/BasicMaterial.h>
+#include <ZEngine/Rendering/Materials/StandardMaterial.h>
+#include <ZEngine/Rendering/Textures/Texture.h>
+#include <ZEngine/Serializers/GraphicScene3DSerializer.h>
+#include <fstream>
 
 using namespace ZEngine::Rendering::Materials;
 using namespace ZEngine::Rendering::Components;
@@ -30,6 +31,8 @@ namespace YAML
             node.push_back(value.x);
             node.push_back(value.y);
             node.push_back(value.z);
+
+            return node;
         }
 
         static bool decode(const Node& node, Maths::Vec3f& value)
@@ -56,6 +59,8 @@ namespace YAML
             node.push_back(value.y);
             node.push_back(value.z);
             node.push_back(value.w);
+
+            return node;
         }
 
         static bool decode(const Node& node, Maths::Vec4f& value)

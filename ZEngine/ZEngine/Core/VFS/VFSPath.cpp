@@ -1,5 +1,6 @@
-#include <Helpers/MemoryOperations.h>
-#include <VFSPath.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/ZEngineDef.h>
 #include <cstddef>
 
 namespace ZEngine::Core::VFS

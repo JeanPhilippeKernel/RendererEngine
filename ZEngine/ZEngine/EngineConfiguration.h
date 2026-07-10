@@ -1,6 +1,6 @@
 #pragma once
-#include <Logging/LoggerConfiguration.h>
-#include <Windows/WindowConfiguration.h>
+#include <ZEngine/Logging/LoggerConfiguration.h>
+#include <ZEngine/Windows/WindowConfiguration.h>
 
 namespace ZEngine
 {

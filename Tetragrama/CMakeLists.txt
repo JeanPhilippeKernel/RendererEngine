@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.17)
+cmake_minimum_required (VERSION 3.23)
 
 project (Tetragrama 
 	VERSION 1.0
@@ -14,41 +14,25 @@ file (GLOB_RECURSE CPP_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
 
 source_group (TREE ${PROJECT_SOURCE_DIR} PREFIX "Source Files" FILES ${HEADER_FILES} ${CPP_FILES})
 
-set (TARGET_NAME tetragrama)
+add_library (Tetragrama)
 
-add_library (${TARGET_NAME})
-
-target_sources(${TARGET_NAME} PUBLIC ${HEADER_FILES} ${CPP_FILES})
+target_sources(Tetragrama 
+    PUBLIC FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/..
+    PRIVATE ${CPP_FILES}
+)
 
 # We set this debugger directory to find assets and resources file
 # after being copied to Debug and Release output directories 
 #
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-    set_target_properties(${TARGET_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$(ProjectDir)$(Configuration)")
+    set_target_properties(Tetragrama PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$(ProjectDir)$(Configuration)")
 endif ()
 
-target_include_directories (${TARGET_NAME}
-    PUBLIC
-        .
-        ./Components
-        ./Components/Events
-        ./Controllers
-        ./Inputs
-        ./Layers
-        ./Messengers
-        ./Helpers
-        ./Importers
-        ./Serializers
-        ./Managers
-)
-
-target_precompile_headers(${TARGET_NAME} PRIVATE pch.h)
-
-target_compile_definitions(${TARGET_NAME}
+target_compile_definitions(Tetragrama
     PRIVATE
         NOMINMAX
         UNICODE
         _UNICODE
 )
 
-target_link_libraries(${TARGET_NAME} PUBLIC zEngineLib)
+target_link_libraries(Tetragrama PUBLIC zEngineLib)

@@ -1,6 +1,6 @@
-#include <Editor.h>
-#include <InspectorViewUIComponent.h>
-#include <UIComponentDrawerHelper.h>
+#include <Tetragrama/Components/InspectorViewUIComponent.h>
+#include <Tetragrama/Editor.h>
+#include <Tetragrama/Helpers/UIComponentDrawerHelper.h>
 #include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Helpers/MeshHelper.h>

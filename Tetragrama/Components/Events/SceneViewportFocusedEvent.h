@@ -1,5 +1,5 @@
 #pragma once
-#include <UIComponentEvent.h>
+#include <Tetragrama/Components/Events/UIComponentEvent.h>
 
 namespace Tetragrama::Components::Event
 {

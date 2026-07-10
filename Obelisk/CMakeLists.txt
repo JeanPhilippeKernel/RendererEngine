@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.17)
+cmake_minimum_required (VERSION 3.23)
 
 project (Obelisk 
 	VERSION 1.0
@@ -17,7 +17,8 @@ else()
     add_executable (${TARGET_NAME})
 endif()
 
-target_sources(${TARGET_NAME} PUBLIC EntryPoint.cpp)
+target_sources(${TARGET_NAME} PUBLIC EntryPoint.cpp
+  PUBLIC FILE_SET HEADERS BASE_DIRS ${PROJECT_DIR})
 
 # We set this debugger directory to find assets and resources file
 # after being copied to Debug and Release output directories 
@@ -26,14 +27,6 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set_target_properties(${TARGET_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$(ProjectDir)$(Configuration)")
 endif ()
 
-target_include_directories (${TARGET_NAME}
-    PRIVATE
-        .
-        ${ENLISTMENT_ROOT}
-        ${ENLISTMENT_ROOT}/ZEngine
-)
-
-target_precompile_headers(${TARGET_NAME} PRIVATE pch.h)
 
 target_compile_definitions(${TARGET_NAME}
     PRIVATE
@@ -43,7 +36,7 @@ target_compile_definitions(${TARGET_NAME}
 )
 
 target_link_libraries(${TARGET_NAME} PUBLIC
-    tetragrama
+    Tetragrama
     imported::External_obeliskLibs
 )
 

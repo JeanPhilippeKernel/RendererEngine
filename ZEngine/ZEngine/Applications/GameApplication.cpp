@@ -1,5 +1,5 @@
-#include <Engine.h>
-#include <GameApplication.h>
+#include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Engine.h>
 
 namespace ZEngine::Applications
 {

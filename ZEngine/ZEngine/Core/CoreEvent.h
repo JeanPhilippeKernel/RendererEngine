@@ -1,5 +1,5 @@
 #pragma once
-#include <ZEngineDef.h>
+#include <ZEngine/ZEngineDef.h>
 #include <string>
 
 #define EVENT_TYPE(value)                           \

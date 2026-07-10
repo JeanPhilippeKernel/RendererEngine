@@ -1,8 +1,8 @@
 #pragma once
-#include <Core/Maths/MathUtils.h>
-#include <Core/Maths/Matrix.h>
-#include <Helpers/MemoryOperations.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Maths/MathUtils.h>
+#include <ZEngine/Core/Maths/Matrix.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/ZEngineDef.h>
 #include <cmath>
 #include <vector>
 

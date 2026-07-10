@@ -1,6 +1,6 @@
 #pragma once
-#include <IntrusivePtr.h>
-#include <ThreadSafeQueue.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Helpers/ThreadSafeQueue.h>
 #include <atomic>
 #include <thread>
 

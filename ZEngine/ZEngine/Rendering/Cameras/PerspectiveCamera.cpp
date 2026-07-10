@@ -1,5 +1,5 @@
-#include <Core/Maths/MathUtils.h>
-#include <Rendering/Cameras/PerspectiveCamera.h>
+#include <ZEngine/Core/Maths/MathUtils.h>
+#include <ZEngine/Rendering/Cameras/PerspectiveCamera.h>
 
 namespace ZEngine::Rendering::Cameras
 {

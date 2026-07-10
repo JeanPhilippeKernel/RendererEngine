@@ -1,5 +1,7 @@
-#include <IRenderer.h>
-#include <RenderGraph.h>
+#include <ZEngine/Core/Containers/UnorderedHashSet.h>
+#include <ZEngine/Rendering/Renderers/IRenderer.h>
+#include <ZEngine/Rendering/Renderers/RenderGraph.h>
+#include <stack>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Helpers;

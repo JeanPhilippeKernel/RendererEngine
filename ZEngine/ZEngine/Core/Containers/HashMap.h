@@ -1,8 +1,8 @@
-#pragma once
-#include <Allocator.h>
-#include <Array.h>
-#include <Helpers/MemoryOperations.h>
-#include <ZEngineDef.h>
+﻿#pragma once
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/ZEngineDef.h>
 #include <rapidhash.h>
 #include <algorithm>
 #include <cstddef>

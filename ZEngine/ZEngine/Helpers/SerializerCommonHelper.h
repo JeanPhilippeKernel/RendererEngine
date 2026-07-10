@@ -1,9 +1,9 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Containers/Strings.h>
-#include <Core/Containers/UnorderedHashMap.h>
-#include <Core/Memory/Allocator.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Core/Containers/UnorderedHashMap.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/ZEngineDef.h>
 #include <iostream>
 #include <type_traits>
 

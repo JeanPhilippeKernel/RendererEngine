@@ -1,4 +1,4 @@
-#include <EditorCameraController.h>
+#include <Tetragrama/Controllers/EditorCameraController.h>
 #include <ZEngine/Core/Maths/MathUtils.h>
 
 using namespace ZEngine::Rendering::Cameras;

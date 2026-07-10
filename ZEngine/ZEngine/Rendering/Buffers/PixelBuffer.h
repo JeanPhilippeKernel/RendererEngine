@@ -1,8 +1,8 @@
 #pragma once
-#include <Core/IGraphicObject.h>
-#include <Rendering/Buffers/BufferLayout.h>
-#include <Rendering/Buffers/GraphicBuffer.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/IGraphicObject.h>
+#include <ZEngine/Rendering/Buffers/BufferLayout.h>
+#include <ZEngine/Rendering/Buffers/GraphicBuffer.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::Rendering::Buffers
 {

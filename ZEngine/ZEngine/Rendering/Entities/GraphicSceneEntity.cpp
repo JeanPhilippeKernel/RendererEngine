@@ -1,4 +1,4 @@
-#include <Rendering/Entities/GraphicSceneEntity.h>
+#include <ZEngine/Rendering/Entities/GraphicSceneEntity.h>
 
 namespace ZEngine::Rendering::Entities
 {

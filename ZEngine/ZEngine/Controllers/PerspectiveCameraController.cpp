@@ -1,9 +1,9 @@
-#include <Controllers/PerspectiveCameraController.h>
-#include <Core/EventDispatcher.h>
-#include <Inputs/IDevice.h>
-#include <Inputs/KeyCodeDefinition.h>
-#include <Inputs/Keyboard.h>
-#include <Inputs/Mouse.h>
+#include <ZEngine/Controllers/PerspectiveCameraController.h>
+#include <ZEngine/Core/EventDispatcher.h>
+#include <ZEngine/Windows/Inputs/IDevice.h>
+#include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
+#include <ZEngine/Windows/Inputs/Keyboard.h>
+#include <ZEngine/Windows/Inputs/Mouse.h>
 
 using namespace ZEngine;
 using namespace ZEngine::Helpers;

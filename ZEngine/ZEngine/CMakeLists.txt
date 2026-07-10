@@ -42,51 +42,9 @@ source_group (TREE ${PROJECT_SOURCE_DIR}/../Resources PREFIX "Resources Files" F
 #
 add_library (zEngineLib STATIC)
 
-target_sources(zEngineLib PRIVATE ${CPP_FILES_LIST})
+target_sources(zEngineLib PRIVATE ${CPP_FILES_LIST}
+    PUBLIC FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR})
 
-target_include_directories (zEngineLib
-	PUBLIC
-        ${PROJECT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_BINARY_DIR}
-		./Applications
-		./Core
-		./Core/Maths
-		./Core/Memory
-		./Core/Containers
-		./Core/VFS
-		./Hardwares
-		./Helpers
-		./Layers
-		./Managers
-		./Importers
-		./Controllers
-		./Logging
-		./Rendering
-		./Rendering/Entities
-		./Rendering/Meshes
-		./Rendering/Buffers
-		./Rendering/Cameras
-		./Rendering/Pools
-		./Rendering/Primitives
-		./Rendering/Renderers
-		./Rendering/Renderers/Pipelines
-		./Rendering/Renderers/RenderPasses
-		./Rendering/Renderers/Storages
-		./Rendering/Scenes
-		./Rendering/Shaders
-		./Rendering/Shaders/Compilers
-		./Rendering/Specifications
-		./Rendering/Textures
-		./Windows
-		./Windows/Events
-		./Windows/Inputs
-		./Windows/Layers
-		./Managers
-		./Serializers
-)
-
-target_precompile_headers(zEngineLib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pch.h)
 
 if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
 	target_compile_definitions (zEngineLib PUBLIC ENABLE_VULKAN_VALIDATION_LAYER)

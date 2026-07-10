@@ -1,7 +1,7 @@
 #pragma once
-#include <Core/Memory/Allocator.h>
-#include <VFSError.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/VFS/VFSError.h>
+#include <ZEngine/ZEngineDef.h>
 #include <cstdint>
 
 namespace ZEngine::Core::VFS

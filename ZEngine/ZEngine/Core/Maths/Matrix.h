@@ -1,6 +1,6 @@
 #pragma once
-#include <Helpers/MemoryOperations.h>
-#include <Vec.h>
+#include <ZEngine/Core/Maths/Vec.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 
 namespace ZEngine::Core::Maths
 {

@@ -1,7 +1,7 @@
 #pragma once
-#include <Hardwares/VulkanDevice.h>
-#include <Rendering/Renderers/GraphicRenderer.h>
-#include <Rendering/Renderers/ImGUIRenderer.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/Rendering/Renderers/ImGUIRenderer.h>
 
 namespace ZEngine::Applications
 {

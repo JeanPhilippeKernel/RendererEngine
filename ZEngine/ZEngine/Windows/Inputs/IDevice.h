@@ -1,8 +1,7 @@
 #pragma once
-#include <Core/Memory/Allocator.h>
-#include <CoreWindow.h>
-#include <KeyCode.h>
-#include <algorithm>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Windows/CoreWindow.h>
+#include <ZEngine/Windows/Inputs/KeyCode.h>
 #include <map>
 #include <type_traits>
 

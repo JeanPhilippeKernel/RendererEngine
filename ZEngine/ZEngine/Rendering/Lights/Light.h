@@ -1,7 +1,7 @@
 #pragma once
-#include <Helpers/IntrusivePtr.h>
-#include <Helpers/MemoryOperations.h>
-#include <Rendering/GPUTypes.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Rendering/GPUTypes.h>
 #include <span>
 
 namespace ZEngine::Rendering::Lights

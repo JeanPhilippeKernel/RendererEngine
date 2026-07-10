@@ -1,8 +1,8 @@
 #pragma once
-#include <Core/Maths/MathUtils.h>
-#include <Core/Maths/Matrix.h>
-#include <Core/Maths/Quaternion.h>
-#include <Rendering/Cameras/Camera.h>
+#include <ZEngine/Core/Maths/MathUtils.h>
+#include <ZEngine/Core/Maths/Matrix.h>
+#include <ZEngine/Core/Maths/Quaternion.h>
+#include <ZEngine/Rendering/Cameras/Camera.h>
 #include <functional>
 #include <utility>
 

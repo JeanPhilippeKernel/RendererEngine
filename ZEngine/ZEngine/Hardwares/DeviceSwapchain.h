@@ -1,10 +1,10 @@
 #pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Memory/Allocator.h>
-#include <Rendering/Primitives/Fence.h>
-#include <Rendering/Primitives/Semaphore.h>
-#include <Rendering/Renderers/RenderPasses/Attachment.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Rendering/Primitives/Fence.h>
+#include <ZEngine/Rendering/Primitives/Semaphore.h>
+#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngine/ZEngineDef.h>
 #include <vulkan/vulkan.h>
 #include <limits>
 

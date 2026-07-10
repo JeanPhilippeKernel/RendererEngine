@@ -1,7 +1,7 @@
 #pragma once
-#include <Helpers/IntrusivePtr.h>
-#include <Helpers/ThreadSafeQueue.h>
-#include <ZEngineDef.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Helpers/ThreadSafeQueue.h>
+#include <ZEngine/ZEngineDef.h>
 #include <atomic>
 #include <functional>
 
