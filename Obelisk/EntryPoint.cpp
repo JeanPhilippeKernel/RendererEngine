@@ -2,6 +2,7 @@
 #include <Tetragrama/Editor.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/CrashHandlers/CrashHandler.h>
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/Logger.h>
@@ -12,9 +13,12 @@ using namespace ZEngine;
 using namespace ZEngine::Logging;
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Applications;
+using namespace ZEngine::CrashHandlers;
 
 int applicationEntryPoint(int argc, char* argv[])
 {
+    CrashHandler::Install("Obelisk", "1.0.0", "CrashDumps");
+
     MemoryManager       manager = {};
     MemoryConfiguration config  = {.BufferSize = ZGiga(3u)};
     manager.Initialize(config);
@@ -43,7 +47,10 @@ int applicationEntryPoint(int argc, char* argv[])
         app->EnableRenderOverlay = true;
     }
 
-    app->ConfigFile = config_file.c_str();
+    auto config_file_str_size = config_file.size() + 1;
+    auto config_file_str      = ZPushString(arena, config_file_str_size);
+    Helpers::secure_strncpy(config_file_str, config_file_str_size, config_file.c_str(), config_file.size());
+    app->ConfigFile = config_file_str;
 
     app->Initialize(arena);
     app->Run();
@@ -53,6 +60,7 @@ int applicationEntryPoint(int argc, char* argv[])
 
     manager.Shutdown();
 
+    CrashHandler::Uninstall();
     return 0;
 }
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngine/CrashHandlers/CrashHandler.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 
 #define BIT(x)                 (1 << (x))
@@ -20,7 +21,7 @@
     __builtin_unreachable();
 #endif
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 #define PLATFORM_OS_BACKSLASH '\\'
 #elif defined(__APPLE__) || defined(__linux__)
 #define PLATFORM_OS_BACKSLASH '/'
@@ -28,14 +29,27 @@
 #define PLATFORM_OS_BACKSLASH
 #endif
 
-#define ZENGINE_VALIDATE_ASSERT(condition, message) \
-    {                                               \
-        if (!(condition))                           \
-        {                                           \
-            ZENGINE_CORE_CRITICAL(message)          \
-            ZENGINE_DEBUG_BREAK()                   \
-        }                                           \
-    }
+#if defined(NDEBUG) || defined(ZENGINE_RELWITHDEBINFO) || defined(ZENGINE_RELEASE)
+#define ZENGINE_VALIDATE_ASSERT(cond, msg)                                                         \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond)) [[unlikely]]                                                                  \
+        {                                                                                          \
+            ::ZEngine::CrashHandlers::CrashHandler::OnAssertionFailure(__FILE__, __LINE__, (msg)); \
+        }                                                                                          \
+    } while (false);
+#else
+// Debug: use debugger break, no crash handler.
+#define ZENGINE_VALIDATE_ASSERT(cond, msg) \
+    do                                     \
+    {                                      \
+        if (!(cond))                       \
+        {                                  \
+            ZENGINE_CORE_CRITICAL(msg)     \
+            ZENGINE_DEBUG_BREAK()          \
+        }                                  \
+    } while (false);
+#endif
 
 #define ZENGINE_DESTROY_VULKAN_HANDLE(device, function, handle, ...) \
     if (device && handle)                                            \

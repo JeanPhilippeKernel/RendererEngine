@@ -1,12 +1,31 @@
-file ( GLOB TEST_SOURCES
-            Memory/*.cpp
-            Containers/*.cpp
-            VFS/*.cpp
-            Maths/*.cpp
-            Misc/*.cpp)
+file(GLOB TEST_SOURCES
+    Memory/*.cpp
+    Containers/*.cpp
+    VFS/*.cpp
+    Maths/*.cpp
+    Misc/*.cpp
+)
+
+# macOS and Windows are multi-config
+if (((APPLE) OR (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")))
+    if ((${CMAKE_CONFIGURATION_TYPES} STREQUAL "Release"))
+        list(APPEND TEST_SOURCES CrashHandlers/CrashHandler_test.cpp)
+        add_executable(ZEngineCrashDialogDemo CrashHandlers/CrashDialogDemo.cpp)
+        target_link_libraries(ZEngineCrashDialogDemo PRIVATE zEngineLib)
+        if(APPLE)
+            add_custom_command(TARGET ZEngineCrashDialogDemo POST_BUILD
+                COMMAND codesign --force --sign - $<TARGET_FILE:ZEngineCrashDialogDemo>
+                COMMENT "Ad-hoc signing ZEngineCrashDialogDemo"
+            )
+        endif()
+    endif()
+elseif((CMAKE_BUILD_TYPE STREQUAL "Release") OR (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
+    list(APPEND TEST_SOURCES CrashHandlers/CrashHandler_test.cpp)
+    add_executable(ZEngineCrashDialogDemo CrashHandlers/CrashDialogDemo.cpp)
+    target_link_libraries(ZEngineCrashDialogDemo PRIVATE zEngineLib)
+endif()
 
 add_executable(ZEngineTests)
-
 target_sources(ZEngineTests PRIVATE ${TEST_SOURCES})
 
 target_link_libraries(ZEngineTests PRIVATE
