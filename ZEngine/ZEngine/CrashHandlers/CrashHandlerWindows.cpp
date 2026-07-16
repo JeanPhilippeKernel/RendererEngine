@@ -682,6 +682,9 @@ namespace ZEngine::CrashHandlers
         }
 
         // Native Win32 crash dialog matching the macOS layout.
+        auto       hasenv      = [](const char* name) { return GetEnvironmentVariableA(name, nullptr, 0) > 0; };
+        const bool skip_dialog = hasenv("ZENGINE_CRASH_NO_DIALOG") || hasenv("CI");
+        if (!skip_dialog)
         {
             static CrashDlgState s_dlg_state;
             s_dlg_state               = {};

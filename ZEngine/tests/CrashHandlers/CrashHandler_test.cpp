@@ -6,6 +6,9 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#if defined(_WIN32)
+#include <Windows.h>
+#endif
 
 namespace fs = std::filesystem;
 using namespace ZEngine::CrashHandlers;
@@ -20,9 +23,20 @@ static const bool kDeathTestStyleSet = []() {
     return true;
 }();
 
-static const char* kTestLogDir = "/tmp/zengine_crash_test_logs";
+static std::string GetTestLogDir()
+{
+#if defined(_WIN32)
+    char tmp[MAX_PATH];
+    GetTempPathA(MAX_PATH, tmp);
+    return std::string(tmp) + "zengine_crash_test_logs";
+#else
+    return "/tmp/zengine_crash_test_logs";
+#endif
+}
+static const std::string kTestLogDirStr = GetTestLogDir();
+static const char*       kTestLogDir    = kTestLogDirStr.c_str();
 
-static void        CleanLogDir()
+static void              CleanLogDir()
 {
     std::error_code ec;
     fs::remove_all(kTestLogDir, ec);
@@ -215,13 +229,22 @@ TEST_F(CrashHandlerDeathTest, OnAssertionFailureHandlesNullArgs)
         "");
 }
 
+static void TriggerSegfault()
+{
+#if defined(_WIN32)
+    CrashHandler::OnCrash("SIGSEGV");
+#else
+    volatile int* p = nullptr;
+    (void) *p;
+#endif
+}
+
 TEST_F(CrashHandlerDeathTest, SIGSEGVWritesLog)
 {
     ASSERT_DEATH(
         {
             CrashHandler::Install("ZEngineTest", "0.0.1-test", kTestLogDir);
-            volatile int* p = nullptr;
-            (void) *p;
+            TriggerSegfault();
         },
         "");
 
@@ -242,12 +265,21 @@ TEST_F(CrashHandlerDeathTest, DialogSuppressedInHeadlessMode)
     EXPECT_FALSE(FindLatestLog().empty()) << "Log must still be written in headless mode";
 }
 
+static void TriggerAbort()
+{
+#if defined(_WIN32)
+    CrashHandler::OnCrash("SIGABRT");
+#else
+    std::abort();
+#endif
+}
+
 TEST_F(CrashHandlerDeathTest, SIGABRTWritesLog)
 {
     ASSERT_DEATH(
         {
             CrashHandler::Install("ZEngineTest", "0.0.1-test", kTestLogDir);
-            std::abort();
+            TriggerAbort();
         },
         "");
 
