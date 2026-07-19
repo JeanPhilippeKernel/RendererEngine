@@ -12,7 +12,7 @@ class OrderedHashSetTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        manager.Initialize({.BufferSize = 2000});
+        manager.Initialize(2000, {});
     }
     void TearDown() override
     {

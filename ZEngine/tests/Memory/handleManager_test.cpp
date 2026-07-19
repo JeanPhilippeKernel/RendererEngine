@@ -9,7 +9,7 @@ class HandleManagerTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        manager.Initialize({.BufferSize = ZKilo(10)});
+        manager.Initialize(ZKilo(10), {});
         auto arena = &(manager.MainArena);
         handle_manager.Initialize(arena, 10);
     }
@@ -114,7 +114,7 @@ TEST_F(HandleManagerTest, ReuseSlot)
 TEST_F(HandleManagerTest, ConcurrentAccess)
 {
     MemoryManager concurrent_manager{};
-    concurrent_manager.Initialize({.BufferSize = ZKilo(64)});
+    concurrent_manager.Initialize(ZKilo(64), {});
     ZEngine::Helpers::HandleManager<int*> h_manager;
     h_manager.Initialize(&(concurrent_manager.MainArena), 40);
     const int                numThreads             = 4;
