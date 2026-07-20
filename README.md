@@ -25,7 +25,7 @@ Before building, make sure your setup is correct :
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
 - Install [Python](https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe)
 - Install [CMake](https://cmake.org/download/) 4.1.2 or later.
-- Install [DOTNET SDK 8](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) as a VS Build Tool component (if using a standalone implementation, you might need to create a symlink between your custom installation location and the expected location: `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Sdks\Microsoft.NET.Sdk\Sdk`)
+- Install [DOTNET SDK 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) as a VS Build Tool component (if using a standalone implementation, you might need to create a symlink between your custom installation location and the expected location: `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Sdks\Microsoft.NET.Sdk\Sdk`)
 - Install [LLVM](https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.7/LLVM-20.1.7-win64.exe)
 
 
@@ -54,7 +54,7 @@ Before building, make sure your setup is correct :
     brew update
     brew install --cask powershell
 ```
-- Install [DOTNET SDK 8](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
+- Install [DOTNET SDK 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 
 - Install ClangFormat through Homebrew:
 ```bash

@@ -38,7 +38,7 @@ jobs:
     if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/windows-build.yml
     with:
-      targetFramework: net8.0
+      targetFramework: net10.0
       run_debug: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_debug)) }}
       run_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_release)) }}
       run_deploy: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_deploy)) }}
@@ -48,7 +48,7 @@ jobs:
     if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/macOS-build.yml
     with:
-      targetFramework: net8.0
+      targetFramework: net10.0
       run_debug: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_debug)) }}
       run_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_release)) }}
       run_deploy: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_deploy)) }}
@@ -58,7 +58,7 @@ jobs:
     if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/linux-build.yml
     with:
-      targetFramework: net8.0
+      targetFramework: net10.0
       run_debug: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_debug)) }}
       run_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_release)) }}
       run_deploy: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_deploy)) }}

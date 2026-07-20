@@ -1,11 +1,8 @@
-using System;
-using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Panzerfaust.ViewModels;
 using Panzerfaust.Views;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Panzerfaust
@@ -22,20 +19,34 @@ namespace Panzerfaust
 
         public override void OnFrameworkInitializationCompleted()
         {
+            Models.AppPaths.EnsureDirectories();
+
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                desktop.MainWindow = new MainWindow() { };
+                var window = new MainWindow();
 
                 var services = new ServiceCollection();
-                services.AddSingleton<Service.IProjectService>(new Service.ProjectService());
-                services.AddSingleton<Service.IStorageProviderService>(x => new Service.StorageProviderService(desktop.MainWindow));
-                services.AddSingleton<Service.IEngineService>(new Service.EngineService());
+                services.AddSingleton<Service.IProjectService, Service.ProjectService>();
+                services.AddSingleton<Service.IGitHubReleaseService, Service.GitHubReleaseService>();
+                services.AddSingleton<Service.IPolyHavenService, Service.PolyHavenService>();
+                services.AddSingleton<Service.IStorageProviderService>(_ => new Service.StorageProviderService(window));
+                services.AddSingleton<Service.IEngineService, Service.EngineService>();
+                services.AddTransient<ProjectWindowViewModel>();
+                services.AddTransient<Func<ProjectWindowViewModel>>(sp => () =>
+                {
+                    var mainVm = sp.GetRequiredService<MainWindowViewModel>();
+                    return new ProjectWindowViewModel(
+                        sp.GetRequiredService<Service.IStorageProviderService>(),
+                        sp.GetRequiredService<Service.IProjectService>(),
+                        sp.GetRequiredService<Service.IEngineService>(),
+                        mainVm.DefaultProjectLocation);
+                });
+                services.AddTransient<MainWindowViewModel>();
                 ServiceProvider = services.BuildServiceProvider();
 
-                MainWindow window = (MainWindow)desktop.MainWindow;
-                window.DataContext = new MainWindowViewModel();
-                 
-                desktop.MainWindow.Show();
+                window.DataContext = ServiceProvider.GetRequiredService<MainWindowViewModel>();
+                desktop.MainWindow = window;
+                window.Show();
             }
 
             base.OnFrameworkInitializationCompleted();

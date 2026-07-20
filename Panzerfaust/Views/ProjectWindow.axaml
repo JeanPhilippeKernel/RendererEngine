@@ -16,7 +16,7 @@
   <Panel>
     <ExperimentalAcrylicBorder IsHitTestVisible="False">
       <ExperimentalAcrylicBorder.Material>
-        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="Black" TintOpacity="1" MaterialOpacity="0.65"/>
+        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="{DynamicResource AcrylicTintColor}" TintOpacity="6" MaterialOpacity="0.65"/>
       </ExperimentalAcrylicBorder.Material>
     </ExperimentalAcrylicBorder>    
     

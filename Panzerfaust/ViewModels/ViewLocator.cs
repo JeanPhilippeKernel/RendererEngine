@@ -1,10 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
-using Panzerfaust.Views;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.DependencyInjection;
 
 namespace Panzerfaust.ViewModels
 {

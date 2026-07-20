@@ -1,13 +1,13 @@
-﻿using System;
+﻿using Panzerfaust.Models;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Panzerfaust.Service
 {
     public interface IEngineService
     {
-        Task StartAsync(string path);
+        Task StartAsync(string projectPath);
+        Task StartAsync(string projectPath, string engineBinaryPath);
+        IEnumerable<InstalledEngine> ScanInstalledEngines(string installLocation);
     }
 }

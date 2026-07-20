@@ -1,14 +1,8 @@
-﻿using Avalonia;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Panzerfaust.Service;
 using ReactiveUI;
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
-using System.Reflection.Metadata.Ecma335;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
@@ -16,9 +10,12 @@ namespace Panzerfaust.ViewModels
 {
     internal partial class ProjectWindowViewModel : ViewModelBase
     {
+        private readonly IStorageProviderService _storageService;
+        private readonly IProjectService _projectService;
+        private readonly IEngineService _engineService;
         private bool _isBusy = false;
         private string?  _projectName = string.Empty;
-        private string? _projectLocation = Directory.GetCurrentDirectory();
+        private string? _projectLocation;
         private string? _progressReportText = string.Empty;
         private string _progressReportTextColor = "White";
 
@@ -50,8 +47,12 @@ namespace Panzerfaust.ViewModels
         public ReactiveCommand<Unit, ProjectViewModel?> CancelCommand { get; }
         public ReactiveCommand<Unit, ProjectViewModel?> FinishCommand { get; }
 
-        public ProjectWindowViewModel()
+        public ProjectWindowViewModel(IStorageProviderService storageService, IProjectService projectService, IEngineService engineService, string? defaultLocation = null)
         {
+            _storageService = storageService;
+            _projectService = projectService;
+            _engineService = engineService;
+            _projectLocation = defaultLocation ?? Directory.GetCurrentDirectory();
             DirectoryDialogCommand = ReactiveCommand.CreateFromTask(OnDirectoryDialogCommandHandler);
             CancelCommand = ReactiveCommand.Create(OnCancelCommandHandler);
             FinishCommand = ReactiveCommand.CreateFromTask(OnFinishCommandHandler,
@@ -60,12 +61,8 @@ namespace Panzerfaust.ViewModels
 
         private async Task OnDirectoryDialogCommandHandler()
         {
-            var storageProvider = App.Current?.ServiceProvider?.GetService<Service.IStorageProviderService>();
-            if (storageProvider != null)
-            { 
-                var folder = await storageProvider.PickDirectoryAsync();
-                ProjectLocation = folder?.Path.LocalPath;
-            }
+            var folder = await _storageService.PickDirectoryAsync();
+            ProjectLocation = folder?.Path.LocalPath;
         }
 
         private ProjectViewModel? OnCancelCommandHandler() { return null; }
@@ -87,23 +84,16 @@ namespace Panzerfaust.ViewModels
 
         private async Task<(bool, ProjectViewModel?, string?)> ConfigureAsync()
         {
-            var storageService = App.Current?.ServiceProvider?.GetService<Service.IStorageProviderService>();
+            string fullpath = Path.Combine(ProjectLocation!, ProjectName!);
 
-            if (storageService == null)
-            {
-                return (false, null, "Failed to access the Storage Provider");
-            }
-
-            string fullpath = Path.Combine(ProjectLocation, ProjectName);
-
-            bool directoryExist = await storageService.IsDirectoryExists(fullpath);
+            bool directoryExist = await _storageService.IsDirectoryExists(fullpath);
             if (directoryExist)
             {
                 return (false, null, "The directory already exists");
             }
 
             // Creating Root directory...
-            var rootDirectory = await storageService.CreateDirectoryAsync(fullpath);
+            var rootDirectory = await _storageService.CreateDirectoryAsync(fullpath);
             if (!rootDirectory.Exists)
             {
                 return (false, null, "Failed to create the directory");
@@ -112,12 +102,12 @@ namespace Panzerfaust.ViewModels
             // Creating projectConfig.json...
             Models.ProjectConfigJson content = new()
             {
-                ProjectName = ProjectName,
+                ProjectName = ProjectName!,
                 DefautImportDirectory = new() { TextureDirectory = "Textures", SoundDirectory = "Sounds" }
             };
 
             ProgressReportText = "Creating config json file...";
-            var (fileCreated, fileStream) = await storageService.CreateFileAsync($"{rootDirectory.FullName}/projectConfig.json");
+            var (fileCreated, fileStream) = await _storageService.CreateFileAsync(Path.Combine(rootDirectory.FullName, "projectConfig.json"));
             if (!fileCreated)
             {
                 return (false, null, "Failed to create projectConfig.json");
@@ -150,19 +140,13 @@ namespace Panzerfaust.ViewModels
             }
 
             // Creating project...
-            var projectService = App.Current?.ServiceProvider?.GetService<Service.IProjectService>();
-            if (projectService == null)
-            {
-                return (false, null, "Failed to access the Project Service");
-            }
-
-            var project = await projectService.CreateAsync(ProjectName, rootDirectory.FullName, rootDirectory.CreationTime, rootDirectory.LastAccessTime);
+            var project = await _projectService.CreateAsync(ProjectName!, rootDirectory.FullName, rootDirectory.CreationTime, rootDirectory.LastAccessTime);
             if (project == null)
             {
                 return (false, null, "Failed to create project");
             }
 
-            return (true, new ProjectViewModel (project), "Configuration completed!");
+            return (true, new ProjectViewModel(project, _projectService, _engineService), "Configuration completed!");
         }
     }
 }

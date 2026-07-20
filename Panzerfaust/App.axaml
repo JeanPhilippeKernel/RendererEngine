@@ -1,19 +1,23 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Panzerfaust.App"
-             xmlns:panzerfaust="clr-namespace:Panzerfaust"
+             xmlns:local="clr-namespace:Panzerfaust.ViewModels"
              RequestedThemeVariant="Dark">
   
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
-    <StyleInclude Source="/Assets/Icons.axaml" />
+    <StyleInclude Source="avares://Panzerfaust/Assets/Icons.axaml" />
   </Application.Styles>
+
+  <Application.DataTemplates>
+    <local:ViewLocator />
+  </Application.DataTemplates>
 
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
-        <MergeResourceInclude Source="avares://Panzerfaust/Assets/AppResourceDictionary.axaml" />
+        <ResourceInclude Source="avares://Panzerfaust/Assets/AppResourceDictionary.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>

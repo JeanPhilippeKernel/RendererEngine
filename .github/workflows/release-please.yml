@@ -28,7 +28,7 @@ jobs:
         if: ${{ needs.release-please.outputs.release_created }}
         uses: ./.github/workflows/windows-build.yml
         with:
-            targetFramework: net8.0
+            targetFramework: net10.0
             run_debug: false
             run_release: false
             run_deploy: true
@@ -38,7 +38,7 @@ jobs:
         if: ${{ needs.release-please.outputs.release_created }}
         uses: ./.github/workflows/macOS-build.yml
         with:
-            targetFramework: net8.0
+            targetFramework: net10.0
             run_debug: false
             run_release: false
             run_deploy: true
@@ -48,7 +48,7 @@ jobs:
         if: ${{ needs.release-please.outputs.release_created }}
         uses: ./.github/workflows/linux-build.yml
         with:
-            targetFramework: net8.0
+            targetFramework: net10.0
             run_debug: false
             run_release: false
             run_deploy: true
