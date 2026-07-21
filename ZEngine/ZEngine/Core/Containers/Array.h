@@ -193,6 +193,33 @@ namespace ZEngine::Core::Containers
             return back();
         }
 
+        void insert(size_type index, const T& value)
+        {
+            ZENGINE_VALIDATE_ASSERT(index <= m_size, "Index out of range")
+            if (m_size == m_capacity)
+            {
+                size_type new_capacity = m_capacity == 0 ? 4 : m_capacity * 2;
+                reserve(new_capacity);
+            }
+            for (size_type i = m_size; i > index; --i)
+            {
+                m_data[i] = std::move(m_data[i - 1]);
+            }
+            m_data[index] = value;
+            ++m_size;
+        }
+
+        // Remove the element at `index`, shifting later elements one slot left.
+        void erase(size_type index)
+        {
+            ZENGINE_VALIDATE_ASSERT(index < m_size, "Index out of range")
+            for (size_type i = index; i + 1 < m_size; ++i)
+            {
+                m_data[i] = std::move(m_data[i + 1]);
+            }
+            --m_size;
+        }
+
         void pop()
         {
             ZENGINE_VALIDATE_ASSERT(m_size > 0, "Index out of range")

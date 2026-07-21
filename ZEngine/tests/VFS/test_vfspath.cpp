@@ -1,14 +1,30 @@
+#include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <gtest/gtest.h>
-#include <string>
+#include <cstddef>
 
 using namespace ZEngine::Core::VFS;
+using ZEngine::Core::Containers::String;
+using ZEngine::Core::Memory::ArenaAllocator;
+using ZEngine::Core::Memory::MemoryManager;
 
 static VFSPath MustParse(const char* raw)
 {
     VFSResult<VFSPath> r = VFSPath::Parse(raw);
     EXPECT_TRUE(r.Succeeded()) << "expected Parse(\"" << raw << "\") to succeed";
     return r.Value();
+}
+
+static String Repeat(ArenaAllocator* arena, size_t n, char c)
+{
+    String s;
+    s.init(arena, n + 1);
+    for (size_t i = 0; i < n; ++i)
+    {
+        s.append(c);
+    }
+    return s;
 }
 
 TEST(VFSPathParse, AlreadyClean)
@@ -64,10 +80,15 @@ TEST(VFSPathParse, RootEscapeFails)
 
 TEST(VFSPathParse, TooLongFails)
 {
-    std::string        huge(300, 'a');
-    VFSResult<VFSPath> r = VFSPath::Parse(huge.c_str());
+    MemoryManager mgr;
+    mgr.Initialize({.BufferSize = ZKilo(64)});
+
+    String             huge = Repeat(&mgr.MainArena, 300, 'a');
+    VFSResult<VFSPath> r    = VFSPath::Parse(huge.c_str());
     EXPECT_TRUE(r.Failed());
     EXPECT_EQ(r.Error(), VFSError::InvalidPath);
+
+    mgr.Shutdown();
 }
 
 TEST(VFSPathParse, NullFails)
@@ -78,7 +99,6 @@ TEST(VFSPathParse, NullFails)
 
 TEST(VFSPathFromNative, StripsWindowsDrive)
 {
-    // Backslashes -> '/', drive prefix dropped. Works on any platform.
     EXPECT_STREQ(VFSPath::FromNative("C:\\Assets\\rock.png").Value().CStr(), "/Assets/rock.png");
 }
 
@@ -164,7 +184,7 @@ TEST(VFSPathCompose, AppendOntoRoot)
 {
     VFSResult<VFSPath> r = VFSPath::Root().Append("rock.png");
     ASSERT_TRUE(r.Succeeded());
-    EXPECT_STREQ(r.Value().CStr(), "/rock.png"); // no double slash
+    EXPECT_STREQ(r.Value().CStr(), "/rock.png");
 }
 
 TEST(VFSPathCompose, AppendResolvesDotDot)
@@ -181,9 +201,20 @@ TEST(VFSPathCompose, OperatorSlash)
 
 TEST(VFSPathCompose, AppendTooLongFails)
 {
-    VFSPath            base = MustParse(("/" + std::string(200, 'a')).c_str());
-    VFSResult<VFSPath> r    = base.Append(std::string(200, 'b').c_str());
+    MemoryManager mgr;
+    mgr.Initialize({.BufferSize = ZKilo(64)});
+
+    String base_str;
+    base_str.init(&mgr.MainArena, 256);
+    base_str.append('/');
+    base_str.append(Repeat(&mgr.MainArena, 200, 'a')); // "/aaa...a"
+    VFSPath            base = MustParse(base_str.c_str());
+
+    String             seg  = Repeat(&mgr.MainArena, 200, 'b');
+    VFSResult<VFSPath> r    = base.Append(seg.c_str());
     EXPECT_TRUE(r.Failed());
+
+    mgr.Shutdown();
 }
 
 TEST(VFSPathCompare, Equal)
@@ -241,13 +272,19 @@ TEST(VFSPathToNative, UsesPlatformSeparator)
     char buffer[VFS_MAX_PATH];
     MustParse("/a/b").ToNative(buffer, sizeof(buffer));
 
-    std::string expected = "/a/b";
-    for (char& c : expected)
+    MemoryManager mgr;
+    mgr.Initialize({.BufferSize = ZKilo(64)});
+
+    String expected;
+    expected.init(&mgr.MainArena, "/a/b");
+    for (size_t i = 0; i < expected.size(); ++i)
     {
-        if (c == '/')
+        if (expected[i] == '/')
         {
-            c = PLATFORM_OS_BACKSLASH;
+            expected[i] = PLATFORM_OS_BACKSLASH;
         }
     }
     EXPECT_STREQ(buffer, expected.c_str());
+
+    mgr.Shutdown();
 }

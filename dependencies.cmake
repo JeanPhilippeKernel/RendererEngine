@@ -163,6 +163,11 @@ FetchContent_Declare(Vulkan-Loader
     GIT_TAG vulkan-sdk-1.3.296.0
 )
 
+FetchContent_Declare(miniz
+    GIT_REPOSITORY https://github.com/richgel999/miniz
+    GIT_SHALLOW TRUE
+)
+
 
 FetchContent_MakeAvailable(
   fmt
@@ -187,6 +192,7 @@ FetchContent_MakeAvailable(
   SPIRV-Tools
   glslang
   GTest
+  miniz
   )
 
 foreach(_spirv_target IN ITEMS
@@ -277,6 +283,7 @@ target_link_libraries(External_libs
          glslang::SPIRV
          GPUOpen::VulkanMemoryAllocator 
          nlohmann_json::nlohmann_json
+         miniz
 )
 
 

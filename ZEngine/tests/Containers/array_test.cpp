@@ -213,3 +213,107 @@ TEST_F(ArrayTest, MovedFromArrayIsReusable)
     EXPECT_EQ(src[0], 42);
     EXPECT_EQ(dst.size(), 3u); // dst unaffected by src's reuse
 }
+
+TEST_F(ArrayTest, InsertAtBeginning)
+{
+    Array<int> array;
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 2, 3, 4));
+
+    array.insert(0, 1);
+
+    EXPECT_EQ(array.size(), 4u);
+    EXPECT_EQ(array[0], 1);
+    EXPECT_EQ(array[1], 2);
+    EXPECT_EQ(array[2], 3);
+    EXPECT_EQ(array[3], 4);
+}
+
+TEST_F(ArrayTest, InsertInMiddle)
+{
+    Array<int> array;
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 4));
+
+    array.insert(2, 3);
+
+    EXPECT_EQ(array.size(), 4u);
+    EXPECT_EQ(array[0], 1);
+    EXPECT_EQ(array[1], 2);
+    EXPECT_EQ(array[2], 3);
+    EXPECT_EQ(array[3], 4);
+}
+
+TEST_F(ArrayTest, InsertAtEnd)
+{
+    Array<int> array;
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
+
+    array.insert(array.size(), 4);
+
+    EXPECT_EQ(array.size(), 4u);
+    EXPECT_EQ(array[3], 4);
+}
+
+TEST_F(ArrayTest, InsertGrowsWhenFull)
+{
+    Array<int> array;
+    array.init(&manager.MainArena, 2);
+    array.push(1);
+    array.push(3);
+
+    array.insert(1, 2);
+
+    EXPECT_EQ(array.size(), 3u);
+    EXPECT_GE(array.capacity(), 3u);
+    EXPECT_EQ(array[0], 1);
+    EXPECT_EQ(array[1], 2);
+    EXPECT_EQ(array[2], 3);
+}
+
+TEST_F(ArrayTest, EraseFromMiddle)
+{
+    Array<int> array;
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3, 4));
+
+    array.erase(1);
+
+    EXPECT_EQ(array.size(), 3u);
+    EXPECT_EQ(array[0], 1);
+    EXPECT_EQ(array[1], 3);
+    EXPECT_EQ(array[2], 4);
+}
+
+TEST_F(ArrayTest, EraseFirstElement)
+{
+    Array<int> array;
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
+
+    array.erase(0);
+
+    EXPECT_EQ(array.size(), 2u);
+    EXPECT_EQ(array[0], 2);
+    EXPECT_EQ(array[1], 3);
+}
+
+TEST_F(ArrayTest, EraseLastElement)
+{
+    Array<int> array;
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2, 3));
+
+    array.erase(array.size() - 1);
+
+    EXPECT_EQ(array.size(), 2u);
+    EXPECT_EQ(array[0], 1);
+    EXPECT_EQ(array[1], 2);
+}
+
+TEST_F(ArrayTest, EraseUntilEmpty)
+{
+    Array<int> array;
+    array.init(&manager.MainArena, 4, make_initializer_list(&manager.MainArena, 1, 2));
+
+    array.erase(0);
+    array.erase(0);
+
+    EXPECT_EQ(array.size(), 0u);
+    EXPECT_TRUE(array.empty());
+}

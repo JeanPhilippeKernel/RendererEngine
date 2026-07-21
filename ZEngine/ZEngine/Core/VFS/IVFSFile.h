@@ -7,6 +7,8 @@
 
 namespace ZEngine::Core::VFS
 {
+    struct IVFSBackend;
+
     enum class VFSOpenFlags : uint32_t
     {
         None   = 0,
@@ -36,6 +38,7 @@ namespace ZEngine::Core::VFS
     struct IVFSFile
     {
         virtual ~IVFSFile()                                                                                      = default;
+        IVFSBackend*                   Owner                                                                     = nullptr;
 
         virtual VFSResult<size_t>      Read(Core::Containers::ArrayView<uint8_t> buffer, uint64_t offset)        = 0;
         virtual VFSResult<size_t>      Write(Core::Containers::ArrayView<const uint8_t> buffer, uint64_t offset) = 0;
@@ -44,30 +47,10 @@ namespace ZEngine::Core::VFS
         virtual VFSResult<VFSFileStat> Stat() const                                                              = 0;
         virtual VFSResult<void>        Flush()                                                                   = 0;
         virtual const VFSPath&         Path() const                                                              = 0;
+        virtual VFSResult<void>        Close()                                                                   = 0;
 
         // Read the whole file into out_buffer
-        VFSResult<size_t>              ReadAll(Core::Containers::ArrayView<uint8_t> out_buffer)
-        {
-            size_t total = 0;
-            while (total < out_buffer.size())
-            {
-                Core::Containers::ArrayView<uint8_t> remaining(out_buffer.data() + total, out_buffer.size() - total);
-
-                VFSResult<size_t>                    result = Read(remaining, total);
-                if (result.Failed())
-                {
-                    return VFSResult<size_t>::Fail(result.Error());
-                }
-
-                const size_t chunk = result.Value();
-                if (chunk == 0)
-                {
-                    break; // end of file
-                }
-                total += chunk;
-            }
-            return VFSResult<size_t>::Ok(total);
-        }
+        VFSResult<size_t>              ReadAll(Core::Containers::ArrayView<uint8_t> out_buffer);
     };
 
 } // namespace ZEngine::Core::VFS

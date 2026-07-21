@@ -6,7 +6,7 @@
 
 namespace ZEngine::Core::VFS
 {
-    static constexpr size_t VFS_MAX_PATH       = MAX_FILE_PATH_COUNT; // 256
+    static constexpr size_t VFS_MAX_PATH       = MAX_FILE_PATH_COUNT;
     static constexpr size_t VFS_MAX_COMPONENTS = 32;
 
     struct VFSPathComponent
@@ -19,7 +19,6 @@ namespace ZEngine::Core::VFS
             return Length == 0 || Data == nullptr;
         }
 
-        // Compare with a raw string
         bool Equals(cstring other) const;
     };
 
@@ -30,17 +29,9 @@ namespace ZEngine::Core::VFS
 
         static VFSResult<VFSPath> FromNative(cstring native_path);
 
-        // Returns the root path "/".
         static VFSPath            Root();
 
-        VFSPath()
-        {
-            m_buffer[0] = '\0';
-        }
-
-        // ---- Accessors -----------------------------------------------------
-
-        cstring CStr() const
+        cstring                   CStr() const
         {
             return m_buffer;
         }
@@ -72,21 +63,16 @@ namespace ZEngine::Core::VFS
 
         VFSPathComponent   ComponentAt(uint32_t index) const;
 
-        // ---- Composition ---------------------------------------------------
-
         VFSResult<VFSPath> Append(cstring segment) const;
         VFSResult<VFSPath> Append(const VFSPath& other) const;
 
         VFSPath            operator/(cstring segment) const;
-
-        // ---- Comparison ----------------------------------------------------
 
         bool               operator==(const VFSPath& other) const;
         bool               operator!=(const VFSPath& other) const;
         bool               operator<(const VFSPath& other) const;
         bool               IsPrefixOf(const VFSPath& other) const;
 
-        // ---- Conversion ----------------------------------------------------
         void               ToNative(char* out_buffer, size_t out_size) const;
 
         uint64_t           Hash() const
@@ -95,7 +81,7 @@ namespace ZEngine::Core::VFS
         }
 
     private:
-        char     m_buffer[VFS_MAX_PATH];
+        char     m_buffer[VFS_MAX_PATH]                  = {};
         size_t   m_length                                = 0;
 
         uint16_t m_component_offsets[VFS_MAX_COMPONENTS] = {};
