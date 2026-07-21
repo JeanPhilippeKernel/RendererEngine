@@ -27,7 +27,7 @@ namespace ZEngine::Core::VFS
             return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
         }
 
-        char tmp[VFS_MAX_PATH];
+        char tmp[VFS_MAX_PATH] = {};
         Helpers::secure_memcpy(tmp, sizeof(tmp), raw, length);
         tmp[length] = '\0';
 
@@ -261,8 +261,8 @@ namespace ZEngine::Core::VFS
             return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
         }
 
-        char   combined[VFS_MAX_PATH * 2];
-        size_t n = 0;
+        char   combined[VFS_MAX_PATH * 2] = {};
+        size_t n                          = 0;
 
         Helpers::secure_memcpy(combined, sizeof(combined), m_buffer, m_length);
         n                    = m_length;

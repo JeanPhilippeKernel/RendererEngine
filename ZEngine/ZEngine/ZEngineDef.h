@@ -99,6 +99,8 @@
 #ifdef __cplusplus
 #define ZPushStructCtor(arena, type)          (new (ZPushStruct(arena, type)) type())
 #define ZPushStructCtorArgs(arena, type, ...) (new (ZPushStruct(arena, type)) type(__VA_ARGS__))
+#define ZConstruct(ptr, type)                 (new (ptr) type())
+#define ZConstructArgs(ptr, type, ...)        (new (ptr) type(__VA_ARGS__))
 #endif
 
 #define ZPushDynamicArray(pool, type)                          ((type*) (pool)->Allocate(__FILE__, __LINE__))
