@@ -3,10 +3,12 @@
 #include <Tetragrama/Helpers/SearchPatternAlgorithm.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <imgui.h>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::VFS;
 
 namespace Tetragrama::Components
 {
@@ -19,8 +21,22 @@ namespace Tetragrama::Components
         UIComponent::Initialize(parent, name, visibility, closed);
         parent->LocalArena.CreateSubArena(ZMega(1), &m_local_arena);
 
-        m_assets_directory             = ParentLayer->CurrentApp->WorkingSpacePath;
-        m_current_directory            = m_assets_directory;
+        m_vfs_context     = ParentLayer->CurrentApp->GetVFSContext();
+        m_directory_cache = &ParentLayer->Cache;
+        m_scanner         = &ParentLayer->Scanner;
+
+        m_assets_vfs_root = VFSPath::Root();
+        m_current_vfs_dir = m_assets_vfs_root;
+
+        {
+            std::filesystem::path ws(ParentLayer->CurrentApp->WorkingSpacePath);
+            std::string           label = ws.filename().string();
+            if (label.empty())
+            {
+                label = ws.string();
+            }
+            secure_strcpy(m_root_label, sizeof(m_root_label), label.c_str());
+        }
 
         auto       asset_mgr           = ZEngine::Managers::AssetManager::Instance();
 
@@ -30,6 +46,36 @@ namespace Tetragrama::Components
 
         m_directory_icon               = asset_mgr->LoadTextureFileAsAsset(directory_icon_path.c_str(), true);
         m_file_icon                    = asset_mgr->LoadTextureFileAsAsset(file_icon_path.c_str(), true);
+
+        TriggerScan();
+    }
+    static void VfsFilename(const VFSPath& path, char* out, size_t out_size)
+    {
+        VFSPathComponent fn = path.Filename();
+        size_t           n  = (fn.Length < out_size - 1) ? fn.Length : (out_size - 1);
+        if (fn.Data && n > 0)
+        {
+            secure_memcpy(out, out_size, fn.Data, n);
+        }
+        out[n] = '\0';
+    }
+
+    void ProjectViewUIComponent::TriggerScan()
+    {
+        if (m_scanner && m_vfs_context && m_directory_cache)
+        {
+            m_scanner->Scan(m_vfs_context, m_assets_vfs_root, m_directory_cache);
+        }
+    }
+
+    std::filesystem::path ProjectViewUIComponent::VfsToNative(const VFSPath& path) const
+    {
+        std::filesystem::path native(ParentLayer->CurrentApp->WorkingSpacePath);
+        if (!path.IsRoot())
+        {
+            native += path.CStr(); // CStr() begins with '/'
+        }
+        return native;
     }
 
     void ProjectViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
@@ -55,7 +101,7 @@ namespace Tetragrama::Components
             }
             if (ImGui::BeginPopup("ContextMenu"))
             {
-                RenderContextMenu(ContextMenuType::RightPane, m_current_directory);
+                RenderContextMenu(ContextMenuType::RightPane, VfsToNative(m_current_vfs_dir));
                 ImGui::EndPopup();
             }
             RenderPopUpMenu();
@@ -63,14 +109,18 @@ namespace Tetragrama::Components
             RenderBackButton();
 
             ImGui::SameLine();
+            if (ImGui::Button("Refresh"))
+            {
+                TriggerScan();
+            }
+
+            ImGui::SameLine();
             ImGui::SetNextItemWidth(300);
             ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
 
             ImGui::SameLine();
             ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-            char relative_path[MAX_FILE_PATH_COUNT] = {0};
-            MakeRelative(m_current_directory, m_assets_directory.parent_path(), relative_path);
-            ImGui::Text(relative_path);
+            ImGui::Text("%s", m_current_vfs_dir.CStr());
             ImGui::PopFont();
 
             ImGui::Separator();
@@ -105,24 +155,25 @@ namespace Tetragrama::Components
             }
             else
             {
-                for (const auto& entry : std::filesystem::directory_iterator(m_current_directory))
+                auto listing = m_directory_cache->GetListing(m_current_vfs_dir);
+                for (size_t i = 0; i < listing.size(); ++i)
                 {
                     ImGui::TableNextColumn();
-                    RenderContentTile(renderer, entry);
+                    RenderContentTile(renderer, listing[i]);
                 }
             }
             ImGui::EndTable();
         }
     }
 
-    void ProjectViewUIComponent::RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry)
+    void ProjectViewUIComponent::RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const VFSDirEntry& entry)
     {
-        auto        relativePath = std::filesystem::relative(entry.path(), m_assets_directory);
-        std::string name         = relativePath.filename().string();
+        char name[MAX_FILE_PATH_COUNT];
+        VfsFilename(entry.Path, name, sizeof(name));
 
-        ImGui::PushID(name.c_str());
+        ImGui::PushID(entry.Path.CStr());
 
-        ImTextureID icon      = entry.is_directory() ? (ImTextureID) m_directory_icon->Handle.Index : (ImTextureID) m_file_icon->Handle.Index;
+        ImTextureID icon      = entry.IsDirectory ? (ImTextureID) m_directory_icon->Handle.Index : (ImTextureID) m_file_icon->Handle.Index;
 
         const float margin    = 5.0f;
         ImVec2      cursorPos = ImGui::GetCursorPos();
@@ -137,11 +188,11 @@ namespace Tetragrama::Components
          * Drag and Drop scene file
          * We don't support drag-and-drop for folder for now
          */
-        if (!entry.is_directory())
+        if (!entry.IsDirectory)
         {
             if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
             {
-                std::string itemPath = entry.path().string();
+                std::string itemPath = VfsToNative(entry.Path).string();
                 ImGui::SetDragDropPayload("CONTENT_BROWSER_FILE_DRAG_OP", itemPath.c_str(), (itemPath.length() + 1) * sizeof(char));
                 ImGui::EndDragDropSource();
             }
@@ -149,10 +200,9 @@ namespace Tetragrama::Components
 
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
         {
-            if (entry.is_directory())
+            if (entry.IsDirectory)
             {
-                auto relativePath   = std::filesystem::relative(entry.path(), m_assets_directory);
-                m_current_directory = m_assets_directory / relativePath;
+                m_current_vfs_dir = entry.Path;
                 secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
             }
         }
@@ -163,17 +213,18 @@ namespace Tetragrama::Components
         }
         if (ImGui::BeginPopup("ItemContextMenu"))
         {
-            entry.is_directory() ? RenderContextMenu(ContextMenuType::Folder, entry) : RenderContextMenu(ContextMenuType::File, entry);
+            std::filesystem::path native = VfsToNative(entry.Path);
+            entry.IsDirectory ? RenderContextMenu(ContextMenuType::Folder, native) : RenderContextMenu(ContextMenuType::File, native);
             ImGui::EndPopup();
         }
 
         // centered label
-        float textWidth  = ImGui::CalcTextSize(name.c_str()).x;
+        float textWidth  = ImGui::CalcTextSize(name).x;
         float cursorPosX = ImGui::GetCursorPosX();
         float centerPosX = cursorPosX + (m_thumbnail_size - textWidth) * 0.5f;
 
         ImGui::SetCursorPosX(centerPosX);
-        ImGui::TextWrapped(name.c_str());
+        ImGui::TextWrapped("%s", name);
 
         ImGui::PopID();
     }
@@ -181,31 +232,42 @@ namespace Tetragrama::Components
     void ProjectViewUIComponent::RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const char* searchTerm)
     {
         auto scratch = ZGetScratch(&m_local_arena);
+        char name_lower[MAX_FILE_PATH_COUNT];
 
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(m_assets_directory))
-        {
-            if (entry.is_regular_file() || entry.is_directory())
+        m_directory_cache->ForEachDir([&](const VFSPath& /*dir*/, ZEngine::Core::Containers::ArrayView<const VFSDirEntry> entries) {
+            for (size_t i = 0; i < entries.size(); ++i)
             {
-                std::string nameLower = entry.path().filename().string();
+                const VFSDirEntry& entry = entries[i];
 
-                if (Helpers::KMPSearch(scratch.Arena, nameLower.c_str(), searchTerm))
+                char               raw[MAX_FILE_PATH_COUNT];
+                VfsFilename(entry.Path, raw, sizeof(raw));
+
+                size_t len  = secure_strlen(raw);
+                size_t copy = (len < sizeof(name_lower) - 1) ? len : sizeof(name_lower) - 1;
+                for (size_t j = 0; j < copy; ++j)
+                {
+                    name_lower[j] = static_cast<char>(::tolower(static_cast<unsigned char>(raw[j])));
+                }
+                name_lower[copy] = '\0';
+
+                if (Helpers::KMPSearch(scratch.Arena, name_lower, searchTerm))
                 {
                     ImGui::TableNextColumn();
                     RenderContentTile(renderer, entry);
                 }
             }
-        }
+        });
 
         ZReleaseScratch(scratch);
     }
 
     void ProjectViewUIComponent::RenderTreeBrowser()
     {
-        bool nodeOpen = ImGui::TreeNodeEx(m_assets_directory.filename().string().c_str(), ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen);
+        bool nodeOpen = ImGui::TreeNodeEx(m_root_label, ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen);
 
         if (ImGui::IsItemClicked())
         {
-            m_current_directory = m_assets_directory;
+            m_current_vfs_dir = m_assets_vfs_root;
             secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
         }
 
@@ -216,56 +278,63 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginPopup("RootContextMenu"))
         {
-            RenderContextMenu(ContextMenuType::LeftPane, m_assets_directory);
+            RenderContextMenu(ContextMenuType::LeftPane, VfsToNative(m_assets_vfs_root));
             ImGui::EndPopup();
         }
 
         if (nodeOpen)
         {
-            RenderDirectoryNode(m_assets_directory);
+            RenderDirectoryNode(m_assets_vfs_root);
             ImGui::TreePop();
         }
     }
 
-    void ProjectViewUIComponent::RenderDirectoryNode(const std::filesystem::path& directory)
+    void ProjectViewUIComponent::RenderDirectoryNode(const VFSPath& directory)
     {
-        for (const auto& entry : std::filesystem::directory_iterator(directory))
+        auto listing = m_directory_cache->GetListing(directory);
+        for (size_t i = 0; i < listing.size(); ++i)
         {
-            if (entry.is_directory())
+            const VFSDirEntry& entry = listing[i];
+            if (!entry.IsDirectory)
             {
-                ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow;
-                if (m_current_directory == entry.path())
-                {
-                    flags |= ImGuiTreeNodeFlags_Selected;
-                }
+                continue;
+            }
 
-                std::string popupId  = "Dir_" + entry.path().filename().string();
+            ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow;
+            if (entry.Path == m_current_vfs_dir)
+            {
+                flags |= ImGuiTreeNodeFlags_Selected;
+            }
 
-                bool        nodeOpen = ImGui::TreeNodeEx(entry.path().filename().string().c_str(), flags);
+            char label[MAX_FILE_PATH_COUNT];
+            VfsFilename(entry.Path, label, sizeof(label));
 
-                if (ImGui::IsItemClicked())
-                {
-                    auto relativePath   = std::filesystem::relative(entry.path(), m_assets_directory);
-                    m_current_directory = m_assets_directory / relativePath;
-                    secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
-                }
+            char popup_id[MAX_FILE_PATH_COUNT + 8];
+            std::snprintf(popup_id, sizeof(popup_id), "Dir_%s", entry.Path.CStr());
 
-                if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
-                {
-                    ImGui::OpenPopup(popupId.c_str());
-                }
+            bool nodeOpen = ImGui::TreeNodeEx(label, flags);
 
-                if (ImGui::BeginPopup(popupId.c_str()))
-                {
-                    RenderContextMenu(ContextMenuType::LeftPane, std::filesystem::absolute(entry.path()));
-                    ImGui::EndPopup();
-                }
+            if (ImGui::IsItemClicked())
+            {
+                m_current_vfs_dir = entry.Path;
+                secure_memset(m_search_buffer, 0, sizeof(m_search_buffer), sizeof(m_search_buffer));
+            }
 
-                if (nodeOpen)
-                {
-                    RenderDirectoryNode(entry.path());
-                    ImGui::TreePop();
-                }
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+            {
+                ImGui::OpenPopup(popup_id);
+            }
+
+            if (ImGui::BeginPopup(popup_id))
+            {
+                RenderContextMenu(ContextMenuType::LeftPane, VfsToNative(entry.Path));
+                ImGui::EndPopup();
+            }
+
+            if (nodeOpen)
+            {
+                RenderDirectoryNode(entry.Path);
+                ImGui::TreePop();
             }
         }
     }
@@ -295,6 +364,7 @@ namespace Tetragrama::Components
                         {
                             file.close();
                             m_active_popup = PopupType::None;
+                            TriggerScan();
                             ImGui::CloseCurrentPopup();
                         }
                         else
@@ -346,6 +416,7 @@ namespace Tetragrama::Components
                     {
                         std::filesystem::create_directory(newPath);
                         m_active_popup = PopupType::None;
+                        TriggerScan();
                         ImGui::CloseCurrentPopup();
                     }
                     else
@@ -370,7 +441,7 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::HandleRenameFolderPopup(const std::filesystem::path& path)
     {
-        if (m_popup_target_path == m_assets_directory)
+        if (m_popup_target_path == VfsToNative(m_assets_vfs_root))
         {
             ZENGINE_CORE_ERROR("Cannot rename root folder");
             m_active_popup = PopupType::None;
@@ -403,13 +474,11 @@ namespace Tetragrama::Components
                     if (!std::filesystem::exists(newPath))
                     {
                         std::filesystem::rename(path, newPath);
-                        if (m_current_directory == path)
-                        {
-                            m_current_directory = newPath;
-                        }
+                        m_current_vfs_dir = m_assets_vfs_root;
 
-                        m_active_popup = PopupType::None;
-                        initialized    = false;
+                        m_active_popup    = PopupType::None;
+                        initialized       = false;
+                        TriggerScan();
                         ImGui::CloseCurrentPopup();
                     }
                     else
@@ -453,18 +522,13 @@ namespace Tetragrama::Components
 
             if (ImGui::Button("Delete", ImVec2(120, 0)))
             {
-
                 if (std::filesystem::exists(path))
                 {
-                    if (m_current_directory == path)
-                    {
-                        m_current_directory = path.parent_path();
-                    }
-
                     std::filesystem::remove(path);
                 }
 
                 m_active_popup = PopupType::None;
+                TriggerScan();
                 ImGui::CloseCurrentPopup();
             }
 
@@ -482,7 +546,7 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::HandleDeleteFolderPopup(const std::filesystem::path& path)
     {
-        if (m_popup_target_path == m_assets_directory)
+        if (m_popup_target_path == VfsToNative(m_assets_vfs_root))
         {
             ZENGINE_CORE_ERROR("Cannot rename root folder");
             m_active_popup = PopupType::None;
@@ -510,15 +574,10 @@ namespace Tetragrama::Components
 
             if (ImGui::Button("Delete", ImVec2(120, 0)))
             {
-                auto parentPath = path;
-
-                if (m_current_directory == path || m_current_directory.string().find(path.string()) == 0)
-                {
-                    m_current_directory = path.parent_path();
-                }
-
-                std::filesystem::remove_all(parentPath);
-                m_active_popup = PopupType::None;
+                std::filesystem::remove_all(path);
+                m_current_vfs_dir = m_assets_vfs_root;
+                m_active_popup    = PopupType::None;
+                TriggerScan();
                 ImGui::CloseCurrentPopup();
             }
 
@@ -565,6 +624,7 @@ namespace Tetragrama::Components
                         std::filesystem::rename(path, newPath);
                         m_active_popup = PopupType::None;
                         initialized    = false;
+                        TriggerScan();
                         ImGui::CloseCurrentPopup();
                     }
                     else
@@ -593,12 +653,12 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::RenderBackButton()
     {
-        bool canGoBack = (m_current_directory != m_assets_directory);
+        bool canGoBack = !(m_current_vfs_dir == m_assets_vfs_root);
         if (canGoBack)
         {
             if (ImGui::ArrowButton("##left", ImGuiDir_Left))
             {
-                m_current_directory = m_current_directory.parent_path();
+                m_current_vfs_dir = m_current_vfs_dir.Parent();
             }
         }
         else

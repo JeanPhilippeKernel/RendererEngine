@@ -9,12 +9,18 @@ namespace ZEngine::Applications
 
         State = ZPushStructCtor(Arena, ApplicationState);
 
+        VFS.Initialize(Arena);
         OnInitializing();
         OverrideWindowConfiguration();
 
         Engine::Initialize(Arena, &WindowCfg, this);
 
         OnInitialized();
+    }
+
+    Core::VFS::IVFSContext* GameApplication::GetVFSContext()
+    {
+        return &VFS;
     }
 
     void GameApplication::Run()
