@@ -31,6 +31,7 @@ namespace Tetragrama::Layers
         CurrentApp = app;
         arena->CreateSubArena(ZMega(10), &LocalArena);
 
+        Scanner.Initialize(arena);
         Cache.Initialize(arena);
 
         NodeHierarchies.init(arena, 10, 0);

@@ -60,8 +60,9 @@ namespace ZEngine::Core::VFS
 
     VFSResult<Containers::Array<VFSDirEntry>> VFSContext::List(const VFSPath& absolute_dir, Memory::ArenaAllocator* out_arena)
     {
-        using ResultT                            = VFSResult<Containers::Array<VFSDirEntry>>;
+        using ResultT = VFSResult<Containers::Array<VFSDirEntry>>;
 
+        std::lock_guard<std::mutex>      arena_lock(m_arena_mutex);
         auto                             scratch = ZGetScratch(m_arena);
 
         Containers::Array<ResolveResult> matches;
@@ -187,6 +188,7 @@ namespace ZEngine::Core::VFS
 
     VFSResult<ResolveResult> VFSContext::ResolveWritable(const VFSPath& path) const
     {
+        std::lock_guard<std::mutex>      arena_lock(m_arena_mutex);
         auto                             scratch = ZGetScratch(m_arena);
 
         Containers::Array<ResolveResult> matches;

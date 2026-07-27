@@ -20,11 +20,11 @@ namespace Tetragrama::Components
     {
         None,
         CreateFolder,
-        CreateFile,
+        NewFile,
         RenameFolder,
         RenameFile,
         DeleteFolder,
-        DeleteFile,
+        RemoveFile,
     };
 
     class ProjectViewUIComponent : public UIComponent

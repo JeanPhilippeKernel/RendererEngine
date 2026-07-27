@@ -1,6 +1,7 @@
 #pragma once
 #include <ZEngine/Core/VFS/IVFSContext.h>
 #include <ZEngine/Core/VFS/VFSMountTable.h>
+#include <mutex>
 
 namespace ZEngine::Core::VFS
 {
@@ -32,6 +33,7 @@ namespace ZEngine::Core::VFS
 
         VFSMountTable                          m_mount_table = {};
         Memory::ArenaAllocator*                m_arena       = nullptr;
+        mutable std::mutex                     m_arena_mutex;
     };
 
 } // namespace ZEngine::Core::VFS

@@ -682,7 +682,7 @@ namespace Tetragrama::Components
             case ContextMenuType::RightPane:
                 if (ImGui::MenuItem("Create New File"))
                 {
-                    m_active_popup = PopupType::CreateFile;
+                    m_active_popup = PopupType::NewFile;
                 }
                 if (ImGui::MenuItem("Create New Folder"))
                 {
@@ -697,7 +697,7 @@ namespace Tetragrama::Components
                 }
                 if (ImGui::MenuItem("Create New File"))
                 {
-                    m_active_popup = PopupType::CreateFile;
+                    m_active_popup = PopupType::NewFile;
                 }
                 if (ImGui::MenuItem("Delete Folder"))
                 {
@@ -716,7 +716,7 @@ namespace Tetragrama::Components
                 }
                 if (ImGui::MenuItem("Delete File"))
                 {
-                    m_active_popup = PopupType::DeleteFile;
+                    m_active_popup = PopupType::RemoveFile;
                 }
                 break;
 
@@ -746,10 +746,10 @@ namespace Tetragrama::Components
             case PopupType::DeleteFolder:
                 HandleDeleteFolderPopup(m_popup_target_path);
                 break;
-            case PopupType::CreateFile:
+            case PopupType::NewFile:
                 HandleCreateFilePopup(m_popup_target_path);
                 break;
-            case PopupType::DeleteFile:
+            case PopupType::RemoveFile:
                 HandleDeleteFilePopup(m_popup_target_path);
                 break;
             case PopupType::RenameFile:
