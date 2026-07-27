@@ -17,7 +17,9 @@ namespace Panzerfaust.ViewModels
 
         public bool HasErrors => _errors.Count > 0;
 
+#pragma warning disable CS0067
         public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
+#pragma warning restore CS0067
 
         public IEnumerable GetErrors(string? propertyName)
         {

@@ -10,5 +10,7 @@ namespace Panzerfaust.Models
     {
         public const string DeleteAction = "Delete";
         public const string UpdateAction = "Update";
+        public const string ShowInfoAction = "ShowInfo";
+        public const string ToastErrorAction = "ToastError";
     }
 }

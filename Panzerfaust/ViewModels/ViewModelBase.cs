@@ -1,5 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
-using ReactiveUI;
+﻿using ReactiveUI;
 
 namespace Panzerfaust.ViewModels
 {

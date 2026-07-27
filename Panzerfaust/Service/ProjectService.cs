@@ -10,7 +10,7 @@ namespace Panzerfaust.Service
 {
     internal class ProjectService : IProjectService
     {
-        private readonly string _cachePath = Path.Combine(".", "Cache");
+        private readonly string _cachePath = Models.AppPaths.Projects;
         private readonly string _fileExtension = ".pzf";
 
         private void EnsureCacheDirectoryIsPresent()

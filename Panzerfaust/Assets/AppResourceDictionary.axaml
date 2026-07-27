@@ -1,6 +1,52 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:vm="clr-namespace:Panzerfaust.ViewModels;assembly=Panzerfaust">
+                    xmlns:vm="clr-namespace:Panzerfaust.ViewModels;assembly=Panzerfaust"
+                    xmlns:conv="clr-namespace:Panzerfaust.Converters;assembly=Panzerfaust">
 
   <vm:ViewLocator x:Key="ViewModelLocator"/>
+  <conv:StringEqualityConverter x:Key="StringEqualityConverter"/>
+  <conv:BoolToWidthConverter x:Key="BoolToWidthConverter"/>
+  <conv:BoolToWidthConverter x:Key="BoolToInfoPanelWidth" ExpandedWidth="280" CollapsedWidth="0"/>
+  <conv:BoolToAccentBrushConverter x:Key="BoolToAccentBrushConverter"/>
+  <conv:NullToVisibilityConverter x:Key="NullToVisible"/>
+  <conv:NullToVisibilityConverter x:Key="NullToHidden" IsInverse="True"/>
+  <conv:BoolToDoubleConverter x:Key="BoolToOpacity"/>
+  <conv:BoolToTransformConverter x:Key="ToastTransform" TrueValue="translateY(0)" FalseValue="translateY(20)"/>
+  <conv:BoolToTransformConverter x:Key="TaskPanelTransform" TrueValue="translateY(0)" FalseValue="translateY(10)"/>
+
+
+  <ResourceDictionary.ThemeDictionaries>
+
+    <ResourceDictionary x:Key="Dark">
+      <Color x:Key="AcrylicTintColor">Black</Color>
+      <SolidColorBrush x:Key="SidebarBackground">#1A1A1A</SolidColorBrush>
+      <SolidColorBrush x:Key="SettingsGroupBackground">#22FFFFFF</SolidColorBrush>
+      <SolidColorBrush x:Key="CardBackground">#22FFFFFF</SolidColorBrush>
+      <SolidColorBrush x:Key="CardOverlayBackground">#CC000000</SolidColorBrush>
+      <SolidColorBrush x:Key="CardOverlayForeground">#FFFFFF</SolidColorBrush>
+      <SolidColorBrush x:Key="ThumbnailPlaceholderBackground">#2A2A2A</SolidColorBrush>
+      <SolidColorBrush x:Key="ModalBackground">#2A2A2A</SolidColorBrush>
+      <SolidColorBrush x:Key="StatusBarBackground">#111111</SolidColorBrush>
+      <SolidColorBrush x:Key="StatusBarForeground">#FFFFFF</SolidColorBrush>
+      <SolidColorBrush x:Key="TaskPanelBackground">#252525</SolidColorBrush>
+      <SolidColorBrush x:Key="ContentForeground">#FFFFFF</SolidColorBrush>
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Light">
+      <Color x:Key="AcrylicTintColor">White</Color>
+      <SolidColorBrush x:Key="SidebarBackground">#E8E8E8</SolidColorBrush>
+      <SolidColorBrush x:Key="SettingsGroupBackground">#18000000</SolidColorBrush>
+      <SolidColorBrush x:Key="CardBackground">#18000000</SolidColorBrush>
+      <SolidColorBrush x:Key="CardOverlayBackground">#CC000000</SolidColorBrush>
+      <SolidColorBrush x:Key="CardOverlayForeground">#FFFFFF</SolidColorBrush>
+      <SolidColorBrush x:Key="ThumbnailPlaceholderBackground">#D0D0D0</SolidColorBrush>
+      <SolidColorBrush x:Key="ModalBackground">#F0F0F0</SolidColorBrush>
+      <SolidColorBrush x:Key="StatusBarBackground">#D4D4D4</SolidColorBrush>
+      <SolidColorBrush x:Key="StatusBarForeground">#1A1A1A</SolidColorBrush>
+      <SolidColorBrush x:Key="TaskPanelBackground">#F0F0F0</SolidColorBrush>
+      <SolidColorBrush x:Key="ContentForeground">#111111</SolidColorBrush>
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+
 </ResourceDictionary>
