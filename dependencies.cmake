@@ -110,7 +110,7 @@ FetchContent_Declare(
     GIT_TAG vulkan-sdk-1.3.296.0
 )
 
-
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 Fetchcontent_Declare(
     GTest
     GIT_REPOSITORY https://github.com/google/googletest.git
