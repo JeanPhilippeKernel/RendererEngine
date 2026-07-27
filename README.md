@@ -1,3 +1,5 @@
+<img width="733" height="287" alt="1000465784" src="https://github.com/user-attachments/assets/7ff80537-8275-48c9-9878-0f0ff5bdeed7" />
+
 [![Engine Build and Tests](https://github.com/JeanPhilippeKernel/RendererEngine/actions/workflows/Engine-CI.yml/badge.svg)]
 
 [![Discord Server](https://discord.com/api/guilds/1249429728624906405/widget.png?style=banner2)](https://discord.gg/jC3GPVKKsW)
@@ -12,7 +14,8 @@ It can be used for activities such as:
 ### Supported Platforms:
 - Windows
 - macOS (Under active revision as of today)
-- Linux (`Debian` or `Ubuntu` are recommended systems) (Under active revision as of today)
+- Linux (`Debian` or `Ubuntu` are recommended systems) (Under active 
+revision as of today)
 
 ## Setup
 
