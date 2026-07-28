@@ -34,11 +34,6 @@ protected:
         m_backend.Initialize(m_arena);
     }
 
-    void TearDown() override
-    {
-        m_manager.Shutdown();
-    }
-
     VFSPath P(const char* raw)
     {
         auto result = VFSPath::Parse(raw);
