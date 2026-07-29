@@ -32,7 +32,6 @@ include(Scripts/CMake/NuGet.cmake)
 include(Scripts/CMake/CppWinRT.cmake)
 
 option (COPY_EXAMPLE_PROJECT "Copy example projects that show how to use Launcher" ON)
-option (LAUNCHER_ONLY "Build Launcher only" OFF)
 
 set (MACOSX_ARCHITECTURE_ARM64 OFF)
 if (APPLE)
@@ -55,37 +54,28 @@ list( APPEND CMAKE_INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib )
 
 # Externals dependencies
 #
-if (NOT LAUNCHER_ONLY)
 
-    # Enable CMake's CTest Functionality
-    #
-    include(CTest)
-
-    # Setup Dependencies
-    #
-    include(dependencies.cmake)
-
-    # Compile Shaders
-    #
-    add_subdirectory (Resources)
-
-	# Core engine lib is here
-	#
-	add_subdirectory (ZEngine)
-
-	# Editor is here
-	#
-	add_subdirectory (Tetragrama)
-
-	# Entry point is here
-	#
-	add_subdirectory (Obelisk)
-endif ()
-
-# Launcher is here
+# Enable CMake's CTest Functionality
 #
-add_subdirectory (Panzerfaust)
+include(CTest)
 
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-	set_property (DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Panzerfaust)
-endif ()
+# Setup Dependencies
+#
+include(dependencies.cmake)
+
+# Compile Shaders
+#
+add_subdirectory (Resources)
+
+# Core engine lib is here
+#
+add_subdirectory (ZEngine)
+
+# Editor is here
+#
+add_subdirectory (Tetragrama)
+
+# Entry point is here
+#
+add_subdirectory (Obelisk)
+
