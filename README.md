@@ -28,7 +28,6 @@ Before building, make sure your setup is correct :
 - Install [PowerShell Core](https://github.com/PowerShell/PowerShell/releases)
 - Install [Python](https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe)
 - Install [CMake](https://cmake.org/download/) 4.1.2 or later.
-- Install [DOTNET SDK 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) as a VS Build Tool component (if using a standalone implementation, you might need to create a symlink between your custom installation location and the expected location: `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Sdks\Microsoft.NET.Sdk\Sdk`)
 - Install [LLVM](https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.7/LLVM-20.1.7-win64.exe)
 
 
@@ -57,27 +56,19 @@ Before building, make sure your setup is correct :
     brew update
     brew install --cask powershell
 ```
-- Install [DOTNET SDK 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
-
 - Install ClangFormat through Homebrew:
 ```bash
     brew update
     brew install llvm@20
 ```
 
-## Building the engine & launcher
+## Building the engine
 
 1. Start `Powershell Core` and make sure that you can run CMake, You can type `cmake --version` to simply output the current CMake version installed.
 2. Change directories to the location where you've cloned the repository.
 3. Run the following command depending on the configuration:
 	- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True`
 	- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True`
-
-## Building the launcher only
-
-To only build the Launcher only, you can specify `-LauncherOnly` which will skip building the engine :
-- Debug version :	`.\Scripts\BuildEngine.ps1 -Configurations Debug -RunBuilds $True -LauncherOnly`
-- Release version :	`.\Scripts\BuildEngine.ps1 -Configurations Release -RunBuilds $True -LauncherOnly`
 
 ### Important Notes:
 - Setting `-RunBuilds` to `$false` will result to *only* generate the build directory.
