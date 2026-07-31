@@ -9,7 +9,7 @@ namespace ZEngine::Applications
     void AppRenderPipeline::Initialize(Hardwares::VulkanDevicePtr device)
     {
         Device                  = device;
-        RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount - 1u;
+        RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount > 0u ? Device->CommandBufferMgr->TotalThreadCount - 1u : 0u;
         UICommandBufferIndex    = RenderMainThreadIndex + 1u;
         Device->Arena->CreateSubArena(ZMega(30), &LocalArena);
 

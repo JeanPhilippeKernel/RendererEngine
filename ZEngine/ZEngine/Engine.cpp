@@ -30,11 +30,12 @@ namespace ZEngine
 
         window->SetCallbackFunction(std::bind(&Applications::GameApplication::ProcessEvent, app, std::placeholders::_1));
         window->Initialize(arena, *window_cfg_ptr);
-        g_engine_ctx->Window = window;
+        g_engine_ctx->Window         = window;
 
-        g_appRenderPipeline  = ZPushStructCtor(arena, Applications::AppRenderPipeline);
+        g_appRenderPipeline          = ZPushStructCtor(arena, Applications::AppRenderPipeline);
 
-        g_engine_ctx->Device->Initialize(arena, window, (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u) /*, k_mailbox_buffer_size */);
+        uint32_t worker_thread_count = std::max(1u, (uint32_t) (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u));
+        g_engine_ctx->Device->Initialize(arena, window, worker_thread_count /*, k_mailbox_buffer_size */);
         g_appRenderPipeline->Initialize(g_engine_ctx->Device);
 
         Managers::AssetManager::Initialize(arena, g_engine_ctx->Device, app->WorkingSpacePath);

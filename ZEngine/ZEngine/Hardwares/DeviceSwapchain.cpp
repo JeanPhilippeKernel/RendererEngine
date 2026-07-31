@@ -1,3 +1,4 @@
+#include <GLFW/glfw3.h>
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
@@ -67,6 +68,14 @@ namespace ZEngine::Hardwares
         {
             SwapchainImageWidth  = capabilities.currentExtent.width;
             SwapchainImageHeight = capabilities.currentExtent.height;
+        }
+        else
+        {
+            // Wayland does not provide a concrete extent — query the framebuffer size directly.
+            int w = 0, h = 0;
+            glfwGetFramebufferSize(reinterpret_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow()), &w, &h);
+            SwapchainImageWidth  = static_cast<uint32_t>(w);
+            SwapchainImageHeight = static_cast<uint32_t>(h);
         }
 
         VkSwapchainKHR           old_swapchain         = (SwapchainHandle != VK_NULL_HANDLE) ? SwapchainHandle : VK_NULL_HANDLE;
