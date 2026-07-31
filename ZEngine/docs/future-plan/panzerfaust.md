@@ -3,7 +3,7 @@
 **Priority:** P1 — Already exists and is live; doc captures current state + planned improvements  
 **Status:** Partially implemented (core flow works; planned features below)  
 **Technology:** C# + .NET 8 + Avalonia (cross-platform desktop UI)  
-**Location:** `RendererEngine/Panzerfaust/`
+**Location:** https://github.com/JeanPhilippeKernel/ZodiacEngineHub
 
 ---
 
