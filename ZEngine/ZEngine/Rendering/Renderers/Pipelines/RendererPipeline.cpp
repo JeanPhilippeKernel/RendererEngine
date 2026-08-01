@@ -190,7 +190,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.pRasterizationState          = &(rasterization_create_info);
         graphic_pipeline_create_info.pMultisampleState            = &(multisample_state_create_info);
         graphic_pipeline_create_info.pDepthStencilState           = Specification.EnableDepthTest ? &(depth_stencil_state_create_info) : nullptr;
-        graphic_pipeline_create_info.pColorBlendState             = &(color_blend_state_create_info);
+        graphic_pipeline_create_info.pColorBlendState             = (attachment_count > 0) ? &(color_blend_state_create_info) : nullptr;
         graphic_pipeline_create_info.pDynamicState                = &(dynamic_state_create_info);
         graphic_pipeline_create_info.layout                       = Layout;
         graphic_pipeline_create_info.renderPass                   = Specification.Attachment->GetHandle();
