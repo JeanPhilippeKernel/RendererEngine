@@ -266,14 +266,24 @@ static bool ShowCrashDialogCocoa(cstring app_name,
         }
         else
         {
-            // Path B: signal path — bootstrap NSApp on a dedicated thread.
+            // Path B: signal path — the crashing thread is parked in sigsuspend.
+            // NSWindow must be created and shown on the main thread (macOS 14+ strictly
+            // enforces this). Use dispatch_async to the main queue, then spin a private
+            // CFRunLoop on this worker thread to drain it until the dialog closes.
             dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-            NSThread* dlgThread = [[NSThread alloc] initWithBlock:^{
+            dispatch_async(dispatch_get_main_queue(), ^{
                 @autoreleasepool
                 {
-                    [NSApplication sharedApplication];
-                    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-                    [NSApp finishLaunching];
+                    if (NSApp == nil)
+                    {
+                        [NSApplication sharedApplication];
+                        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                        [NSApp finishLaunching];
+                    }
+                    else
+                    {
+                        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                    }
                     ZEngineCrashWindowController* ctrl =
                         [[ZEngineCrashWindowController alloc] initWithAppName:appName
                                                                        signal:signal
@@ -284,9 +294,11 @@ static bool ShowCrashDialogCocoa(cstring app_name,
                     comment = ctrl.userComment;
                     dispatch_semaphore_signal(sem);
                 }
-            }];
-            [dlgThread start];
-            dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+            });
+            // Pump the main run loop from this worker thread so the dispatch_async
+            // block above can execute (the main thread is stuck in sigsuspend).
+            while (dispatch_semaphore_wait(sem, DISPATCH_TIME_NOW) != 0)
+                [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
         }
 
         if (didSend && comment.length > 0)
