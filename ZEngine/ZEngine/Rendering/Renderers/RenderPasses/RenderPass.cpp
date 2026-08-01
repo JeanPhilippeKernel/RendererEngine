@@ -277,12 +277,19 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const auto& binding_spec       = validity_output.second;
 
         auto        shader             = Pipeline->Shader;
-        auto        descriptor_set_map = shader->DescriptorSetMap;
+        const auto& descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
+
+        ZENGINE_CORE_INFO("SetBindlessInput: key={} Set={} Binding={} frame_count={} map_has_set={}", key_name.data(), binding_spec.Set, binding_spec.Binding, frame_count, descriptor_set_map.find(binding_spec.Set) != nullptr)
+
+        if (descriptor_set_map.find(binding_spec.Set) != nullptr)
+        {
+            ZENGINE_CORE_INFO("SetBindlessInput: DescriptorSetMap[{}].size()={}", binding_spec.Set, descriptor_set_map.at(binding_spec.Set).size())
+        }
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto                                    set  = descriptor_set_map[binding_spec.Set][i];
+            auto                                    set  = descriptor_set_map.at(binding_spec.Set)[i];
             Hardwares::WriteDescriptorSetRequestKey key  = {.Binding = binding_spec.Binding, .DstSet = set};
             auto&                                   reqs = m_device->WriteBindlessDescriptorSetRequests;
             reqs.insert(key);
