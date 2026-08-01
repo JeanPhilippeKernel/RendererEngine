@@ -277,12 +277,12 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const auto& binding_spec       = validity_output.second;
 
         auto        shader             = Pipeline->Shader;
-        auto        descriptor_set_map = shader->DescriptorSetMap;
+        const auto& descriptor_set_map = shader->DescriptorSetMap;
         auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto                                    set  = descriptor_set_map[binding_spec.Set][i];
+            auto                                    set  = descriptor_set_map.at(binding_spec.Set)[i];
             Hardwares::WriteDescriptorSetRequestKey key  = {.Binding = binding_spec.Binding, .DstSet = set};
             auto&                                   reqs = m_device->WriteBindlessDescriptorSetRequests;
             reqs.insert(key);

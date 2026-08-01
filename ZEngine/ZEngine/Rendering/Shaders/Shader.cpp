@@ -517,8 +517,20 @@ namespace ZEngine::Rendering::Shaders
          */
         if (pool_size_collection.empty())
         {
-            ZENGINE_CORE_WARN("Shader '{0}': - The pool size is empty!", m_specification.Name)
             ZReleaseScratch(scratch);
+
+            // No pool-backed descriptors — populate DescriptorSetMap from reserved sets only.
+            for (const auto layout : InternalDescriptorSetLayoutMap)
+            {
+                if (m_device->ShaderReservedDescriptorSetMap.contains(layout.first))
+                {
+                    DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
+                    for (uint32_t i = 0; i < m_device->SwapchainPtr->BufferredFrameCount; ++i)
+                    {
+                        DescriptorSetMap[layout.first][i] = m_device->ShaderReservedDescriptorSetMap.at(layout.first)[i];
+                    }
+                }
+            }
             return;
         }
 
