@@ -266,12 +266,10 @@ static bool ShowCrashDialogCocoa(cstring app_name,
         }
         else
         {
-            // Path B: signal path — the crashing thread is in sigsuspend.
-            // If the crash happened on a non-main thread, the main thread is still
-            // running the GLFW event loop and will drain the main queue.
-            // If the crash happened on the main thread, the wait below times out
-            // and we skip the dialog rather than crash trying to show it on the
-            // wrong thread (NSWindow requires the main thread on modern macOS).
+            // Path B: signal path — the crashing thread is parked in sigsuspend.
+            // NSWindow must be created and shown on the main thread (macOS 14+ strictly
+            // enforces this). Use dispatch_async to the main queue, then spin a private
+            // CFRunLoop on this worker thread to drain it until the dialog closes.
             dispatch_semaphore_t sem = dispatch_semaphore_create(0);
             dispatch_async(dispatch_get_main_queue(), ^{
                 @autoreleasepool
@@ -297,7 +295,10 @@ static bool ShowCrashDialogCocoa(cstring app_name,
                     dispatch_semaphore_signal(sem);
                 }
             });
-            dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC));
+            // Pump the main run loop from this worker thread so the dispatch_async
+            // block above can execute (the main thread is stuck in sigsuspend).
+            while (dispatch_semaphore_wait(sem, DISPATCH_TIME_NOW) != 0)
+                [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
         }
 
         if (didSend && comment.length > 0)
