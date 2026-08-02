@@ -33,11 +33,13 @@ namespace ZEngine::Hardwares
         Timelines.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
         NextValues.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
         RetireValues.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
+        RetireStagingBuffers.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
 
         for (uint32_t i = 0; i < Device->CommandBufferMgr->TotalPoolCount; ++i)
         {
             Timelines[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Primitives::Semaphore, Device, true);
             RetireValues[i].init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
+            RetireStagingBuffers[i].init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
             NextValues[i].store(1, std::memory_order_release);
         }
 
@@ -46,11 +48,13 @@ namespace ZEngine::Hardwares
             TransferTimelines.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
             TransferNextValues.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
             TransferRetireValues.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
+            TransferRetireStagingBuffers.init(Device->Arena, Device->CommandBufferMgr->TotalPoolCount, Device->CommandBufferMgr->TotalPoolCount);
 
             for (uint32_t i = 0; i < Device->CommandBufferMgr->TotalPoolCount; ++i)
             {
                 TransferTimelines[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Primitives::Semaphore, Device, true);
                 TransferRetireValues[i].init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
+                TransferRetireStagingBuffers[i].init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
                 TransferNextValues[i].store(1, std::memory_order_release);
             }
         }
@@ -238,10 +242,10 @@ namespace ZEngine::Hardwares
 
         command_buffer->End();
 
-        uint64_t signal_value = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
-        retire_values[i]      = signal_value;
+        uint64_t signal_value               = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
+        retire_values[i]                    = signal_value;
+        RetireStagingBuffers[pool_index][i] = staging_buffer;
         AsyncTimelineJobQueue.Enqueue({command_buffer, Timelines[pool_index], nullptr, dst_pipeline_stage, signal_value});
-        Device->EnqueueBufferForDeletion(staging_buffer);
     }
 
     void AsyncResourceLoader::ClearBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const buffer_view, uint32_t offset, size_t byte_size, uint32_t clear_value)
@@ -293,13 +297,15 @@ namespace ZEngine::Hardwares
                 auto dst_pipeline_stage = Device->CopyBuffer(command_buffer, staging_buffer, *buffer_view, byte_size, 0u, offset);
 
                 command_buffer->End();
-                uint64_t signal_value = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
-                retire_values[i]      = signal_value;
+                uint64_t signal_value               = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
+                retire_values[i]                    = signal_value;
+                RetireStagingBuffers[pool_index][i] = staging_buffer;
                 AsyncTimelineJobQueue.Enqueue({command_buffer, Timelines[pool_index], nullptr, dst_pipeline_stage, signal_value});
             }
-
-            /* Cleanup resource */
-            Device->EnqueueBufferForDeletion(staging_buffer);
+            else
+            {
+                vmaDestroyBuffer(Device->VmaAllocatorValue, staging_buffer.Handle, staging_buffer.Allocation);
+            }
         }
     }
 
@@ -343,31 +349,32 @@ namespace ZEngine::Hardwares
             to_transfer.DestinationQueueFamily                           = Device->TransferFamilyIndex;
             transfer_cmd->TransitionImageLayout(Primitives::ImageMemoryBarrier{to_transfer});
 
-            img_buf->Layout = to_transfer.NewLayout;
+            img_buf->Layout                                                  = to_transfer.NewLayout;
 
             // 3. Copy data to image
-            Device->WriteTextureData(transfer_cmd, handle, data);
+            BufferView                                      transfer_staging = Device->WriteTextureData(transfer_cmd, handle, data);
 
             // Release barrier: transfer → graphics ownership
-            Specifications::ImageMemoryBarrierSpecification release = {};
-            release.ImageHandle                                     = buffer_handle;
-            release.OldLayout                                       = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
-            release.NewLayout                                       = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-            release.ImageAspectMask                                 = VkImageAspectFlagBits(img_buf_aspect);
-            release.SourceAccessMask                                = VK_ACCESS_TRANSFER_WRITE_BIT;
-            release.DestinationAccessMask                           = VK_ACCESS_NONE; // Must be 0 for release
-            release.SourceStageMask                                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            release.DestinationStageMask                            = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            release.LayerCount                                      = texture->Specification.LayerCount;
-            release.SourceQueueFamily                               = Device->TransferFamilyIndex;
-            release.DestinationQueueFamily                          = Device->GraphicFamilyIndex;
+            Specifications::ImageMemoryBarrierSpecification release          = {};
+            release.ImageHandle                                              = buffer_handle;
+            release.OldLayout                                                = Specifications::ImageLayout::TRANSFER_DST_OPTIMAL;
+            release.NewLayout                                                = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            release.ImageAspectMask                                          = VkImageAspectFlagBits(img_buf_aspect);
+            release.SourceAccessMask                                         = VK_ACCESS_TRANSFER_WRITE_BIT;
+            release.DestinationAccessMask                                    = VK_ACCESS_NONE; // Must be 0 for release
+            release.SourceStageMask                                          = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            release.DestinationStageMask                                     = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            release.LayerCount                                               = texture->Specification.LayerCount;
+            release.SourceQueueFamily                                        = Device->TransferFamilyIndex;
+            release.DestinationQueueFamily                                   = Device->GraphicFamilyIndex;
 
             transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{release});
             img_buf->Layout = release.NewLayout;
             transfer_cmd->End();
 
-            uint64_t transfer_val               = TransferNextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            TransferRetireValues[pool_index][i] = transfer_val;
+            uint64_t transfer_val                       = TransferNextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            TransferRetireValues[pool_index][i]         = transfer_val;
+            TransferRetireStagingBuffers[pool_index][i] = transfer_staging;
 
             AsyncTimelineJobQueue.Enqueue({
                 transfer_cmd,
@@ -433,29 +440,30 @@ namespace ZEngine::Hardwares
             to_transfer.DestinationQueueFamily          = Device->GraphicFamilyIndex;
 
             cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-            img_buf->Layout = to_transfer.NewLayout;
+            img_buf->Layout                                      = to_transfer.NewLayout;
 
-            Device->WriteTextureData(cmd, handle, data);
+            BufferView                      single_queue_staging = Device->WriteTextureData(cmd, handle, data);
 
             // Single Queue: No ownership transfer needed. Just a normal barrier.
-            ImageMemoryBarrierSpecification to_final = {};
-            to_final.ImageHandle                     = buffer_handle;
-            to_final.OldLayout                       = ImageLayout::TRANSFER_DST_OPTIMAL;
-            to_final.NewLayout                       = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-            to_final.ImageAspectMask                 = VkImageAspectFlagBits(img_buf_aspect);
-            to_final.SourceAccessMask                = VK_ACCESS_TRANSFER_WRITE_BIT;
-            to_final.DestinationAccessMask           = VK_ACCESS_SHADER_READ_BIT;
-            to_final.SourceStageMask                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            to_final.DestinationStageMask            = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            to_final.LayerCount                      = texture->Specification.LayerCount;
-            to_final.SourceQueueFamily               = Device->GraphicFamilyIndex;
-            to_final.DestinationQueueFamily          = Device->GraphicFamilyIndex;
+            ImageMemoryBarrierSpecification to_final             = {};
+            to_final.ImageHandle                                 = buffer_handle;
+            to_final.OldLayout                                   = ImageLayout::TRANSFER_DST_OPTIMAL;
+            to_final.NewLayout                                   = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            to_final.ImageAspectMask                             = VkImageAspectFlagBits(img_buf_aspect);
+            to_final.SourceAccessMask                            = VK_ACCESS_TRANSFER_WRITE_BIT;
+            to_final.DestinationAccessMask                       = VK_ACCESS_SHADER_READ_BIT;
+            to_final.SourceStageMask                             = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            to_final.DestinationStageMask                        = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            to_final.LayerCount                                  = texture->Specification.LayerCount;
+            to_final.SourceQueueFamily                           = Device->GraphicFamilyIndex;
+            to_final.DestinationQueueFamily                      = Device->GraphicFamilyIndex;
 
             cmd->TransitionImageLayout(ImageMemoryBarrier{to_final});
             cmd->End();
 
-            uint64_t signal_value = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            retire_values[i]      = signal_value;
+            uint64_t signal_value               = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            retire_values[i]                    = signal_value;
+            RetireStagingBuffers[pool_index][i] = single_queue_staging;
             AsyncTimelineJobQueue.Enqueue({cmd, Timelines[pool_index], nullptr, (uint32_t) to_final.DestinationStageMask, signal_value, UINT64_MAX});
             img_buf->Layout = to_final.NewLayout;
         }
@@ -562,6 +570,14 @@ namespace ZEngine::Hardwares
                 command_buffer->ResetState();
                 vkResetCommandBuffer(command_buffer->GetHandle(), 0);
                 retire_values[i] = 0;
+
+                auto& sb         = RetireStagingBuffers[pool_index][i];
+                if (sb.Handle != VK_NULL_HANDLE)
+                {
+                    vmaDestroyBuffer(Device->VmaAllocatorValue, sb.Handle, sb.Allocation);
+                    sb.Handle     = VK_NULL_HANDLE;
+                    sb.Allocation = VK_NULL_HANDLE;
+                }
             }
         }
 
@@ -580,6 +596,14 @@ namespace ZEngine::Hardwares
                     transfer_cmd->ResetState();
                     vkResetCommandBuffer(transfer_cmd->GetHandle(), 0);
                     transfer_retire[i] = 0;
+
+                    auto& tsb          = TransferRetireStagingBuffers[pool_index][i];
+                    if (tsb.Handle != VK_NULL_HANDLE)
+                    {
+                        vmaDestroyBuffer(Device->VmaAllocatorValue, tsb.Handle, tsb.Allocation);
+                        tsb.Handle     = VK_NULL_HANDLE;
+                        tsb.Allocation = VK_NULL_HANDLE;
+                    }
                 }
             }
         }
@@ -760,8 +784,34 @@ namespace ZEngine::Hardwares
     void AsyncResourceLoader::Shutdown()
     {
         m_cancellation_token.store(true, std::memory_order_release);
-        // We are safe to call destructor to clean up semaphore resources
-        // Timeline->~Semaphore();
+
+        // VulkanDevice::Deinitialize calls QueueWaitAll before Shutdown, so the GPU
+        // is already idle here. Free any staging buffers that ResetCommandBuffers
+        // hasn't drained yet (e.g. slots whose retire_val was never reached).
+        uint32_t total_pool_count = Device->CommandBufferMgr->TotalPoolCount;
+        for (uint32_t p = 0; p < total_pool_count; ++p)
+        {
+            for (uint32_t i = 0; i < TotalCommandBufferCount; ++i)
+            {
+                auto& sb = RetireStagingBuffers[p][i];
+                if (sb.Handle != VK_NULL_HANDLE)
+                {
+                    vmaDestroyBuffer(Device->VmaAllocatorValue, sb.Handle, sb.Allocation);
+                    sb.Handle     = VK_NULL_HANDLE;
+                    sb.Allocation = VK_NULL_HANDLE;
+                }
+                if (Device->HasSeperateTransfertQueueFamily)
+                {
+                    auto& tsb = TransferRetireStagingBuffers[p][i];
+                    if (tsb.Handle != VK_NULL_HANDLE)
+                    {
+                        vmaDestroyBuffer(Device->VmaAllocatorValue, tsb.Handle, tsb.Allocation);
+                        tsb.Handle     = VK_NULL_HANDLE;
+                        tsb.Allocation = VK_NULL_HANDLE;
+                    }
+                }
+            }
+        }
     }
 
     void AsyncResourceLoader::Reset()

@@ -157,16 +157,23 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        const auto& spec               = validity_output.second;
-        auto        shader             = Pipeline->Shader;
-        const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
-        auto        ubo_buf            = m_device->UniformBufferSetManager.Access(handle);
-        auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
+        const auto& spec      = validity_output.second;
+        auto        shader    = Pipeline->Shader;
+        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
+        if (!set_array)
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
+        if (!set_array)
+        {
+            ZENGINE_CORE_ERROR("SetInput(UBO): descriptor set {} not found for key '{}'", spec.Set, key_name.data())
+            return;
+        }
+        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        auto ubo_buf     = m_device->UniformBufferSetManager.Access(handle);
+        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set      = descriptor_set_map.at(spec.Set)[i];
+            auto  set      = (*set_array)[i];
             auto& buf      = ubo_buf->At(i);
             auto& buf_info = buf->GetDescriptorBufferInfo();
 
@@ -188,16 +195,23 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        const auto& spec               = validity_output.second;
-        auto        shader             = Pipeline->Shader;
-        const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
-        auto        sbo_buf            = m_device->StorageBufferSetManager.Access(handle);
-        auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
+        const auto& spec      = validity_output.second;
+        auto        shader    = Pipeline->Shader;
+        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
+        if (!set_array)
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
+        if (!set_array)
+        {
+            ZENGINE_CORE_ERROR("SetInput(SBO): descriptor set {} not found for key '{}'", spec.Set, key_name.data())
+            return;
+        }
+        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        auto sbo_buf     = m_device->StorageBufferSetManager.Access(handle);
+        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set      = descriptor_set_map.at(spec.Set)[i];
+            auto  set      = (*set_array)[i];
             auto& buf      = sbo_buf->At(i);
             auto& buf_info = buf->GetDescriptorBufferInfo();
 
@@ -219,18 +233,24 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        const auto& spec               = validity_output.second;
-
-        auto        shader             = Pipeline->Shader;
-        const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
-        auto        tex_buf            = m_device->GlobalTextures.Access(handle);
-        auto        img_buf            = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);
-        auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
+        const auto& spec      = validity_output.second;
+        auto        shader    = Pipeline->Shader;
+        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
+        if (!set_array)
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
+        if (!set_array)
+        {
+            ZENGINE_CORE_ERROR("SetInput(Texture): descriptor set {} not found for key '{}'", spec.Set, key_name.data())
+            return;
+        }
+        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        auto tex_buf     = m_device->GlobalTextures.Access(handle);
+        auto img_buf     = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);
+        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set        = descriptor_set_map.at(spec.Set)[i];
+            auto  set        = (*set_array)[i];
             auto& image_info = img_buf->GetDescriptorImageInfo();
 
             write_reqs[i]    = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr};
@@ -248,17 +268,22 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        const auto& spec               = validity_output.second;
-
-        auto        shader             = Pipeline->Shader;
-        const auto& descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
-
-        auto        write_reqs         = std::vector<VkWriteDescriptorSet>(frame_count);
+        const auto& spec      = validity_output.second;
+        auto        shader    = Pipeline->Shader;
+        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
+        if (!set_array)
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
+        if (!set_array)
+        {
+            ZENGINE_CORE_ERROR("SetInput(Sampler): descriptor set {} not found for key '{}'", spec.Set, key_name)
+            return;
+        }
+        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto set      = descriptor_set_map.at(spec.Set)[i];
+            auto set      = (*set_array)[i];
 
             write_reqs[i] = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER, .pImageInfo = &(sampler_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr};
         }
@@ -274,15 +299,21 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         {
             return;
         }
-        const auto& binding_spec       = validity_output.second;
-
-        auto        shader             = Pipeline->Shader;
-        auto        descriptor_set_map = shader->DescriptorSetMap;
-        auto        frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
+        const auto& binding_spec = validity_output.second;
+        auto        shader       = Pipeline->Shader;
+        const auto* set_array    = shader->DescriptorSetMap.find(binding_spec.Set);
+        if (!set_array)
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(binding_spec.Set);
+        if (!set_array)
+        {
+            ZENGINE_CORE_ERROR("SetBindlessInput: descriptor set {} not found for key '{}'", binding_spec.Set, key_name.data())
+            return;
+        }
+        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto                                    set  = descriptor_set_map[binding_spec.Set][i];
+            auto                                    set  = (*set_array)[i];
             Hardwares::WriteDescriptorSetRequestKey key  = {.Binding = binding_spec.Binding, .DstSet = set};
             auto&                                   reqs = m_device->WriteBindlessDescriptorSetRequests;
             reqs.insert(key);

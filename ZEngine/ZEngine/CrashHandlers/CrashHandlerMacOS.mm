@@ -266,14 +266,26 @@ static bool ShowCrashDialogCocoa(cstring app_name,
         }
         else
         {
-            // Path B: signal path — bootstrap NSApp on a dedicated thread.
+            // Path B: signal path — the crashing thread is in sigsuspend.
+            // If the crash happened on a non-main thread, the main thread is still
+            // running the GLFW event loop and will drain the main queue.
+            // If the crash happened on the main thread, the wait below times out
+            // and we skip the dialog rather than crash trying to show it on the
+            // wrong thread (NSWindow requires the main thread on modern macOS).
             dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-            NSThread* dlgThread = [[NSThread alloc] initWithBlock:^{
+            dispatch_async(dispatch_get_main_queue(), ^{
                 @autoreleasepool
                 {
-                    [NSApplication sharedApplication];
-                    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-                    [NSApp finishLaunching];
+                    if (NSApp == nil)
+                    {
+                        [NSApplication sharedApplication];
+                        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                        [NSApp finishLaunching];
+                    }
+                    else
+                    {
+                        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                    }
                     ZEngineCrashWindowController* ctrl =
                         [[ZEngineCrashWindowController alloc] initWithAppName:appName
                                                                        signal:signal
@@ -284,9 +296,8 @@ static bool ShowCrashDialogCocoa(cstring app_name,
                     comment = ctrl.userComment;
                     dispatch_semaphore_signal(sem);
                 }
-            }];
-            [dlgThread start];
-            dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+            });
+            dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC));
         }
 
         if (didSend && comment.length > 0)

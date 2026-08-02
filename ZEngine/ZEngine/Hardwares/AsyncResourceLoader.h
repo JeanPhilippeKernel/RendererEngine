@@ -84,37 +84,39 @@ namespace ZEngine::Hardwares
             Rendering::Textures::TextureHandle                 TexHandle = {};
         };
 
-        VulkanDevice*                                              Device                  = nullptr;
-        uint32_t                                                   TotalCommandBufferCount = 0;
-        Core::Containers::Array<std::atomic_uint64_t>              NextValues              = {};
-        Core::Containers::Array<std::atomic_uint64_t>              TransferNextValues      = {};
-        Core::Containers::Array<Rendering::Primitives::Semaphore*> Timelines               = {};
-        Core::Containers::Array<Rendering::Primitives::Semaphore*> TransferTimelines       = {};
-        Core::Containers::Array<Core::Containers::Array<uint64_t>> RetireValues            = {};
-        Core::Containers::Array<Core::Containers::Array<uint64_t>> TransferRetireValues    = {};
-        Helpers::ThreadSafeQueue<TimelineJob>                      AsyncTimelineJobQueue   = {};
-        Helpers::ThreadSafeQueue<DeferralUpload>                   DeferralUploadQueue     = {};
+        VulkanDevice*                                                Device                       = nullptr;
+        uint32_t                                                     TotalCommandBufferCount      = 0;
+        Core::Containers::Array<std::atomic_uint64_t>                NextValues                   = {};
+        Core::Containers::Array<std::atomic_uint64_t>                TransferNextValues           = {};
+        Core::Containers::Array<Rendering::Primitives::Semaphore*>   Timelines                    = {};
+        Core::Containers::Array<Rendering::Primitives::Semaphore*>   TransferTimelines            = {};
+        Core::Containers::Array<Core::Containers::Array<uint64_t>>   RetireValues                 = {};
+        Core::Containers::Array<Core::Containers::Array<uint64_t>>   TransferRetireValues         = {};
+        Core::Containers::Array<Core::Containers::Array<BufferView>> RetireStagingBuffers         = {};
+        Core::Containers::Array<Core::Containers::Array<BufferView>> TransferRetireStagingBuffers = {};
+        Helpers::ThreadSafeQueue<TimelineJob>                        AsyncTimelineJobQueue        = {};
+        Helpers::ThreadSafeQueue<DeferralUpload>                     DeferralUploadQueue          = {};
 
-        void                                                       Initialize(VulkanDevice* device);
+        void                                                         Initialize(VulkanDevice* device);
 
-        void                                                       UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data);
-        void                                                       UploadBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const buffer, const void* data, uint32_t offset, size_t byte_size);
-        void                                                       UploadFromStagingBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const destination, const void* data, uint32_t offset, size_t byte_size);
-        void                                                       ClearBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const buffer, uint32_t offset, size_t byte_size, uint32_t clear_value);
-        Rendering::Textures::TextureHandle                         LoadTextureFile(cstring filename) = delete;
+        void                                                         UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data);
+        void                                                         UploadBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const buffer, const void* data, uint32_t offset, size_t byte_size);
+        void                                                         UploadFromStagingBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const destination, const void* data, uint32_t offset, size_t byte_size);
+        void                                                         ClearBuffer(uint8_t frame_index, uint8_t thread_index, BufferView* const buffer, uint32_t offset, size_t byte_size, uint32_t clear_value);
+        Rendering::Textures::TextureHandle                           LoadTextureFile(cstring filename) = delete;
 
-        void                                                       Submit(UploadType type, uint8_t frame_index, uint8_t thread_index, const UploadRequest& request);
-        void                                                       SubmitDeferral(DeferralUpload&& deferral);
-        Rendering::Textures::TextureHandle                         Submit(uint8_t frame_index, uint8_t thread_index, const UploadRequest& request);
+        void                                                         Submit(UploadType type, uint8_t frame_index, uint8_t thread_index, const UploadRequest& request);
+        void                                                         SubmitDeferral(DeferralUpload&& deferral);
+        Rendering::Textures::TextureHandle                           Submit(uint8_t frame_index, uint8_t thread_index, const UploadRequest& request);
 
-        void                                                       CompleteDeferrals();
-        void                                                       SubmitAsyncJobs();
-        void                                                       ResetCommandBuffers(uint8_t frame_index, uint8_t thread_index);
-        void                                                       ClearAsyncJobs();
+        void                                                         CompleteDeferrals();
+        void                                                         SubmitAsyncJobs();
+        void                                                         ResetCommandBuffers(uint8_t frame_index, uint8_t thread_index);
+        void                                                         ClearAsyncJobs();
 
-        void                                                       Run();
-        void                                                       Shutdown();
-        void                                                       Reset();
+        void                                                         Run();
+        void                                                         Shutdown();
+        void                                                         Reset();
 
     private:
         std::atomic_bool                               m_cancellation_token{false};
