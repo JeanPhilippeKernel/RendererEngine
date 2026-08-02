@@ -33,35 +33,34 @@ namespace Tetragrama::Components
         ProjectViewUIComponent();
         virtual ~ProjectViewUIComponent();
 
-        void                  Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Project", bool visibility = true, bool closed = false) override;
+        void         Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Project", bool visibility = true, bool closed = false) override;
 
-        void                  Update(ZEngine::Core::TimeStep dt) override;
+        void         Update(ZEngine::Core::TimeStep dt) override;
 
-        virtual void          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
+        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
         // Render Panes
-        void                  RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
-        void                  RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const char* searchTerm);
-        void                  RenderDirectoryNode(const ZEngine::Core::VFS::VFSPath& directory);
-        void                  RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const ZEngine::Core::VFS::VFSDirEntry& entry);
-        void                  RenderBackButton();
-        void                  RenderTreeBrowser();
+        void         RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
+        void         RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const char* searchTerm);
+        void         RenderDirectoryNode(const ZEngine::Core::VFS::VFSPath& directory);
+        void         RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const ZEngine::Core::VFS::VFSDirEntry& entry);
+        void         RenderBackButton();
+        void         RenderTreeBrowser();
 
         // Popup helpers
-        void                  RenderContextMenu(ContextMenuType type, const std::filesystem::path& targetPath);
-        void                  RenderPopUpMenu();
-        void                  HandleCreateFolderPopup(const std::filesystem::path& path);
-        void                  HandleCreateFilePopup(const std::filesystem::path& path);
+        void         RenderContextMenu(ContextMenuType type, const std::filesystem::path& targetPath);
+        void         RenderPopUpMenu();
+        void         HandleCreateFolderPopup(const std::filesystem::path& path);
+        void         HandleCreateFilePopup(const std::filesystem::path& path);
 
-        void                  HandleRenameFolderPopup(const std::filesystem::path& path);
-        void                  HandleDeleteFolderPopup(const std::filesystem::path& path);
-        void                  HandleRenameFilePopup(const std::filesystem::path& path);
-        void                  HandleDeleteFilePopup(const std::filesystem::path& path);
+        void         HandleRenameFolderPopup(const std::filesystem::path& path);
+        void         HandleDeleteFolderPopup(const std::filesystem::path& path);
+        void         HandleRenameFilePopup(const std::filesystem::path& path);
+        void         HandleDeleteFilePopup(const std::filesystem::path& path);
 
-        void                  MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base, char* output);
+        void         MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base, char* output);
 
-        void                  TriggerScan();
-        std::filesystem::path VfsToNative(const ZEngine::Core::VFS::VFSPath& path) const;
+        void         TriggerScan();
 
     private:
         ZEngine::Core::Memory::ArenaAllocator  m_local_arena                     = {};

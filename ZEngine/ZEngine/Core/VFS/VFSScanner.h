@@ -62,7 +62,7 @@ namespace ZEngine::Core::VFS
         std::counting_semaphore<MaxConcurrentDirLists> m_dir_semaphore{MaxConcurrentDirLists};
 
         Core::Memory::ArenaAllocator                   m_slot_arenas[MaxConcurrentDirLists];
-        std::atomic<bool>                              m_slot_in_use[MaxConcurrentDirLists];
+        PaddedAtomic<bool>                             m_slot_in_use[MaxConcurrentDirLists];
         bool                                           m_arenas_ready = false;
     };
 

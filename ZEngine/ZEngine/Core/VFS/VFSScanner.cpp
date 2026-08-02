@@ -9,7 +9,7 @@ namespace ZEngine::Core::VFS
         for (int i = 0; i < MaxConcurrentDirLists; ++i)
         {
             m_slot_arenas[i].Initialize(SlotArenaReserve, page_source->m_mem_page_size);
-            m_slot_in_use[i].store(false, std::memory_order_relaxed);
+            m_slot_in_use[i].value.store(false, std::memory_order_relaxed);
         }
         m_arenas_ready = true;
     }
@@ -21,7 +21,7 @@ namespace ZEngine::Core::VFS
             for (int i = 0; i < MaxConcurrentDirLists; ++i)
             {
                 bool expected = false;
-                if (m_slot_in_use[i].compare_exchange_strong(expected, true, std::memory_order_acquire))
+                if (m_slot_in_use[i].value.compare_exchange_strong(expected, true, std::memory_order_acquire))
                 {
                     return i;
                 }
@@ -32,7 +32,7 @@ namespace ZEngine::Core::VFS
 
     void VFSScanner::ReleaseSlot(int slot)
     {
-        m_slot_in_use[slot].store(false, std::memory_order_release);
+        m_slot_in_use[slot].value.store(false, std::memory_order_release);
     }
 
     void VFSScanner::Scan(IVFSContext* context, VFSPath root, VFSDirectoryCache* cache)

@@ -49,16 +49,6 @@ namespace Tetragrama::Components
 
         TriggerScan();
     }
-    static void VfsFilename(const VFSPath& path, char* out, size_t out_size)
-    {
-        VFSPathComponent fn = path.Filename();
-        size_t           n  = (fn.Length < out_size - 1) ? fn.Length : (out_size - 1);
-        if (fn.Data && n > 0)
-        {
-            secure_memcpy(out, out_size, fn.Data, n);
-        }
-        out[n] = '\0';
-    }
 
     void ProjectViewUIComponent::TriggerScan()
     {
@@ -66,16 +56,6 @@ namespace Tetragrama::Components
         {
             m_scanner->Scan(m_vfs_context, m_assets_vfs_root, m_directory_cache);
         }
-    }
-
-    std::filesystem::path ProjectViewUIComponent::VfsToNative(const VFSPath& path) const
-    {
-        std::filesystem::path native(ParentLayer->CurrentApp->WorkingSpacePath);
-        if (!path.IsRoot())
-        {
-            native += path.CStr(); // CStr() begins with '/'
-        }
-        return native;
     }
 
     void ProjectViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
@@ -101,7 +81,9 @@ namespace Tetragrama::Components
             }
             if (ImGui::BeginPopup("ContextMenu"))
             {
-                RenderContextMenu(ContextMenuType::RightPane, VfsToNative(m_current_vfs_dir));
+                char native[MAX_FILE_PATH_COUNT];
+                m_current_vfs_dir.ResolveNative(ParentLayer->CurrentApp->WorkingSpacePath, native, sizeof(native));
+                RenderContextMenu(ContextMenuType::RightPane, native);
                 ImGui::EndPopup();
             }
             RenderPopUpMenu();
@@ -169,7 +151,7 @@ namespace Tetragrama::Components
     void ProjectViewUIComponent::RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const VFSDirEntry& entry)
     {
         char name[MAX_FILE_PATH_COUNT];
-        VfsFilename(entry.Path, name, sizeof(name));
+        entry.Path.CopyFilename(name, sizeof(name));
 
         ImGui::PushID(entry.Path.CStr());
 
@@ -192,8 +174,9 @@ namespace Tetragrama::Components
         {
             if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
             {
-                std::string itemPath = VfsToNative(entry.Path).string();
-                ImGui::SetDragDropPayload("CONTENT_BROWSER_FILE_DRAG_OP", itemPath.c_str(), (itemPath.length() + 1) * sizeof(char));
+                char native[MAX_FILE_PATH_COUNT];
+                entry.Path.ResolveNative(ParentLayer->CurrentApp->WorkingSpacePath, native, sizeof(native));
+                ImGui::SetDragDropPayload("CONTENT_BROWSER_FILE_DRAG_OP", native, (secure_strlen(native) + 1) * sizeof(char));
                 ImGui::EndDragDropSource();
             }
         }
@@ -213,7 +196,8 @@ namespace Tetragrama::Components
         }
         if (ImGui::BeginPopup("ItemContextMenu"))
         {
-            std::filesystem::path native = VfsToNative(entry.Path);
+            char native[MAX_FILE_PATH_COUNT];
+            entry.Path.ResolveNative(ParentLayer->CurrentApp->WorkingSpacePath, native, sizeof(native));
             entry.IsDirectory ? RenderContextMenu(ContextMenuType::Folder, native) : RenderContextMenu(ContextMenuType::File, native);
             ImGui::EndPopup();
         }
@@ -240,7 +224,7 @@ namespace Tetragrama::Components
                 const VFSDirEntry& entry = entries[i];
 
                 char               raw[MAX_FILE_PATH_COUNT];
-                VfsFilename(entry.Path, raw, sizeof(raw));
+                entry.Path.CopyFilename(raw, sizeof(raw));
 
                 size_t len  = secure_strlen(raw);
                 size_t copy = (len < sizeof(name_lower) - 1) ? len : sizeof(name_lower) - 1;
@@ -278,7 +262,9 @@ namespace Tetragrama::Components
 
         if (ImGui::BeginPopup("RootContextMenu"))
         {
-            RenderContextMenu(ContextMenuType::LeftPane, VfsToNative(m_assets_vfs_root));
+            char native[MAX_FILE_PATH_COUNT];
+            m_assets_vfs_root.ResolveNative(ParentLayer->CurrentApp->WorkingSpacePath, native, sizeof(native));
+            RenderContextMenu(ContextMenuType::LeftPane, native);
             ImGui::EndPopup();
         }
 
@@ -307,7 +293,7 @@ namespace Tetragrama::Components
             }
 
             char label[MAX_FILE_PATH_COUNT];
-            VfsFilename(entry.Path, label, sizeof(label));
+            entry.Path.CopyFilename(label, sizeof(label));
 
             char popup_id[MAX_FILE_PATH_COUNT + 8];
             std::snprintf(popup_id, sizeof(popup_id), "Dir_%s", entry.Path.CStr());
@@ -327,7 +313,9 @@ namespace Tetragrama::Components
 
             if (ImGui::BeginPopup(popup_id))
             {
-                RenderContextMenu(ContextMenuType::LeftPane, VfsToNative(entry.Path));
+                char native[MAX_FILE_PATH_COUNT];
+                entry.Path.ResolveNative(ParentLayer->CurrentApp->WorkingSpacePath, native, sizeof(native));
+                RenderContextMenu(ContextMenuType::LeftPane, native);
                 ImGui::EndPopup();
             }
 
@@ -441,7 +429,9 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::HandleRenameFolderPopup(const std::filesystem::path& path)
     {
-        if (m_popup_target_path == VfsToNative(m_assets_vfs_root))
+        char root_native[MAX_FILE_PATH_COUNT];
+        m_assets_vfs_root.ResolveNative(ParentLayer->CurrentApp->WorkingSpacePath, root_native, sizeof(root_native));
+        if (m_popup_target_path == std::filesystem::path(root_native))
         {
             ZENGINE_CORE_ERROR("Cannot rename root folder");
             m_active_popup = PopupType::None;
@@ -546,7 +536,9 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::HandleDeleteFolderPopup(const std::filesystem::path& path)
     {
-        if (m_popup_target_path == VfsToNative(m_assets_vfs_root))
+        char root_native[MAX_FILE_PATH_COUNT];
+        m_assets_vfs_root.ResolveNative(ParentLayer->CurrentApp->WorkingSpacePath, root_native, sizeof(root_native));
+        if (m_popup_target_path == std::filesystem::path(root_native))
         {
             ZENGINE_CORE_ERROR("Cannot rename root folder");
             m_active_popup = PopupType::None;

@@ -195,6 +195,17 @@ namespace ZEngine::Core::VFS
         return comp;
     }
 
+    void VFSPath::CopyFilename(char* out_buffer, size_t out_size) const
+    {
+        VFSPathComponent fn = Filename();
+        size_t           n  = (fn.Length < out_size - 1) ? fn.Length : (out_size - 1);
+        if (fn.Data && n > 0)
+        {
+            Helpers::secure_memcpy(out_buffer, out_size, fn.Data, n);
+        }
+        out_buffer[n] = '\0';
+    }
+
     VFSPathComponent VFSPath::Stem() const
     {
         VFSPathComponent file = Filename();
@@ -336,6 +347,29 @@ namespace ZEngine::Core::VFS
             out_buffer[i] = (c == '/') ? PLATFORM_OS_BACKSLASH : c;
         }
         out_buffer[n] = '\0';
+    }
+
+    void VFSPath::ResolveNative(cstring native_root, char* out_buffer, size_t out_size) const
+    {
+        if (!out_buffer || out_size == 0)
+        {
+            return;
+        }
+
+        size_t root_len = native_root ? Helpers::secure_strlen(native_root) : 0;
+        if (root_len >= out_size)
+        {
+            root_len = out_size - 1;
+        }
+        Helpers::secure_memcpy(out_buffer, out_size, native_root, root_len);
+        out_buffer[root_len] = '\0';
+
+        if (!IsRoot())
+        {
+            char rel[VFS_MAX_PATH];
+            ToNative(rel, sizeof(rel)); // logical '/foo' -> native separators
+            Helpers::secure_strcpy(out_buffer + root_len, out_size - root_len, rel);
+        }
     }
 
     bool VFSPathComponent::Equals(cstring other) const
