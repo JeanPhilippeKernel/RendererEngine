@@ -330,7 +330,9 @@ namespace ZEngine::Hardwares
                 auto texture = Device->GlobalTextures.Access(tex_to_dispose);
                 if (texture)
                 {
+                    auto buf_handle = texture->BufferHandle;
                     texture->Dispose();
+                    Device->Image2DBufferManager.Remove(buf_handle);
                     Device->GlobalTextures.Remove(tex_to_dispose);
                 }
             }

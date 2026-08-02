@@ -677,7 +677,7 @@ namespace ZEngine::Hardwares
         Rendering::Textures::TextureHandle              CreateTexture(uint32_t width, uint32_t height);
         Rendering::Textures::TextureHandle              CreateTexture(uint32_t width, uint32_t height, float r = 255, float g = 255, float b = 255, float a = 255);
         Rendering::Textures::TextureHandle              CreateTexture(const Rendering::Specifications::TextureSpecification& spec);
-        void                                            WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data);
+        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data);
 
         Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(const Rendering::Specifications::RenderPassSpecification& spec);
 
