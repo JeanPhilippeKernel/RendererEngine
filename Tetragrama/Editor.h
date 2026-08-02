@@ -3,6 +3,7 @@
 #include <Tetragrama/Layers/ImguiLayer.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Managers/AssetManager.h>
 
 namespace Tetragrama::Serializers
@@ -34,21 +35,23 @@ namespace Tetragrama
 
         virtual ~Editor() {}
 
-        ZRawPtr(Layers::ImguiLayer) UILayer = nullptr;
+        ZRawPtr(Layers::ImguiLayer) UILayer                    = nullptr;
 
-        virtual void OnInitializing() override;
-        virtual void OverrideWindowConfiguration() override;
-        virtual void OnInitialized() override;
+        ZEngine::Core::VFS::VFSDiskBackend WorkingSpaceBackend = {};
 
-        virtual void OnUpdate(float dt) override;
-        virtual void OnEvent(ZEngine::Core::CoreEvent&) override;
+        virtual void                       OnInitializing() override;
+        virtual void                       OverrideWindowConfiguration() override;
+        virtual void                       OnInitialized() override;
 
-        virtual void OnPreRender() override;
-        virtual void OnPostRender() override;
-        virtual void OnRenderUI() override;
+        virtual void                       OnUpdate(float dt) override;
+        virtual void                       OnEvent(ZEngine::Core::CoreEvent&) override;
 
-        virtual void OnClosing() override;
-        virtual void OnClosed() override;
+        virtual void                       OnPreRender() override;
+        virtual void                       OnPostRender() override;
+        virtual void                       OnRenderUI() override;
+
+        virtual void                       OnClosing() override;
+        virtual void                       OnClosed() override;
     };
     ZDEFINE_PTR(Editor);
 

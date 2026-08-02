@@ -32,6 +32,14 @@ namespace Tetragrama
             Configuration->ActiveSceneName.append(active_scene);
         }
         WorkingSpacePath = Configuration->WorkingSpacePath.c_str();
+        if (WorkingSpacePath && WorkingSpacePath[0] != '\0')
+        {
+            WorkingSpaceBackend.Initialize(WorkingSpacePath, ZEngine::Core::VFS::VFSBackendCaps::Read | ZEngine::Core::VFS::VFSBackendCaps::List, &Memory->MainArena);
+            if (GetVFSContext()->Mount(&WorkingSpaceBackend, ZEngine::Core::VFS::VFSPath::Root(), 0).Failed())
+            {
+                ZENGINE_CORE_ERROR("Failed to mount working space '{}' into the VFS", WorkingSpacePath)
+            }
+        }
     }
 
     void Editor::OverrideWindowConfiguration()

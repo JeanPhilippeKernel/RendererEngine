@@ -5,6 +5,7 @@
 #include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/VFS/VFSScanner.h>
 #include <ZEngine/Helpers/NodeHierarchyHelper.h>
 #include <ZEngine/Windows/Inputs/IInputEventCallback.h>
 
@@ -24,6 +25,9 @@ namespace Tetragrama::Layers
         ZEngine::Core::Containers::Array<uint32_t>                                              NodeToRender     = {};
         ZEngine::Core::Containers::UnorderedHashMap<uint32_t, Components::UIComponent*>         NodeUIComponents = {};
         ZEngine::Core::Containers::UnorderedHashMap<ZEngine::Windows::Inputs::GlfwKeyCode, int> KeyEntries       = {};
+
+        ZEngine::Core::VFS::VFSScanner                                                          Scanner          = {};
+        ZEngine::Core::VFS::VFSDirectoryCache                                                   Cache            = {};
 
         virtual void                                                                            Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Applications::GameApplicationPtr app) override;
         virtual void                                                                            Deinitialize() override;

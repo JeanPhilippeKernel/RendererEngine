@@ -50,6 +50,8 @@ namespace ZEngine::Core::VFS
 
         VFSPathComponent Filename() const;
 
+        void             CopyFilename(char* out_buffer, size_t out_size) const;
+
         VFSPathComponent Stem() const;
 
         VFSPathComponent Extension() const;
@@ -74,6 +76,7 @@ namespace ZEngine::Core::VFS
         bool               IsPrefixOf(const VFSPath& other) const;
 
         void               ToNative(char* out_buffer, size_t out_size) const;
+        void               ResolveNative(cstring native_root, char* out_buffer, size_t out_size) const;
 
         uint64_t           Hash() const
         {

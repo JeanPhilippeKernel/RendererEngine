@@ -4,6 +4,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/TimeStep.h>
+#include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <ZEngine/Windows/WindowConfiguration.h>
@@ -38,6 +39,9 @@ namespace ZEngine::Applications
         AppRenderPipelinePtr              RenderPipeline      = nullptr;
         Controllers::ICameraControllerPtr CameraController    = nullptr;
         Rendering::Scenes::RenderScenePtr CurrentScene        = nullptr;
+
+        Core::VFS::VFSContext             VFS                 = {};
+        Core::VFS::IVFSContext*           GetVFSContext();
 
         void                              Initialize(Core::Memory::MemoryManager* memory);
         void                              Update(Core::TimeStep dt);

@@ -2,6 +2,7 @@
 #include <Tetragrama/Components/ProjectViewUIComponent.h>
 #include <Tetragrama/Components/UIComponent.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/VFS/VFSScanner.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <filesystem>
 
@@ -19,11 +20,11 @@ namespace Tetragrama::Components
     {
         None,
         CreateFolder,
-        CreateFile,
+        NewFile,
         RenameFolder,
         RenameFile,
         DeleteFolder,
-        DeleteFile,
+        RemoveFile,
     };
 
     class ProjectViewUIComponent : public UIComponent
@@ -41,8 +42,8 @@ namespace Tetragrama::Components
         // Render Panes
         void         RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
         void         RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const char* searchTerm);
-        void         RenderDirectoryNode(const std::filesystem::path& directory);
-        void         RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const std::filesystem::directory_entry& entry);
+        void         RenderDirectoryNode(const ZEngine::Core::VFS::VFSPath& directory);
+        void         RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const ZEngine::Core::VFS::VFSDirEntry& entry);
         void         RenderBackButton();
         void         RenderTreeBrowser();
 
@@ -59,16 +60,25 @@ namespace Tetragrama::Components
 
         void         MakeRelative(const std::filesystem::path& path, const std::filesystem::path& base, char* output);
 
-    private:
-        ZEngine::Core::Memory::ArenaAllocator m_local_arena = {};
-        std::filesystem::path                 m_assets_directory;
-        std::filesystem::path                 m_current_directory;
-        PopupType                             m_active_popup = PopupType::None;
-        std::filesystem::path                 m_popup_target_path;
+        void         TriggerScan();
 
-        ZEngine::Importers::AssetTexture*     m_directory_icon;
-        ZEngine::Importers::AssetTexture*     m_file_icon;
-        static constexpr float                m_thumbnail_size                     = 64.0f;
-        char                                  m_search_buffer[MAX_FILE_PATH_COUNT] = "";
+    private:
+        ZEngine::Core::Memory::ArenaAllocator  m_local_arena                     = {};
+
+        ZEngine::Core::VFS::IVFSContext*       m_vfs_context                     = nullptr;
+        ZEngine::Core::VFS::VFSDirectoryCache* m_directory_cache                 = nullptr;
+        ZEngine::Core::VFS::VFSScanner*        m_scanner                         = nullptr;
+
+        ZEngine::Core::VFS::VFSPath            m_assets_vfs_root                 = {};
+        ZEngine::Core::VFS::VFSPath            m_current_vfs_dir                 = {};
+        char                                   m_root_label[MAX_FILE_PATH_COUNT] = "";
+
+        PopupType                              m_active_popup                    = PopupType::None;
+        std::filesystem::path                  m_popup_target_path;
+
+        ZEngine::Importers::AssetTexture*      m_directory_icon;
+        ZEngine::Importers::AssetTexture*      m_file_icon;
+        static constexpr float                 m_thumbnail_size                     = 64.0f;
+        char                                   m_search_buffer[MAX_FILE_PATH_COUNT] = "";
     };
 } // namespace Tetragrama::Components
