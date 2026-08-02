@@ -16,11 +16,11 @@ namespace Tetragrama
 {
     void Editor::OnInitializing()
     {
-        Configuration = ZPushStructCtor(Arena, EditorConfiguration);
+        Configuration = ZPushStructCtor(&Memory->MainArena, EditorConfiguration);
 
         if (ZEngine::Helpers::secure_strlen(ConfigFile))
         {
-            Configuration->ReadConfig(Arena, ConfigFile);
+            Configuration->ReadConfig(&Memory->MainArena, ConfigFile);
         }
 
         if (Configuration->ActiveSceneName.empty())
@@ -46,18 +46,18 @@ namespace Tetragrama
     {
         std::string title     = fmt::format("{0} - Active Scene : {1}", Configuration->ProjectName.c_str(), Configuration->ActiveSceneName.c_str());
         WindowCfg.EnableVsync = true;
-        WindowCfg.Title.init(Arena, title.c_str());
+        WindowCfg.Title.init(&Memory->MainArena, title.c_str());
     }
 
     void Editor::OnInitialized()
     {
-        auto editor_scene          = ZPushStructCtor(Arena, EditorScene);
-        auto editor_cam_controller = ZPushStructCtor(Arena, Controllers::EditorCameraController);
-        UILayer                    = ZPushStructCtor(Arena, ImguiLayer);
+        auto editor_scene          = ZPushStructCtor(&Memory->MainArena, EditorScene);
+        auto editor_cam_controller = ZPushStructCtor(&Memory->MainArena, Controllers::EditorCameraController);
+        UILayer                    = ZPushStructCtor(&Memory->MainArena, ImguiLayer);
 
-        UILayer->Initialize(Arena, this);
-        editor_cam_controller->Initialize(Arena, CurrentWindow);
-        editor_scene->Initialize(Arena, Configuration->ActiveSceneName.c_str());
+        UILayer->Initialize(&Memory->MainArena, this);
+        editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow);
+        editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str());
 
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;

@@ -13,6 +13,7 @@
 #include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <ZEngine/Windows/CoreWindow.h>
+#include <cstdlib>
 #include <filesystem>
 
 using namespace std::chrono_literals;
@@ -142,13 +143,38 @@ namespace ZEngine::Hardwares
 
 #ifdef __APPLE__
         enabled_extension_layer_name_collection.push(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+        enabled_extension_layer_name_collection.push(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
 #endif
         instance_create_info.enabledLayerCount       = enabled_layer_name_collection.size();
         instance_create_info.ppEnabledLayerNames     = enabled_layer_name_collection.data();
         instance_create_info.enabledExtensionCount   = enabled_extension_layer_name_collection.size();
         instance_create_info.ppEnabledExtensionNames = enabled_extension_layer_name_collection.data();
 
-        VkResult result                              = vkCreateInstance(&instance_create_info, nullptr, &Instance);
+#ifdef __APPLE__
+        // Metal argument buffers require useResource tracking for every bindless texture slot.
+        // MoltenVK 1.4 does not mark all textures in a large bindless array as used on the encoder,
+        // causing MTLResourceUsage faults when sampling textures added after the first draw.
+        // Disable argument buffers to use the explicit resource-binding path.
+        VkBool32          mvk_arg_buffers = VK_FALSE;
+        VkLayerSettingEXT mvk_settings[]  = {
+            {
+             .pLayerName   = "MoltenVK",
+             .pSettingName = "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS",
+             .type         = VK_LAYER_SETTING_TYPE_BOOL32_EXT,
+             .valueCount   = 1,
+             .pValues      = &mvk_arg_buffers,
+             }
+        };
+        VkLayerSettingsCreateInfoEXT mvk_layer_settings_create_info = {
+            .sType        = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
+            .pNext        = nullptr,
+            .settingCount = 1,
+            .pSettings    = mvk_settings,
+        };
+        instance_create_info.pNext = &mvk_layer_settings_create_info;
+#endif
+
+        VkResult result = vkCreateInstance(&instance_create_info, nullptr, &Instance);
 
         if (result == VK_ERROR_INCOMPATIBLE_DRIVER)
         {
@@ -2379,11 +2405,11 @@ namespace ZEngine::Hardwares
         return handle;
     }
 
-    void VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data)
+    BufferView VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data)
     {
         if (!handle.Valid() || !(data) || !(command_buf))
         {
-            return;
+            return {};
         }
 
         auto       resource       = GlobalTextures.Access(handle);
@@ -2392,7 +2418,7 @@ namespace ZEngine::Hardwares
         BufferView staging_buffer = CreateBuffer(resource->BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
         MapAndCopyToMemory(staging_buffer, resource->BufferSize, data);
         command_buf->CopyBufferToImage(staging_buffer, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)]);
-        EnqueueBufferForDeletion(staging_buffer);
+        return staging_buffer;
     }
 
     Rendering::Renderers::RenderPasses::RenderPass* VulkanDevice::CreateRenderPass(const Rendering::Specifications::RenderPassSpecification& spec)

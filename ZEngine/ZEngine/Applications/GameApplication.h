@@ -2,6 +2,7 @@
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Controllers/ICameraController.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/TimeStep.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Rendering/Scenes/GraphicScene.h>
@@ -32,7 +33,7 @@ namespace ZEngine::Applications
         cstring                           WorkingSpacePath    = nullptr;
         Windows::WindowConfiguration      WindowCfg           = {};
 
-        Core::Memory::ArenaAllocator*     Arena               = nullptr;
+        Core::Memory::MemoryManager*      Memory              = nullptr;
         Windows::CoreWindowPtr            CurrentWindow       = nullptr;
         ApplicationStatePtr               State               = nullptr;
         AppRenderPipelinePtr              RenderPipeline      = nullptr;
@@ -42,7 +43,9 @@ namespace ZEngine::Applications
         Core::VFS::VFSContext             VFS                 = {};
         Core::VFS::IVFSContext*           GetVFSContext();
 
-        void                              Initialize(Core::Memory::ArenaAllocator* arena);
+        Core::VFS::VFSContext             VFS                 = {};
+        Core::VFS::IVFSContext*           GetVFSContext();
+        void                              Initialize(Core::Memory::MemoryManager* memory);
         void                              Update(Core::TimeStep dt);
         void                              ProcessEvent(Core::CoreEvent&);
         void                              Run();

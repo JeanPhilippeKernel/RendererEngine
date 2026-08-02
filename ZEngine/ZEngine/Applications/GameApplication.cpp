@@ -3,17 +3,17 @@
 
 namespace ZEngine::Applications
 {
-    void GameApplication::Initialize(Core::Memory::ArenaAllocator* arena)
+    void GameApplication::Initialize(Core::Memory::MemoryManager* memory)
     {
-        Arena = arena;
+        Memory = memory;
 
-        State = ZPushStructCtor(Arena, ApplicationState);
+        State  = ZPushStructCtor(&Memory->MainArena, ApplicationState);
 
         VFS.Initialize(Arena);
         OnInitializing();
         OverrideWindowConfiguration();
 
-        Engine::Initialize(Arena, &WindowCfg, this);
+        Engine::Initialize(&Memory->MainArena, &WindowCfg, this);
 
         OnInitialized();
     }

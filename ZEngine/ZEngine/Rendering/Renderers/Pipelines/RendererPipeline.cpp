@@ -153,12 +153,15 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             }
         }
 
+        // MoltenVK dereferences pAttachments unconditionally even when attachmentCount == 0,
+        // so provide a dummy entry for depth-only pipelines to avoid a null-pointer fault.
+        VkPipelineColorBlendAttachmentState dummy_attachment              = {};
         VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {};
         color_blend_state_create_info.sType                               = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         color_blend_state_create_info.logicOpEnable                       = VK_FALSE;
         color_blend_state_create_info.logicOp                             = VK_LOGIC_OP_COPY; // Optional
         color_blend_state_create_info.attachmentCount                     = color_blend_attachment_states.size();
-        color_blend_state_create_info.pAttachments                        = color_blend_attachment_states.data();
+        color_blend_state_create_info.pAttachments                        = (attachment_count > 0) ? color_blend_attachment_states.data() : &dummy_attachment;
         color_blend_state_create_info.blendConstants[0]                   = 0.0f; // Optional
         color_blend_state_create_info.blendConstants[1]                   = 0.0f; // Optional
         color_blend_state_create_info.blendConstants[2]                   = 0.0f; // Optional

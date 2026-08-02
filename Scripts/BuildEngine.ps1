@@ -43,10 +43,7 @@ param (
 
     [Parameter(HelpMessage = "VS version use to build, default to 2022")]
     [ValidateSet('2022', '2026')]
-    [int] $VsVersion = 2026,
-
-    [Parameter(HelpMessage = "Build Launcher only")]
-    [switch] $LauncherOnly
+    [int] $VsVersion = 2026
 )
 
 $ErrorActionPreference = "Stop"
@@ -110,14 +107,6 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
 
     [string]$cMakeCacheVariableOverride = ""
 
-    $submoduleCMakeOptions = @{
-        'LAUNCHER_ONLY' = @("-DLAUNCHER_ONLY=ON")
-    }
-
-    if($LauncherOnly) {
-        $cMakeCacheVariableOverride += ' ' + $submoduleCMakeOptions.LAUNCHER_ONLY -join ' '
-    } 
-
     # Define CMake Generator arguments
     $configName = $systemName, $architecture, $configuration -join "_"
 
@@ -176,32 +165,29 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     }
 }
 
-if(-Not $LauncherOnly) {
+# Run Clang format
+if ($RunClangFormat) {
+    [string]$clangFormatScript = Join-Path $PSScriptRoot -ChildPath "ClangFormat.ps1"
+    [string[]]$srcDirectories = @(
+        (Join-Path $repositoryRootPath -ChildPath "ZEngine"),
+        (Join-Path $repositoryRootPath -ChildPath "Obelisk"),
+        (Join-Path $repositoryRootPath -ChildPath "Tetragrama"),
+        (Join-Path $repositoryRootPath -ChildPath "Resources/Shaders")
+    )
 
-    # Run Clang format
-    if ($RunClangFormat) {
-        [string]$clangFormatScript = Join-Path $PSScriptRoot -ChildPath "ClangFormat.ps1"
-        [string[]]$srcDirectories = @(
-            (Join-Path $repositoryRootPath -ChildPath "ZEngine"),
-            (Join-Path $repositoryRootPath -ChildPath "Obelisk"),
-            (Join-Path $repositoryRootPath -ChildPath "Tetragrama"),
-            (Join-Path $repositoryRootPath -ChildPath "Resources/Shaders")
-        )
-    
-        foreach ($directory in $srcDirectories) {
-            [string[]]$clangFormatArgs = @('-File', $clangFormatScript, '-SourceDirectory', $directory)
-            if ($VerifyFormatting) { $clangFormatArgs += '-RunAsCheck' }
-            & pwsh @clangFormatArgs
-    
-            if ($LASTEXITCODE -ne 0) {
-                Write-Error "Stopped build process..." -ErrorAction Stop
-            }
+    foreach ($directory in $srcDirectories) {
+        [string[]]$clangFormatArgs = @('-File', $clangFormatScript, '-SourceDirectory', $directory)
+        if ($VerifyFormatting) { $clangFormatArgs += '-RunAsCheck' }
+        & pwsh @clangFormatArgs
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Stopped build process..." -ErrorAction Stop
         }
     }
+}
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Stopped build process..." -ErrorAction Stop
-    }
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Stopped build process..." -ErrorAction Stop
 }
 
 # Run Engine Build

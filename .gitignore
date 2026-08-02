@@ -38,14 +38,9 @@ bld/
 [Rr]esult.[Dd]arwin.[Aa][Rr][Mm]64.[Dd]ebug/
 [Rr]esult.[Dd]arwin.[Aa][Rr][Mm]64.[Rr]elease/
 
-# Submodules folder
-__externals/fmt
-__externals/imgui/src
-__externals/imgui/src/examples/example_glfw_vulkan/out/
-__externals/SDL2
-__externals/stb
-__externals/spdlog
-__externals/nuget
+# FetchContent cache (legacy __externals/ path and default _deps/)
+__externals/
+_deps/
 
 # Shader cache file folder
 Resources/Shaders/Cache

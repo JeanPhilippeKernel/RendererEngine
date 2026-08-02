@@ -19,27 +19,31 @@ int applicationEntryPoint(int argc, char* argv[])
 {
     CrashHandler::Install("Obelisk", "1.0.0", "CrashDumps");
 
-    MemoryManager       manager = {};
-    MemoryConfiguration config  = {.BufferSize = ZGiga(3u)};
-    manager.Initialize(config);
-    auto                arena      = &(manager.MainArena);
-
-    LoggerConfiguration logger_cfg = {};
-    Logger::Initialize(arena, logger_cfg);
-
-    Helpers::ThreadPoolHelper::Initialize();
-
-    GameApplicationPtr app = nullptr;
-
-    CLI::App           cli{"ObeliskCLI"};
+    CLI::App cli{"ObeliskCLI"};
     argv                      = cli.ensure_utf8(argv);
-
     std::string config_file   = "";
     bool        launch_editor = false;
     cli.add_option("--projectConfigFile", config_file, "The project config file");
-    cli.add_option("--launchEditor", launch_editor, "The project config file");
+    cli.add_option("--launchEditor", launch_editor, "Activate the editor");
 
     CLI11_PARSE(cli, argc, argv);
+
+    MemoryManager manager = {};
+    manager.Initialize(ZGiga(3u), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
+
+    Helpers::ThreadPoolHelper::Initialize();
+
+    ArenaAllocator      logger_arena = {};
+    LoggerConfiguration logger_cfg   = {};
+    manager.CreateBudgetedArena(manager.Budget.Logging, &logger_arena);
+    Logger::Initialize(&logger_arena, logger_cfg);
+
+    auto arena                = &(manager.MainArena);
+    auto config_file_str_size = config_file.size() + 1;
+    auto config_file_str      = ZPushString(arena, config_file_str_size);
+    Helpers::secure_strncpy(config_file_str, config_file_str_size, config_file.c_str(), config_file.size());
+
+    GameApplicationPtr app = nullptr;
 
     if (launch_editor)
     {
@@ -47,12 +51,9 @@ int applicationEntryPoint(int argc, char* argv[])
         app->EnableRenderOverlay = true;
     }
 
-    auto config_file_str_size = config_file.size() + 1;
-    auto config_file_str      = ZPushString(arena, config_file_str_size);
-    Helpers::secure_strncpy(config_file_str, config_file_str_size, config_file.c_str(), config_file.size());
     app->ConfigFile = config_file_str;
 
-    app->Initialize(arena);
+    app->Initialize(&manager);
     app->Run();
     app->Shutdown();
 
