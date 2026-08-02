@@ -58,7 +58,7 @@ class VFSMountTableTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        m_manager.Initialize({.BufferSize = ZKilo(256)});
+        m_manager.Initialize(ZKilo(256), {});
         m_table.Initialize(&m_manager.MainArena, 8);
     }
     void TearDown() override
@@ -165,7 +165,7 @@ class VFSContextTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        m_manager.Initialize({.BufferSize = ZKilo(256)});
+        m_manager.Initialize(ZKilo(256), {});
         m_ctx.Initialize(&m_manager.MainArena, 8);
     }
     void TearDown() override

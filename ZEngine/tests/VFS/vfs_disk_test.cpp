@@ -30,7 +30,7 @@ class VFSDiskBackendTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        m_manager.Initialize({.BufferSize = ZKilo(256)});
+        m_manager.Initialize(ZKilo(256), {});
 
         m_root.init(&m_manager.MainArena, (std::filesystem::temp_directory_path() / "zengine_vfs_disk_tests").string().c_str());
 
