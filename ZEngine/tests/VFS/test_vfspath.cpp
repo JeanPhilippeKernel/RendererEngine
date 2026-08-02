@@ -81,7 +81,7 @@ TEST(VFSPathParse, RootEscapeFails)
 TEST(VFSPathParse, TooLongFails)
 {
     MemoryManager mgr;
-    mgr.Initialize({.BufferSize = ZKilo(64)});
+    mgr.Initialize(ZKilo(64), {});
 
     String             huge = Repeat(&mgr.MainArena, 300, 'a');
     VFSResult<VFSPath> r    = VFSPath::Parse(huge.c_str());
@@ -202,7 +202,7 @@ TEST(VFSPathCompose, OperatorSlash)
 TEST(VFSPathCompose, AppendTooLongFails)
 {
     MemoryManager mgr;
-    mgr.Initialize({.BufferSize = ZKilo(64)});
+    mgr.Initialize(ZKilo(64), {});
 
     String base_str;
     base_str.init(&mgr.MainArena, 256);
@@ -273,7 +273,7 @@ TEST(VFSPathToNative, UsesPlatformSeparator)
     MustParse("/a/b").ToNative(buffer, sizeof(buffer));
 
     MemoryManager mgr;
-    mgr.Initialize({.BufferSize = ZKilo(64)});
+    mgr.Initialize(ZKilo(64), {});
 
     String expected;
     expected.init(&mgr.MainArena, "/a/b");

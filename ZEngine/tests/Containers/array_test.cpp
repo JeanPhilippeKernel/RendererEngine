@@ -11,7 +11,7 @@ class ArrayTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        manager.Initialize({.BufferSize = 200});
+        manager.Initialize(200, {});
     }
 
     void TearDown() override

@@ -12,7 +12,7 @@ class InitializerListTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        manager.Initialize({.BufferSize = 512});
+        manager.Initialize(512, {});
     }
 
     void TearDown() override

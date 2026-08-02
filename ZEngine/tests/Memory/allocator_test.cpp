@@ -9,14 +9,14 @@ using namespace ZEngine::Core::Memory;
 TEST(AllocatorTest, ArenaInit)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = 200});
+    manager.Initialize(200, {});
     manager.Shutdown();
 }
 
 TEST(AllocatorTest, ArenaAllocate)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = 200});
+    manager.Initialize(200, {});
     auto arena = manager.MainArena;
 
     for (int i = 0; i < 10; ++i)
@@ -59,7 +59,7 @@ TEST(AllocatorTest, ArenaStruct)
     };
 
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = 200});
+    manager.Initialize(200, {});
     auto arena  = &(manager.MainArena);
 
     auto fooPtr = (Foo*) arena->Allocate(sizeof(Foo));
@@ -74,7 +74,7 @@ TEST(AllocatorTest, ArenaMemoryManager)
 {
     MemoryManager manager{};
 
-    manager.Initialize(MemoryConfiguration{.BufferSize = ZKilo(8)});
+    manager.Initialize(ZKilo(8), {});
 
     struct Foo
     {
@@ -121,7 +121,7 @@ void ComPareFoo(ArenaAllocator* arena, const Foo& f)
 TEST(AllocatorTest, ArenaMemoryTemp)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(10)});
+    manager.Initialize(ZKilo(10), {});
     auto arena = &(manager.MainArena);
     {
         auto fooPtr  = ZPushStruct(arena, Foo);
@@ -142,7 +142,7 @@ TEST(AllocatorTest, ArenaMemoryTemp)
 TEST(AllocatorTest, ArenaMemoryPool)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(10)});
+    manager.Initialize(ZKilo(10), {});
     auto arena = &(manager.MainArena);
     {
         PoolAllocator pool;
@@ -164,7 +164,7 @@ TEST(AllocatorTest, ArenaMemoryPool)
 TEST(AllocatorTest, ArenaAllocateAlignment)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto arena = &(manager.MainArena);
 
     for (size_t alignment : {1u, 8u, 16u, 64u})
@@ -180,7 +180,7 @@ TEST(AllocatorTest, ArenaAllocateAlignment)
 TEST(AllocatorTest, ArenaAllocateZeroesMemory)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto             arena = &(manager.MainArena);
 
     constexpr size_t sz    = 64;
@@ -196,7 +196,7 @@ TEST(AllocatorTest, ArenaAllocateZeroesMemory)
 TEST(AllocatorTest, ArenaAllocateOOM)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = 128});
+    manager.Initialize(128, {});
     auto  arena = &(manager.MainArena);
 
     void* ptr   = arena->Allocate(256);
@@ -207,7 +207,7 @@ TEST(AllocatorTest, ArenaAllocateOOM)
 TEST(AllocatorTest, ArenaResizeSlowPath)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto arena = &(manager.MainArena);
 
     int* a     = reinterpret_cast<int*>(arena->Allocate(sizeof(int)));
@@ -225,7 +225,7 @@ TEST(AllocatorTest, ArenaResizeSlowPath)
 TEST(AllocatorTest, ArenaResizeInPlaceShrink)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto             arena  = &(manager.MainArena);
 
     constexpr size_t old_sz = 32;
@@ -245,7 +245,7 @@ TEST(AllocatorTest, ArenaResizeInPlaceShrink)
 TEST(AllocatorTest, ArenaResizeNullDelegatesToAllocate)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto  arena = &(manager.MainArena);
 
     void* ptr   = arena->Resize(nullptr, 0, sizeof(int));
@@ -256,7 +256,7 @@ TEST(AllocatorTest, ArenaResizeNullDelegatesToAllocate)
 TEST(AllocatorTest, ArenaShutdownIdempotent)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     manager.Shutdown();
     EXPECT_NO_FATAL_FAILURE(manager.Shutdown());
 }
@@ -264,7 +264,7 @@ TEST(AllocatorTest, ArenaShutdownIdempotent)
 TEST(AllocatorTest, ArenaSubArenaLifecycle)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(64)});
+    manager.Initialize(ZKilo(64), {});
     auto           parent = &(manager.MainArena);
 
     ArenaAllocator sub{};
@@ -291,7 +291,7 @@ TEST(AllocatorTest, ArenaSubArenaLifecycle)
 TEST(AllocatorTest, TempArenaRestoresOffsets)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto arena = &(manager.MainArena);
 
     arena->Allocate(32);
@@ -313,7 +313,7 @@ TEST(AllocatorTest, TempArenaRestoresOffsets)
 TEST(AllocatorTest, PoolExhaustion)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto             arena       = &(manager.MainArena);
 
     constexpr size_t chunk_count = 4;
@@ -331,7 +331,7 @@ TEST(AllocatorTest, PoolExhaustion)
 TEST(AllocatorTest, PoolFreeRestoresSlot)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto          arena = &(manager.MainArena);
 
     PoolAllocator pool;
@@ -351,7 +351,7 @@ TEST(AllocatorTest, PoolFreeRestoresSlot)
 TEST(AllocatorTest, PoolClearResetsAllSlots)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto             arena       = &(manager.MainArena);
 
     constexpr size_t chunk_count = 8;
@@ -376,7 +376,7 @@ TEST(AllocatorTest, PoolClearResetsAllSlots)
 TEST(AllocatorTest, PoolChunkSizeAlignedUp)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(4)});
+    manager.Initialize(ZKilo(4), {});
     auto             arena     = &(manager.MainArena);
 
     constexpr size_t raw_chunk = 3;

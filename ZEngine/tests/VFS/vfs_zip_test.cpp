@@ -51,7 +51,7 @@ class VFSZipBackendTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        m_manager.Initialize({.BufferSize = ZKilo(512)});
+        m_manager.Initialize(ZKilo(512), {});
 
         m_archive.init(&m_manager.MainArena, (std::filesystem::temp_directory_path() / "zengine_vfs_zip_tests.zip").string().c_str());
 
@@ -250,7 +250,7 @@ TEST_F(VFSZipBackendTest, CapabilitiesAndType)
 TEST(VFSContextOverlayTest, ZipOverridesLowerPriorityDisk)
 {
     MemoryManager manager{};
-    manager.Initialize({.BufferSize = ZKilo(512)});
+    manager.Initialize(ZKilo(512), {});
 
     String disk_root;
     disk_root.init(&manager.MainArena, (std::filesystem::temp_directory_path() / "zengine_vfs_overlay_disk").string().c_str());
