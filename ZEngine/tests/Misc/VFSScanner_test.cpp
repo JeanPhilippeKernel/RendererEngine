@@ -147,8 +147,8 @@ protected:
 
     void              SetUp() override
     {
-        m_cache_mgr.Initialize({.BufferSize = ZMega(16)});
-        m_scan_mgr.Initialize({.BufferSize = ZMega(64)});
+        m_cache_mgr.Initialize(ZMega(16), {});
+        m_scan_mgr.Initialize(ZMega(64), {});
         m_scan_arena = &m_scan_mgr.MainArena;
         m_cache.Initialize(&m_cache_mgr.MainArena);
         m_scanner.Initialize(m_scan_arena); // slot arenas reuse this arena's page size

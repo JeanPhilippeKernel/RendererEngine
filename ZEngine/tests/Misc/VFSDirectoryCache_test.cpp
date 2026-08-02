@@ -20,7 +20,7 @@ protected:
 
     void              SetUp() override
     {
-        m_manager.Initialize({.BufferSize = ZMega(16)});
+        m_manager.Initialize(ZMega(16), {});
         m_arena = &m_manager.MainArena;
         m_cache.Initialize(m_arena);
     }

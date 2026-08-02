@@ -43,8 +43,6 @@ namespace ZEngine::Applications
         Core::VFS::VFSContext             VFS                 = {};
         Core::VFS::IVFSContext*           GetVFSContext();
 
-        Core::VFS::VFSContext             VFS                 = {};
-        Core::VFS::IVFSContext*           GetVFSContext();
         void                              Initialize(Core::Memory::MemoryManager* memory);
         void                              Update(Core::TimeStep dt);
         void                              ProcessEvent(Core::CoreEvent&);

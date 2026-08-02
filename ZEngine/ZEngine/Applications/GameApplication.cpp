@@ -9,7 +9,8 @@ namespace ZEngine::Applications
 
         State  = ZPushStructCtor(&Memory->MainArena, ApplicationState);
 
-        VFS.Initialize(Arena);
+        // TODO: move to engine context
+        VFS.Initialize(&Memory->MainArena);
         OnInitializing();
         OverrideWindowConfiguration();
 
