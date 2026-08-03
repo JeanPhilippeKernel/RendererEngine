@@ -43,8 +43,10 @@ namespace Tetragrama
 
     void Editor::OverrideWindowConfiguration()
     {
-        std::string title     = fmt::format("{0} - Active Scene : {1}", Configuration->ProjectName.c_str(), Configuration->ActiveSceneName.c_str());
-        WindowCfg.EnableVsync = true;
+        const char* project_name = Configuration->ProjectName.empty() ? "ZEngine Editor" : Configuration->ProjectName.c_str();
+        const char* scene_name   = Configuration->ActiveSceneName.empty() ? "<empty scene>" : Configuration->ActiveSceneName.c_str();
+        std::string title        = fmt::format("{0} - Active Scene : {1}", project_name, scene_name);
+        WindowCfg.EnableVsync    = true;
         WindowCfg.Title.init(&Memory->MainArena, title.c_str());
     }
 

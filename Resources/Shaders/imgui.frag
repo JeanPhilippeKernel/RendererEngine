@@ -2,6 +2,7 @@
 #extension GL_EXT_nonuniform_qualifier : require
 
 layout(location = 0) out vec4 fColor;
+layout(set = 0, binding = 0) uniform sampler _unused;
 layout(set = 1, binding = 0) uniform texture2D TextureArray[];
 layout(set = 1, binding = 1) uniform sampler LinearWrapSampler;
 
@@ -15,5 +16,11 @@ void main()
 {
     uint texId  = uint(floor(In.TexData.z + 0.5));
     vec4 texVal = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearWrapSampler), In.TexData.xy);
-    fColor      = In.Color * texVal;
+    // texId is runtime; this branch is never taken but prevents the optimizer from
+    // stripping the set=0 _unused binding required by the engine's descriptor layout rules.
+    if (texId == uint(-1))
+    {
+        texVal += texture(sampler2D(TextureArray[0], _unused), In.TexData.xy);
+    }
+    fColor = In.Color * texVal;
 }
