@@ -28,8 +28,7 @@ namespace Tetragrama
             ZENGINE_CORE_WARN("Editor Scene name is empty")
 
             cstring active_scene = "<empty scene>";
-            Configuration->ActiveSceneName.clear();
-            Configuration->ActiveSceneName.append(active_scene);
+            Configuration->ActiveSceneName.init(&Memory->MainArena, active_scene);
         }
         WorkingSpacePath = Configuration->WorkingSpacePath.c_str();
         if (WorkingSpacePath && WorkingSpacePath[0] != '\0')
