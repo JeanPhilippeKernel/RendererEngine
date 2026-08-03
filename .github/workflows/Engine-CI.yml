@@ -2,9 +2,9 @@ name: Engine CI
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ master, develop ]
+    branches: [ main, develop ]
   workflow_dispatch:
     inputs:
       run_debug:
