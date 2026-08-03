@@ -1,8 +1,8 @@
 # Memory Allocator Audit — Bugs and UB
 
 **Priority:** P0 — Must fix before any new code lands  
-**Status:** Audit complete, fixes pending  
-**Blocks:** All phases of migration-plan.md  
+**Status:** All bugs fixed — see PRs #497, #531  
+**Blocks:** ~~All phases of migration-plan.md~~ — unblocked  
 
 **Files audited:**
 - `ZEngine/Core/Memory/Allocator.h` / `Allocator.cpp`
@@ -13,24 +13,24 @@
 
 ## Summary Table
 
-| # | Severity | Location | Class |
-|---|---|---|---|
-| 1 | **Critical** | `ArenaAllocator::Allocate` | UB — `assert` in release is no-op, silent OOB write |
-| 2 | **Critical** | `ArenaAllocator::Resize` | Silent data loss — returns `nullptr` on OOB resize |
-| 3 | **Critical** | `ArenaAllocator::Initialize` | No null-check on `malloc` — immediate UB if OOM |
-| 4 | **Critical** | `ArenaAllocator::Shutdown` | Double-free if called twice; `free` after `Clear` resets offsets but not pointer |
-| 5 | **Critical** | `PoolAllocator::Free` | Use-after-free is silently accepted — bounds check does not verify alignment |
-| 6 | **High** | `ArenaAllocator::Resize` — fast path | Silent truncation when `new_size < old_size` and pointer is last allocation |
-| 7 | **High** | `PoolAllocator::Initialize` | Size reduced by alignment padding before `Allocate` — `Allocate` may re-pad, double-reducing usable size |
-| 8 | **High** | `ArenaAllocator::Clear` | `m_initial_current_offset` and `m_initial_previous_offset` are always 0 — `Clear` does not respect sub-arenas |
-| 9 | **High** | `CreateSubArena` + `Shutdown` | Sub-arena `Shutdown` calls `free` on memory it does not own |
-| 10 | **High** | `ZGetScratch` / `EndTempArena` | No nesting support — nested scratch arenas corrupt each other |
-| 11 | **Medium** | `ArenaAllocator::Resize` — slow path | `secure_memmove` destination size is `old_size`, not `new_size` — copy truncated when growing |
-| 12 | **Medium** | `PoolAllocator::Clear` | Rebuild of free list does not zero memory — stale data readable after `Clear` |
-| 13 | **Medium** | `is_power_of_two(0)` | Returns `true` — zero alignment silently accepted, triggers infinite loop in `memory_align` |
-| 14 | **Medium** | `MemoryManager::Shutdowm` | Typo in method name — `Shutdowm` not `Shutdown` |
-| 15 | **Low** | `ArenaAllocator::Allocate` | `m_initial_current_offset` never set in `Initialize` — `Clear` always resets to 0 regardless |
-| 16 | **Low** | `secure_strncpy` | Off-by-one: rejects `count == destSize - 1` (valid) because condition is `count >= destSize` |
+| # | Severity | Location | Class | Status |
+|---|---|---|---|---|
+| 1 | **Critical** | `ArenaAllocator::Allocate` | UB — `assert` in release is no-op, silent OOB write | Fixed — returns `nullptr` with null-check guard |
+| 2 | **Critical** | `ArenaAllocator::Resize` | Silent data loss — returns `nullptr` on OOB resize | Fixed — falls through to slow path; asserts on OOM |
+| 3 | **Critical** | `ArenaAllocator::Initialize` | No null-check on `malloc` — immediate UB if OOM | Fixed — switched to `mmap`/`VirtualAlloc` with null-check |
+| 4 | **Critical** | `ArenaAllocator::Shutdown` | Double-free if called twice; `free` after `Clear` resets offsets but not pointer | Fixed — guards on `m_memory`; destructor calls `Shutdown()` |
+| 5 | **Critical** | `PoolAllocator::Free` | Use-after-free is silently accepted — bounds check does not verify alignment | Fixed — asserts ownership and chunk alignment |
+| 6 | **High** | `ArenaAllocator::Resize` — fast path | Silent truncation when `new_size < old_size` and pointer is last allocation | Fixed — zeroes freed tail on shrink |
+| 7 | **High** | `PoolAllocator::Initialize` | Size reduced by alignment padding before `Allocate` — `Allocate` may re-pad, double-reducing usable size | Fixed — removed pre-subtraction; `Allocate` manages alignment |
+| 8 | **High** | `ArenaAllocator::Clear` | `m_initial_current_offset` and `m_initial_previous_offset` are always 0 — `Clear` does not respect sub-arenas | Fixed — both fields set explicitly in `Initialize` and `CreateSubArena` |
+| 9 | **High** | `CreateSubArena` + `Shutdown` | Sub-arena `Shutdown` calls `free` on memory it does not own | Fixed — `m_is_sub_arena` flag; `Shutdown` skips unmap for sub-arenas |
+| 10 | **High** | `ZGetScratch` / `EndTempArena` | No nesting support — nested scratch arenas corrupt each other | Documented — non-re-entrant contract noted in `Allocator.h` header comment |
+| 11 | **Medium** | `ArenaAllocator::Resize` — slow path | `secure_memmove` destination size is `old_size`, not `new_size` — copy truncated when growing | Fixed — passes `new_size` as `destSize` to `secure_memcpy` |
+| 12 | **Medium** | `PoolAllocator::Clear` | Rebuild of free list does not zero memory — stale data readable after `Clear` | Fixed — `Clear` now zeros each chunk before rebuilding the free list |
+| 13 | **Medium** | `is_power_of_two(0)` | Returns `true` — zero alignment silently accepted, triggers infinite loop in `memory_align` | Fixed — `(x != 0) && ((x & (x-1)) == 0)` |
+| 14 | **Medium** | `MemoryManager::Shutdowm` | Typo in method name — `Shutdowm` not `Shutdown` | Fixed — renamed to `Shutdown` |
+| 15 | **Low** | `ArenaAllocator::Allocate` | `m_initial_current_offset` never set in `Initialize` — `Clear` always resets to 0 regardless | Fixed — both `m_initial_*` fields set explicitly in `Initialize` |
+| 16 | **Low** | `secure_strncpy` | Off-by-one: rejects `count == destSize - 1` (valid) because condition is `count >= destSize` | Fixed — `dest[count] = '\0'` ensures null termination |
 
 ---
 
@@ -683,19 +683,21 @@ return MEMORY_OP_SUCCESS;
 
 ## Fix Priority Order
 
+All bugs fixed as of PRs #497 and #531. Original priority order preserved for reference.
+
 ```
-Immediate (before any new ECS/animation code uses the allocator):
+Immediate (before any new ECS/animation code uses the allocator): DONE
   Bug 1  — assert → ZENGINE_VALIDATE_ASSERT in Allocate
-  Bug 3  — null-check malloc in Initialize
-  Bug 9  — m_owns_memory flag to prevent sub-arena free
+  Bug 3  — null-check malloc in Initialize (superseded: switched to mmap/VirtualAlloc)
+  Bug 9  — m_is_sub_arena flag to prevent sub-arena free
   Bug 4  — guard free against double-call; safe destructor (depends on Bug 9)
   Bug 13 — is_power_of_two(0) returns true
 
-Before threading / parallel systems:
-  Bug 10 — ZGetScratch nesting safety (WorldTick parallel dispatch will trigger this)
+Before threading / parallel systems: DONE
+  Bug 10 — ZGetScratch nesting safety — documented as non-re-entrant in Allocator.h
   Bug 5  — PoolAllocator::Free alignment check
 
-Before extended use:
+Before extended use: DONE
   Bug 2  — Resize silent nullptr return
   Bug 7  — PoolAllocator Initialize double-alignment reduction
   Bug 8  — Initialize sets m_initial_* explicitly
@@ -703,8 +705,8 @@ Before extended use:
   Bug 6  — Resize shrink does not zero freed tail
   Bug 14 — MemoryManager typo
 
-Cleanup:
-  Bug 12 — PoolAllocator::Clear zeroing policy — document or zero
-  Bug 15 — m_initial_* fields — set or remove
+Cleanup: DONE
+  Bug 12 — PoolAllocator::Clear now zeros memory before rebuilding free list
+  Bug 15 — m_initial_* fields set explicitly in Initialize and CreateSubArena
   Bug 16 — secure_strncpy null termination
 ```

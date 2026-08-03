@@ -1,6 +1,6 @@
 # ZEngine — Execution Plan
 
-**Date:** 2026-06-25  
+**Date:** 2026-06-25 (last updated: 2026-08-02)
 **Team:** 2 engineers  
 **Horizon:** 12 months (V1) + 4 months (next-year plans)  
 **Based on:** All 50 validated design documents — 5 validation rounds, 0 blocking gaps
@@ -22,60 +22,62 @@ when those headers are deleted. Missing this causes a build break.
 
 ## Month 1 — Foundation (Sprints 1–2)
 
-### Sprint 1 (Days 1–10) — Unblock everything
+### Sprint 1 (Days 1–10) — Unblock everything [COMPLETE]
 
 Both engineers work in parallel from day 1. These are the absolute prerequisites —
 nothing else can safely start until they are done.
 
 **Engineer A — Allocator + Lifecycle**
 
-| Task | Days | Hard dependency |
-|---|---|---|
-| Fix allocator P0 bugs 1, 3, 4, 9, 13 (`memory-allocator-audit.md`) | 3 | None — start here |
-| Fix allocator remaining bugs 2, 5–8, 10–12, 14–16 | 2 | P0 bugs done |
-| Rewrite `Engine::Initialize` per `engine-lifecycle.md` §6 — **Sprint 1 scope only: Steps 6–10, 12, 22–25** (pre-conditions, Window, Device, AssetManager, AppRenderPipeline, RenderThread, MainThreadRun). Steps 11 (VFS), 13–21 (ECS/Physics/Audio/Network) are commented placeholders that increment `g_init_step` only — do not implement until their subsystem sprint. | 3 | Allocator bugs |
-| Add `CrashHandler::Install/Uninstall` to `Obelisk/EntryPoint.cpp` + fix typo | 0.5 | None |
-| `MemoryBudgetConfig::Default()` + `CreateBudgetedArena` helper | 1.5 | Allocator bugs |
+| Task | Days | Hard dependency | Status |
+|---|---|---|---|
+| Fix allocator P0 bugs 1, 3, 4, 9, 13 (`memory-allocator-audit.md`) | 3 | None — start here | Done — PRs #497, #531 |
+| Fix allocator remaining bugs 2, 5–8, 10–12, 14–16 | 2 | P0 bugs done | Done — PRs #497, #531 |
+| Rewrite `Engine::Initialize` per `engine-lifecycle.md` §6 — **Sprint 1 scope only: Steps 6–10, 12, 22–25** (pre-conditions, Window, Device, AssetManager, AppRenderPipeline, RenderThread, MainThreadRun). Steps 11 (VFS), 13–21 (ECS/Physics/Audio/Network) are commented placeholders that increment `g_init_step` only — do not implement until their subsystem sprint. | 3 | Allocator bugs | Done — Window, Device, AssetManager, RenderPipeline, RenderThread wired |
+| Add `CrashHandler::Install/Uninstall` to `Obelisk/EntryPoint.cpp` + fix typo | 0.5 | None | Done — PR #551 |
+| `MemoryBudgetConfig::Default()` + `CreateBudgetedArena` helper | 1.5 | Allocator bugs | Done — `MemoryBudgetConfig`, `CreateBudgetedArena` in `MemoryManager.h` |
 
 **Engineer B — VFS foundation + Build**
 
-| Task | Days | Hard dependency |
-|---|---|---|
-| VFS Ticket 1: `VFSPath`, `VFSResult<T>`, `IVFSFile`, `IVFSBackend`, `VFSDiskContext` | 2.5 | None — start here |
-| VFS Ticket 5: `.meta` sidecars, `MetaFileIO`, stable UUIDs | 2 | VFS T1 |
-| `build-integration.md`: CMake structure, toolchain files, dependency strategy | 2 | None |
-| Fix minor logging gaps: `LogMessage` struct, `LogEventFn` fn-pointer, `shared_mutex` | 1.5 | None |
+| Task | Days | Hard dependency | Status |
+|---|---|---|---|
+| VFS Ticket 1: `VFSPath`, `VFSResult<T>`, `IVFSFile`, `IVFSBackend`, `VFSDiskContext` | 2.5 | None — start here | Done — PR #530 |
+| VFS Ticket 5: `.meta` sidecars, `MetaFileIO`, stable UUIDs | 2 | VFS T1 | Not done |
+| `build-integration.md`: CMake structure, toolchain files, dependency strategy | 2 | None | Not done |
+| Fix minor logging gaps: `LogMessage` struct, `LogEventFn` fn-pointer, `shared_mutex` | 1.5 | None | Done — `LogMessage`, `LogEventHandler` exist in `Logger.h` |
 
-**Sprint 1 exit gate:** Allocator is safe. `Engine::Initialize` wires Steps 6–10, 12, 22–25 (Window, Device, AssetManager, RenderPipeline, RenderThread). Steps 11 and 13–21 are placeholder stubs. VFS path layer compiles. Build system defined.
+**Sprint 1 exit gate:** Allocator safe. Engine::Initialize wired (Steps 6–10, 12, 22–25). VFS T1 + logging done. CrashHandler live.
+Remaining: VFS T5 (.meta sidecars) and CMake build-integration doc not yet done — carry to Sprint 2.
 
 ---
 
-### Sprint 2 (Days 11–20) — ECS core + VFS mount layer
+### Sprint 2 (Days 11–20) — ECS core + VFS mount layer [IN PROGRESS]
 
 **Engineer A — ECS core**
 
-| Task | Days | Hard dependency |
-|---|---|---|
-| `EntityID`, `ComponentTypeID`, `ArchetypeMask` | 0.5 | Sprint 1 complete |
-| `ComponentStorage<T>` — dense array, generation check, swap-and-pop | 1.5 | Above |
-| `EntityRegistry` — generational free-list | 1 | Above |
-| `ECS::Scene` — CreateEntity, DestroyEntity, AddComponent, ForEach template | 1.5 | Above |
-| `Query<Ts...>` — cached mask | 0.5 | Scene |
-| `ECSTest.cpp` — 8 tests under ASan | 0.5 | Above |
-| Logging policy: channel enum, per-build CMake defines, hot-path macros | 1.5 | Sprint 1 |
-| Memory budget: register arenas with `MemoryProfiler::TrackArena` | 0.5 | Sprint 1 |
+| Task | Days | Hard dependency | Status |
+|---|---|---|---|
+| `EntityID`, `ComponentTypeID`, `ArchetypeMask` | 0.5 | Sprint 1 complete | Not started |
+| `ComponentStorage<T>` — dense array, generation check, swap-and-pop | 1.5 | Above | Not started |
+| `EntityRegistry` — generational free-list | 1 | Above | Not started |
+| `ECS::Scene` — CreateEntity, DestroyEntity, AddComponent, ForEach template | 1.5 | Above | Not started |
+| `Query<Ts...>` — cached mask | 0.5 | Scene | Not started |
+| `ECSTest.cpp` — 8 tests under ASan | 0.5 | Above | Not started |
+| Logging policy: channel enum, per-build CMake defines, hot-path macros | 1.5 | Sprint 1 | Not started |
+| Memory budget: register arenas with `MemoryProfiler::TrackArena` | 0.5 | Sprint 1 | Not started |
 
 **Engineer B — VFS mount + ECS components**
 
-| Task | Days | Hard dependency |
-|---|---|---|
-| VFS Ticket 2: `VFSMountTable`, `VFSContext`, `VFSDiskBackend`, `VFSZipBackend`, `VFSPakBackend` | 4 | VFS T1 |
-| Plain-data ECS components: `TransformComponent`, `NameComponent`, `UUIDComponent`, `MeshComponent`, `LightComponent`, `RigidBodyComponent` | 2 | ECS Scene (sync with A) |
-| Tetragrama: update `LogUIComponent` to use `LogEventFn` function pointer | 0.5 | Logging fixes |
-| Tetragrama: verify no transitive include of `GraphicSceneEntity.h` | 0.5 | None |
+| Task | Days | Hard dependency | Status |
+|---|---|---|---|
+| VFS Ticket 2: `VFSMountTable`, `VFSContext`, `VFSDiskBackend`, `VFSZipBackend`, `VFSPakBackend` | 4 | VFS T1 | Done — `VFSMountTable`, `VFSContext`, `VFSDiskBackend`, `VFSZipBackend` merged in PR #550; `VFSPakBackend` pending |
+| VFS Ticket 5: `.meta` sidecars, `MetaFileIO`, stable UUIDs (carried from Sprint 1) | 2 | VFS T1 | Not started |
+| `build-integration.md`: CMake structure, toolchain files (carried from Sprint 1) | 2 | None | Not started |
+| Plain-data ECS components: `TransformComponent`, `NameComponent`, `UUIDComponent`, `MeshComponent`, `LightComponent`, `RigidBodyComponent` | 2 | ECS Scene (sync with A) | Not started — `TransformComponent`, `NameComponent` exist as old `Rendering::Components`; new ECS variants not yet created |
+| Tetragrama: update `LogUIComponent` to use `LogEventFn` function pointer | 0.5 | Logging fixes | Not started |
+| Tetragrama: verify no transitive include of `GraphicSceneEntity.h` | 0.5 | None | Not started |
 
-**Sprint 2 exit gate:** ECS Scene compiles and 8 tests pass. VFS T1+T2+T5 done.
-New plain-data components exist alongside old ones.
+**Sprint 2 exit gate:** ECS Scene compiles and 8 tests pass. VFS T1+T2+T5 done. New plain-data components exist alongside old ones.
 
 ---
 
@@ -521,15 +523,15 @@ Everything else is parallel to this path.
 
 ## Hard deadlines within V1
 
-| Deadline | Why | Sprint |
-|---|---|---|
-| Allocator P0 bugs done | Nothing else is safe to allocate | Sprint 1 |
-| ECS Scene compiles + tests pass | WorldTick, Actor, all systems gate on this | Sprint 2 |
-| Tetragrama migrated off `Rendering::Components::*` | Sprint 5 deletes those headers | **Before Sprint 5** |
-| VFS T1–T6 done | Import pipeline, audio, animation, scene serialization all block on it | Sprint 4 |
-| WorldCommands deferred queue | Systems cannot spawn entities without it | Sprint 3 |
-| `UploadBuffer` added to RRM | Animation skinning upload blocked | Sprint 5 |
-| Networking spec gaps filled (5d) | Implementation cannot start until spec is clean | Sprint 11 |
+| Deadline | Why | Sprint | Status |
+|---|---|---|---|
+| Allocator P0 bugs done | Nothing else is safe to allocate | Sprint 1 | Done |
+| ECS Scene compiles + tests pass | WorldTick, Actor, all systems gate on this | Sprint 2 | Next |
+| Tetragrama migrated off `Rendering::Components::*` | Sprint 5 deletes those headers | **Before Sprint 5** | Pending |
+| VFS T1–T6 done | Import pipeline, audio, animation, scene serialization all block on it | Sprint 4 | T1+T2 done; T3–T6 pending |
+| WorldCommands deferred queue | Systems cannot spawn entities without it | Sprint 3 | Pending |
+| `UploadBuffer` added to RRM | Animation skinning upload blocked | Sprint 5 | Pending |
+| Networking spec gaps filled (5d) | Implementation cannot start until spec is clean | Sprint 11 | Pending |
 
 ---
 
