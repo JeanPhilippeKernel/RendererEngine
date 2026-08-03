@@ -115,7 +115,7 @@ Fetchcontent_Declare(
     GTest
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_SHALLOW TRUE
-    GIT_TAG main 
+    GIT_TAG v1.17.0
 )
 
 Fetchcontent_Declare(
