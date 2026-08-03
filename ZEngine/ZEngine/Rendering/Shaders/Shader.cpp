@@ -49,15 +49,33 @@ namespace ZEngine::Rendering::Shaders
         CreatePushConstantRange();
 
         {
-            std::set<uint32_t> ordered_sets = {};
+            uint32_t max_set = 0;
             for (auto [i, _] : InternalDescriptorSetLayoutMap)
             {
-                ordered_sets.insert(i);
+                if (i > max_set)
+                {
+                    max_set = i;
+                }
             }
-
-            for (auto set : ordered_sets)
+            // Pipeline layout requires a contiguous array from set 0 to max_set.
+            // Fill any gap with the device's empty layout so Vulkan sees no holes.
+            // Register gap indices in DescriptorSetMap with EmptyDescriptorSet so
+            // BindDescriptorSets can bind a valid (zero-binding) set at those slots.
+            for (uint32_t i = 0; i <= max_set; ++i)
             {
-                SetLayouts.push(InternalDescriptorSetLayoutMap.at(set));
+                if (InternalDescriptorSetLayoutMap.contains(i))
+                {
+                    SetLayouts.push(InternalDescriptorSetLayoutMap.at(i));
+                }
+                else
+                {
+                    SetLayouts.push(m_device->EmptyDescriptorSetLayout);
+                    DescriptorSetMap[i].init(m_device->Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
+                    for (uint32_t f = 0; f < m_device->SwapchainPtr->BufferredFrameCount; ++f)
+                    {
+                        DescriptorSetMap[i][f] = m_device->EmptyDescriptorSet;
+                    }
+                }
             }
         }
 
@@ -512,12 +530,25 @@ namespace ZEngine::Rendering::Shaders
         {
             pool_size.descriptorCount *= m_device->SwapchainPtr->BufferredFrameCount;
         }
+        // Reserved sets never contribute pool sizes, so populate their DescriptorSetMap
+        // entries unconditionally - before the early return below.
+        for (const auto layout : InternalDescriptorSetLayoutMap)
+        {
+            if (m_device->ShaderReservedDescriptorSetMap.contains(layout.first))
+            {
+                DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
+                for (uint32_t i = 0; i < m_device->SwapchainPtr->BufferredFrameCount; ++i)
+                {
+                    DescriptorSetMap[layout.first][i] = m_device->ShaderReservedDescriptorSetMap.at(layout.first)[i];
+                }
+            }
+        }
+
         /*
          * Create DescriptorPool
          */
         if (pool_size_collection.empty())
         {
-            ZENGINE_CORE_WARN("Shader '{0}': - The pool size is empty!", m_specification.Name)
             ZReleaseScratch(scratch);
             return;
         }
@@ -534,22 +565,16 @@ namespace ZEngine::Rendering::Shaders
         ZReleaseScratch(scratch);
 
         /*
-         * Create DescriptorSet
+         * Create DescriptorSet for non-reserved sets (reserved sets handled above)
          */
-
         for (const auto layout : InternalDescriptorSetLayoutMap)
         {
-            DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
-
             if (m_device->ShaderReservedDescriptorSetMap.contains(layout.first))
             {
-                // Since it's a Reserved Set, the Device already created the DescriptorSet
-                for (uint32_t i = 0; i < m_device->SwapchainPtr->BufferredFrameCount; ++i)
-                {
-                    DescriptorSetMap[layout.first][i] = m_device->ShaderReservedDescriptorSetMap.at(layout.first)[i];
-                }
                 continue;
             }
+
+            DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
 
             auto                         scratch    = ZGetScratch(&LocalArena);
 

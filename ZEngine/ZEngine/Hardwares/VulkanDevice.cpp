@@ -517,6 +517,28 @@ namespace ZEngine::Hardwares
 
         GlobalTextures.Initialize(Arena, MaxGlobalTexture);
         Image2DBufferManager.Initialize(Arena, MaxGlobalTexture);
+        {
+            VkDescriptorSetLayoutCreateInfo empty_layout_info = {};
+            empty_layout_info.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            empty_layout_info.bindingCount                    = 0;
+            empty_layout_info.pBindings                       = nullptr;
+            ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorSetLayout(LogicalDevice, &empty_layout_info, nullptr, &EmptyDescriptorSetLayout) == VK_SUCCESS, "Failed to create EmptyDescriptorSetLayout")
+
+            // Allocate one descriptor set from the empty layout so gap slots in
+            // per-shader DescriptorSetMaps always have a bindable (zero-binding) set.
+            VkDescriptorPoolCreateInfo empty_pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            empty_pool_info.maxSets                    = 1;
+            empty_pool_info.poolSizeCount              = 0;
+            empty_pool_info.pPoolSizes                 = nullptr;
+            ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(LogicalDevice, &empty_pool_info, nullptr, &EmptyDescriptorPoolHandle) == VK_SUCCESS, "Failed to create EmptyDescriptorPool")
+
+            VkDescriptorSetAllocateInfo empty_alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            empty_alloc_info.descriptorPool              = EmptyDescriptorPoolHandle;
+            empty_alloc_info.descriptorSetCount          = 1;
+            empty_alloc_info.pSetLayouts                 = &EmptyDescriptorSetLayout;
+            ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(LogicalDevice, &empty_alloc_info, &EmptyDescriptorSet) == VK_SUCCESS, "Failed to allocate EmptyDescriptorSet")
+        }
+
         ShaderReservedLayoutBindingSpecificationMap.init(Arena, 1);
 
         ShaderReservedLayoutBindingSpecificationMap[1].init(Arena, 2);
@@ -649,6 +671,19 @@ namespace ZEngine::Hardwares
             EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
         }
         ShaderReservedDescriptorSetLayoutMap.clear();
+
+        if (EmptyDescriptorPoolHandle)
+        {
+            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, EmptyDescriptorPoolHandle);
+            EmptyDescriptorPoolHandle = VK_NULL_HANDLE;
+            EmptyDescriptorSet        = VK_NULL_HANDLE;
+        }
+
+        if (EmptyDescriptorSetLayout)
+        {
+            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, EmptyDescriptorSetLayout);
+            EmptyDescriptorSetLayout = VK_NULL_HANDLE;
+        }
 
         if (GlobalDescriptorPoolHandle)
         {
@@ -2154,6 +2189,7 @@ namespace ZEngine::Hardwares
     void Image2DBuffer::Construct(Hardwares::VulkanDevice* device)
     {
         Device = device;
+        Layout = Rendering::Specifications::ImageLayout::UNDEFINED;
         ZENGINE_VALIDATE_ASSERT(Specification.Width > 0, "Image width must be greater then zero")
         ZENGINE_VALIDATE_ASSERT(Specification.Height > 0, "Image height must be greater then zero")
 

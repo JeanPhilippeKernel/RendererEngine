@@ -611,6 +611,9 @@ namespace ZEngine::Hardwares
         VkSampler                                                                                                                    GlobalLinearWrapSampler                     = VK_NULL_HANDLE;
         VkSampler                                                                                                                    GlobalLinearClampToEdgeSampler              = VK_NULL_HANDLE;
         VkDescriptorPool                                                                                                             GlobalDescriptorPoolHandle                  = VK_NULL_HANDLE;
+        VkDescriptorSetLayout                                                                                                        EmptyDescriptorSetLayout                    = VK_NULL_HANDLE;
+        VkDescriptorPool                                                                                                             EmptyDescriptorPoolHandle                   = VK_NULL_HANDLE;
+        VkDescriptorSet                                                                                                              EmptyDescriptorSet                          = VK_NULL_HANDLE;
         VmaAllocator                                                                                                                 VmaAllocatorValue                           = nullptr;
         VkDescriptorImageInfo                                                                                                        GlobalLinearWrapSamplerImageInfo            = {};
         VkDescriptorImageInfo                                                                                                        GlobalLinearClampToEdgeSamplerImageInfo     = {};

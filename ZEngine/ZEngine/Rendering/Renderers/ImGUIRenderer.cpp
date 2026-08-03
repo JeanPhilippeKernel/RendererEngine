@@ -125,7 +125,6 @@ namespace ZEngine::Rendering::Renderers
 
         UIPass = Device->CreateRenderPass(pass_builder->Detach());
         UIPass->SetBindlessInput("TextureArray");
-        UIPass->SetInput("_unused", Device->GlobalLinearWrapSamplerImageInfo);
         UIPass->SetInput("LinearWrapSampler", Device->GlobalLinearWrapSamplerImageInfo);
         UIPass->Verify();
         UIPass->Bake();
