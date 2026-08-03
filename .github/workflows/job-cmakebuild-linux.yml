@@ -1,0 +1,52 @@
+name: ZEngine Cmake Linux Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Debug'
+      targetFramework:
+        type: string
+        default: 'net10.0'
+
+jobs:
+  Linux-Build:
+    name: cmake-build-linux-${{ inputs.configuration }}
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      
+    - name: Download the Microsoft repository GPG keys
+      run: wget -q https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
+
+    - name: Register the Microsoft repository GPG keys
+      run: sudo dpkg -i packages-microsoft-prod.deb
+
+    - name: Install LLVM-22
+      run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 22
+
+    - name: Update the list of packages
+      run: sudo apt-get update
+
+    - name: Install Dependencies
+      run: sudo apt-get install libasound2-dev libgl1-mesa-dev libpulse-dev libdbus-1-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxt-dev libxxf86vm-dev cmake apt-transport-https software-properties-common gcc g++ powershell clang-format-22 glslang-tools libwayland-dev libxkbcommon-dev
+
+    - name: CMake Build
+      run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}}
+      shell: pwsh
+
+    - name: Publish Build Artifacts
+      uses: actions/upload-artifact@v6
+      with:
+        name: Build-linux-${{inputs.configuration}}
+        if-no-files-found: error
+        path: |
+          Result.Linux.x64.${{inputs.configuration}}/bin
+          Result.Linux.x64.${{inputs.configuration}}/lib/*vulkan*
+          Result.Linux.x64.${{inputs.configuration}}/tests

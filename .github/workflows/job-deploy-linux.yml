@@ -1,0 +1,32 @@
+# Deploy for linux
+#
+name: linux Deploy Workflow
+
+on:
+  workflow_call:
+    inputs:
+      targetFramework:
+        type: string
+        required: true
+      configuration:
+        type: string
+        default: 'Release'
+
+jobs:
+  deploy:
+    name: deploy-linux-${{ inputs.configuration }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: Build-linux-Release
+          path: Result.Linux.x64.${{ inputs.configuration }}
+
+      - name: Publish Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: linux-${{ inputs.configuration }}
+          if-no-files-found: error
+          path: |
+            Result.Linux.x64.${{inputs.configuration}}/bin
+            Result.Linux.x64.${{inputs.configuration}}/lib

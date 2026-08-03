@@ -1,0 +1,31 @@
+# Run tests for linux
+#
+name: linux Test Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Debug'
+      architecture:
+        type: string
+        default: 'x64'
+
+jobs:
+  test:
+    name: test-linux-${{ inputs.configuration }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: Build-linux-${{ inputs.configuration }}
+
+      - name: Update access permission of ZEngineTests
+        run: chmod +x ${{github.workspace}}/tests/ZEngineTests
+
+      - name: Run Tests
+        env:
+          LD_LIBRARY_PATH: ${{github.workspace}}/lib
+        run: ${{github.workspace}}/tests/ZEngineTests

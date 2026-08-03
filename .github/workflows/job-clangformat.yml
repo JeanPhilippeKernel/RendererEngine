@@ -1,0 +1,22 @@
+name: ZEngine Code Formatting
+
+on:
+    workflow_call:
+        inputs:
+            srcDirectory:
+                type: string
+
+jobs:
+    format:
+        name: clang-format
+        runs-on: windows-2022
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
+
+            - name: update llvm to version 22
+              run: choco upgrade llvm
+
+            - name: Checking formatting
+              run: .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/${{ inputs.srcDirectory }} -RunAsCheck
+              shell: pwsh

@@ -1,0 +1,41 @@
+# CMake build of ZEngine for Windows
+#
+name: Windows Build Workflow
+
+permissions:
+  packages: write
+
+on:
+  workflow_call:
+    inputs:
+      targetFramework:
+        type: string
+        required: true
+      configuration:
+        type: string
+        default: 'Debug'
+
+jobs:
+  cmake-build:
+    name: cmake-build-windows-${{ inputs.configuration }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: update llvm to version 22
+        run: choco upgrade llvm
+
+      - name: CMake Build
+        run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}} -RunClangFormat 0
+        shell: pwsh
+
+      - name: Publish Build Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: Build-Windows-x64-${{inputs.configuration}}
+          if-no-files-found: error
+          path: |
+            Result.Windows.x64.MultiConfig/bin/
+            Result.Windows.x64.MultiConfig/lib/*vulkan*
+            Result.Windows.x64.MultiConfig/tests/ZEngineTests.exe

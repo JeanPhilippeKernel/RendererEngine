@@ -1,0 +1,105 @@
+name: Release Please (Stable)
+
+on:
+    push:
+        branches: [main]
+
+permissions:
+    contents: write
+    pull-requests: write
+    packages: write
+
+jobs:
+    release-please:
+        runs-on: ubuntu-latest
+        outputs:
+            release_created: ${{ steps.release.outputs.release_created }}
+            tag_name: ${{ steps.release.outputs.tag_name }}
+        steps:
+            - uses: googleapis/release-please-action@v4
+              id: release
+              with:
+                  config-file: release-please-config.json
+                  manifest-file: .release-please-manifest.json
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+    publish-windows:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.release_created }}
+        uses: ./.github/workflows/windows-build.yml
+        with:
+            targetFramework: net10.0
+            run_debug: false
+            run_release: false
+            run_deploy: true
+
+    publish-macos:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.release_created }}
+        uses: ./.github/workflows/macOS-build.yml
+        with:
+            targetFramework: net10.0
+            run_debug: false
+            run_release: false
+            run_deploy: true
+
+    publish-linux:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.release_created }}
+        uses: ./.github/workflows/linux-build.yml
+        with:
+            targetFramework: net10.0
+            run_debug: false
+            run_release: false
+            run_deploy: true
+
+    upload-artifacts:
+        needs: [release-please, publish-windows, publish-macos, publish-linux]
+        if: ${{ needs.release-please.outputs.release_created }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: Download Windows artifact
+              uses: actions/download-artifact@v6
+              with:
+                  name: Windows-x64-Release
+                  path: artifacts/Windows-x64-Release
+
+            - name: Download macOS x64 artifact
+              uses: actions/download-artifact@v6
+              with:
+                  name: macOS-x64-Release
+                  path: artifacts/macOS-x64-Release
+
+            - name: Download macOS arm64 artifact
+              uses: actions/download-artifact@v6
+              with:
+                  name: macOS-arm64-Release
+                  path: artifacts/macOS-arm64-Release
+
+            - name: Download Linux artifact
+              uses: actions/download-artifact@v6
+              with:
+                  name: linux-Release
+                  path: artifacts/linux-Release
+
+            - name: Package artifacts
+              run: |
+                  VERSION="${{ needs.release-please.outputs.tag_name }}"
+                  VERSION="${VERSION#v}"
+                  cd artifacts
+                  zip -r "ZEngine-${VERSION}-Windows-x64.zip"    Windows-x64-Release/
+                  zip -r "ZEngine-${VERSION}-macOS-x64.zip"      macOS-x64-Release/
+                  zip -r "ZEngine-${VERSION}-macOS-arm64.zip"    macOS-arm64-Release/
+                  tar -czf "ZEngine-${VERSION}-Linux-x64.tar.gz" linux-Release/
+
+            - name: Upload to GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ needs.release-please.outputs.tag_name }}
+                  files: |
+                      artifacts/ZEngine-*-Windows-x64.zip
+                      artifacts/ZEngine-*-macOS-x64.zip
+                      artifacts/ZEngine-*-macOS-arm64.zip
+                      artifacts/ZEngine-*-Linux-x64.tar.gz

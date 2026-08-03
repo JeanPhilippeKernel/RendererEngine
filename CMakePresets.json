@@ -1,0 +1,223 @@
+{
+    "version": 10,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 23,
+        "patch": 0
+    },
+    "configurePresets":[
+        {
+            "name": "BaseOptions",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_STANDARD": "20",
+                "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+                "CMAKE_CXX_EXTENSIONS": "OFF",
+                "BUILD_SHARED_LIBS": "OFF",
+                "FETCHCONTENT_QUIET": "OFF",
+
+                "FMT_MODULE": "OFF",
+                "VULKAN_HEADERS_ENABLE_INSTALL": "ON",
+                "ENTT_INCLUDE_HEADERS": "ON",
+
+                "SPDLOG_BUILD_SHARED": "OFF",
+                "SPDLOG_FMT_EXTERNAL": "ON",
+                "SPDLOG_FMT_EXTERNAL_HO": "OFF",
+
+                "GLFW_BUILD_DOCS": "OFF",
+                "GLFW_BUILD_EXAMPLES": "OFF",
+
+                "ASSIMP_BUILD_TESTS": "OFF",
+                "ASSIMP_INSTALL": "OFF",
+                "ASSIMP_BUILD_SAMPLES": "OFF",
+                "ASSIMP_BUILD_ASSIMP_TOOLS": "OFF",
+                "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_IMPORTER": "ON",
+                "ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT": "OFF",
+                "ASSIMP_BUILD_OBJ_EXPORTER": "ON",
+
+                "UUID_BUILD_TESTS": "OFF",
+                "UUID_USING_CXX20_SPAN": "ON",
+                "UUID_SYSTEM_GENERATOR": "OFF",
+
+                "YAML_CPP_BUILD_TOOLS": "OFF",
+                "YAML_CPP_BUILD_TESTS": "OFF",
+                "YAML_CPP_FORMAT_SOURCE": "OFF",
+                "YAML_BUILD_SHARED_LIBS": "OFF",
+
+                "USE_GAS": "OFF",
+
+                "SPIRV_SKIP_EXECUTABLES": "ON",
+                "SPIRV_SKIP_TESTS": "ON",
+                "GLSLANG_ENABLE_INSTALL": "ON",
+                "ALLOW_EXTERNAL_SPIRV_TOOLS": "ON",
+
+                "SPIRV_CROSS_ENABLE_TESTS": "OFF",
+                "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
+            }
+        },
+        {
+            "name": "Windows_x64_Debug_2022",
+            "inherits": "BaseOptions",
+            "displayName": "Windows Visual Studio 2022 Debug",
+            "generator": "Visual Studio 17 2022",
+            "binaryDir": "Result.Windows.x64.MultiConfig",
+            "architecture": "x64",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Debug",
+                "CMAKE_INSTALL_PREFIX": "Result.Windows.x64.MultiConfig"
+            }
+
+        },
+        {
+            "name": "Windows_x64_Release_2022",
+            "displayName": "Windows Visual Studio 2022 Release",
+            "inherits": "Windows_x64_Debug_2022",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Release"
+            }
+        },
+
+        {
+            "name": "Windows_x64_Debug_2026",
+            "inherits": "Windows_x64_Debug_2022",
+            "displayName": "Windows Visual Studio 2026 Debug",
+            "generator": "Visual Studio 18 2026"
+        }, 
+
+        {
+            "name": "Windows_x64_Release_2026",
+            "inherits": "Windows_x64_Release_2022",
+            "displayName": "Windows Visual Studio 2026 Release",
+            "generator": "Visual Studio 18 2026"
+        }, 
+
+        {
+            "name": "Darwin_x64_Debug",
+            "inherits": "BaseOptions",
+            "displayName": "Darwin XCode Debug",
+            "binaryDir": "Result.Darwin.x64.Debug",
+            "generator": "Xcode",
+            "cacheVariables": {
+                "BUILD_FRAMEWORK": "ON",
+                "CMAKE_INSTALL_PREFIX": "Result.Darwin.x64.Debug",
+                "CMAKE_CONFIGURATION_TYPES": "Debug"
+            }
+        },
+        {
+            "name": "Darwin_x64_Release",
+            "inherits": "Darwin_x64_Debug",
+            "displayName": "Darwin XCode Release",
+            "binaryDir": "Result.Darwin.x64.Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INSTALL_PREFIX": "Result.Darwin.x64.Release",
+                "CMAKE_CONFIGURATION_TYPES": "Release"
+            }
+        },
+
+        {
+            "name": "Darwin_arm64_Debug",
+            "inherits": "Darwin_x64_Debug",
+            "binaryDir": "Result.Darwin.arm64.Debug",
+            "displayName": "Darwin ARM XCode Debug",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "Result.Darwin.arm64.Debug"
+            }
+        },
+
+        {
+            "name": "Darwin_arm64_Release",
+            "inherits": "Darwin_x64_Release",
+            "binaryDir": "Result.Darwin.arm64.Release",
+            "displayName": "Darwin ARM XCode Release",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "Result.Darwin.arm64.Release"
+            }
+        },
+
+        {
+            "name": "Linux_x64_Debug",
+            "inherits": "BaseOptions",
+            "displayName": "Linux Ninja Debug",
+            "binaryDir": "Result.Linux.x64.Debug",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "Result.Linux.x64.Debug"
+            }
+        },
+        {
+            "name": "Linux_x64_Release",
+            "inherits": "Linux_x64_Debug",
+            "displayName": "Linux Ninja Release",
+            "binaryDir": "Result.Linux.x64.Release",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "Result.Linux.x64.Release",
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+
+    "buildPresets": [
+        {
+            "name": "Windows_x64_Debug_2022",
+            "configurePreset": "Windows_x64_Debug_2022",
+            "configuration": "Debug",
+            "nativeToolOptions": [
+                "-nodeReuse:false"
+            ]
+        },
+        {
+            "name": "Windows_x64_Release_2022",
+            "configurePreset": "Windows_x64_Release_2022",
+            "configuration": "Release",
+            "nativeToolOptions": [
+                "-nodeReuse:false"
+            ]
+        },
+
+        {
+            "name": "Windows_x64_Debug_2026",
+            "inherits": "Windows_x64_Debug_2022",
+            "configurePreset": "Windows_x64_Debug_2026"
+        },
+
+        {
+            "name": "Windows_x64_Release_2026",
+            "inherits": "Windows_x64_Release_2022",
+            "configurePreset": "Windows_x64_Release_2026"
+        },
+
+        {
+            "name": "Darwin_x64_Debug",
+            "configuration": "Debug",
+            "configurePreset": "Darwin_x64_Debug"
+        },
+        {
+            "name": "Darwin_x64_Release",
+            "configuration": "Release",
+            "configurePreset": "Darwin_x64_Release"
+        },
+
+        {
+            "name": "Darwin_arm64_Debug",
+            "configuration": "Debug",
+            "configurePreset": "Darwin_arm64_Debug"
+        },
+        {
+            "name": "Darwin_arm64_Release",
+            "configuration": "Release",
+            "configurePreset": "Darwin_arm64_Release"
+        },
+
+        {
+            "name": "Linux_x64_Debug",
+            "configurePreset": "Linux_x64_Debug"
+        },
+        {
+            "name": "Linux_x64_Release",
+            "configurePreset": "Linux_x64_Release"
+        }
+    ]
+}

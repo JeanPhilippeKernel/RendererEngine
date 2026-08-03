@@ -1,0 +1,38 @@
+name: Release Please (Pre-release)
+
+on:
+    push:
+        branches: [develop]
+
+permissions:
+    contents: write
+
+jobs:
+    bump-version:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Compute next rc version
+              id: bump
+              run: |
+                  set +e
+                  NEW_VERSION="$(bash Scripts/bump-prerelease.sh)"
+                  EXIT_CODE=$?
+                  set -e
+                  if [ $EXIT_CODE -eq 2 ]; then
+                      echo "No releasable commits — skipping release."
+                      exit 0
+                  fi
+                  echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+            - name: Tag
+              if: steps.bump.outputs.new_version != ''
+              run: |
+                  git config user.name  "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git tag -a "v${{ steps.bump.outputs.new_version }}" -m "chore: release ${{ steps.bump.outputs.new_version }}"
+                  git push origin "v${{ steps.bump.outputs.new_version }}"

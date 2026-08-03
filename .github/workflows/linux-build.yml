@@ -1,0 +1,54 @@
+name: ZEngine Linux Build
+
+on:
+  workflow_call:
+    inputs:
+      targetFramework:
+        type: string
+        required: true
+      run_debug:
+        type: boolean
+        default: true
+      run_release:
+        type: boolean
+        default: false
+      run_deploy:
+        type: boolean
+        default: false
+
+jobs:
+  cmake-build-debug:
+    if: ${{ inputs.run_debug }}
+    uses: ./.github/workflows/job-cmakebuild-linux.yml
+    with:
+      configuration: Debug
+      targetframework: ${{ inputs.targetFramework }}
+
+  cmake-build-release:
+    if: ${{ inputs.run_release || inputs.run_deploy }}
+    uses: ./.github/workflows/job-cmakebuild-linux.yml
+    with:
+      configuration: Release
+      targetframework: ${{ inputs.targetFramework }}
+
+  test-debug:
+    needs: cmake-build-debug
+    if: ${{ inputs.run_debug }}
+    uses: ./.github/workflows/job-test-linux.yml
+    with:
+      configuration: Debug
+
+  test-release:
+    needs: cmake-build-release
+    if: ${{ inputs.run_release || inputs.run_deploy }}
+    uses: ./.github/workflows/job-test-linux.yml
+    with:
+      configuration: Release
+
+  deploy:
+    needs: test-release
+    if: ${{ inputs.run_deploy }}
+    uses: ./.github/workflows/job-deploy-linux.yml
+    with:
+      configuration: Release
+      targetframework: ${{ inputs.targetFramework }}

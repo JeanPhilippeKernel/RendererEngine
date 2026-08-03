@@ -1,0 +1,31 @@
+# Deploy for Windows
+#
+name: Windows Deploy Workflow
+
+on:
+  workflow_call:
+    inputs:
+      targetFramework:
+        type: string
+        required: true
+      configuration:
+        type: string
+        default: 'Release'
+
+jobs:
+  deploy:
+    name: deploy-windows-x64-${{ inputs.configuration }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          path: Result.Windows.x64.MultiConfig
+          name: Build-Windows-x64-Release
+
+      - name: Publish Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: Windows-x64-${{ inputs.configuration }}
+          if-no-files-found: error
+          path: |
+            Result.Windows.x64.MultiConfig/bin

@@ -1,0 +1,64 @@
+name: Engine CI
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+  workflow_dispatch:
+    inputs:
+      run_debug:
+        description: 'Build and test Debug'
+        type: boolean
+        default: true
+      run_release:
+        description: 'Build and test Release'
+        type: boolean
+        default: false
+      run_deploy:
+        description: 'Deploy artifacts'
+        type: boolean
+        default: false
+
+jobs:
+  commitlint:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/job-commitlint.yml
+
+  clang-format:
+    strategy:
+      matrix:
+        directories: [ZEngine, Tetragrama, Obelisk, Resources/Shaders]
+    uses: ./.github/workflows/job-clangformat.yml
+    with:
+      srcDirectory: ${{ matrix.directories }}
+
+  windows:
+    needs: [commitlint, clang-format]
+    if: ${{ !failure() && !cancelled() }}
+    uses: ./.github/workflows/windows-build.yml
+    with:
+      targetFramework: net10.0
+      run_debug: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_debug)) }}
+      run_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_release)) }}
+      run_deploy: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_deploy)) }}
+
+  macOS:
+    needs: [commitlint, clang-format]
+    if: ${{ !failure() && !cancelled() }}
+    uses: ./.github/workflows/macOS-build.yml
+    with:
+      targetFramework: net10.0
+      run_debug: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_debug)) }}
+      run_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_release)) }}
+      run_deploy: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_deploy)) }}
+
+  linux:
+    needs: [commitlint, clang-format]
+    if: ${{ !failure() && !cancelled() }}
+    uses: ./.github/workflows/linux-build.yml
+    with:
+      targetFramework: net10.0
+      run_debug: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_debug)) }}
+      run_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_release)) }}
+      run_deploy: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.run_deploy)) }}

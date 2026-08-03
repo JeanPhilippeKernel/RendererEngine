@@ -1,0 +1,84 @@
+#include <CLI/CLI.hpp>
+#include <Tetragrama/Editor.h>
+#include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/CrashHandlers/CrashHandler.h>
+#include <ZEngine/EngineConfiguration.h>
+#include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Logging/Logger.h>
+
+#ifdef ZENGINE_PLATFORM
+
+using namespace ZEngine;
+using namespace ZEngine::Logging;
+using namespace ZEngine::Core::Memory;
+using namespace ZEngine::Applications;
+using namespace ZEngine::CrashHandlers;
+
+int applicationEntryPoint(int argc, char* argv[])
+{
+    CrashHandler::Install("Obelisk", "1.0.0", "CrashDumps");
+
+    CLI::App cli{"ObeliskCLI"};
+    argv                      = cli.ensure_utf8(argv);
+    std::string config_file   = "";
+    bool        launch_editor = false;
+    cli.add_option("--projectConfigFile", config_file, "The project config file");
+    cli.add_option("--launchEditor", launch_editor, "Activate the editor");
+
+    CLI11_PARSE(cli, argc, argv);
+
+    MemoryManager manager = {};
+    manager.Initialize(ZGiga(3u), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
+
+    Helpers::ThreadPoolHelper::Initialize();
+
+    ArenaAllocator      logger_arena = {};
+    LoggerConfiguration logger_cfg   = {};
+    manager.CreateBudgetedArena(manager.Budget.Logging, &logger_arena);
+    Logger::Initialize(&logger_arena, logger_cfg);
+
+    auto arena                = &(manager.MainArena);
+    auto config_file_str_size = config_file.size() + 1;
+    auto config_file_str      = ZPushString(arena, config_file_str_size);
+    Helpers::secure_strncpy(config_file_str, config_file_str_size, config_file.c_str(), config_file.size());
+
+    GameApplicationPtr app = nullptr;
+
+    if (launch_editor)
+    {
+        app                      = ZPushStructCtor(arena, Tetragrama::Editor);
+        app->EnableRenderOverlay = true;
+    }
+
+    app->ConfigFile = config_file_str;
+
+    app->Initialize(&manager);
+    app->Run();
+    app->Shutdown();
+
+    Logger::Dispose();
+
+    manager.Shutdown();
+
+    CrashHandler::Uninstall();
+    return 0;
+}
+
+#ifdef _WIN32
+#include <windows.h>
+#include <winrt/Windows.Foundation.h>
+
+int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hInstPrev, PSTR cmdline, int cmdshow)
+{
+    winrt::init_apartment();
+    return applicationEntryPoint(__argc, __argv);
+}
+
+#else
+int main(int argc, char* argv[])
+{
+    return applicationEntryPoint(argc, argv);
+}
+#endif
+#endif

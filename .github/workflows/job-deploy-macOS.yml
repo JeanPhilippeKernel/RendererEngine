@@ -1,0 +1,35 @@
+# Deploy for macOS
+#
+name: macOS Deploy Workflow
+
+on:
+  workflow_call:
+    inputs:
+      targetFramework:
+        type: string
+        required: true
+      configuration:
+        type: string
+        default: 'Release'
+      architecture:
+        type: string
+        default: 'x64'
+
+jobs:
+  deploy:
+    name: deploy-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
+    runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-latest' }}
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          path: Result.Darwin.${{ inputs.architecture }}.${{ inputs.configuration }}
+          name: Build-macOS-${{ inputs.architecture }}-Release
+
+      - name: Publish Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
+          if-no-files-found: error
+          path: |
+            Result.Darwin.${{inputs.architecture}}.${{ inputs.configuration }}/bin/
+            Result.Darwin.${{inputs.architecture}}.${{ inputs.configuration }}/lib/

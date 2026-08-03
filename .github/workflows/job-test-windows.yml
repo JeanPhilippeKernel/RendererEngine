@@ -1,0 +1,26 @@
+# Run tests for Windows
+#
+name: Windows Test Workflow
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        type: string
+        default: 'Debug'
+
+jobs:
+  test:
+    name: test-windows-${{ inputs.configuration }}
+    runs-on: windows-latest
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: Build-Windows-x64-${{ inputs.configuration }}
+
+      - name: Run Tests
+        shell: pwsh
+        env:
+          PATH: ${{github.workspace}}\lib
+        run: ${{github.workspace}}\tests\ZEngineTests.exe

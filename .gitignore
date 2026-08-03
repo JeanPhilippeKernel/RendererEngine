@@ -9,6 +9,7 @@
 *.user
 *.userosscache
 *.sln.docstates
+imgui.ini
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -27,23 +28,25 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Bb]in-int/
+[Rr]esult.[Ww]indows.[Xx]64.[Mm]ulti[Cc]onfig/
+[Rr]esult.[Ll]inux.[Xx]64.[Dd]ebug/
+[Rr]esult.[Ll]inux.[Xx]64.[Rr]elease/
+[Rr]esult.[Ll]inux.[Aa][Rr][Mm]64.[Rr]elease/
+[Rr]esult.[Ll]inux.[Aa][Rr][Mm]64.[Dd]ebug/
+[Rr]esult.[Dd]arwin.[Xx]64.[Dd]ebug/
+[Rr]esult.[Dd]arwin.[Xx]64.[Rr]elease/
+[Rr]esult.[Dd]arwin.[Aa][Rr][Mm]64.[Dd]ebug/
+[Rr]esult.[Dd]arwin.[Aa][Rr][Mm]64.[Rr]elease/
 
-Sandbox/[Bb]in-int/
-Sandbox3D/[Bb]in-int/
-Z_Engine/[Bb]in-int/
+# FetchContent cache (legacy __externals/ path and default _deps/)
+__externals/
+_deps/
 
-Sandbox/[Bb]in-int/Debug-x64/
-Sandbox3D/[Bb]in-int/Debug-x64/
-Z_Engine/[Bb]in-int/Debug-x64/
+# Shader cache file folder
+Resources/Shaders/Cache
 
-Sandbox/[Bb]in-int/Debug-x86/
-Sandbox3D/[Bb]in-int/Debug-x86/
-Z_Engine/[Bb]in-int/Debug-x86/
-
-
-Sandbox/[Bb]in/
-Sandbox3D/[Bb]in/
-Z_Engine/[Bb]in/
+# Tools folder
+__tools/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
@@ -357,7 +360,66 @@ ASALocalRun/
 # BeatPulse healthcheck temp database
 healthchecksdb
 
-imgui.ini
-/Report20201012-2311.diagsession
-/Z_Engine/ClassDiagram.cd
-/Z_Engine/ClassDiagram1.cd
+## CMake
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+build/
+bin/
+out/
+
+## Cpp
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Intermediate outputs
+*.exp
+*.ilk
+*.pdb
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Visual Studio 2015/2017 cache/options directory
+.vs/
+.vscode/
+!.vscode/launch.json
+# Visual Studio CMake settings files
+CMakeSettings.json
+
+# MacOS files
+.DS_Store
