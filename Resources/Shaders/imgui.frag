@@ -14,10 +14,11 @@ layout(location = 0) in struct
 
 void main()
 {
+    // texId derives from pc.index (push constant) — dynamically uniform; nonuniformEXT not needed.
     uint texId  = uint(floor(In.TexData.z + 0.5));
-    vec4 texVal = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearWrapSampler), In.TexData.xy);
-    // texId is runtime; this branch is never taken but prevents the optimizer from
-    // stripping the set=0 _unused binding required by the engine's descriptor layout rules.
+    vec4 texVal = texture(sampler2D(TextureArray[texId], LinearWrapSampler), In.TexData.xy);
+    // This branch is never taken but prevents the optimizer from stripping the
+    // set=0 _unused binding required by the engine's descriptor layout rules.
     if (texId == uint(-1))
     {
         texVal += texture(sampler2D(TextureArray[0], _unused), In.TexData.xy);
