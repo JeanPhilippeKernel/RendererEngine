@@ -2,7 +2,6 @@
 #extension GL_EXT_nonuniform_qualifier : require
 
 layout(location = 0) out vec4 fColor;
-layout(set = 0, binding = 0) uniform sampler _unused;
 layout(set = 1, binding = 0) uniform texture2D TextureArray[];
 layout(set = 1, binding = 1) uniform sampler LinearWrapSampler;
 
