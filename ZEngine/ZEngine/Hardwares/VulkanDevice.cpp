@@ -216,36 +216,48 @@ namespace ZEngine::Hardwares
         physical_device_collection.init(scratch.Arena, gpu_device_count, gpu_device_count);
         vkEnumeratePhysicalDevices(Instance, &gpu_device_count, physical_device_collection.data());
 
-        for (VkPhysicalDevice physical_device : physical_device_collection)
-        {
-            VkPhysicalDeviceVulkan12Properties vulkan_1_2_properties = {};
-            vulkan_1_2_properties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
-
-            VkPhysicalDeviceProperties2 physical_device_properties   = {};
-            physical_device_properties.sType                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-            physical_device_properties.pNext                         = &vulkan_1_2_properties;
-
-            vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties);
-
-            VkPhysicalDeviceVulkan12Features vulkan_1_2_features = {};
-            vulkan_1_2_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-
-            VkPhysicalDeviceFeatures2 physical_device_feature    = {};
-            physical_device_feature.sType                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-            physical_device_feature.pNext                        = &vulkan_1_2_features;
-            vkGetPhysicalDeviceFeatures2(physical_device, &physical_device_feature);
-
-            if (/*(physical_device_feature.geometryShader == VK_TRUE) && (physical_device_feature.samplerAnisotropy == VK_TRUE) && */ ((physical_device_properties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) || (physical_device_properties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)))
+        auto try_select_device = [&](VkPhysicalDeviceType preferred_type) {
+            for (VkPhysicalDevice physical_device : physical_device_collection)
             {
-                PhysicalDevice                             = physical_device;
-                PhysicalDeviceProperties                   = physical_device_properties;
-                PhysicalDeviceVulkan12Properties           = vulkan_1_2_properties;
-                PhysicalDeviceFeature                      = physical_device_feature;
-                PhysicalDeviceSupportSampledImageBindless  = (vulkan_1_2_features.runtimeDescriptorArray == VK_TRUE && vulkan_1_2_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE && vulkan_1_2_features.descriptorBindingPartiallyBound == VK_TRUE && vulkan_1_2_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
-                PhysicalDeviceSupportStorageBufferBindless = (vulkan_1_2_features.runtimeDescriptorArray == VK_TRUE && vulkan_1_2_features.descriptorBindingPartiallyBound == VK_TRUE);
-                vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
-                PhysicalDeviceSupportTimelineSemaphore = (vulkan_1_2_features.timelineSemaphore == VK_TRUE);
-                break;
+                VkPhysicalDeviceVulkan12Properties vulkan_1_2_properties = {};
+                vulkan_1_2_properties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
+
+                VkPhysicalDeviceProperties2 physical_device_properties   = {};
+                physical_device_properties.sType                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+                physical_device_properties.pNext                         = &vulkan_1_2_properties;
+
+                vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties);
+
+                VkPhysicalDeviceVulkan12Features vulkan_1_2_features = {};
+                vulkan_1_2_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+                VkPhysicalDeviceFeatures2 physical_device_feature    = {};
+                physical_device_feature.sType                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+                physical_device_feature.pNext                        = &vulkan_1_2_features;
+                vkGetPhysicalDeviceFeatures2(physical_device, &physical_device_feature);
+
+                if (physical_device_properties.properties.deviceType == preferred_type)
+                {
+                    PhysicalDevice                             = physical_device;
+                    PhysicalDeviceProperties                   = physical_device_properties;
+                    PhysicalDeviceVulkan12Properties           = vulkan_1_2_properties;
+                    PhysicalDeviceFeature                      = physical_device_feature;
+                    PhysicalDeviceSupportSampledImageBindless  = (vulkan_1_2_features.runtimeDescriptorArray == VK_TRUE && vulkan_1_2_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE && vulkan_1_2_features.descriptorBindingPartiallyBound == VK_TRUE && vulkan_1_2_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
+                    PhysicalDeviceSupportStorageBufferBindless = (vulkan_1_2_features.runtimeDescriptorArray == VK_TRUE && vulkan_1_2_features.descriptorBindingPartiallyBound == VK_TRUE);
+                    vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
+                    PhysicalDeviceSupportTimelineSemaphore = (vulkan_1_2_features.timelineSemaphore == VK_TRUE);
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // Prefer hardware GPUs; fall back to CPU (software renderer) if none available
+        if (!try_select_device(VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU))
+        {
+            if (!try_select_device(VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU))
+            {
+                try_select_device(VK_PHYSICAL_DEVICE_TYPE_CPU);
             }
         }
 
