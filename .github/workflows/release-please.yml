@@ -39,7 +39,7 @@ jobs:
             run_release: false
             run_deploy: true
 
-    publish-macos:
+    publish-macos-arm64:
         needs: release-please
         if: ${{ needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch' }}
         uses: ./.github/workflows/macOS-build.yml
@@ -60,7 +60,7 @@ jobs:
             run_deploy: true
 
     upload-artifacts:
-        needs: [release-please, publish-windows, publish-macos, publish-linux]
+        needs: [release-please, publish-windows, publish-macos-arm64, publish-linux]
         if: ${{ needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch' }}
         runs-on: ubuntu-latest
         permissions:
@@ -71,12 +71,6 @@ jobs:
               with:
                   name: Windows-x64-Release
                   path: artifacts/Windows-x64-Release
-
-            - name: Download macOS x64 artifact
-              uses: actions/download-artifact@v6
-              with:
-                  name: macOS-x64-Release
-                  path: artifacts/macOS-x64-Release
 
             - name: Download macOS arm64 artifact
               uses: actions/download-artifact@v6
@@ -96,7 +90,6 @@ jobs:
                   VERSION="${VERSION#v}"
                   cd artifacts
                   zip -r "ZEngine-${VERSION}-Windows-x64.zip"    Windows-x64-Release/
-                  zip -r "ZEngine-${VERSION}-macOS-x64.zip"      macOS-x64-Release/
                   zip -r "ZEngine-${VERSION}-macOS-arm64.zip"    macOS-arm64-Release/
                   tar -czf "ZEngine-${VERSION}-Linux-x64.tar.gz" linux-Release/
 
@@ -106,6 +99,5 @@ jobs:
                   tag_name: ${{ needs.release-please.outputs.tag_name || github.event.inputs.tag_name }}
                   files: |
                       artifacts/ZEngine-*-Windows-x64.zip
-                      artifacts/ZEngine-*-macOS-x64.zip
                       artifacts/ZEngine-*-macOS-arm64.zip
                       artifacts/ZEngine-*-Linux-x64.tar.gz

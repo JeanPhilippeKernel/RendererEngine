@@ -90,7 +90,7 @@
             "inherits": "Windows_x64_Release_2022",
             "displayName": "Windows Visual Studio 2026 Release",
             "generator": "Visual Studio 18 2026"
-        }, 
+        },
 
         {
             "name": "Darwin_x64_Debug",

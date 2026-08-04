@@ -3,8 +3,28 @@ name: Engine CI
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'ZEngine/**'
+      - 'Tetragrama/**'
+      - 'Obelisk/**'
+      - 'Resources/**'
+      - 'Scripts/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'dependencies.cmake'
+      - '.github/workflows/**'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - 'ZEngine/**'
+      - 'Tetragrama/**'
+      - 'Obelisk/**'
+      - 'Resources/**'
+      - 'Scripts/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'dependencies.cmake'
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       run_debug:
@@ -26,12 +46,7 @@ jobs:
     uses: ./.github/workflows/job-commitlint.yml
 
   clang-format:
-    strategy:
-      matrix:
-        directories: [ZEngine, Tetragrama, Obelisk, Resources/Shaders]
     uses: ./.github/workflows/job-clangformat.yml
-    with:
-      srcDirectory: ${{ matrix.directories }}
 
   windows:
     needs: [commitlint, clang-format]

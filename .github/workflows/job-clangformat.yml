@@ -1,10 +1,7 @@
-name: ZEngine Code Formatting
+name: Code Formatting Check
 
 on:
     workflow_call:
-        inputs:
-            srcDirectory:
-                type: string
 
 jobs:
     format:
@@ -14,9 +11,13 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v6
 
-            - name: update llvm to version 22
-              run: choco upgrade llvm
+            - name: Install LLVM 22
+              run: choco install llvm --version=22.1.0 --allow-downgrade --no-progress -y
 
             - name: Checking formatting
-              run: .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/${{ inputs.srcDirectory }} -RunAsCheck
+              run: |
+                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/ZEngine -RunAsCheck
+                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/Tetragrama -RunAsCheck
+                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/Obelisk -RunAsCheck
+                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/Resources/Shaders -RunAsCheck
               shell: pwsh
