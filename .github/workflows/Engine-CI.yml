@@ -3,8 +3,28 @@ name: Engine CI
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'ZEngine/**'
+      - 'Tetragrama/**'
+      - 'Obelisk/**'
+      - 'Resources/**'
+      - 'Scripts/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'dependencies.cmake'
+      - '.github/workflows/**'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - 'ZEngine/**'
+      - 'Tetragrama/**'
+      - 'Obelisk/**'
+      - 'Resources/**'
+      - 'Scripts/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'dependencies.cmake'
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       run_debug:
