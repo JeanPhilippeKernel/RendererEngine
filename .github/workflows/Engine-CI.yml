@@ -26,12 +26,7 @@ jobs:
     uses: ./.github/workflows/job-commitlint.yml
 
   clang-format:
-    strategy:
-      matrix:
-        directories: [ZEngine, Tetragrama, Obelisk, Resources/Shaders]
     uses: ./.github/workflows/job-clangformat.yml
-    with:
-      srcDirectory: ${{ matrix.directories }}
 
   windows:
     needs: [commitlint, clang-format]

@@ -1,10 +1,7 @@
-name: ZEngine Code Formatting
+name: Code Formatting Check
 
 on:
     workflow_call:
-        inputs:
-            srcDirectory:
-                type: string
 
 jobs:
     format:
@@ -14,9 +11,21 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v6
 
-            - name: update llvm to version 22
-              run: choco upgrade llvm
+            - name: Cache LLVM
+              id: cache-llvm
+              uses: actions/cache@v4
+              with:
+                  path: C:\Program Files\LLVM
+                  key: llvm-20.1.7-windows
+
+            - name: Install LLVM
+              if: steps.cache-llvm.outputs.cache-hit != 'true'
+              run: choco install llvm --version=20.1.7 --no-progress -y
 
             - name: Checking formatting
-              run: .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/${{ inputs.srcDirectory }} -RunAsCheck
+              run: |
+                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/ZEngine -RunAsCheck
+                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/Tetragrama -RunAsCheck
+                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/Obelisk -RunAsCheck
+                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/Resources/Shaders -RunAsCheck
               shell: pwsh

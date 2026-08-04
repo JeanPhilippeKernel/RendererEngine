@@ -90,7 +90,28 @@
             "inherits": "Windows_x64_Release_2022",
             "displayName": "Windows Visual Studio 2026 Release",
             "generator": "Visual Studio 18 2026"
-        }, 
+        },
+
+        {
+            "name": "Windows_x64_Debug_Ninja",
+            "inherits": "BaseOptions",
+            "displayName": "Windows Ninja Multi-Config Debug",
+            "generator": "Ninja Multi-Config",
+            "binaryDir": "Result.Windows.x64.MultiConfig",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Debug",
+                "CMAKE_INSTALL_PREFIX": "Result.Windows.x64.MultiConfig"
+            }
+        },
+
+        {
+            "name": "Windows_x64_Release_Ninja",
+            "inherits": "Windows_x64_Debug_Ninja",
+            "displayName": "Windows Ninja Multi-Config Release",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Release"
+            }
+        },
 
         {
             "name": "Darwin_x64_Debug",
@@ -187,6 +208,18 @@
             "name": "Windows_x64_Release_2026",
             "inherits": "Windows_x64_Release_2022",
             "configurePreset": "Windows_x64_Release_2026"
+        },
+
+        {
+            "name": "Windows_x64_Debug_Ninja",
+            "configurePreset": "Windows_x64_Debug_Ninja",
+            "configuration": "Debug"
+        },
+
+        {
+            "name": "Windows_x64_Release_Ninja",
+            "configurePreset": "Windows_x64_Release_Ninja",
+            "configuration": "Release"
         },
 
         {
