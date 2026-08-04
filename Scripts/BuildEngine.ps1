@@ -43,11 +43,7 @@ param (
 
     [Parameter(HelpMessage = "VS version use to build, default to 2026")]
     [ValidateSet('2022', '2026')]
-    [int] $VsVersion = 2026,
-
-    [Parameter(HelpMessage = "CMake generator to use: VisualStudio or Ninja")]
-    [ValidateSet('VisualStudio', 'Ninja')]
-    [string] $Generator = 'VisualStudio'
+    [int] $VsVersion = 2026
 )
 
 $ErrorActionPreference = "Stop"
@@ -115,11 +111,7 @@ function Build([string]$configuration, [int]$VsVersion , [bool]$runBuild) {
     $configName = $systemName, $architecture, $configuration -join "_"
 
     if($IsWindows){
-        if($Generator -eq 'Ninja'){
-            $configName += '_Ninja'
-        } else {
-            $configName += '_'+$VsVersion
-        }
+        $configName += '_'+$VsVersion
     }
 
     $cMakeArguments = " --preset $configName $cMakeCacheVariableOverride"

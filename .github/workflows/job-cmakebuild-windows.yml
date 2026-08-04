@@ -30,20 +30,8 @@ jobs:
         run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
         shell: pwsh
 
-      - name: Set up MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Cache CMake dependencies
-        uses: actions/cache@v4
-        with:
-          path: Result.Windows.x64.MultiConfig/_deps
-          key: cmake-deps-windows-ninja-${{ hashFiles('dependencies.cmake') }}
-          restore-keys: cmake-deps-windows-ninja-
-
       - name: CMake Build
-        run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}} -Generator Ninja -RunClangFormat 0
+        run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}} -RunClangFormat 0
         shell: pwsh
 
       - name: Publish Build Artifacts
