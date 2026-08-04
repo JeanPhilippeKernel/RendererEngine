@@ -3,6 +3,12 @@ name: Release Please (Stable)
 on:
     push:
         branches: [main]
+    workflow_dispatch:
+        inputs:
+            tag_name:
+                description: "Tag to build and publish (e.g. v0.3.0)"
+                required: true
+                type: string
 
 permissions:
     contents: write
@@ -25,7 +31,7 @@ jobs:
 
     publish-windows:
         needs: release-please
-        if: ${{ needs.release-please.outputs.release_created }}
+        if: ${{ needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch' }}
         uses: ./.github/workflows/windows-build.yml
         with:
             targetFramework: net10.0
@@ -35,7 +41,7 @@ jobs:
 
     publish-macos:
         needs: release-please
-        if: ${{ needs.release-please.outputs.release_created }}
+        if: ${{ needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch' }}
         uses: ./.github/workflows/macOS-build.yml
         with:
             targetFramework: net10.0
@@ -45,7 +51,7 @@ jobs:
 
     publish-linux:
         needs: release-please
-        if: ${{ needs.release-please.outputs.release_created }}
+        if: ${{ needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch' }}
         uses: ./.github/workflows/linux-build.yml
         with:
             targetFramework: net10.0
@@ -55,7 +61,7 @@ jobs:
 
     upload-artifacts:
         needs: [release-please, publish-windows, publish-macos, publish-linux]
-        if: ${{ needs.release-please.outputs.release_created }}
+        if: ${{ needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch' }}
         runs-on: ubuntu-latest
         permissions:
             contents: write
@@ -86,7 +92,7 @@ jobs:
 
             - name: Package artifacts
               run: |
-                  VERSION="${{ needs.release-please.outputs.tag_name }}"
+                  VERSION="${{ needs.release-please.outputs.tag_name || github.event.inputs.tag_name }}"
                   VERSION="${VERSION#v}"
                   cd artifacts
                   zip -r "ZEngine-${VERSION}-Windows-x64.zip"    Windows-x64-Release/
@@ -97,7 +103,7 @@ jobs:
             - name: Upload to GitHub Release
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: ${{ needs.release-please.outputs.tag_name }}
+                  tag_name: ${{ needs.release-please.outputs.tag_name || github.event.inputs.tag_name }}
                   files: |
                       artifacts/ZEngine-*-Windows-x64.zip
                       artifacts/ZEngine-*-macOS-x64.zip
