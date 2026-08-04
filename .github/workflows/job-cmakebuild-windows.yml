@@ -26,6 +26,10 @@ jobs:
       - name: Install LLVM 22
         run: choco install llvm --version=22.1.0 --allow-downgrade --no-progress -y
 
+      - name: Exclude build directory from Windows Defender
+        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+        shell: pwsh
+
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
