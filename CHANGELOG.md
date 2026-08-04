@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versions are managed automatically via [Release Please](https://github.com/googleapis/release-please)
 based on [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [0.3.1](https://github.com/JeanPhilippeKernel/RendererEngine/compare/v0.3.0...v0.3.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **deps:** pin gtest to v1.17.0 to avoid operator&lt;&lt; deletion on newer Clang ([df43791](https://github.com/JeanPhilippeKernel/RendererEngine/commit/df43791318c3200baf3b08bba6e94836bf61eec3))
+* **format:** apply clang-format to DeviceSwapchain.cpp ([12b798b](https://github.com/JeanPhilippeKernel/RendererEngine/commit/12b798b8052b66efa4bb85d4b5b7c88cf42bf9b1))
+
 ## [0.3.0](https://github.com/JeanPhilippeKernel/RendererEngine/compare/v0.2.0...v0.3.0) (2026-08-03)
 
 
