@@ -100,7 +100,8 @@
             "binaryDir": "Result.Windows.x64.MultiConfig",
             "cacheVariables": {
                 "CMAKE_CONFIGURATION_TYPES": "Debug",
-                "CMAKE_INSTALL_PREFIX": "Result.Windows.x64.MultiConfig"
+                "CMAKE_INSTALL_PREFIX": "Result.Windows.x64.MultiConfig",
+                "FETCHCONTENT_UPDATES_DISCONNECTED": "ON"
             }
         },
 
