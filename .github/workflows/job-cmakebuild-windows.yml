@@ -23,16 +23,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Cache LLVM
-        id: cache-llvm
-        uses: actions/cache@v4
-        with:
-          path: C:\Program Files\LLVM
-          key: llvm-20.1.7-windows
-
-      - name: Install LLVM
-        if: steps.cache-llvm.outputs.cache-hit != 'true'
-        run: choco install llvm --version=20.1.7 --no-progress -y
+      - name: Install LLVM if not present
+        shell: pwsh
+        run: |
+          if (-not (Get-Command clang-format -ErrorAction SilentlyContinue)) {
+            choco install llvm --no-progress -y
+          } else {
+            Write-Host "LLVM already available: $(clang-format --version)"
+          }
 
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
