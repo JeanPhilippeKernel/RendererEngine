@@ -11,14 +11,8 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v6
 
-            - name: Install LLVM if not present
-              shell: pwsh
-              run: |
-                  if (-not (Get-Command clang-format -ErrorAction SilentlyContinue)) {
-                    choco install llvm --no-progress -y
-                  } else {
-                    Write-Host "LLVM already available: $(clang-format --version)"
-                  }
+            - name: Install LLVM 22
+              run: choco install llvm --version=22.1.0 --allow-downgrade --no-progress -y
 
             - name: Checking formatting
               run: |
