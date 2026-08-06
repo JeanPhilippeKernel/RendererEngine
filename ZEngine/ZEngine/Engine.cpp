@@ -17,13 +17,13 @@ using namespace std::chrono_literals;
 
 namespace ZEngine
 {
-    static std::atomic_bool                   s_request_terminate = false;
-    static std::atomic_bool                   s_close_requested   = false;
-    static EngineContextPtr                   g_engine_ctx        = nullptr;
-    static Applications::GameApplicationPtr   g_app               = nullptr;
-    static std::thread                        g_render_thread     = {};
+    static std::atomic_bool                 s_request_terminate = false;
+    static std::atomic_bool                 s_close_requested   = false;
+    static EngineContextPtr                 g_engine_ctx        = nullptr;
+    static Applications::GameApplicationPtr g_app               = nullptr;
+    static std::thread                      g_render_thread     = {};
 
-    void                                      Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
+    void                                    Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
         // Step 6 — assert Obelisk pre-conditions (Steps 1–5 must be complete before this call)
         ZENGINE_VALIDATE_ASSERT(memory != nullptr, "Engine::Initialize: memory is null — Obelisk must call MemoryManager::Initialize first")
@@ -54,8 +54,8 @@ namespace ZEngine
         // Step 12 — AssetManager
         Managers::AssetManager::Initialize(&arena, g_engine_ctx->Device, app->WorkingSpacePath);
 
-        app->CurrentWindow  = g_engine_ctx->Window;
-        g_app               = app;
+        app->CurrentWindow = g_engine_ctx->Window;
+        g_app              = app;
 
         ZENGINE_CORE_INFO("Engine initialized")
     }
