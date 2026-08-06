@@ -90,7 +90,7 @@ namespace ZEngine::Helpers
             }
         }
 
-        static bool IsInitialized()
+        static bool              IsInitialized()
         {
             return Pool != nullptr;
         }
