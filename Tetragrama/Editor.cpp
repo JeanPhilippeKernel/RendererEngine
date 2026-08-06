@@ -35,10 +35,6 @@ namespace Tetragrama
         if (WorkingSpacePath && WorkingSpacePath[0] != '\0')
         {
             WorkingSpaceBackend.Initialize(WorkingSpacePath, ZEngine::Core::VFS::VFSBackendCaps::Read | ZEngine::Core::VFS::VFSBackendCaps::List, &Memory->MainArena);
-            if (ZEngine::Engine::GetContext()->VFS->Mount(&WorkingSpaceBackend, ZEngine::Core::VFS::VFSPath::Root(), 0).Failed())
-            {
-                ZENGINE_CORE_ERROR("Failed to mount working space '{}' into the VFS", WorkingSpacePath)
-            }
         }
     }
 
@@ -53,6 +49,14 @@ namespace Tetragrama
 
     void Editor::OnInitialized()
     {
+        if (WorkingSpacePath && WorkingSpacePath[0] != '\0')
+        {
+            if (ZEngine::Engine::GetContext()->VFS->Mount(&WorkingSpaceBackend, ZEngine::Core::VFS::VFSPath::Root(), 0).Failed())
+            {
+                ZENGINE_CORE_ERROR("Failed to mount working space '{}' into the VFS", WorkingSpacePath)
+            }
+        }
+
         auto editor_scene          = ZPushStructCtor(&Memory->MainArena, EditorScene);
         auto editor_cam_controller = ZPushStructCtor(&Memory->MainArena, Controllers::EditorCameraController);
         UILayer                    = ZPushStructCtor(&Memory->MainArena, ImguiLayer);
