@@ -114,6 +114,7 @@ namespace
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
         void Close(IVFSFile* const) override {}
+        void Shutdown() override {}
     };
 
     void BuildTree(MockVFSContext& mock, const char* root, int breadth, int depth)
