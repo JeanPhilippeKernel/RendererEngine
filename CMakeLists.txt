@@ -31,7 +31,7 @@ endif()
 include(Scripts/CMake/NuGet.cmake)
 include(Scripts/CMake/CppWinRT.cmake)
 
-option (COPY_EXAMPLE_PROJECT "Copy example projects that show how to use Launcher" ON)
+option (ZENGINE_TRACY "Enable Tracy profiler" OFF)
 
 set (MACOSX_ARCHITECTURE_ARM64 OFF)
 if (APPLE)
@@ -51,9 +51,6 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 endif()
 
 list( APPEND CMAKE_INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib )
-
-# Externals dependencies
-#
 
 # Enable CMake's CTest Functionality
 #

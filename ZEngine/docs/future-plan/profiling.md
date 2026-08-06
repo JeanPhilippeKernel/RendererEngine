@@ -1,7 +1,7 @@
 # ZEngine — Profiling and Instrumentation
 
 **Priority:** P3 — Required to diagnose performance issues in shipped builds
-**Status:** Design
+**Status:** In Progress
 **Depends on:** Nothing (can be implemented first, improves all other work)
 **Blocks:** Nothing critical, but without it performance regressions are invisible
 
@@ -1259,25 +1259,28 @@ included only by their direct users, not transitively.
 ## 12. Deliverables Checklist
 
 ### Macro API
-- [ ] `ZEngine/Profiling/Profiling.h` — all 8 macros (`ZENGINE_PROFILE_SCOPE`, `ZENGINE_PROFILE_FUNCTION`, `ZENGINE_PROFILE_FRAME`, `ZENGINE_PROFILE_THREAD`, `ZENGINE_PROFILE_VALUE`, `ZENGINE_PROFILE_ALLOC`, `ZENGINE_PROFILE_FREE`, `ZENGINE_PROFILE_GPU_SCOPE`)
-- [ ] All macros expand to nothing when `ZENGINE_PROFILING == 0`
-- [ ] Tracy path: delegates to `ZoneScoped*`, `FrameMarkNamed`, `TracyPlot`, `TracyAlloc`, `TracyFree`, `TracyVkZone`
-- [ ] Fallback path: delegates to `ScopedTimer`, `ProfilerBuffer`, `MemoryProfiler`, `GPUScopedZone`
+- [x] `ZEngine/Profiling/Profiling.h` — 7 of 8 macros implemented (`ZENGINE_PROFILE_SCOPE`, `ZENGINE_PROFILE_FUNCTION`, `ZENGINE_PROFILE_FRAME`, `ZENGINE_PROFILE_THREAD`, `ZENGINE_PROFILE_VALUE`, `ZENGINE_PROFILE_ALLOC`, `ZENGINE_PROFILE_FREE`); `ZENGINE_PROFILE_GPU_SCOPE` pending
+- [x] All implemented macros expand to nothing when `ZENGINE_PROFILING == 0`
+- [x] Tracy path: delegates to `ZoneScoped`, `ZoneScopedN`, `FrameMarkNamed`, `TracyPlot`, `TracyAlloc`, `TracyFree`, `tracy::SetThreadName`; `TracyVkZone` pending (`ZENGINE_PROFILE_GPU_SCOPE`)
+- [x] Fallback path: delegates to `ScopeGuard` (inline in `ProfilerBuffer.h`), `ProfilerBuffer`, `MemoryProfiler`; `GPUScopedZone` pending
 
 ### Tracy integration
-- [ ] `vendor/tracy/` added as a git submodule (tag: latest stable, currently v0.11)
-- [ ] `CMakeLists.txt` snippet: `TracyClient` static library; `TRACY_ENABLE` + `TRACY_ON_DEMAND` defines; auto-enable in Debug/RelWithDebInfo; `ZENGINE_TRACY` option
-- [ ] `GPUProfiler::InitTracy` called after `vkCreateDevice` with a one-shot command buffer; `GPUProfiler::DestroyTracy` called before `vkDestroyDevice`
+- [x] Tracy fetched via `FetchContent` at tag v0.13.1; `ZENGINE_TRACY` CMake option added
+- [x] `TRACY_ENABLE` and `TRACY_ON_DEMAND` set as CMake cache variables before `FetchContent_MakeAvailable`
+- [x] `TracyClient` linked to `External_libs` when `ZENGINE_TRACY` is ON; `tracy/Tracy.hpp` included in `Profiling.h`
+- [ ] Auto-enable `ZENGINE_TRACY` in Debug/RelWithDebInfo (currently manual opt-in only)
+- [ ] `GPUProfiler::InitTracy` called after `vkCreateDevice`; `GPUProfiler::DestroyTracy` called before `vkDestroyDevice`
 
 ### Lightweight fallback
-- [ ] `ZEngine/Profiling/ScopedTimer.h/.cpp` — stack-allocated; `NowNs()` via `std::chrono::steady_clock`; calls `ProfilerBuffer::Record` on destruction
-- [ ] `ZEngine/Profiling/ProfilerBuffer.h/.cpp` — `CAPACITY = 4096` ring; atomic write-pos; `BeginFrame` copies snapshot; `DumpLastFrame` reads from snapshot only; `RecordValue` for float plots
+- [x] `ScopeGuard` (equivalent of `ScopedTimer`) — inline in `ProfilerBuffer.h`; stack-allocated RAII; `steady_clock` timing; calls `ProfilerBuffer::Record` on destruction
+- [x] `ZEngine/Profiling/ProfilerBuffer.h/.cpp` — `CAPACITY = 4096` ring; `PaddedAtomic` write-pos; `BeginFrame` snapshots and resets; `DumpLastFrame` reads snapshot only; `RecordValue` for float plots
 
 ### GPU timestamps
 - [ ] `ZEngine/Profiling/GPUProfiler.h/.cpp` — `Initialize` creates `VkQueryPool`; `BeginZone` / `EndZone` call `vkCmdWriteTimestamp`; `CollectResults` calls `vkGetQueryPoolResults`; `GPUZone` list with millisecond durations; `GPUScopedZone` RAII wrapper
 
 ### Memory profiler
-- [ ] `ZEngine/Profiling/MemoryProfiler.h/.cpp` — `TrackArena` registers arenas; `Update` reads `m_current_offset`, updates peak, emits `ZENGINE_PROFILE_VALUE`; `GetStats` fills `ArenaStats` array
+- [x] `ZEngine/Profiling/MemoryProfiler.h/.cpp` — `Initialize` wires arena allocator; `TrackArena` registers arenas; `Update` reads `m_current_offset`, updates peak, emits `ZENGINE_PROFILE_VALUE`, warns at 80%, asserts at 100%; `GetStats` fills `ArenaStats` array; `ResetPeaks` implemented
+- [x] `MemoryManager::Initialize` calls `MemoryProfiler::Initialize` and `CreateBudgetedArena` calls `MemoryProfiler::TrackArena` — all sub-arenas auto-registered at startup
 - [ ] All engine arenas registered in `Engine::Initialize`: ECS, RenderGraph, AssetImport, Audio, Physics, Scratch
 
 ### Instrumentation coverage
@@ -1302,10 +1305,11 @@ included only by their direct users, not transitively.
 - [ ] Console compiled to no-op in RelWithDebInfo and Release via `ZENGINE_DEBUG_CONSOLE=0`
 
 ### Build configuration
-- [ ] `ZENGINE_PROFILING=1` in Debug and RelWithDebInfo, `0` in Release
-- [ ] `ZENGINE_TRACY=1` in Debug and RelWithDebInfo (when Tracy submodule is present), `0` in Release
+- [x] `ZENGINE_PROFILING=1` in Debug and RelWithDebInfo, `0` in Release (set in `ZEngine/ZEngine/CMakeLists.txt`)
+- [x] `ZENGINE_TRACY` CMake option present; `ZENGINE_TRACY=1` propagated to `zEngineLib` when enabled
+- [ ] Auto-enable `ZENGINE_TRACY` in Debug/RelWithDebInfo builds
 - [ ] `ZENGINE_DEBUG_CONSOLE=1` in Debug only
-- [ ] CMakeLists snippet verified: Tracy static library, `TRACY_ON_DEMAND`, pthread linkage on Unix
+- [x] Tracy `TRACY_ON_DEMAND` enabled via CMake cache vars; `pthread`/`dl` linkage handled by Tracy's own CMakeLists
 
 ### Testing
 - [ ] Manual smoke test: connect Tracy viewer to a Debug build; verify zones appear for `Engine::MainThreadRun`, `WorldTick`, `RenderGraph::Execute`, and all post-process passes
