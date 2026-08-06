@@ -24,27 +24,42 @@ the process-level setup that must happen before `Engine::Initialize()` is called
 
 ```cpp
 // Obelisk/EntryPoint.cpp — actual execution order today:
+CrashHandler::Install("Obelisk", "1.0.0", "CrashDumps");   // Step 1 — first line
+
+// Step 2 — CLI parsing (--projectConfigFile, --launchEditor)
+// Must precede MemoryManager so the budget preset is known before Initialize is called.
+
 MemoryManager manager = {};
-manager.Initialize({.DefaultSize = ZGiga(3u)});   // MemoryManager on Obelisk's stack
-auto arena = &manager.Allocator;
+manager.Initialize(                                           // Step 3 — MemoryManager on Obelisk's stack
+    ZGiga(3u),
+    launch_editor ? MemoryBudgetConfig::Editor()
+                  : MemoryBudgetConfig::Default());
 
-Logger::Initialize(arena, logger_cfg);             // Logger before Engine
-ThreadPoolHelper::Initialize();                    // ThreadPool before Engine
+ThreadPoolHelper::Initialize();                               // Step 4 — ThreadPool before Logger
 
-app->Initialize(arena);   // ← calls GameApplication::Initialize → Engine::Initialize
+ArenaAllocator logger_arena = {};
+manager.CreateBudgetedArena(manager.Budget.Logging, &logger_arena);
+Logger::Initialize(&logger_arena, logger_cfg);               // Step 5 — Logger gets its own sub-arena
+
+// create app (Tetragrama::Editor or game)
+app->Initialize(&manager);   // ← passes MemoryManager*, not a raw ArenaAllocator*
 app->Run();
 app->Shutdown();
 Logger::Dispose();
-manager.Shutdown();       // fix typo before shipping: Shutdowm → Shutdown
+manager.Shutdown();
+CrashHandler::Uninstall();   // last line — already implemented
 ```
 
 This means:
 - `MemoryManager` is **NOT** a singleton inside the engine. It lives on Obelisk's stack
-  and its arena pointer is passed into `Engine::Initialize`.
+  and a pointer to it is passed into `Engine::Initialize`.
 - `Logger::Initialize` and `ThreadPoolHelper::Initialize` are already called by Obelisk
   **before** `Engine::Initialize`. The engine asserts they are live but must not call them again.
-- `Engine::Initialize` accepts and validates the pre-initialized arena; it does not create one.
-- Sub-arenas for all subsystems are carved from the passed arena and stored in `EngineContext`
+- Logger receives a dedicated sub-arena carved via `CreateBudgetedArena(Budget.Logging)`,
+  not the main arena directly.
+- `app->Initialize` receives a `MemoryManager*`. Engine subsystems access the budget and
+  carve their own sub-arenas from it; they do not receive a raw `ArenaAllocator*` directly.
+- Sub-arenas for all subsystems are carved from the manager and stored in `EngineContext`
   fields — never as local variables inside `Engine::Initialize`.
 
 ### Requirements for the new implementation
@@ -114,34 +129,44 @@ OBELISK SCOPE — applicationEntryPoint() in Obelisk/EntryPoint.cpp
 These steps happen BEFORE Engine::Initialize() is called.
 ═══════════════════════════════════════════════════════════════════
 
-Step  1: CrashHandler::Install()                          [OBELISK — NEW]
+Step  1: CrashHandler::Install("Obelisk", "1.0.0", "CrashDumps")  [OBELISK — DONE]
          Owner: Obelisk/EntryPoint.cpp (first line of applicationEntryPoint)
          Rationale: must be live before malloc, before Logger, before any
                     system that could crash. Cannot be Engine's responsibility
                     because a crash during MemoryManager::Initialize must still
                     produce a minidump.
 
-Step  2: MemoryManager::Initialize(ZGiga(3u))             [OBELISK — EXISTS]
-         Owner: Obelisk/EntryPoint.cpp (stack-allocated, arena pointer passed down)
-         Rationale: all subsequent arenas carved from this block. Obelisk owns
-                    the lifetime — MemoryManager is NOT a singleton in the engine.
-
-Step  3: Logger::Initialize(arena, cfg)                   [OBELISK — EXISTS]
+Step  2: CLI argument parsing + app selection             [OBELISK — EXISTS]
          Owner: Obelisk/EntryPoint.cpp
-         Rationale: every subsequent step emits ZENGINE_CORE_* calls.
-                    Already called by Obelisk before Engine::Initialize.
-                    Engine::Initialize must NOT call it again — only assert it is live.
+         Rationale: must happen before MemoryManager so the budget preset (Default vs Editor)
+                    is known when manager.Initialize is called. Sets app->ConfigFile from
+                    --projectConfigFile and determines whether to create Tetragrama::Editor.
+
+Step  3: MemoryManager::Initialize(ZGiga(3u), config)     [OBELISK — DONE]
+         Owner: Obelisk/EntryPoint.cpp (stack-allocated; MemoryManager* passed into app)
+         Rationale: all subsequent arenas carved from this block using CreateBudgetedArena.
+                    The config selects Default(), Editor(), or Server() budget presets.
+                    Obelisk owns the lifetime — MemoryManager is NOT a singleton in the engine.
+                    Logger's sub-arena is carved here via CreateBudgetedArena(Budget.Logging)
+                    before Logger::Initialize is called.
 
 Step  4: ThreadPoolHelper::Initialize()                   [OBELISK — EXISTS]
          Owner: Obelisk/EntryPoint.cpp
          Rationale: VulkanDevice::Initialize dispatches background GPU work.
+                    Must precede Logger so the thread pool is ready before any subsystem
+                    that might dispatch to it during initialization.
                     Already called by Obelisk before Engine::Initialize.
                     Engine::Initialize must NOT call it again — only assert it is live.
 
-Step  5: CLI argument parsing + app selection             [OBELISK — EXISTS]
+Step  5: Logger::Initialize(&logger_arena, cfg)           [OBELISK — EXISTS]
          Owner: Obelisk/EntryPoint.cpp
-         Rationale: decides whether to create Tetragrama::Editor or a game app,
-                    and sets app->ConfigFile from --projectConfigFile argument.
+         Rationale: every subsequent step emits ZENGINE_CORE_* calls.
+                    Logger receives a dedicated sub-arena carved from the budget
+                    via CreateBudgetedArena(Budget.Logging) — not the main arena directly.
+                    Must come after MemoryManager (needs the budget arena) and after
+                    ThreadPool (logger may dispatch flush work to thread pool workers).
+                    Already called by Obelisk before Engine::Initialize.
+                    Engine::Initialize must NOT call it again — only assert it is live.
 
 ═══════════════════════════════════════════════════════════════════
 ENGINE SCOPE — Engine::Initialize(), called from GameApplication::Initialize()
@@ -166,12 +191,13 @@ Step  9: GameWindow::Initialize()
 Step 10: VulkanDevice::Initialize()
          Rationale: GPU context required by all render systems, AssetManager uploads,
                     and AppRenderPipeline graph compilation.
-                    Depends on Step 9 (surface), Step 4 (thread pool), Step 2 (arena).
+                    Depends on Step 9 (surface), Step 4 (thread pool), Step 3 (arena).
 
-Step 11: VFS::VFSDiskContext::Initialize()
+Step 11: Core::VFS::VFSContext::Initialize()
          Rationale: path resolution and asset registry required by AssetManager and
                     AudioEngine before they attempt any file I/O.
-                    Depends on Step 2 (VFS sub-arena carved from arena).
+                    Depends on Step 3 (MemoryManager) — VFS sub-arena carved via
+                    CreateBudgetedArena(Budget.VirtualFS). Already implemented.
 
 Step 12: AssetManager::Initialize()
          Rationale: mesh, texture, and material loading required before scene population.
@@ -297,7 +323,7 @@ Step 11: ECS::Scene::Shutdown()
          Rationale: destroys all entity records and component storage dense arrays.
                     Must occur after all systems that hold component pointers.
 
-Step 12: VFS::VFSDiskContext::Shutdown()
+Step 12: Core::VFS::VFSContext::Shutdown()
          Rationale: closes file handles and flushes the asset registry.
                     Must occur after all subsystems that perform file I/O (Audio, AssetManager).
 
@@ -325,12 +351,11 @@ Step 16: Logger::Flush() + Logger::Dispose()              [OBELISK-OWNED]
 
 Step 17: MemoryManager::Shutdown()                        [OBELISK-OWNED]
          Owner: Obelisk/EntryPoint.cpp (stack variable — destructs at scope exit)
-         Rationale: calls free() on the 2 GB block.
+         Rationale: calls free() on the 3 GB block.
                     Must be last; all arena-backed objects are already logically destroyed.
-                    Note: today Obelisk calls manager.Shutdowm() (typo) — fix to Shutdown().
 
-Step 18: CrashHandler::Uninstall()                        [OBELISK-OWNED — NEW]
-         Owner: Obelisk/EntryPoint.cpp — add after MemoryManager::Shutdown()
+Step 18: CrashHandler::Uninstall()                        [OBELISK-OWNED — DONE]
+         Owner: Obelisk/EntryPoint.cpp — last line of applicationEntryPoint
          Rationale: removes signal/exception handlers.
                     Must be absolute last — no crash reporting is possible after this point.
 ```
@@ -368,7 +393,7 @@ The table below maps each virtual hook to the initialization/shutdown step at wh
 > | Steps | Available from |
 > |---|---|
 > | 6–10 (pre-conditions, Window, Device) | Sprint 1 — implement now |
-> | 11 (VFS) | Sprint 1 end (Engineer B) — add when VFS T1 lands |
+> | 11 (VFS) | DONE — VFSContext wired in Engine::Initialize |
 > | 12 (AssetManager) | Sprint 1 — implement now |
 > | 13–15 (Scene, WorldTick, ActorManager) | Sprint 2–3 |
 > | 16 (AnimationManager) | Sprint 7 |
@@ -382,59 +407,66 @@ The table below maps each virtual hook to the initialization/shutdown step at wh
 > Until a subsystem exists, leave its step slot as a commented placeholder so
 > `g_init_step` numbering stays stable and `PanicShutdown` case numbers never shift.
 >
-> **Sprint 1 deliverable:** Steps 6–10, 12, 22–25 wired. Steps 11, 13–21 are
+> **Sprint 1 deliverable:** Steps 6–10, 11, 12, 22–25 wired. Steps 13–21 are
 > placeholder comments incrementing `g_init_step` with no-op bodies.
 
 The rewrite below is the complete final form. Lines marked `// EXISTING` are kept verbatim. Lines marked `// NEW` are additions. Lines marked `// PLACEHOLDER — <Sprint N>` must not be implemented until that sprint.
 
 ```cpp
 // ─────────────────────────────────────────────────────────────────────────────
-// Obelisk/EntryPoint.cpp owns Steps 1–5 (crash handler, memory, logger,
-// thread pool, CLI parsing). These run BEFORE GameApplication::Initialize()
+// Obelisk/EntryPoint.cpp owns Steps 1–5 (crash handler, CLI, memory,
+// thread pool, logger). These run BEFORE GameApplication::Initialize()
 // and BEFORE Engine::Initialize() is called.
 //
-// Obelisk entry point (existing code + CrashHandler addition):
+// Obelisk entry point (actual implementation):
 //
-//   CrashHandler::Install();                      // NEW — add as first line
+//   CrashHandler::Install("Obelisk", "1.0.0", "CrashDumps");   // Step 1 — first line
+//   // Step 2 — CLI parsing (--projectConfigFile, --launchEditor)
 //   MemoryManager manager = {};
-//   manager.Initialize({.DefaultSize = ZGiga(3u)});
-//   auto arena = &manager.Allocator;
-//   Logger::Initialize(arena, logger_cfg);
-//   ThreadPoolHelper::Initialize();
-//   // ... CLI parsing, app creation ...
-//   app->Initialize(arena);   // → GameApplication::Initialize → Engine::Initialize
+//   manager.Initialize(                                          // Step 3
+//       ZGiga(3u),
+//       launch_editor ? MemoryBudgetConfig::Editor()
+//                     : MemoryBudgetConfig::Default());
+//   ThreadPoolHelper::Initialize();                              // Step 4
+//   ArenaAllocator logger_arena = {};
+//   manager.CreateBudgetedArena(manager.Budget.Logging, &logger_arena);
+//   Logger::Initialize(&logger_arena, logger_cfg);              // Step 5
+//   // ... app creation ...
+//   app->Initialize(&manager);   // → GameApplication::Initialize → Engine::Initialize
 //   app->Run();
 //   app->Shutdown();
 //   Logger::Dispose();
-//   manager.Shutdown();       // fix typo: Shutdowm → Shutdown
-//   CrashHandler::Uninstall();
+//   manager.Shutdown();
+//   CrashHandler::Uninstall();   // last line
 // ─────────────────────────────────────────────────────────────────────────────
 
-bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, GameApplication* app)
+void Engine::Initialize(MemoryManager* memory, WindowConfiguration* window_cfg, GameApplication* app)
 {
+    auto& arena = memory->MainArena;
+
     // Step 6 — Assert pre-conditions (Obelisk must have completed Steps 1–5)
-    ZENGINE_VALIDATE_ASSERT(arena != nullptr,
-        "Engine::Initialize: arena is null — Obelisk must initialize MemoryManager first")
+    ZENGINE_VALIDATE_ASSERT(memory != nullptr,
+        "Engine::Initialize: memory is null — Obelisk must initialize MemoryManager first")
     ZENGINE_VALIDATE_ASSERT(Logger::IsInitialized(),
         "Engine::Initialize: Logger not initialized — Obelisk must call Logger::Initialize first")
     ZENGINE_VALIDATE_ASSERT(ThreadPoolHelper::IsInitialized(),
         "Engine::Initialize: ThreadPool not initialized — Obelisk must call ThreadPoolHelper::Initialize first")
     // DO NOT call CrashHandler, Logger, or ThreadPool here — Obelisk owns them.
 
-    // Steps 5 + 6 — OnInitializing + OverrideWindowConfiguration (EXISTING — in GameApplication::Initialize)
+    // Steps 7 + 8 — OnInitializing + OverrideWindowConfiguration (EXISTING — in GameApplication::Initialize)
     // Called by GameApplication::Initialize before Engine::Initialize is invoked.
 
-    // Step 7 — GameWindow (EXISTING)
-    auto context       = ZPushStruct(arena, EngineContext);
-    context->Window    = ZPushStructCtor(arena, Windows::GameWindow);
+    // Step 9 — GameWindow (EXISTING)
+    auto context    = ZPushStruct(&arena, EngineContext);
+    context->Window = ZPushStructCtor(&arena, Windows::GameWindow);
     ZENGINE_VALIDATE_ASSERT(
-        context->Window->Initialize(arena, *window_cfg),
+        context->Window->Initialize(&arena, *window_cfg),
         "Engine::Initialize: GameWindow::Initialize failed")
 
-    // Step 8 — VulkanDevice (EXISTING)
-    context->Device = ZPushStructCtor(arena, Hardwares::VulkanDevice);
+    // Step 10 — VulkanDevice (EXISTING)
+    context->Device = ZPushStructCtor(&arena, Hardwares::VulkanDevice);
     ZENGINE_VALIDATE_ASSERT(
-        context->Device->Initialize(arena),
+        context->Device->Initialize(&arena),
         "Engine::Initialize: VulkanDevice::Initialize failed")
 
     // CRITICAL: All sub-arenas MUST be stored as EngineContext fields (context->VFSArena, etc.)
@@ -442,22 +474,19 @@ bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, 
     // they would be destroyed when the function returns, leaving dangling pointers
     // in all subsystems that were initialized from them.
 
-    // Step 11 — VFS (NEW) — PLACEHOLDER — Sprint 1 end (VFS T1, Engineer B)
-    // Uncomment when VFSDiskContext exists:
-    // arena->CreateSubArena(budget.VFS, &context->VFSArena);
-    // context->VFS = VFS::VFSDiskContext::Create(&context->VFSArena);
-    // ZENGINE_VALIDATE_ASSERT(
-    //     context->VFS->Initialize(),
-    //     "Engine::Initialize: VFSDiskContext::Initialize failed")
-    g_init_step = 11;
+    // Step 11 — VFS (DONE — VFSContext arena-allocated into context->VFSArena)
+    memory->CreateBudgetedArena(memory->Budget.VirtualFS, &context->VFSArena);
+    auto vfs_ctx = ZPushStructCtor(&context->VFSArena, Core::VFS::VFSContext);
+    vfs_ctx->Initialize(&context->VFSArena);
+    context->VFS = vfs_ctx;
 
-    // Step 10 — AssetManager (EXISTING, updated to store in context)
+    // Step 12 — AssetManager (EXISTING)
     ZENGINE_VALIDATE_ASSERT(
-        Managers::AssetManager::Initialize(arena, context->Device, app->WorkingSpacePath),
+        Managers::AssetManager::Initialize(&arena, context->Device, app->WorkingSpacePath),
         "Engine::Initialize: AssetManager::Initialize failed")
 
     // Step 13 — ECS::Scene (NEW)
-    arena->CreateSubArena(budget.ECSScene, &context->ECSArena);
+    memory->CreateBudgetedArena(memory->Budget.ECSScene, &context->ECSArena);
     context->Scene = ECS::Scene::Create(&context->ECSArena);
     ZENGINE_VALIDATE_ASSERT(
         context->Scene->Initialize(),
@@ -476,21 +505,22 @@ bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, 
         "Engine::Initialize: ActorManager::Initialize failed")
 
     // Step 16 — AnimationManager (NEW)
-    arena->CreateSubArena(budget.AnimationManager, &context->AnimationArena);
+    memory->CreateBudgetedArena(memory->Budget.AnimationManager, &context->AnimationArena);
     context->AnimMgr = Animation::AnimationManager::Create(&context->AnimationArena, context->Device, context->Scene);
     ZENGINE_VALIDATE_ASSERT(
         context->AnimMgr->Initialize(),
         "Engine::Initialize: AnimationManager::Initialize failed")
 
     // Step 17 — PhysicsWorld (NEW)
-    arena->CreateSubArena(budget.PhysicsWorld, &context->PhysicsArena);
+    // Note: add PhysicsWorld to MemoryBudgetConfig when Physics subsystem lands (Sprint 6)
+    memory->CreateBudgetedArena(memory->Budget.PhysicsWorld, &context->PhysicsArena);
     context->PhysicsWorld = Physics::PhysicsWorld::Create(&context->PhysicsArena, context->Scene);
     ZENGINE_VALIDATE_ASSERT(
         context->PhysicsWorld->Initialize(),
         "Engine::Initialize: PhysicsWorld::Initialize failed")
 
     // Step 18 — AudioEngine (NEW)
-    arena->CreateSubArena(budget.AudioEngine, &context->AudioArena);
+    memory->CreateBudgetedArena(memory->Budget.AudioEngine, &context->AudioArena);
     context->AudioEngine = Audio::AudioEngine::Create(&context->AudioArena, context->VFS);
     ZENGINE_VALIDATE_ASSERT(
         context->AudioEngine->Initialize(),
@@ -499,7 +529,7 @@ bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, 
     // Step 19 — NetworkSession (conditional) (NEW)
     if (app->RequiresNetworking())
     {
-        arena->CreateSubArena(budget.Network, &context->NetworkArena);
+        memory->CreateBudgetedArena(memory->Budget.Network, &context->NetworkArena);
         context->NetworkSession = Network::NetworkSession::Create(&context->NetworkArena, context->Scene);
         ZENGINE_VALIDATE_ASSERT(
             context->NetworkSession->Initialize(),
@@ -507,7 +537,7 @@ bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, 
     }
 
     // Expose context to app (EXISTING pattern, extended)
-    app->CurrentWindow     = context->Window;
+    app->CurrentWindow = context->Window;
 
     // Step 20 — OnInitialized (EXISTING hook — called in GameApplication::Initialize after this returns)
 
@@ -515,29 +545,28 @@ bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, 
     // See GameApplication::Initialize for the precise call site.
 
     // Step 22 — AppRenderPipeline (EXISTING, kept in place)
-    app->RenderPipeline = ZPushStructCtor(arena, Applications::AppRenderPipeline);
+    app->RenderPipeline = ZPushStructCtor(&arena, Applications::AppRenderPipeline);
     ZENGINE_VALIDATE_ASSERT(
         app->RenderPipeline->Initialize(context->Device),
         "Engine::Initialize: AppRenderPipeline::Initialize failed")
 
     g_engine_ctx = context;
-    return true;
 }
 ```
 
 `GameApplication::Initialize()` is updated to call `WorldTick::Commit()` after `OnInitialized()` returns:
 
 ```cpp
-void GameApplication::Initialize(ArenaAllocator* arena)
+void GameApplication::Initialize(MemoryManager* memory)
 {
-    Arena = arena;
-    OnInitializing();
-    OverrideWindowConfiguration();
-    Engine::Initialize(arena, &WindowCfg, this);   // Steps 1–22 above
+    Memory = memory;
+    OnInitializing();                              // Step 7
+    OverrideWindowConfiguration();                 // Step 8
+    Engine::Initialize(Memory, &WindowCfg, this);  // Steps 6–22 above
     OnInitialized();                               // Step 20: game registers systems
     Context->WorldTick->Commit();                  // Step 21: DAG built
-    // Step 22 (AppRenderPipeline) is inside Engine::Initialize, after OnInitialized
-    // via the existing placement — see note below.
+    // Step 22 (AppRenderPipeline) is inside Engine::Initialize, before OnInitialized
+    // — see note below for why it must be moved.
 }
 ```
 
@@ -556,9 +585,9 @@ Note: `AppRenderPipeline::Initialize()` currently lives inside `Engine::Initiali
 
 ### Failure classification
 
-Steps 1–4 (CrashHandler, Logger, ThreadPoolHelper, MemoryManager) are preconditions for all error reporting. A failure in any of these steps cannot be reported through the normal log pipeline. The correct response is an immediate fatal exit with a last-ditch platform write (OutputDebugStringA / write(2)) followed by `_Exit(1)`. No cleanup is attempted because no subsystem has been initialized yet.
+Steps 1–5 (CrashHandler, CLI, MemoryManager, ThreadPoolHelper, Logger) are preconditions for all error reporting. A failure in any of these steps cannot be reported through the normal log pipeline. The correct response is an immediate fatal exit with a last-ditch platform write (OutputDebugStringA / write(2)) followed by `_Exit(1)`. No cleanup is attempted because no subsystem has been initialized yet.
 
-Steps 5–22 each have error reporting available (Logger is live). Failure in any of these steps must:
+Steps 6–27 each have error reporting available (Logger is live). Failure in any of these steps must:
 1. Log the error at CRITICAL level.
 2. Call the partial-initialization shutdown sequence (all successfully completed steps, in reverse order).
 3. Call `_Exit(1)` after cleanup.
@@ -603,14 +632,14 @@ static void PanicShutdown()
     case  8: /* Assert pre-conditions: no cleanup */                              [[fallthrough]];
     case  7: /* OverrideWindowConfiguration: no cleanup */                        [[fallthrough]];
     case  6: /* OnInitializing: no cleanup */                                     [[fallthrough]];
-    // Steps 5 (CLI), 4 (ThreadPool), 3 (Logger), 2 (MemoryManager), 1 (CrashHandler)
+    // Steps 5 (Logger), 4 (ThreadPool), 3 (MemoryManager), 2 (CLI), 1 (CrashHandler)
     // are owned by Obelisk — cleaned up in applicationEntryPoint after app->Shutdown().
     // PanicShutdown cannot touch them; they may not be in a valid state.
     // Obelisk detects crash via CrashHandler and handles its own teardown.
-    case  5: /* CLI parsing — Obelisk-owned, not touched here */                  [[fallthrough]];
+    case  5: /* Logger     — Obelisk-owned, not touched here */                   [[fallthrough]];
     case  4: /* ThreadPool — Obelisk-owned, not touched here */                   [[fallthrough]];
-    case  3: /* Logger     — Obelisk-owned, not touched here */                   [[fallthrough]];
-    case  2: /* Memory     — Obelisk-owned, not touched here */                   [[fallthrough]];
+    case  3: /* Memory     — Obelisk-owned, not touched here */                   [[fallthrough]];
+    case  2: /* CLI parsing — Obelisk-owned, not touched here */                  [[fallthrough]];
     case  1: /* CrashHandler installed by Obelisk — remains live */               [[fallthrough]];
     default: break;
     }
@@ -620,19 +649,29 @@ static void PanicShutdown()
 Usage:
 
 ```cpp
-bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, GameApplication* app)
-{
-    CrashHandler::Install();
-    g_init_step = 1;
+// NOTE: Steps 1–5 (CrashHandler, CLI, MemoryManager, ThreadPool, Logger) are owned by
+// Obelisk/EntryPoint.cpp and run BEFORE Engine::Initialize is called.
+// g_init_step tracking begins at Step 6 inside Engine::Initialize.
 
-    if (!Logger::Initialize())
+void Engine::Initialize(MemoryManager* manager, WindowConfiguration* window_cfg, GameApplication* app)
+{
+    // Step 6 — assert pre-conditions (Obelisk owns Steps 1–5)
+    ZENGINE_VALIDATE_ASSERT(manager != nullptr, "...");
+    ZENGINE_VALIDATE_ASSERT(Logger::IsInitialized(), "...");
+    ZENGINE_VALIDATE_ASSERT(ThreadPoolHelper::IsInitialized(), "...");
+    g_init_step = 6;
+
+    // Step 7 — OnInitializing (fires in GameApplication::Initialize before this call)
+    // Step 8 — OverrideWindowConfiguration (fires in GameApplication::Initialize before this call)
+
+    // Step 9 — GameWindow
+    if (!g_engine_ctx->Window->Initialize(&manager->MainArena, *window_cfg))
     {
-        // Logger not live; use platform write
-        ZENGINE_PLATFORM_WRITE("Engine::Initialize: Logger::Initialize failed\n");
+        ZENGINE_CORE_CRITICAL("Engine::Initialize: GameWindow::Initialize failed");
         PanicShutdown();
         _Exit(1);
     }
-    g_init_step = 2;
+    g_init_step = 9;
 
     // ... subsequent steps follow the same pattern ...
 }
@@ -642,23 +681,27 @@ bool Engine::Initialize(ArenaAllocator* arena, WindowConfiguration* window_cfg, 
 
 ## 8. Deliverables Checklist
 
-- [ ] Add `CrashHandler::Install()` as Step 1 in `Engine::Initialize()`
-- [ ] Add `Logger::Initialize()` as Step 2 in `Engine::Initialize()`
-- [ ] Add `ThreadPoolHelper::Initialize()` as Step 3 in `Engine::Initialize()`
+- [x] Add `CrashHandler::Install("Obelisk", "1.0.0", "CrashDumps")` as the first line of
+      `Obelisk/EntryPoint.cpp` (DONE)
+- [x] Add `Logger::Initialize()` in `Obelisk/EntryPoint.cpp` with a dedicated sub-arena
+      from `CreateBudgetedArena(Budget.Logging)` (DONE)
+- [x] Add `ThreadPoolHelper::Initialize()` in `Obelisk/EntryPoint.cpp` before
+      `app->Initialize` (DONE)
 - [ ] Extend `EngineContext` with all new subsystem pointers (Section 2)
-- [ ] Add `VFS::VFSDiskContext` initialization (Step 9)
-- [ ] Add `ECS::Scene` initialization (Step 11)
-- [ ] Add `ECS::WorldTick` initialization (Step 12)
-- [ ] Add `ECS::ActorManager` initialization (Step 13)
-- [ ] Add `Animation::AnimationManager` initialization (Step 14)
-- [ ] Add `Physics::PhysicsWorld` initialization (Step 15)
-- [ ] Add `Audio::AudioEngine` initialization (Step 16)
-- [ ] Add `Network::NetworkSession` initialization (Step 17, conditional)
-- [ ] Move `WorldTick::Commit()` to `GameApplication::Initialize()` after `OnInitialized()` (Step 19)
+- [ ] Add `Core::VFS::VFSContext` initialization (Step 11)
+- [ ] Add `ECS::Scene` initialization (Step 13)
+- [ ] Add `ECS::WorldTick` initialization (Step 14)
+- [ ] Add `ECS::ActorManager` initialization (Step 15)
+- [ ] Add `Animation::AnimationManager` initialization (Step 16)
+- [ ] Add `Physics::PhysicsWorld` initialization (Step 17)
+- [ ] Add `Audio::AudioEngine` initialization (Step 18)
+- [ ] Add `Network::NetworkSession` initialization (Step 19, conditional)
+- [ ] Move `WorldTick::Commit()` to `GameApplication::Initialize()` after `OnInitialized()` (Step 21)
 - [ ] Confirm `AppRenderPipeline::Initialize()` runs after `WorldTick::Commit()` — move if needed
 - [ ] Implement `PanicShutdown()` with `g_init_step` tracking (Section 7)
 - [ ] Implement full shutdown sequence in `Engine::Deinitialize()` (Section 4)
 - [ ] Add `OnClosing()` call before Step 1 of shutdown
 - [ ] Add `OnClosed()` call after Step 17 of shutdown, before Step 18
 - [ ] Update `GameApplication::Shutdown()` to call `WorldTick::Shutdown()`, `ActorManager::Shutdown()`, `Scene::Shutdown()` in correct order
-- [ ] Memory budget prerequisites: land memory-allocator-audit.md Bugs 1, 3, 4, 9, 13 (P0 fixes) before any new arena carving
+- [x] Memory budget prerequisites: land memory-allocator-audit.md Bugs 1, 3, 4, 9, 13 (P0 fixes)
+      before any new arena carving (DONE — PRs #497, #531)
