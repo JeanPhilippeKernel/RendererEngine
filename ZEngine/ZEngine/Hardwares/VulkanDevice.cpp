@@ -5,9 +5,19 @@
 #define VMA_VULKAN_VERSION 1003000 // Vulkan 1.3
 
 #ifdef VMA_DEBUG_DETECT_CORRUPTION
-// Write VMA leak/corruption reports to stderr; visible in Xcode console and system log
 #include <cstdio>
+#ifdef _WIN32
+#include <windows.h>
+#define VMA_DEBUG_LOG_FORMAT(format, ...)                     \
+    do {                                                       \
+        char __vma_buf[512];                                   \
+        snprintf(__vma_buf, sizeof(__vma_buf), "[VMA] " format "\n", __VA_ARGS__); \
+        OutputDebugStringA(__vma_buf);                         \
+        fputs(__vma_buf, stderr);                              \
+    } while (0)
+#else
 #define VMA_DEBUG_LOG_FORMAT(format, ...) fprintf(stderr, "[VMA] " format "\n", __VA_ARGS__)
+#endif
 #endif
 
 #include <ZEngine/Hardwares/VulkanDevice.h>
