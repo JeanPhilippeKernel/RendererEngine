@@ -1,4 +1,3 @@
-#include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Engine.h>
@@ -19,9 +18,9 @@ using namespace std::chrono_literals;
 namespace ZEngine
 {
     static std::atomic_bool                   s_request_terminate = false;
+    static std::atomic_bool                   s_close_requested   = false;
     static EngineContextPtr                   g_engine_ctx        = nullptr;
     static Applications::GameApplicationPtr   g_app               = nullptr;
-    static Applications::AppRenderPipelinePtr g_appRenderPipeline = nullptr;
     static std::thread                        g_render_thread     = {};
 
     void                                      Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
@@ -55,11 +54,6 @@ namespace ZEngine
         // Step 12 — AssetManager
         Managers::AssetManager::Initialize(&arena, g_engine_ctx->Device, app->WorkingSpacePath);
 
-        // Step 22 — AppRenderPipeline (temporary position — must move after WorldTick::Commit, Sprint 3)
-        g_appRenderPipeline = ZPushStructCtor(&arena, Applications::AppRenderPipeline);
-        g_appRenderPipeline->Initialize(g_engine_ctx->Device);
-
-        app->RenderPipeline = g_appRenderPipeline;
         app->CurrentWindow  = g_engine_ctx->Window;
         g_app               = app;
 
@@ -81,7 +75,7 @@ namespace ZEngine
         Managers::AssetManager::Shutdown();
 
         // Step 4 — destroy framebuffers, render passes, descriptor sets
-        g_appRenderPipeline->Shutdown();
+        g_app->RenderPipeline->Shutdown();
 
         // Step 12 — close VFS file handles
         if (g_engine_ctx->VFS)
@@ -113,13 +107,13 @@ namespace ZEngine
 
     bool Engine::OnEngineClosed(Event::EngineClosedEvent& event)
     {
-        s_request_terminate.store(true, std::memory_order_release);
+        s_close_requested.store(true, std::memory_order_release);
         return true;
     }
 
     void Engine::MainThreadRun()
     {
-        while (!s_request_terminate.load(std::memory_order_acquire))
+        while (!s_close_requested.load(std::memory_order_acquire))
         {
             if (!g_engine_ctx || !g_engine_ctx->Window || !g_engine_ctx->Device)
             {
@@ -232,7 +226,7 @@ namespace ZEngine
         g_render_thread = std::thread(Engine::RenderThreadRun);
         MainThreadRun();
 
-        // Step 1 note: OnClosing fires here — all subsystems still live, before Deinitialize
+        // OnClosing fires while all subsystems are live; Deinitialize sets s_request_terminate
         g_app->OnClosing();
 
         Deinitialize();
