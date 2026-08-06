@@ -168,6 +168,16 @@ FetchContent_Declare(miniz
     GIT_SHALLOW TRUE
 )
 
+FetchContent_Declare(TracyClient
+    GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+    GIT_SHALLOW TRUE
+    GIT_TAG v0.13.1
+)
+
+if(ZENGINE_TRACY)
+    set(TRACY_ENABLE    ON CACHE BOOL "" FORCE)
+    set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+endif()
 
 FetchContent_MakeAvailable(
   fmt
@@ -193,6 +203,7 @@ FetchContent_MakeAvailable(
   glslang
   GTest
   miniz
+  TracyClient
   )
 
 foreach(_spirv_target IN ITEMS
@@ -286,6 +297,9 @@ target_link_libraries(External_libs
          miniz
 )
 
+if(ZENGINE_TRACY)
+    target_link_libraries(External_libs INTERFACE TracyClient)
+endif()
 
 add_library(imported::ZEngine_External_Dependencies ALIAS External_libs)
 

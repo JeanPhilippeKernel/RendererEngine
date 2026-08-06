@@ -9,6 +9,7 @@
 #endif
 
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Profiling/MemoryProfiler.h>
 
 namespace ZEngine::Core::Memory
 {
@@ -118,6 +119,10 @@ namespace ZEngine::Core::Memory
             page_size = sysconf(_SC_PAGESIZE);
 #endif
             MainArena.Initialize(buffer_size, page_size);
+
+#if ZENGINE_PROFILING
+            Profiling::MemoryProfiler::Initialize(&MainArena);
+#endif
         }
 
         void CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result)
@@ -127,8 +132,8 @@ namespace ZEngine::Core::Memory
 
             MainArena.CreateSubArena(config.SizeBytes, result);
 
-#if defined(ZENGINE_ENABLE_PROFILING)
-            MemoryProfiler::TrackArena(config.Name, result);
+#if ZENGINE_PROFILING
+            Profiling::MemoryProfiler::TrackArena(config.Name, result);
 #endif
         }
 

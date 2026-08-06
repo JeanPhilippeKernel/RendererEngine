@@ -1,7 +1,7 @@
 # ZEngine — Memory Budget
 
 **Priority:** P0 — Required before any sub-arena allocation to prevent OOM
-**Status:** Design — extends existing MemoryManager
+**Status:** In Progress
 **Modifies:** `MemoryManager.h`, `Engine::Initialize`
 
 ---
@@ -204,7 +204,7 @@ void MemoryManager::CreateBudgetedArena(const SubArenaConfig& config, ArenaAlloc
 
     Allocator.CreateSubArena(config.SizeBytes, out);
 
-#if defined(ZENGINE_ENABLE_PROFILING)
+#if ZENGINE_PROFILING
     MemoryProfiler::TrackArena(config.Name, out);
 #endif
 }
@@ -316,7 +316,7 @@ void MemoryManager::CreateBudgetedArena(const Memory::SubArenaConfig& config, Ar
     ZENGINE_VALIDATE_ASSERT(out != nullptr,
         "MemoryManager::CreateBudgetedArena: out must not be null")
     Allocator.CreateSubArena(config.SizeBytes, out);
-#if defined(ZENGINE_ENABLE_PROFILING)
+#if ZENGINE_PROFILING
     MemoryProfiler::TrackArena(config.Name, out);
 #endif
 }
@@ -368,26 +368,27 @@ If `budget.Validate()` fails, `Engine::Initialize` exits at Step 4 before any Vu
 
 ### Prerequisites from memory-allocator-audit.md (must land first)
 
-These bugs must be fixed before any sub-arena is carved from the global allocator. Fixing them after sub-arenas exist risks corrupting live allocations.
+All bugs fixed — see PRs #497 and #531.
 
-- [ ] **Bug 1** — Replace `assert` in `ArenaAllocator::Allocate` with `ZENGINE_VALIDATE_ASSERT` (prevents silent OOB write in release)
-- [ ] **Bug 3** — Add null-check on `malloc` return in `ArenaAllocator::Initialize` (prevents UB on OOM)
-- [ ] **Bug 4** — Guard `free` in `Shutdown` against double-call; add safe destructor (depends on Bug 9)
-- [ ] **Bug 9** — Add `m_owns_memory` flag; sub-arenas must not free memory they do not own
-- [ ] **Bug 13** — Fix `is_power_of_two(0)` returning true (prevents null-pointer alignment in `Allocate`)
+- [x] **Bug 1** — `assert` replaced with `ZENGINE_VALIDATE_ASSERT` in `ArenaAllocator::Allocate`
+- [x] **Bug 3** — Switched from `malloc` to `mmap`/`VirtualAlloc` with null-check in `Initialize`
+- [x] **Bug 4** — `Shutdown` guarded against double-call; destructor calls `Shutdown`
+- [x] **Bug 9** — `m_is_sub_arena` flag added; sub-arenas skip `free` in `Shutdown`
+- [x] **Bug 13** — `is_power_of_two` fixed: `(x != 0) && ((x & (x-1)) == 0)`
 
 ### Memory budget deliverables
 
-- [ ] Fix typo `Shutdowm` -> `Shutdown` in `MemoryManager.h` (Section 6, Fix 1)
-- [ ] Add `CreateBudgetedArena(const SubArenaConfig&, ArenaAllocator* out)` to `MemoryManager` (Section 6, Fix 2)
-- [ ] Add `MemoryBudgetConfig` struct with `Default()`, `Server()`, `Editor()`, `Validate()`, `TotalCommitted()` (Section 4)
-- [ ] Add `SubArenaConfig` struct (Section 4)
-- [ ] Update `Engine::Initialize()` to pass `MemoryBudgetConfig::Default()` to `MemoryManager::Initialize()` and validate before carving any sub-arena (Section 6, Fix 4)
-- [ ] Replace all ad-hoc `arena->CreateSubArena(hardcoded_size, &out)` call sites with `MemoryManager::Instance().CreateBudgetedArena(cfg.FieldName, &out)` (engine-lifecycle.md Section 6)
-- [ ] Integrate `MemoryProfiler::TrackArena` inside `CreateBudgetedArena` (Section 5)
-- [ ] Implement 80% watermark warning in `MemoryProfiler::SampleArenas()` (Section 5)
-- [ ] Implement full-arena `ZENGINE_VALIDATE_ASSERT` in `MemoryProfiler::SampleArenas()` (Section 5)
+- [x] Fix typo `Shutdowm` -> `Shutdown` in `MemoryManager.h` (Section 6, Fix 1)
+- [x] Add `CreateBudgetedArena(const SubArenaConfig&, ArenaAllocator* out)` to `MemoryManager` (Section 6, Fix 2)
+- [x] Add `MemoryBudgetConfig` struct with `Default()`, `Server()`, `Editor()`, `Validate()`, `TotalCommitted()` (Section 4)
+- [x] Add `SubArenaConfig` struct (Section 4)
+- [x] `MemoryManager::Initialize` accepts `MemoryBudgetConfig` and calls `config.Validate(buffer_size)` before carving any sub-arena (Section 6, Fix 4)
+- [x] Integrate `MemoryProfiler::TrackArena` inside `CreateBudgetedArena` — called automatically via `#if ZENGINE_PROFILING` guard (Section 5)
+- [x] Implement 80% watermark warning in `MemoryProfiler::Update()` with 60s cooldown (Section 5)
+- [x] Implement full-arena `ZENGINE_VALIDATE_ASSERT` in `MemoryProfiler::Update()` (Section 5)
+- [x] `MemoryProfiler::Initialize` called from `MemoryManager::Initialize` — wires arena allocator into `s_arenas` before any `TrackArena` call
+- [x] `MemoryBudgetConfig::Server()` zeroes out `AudioEngine`, `UIContext`, `VulkanDevice`, `Network` fields
+- [x] `MemoryBudgetConfig::Editor()` zeroes out `AudioEngine`, `Network`; increases `UIContext` to 32 MB
+- [ ] Replace all ad-hoc `arena->CreateSubArena(hardcoded_size, &out)` call sites with `MemoryManager::CreateBudgetedArena(cfg.FieldName, &out)` (engine-lifecycle.md Section 6)
 - [ ] Add arena utilization bars to profiling overlay (profiling.md integration point)
-- [ ] Update `MemoryBudgetConfig::Server()` to zero out `AudioEngine`, `UIContext`, `Network` fields for dedicated server builds
-- [ ] Update `MemoryBudgetConfig::Editor()` to zero out `AudioEngine`, `Network` fields for editor builds
 - [ ] Document arena lifetime rules: no pointer into any sub-arena is valid after `MemoryManager::Shutdown()`
