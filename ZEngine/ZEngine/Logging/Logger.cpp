@@ -50,6 +50,11 @@ namespace ZEngine::Logging
         }
     }
 
+    bool Logger::IsInitialized()
+    {
+        return s_logger_collection.size() > 0;
+    }
+
     void Logger::Info(std::string msg)
     {
         for (auto& logger : s_logger_collection)

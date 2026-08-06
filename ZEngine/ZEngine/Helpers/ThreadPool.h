@@ -90,6 +90,11 @@ namespace ZEngine::Helpers
             }
         }
 
+        static bool IsInitialized()
+        {
+            return Pool != nullptr;
+        }
+
         template <typename T>
         static void Submit(T&& f)
         {

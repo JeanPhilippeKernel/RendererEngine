@@ -28,6 +28,7 @@ namespace ZEngine::Logging
         using LogEventHandler = std::function<void(LogMessage)>;
 
         static void        Initialize(void* arena, const LoggerConfiguration&);
+        static bool        IsInitialized();
         static void        Flush();
         static void        Dispose();
         static uint32_t    AddEventHandler(LogEventHandler handler);

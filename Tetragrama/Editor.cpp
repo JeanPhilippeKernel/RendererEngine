@@ -2,6 +2,7 @@
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
+#include <ZEngine/Engine.h>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
