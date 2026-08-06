@@ -63,10 +63,6 @@ namespace ZEngine::Applications
 
     void GameApplication::Shutdown()
     {
-        OnClosing();
-
         Engine::Dispose();
-
-        OnClosed();
     }
 } // namespace ZEngine::Applications

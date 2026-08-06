@@ -57,9 +57,18 @@ int applicationEntryPoint(int argc, char* argv[])
     app->Run();
     app->Shutdown();
 
+    // Step 15 — join worker threads before logger/memory teardown
+    Helpers::ThreadPoolHelper::Shutdown();
+
+    // Step 16 — flush and dispose logger
+    Logger::Flush();
     Logger::Dispose();
 
+    // Step 17 — free the 3 GB arena block
     manager.Shutdown();
+
+    // OnClosed fires after memory is freed — may only use stack/OS resources
+    app->OnClosed();
 
     CrashHandler::Uninstall();
     return 0;

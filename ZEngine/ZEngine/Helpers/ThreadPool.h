@@ -95,6 +95,15 @@ namespace ZEngine::Helpers
             return Pool != nullptr;
         }
 
+        static void Shutdown()
+        {
+            if (Pool)
+            {
+                Pool->Shutdown();
+                Pool.reset();
+            }
+        }
+
         template <typename T>
         static void Submit(T&& f)
         {

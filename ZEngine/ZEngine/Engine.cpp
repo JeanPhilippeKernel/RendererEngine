@@ -68,20 +68,39 @@ namespace ZEngine
 
     void Engine::Deinitialize()
     {
+        // Step 1 — signal all loops to exit
+        s_request_terminate.store(true, std::memory_order_release);
+
+        // Step 2 — join render thread before any GPU resource is destroyed
+        if (g_render_thread.joinable())
+        {
+            g_render_thread.join();
+        }
+
+        // Step 3 — drain async import queue before pipeline/device teardown
+        Managers::AssetManager::Shutdown();
+
+        // Step 4 — destroy framebuffers, render passes, descriptor sets
+        g_appRenderPipeline->Shutdown();
+
+        // Step 12 — close VFS file handles
+        if (g_engine_ctx->VFS)
+        {
+            g_engine_ctx->VFS->Shutdown();
+        }
+
+        // Step 13 — destroy logical device, queues, command pools
+        g_engine_ctx->Device->Deinitialize();
+
+        // Step 14 — destroy OS window and Vulkan surface (must follow device)
         if (g_engine_ctx->Window)
         {
             g_engine_ctx->Window->Deinitialize();
         }
-
-        g_render_thread.join();
-        g_appRenderPipeline->Shutdown();
-        g_engine_ctx->Device->Deinitialize();
     }
 
     void Engine::Dispose()
     {
-        s_request_terminate.store(false, std::memory_order_release);
-        Managers::AssetManager::Shutdown();
         g_engine_ctx->Device->Dispose();
 
         ZENGINE_CORE_INFO("Engine destroyed")
@@ -212,6 +231,9 @@ namespace ZEngine
         Managers::AssetManager::Run();
         g_render_thread = std::thread(Engine::RenderThreadRun);
         MainThreadRun();
+
+        // Step 1 note: OnClosing fires here — all subsystems still live, before Deinitialize
+        g_app->OnClosing();
 
         Deinitialize();
     }

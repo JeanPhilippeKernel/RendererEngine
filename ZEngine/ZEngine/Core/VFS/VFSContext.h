@@ -28,6 +28,8 @@ namespace ZEngine::Core::VFS
 
         [[nodiscard]] VFSResult<void>                           Rename(const VFSPath& src, const VFSPath& dst) override;
 
+        void                                                    Shutdown() override;
+
     private:
         [[nodiscard]] VFSResult<ResolveResult> ResolveWritable(const VFSPath& path) const;
 
