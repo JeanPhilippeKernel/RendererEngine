@@ -1,3 +1,4 @@
+#include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Engine.h>
 
@@ -13,6 +14,11 @@ namespace ZEngine::Applications
         OverrideWindowConfiguration();
 
         Engine::Initialize(Memory, &WindowCfg, this);
+
+        // Step 22 — AppRenderPipeline: must follow Engine::Initialize (device live) and
+        // precede OnInitialized so the game DLL sees a fully constructed pipeline
+        RenderPipeline = ZPushStructCtor(&Memory->MainArena, AppRenderPipeline);
+        RenderPipeline->Initialize(Engine::GetContext()->Device);
 
         OnInitialized();
     }
@@ -63,10 +69,6 @@ namespace ZEngine::Applications
 
     void GameApplication::Shutdown()
     {
-        OnClosing();
-
         Engine::Dispose();
-
-        OnClosed();
     }
 } // namespace ZEngine::Applications

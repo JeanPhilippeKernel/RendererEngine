@@ -4,6 +4,23 @@
 #define VMA_IMPLEMENTATION
 #define VMA_VULKAN_VERSION 1003000 // Vulkan 1.3
 
+#ifdef VMA_DEBUG_DETECT_CORRUPTION
+#include <cstdio>
+#ifdef _WIN32
+#include <windows.h>
+#define VMA_DEBUG_LOG_FORMAT(format, ...)                                          \
+    do                                                                             \
+    {                                                                              \
+        char __vma_buf[512];                                                       \
+        snprintf(__vma_buf, sizeof(__vma_buf), "[VMA] " format "\n", __VA_ARGS__); \
+        OutputDebugStringA(__vma_buf);                                             \
+        fputs(__vma_buf, stderr);                                                  \
+    } while (0)
+#else
+#define VMA_DEBUG_LOG_FORMAT(format, ...) fprintf(stderr, "[VMA] " format "\n", __VA_ARGS__)
+#endif
+#endif
+
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
@@ -653,6 +670,24 @@ namespace ZEngine::Hardwares
         RunningDirtyCollector.store(false, std::memory_order_release);
 
         AsyncResLoader->Shutdown();
+
+        {
+            Rendering::Textures::TextureHandle tex_to_dispose = {};
+            while (TextureHandleToDispose.Pop(tex_to_dispose))
+            {
+                auto texture = GlobalTextures.Access(tex_to_dispose);
+                if (texture)
+                {
+                    auto buf = Image2DBufferManager.Access(texture->BufferHandle);
+                    if (buf)
+                    {
+                        buf->Dispose();
+                    }
+                    Image2DBufferManager.Remove(texture->BufferHandle);
+                    GlobalTextures.Remove(tex_to_dispose);
+                }
+            }
+        }
 
         GlobalTextures.Dispose();
         Image2DBufferManager.Dispose();

@@ -339,13 +339,13 @@ Step 14: GameWindow::Deinitialize()
 OBELISK SCOPE — after app->Shutdown() returns to applicationEntryPoint
 ═══════════════════════════════════════════════════════════════════
 
-Step 15: ThreadPoolHelper::Shutdown()                     [OBELISK-OWNED]
-         Owner: Obelisk/EntryPoint.cpp (implicit today; must be made explicit)
+Step 15: ThreadPoolHelper::Shutdown()                     [OBELISK-OWNED — DONE]
+         Owner: Obelisk/EntryPoint.cpp
          Rationale: joins all worker threads.
                     Must occur after app->Shutdown() so all dispatched work is complete.
 
-Step 16: Logger::Flush() + Logger::Dispose()              [OBELISK-OWNED]
-         Owner: Obelisk/EntryPoint.cpp (exists today as Logger::Dispose())
+Step 16: Logger::Flush() + Logger::Dispose()              [OBELISK-OWNED — DONE]
+         Owner: Obelisk/EntryPoint.cpp
          Rationale: flushes all pending log entries to disk.
                     Must occur after all engine subsystems have shut down.
 
@@ -688,7 +688,13 @@ void Engine::Initialize(MemoryManager* manager, WindowConfiguration* window_cfg,
 - [x] Add `ThreadPoolHelper::Initialize()` in `Obelisk/EntryPoint.cpp` before
       `app->Initialize` (DONE)
 - [ ] Extend `EngineContext` with all new subsystem pointers (Section 2)
-- [ ] Add `Core::VFS::VFSContext` initialization (Step 11)
+- [x] Add `Core::VFS::VFSContext` initialization (Step 11) (DONE — wired in Engine::Initialize)
+- [x] Add `VFSContext::Shutdown()` call in Engine::Deinitialize() (Step 12 of shutdown) (DONE)
+- [x] Fix shutdown order: join render thread before Device/Window teardown (Section 4, Steps 1–14) (DONE)
+- [x] Add `OnClosing()` call in `Engine::Run()` before `Deinitialize()`, while all subsystems are live (DONE)
+- [x] Add `OnClosed()` call in `EntryPoint.cpp` after `manager.Shutdown()`, before `CrashHandler::Uninstall()` (DONE)
+- [x] Add `ThreadPoolHelper::Shutdown()` in `EntryPoint.cpp` (Step 15) (DONE)
+- [x] Add `Logger::Flush()` before `Logger::Dispose()` in `EntryPoint.cpp` (Step 16) (DONE)
 - [ ] Add `ECS::Scene` initialization (Step 13)
 - [ ] Add `ECS::WorldTick` initialization (Step 14)
 - [ ] Add `ECS::ActorManager` initialization (Step 15)
@@ -699,9 +705,6 @@ void Engine::Initialize(MemoryManager* manager, WindowConfiguration* window_cfg,
 - [ ] Move `WorldTick::Commit()` to `GameApplication::Initialize()` after `OnInitialized()` (Step 21)
 - [ ] Confirm `AppRenderPipeline::Initialize()` runs after `WorldTick::Commit()` — move if needed
 - [ ] Implement `PanicShutdown()` with `g_init_step` tracking (Section 7)
-- [ ] Implement full shutdown sequence in `Engine::Deinitialize()` (Section 4)
-- [ ] Add `OnClosing()` call before Step 1 of shutdown
-- [ ] Add `OnClosed()` call after Step 17 of shutdown, before Step 18
 - [ ] Update `GameApplication::Shutdown()` to call `WorldTick::Shutdown()`, `ActorManager::Shutdown()`, `Scene::Shutdown()` in correct order
 - [x] Memory budget prerequisites: land memory-allocator-audit.md Bugs 1, 3, 4, 9, 13 (P0 fixes)
       before any new arena carving (DONE — PRs #497, #531)

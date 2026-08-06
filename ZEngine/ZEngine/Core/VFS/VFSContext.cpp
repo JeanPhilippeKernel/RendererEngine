@@ -186,6 +186,12 @@ namespace ZEngine::Core::VFS
         return src_hit.Value().Backend->Rename(src_hit.Value().RelativePath, dst_hit.Value().RelativePath);
     }
 
+    void VFSContext::Shutdown()
+    {
+        m_mount_table.Clear();
+        m_arena = nullptr;
+    }
+
     VFSResult<ResolveResult> VFSContext::ResolveWritable(const VFSPath& path) const
     {
         std::lock_guard<std::mutex>      arena_lock(m_arena_mutex);

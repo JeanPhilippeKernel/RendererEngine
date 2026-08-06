@@ -31,6 +31,8 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<ResolveResult> Resolve(const VFSPath& path) const;
         [[nodiscard]] VFSResult<void>          ResolveAll(const VFSPath& dir_path, Containers::Array<ResolveResult>& out_results) const;
 
+        void                                   Clear();
+
         size_t                                 Count() const;
 
     private:

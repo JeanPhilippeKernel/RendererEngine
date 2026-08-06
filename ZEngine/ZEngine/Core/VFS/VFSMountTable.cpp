@@ -16,6 +16,13 @@ namespace ZEngine::Core::VFS
         return m_mounts.size();
     }
 
+    void VFSMountTable::Clear()
+    {
+        std::unique_lock<std::shared_mutex> lock(m_mutex);
+        m_mounts.clear();
+        m_arena = nullptr;
+    }
+
     VFSResult<void> VFSMountTable::Mount(IVFSBackend* const backend, const VFSPath& logical_root, int priority)
     {
         std::unique_lock<std::shared_mutex> lock(m_mutex);

@@ -1,4 +1,3 @@
-#include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Engine.h>
@@ -18,13 +17,13 @@ using namespace std::chrono_literals;
 
 namespace ZEngine
 {
-    static std::atomic_bool                   s_request_terminate = false;
-    static EngineContextPtr                   g_engine_ctx        = nullptr;
-    static Applications::GameApplicationPtr   g_app               = nullptr;
-    static Applications::AppRenderPipelinePtr g_appRenderPipeline = nullptr;
-    static std::thread                        g_render_thread     = {};
+    static std::atomic_bool                 s_request_terminate = false;
+    static std::atomic_bool                 s_close_requested   = false;
+    static EngineContextPtr                 g_engine_ctx        = nullptr;
+    static Applications::GameApplicationPtr g_app               = nullptr;
+    static std::thread                      g_render_thread     = {};
 
-    void                                      Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
+    void                                    Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
         // Step 6 — assert Obelisk pre-conditions (Steps 1–5 must be complete before this call)
         ZENGINE_VALIDATE_ASSERT(memory != nullptr, "Engine::Initialize: memory is null — Obelisk must call MemoryManager::Initialize first")
@@ -55,33 +54,47 @@ namespace ZEngine
         // Step 12 — AssetManager
         Managers::AssetManager::Initialize(&arena, g_engine_ctx->Device, app->WorkingSpacePath);
 
-        // Step 22 — AppRenderPipeline (temporary position — must move after WorldTick::Commit, Sprint 3)
-        g_appRenderPipeline = ZPushStructCtor(&arena, Applications::AppRenderPipeline);
-        g_appRenderPipeline->Initialize(g_engine_ctx->Device);
-
-        app->RenderPipeline = g_appRenderPipeline;
-        app->CurrentWindow  = g_engine_ctx->Window;
-        g_app               = app;
+        app->CurrentWindow = g_engine_ctx->Window;
+        g_app              = app;
 
         ZENGINE_CORE_INFO("Engine initialized")
     }
 
     void Engine::Deinitialize()
     {
+        // Step 1 — signal all loops to exit
+        s_request_terminate.store(true, std::memory_order_release);
+
+        // Step 2 — join render thread before any GPU resource is destroyed
+        if (g_render_thread.joinable())
+        {
+            g_render_thread.join();
+        }
+
+        // Step 3 — drain async import queue before pipeline/device teardown
+        Managers::AssetManager::Shutdown();
+
+        // Step 4 — destroy framebuffers, render passes, descriptor sets
+        g_app->RenderPipeline->Shutdown();
+
+        // Step 12 — close VFS file handles
+        if (g_engine_ctx->VFS)
+        {
+            g_engine_ctx->VFS->Shutdown();
+        }
+
+        // Step 13 — destroy logical device, queues, command pools
+        g_engine_ctx->Device->Deinitialize();
+
+        // Step 14 — destroy OS window and Vulkan surface (must follow device)
         if (g_engine_ctx->Window)
         {
             g_engine_ctx->Window->Deinitialize();
         }
-
-        g_render_thread.join();
-        g_appRenderPipeline->Shutdown();
-        g_engine_ctx->Device->Deinitialize();
     }
 
     void Engine::Dispose()
     {
-        s_request_terminate.store(false, std::memory_order_release);
-        Managers::AssetManager::Shutdown();
         g_engine_ctx->Device->Dispose();
 
         ZENGINE_CORE_INFO("Engine destroyed")
@@ -94,13 +107,13 @@ namespace ZEngine
 
     bool Engine::OnEngineClosed(Event::EngineClosedEvent& event)
     {
-        s_request_terminate.store(true, std::memory_order_release);
+        s_close_requested.store(true, std::memory_order_release);
         return true;
     }
 
     void Engine::MainThreadRun()
     {
-        while (!s_request_terminate.load(std::memory_order_acquire))
+        while (!s_close_requested.load(std::memory_order_acquire))
         {
             if (!g_engine_ctx || !g_engine_ctx->Window || !g_engine_ctx->Device)
             {
@@ -212,6 +225,9 @@ namespace ZEngine
         Managers::AssetManager::Run();
         g_render_thread = std::thread(Engine::RenderThreadRun);
         MainThreadRun();
+
+        // OnClosing fires while all subsystems are live; Deinitialize sets s_request_terminate
+        g_app->OnClosing();
 
         Deinitialize();
     }

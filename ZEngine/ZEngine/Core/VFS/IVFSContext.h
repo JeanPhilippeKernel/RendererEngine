@@ -30,6 +30,8 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] virtual VFSResult<void>                           Rename(const VFSPath& src, const VFSPath& dst)                         = 0;
 
         virtual void                                                    Close(IVFSFile* const file)                                            = 0;
+
+        virtual void                                                    Shutdown()                                                             = 0;
     };
 
 } // namespace ZEngine::Core::VFS
