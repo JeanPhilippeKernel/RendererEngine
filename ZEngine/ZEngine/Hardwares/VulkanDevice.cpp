@@ -660,6 +660,24 @@ namespace ZEngine::Hardwares
 
         AsyncResLoader->Shutdown();
 
+        {
+            Rendering::Textures::TextureHandle tex_to_dispose = {};
+            while (TextureHandleToDispose.Pop(tex_to_dispose))
+            {
+                auto texture = GlobalTextures.Access(tex_to_dispose);
+                if (texture)
+                {
+                    auto buf = Image2DBufferManager.Access(texture->BufferHandle);
+                    if (buf)
+                    {
+                        buf->Dispose();
+                    }
+                    Image2DBufferManager.Remove(texture->BufferHandle);
+                    GlobalTextures.Remove(tex_to_dispose);
+                }
+            }
+        }
+
         GlobalTextures.Dispose();
         Image2DBufferManager.Dispose();
         VertexBufferSetManager.Dispose();

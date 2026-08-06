@@ -123,7 +123,7 @@ target_compile_definitions (zEngineLib
         $<$<CONFIG:Release>:ZENGINE_RELEASE=1>
         $<$<CONFIG:RelWithDebInfo>:ZENGINE_RELWITHDEBINFO=1>
         $<$<CONFIG:Debug>:ENABLE_VULKAN_VALIDATION_LAYER>
-        $<$<CONFIG:Debug>:VMA_DEBUG_INITIALIZE_ALLOCATIONS=1>
+        $<$<CONFIG:Debug>:VMA_DEBUG_MARGIN=16>
         $<$<CONFIG:Debug>:VMA_DEBUG_DETECT_CORRUPTION=1>
 	PUBLIC
 		ZENGINE_PLATFORM
