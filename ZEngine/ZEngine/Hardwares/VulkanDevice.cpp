@@ -8,12 +8,13 @@
 #include <cstdio>
 #ifdef _WIN32
 #include <windows.h>
-#define VMA_DEBUG_LOG_FORMAT(format, ...)                     \
-    do {                                                       \
-        char __vma_buf[512];                                   \
+#define VMA_DEBUG_LOG_FORMAT(format, ...)                                          \
+    do                                                                             \
+    {                                                                              \
+        char __vma_buf[512];                                                       \
         snprintf(__vma_buf, sizeof(__vma_buf), "[VMA] " format "\n", __VA_ARGS__); \
-        OutputDebugStringA(__vma_buf);                         \
-        fputs(__vma_buf, stderr);                              \
+        OutputDebugStringA(__vma_buf);                                             \
+        fputs(__vma_buf, stderr);                                                  \
     } while (0)
 #else
 #define VMA_DEBUG_LOG_FORMAT(format, ...) fprintf(stderr, "[VMA] " format "\n", __VA_ARGS__)
