@@ -22,7 +22,7 @@ namespace Tetragrama::Components
         UIComponent::Initialize(parent, name, visibility, closed);
         parent->LocalArena.CreateSubArena(ZMega(1), &m_local_arena);
 
-        m_vfs_context     = ParentLayer->CurrentApp->GetVFSContext();
+        m_vfs_context     = ZEngine::Engine::GetContext()->VFS;
         m_directory_cache = &ParentLayer->Cache;
         m_scanner         = &ParentLayer->Scanner;
 

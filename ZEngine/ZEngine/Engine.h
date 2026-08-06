@@ -1,5 +1,7 @@
 #pragma once
 #include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/VFS/IVFSContext.h>
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
@@ -9,21 +11,24 @@ namespace ZEngine
 {
     struct EngineContext
     {
-        Hardwares::VulkanDevicePtr Device = nullptr;
-        Windows::CoreWindowPtr     Window = nullptr;
+        Hardwares::VulkanDevicePtr   Device   = nullptr;
+        Windows::CoreWindowPtr       Window   = nullptr;
+        Core::Memory::ArenaAllocator VFSArena = {};
+        Core::VFS::IVFSContext*      VFS      = nullptr;
     };
     ZDEFINE_PTR(EngineContext);
 
     struct Engine
     {
-        static void Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app);
-        static void Run();
-        static void Deinitialize();
-        static void Dispose();
-        static bool OnEngineClosed(Event::EngineClosedEvent&);
+        static void             Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app);
+        static void             Run();
+        static void             Deinitialize();
+        static void             Dispose();
+        static bool             OnEngineClosed(Event::EngineClosedEvent&);
+        static EngineContextPtr GetContext();
 
-        static void MainThreadRun();
-        static void RenderThreadRun();
+        static void             MainThreadRun();
+        static void             RenderThreadRun();
 
     private:
         Engine()              = delete;
