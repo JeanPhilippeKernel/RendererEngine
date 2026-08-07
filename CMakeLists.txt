@@ -30,6 +30,7 @@ endif()
 
 include(Scripts/CMake/NuGet.cmake)
 include(Scripts/CMake/CppWinRT.cmake)
+include(Scripts/CMake/LoggingDefaults.cmake)
 
 option (ZENGINE_TRACY "Enable Tracy profiler" OFF)
 
