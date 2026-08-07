@@ -37,6 +37,10 @@ int applicationEntryPoint(int argc, char* argv[])
     LoggerConfiguration logger_cfg   = {};
     manager.CreateBudgetedArena(manager.Budget.Logging, &logger_arena);
     Logger::Initialize(&logger_arena, logger_cfg);
+    CrashHandler::SetPreCrashCallback([](void*) {
+        Logger::FlushRingBufferToCrashLog();
+        Logger::Flush();
+    });
 
     auto arena                = &(manager.MainArena);
     auto config_file_str_size = config_file.size() + 1;

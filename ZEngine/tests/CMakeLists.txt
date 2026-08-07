@@ -4,6 +4,7 @@ file(GLOB TEST_SOURCES
     VFS/*.cpp
     Maths/*.cpp
     Misc/*.cpp
+    Logging/*.cpp
 )
 
 # macOS and Windows are multi-config

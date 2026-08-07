@@ -122,9 +122,19 @@ target_sources(zEngineLib PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Engine.cpp
 )
 
+# Tracy profiling integration
+#
 if(ZENGINE_TRACY)
     target_compile_definitions(zEngineLib PRIVATE ZENGINE_TRACY=1)
 endif()
+
+# Logging defaults
+# it expands in
+# ZENGINE_LOG_LEVEL_${CHANNEL}=ZENGINE_LOG_LEVEL_${ZENGINE_LOG_LEVEL_${CHANNEL}} => ZENGINE_LOG_LEVEL_ENGINE=ZENGINE_LOG_LEVEL_WARN
+foreach(CHANNEL IN ITEMS ENGINE ECS RENDER PHYSICS AUDIO NETWORK VFS ASSET UI GAME)
+    target_compile_definitions(zEngineLib PUBLIC
+        ZENGINE_LOG_LEVEL_${CHANNEL}=ZENGINE_LOG_LEVEL_${ZENGINE_LOG_LEVEL_${CHANNEL}})
+endforeach()
 
 target_compile_definitions (zEngineLib
     PRIVATE

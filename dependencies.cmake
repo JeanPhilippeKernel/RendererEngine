@@ -313,6 +313,7 @@ add_library(imported::External_obeliskLibs ALIAS External_obeliskLibs)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CMake/NuGet.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CMake/CppWinRT.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CMake/LoggingDefaults.cmake)
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     # Install necessary NuGet dependencies
