@@ -2,7 +2,7 @@
 
 **Priority:** P3 — Implement alongside import-pipeline.md  
 **Status:** Design  
-**Depends on:** `import-pipeline.md`, `vfs-ticket6-asset-registry.md`  
+**Depends on:** `import-pipeline.md`, `vfs-ticket6-asset-registry.md`, `gpu-allocator-rearchitecture.md`  
 **Blocks:** `animation-system.md` (SkinningUploadSystem), `shader-asset-pipeline.md`
 
 **Goal**: Implement `ZEngine::Rendering::RenderResourceManager` (RRM), a single authority
@@ -228,22 +228,24 @@ namespace ZEngine::Rendering {
         void EnqueueDeletion(VkImage image, VkImageView view, VmaAllocation allocation);
 
     private:
-        static constexpr uint32_t FRAMES_IN_FLIGHT = 2;
-
-        // ... HandleManager-backed pools for GPUBuffer, GPUImage ...
-
-        // IMPORTANT: Slot recycling delay must be FRAMES_IN_FLIGHT + 1 frames, NOT FRAMES_IN_FLIGHT.
+        // IMPORTANT: FRAMES_IN_FLIGHT = 3 (triple-buffered swapchain, matching
+        // SwapchainPtr->BufferredFrameCount in VulkanDevice).
+        //
+        // Slot recycling delay must be FRAMES_IN_FLIGHT frames, not FRAMES_IN_FLIGHT - 1.
         //
         // Reasoning:
-        // - Frame N submits GPU work referencing resource R.
-        // - Frame N+1 submits more GPU work (pipelining).
-        // - Frame N+2 begins. GPU work from frame N is still potentially in flight
-        //   because the frame fence for N has not yet been waited on by N+2.
-        // - Only in frame N + (FRAMES_IN_FLIGHT + 1) is it guaranteed that ALL
-        //   command buffers referencing R have retired.
+        // - Frame N submits GPU work referencing resource R; signal timeline value N.
+        // - Frames N+1 and N+2 also run concurrently (pipeline depth = 3).
+        // - Frame N+3 begins. GPU work for frame N is guaranteed retired because
+        //   TickMemory queries vkGetSemaphoreCounterValue and only drains entries
+        //   whose TimelineValue <= completed. The DeferredFreeQueue in GpuAllocator
+        //   enforces the same timeline gate, so the RRM delegates safe-frame
+        //   computation to the timeline value stored at enqueue time.
         //
-        // Using only FRAMES_IN_FLIGHT allows slot reuse one frame too early → GPU use-after-free.
-        static constexpr uint32_t RECYCLE_DELAY = FRAMES_IN_FLIGHT + 1;
+        // The m_deletion_queues ring therefore needs FRAMES_IN_FLIGHT slots.
+        static constexpr uint32_t FRAMES_IN_FLIGHT = 3;
+
+        // ... HandleManager-backed pools for GPUBuffer, GPUImage ...
     };
 
 }  // namespace ZEngine::Rendering
@@ -277,53 +279,59 @@ signal a fence. The final GPU resource is `DEVICE_LOCAL` (not CPU-visible).
 
 ### Step-by-step
 
-**1. Create staging buffer**
+**1. Acquire staging memory from the StagingRing**
+
+After `gpu-allocator-rearchitecture.md` lands, the RRM does not call `vmaCreateBuffer`
+for staging. All uploads go through `GpuAllocator::Ring` (the 64 MB persistent ring
+inside `VulkanDevice::GpuMem`). For assets larger than the ring can serve in one chunk,
+a one-shot `GpuMemoryDomain::HostStaging` allocation is used as fallback.
 
 ```cpp
-VmaAllocationCreateInfo staging_alloc_info{};
-staging_alloc_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-staging_alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+uint32_t ring_offset = 0;
+void* ring_ptr = Device->GpuMem.Ring.Allocate(
+    (uint32_t)asset_byte_size, 4, &ring_offset);
 
-VkBufferCreateInfo staging_buf_info{};
-staging_buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-staging_buf_info.size  = asset_byte_size;
-staging_buf_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-staging_buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-GPUBuffer staging{};
-vmaCreateBuffer(m_allocator,
-                &staging_buf_info, &staging_alloc_info,
-                &staging.Buffer, &staging.Allocation, nullptr);
+if (!ring_ptr) {
+    // Oversized asset (> ring capacity): fall back to a one-shot HostStaging buffer.
+    BufferView one_shot = Device->GpuMem.AllocateBuffer(
+        asset_byte_size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        GpuMemoryDomain::HostStaging,
+        "RRM::StagingFallback");
+    // ... use one_shot.Handle as transfer source, then DeferFree after submit ...
+}
 ```
 
-**2. Map and copy**
+**2. Copy into staging memory**
 
 ```cpp
-VmaAllocationInfo staging_info{};
-vmaGetAllocationInfo(m_allocator, staging.Allocation, &staging_info);
-std::memcpy(staging_info.pMappedData, asset_bytes, asset_byte_size);
-vmaFlushAllocation(m_allocator, staging.Allocation, 0, VK_WHOLE_SIZE);
+std::memcpy(ring_ptr, asset_bytes, asset_byte_size);
+// Flush only if the HostStaging pool is not HOST_COHERENT.
+// GpuAllocator caches this flag at init time.
+if (!Device->GpuMem.StagingIsCoherent()) {
+    vmaFlushAllocation(Device->GpuMem.Allocator,
+                       Device->GpuMem.Ring.Allocation,
+                       ring_offset, asset_byte_size);
+}
 ```
 
-**3. Create device-local destination buffer**
+**3. Allocate device-local destination buffer**
 
 ```cpp
-VmaAllocationCreateInfo dst_alloc_info{};
-dst_alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+// Route through GpuAllocator — no direct vmaCreateBuffer call.
+BufferView dst = Device->GpuMem.AllocateBuffer(
+    asset_byte_size,
+    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+        | VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+        | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    GpuMemoryDomain::DeviceGeometry,
+    debug_name);
 
-VkBufferCreateInfo dst_buf_info{};
-dst_buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-dst_buf_info.size  = asset_byte_size;
-dst_buf_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
-                   | VK_BUFFER_USAGE_INDEX_BUFFER_BIT
-                   | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-dst_buf_info.sharingMode = VK_SHARING_MODE_CONCURRENT;  // transfer + graphics families
-// (or EXCLUSIVE with explicit queue-family ownership transfer — see below)
-
-GPUBuffer dst{};
-vmaCreateBuffer(m_allocator,
-                &dst_buf_info, &dst_alloc_info,
-                &dst.Buffer, &dst.Allocation, nullptr);
+GPUBuffer gpu_buf{};
+gpu_buf.Buffer     = dst.Handle;
+gpu_buf.Allocation = dst.Allocation;
+gpu_buf.Size       = asset_byte_size;
+gpu_buf.Usage      = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 ```
 
 **4. Record copy command**
@@ -433,20 +441,28 @@ vkCmdPipelineBarrier(m_transfer_cmd,
     0, 0, nullptr, 0, nullptr, 1, &post_copy_barrier);
 ```
 
-**8. Staging buffer cleanup**
+**8. Staging memory retirement**
 
-The staging buffer is added to the deletion queue for the current frame:
+The ring chunk is retired via the timeline semaphore — no deletion queue entry needed:
 
 ```cpp
-DeferredRelease entry{};
-entry.FrameTarget = m_current_frame + FRAMES_IN_FLIGHT;
-entry.Kind        = ResourceKind::Buffer;
-entry.Buffer      = staging;
-m_deletion_queues[m_current_frame % FRAMES_IN_FLIGHT].push_back(entry);
+// signal_value is the timeline value that will be signalled when the
+// vkQueueSubmit for this transfer completes.
+uint64_t signal_value = Device->SwapchainPtr->RenderTimelineNextValue;
+Device->GpuMem.Ring.Submit(ring_offset, (uint32_t)asset_byte_size, signal_value);
+// GpuAllocator::Ring.Drain(completed) inside TickMemory reclaims the chunk
+// once the GPU signals that timeline value.
 ```
 
-The staging buffer is therefore freed `FRAMES_IN_FLIGHT` frames after the copy
-completes, by which time the GPU has certainly finished reading it.
+For one-shot fallback buffers, enqueue via `Device->DeferFree`:
+
+```cpp
+Device->DeferFree({
+    DeferredFreeEntry::Kind::Buffer,
+    .Buffer = one_shot  // the BufferView returned by AllocateBuffer
+    // TimelineValue is set by DeferFree from RenderTimelineNextValue
+});
+```
 
 ---
 
@@ -510,7 +526,15 @@ void RenderResourceManager::EndFrame(uint32_t frame_index) {
             // Safe to swap: all in-flight frames that referenced the old resource have retired.
             if (it->Kind == ResourceKind::Buffer) {
                 GPUBuffer* slot = GetBufferMutable(it->OldBuffer);
-                EnqueueDeletion(it->OldBuffer.Index, *slot, frame_index);
+                // Enqueue the old GPU resource for timeline-gated destruction via
+                // VulkanDevice::DeferFree. Do NOT call vmaDestroyBuffer here —
+                // the GPU may still be reading from this buffer in in-flight frames.
+                Device->DeferFree({
+                    DeferredFreeEntry::Kind::Buffer,
+                    /* TimelineValue set by DeferFree from RenderTimelineNextValue */
+                    .Buffer = BufferView{.Handle = slot->Buffer, .Allocation = slot->Allocation}
+                });
+                // Swap: the handle now points to the new GPU resource.
                 *slot = it->NewBuffer;
             }
             it = m_pending_swaps.erase(it);
@@ -560,20 +584,30 @@ Core::Containers::Array<DeferredRelease>
 
 ### BeginFrame drain
 
+The RRM does not call `vmaDestroyBuffer` / `vmaDestroyImage` directly. After
+`gpu-allocator-rearchitecture.md` lands, all GPU memory is owned by `GpuAllocator` inside
+`VulkanDevice`. The RRM enqueues resources with `Device->DeferFree(entry)` and the
+`DeferredFreeQueue::Drain` call inside `TickMemory` performs the actual destruction once
+the timeline semaphore confirms the GPU has retired those command buffers.
+
+The RRM's `BeginFrame` therefore only needs to advance the ring slot and flush pending
+uploads — it does not call any VMA or Vulkan destroy functions itself.
+
 ```cpp
 void RenderResourceManager::BeginFrame(uint32_t frame_index) {
+    // Flush uploads queued from the asset thread.
+    FlushPendingUploads();
+
+    // Release handle pool slots for resources whose timeline gate has passed.
+    // Actual GPU memory is freed by DeferredFreeQueue::Drain inside TickMemory,
+    // which has already run in AcquireNextImage before this call.
     uint32_t drain_slot = frame_index % FRAMES_IN_FLIGHT;
     for (auto& entry : m_deletion_queues[drain_slot]) {
-        if (entry.Kind == ResourceKind::Buffer) {
-            vmaDestroyBuffer(m_allocator,
-                             entry.Buffer.Buffer,
-                             entry.Buffer.Allocation);
-        } else {
-            vkDestroyImageView(m_device, entry.Image.View, nullptr);
-            vmaDestroyImage(m_allocator,
-                            entry.Image.Image,
-                            entry.Image.Allocation);
-        }
+        // Invalidate the handle pool slot so GetBuffer/GetImage return nullptr.
+        if (entry.Kind == ResourceKind::Buffer)
+            m_buffer_pool.Free(entry.Buffer.PoolIndex, entry.Buffer.Generation);
+        else
+            m_image_pool.Free(entry.Image.PoolIndex, entry.Image.Generation);
     }
     m_deletion_queues[drain_slot].Clear();
 }
@@ -581,17 +615,19 @@ void RenderResourceManager::BeginFrame(uint32_t frame_index) {
 
 **Design notes**:
 
-- The ring has exactly `FRAMES_IN_FLIGHT` slots. A resource enqueued in frame `F` is
-  freed in `BeginFrame(F + FRAMES_IN_FLIGHT)` — by that time the GPU has finished all
-  work submitted in frame `F`.
+- The ring has exactly `FRAMES_IN_FLIGHT` (3) slots. A resource enqueued in frame `F`
+  has its handle pool slot invalidated in `BeginFrame(F + FRAMES_IN_FLIGHT)`. The actual
+  GPU memory was already destroyed by `DeferredFreeQueue::Drain` inside `TickMemory`
+  once the timeline semaphore confirmed the GPU had retired all work for that frame.
 - `Clear()` resets the `Array` size to zero without releasing the heap allocation.
   The underlying memory is reused each period, so steady-state operation produces no
   allocator traffic.
-- `vmaDestroyBuffer` destroys both the `VkBuffer` and the `VmaAllocation` in one call.
-  For images, `vkDestroyImageView` must precede `vmaDestroyImage` because the view
-  borrows the image handle.
-- Handle pool slots are **not** recycled here. Slot recycling is a separate concern
-  managed by the `HandleManager`. The deletion queue purely drives GPU memory release.
+- `vmaDestroyBuffer` / `vmaDestroyImage` are called exclusively from
+  `DeferredFreeQueue::Drain` inside `VulkanDevice::TickMemory`, not from the RRM.
+  The RRM's deletion queue only tracks which handle pool slots to invalidate.
+- Handle pool slots are **not** recycled in `BeginFrame`. Slot recycling is a separate
+  concern managed by the `HandleManager`; it recycles the slot only after the generation
+  counter has advanced, preventing ABA collisions on reused slots.
 
 ---
 
@@ -840,12 +876,12 @@ TEST(RRM, GetBufferOnReleasedHandleReturnsNullptr)
 
 - [ ] `ZEngine/Rendering/RenderHandle.h` — `RenderHandle<Tag>` generational handle template + four `using` aliases (`BufferHandle`, `ImageHandle`, `SamplerHandle`, `PipelineHandle`)
 - [ ] `ZEngine/Rendering/GPUResource.h` — `GPUBuffer` and `GPUImage` plain aggregates; zero-initialised sentinel values; no RAII
-- [ ] `ZEngine/Rendering/RenderResourceManager.h` — public API (`UploadMesh`, `UploadTexture`, `ScheduleSwap`, `Release`, `BeginFrame`, `EndFrame`, `GetBuffer`, `GetImage` (const), `GetImageMutable`); `FRAMES_IN_FLIGHT = 2` constant
+- [ ] `ZEngine/Rendering/RenderResourceManager.h` — public API (`UploadMesh`, `UploadTexture`, `ScheduleSwap`, `Release`, `BeginFrame`, `EndFrame`, `GetBuffer`, `GetImage` (const), `GetImageMutable`); `FRAMES_IN_FLIGHT = 3` constant
 - [ ] `ZEngine/Rendering/RenderResourceManager.cpp` — `Init`, `FlushPendingUploads`, upload path with staging buffer, barrier structs, queue-family ownership transfer for transfer-to-graphics handoff
-- [ ] Staging buffer path: `VMA_MEMORY_USAGE_CPU_ONLY` → `memcpy` → `vmaFlushAllocation` → `vkCmdCopyBuffer` → release barrier on transfer queue → acquire barrier on graphics queue
+- [ ] Staging buffer path: `GpuAllocator::Ring.Allocate()` → `memcpy` → `Ring.Submit(signal_val)` → `vkCmdCopyBuffer` → release barrier on transfer queue → acquire barrier on graphics queue
 - [ ] Texture path: `VK_IMAGE_LAYOUT_UNDEFINED` → `VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL` → `vkCmdCopyBufferToImage` → `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`; barrier covers all mip levels
 - [ ] `SwapEntry` struct: old handle union + new resource union + `SwapSafeFrame`; `EndFrame` drains entries where `frame_index >= SwapSafeFrame`, swaps slot in-place, enqueues old resource for deferred deletion
-- [ ] `DeferredRelease` ring: `m_deletion_queues[FRAMES_IN_FLIGHT]`; `BeginFrame` drains `frame_index % FRAMES_IN_FLIGHT` slot; `vmaDestroyBuffer` / `vkDestroyImageView` + `vmaDestroyImage` called only from render thread
+- [ ] `DeferredRelease` ring: `m_deletion_queues[FRAMES_IN_FLIGHT]`; `BeginFrame` invalidates the handle pool slot for `frame_index % FRAMES_IN_FLIGHT`; actual GPU memory freed by `DeferredFreeQueue::Drain` in `VulkanDevice::TickMemory` once the timeline semaphore confirms the GPU is done
 - [ ] `AssetRegistry::OnAssetReady` → `m_pending_uploads` (mutex-protected); flushed in `BeginFrame` on render thread via `FlushPendingUploads`
 - [ ] `AssetRegistry::OnAssetStale` → `ScheduleSwap` using `m_uuid_to_buffer` / `m_uuid_to_image` maps
 - [ ] `ReleaseChecked(handle)` returns `VFS::VFSResult<void>` with `VFSError::InvalidHandle` on double-free; `Release(handle)` asserts in debug, no-ops in release

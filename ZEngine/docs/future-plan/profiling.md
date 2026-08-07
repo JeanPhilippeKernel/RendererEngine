@@ -582,26 +582,37 @@ macro is placed _after_ the pointer is computed so `ptr` is valid.
 
 ### Post-process passes
 
+Post-process passes use the DOD free-function pattern — `Execute` is a standalone function,
+not a class method. The profiling macros follow the same one-CPU-scope + one-GPU-scope rule:
+
 ```cpp
-// Each PostProcessPass::Execute implementation:
-void BloomPass::Execute(VkCommandBuffer cmd, const Graph::RenderGraph& rg) {
-    ZENGINE_PROFILE_SCOPE("BloomPass::Execute");
+// BloomPass_Execute — free function registered in PostProcessPassVtable.
+void BloomPass_Execute(PostProcessPassData& data,
+                       VkCommandBuffer      cmd,
+                       const Graph::RenderGraph& rg)
+{
+    ZENGINE_PROFILE_SCOPE("BloomPass_Execute");
     ZENGINE_PROFILE_GPU_SCOPE(cmd, "GPU::BloomPass");
     // ...
 }
 ```
 
-All post-process passes follow the same pattern: one CPU scope and one GPU scope per
-`Execute` call.
+All post-process Execute free functions follow the same pattern: one CPU scope and one GPU
+scope per call. The scope name matches the free-function name for easy Tracy lookup.
 
 ### Shadow passes
 
+Shadow passes use the same DOD free-function pattern:
+
 ```cpp
-void CascadedShadowPass::Execute(VkCommandBuffer cmd, const Graph::RenderGraph& rg) {
-    ZENGINE_PROFILE_SCOPE("CascadedShadowPass::Execute");
-    ZENGINE_PROFILE_GPU_SCOPE(cmd, "GPU::CascadedShadowPass");
-    for (uint32_t cascade = 0; cascade < m_cascade_count; ++cascade) {
-        ZENGINE_PROFILE_SCOPE("CascadedShadowPass::Cascade");
+void ShadowPassDir_Execute(PostProcessPassData& data,
+                           VkCommandBuffer      cmd,
+                           const Graph::RenderGraph& rg)
+{
+    ZENGINE_PROFILE_SCOPE("ShadowPassDir_Execute");
+    ZENGINE_PROFILE_GPU_SCOPE(cmd, "GPU::ShadowPassDir");
+    for (uint32_t cascade = 0; cascade < SHADOW_CASCADE_COUNT; ++cascade) {
+        ZENGINE_PROFILE_SCOPE("ShadowPassDir_Cascade");
         ZENGINE_PROFILE_GPU_SCOPE(cmd, "GPU::ShadowCascade");
         // ...
     }
@@ -634,8 +645,8 @@ void AudioEngine::Tick(float dt) {
 | `AssetManager::Load` | `ZENGINE_PROFILE_SCOPE` | |
 | `AssetManager::FlushPendingLoads` | `ZENGINE_PROFILE_SCOPE` | |
 | `ArenaAllocator::Allocate` | `ZENGINE_PROFILE_ALLOC` | After ptr is valid |
-| Each `PostProcessPass::Execute` | `ZENGINE_PROFILE_SCOPE` + `ZENGINE_PROFILE_GPU_SCOPE` | |
-| Each shadow pass `Execute` | `ZENGINE_PROFILE_SCOPE` + `ZENGINE_PROFILE_GPU_SCOPE` | |
+| Each `*Pass_Execute` free function (post-process) | `ZENGINE_PROFILE_SCOPE` + `ZENGINE_PROFILE_GPU_SCOPE` | |
+| Each shadow pass `*Pass_Execute` free function | `ZENGINE_PROFILE_SCOPE` + `ZENGINE_PROFILE_GPU_SCOPE` | |
 | `AudioEngine::Tick` | `ZENGINE_PROFILE_SCOPE` | |
 
 ---

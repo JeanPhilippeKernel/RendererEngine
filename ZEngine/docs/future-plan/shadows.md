@@ -2,7 +2,7 @@
 
 **Priority:** P2 — Required for visual quality in any 3D game
 **Status:** Design
-**Depends on:** `render-resource-manager.md`, `actor-ecs-architecture.md` (LightComponent), `vfs-design.md` (Ticket 1)
+**Depends on:** `gpu-allocator-rearchitecture.md`, `per-frame-upload-heap.md`, `actor-ecs-architecture.md` (LightComponent), `vfs-design.md` (Ticket 1)
 **Blocks:** Visual quality, night/indoor scenes
 
 **Goal**: Implement a multi-technique shadow system for ZEngine that covers the three
@@ -682,9 +682,14 @@ namespace ZEngine::Rendering::Shadows {
 } // namespace ZEngine::Rendering::Shadows
 ```
 
-This buffer is uploaded once per frame via a `VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT` buffer
-managed by the RRM. The `ShadowSystem` fills it on the CPU side, then the RRM transfers
-it to the GPU-visible range before the lighting pass executes.
+This buffer is uploaded once per frame via `PerFrameUploadHeap::Push`. The
+`ShadowSystem` fills it on the CPU side each frame and pushes it into the current
+frame's heap. The resulting dynamic offset is passed to `vkCmdBindDescriptorSets` at the
+lighting pass bind point.
+
+The RRM is not involved in `ShadowUniformBuffer` upload. The RRM manages static asset
+lifetime (textures, meshes); per-frame CPU-written data always goes through
+`PerFrameUploadHeap`.
 
 ---
 
