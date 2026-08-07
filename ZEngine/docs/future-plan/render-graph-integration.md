@@ -557,20 +557,20 @@ void GraphicRenderer::RegisterPasses(RenderGraphPtr render_graph)
     render_graph->AddCallbackPass("LightingPass",        ZNew(LightingPass));
 
     // Post-process chain.
-    render_graph->AddCallbackPass("SSAOPass",            ZNew(SSAOPass));
-    render_graph->AddCallbackPass("BloomThresholdPass",  ZNew(BloomThresholdPass));
-    render_graph->AddCallbackPass("BloomDownsample_0",   ZNew(BloomDownsamplePass, 0));
-    render_graph->AddCallbackPass("BloomDownsample_1",   ZNew(BloomDownsamplePass, 1));
-    render_graph->AddCallbackPass("BloomDownsample_2",   ZNew(BloomDownsamplePass, 2));
-    render_graph->AddCallbackPass("BloomDownsample_3",   ZNew(BloomDownsamplePass, 3));
-    render_graph->AddCallbackPass("BloomDownsample_4",   ZNew(BloomDownsamplePass, 4));
-    render_graph->AddCallbackPass("BloomUpsample_4",     ZNew(BloomUpsamplePass, 4));
-    render_graph->AddCallbackPass("BloomUpsample_3",     ZNew(BloomUpsamplePass, 3));
-    render_graph->AddCallbackPass("BloomUpsample_2",     ZNew(BloomUpsamplePass, 2));
-    render_graph->AddCallbackPass("BloomUpsample_1",     ZNew(BloomUpsamplePass, 1));
-    render_graph->AddCallbackPass("BloomUpsample_0",     ZNew(BloomUpsamplePass, 0));
-    render_graph->AddCallbackPass("ToneMappingPass",     ZNew(ToneMappingPass));
-    render_graph->AddCallbackPass("FXAAPass",            ZNew(FXAAPass));
+    // Passes are owned by PostProcessStack, not registered directly with the
+    // RenderGraph via AddCallbackPass. PostProcessStack::Compile() calls
+    // AddCallbackPass internally for each enabled pass in Order-sorted sequence.
+    // GraphicRenderer holds a PostProcessStack member (or pointer) initialised
+    // during engine startup.
+    m_post_process_stack.AddPass(MakeSSAOPass        (arena, device, SSAOParams{}));
+    m_post_process_stack.AddPass(MakeBloomPass        (arena, device, BloomParams{}));
+    m_post_process_stack.AddPass(MakeToneMappingPass  (arena, device, ToneMappingParams{}));
+    m_post_process_stack.AddPass(MakeFXAAPass         (arena, device, FXAAParams{}));
+    // Optional passes — disabled at startup; editor can enable at runtime.
+    m_post_process_stack.AddPass(MakeColorGradingPass        (arena, device, ColorGradingParams{}));
+    m_post_process_stack.AddPass(MakeChromaticAberrationPass (arena, device, ChromaticAberrationParams{}));
+    m_post_process_stack.AddPass(MakeVignettePass            (arena, device, VignetteParams{}));
+    m_post_process_stack.Compile();
 
     // UI, text, editor overlay.
     render_graph->AddCallbackPass("UIPass",              ZNew(UIPass));
@@ -595,21 +595,37 @@ represents a future migration of that code into the graph.
 
 ## 8. Pass Enable/Disable at Runtime
 
-`AddCallbackPass` accepts an optional `enabled` parameter (default `true`):
+Post-process passes are toggled through `PostProcessStack`, not directly through the
+`RenderGraph`. The stack owns pass lifetime and communicates enable state to the graph via
+the `PostProcessPassData::Enabled` flag, which `Compile()` propagates to the corresponding
+`AddCallbackPass` node.
+
+To disable a post-process pass at startup, set `Enabled = false` in the factory params or
+call `SetEnabled` before `Compile()`:
 
 ```cpp
-render_graph->AddCallbackPass("SSAOPass", ZNew(SSAOPass), false);  // disabled at startup
+// Option A — pass disabled params to the factory.
+auto entry = MakeSSAOPass(arena, device, SSAOParams{});
+entry.Data.Enabled = false;
+m_post_process_stack.AddPass(entry);
+
+// Option B — disable after AddPass, before Compile().
+m_post_process_stack.SetEnabled(StringHash("SSAOPass"), false);
 ```
 
-To toggle a pass after the graph is compiled:
+To toggle a post-process pass after the graph is compiled (runtime):
 
 ```cpp
-render_graph->ResourceInspector->GetNode("FXAAPass").Enabled = false;
-// or equivalently:
-render_graph->NodeMap["FXAAPass"].Enabled = false;
+m_post_process_stack.SetEnabled(StringHash("FXAAPass"), false);
+// Takes effect on the next PostProcessStack::Execute() call — no re-compile needed.
 ```
 
-The change takes effect on the next `Execute()` call — no re-compile needed.
+For non-post-process passes (geometry, shadow, UI) the RenderGraph node can be toggled
+directly via the node map:
+
+```cpp
+render_graph->NodeMap["DepthPrePass"].Enabled = false;
+```
 
 Disabled passes are skipped in `Execute()`: their barriers are not emitted and their
 `Execute()` callback is not called. Their resource producers still run normally. This means a
