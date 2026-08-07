@@ -30,7 +30,7 @@ namespace Tetragrama::Components
             UILogQueue[i].Content.init(&LocalArena, 256);
         }
 
-        m_handler_cookie = Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
+        m_handler_cookie = Logger::AddEventHandler({OnLogMessage, this});
     }
 
     void LogUIComponent::Update(ZEngine::Core::TimeStep dt)
@@ -51,10 +51,10 @@ namespace Tetragrama::Components
             lm.Color[3] = engine_log_msg.Color[3];
 
             lm.Content.clear();
-            lm.Content.append(engine_log_msg.Message.c_str());
+            lm.Content.append(engine_log_msg.Message);
 
             lm.Type.clear();
-            lm.Type.append(ZEngine::Logging::Logger::MessageTypeToString(engine_log_msg.Type));
+            lm.Type.append(ZEngine::Logging::Logger::LevelToString(engine_log_msg.Level));
 
             ++m_currentCount;
         }
@@ -178,8 +178,9 @@ namespace Tetragrama::Components
         ImGui::End();
     }
 
-    void LogUIComponent::OnLog(ZEngine::Logging::LogMessage message)
+    void LogUIComponent::OnLogMessage(void* ctx, const ZEngine::Logging::LogMessage& msg)
     {
-        EngineLogQueue.Emplace(std::move(message));
+        auto cmp = reinterpret_cast<LogUIComponent*>(ctx);
+        cmp->EngineLogQueue.Emplace(ZEngine::Logging::LogMessage{msg});
     }
 } // namespace Tetragrama::Components
