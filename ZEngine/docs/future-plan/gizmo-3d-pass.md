@@ -2,7 +2,7 @@
 
 **Priority:** P2 — Required to drop ImGuizmo and therefore ImGui entirely  
 **Status:** Design  
-**Depends on:** `ui-system.md` (UIContext, all 8 steps done), `editor-entity-selection.md`, `actor-ecs-architecture.md` (ECS + TransformComponent), `physics-system.md`  
+**Depends on:** `ui-system.md` (UIContext, all 8 steps done), `editor-entity-selection.md`, `actor-ecs-architecture.md` (ECS + TransformComponent), `physics-system.md`, `gpu-allocator-rearchitecture.md`  
 **Blocks:** Complete removal of `imgui` and `ImGuizmo` from `__externals/`
 
 ---
@@ -230,8 +230,11 @@ namespace ZEngine::Editor
         // Extra
         GizmoMeshRange CenterSphere;  // uniform scale / view-axis free rotate
 
+        // Allocated via GpuAllocator (GpuMemoryDomain::DeviceGeometry).
+        // Never use raw VkDeviceMemory — all memory is VMA-managed after
+        // gpu-allocator-rearchitecture.md lands.
         VkBuffer       Buffer     = VK_NULL_HANDLE;
-        VkDeviceMemory BufferMem  = VK_NULL_HANDLE;
+        VmaAllocation  Allocation = nullptr;
 
     private:
         void BuildArrow(Core::Memory::ArenaAllocator* scratch,
@@ -240,6 +243,9 @@ namespace ZEngine::Editor
         void BuildRing(Core::Memory::ArenaAllocator* scratch, uint32_t segments);
         void BuildScaleBox(Core::Memory::ArenaAllocator* scratch);
         void BuildCenterSphere(Core::Memory::ArenaAllocator* scratch, uint32_t stacks);
+        // Allocates Buffer via Device->GpuMem.AllocateBuffer(DeviceGeometry).
+        // Uploads via Device->GpuMem.Ring (StagingRing) + vkCmdCopyBuffer.
+        // Stores the resulting VkBuffer and VmaAllocation in this struct.
         void UploadToGPU(Core::Memory::ArenaAllocator* scratch,
                          Hardwares::VulkanDevice* device,
                          GizmoVertex* all_verts, uint32_t vert_count,
@@ -339,20 +345,23 @@ namespace ZEngine::Editor
         GizmoState*               m_gizmo_state  = nullptr;
         Core::Memory::ArenaAllocator* m_arena    = nullptr;
 
-        // R32_UINT picking texture (full viewport resolution)
-        VkImage        m_pick_img     = VK_NULL_HANDLE;
-        VkImageView    m_pick_view    = VK_NULL_HANDLE;
-        VkDeviceMemory m_pick_mem     = VK_NULL_HANDLE;
+        // R32_UINT picking texture (full viewport resolution).
+        // Allocated via GpuAllocator (GpuMemoryDomain::RenderTarget).
+        VkImage       m_pick_img     = VK_NULL_HANDLE;
+        VkImageView   m_pick_view    = VK_NULL_HANDLE;
+        VmaAllocation m_pick_alloc   = nullptr;
 
-        // D32_SFLOAT depth (reuse or create; same res as picking texture)
-        VkImage        m_depth_img    = VK_NULL_HANDLE;
-        VkImageView    m_depth_view   = VK_NULL_HANDLE;
-        VkDeviceMemory m_depth_mem    = VK_NULL_HANDLE;
+        // D32_SFLOAT depth (same resolution as picking texture).
+        VkImage       m_depth_img    = VK_NULL_HANDLE;
+        VkImageView   m_depth_view   = VK_NULL_HANDLE;
+        VmaAllocation m_depth_alloc  = nullptr;
 
-        // 1×1 host-visible readback buffer (4 bytes = one uint32_t)
-        VkBuffer       m_readback_buf = VK_NULL_HANDLE;
-        VkDeviceMemory m_readback_mem = VK_NULL_HANDLE;
-        void*          m_readback_ptr = nullptr;  // persistently mapped
+        // 1×1 host-visible readback buffer (4 bytes = one uint32_t).
+        // Allocated via GpuAllocator (GpuMemoryDomain::HostStaging).
+        // Persistently mapped — MappedPtr held here after Initialize.
+        VkBuffer      m_readback_buf = VK_NULL_HANDLE;
+        VmaAllocation m_readback_alloc = nullptr;
+        void*         m_readback_ptr = nullptr;  // persistently mapped
 
         // Pipeline for entity ID rendering
         VkPipeline            m_entity_pipeline = VK_NULL_HANDLE;

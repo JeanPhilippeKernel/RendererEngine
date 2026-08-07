@@ -2,7 +2,7 @@
 
 **Priority:** P3 — Required for visual polish; bloom, tone mapping, and color grading are standard
 **Status:** Design
-**Depends on:** `render-resource-manager.md`, `shader-asset-pipeline.md`
+**Depends on:** `render-resource-manager.md`, `shader-asset-pipeline.md`, `gpu-allocator-rearchitecture.md`, `per-frame-upload-heap.md`
 **Blocks:** Visual polish, final image quality
 
 **Goal**: Implement a fully data-driven, RenderGraph-integrated post-processing stack inside
@@ -283,21 +283,21 @@ namespace ZEngine::Rendering::PostProcessing {
     // PostProcessPassData::Params.
     struct BloomPassState {
         BloomParams             Params{};
-        VkBuffer                ParamsUBO = VK_NULL_HANDLE;
+        // ParamsUBO is NOT a persistent VkBuffer. Bloom parameters are pushed via
+        // PerFrameUploadHeap::Push each frame when dirty; at steady state (no param
+        // change) the heap write is skipped via a dirty flag.
         Textures::TextureHandle DownsampleChain[BLOOM_MIP_LEVELS] = {};
         Textures::TextureHandle UpsampleChain[BLOOM_MIP_LEVELS]   = {};
         VkPipeline              ThresholdPipeline  = VK_NULL_HANDLE;
         VkPipeline              DownsamplePipeline = VK_NULL_HANDLE;
         VkPipeline              UpsamplePipeline   = VK_NULL_HANDLE;
         VkPipeline              CompositePipeline  = VK_NULL_HANDLE;
-        VkPipelineLayout m_layout              = VK_NULL_HANDLE;
+        VkPipelineLayout        PipelineLayout     = VK_NULL_HANDLE;
+        bool                    ParamsDirty        = true;
 
         Core::Memory::ArenaAllocator* m_arena  = nullptr;
         Hardwares::VulkanDevice*      m_device = nullptr;
     };
-
-    Hardwares::VulkanDevice* Device = nullptr;
-};
 
 // Factory — allocates BloomPassState from arena, returns a ready-to-add entry.
 PostProcessPassEntry MakeBloomPass(Core::Memory::ArenaAllocator* arena,
@@ -502,34 +502,33 @@ struct ToneMappingParams {
 };
 ```
 
-### Full class declaration
+### State struct and free functions
+
+Tone mapping follows the same DOD pattern as `BloomPass` — a plain state struct
+plus two free functions registered in a `PostProcessPassVtable`. No inheritance,
+no virtual dispatch.
 
 ```cpp
-struct ToneMappingPass final : public PostProcessPass {
-    explicit ToneMappingPass(Core::Memory::ArenaAllocator* arena,
-                             Hardwares::VulkanDevice*     device);
-
-    StringHash GetName() const override;  // hash of "ToneMappingPass"
-
-    void SetIOHandles(Textures::TextureHandle input,
-                      Textures::TextureHandle output) override;
-
-    void SetParams(const ToneMappingParams& params);
-
-    void Setup(Graph::RenderGraphResourceBuilder& builder) override;
-    void Execute(VkCommandBuffer cmd, const Graph::RenderGraph& rg) override;
-
-private:
-    ToneMappingParams        m_params{};
-    VkBuffer                 m_params_ubo  = VK_NULL_HANDLE;
-    VkPipeline               m_pipeline    = VK_NULL_HANDLE;
-    VkPipelineLayout         m_layout      = VK_NULL_HANDLE;
-    Textures::TextureHandle  m_input       = {};
-    Textures::TextureHandle  m_output      = {};  // VK_FORMAT_R8G8B8A8_UNORM
+struct ToneMappingState {
+    ToneMappingParams        Params{};
+    // Parameters pushed via PerFrameUploadHeap when dirty; no persistent VkBuffer.
+    bool                     ParamsDirty   = true;
+    VkPipeline               Pipeline      = VK_NULL_HANDLE;
+    VkPipelineLayout         PipelineLayout= VK_NULL_HANDLE;
+    Textures::TextureHandle  Input         = {};
+    Textures::TextureHandle  Output        = {};  // VK_FORMAT_R8G8B8A8_UNORM
 
     Core::Memory::ArenaAllocator* m_arena  = nullptr;
     Hardwares::VulkanDevice*      m_device = nullptr;
 };
+
+// Factory — allocates ToneMappingState from arena, returns a ready-to-add entry.
+PostProcessPassEntry MakeToneMappingPass(Core::Memory::ArenaAllocator* arena,
+                                         Hardwares::VulkanDevice*      device,
+                                         const ToneMappingParams&      params);
+
+void ToneMappingPass_Setup  (PostProcessPassData&, Graph::RenderGraphResourceBuilder&);
+void ToneMappingPass_Execute(PostProcessPassData&, VkCommandBuffer, const Graph::RenderGraph&);
 ```
 
 ### Tone mapping shader (`tone_mapping.frag`)
@@ -652,45 +651,34 @@ struct ColorGradingParams {
 };
 ```
 
-### Full class declaration
+### State struct and free functions
 
 ```cpp
 // ZEngine/Rendering/PostProcessing/ColorGradingPass.h
-struct ColorGradingPass final : public PostProcessPass {
-    explicit ColorGradingPass(Core::Memory::ArenaAllocator* arena,
-                              Hardwares::VulkanDevice*     device);
-
-    StringHash GetName() const override;  // hash of "ColorGradingPass"
-
-    void SetIOHandles(Textures::TextureHandle input,
-                      Textures::TextureHandle output) override;
-
-    // Load a .cube LUT file from the VFS. Call after Initialize.
-    // Blocking: reads and uploads the LUT texture via RenderResourceManager.
-    // On failure logs the error and keeps the current LUT (identity at startup).
-    void LoadLUT(const VFS::VFSPath& cube_path);
-
-    // Replace with the identity LUT (no color change).
-    void ResetLUT();
-
-    void SetParams(const ColorGradingParams& params);
-
-    void Setup(Graph::RenderGraphResourceBuilder& builder) override;
-    void Execute(VkCommandBuffer cmd, const Graph::RenderGraph& rg) override;
-
-private:
-    ColorGradingParams       m_params{};
-    VkBuffer                 m_params_ubo    = VK_NULL_HANDLE;
-    Textures::TextureHandle  m_lut_texture   = {};
-    bool                     m_lut_is_identity = true;
-    VkPipeline               m_pipeline      = VK_NULL_HANDLE;
-    VkPipelineLayout         m_layout        = VK_NULL_HANDLE;
-    Textures::TextureHandle  m_input         = {};
-    Textures::TextureHandle  m_output        = {};
+struct ColorGradingState {
+    ColorGradingParams       Params{};
+    bool                     ParamsDirty    = true;
+    Textures::TextureHandle  LUTTexture     = {};
+    bool                     LUTIsIdentity  = true;
+    VkPipeline               Pipeline       = VK_NULL_HANDLE;
+    VkPipelineLayout         PipelineLayout = VK_NULL_HANDLE;
+    Textures::TextureHandle  Input          = {};
+    Textures::TextureHandle  Output         = {};
 
     Core::Memory::ArenaAllocator* m_arena  = nullptr;
     Hardwares::VulkanDevice*      m_device = nullptr;
 };
+
+PostProcessPassEntry MakeColorGradingPass(Core::Memory::ArenaAllocator* arena,
+                                           Hardwares::VulkanDevice*      device,
+                                           const ColorGradingParams&     params);
+
+// Load a .cube LUT file from the VFS. Safe to call any time after Initialize.
+// On failure logs the error and keeps the current LUT (identity at startup).
+void ColorGradingPass_LoadLUT  (ColorGradingState* state, const VFS::VFSPath& cube_path);
+void ColorGradingPass_ResetLUT (ColorGradingState* state);
+void ColorGradingPass_Setup    (PostProcessPassData&, Graph::RenderGraphResourceBuilder&);
+void ColorGradingPass_Execute  (PostProcessPassData&, VkCommandBuffer, const Graph::RenderGraph&);
 ```
 
 ### Color grading shader (`color_grading.frag`)
@@ -755,35 +743,28 @@ struct FXAAParams {
 };
 ```
 
-### Full class declaration
+### State struct and free functions
 
 ```cpp
 // ZEngine/Rendering/PostProcessing/FXAAPass.h
-struct FXAAPass final : public PostProcessPass {
-    explicit FXAAPass(Core::Memory::ArenaAllocator* arena,
-                      Hardwares::VulkanDevice*     device);
-
-    StringHash GetName() const override;  // hash of "FXAAPass"
-
-    void SetIOHandles(Textures::TextureHandle input,
-                      Textures::TextureHandle output) override;
-
-    void SetParams(const FXAAParams& params);
-
-    void Setup(Graph::RenderGraphResourceBuilder& builder) override;
-    void Execute(VkCommandBuffer cmd, const Graph::RenderGraph& rg) override;
-
-private:
-    FXAAParams               m_params{};
-    VkBuffer                 m_params_ubo = VK_NULL_HANDLE;
-    VkPipeline               m_pipeline   = VK_NULL_HANDLE;
-    VkPipelineLayout         m_layout     = VK_NULL_HANDLE;
-    Textures::TextureHandle  m_input      = {};
-    Textures::TextureHandle  m_output     = {};
+struct FXAAState {
+    FXAAParams               Params{};
+    bool                     ParamsDirty  = true;
+    VkPipeline               Pipeline     = VK_NULL_HANDLE;
+    VkPipelineLayout         PipelineLayout = VK_NULL_HANDLE;
+    Textures::TextureHandle  Input        = {};
+    Textures::TextureHandle  Output       = {};
 
     Core::Memory::ArenaAllocator* m_arena  = nullptr;
     Hardwares::VulkanDevice*      m_device = nullptr;
 };
+
+PostProcessPassEntry MakeFXAAPass(Core::Memory::ArenaAllocator* arena,
+                                   Hardwares::VulkanDevice*      device,
+                                   const FXAAParams&             params);
+
+void FXAAPass_Setup  (PostProcessPassData&, Graph::RenderGraphResourceBuilder&);
+void FXAAPass_Execute(PostProcessPassData&, VkCommandBuffer, const Graph::RenderGraph&);
 ```
 
 ### FXAA 3.11 shader (`fxaa.frag`)
@@ -889,35 +870,28 @@ struct ChromaticAberrationParams {
 };
 ```
 
-### Full class declaration
+### State struct and free functions
 
 ```cpp
 // ZEngine/Rendering/PostProcessing/ChromaticAberrationPass.h
-struct ChromaticAberrationPass final : public PostProcessPass {
-    explicit ChromaticAberrationPass(Core::Memory::ArenaAllocator* arena,
-                                     Hardwares::VulkanDevice*     device);
-
-    StringHash GetName() const override;  // hash of "ChromaticAberrationPass"
-
-    void SetIOHandles(Textures::TextureHandle input,
-                      Textures::TextureHandle output) override;
-
-    void SetParams(const ChromaticAberrationParams& params);
-
-    void Setup(Graph::RenderGraphResourceBuilder& builder) override;
-    void Execute(VkCommandBuffer cmd, const Graph::RenderGraph& rg) override;
-
-private:
-    ChromaticAberrationParams  m_params{};
-    VkBuffer                   m_params_ubo = VK_NULL_HANDLE;
-    VkPipeline                 m_pipeline   = VK_NULL_HANDLE;
-    VkPipelineLayout           m_layout     = VK_NULL_HANDLE;
-    Textures::TextureHandle    m_input      = {};
-    Textures::TextureHandle    m_output     = {};
+struct ChromaticAberrationState {
+    ChromaticAberrationParams Params{};
+    bool                      ParamsDirty  = true;
+    VkPipeline                Pipeline     = VK_NULL_HANDLE;
+    VkPipelineLayout          PipelineLayout = VK_NULL_HANDLE;
+    Textures::TextureHandle   Input        = {};
+    Textures::TextureHandle   Output       = {};
 
     Core::Memory::ArenaAllocator* m_arena  = nullptr;
     Hardwares::VulkanDevice*      m_device = nullptr;
 };
+
+PostProcessPassEntry MakeChromAberrationPass(Core::Memory::ArenaAllocator*         arena,
+                                              Hardwares::VulkanDevice*              device,
+                                              const ChromaticAberrationParams&      params);
+
+void ChromAberrationPass_Setup  (PostProcessPassData&, Graph::RenderGraphResourceBuilder&);
+void ChromAberrationPass_Execute(PostProcessPassData&, VkCommandBuffer, const Graph::RenderGraph&);
 ```
 
 ### Shader (`chromatic_aberration.frag`)
@@ -967,35 +941,28 @@ struct VignetteParams {
 };
 ```
 
-### Full class declaration
+### State struct and free functions
 
 ```cpp
 // ZEngine/Rendering/PostProcessing/VignettePass.h
-struct VignettePass final : public PostProcessPass {
-    explicit VignettePass(Core::Memory::ArenaAllocator* arena,
-                          Hardwares::VulkanDevice*     device);
-
-    StringHash GetName() const override;  // hash of "VignettePass"
-
-    void SetIOHandles(Textures::TextureHandle input,
-                      Textures::TextureHandle output) override;
-
-    void SetParams(const VignetteParams& params);
-
-    void Setup(Graph::RenderGraphResourceBuilder& builder) override;
-    void Execute(VkCommandBuffer cmd, const Graph::RenderGraph& rg) override;
-
-private:
-    VignetteParams           m_params{};
-    VkBuffer                 m_params_ubo = VK_NULL_HANDLE;
-    VkPipeline               m_pipeline   = VK_NULL_HANDLE;
-    VkPipelineLayout         m_layout     = VK_NULL_HANDLE;
-    Textures::TextureHandle  m_input      = {};
-    Textures::TextureHandle  m_output     = {};
+struct VignetteState {
+    VignetteParams           Params{};
+    bool                     ParamsDirty  = true;
+    VkPipeline               Pipeline     = VK_NULL_HANDLE;
+    VkPipelineLayout         PipelineLayout = VK_NULL_HANDLE;
+    Textures::TextureHandle  Input        = {};
+    Textures::TextureHandle  Output       = {};
 
     Core::Memory::ArenaAllocator* m_arena  = nullptr;
     Hardwares::VulkanDevice*      m_device = nullptr;
 };
+
+PostProcessPassEntry MakeVignettePass(Core::Memory::ArenaAllocator* arena,
+                                       Hardwares::VulkanDevice*      device,
+                                       const VignetteParams&         params);
+
+void VignettePass_Setup  (PostProcessPassData&, Graph::RenderGraphResourceBuilder&);
+void VignettePass_Execute(PostProcessPassData&, VkCommandBuffer, const Graph::RenderGraph&);
 ```
 
 ### Shader (`vignette.frag`)
@@ -1090,7 +1057,7 @@ A 4×4 tileable noise texture (`VK_FORMAT_R16G16_SFLOAT`, encoding random rotati
 the XY plane) is used to rotate the hemisphere kernel per-pixel, removing banding artefacts
 without extra samples.
 
-### Full class declaration
+### State struct and free functions
 
 ```cpp
 // ZEngine/Rendering/PostProcessing/SSAOPass.h
@@ -1102,44 +1069,33 @@ namespace ZEngine::Rendering::PostProcessing {
     static constexpr uint32_t SSAO_MAX_SAMPLES = 32;
     static constexpr uint32_t SSAO_NOISE_DIM   = 4;
 
-    struct SSAOPass final : public PostProcessPass {
-        explicit SSAOPass(Core::Memory::ArenaAllocator* arena,
-                          Hardwares::VulkanDevice*     device);
+    struct SSAOState {
+        SSAOParams               Params{};
+        bool                     ParamsDirty     = true;
+        Core::Maths::Vec3f       Kernel[SSAO_MAX_SAMPLES] = {};
+        // KernelUBO and NoiseTex are static after init — uploaded once via
+        // GpuAllocator staging ring, not re-uploaded each frame.
+        VkBuffer                 KernelUBO       = VK_NULL_HANDLE;
+        VmaAllocation            KernelAlloc     = nullptr;
+        Textures::TextureHandle  NoiseTex        = {};
+        Textures::TextureHandle  DepthInput      = {};
+        Textures::TextureHandle  NormalsInput    = {};
+        Textures::TextureHandle  OcclusionOut    = {};  // R8, half-res
 
-        StringHash GetName() const override;  // hash of "SSAOPass"
+        VkPipeline               SSAOPipeline    = VK_NULL_HANDLE;
+        VkPipeline               BlurPipeline    = VK_NULL_HANDLE;
+        VkPipelineLayout         PipelineLayout  = VK_NULL_HANDLE;
 
-        // SSAO reads depth and normals; output is an R8 occlusion texture.
-        void SetGBufferInputs(Textures::TextureHandle depth,
-                              Textures::TextureHandle view_normals);
-
-        void SetIOHandles(Textures::TextureHandle input,
-                          Textures::TextureHandle output) override;
-
-        void SetParams(const SSAOParams& params);
-
-        void Setup(Graph::RenderGraphResourceBuilder& builder) override;
-        void Execute(VkCommandBuffer cmd, const Graph::RenderGraph& rg) override;
-
-    private:
-        void GenerateKernel();
-        void GenerateNoiseTex();
-
-        SSAOParams               m_params{};
-        Core::Maths::Vec3f       m_kernel[SSAO_MAX_SAMPLES] = {};
-        VkBuffer                 m_kernel_ubo    = VK_NULL_HANDLE;
-        Textures::TextureHandle  m_noise_tex     = {};
-        Textures::TextureHandle  m_depth_input   = {};
-        Textures::TextureHandle  m_normals_input = {};
-        Textures::TextureHandle  m_occlusion_out = {};  // R8, half-res
-
-        // Blur pass resources (bilateral, to preserve edges)
-        VkPipeline               m_ssao_pipeline  = VK_NULL_HANDLE;
-        VkPipeline               m_blur_pipeline  = VK_NULL_HANDLE;
-        VkPipelineLayout         m_layout         = VK_NULL_HANDLE;
-
-        Core::Memory::ArenaAllocator* m_arena  = nullptr;
-        Hardwares::VulkanDevice*      m_device = nullptr;
+        Core::Memory::ArenaAllocator* m_arena    = nullptr;
+        Hardwares::VulkanDevice*      m_device   = nullptr;
     };
+
+    PostProcessPassEntry MakeSSAOPass(Core::Memory::ArenaAllocator* arena,
+                                       Hardwares::VulkanDevice*      device,
+                                       const SSAOParams&             params);
+
+    void SSAOPass_Setup  (PostProcessPassData&, Graph::RenderGraphResourceBuilder&);
+    void SSAOPass_Execute(PostProcessPassData&, VkCommandBuffer, const Graph::RenderGraph&);
 
 }  // namespace ZEngine::Rendering::PostProcessing
 ```
@@ -1328,7 +1284,7 @@ during stable frames.
 
 ```
 ZEngine/Rendering/PostProcessing/
-├── PostProcessPass.h              — abstract base type
+├── PostProcessPass.h              — DOD types (PostProcessPassData, PostProcessPassVtable, PostProcessPassEntry)
 ├── PostProcessStack.h/.cpp        — owns + orders all passes
 ├── BloomPass.h/.cpp               — dual kawase bloom
 ├── ToneMappingPass.h/.cpp         — ACES/Reinhard/Uncharted2/Neutral
@@ -1380,7 +1336,7 @@ assembly state.
 ## 14. Deliverables Checklist
 
 ### Core infrastructure
-- [ ] `ZEngine/Rendering/PostProcessing/PostProcessPass.h` — abstract base with `GetName()`, `SetEnabled()`, `SetIOHandles()`, `Setup()`, `Execute()`
+- [ ] `ZEngine/Rendering/PostProcessing/PostProcessPass.h` — DOD types: `PostProcessPassData` (name, I/O handles, enabled flag, order, void* params), `PostProcessPassVtable` (Setup/Execute free-function pointers), `PostProcessPassEntry` aggregate; no virtual inheritance
 - [ ] `ZEngine/Rendering/PostProcessing/PostProcessStack.h/.cpp` — `Initialize`, `AddPass`, `RemovePass`, `SetEnabled`, `Compile`, `Execute`; ping-pong resource allocation; sorted pass list via `order` field
 - [ ] `ZEngine/Assets/Shaders/PostProcessing/fullscreen_triangle.vert` — index-based full-screen triangle, no VBO
 
