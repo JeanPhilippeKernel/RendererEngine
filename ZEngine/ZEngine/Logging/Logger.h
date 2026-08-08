@@ -75,6 +75,8 @@ namespace ZEngine::Logging
         static const char* LevelToString(LogLevel level);
         static void        FlushRingBufferToCrashLog(std::string_view path);
         static void        FlushRingBufferToCrashLog(); // uses CrashLogDir from LoggerConfiguration
+        static void        SetMinLevel(LogChannel channel, LogLevel level);
+        static void        SetMinLevelAllChannels(LogLevel level);
 
     private:
         Logger()              = delete;

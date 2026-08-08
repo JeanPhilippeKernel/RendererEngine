@@ -37,6 +37,7 @@ protected:
         cfg.RingBufferSize  = 64;
         cfg.CrashLogDir     = s_crash_dir;
         Logger::Initialize(&m_logger_arena, cfg);
+        Logger::SetMinLevelAllChannels(LogLevel::TRACE);
     }
 
     void TearDown() override

@@ -29,10 +29,11 @@ namespace ZEngine::Logging
     static char                                                          s_crash_log_dir[256]                                = {};
     //clang-format on
 
-    // One entry per LogChannel ordinal. Values are the CMake-defined per-channel minimums
+    // One entry per LogChannel ordinal. Initialized from CMake-defined per-channel minimums
     // (e.g. ZENGINE_LOG_LEVEL_ENGINE → ZENGINE_LOG_LEVEL_WARN → 2 in Release).
     // Logger::Log uses this to gate ring buffer writes and handler dispatch — not just spdlog.
-    static constexpr int                                                 k_min_level[static_cast<size_t>(LogChannel::COUNT)] = {
+    // Mutable so tests can call SetMinLevel / SetMinLevelAllChannels to lower the gate.
+    static int                                                           k_min_level[static_cast<size_t>(LogChannel::COUNT)] = {
         ZENGINE_LOG_LEVEL_ENGINE,
         ZENGINE_LOG_LEVEL_ECS,
         ZENGINE_LOG_LEVEL_RENDER,
@@ -206,6 +207,20 @@ namespace ZEngine::Logging
                 return "critical";
             default:
                 return "";
+        }
+    }
+
+    void Logger::SetMinLevel(LogChannel channel, LogLevel level)
+    {
+        k_min_level[static_cast<size_t>(channel)] = static_cast<int>(level);
+    }
+
+    void Logger::SetMinLevelAllChannels(LogLevel level)
+    {
+        const int v = static_cast<int>(level);
+        for (size_t i = 0; i < static_cast<size_t>(LogChannel::COUNT); ++i)
+        {
+            k_min_level[i] = v;
         }
     }
 
