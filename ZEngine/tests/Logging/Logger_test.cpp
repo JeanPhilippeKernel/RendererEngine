@@ -161,12 +161,12 @@ TEST_F(LoggerTest, BackwardsCompatMacroRoutesToEngineChannel)
     LogMessage captured{};
     auto       cookie = Logger::AddEventHandler({[](void* ctx, const LogMessage& m) { *static_cast<LogMessage*>(ctx) = m; }, &captured});
 
-    ZENGINE_CORE_INFO("compat {}", 42);
+    ZENGINE_CORE_WARN("compat {}", 42);
 
     Logger::RemoveEventHandler(cookie);
 
     EXPECT_EQ(captured.Channel, LogChannel::ENGINE);
-    EXPECT_EQ(captured.Level, LogLevel::INFO);
+    EXPECT_EQ(captured.Level, LogLevel::WARN);
     EXPECT_NE(captured.Message, nullptr);
 }
 
