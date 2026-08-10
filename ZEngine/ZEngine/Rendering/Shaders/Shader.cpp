@@ -426,13 +426,19 @@ namespace ZEngine::Rendering::Shaders
 
         for (auto set_layout : InternalDescriptorSetLayoutMap)
         {
-            m_device->EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
+            Hardwares::DeferredFreeEntry e = {};
+            e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+            e.Data.Vk                      = {set_layout.second, Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, nullptr};
+            m_device->DeferFree(e);
         }
         InternalDescriptorSetLayoutMap.clear();
 
         if (m_descriptor_pool)
         {
-            m_device->EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, m_descriptor_pool);
+            Hardwares::DeferredFreeEntry e = {};
+            e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+            e.Data.Vk                      = {m_descriptor_pool, Rendering::DeviceResourceType::DESCRIPTORPOOL, nullptr};
+            m_device->DeferFree(e);
             m_descriptor_pool = VK_NULL_HANDLE;
         }
     }

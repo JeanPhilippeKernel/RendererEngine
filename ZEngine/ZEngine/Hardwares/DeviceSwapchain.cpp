@@ -152,8 +152,14 @@ namespace ZEngine::Hardwares
     {
         for (uint32_t i = 0; i < SwapchainImageCount; ++i)
         {
-            Device->EnqueueForDeletion(DeviceResourceType::IMAGEVIEW, SwapchainImageViews[i]);
-            Device->EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, SwapchainFramebuffers[i]);
+            DeferredFreeEntry iv = {};
+            iv.EntryKind         = DeferredFreeEntry::Kind::VkHandle;
+            iv.Data.Vk           = {SwapchainImageViews[i], DeviceResourceType::IMAGEVIEW, nullptr};
+            Device->DeferFree(iv);
+            DeferredFreeEntry fb = {};
+            fb.EntryKind         = DeferredFreeEntry::Kind::VkHandle;
+            fb.Data.Vk           = {SwapchainFramebuffers[i], DeviceResourceType::FRAMEBUFFER, nullptr};
+            Device->DeferFree(fb);
             SwapchainImageViews[i]   = VK_NULL_HANDLE;
             SwapchainFramebuffers[i] = VK_NULL_HANDLE;
         }
@@ -246,6 +252,7 @@ namespace ZEngine::Hardwares
         uint32_t image_idx            = 0;
         VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, UINT64_MAX, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &(image_idx));
         frame.Acquired->SetState(Primitives::SemaphoreState::Submitted);
+        Device->TickMemory();
 
         if (PresentCompletes[image_idx]->GetState() == Rendering::Primitives::FenceState::Submitted)
         {

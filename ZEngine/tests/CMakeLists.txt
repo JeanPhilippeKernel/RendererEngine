@@ -9,7 +9,7 @@ file(GLOB TEST_SOURCES
 
 # macOS and Windows are multi-config
 if (((APPLE) OR (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")))
-    if ((${CMAKE_CONFIGURATION_TYPES} STREQUAL "Release"))
+    if ("Release" IN_LIST CMAKE_CONFIGURATION_TYPES)
         list(APPEND TEST_SOURCES CrashHandlers/CrashHandler_test.cpp)
         add_executable(ZEngineCrashDialogDemo CrashHandlers/CrashDialogDemo.cpp)
         target_link_libraries(ZEngineCrashDialogDemo PRIVATE zEngineLib)

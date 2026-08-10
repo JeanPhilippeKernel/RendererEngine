@@ -1,26 +1,3 @@
-/*
- * We define those Macros before inclusion of VulkanDevice.h so we can enable impl from VMA header
- */
-#define VMA_IMPLEMENTATION
-#define VMA_VULKAN_VERSION 1003000 // Vulkan 1.3
-
-#ifdef VMA_DEBUG_DETECT_CORRUPTION
-#include <cstdio>
-#ifdef _WIN32
-#include <windows.h>
-#define VMA_DEBUG_LOG_FORMAT(format, ...)                                          \
-    do                                                                             \
-    {                                                                              \
-        char __vma_buf[512];                                                       \
-        snprintf(__vma_buf, sizeof(__vma_buf), "[VMA] " format "\n", __VA_ARGS__); \
-        OutputDebugStringA(__vma_buf);                                             \
-        fputs(__vma_buf, stderr);                                                  \
-    } while (0)
-#else
-#define VMA_DEBUG_LOG_FORMAT(format, ...) fprintf(stderr, "[VMA] " format "\n", __VA_ARGS__)
-#endif
-#endif
-
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
@@ -71,9 +48,7 @@ namespace ZEngine::Hardwares
         IndirectBufferSetManager.Initialize(arena, 300);
         IndexBufferSetManager.Initialize(arena, 300);
         UniformBufferSetManager.Initialize(arena, 300);
-        DirtyResources.Initialize(arena, 300);
-        DirtyBuffers.Initialize(arena, 500);
-        DirtyBufferImages.Initialize(arena, 300);
+
         ShaderCaches.init(arena, 10);
         m_queue_map.init(arena, 4);
 
@@ -469,13 +444,23 @@ namespace ZEngine::Hardwares
             }
         }
 
+        bool has_budget = false;
+        bool has_bda    = false;
+        for (uint32_t ext_i = 0; ext_i < requested_device_extension_layer_name_collection.size(); ++ext_i)
+        {
+            const char* ext = requested_device_extension_layer_name_collection[ext_i];
+            if (strcmp(ext, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0)
+                has_budget = true;
+            if (strcmp(ext, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) == 0)
+                has_bda = true;
+        }
+
         ZReleaseScratch(scratch);
 
         /*
          * Creating VMA Allocators
          */
-        VmaAllocatorCreateInfo vma_allocator_create_info = {.physicalDevice = PhysicalDevice, .device = LogicalDevice, .instance = Instance, .vulkanApiVersion = VK_API_VERSION_1_3};
-        ZENGINE_VALIDATE_ASSERT(vmaCreateAllocator(&vma_allocator_create_info, &VmaAllocatorValue) == VK_SUCCESS, "Failed to create VMA Allocator")
+        GpuMem.Initialize(PhysicalDevice, LogicalDevice, Instance, has_budget, has_bda);
 
         /*
          * Creating Swapchain
@@ -659,15 +644,14 @@ namespace ZEngine::Hardwares
         ZReleaseScratch(scratch);
 
         AsyncResLoader->Initialize(this);
-
-        ThreadPoolHelper::Submit([this] { DirtyCollector(); });
     }
 
     void VulkanDevice::Deinitialize()
     {
         QueueWaitAll();
 
-        RunningDirtyCollector.store(false, std::memory_order_release);
+        PendingFree.Drain(&GpuMem, LogicalDevice, UINT64_MAX);
+        GpuMem.Ring.Drain(UINT64_MAX);
 
         AsyncResLoader->Shutdown();
 
@@ -703,41 +687,38 @@ namespace ZEngine::Hardwares
 
         for (auto set_layout : ShaderReservedDescriptorSetLayoutMap)
         {
-            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
+            vkDestroyDescriptorSetLayout(LogicalDevice, reinterpret_cast<VkDescriptorSetLayout>(set_layout.second), nullptr);
         }
         ShaderReservedDescriptorSetLayoutMap.clear();
 
         if (EmptyDescriptorPoolHandle)
         {
-            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, EmptyDescriptorPoolHandle);
+            vkDestroyDescriptorPool(LogicalDevice, EmptyDescriptorPoolHandle, nullptr);
             EmptyDescriptorPoolHandle = VK_NULL_HANDLE;
             EmptyDescriptorSet        = VK_NULL_HANDLE;
         }
 
         if (EmptyDescriptorSetLayout)
         {
-            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, EmptyDescriptorSetLayout);
+            vkDestroyDescriptorSetLayout(LogicalDevice, EmptyDescriptorSetLayout, nullptr);
             EmptyDescriptorSetLayout = VK_NULL_HANDLE;
         }
 
         if (GlobalDescriptorPoolHandle)
         {
-            EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, GlobalDescriptorPoolHandle);
+            vkDestroyDescriptorPool(LogicalDevice, GlobalDescriptorPoolHandle, nullptr);
             GlobalDescriptorPoolHandle = VK_NULL_HANDLE;
         }
 
-        __cleanupBufferDirtyResource();
-
-        __cleanupBufferImageDirtyResource();
-
-        __cleanupDirtyResource();
-
         ZENGINE_DESTROY_VULKAN_HANDLE(Instance, vkDestroySurfaceKHR, Surface, nullptr)
+
+        // Drain deferred frees enqueued during the Dispose() calls above
+        PendingFree.Drain(&GpuMem, LogicalDevice, UINT64_MAX);
     }
 
     void VulkanDevice::Dispose()
     {
-        vmaDestroyAllocator(VmaAllocatorValue);
+        GpuMem.Shutdown();
 
         if (__destroyDebugMessengerPtr)
         {
@@ -839,32 +820,6 @@ namespace ZEngine::Hardwares
         return true;
     }
 
-    void VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const handle)
-    {
-        if (handle)
-        {
-            DirtyResources.Add({.FrameIndex = SwapchainPtr->CurrentFrame->Index, .Handle = handle, .Type = resource_type});
-        }
-    }
-
-    void VulkanDevice::EnqueueForDeletion(Rendering::DeviceResourceType resource_type, DirtyResource resource)
-    {
-        if (resource.Handle)
-        {
-            DirtyResources.Add(resource);
-        }
-    }
-
-    void VulkanDevice::EnqueueBufferForDeletion(BufferView& buffer)
-    {
-        DirtyBuffers.Add(buffer);
-    }
-
-    void VulkanDevice::EnqueueBufferImageForDeletion(BufferImage& buffer)
-    {
-        DirtyBufferImages.Add(buffer);
-    }
-
     void VulkanDevice::QueueWait(Rendering::QueueType type)
     {
         if (!HasSeperateTransfertQueueFamily)
@@ -920,170 +875,30 @@ namespace ZEngine::Hardwares
         return VK_FALSE;
     }
 
-    void VulkanDevice::__cleanupDirtyResource()
-    {
-        size_t dirty_resource_count = DirtyResources.Head();
-        for (size_t i = 0; i < dirty_resource_count; ++i)
-        {
-            auto handle = DirtyResources.ToHandle(i);
-
-            if (!handle)
-            {
-                continue;
-            }
-
-            DirtyResource& res_handle = DirtyResources[handle];
-            switch (res_handle.Type)
-            {
-                case Rendering::DeviceResourceType::SAMPLER:
-                    // vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::FRAMEBUFFER:
-                    vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::IMAGEVIEW:
-                    vkDestroyImageView(LogicalDevice, reinterpret_cast<VkImageView>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::IMAGE:
-                    vkDestroyImage(LogicalDevice, reinterpret_cast<VkImage>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::RENDERPASS:
-                    vkDestroyRenderPass(LogicalDevice, reinterpret_cast<VkRenderPass>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::BUFFERMEMORY:
-                    vkFreeMemory(LogicalDevice, reinterpret_cast<VkDeviceMemory>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::BUFFER:
-                    vkDestroyBuffer(LogicalDevice, reinterpret_cast<VkBuffer>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::PIPELINE_LAYOUT:
-                    vkDestroyPipelineLayout(LogicalDevice, reinterpret_cast<VkPipelineLayout>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::PIPELINE:
-                    vkDestroyPipeline(LogicalDevice, reinterpret_cast<VkPipeline>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
-                    vkDestroyDescriptorSetLayout(LogicalDevice, reinterpret_cast<VkDescriptorSetLayout>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::DESCRIPTORPOOL:
-                    vkDestroyDescriptorPool(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::SEMAPHORE:
-                    vkDestroySemaphore(LogicalDevice, reinterpret_cast<VkSemaphore>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::FENCE:
-                    vkDestroyFence(LogicalDevice, reinterpret_cast<VkFence>(res_handle.Handle), nullptr);
-                    break;
-                case Rendering::DeviceResourceType::DESCRIPTORSET:
-                {
-                    auto ds = reinterpret_cast<VkDescriptorSet>(res_handle.Handle);
-                    vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Data1), 1, &ds);
-                    break;
-                }
-                case DeviceResourceType::RESOURCE_COUNT:
-                    break;
-            }
-
-            DirtyResources.Remove(handle);
-        }
-    }
-
-    void VulkanDevice::__cleanupBufferDirtyResource()
-    {
-        size_t dirty_buffer_count = DirtyBuffers.Head();
-        for (size_t i = 0; i < dirty_buffer_count; ++i)
-        {
-            auto handle = DirtyBuffers.ToHandle(i);
-
-            if (!handle)
-            {
-                continue;
-            }
-
-            BufferView& buffer = DirtyBuffers[handle];
-            vmaDestroyBuffer(VmaAllocatorValue, buffer.Handle, buffer.Allocation);
-            DirtyBuffers.Remove(handle);
-        }
-    }
-
-    void VulkanDevice::__cleanupBufferImageDirtyResource()
-    {
-        size_t dirty_buffer_image_count = DirtyBufferImages.Head();
-        for (size_t i = 0; i < dirty_buffer_image_count; ++i)
-        {
-            auto handle = DirtyBufferImages.ToHandle(i);
-
-            if (!handle)
-            {
-                continue;
-            }
-
-            BufferImage& buffer = DirtyBufferImages[handle];
-
-            vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
-            // vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
-            vmaDestroyImage(VmaAllocatorValue, buffer.Handle, buffer.Allocation);
-
-            DirtyBufferImages.Remove(handle);
-        }
-    }
-
     void VulkanDevice::MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data)
     {
-        void* mapped_memory;
         if (data)
         {
-            ZENGINE_VALIDATE_ASSERT(vmaMapMemory(VmaAllocatorValue, buffer.Allocation, &mapped_memory) == VK_SUCCESS, "Failed to map memory")
-            ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(mapped_memory, data_size, data, data_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-            vmaUnmapMemory(VmaAllocatorValue, buffer.Allocation);
+            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(GpuMem.Allocator, data, buffer.Allocation, 0, data_size) == VK_SUCCESS, "Failed to map and copy memory")
         }
     }
 
-    BufferView VulkanDevice::CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags)
+    BufferView VulkanDevice::CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, Core::Memory::GpuMemoryDomain domain, const char* debug_name)
     {
-        BufferView         buffer_view                 = {};
-        VkBufferCreateInfo buffer_create_info          = {};
-        buffer_create_info.sType                       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_create_info.size                        = byte_size;
-        buffer_create_info.usage                       = buffer_usage;
-        buffer_create_info.sharingMode                 = VK_SHARING_MODE_EXCLUSIVE;
+        BufferView buffer_view = GpuMem.AllocateBuffer(byte_size, buffer_usage, domain, debug_name);
 
-        VmaAllocationCreateInfo allocation_create_info = {};
-        allocation_create_info.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-        allocation_create_info.flags                   = vma_create_flags;
-
-        ZENGINE_VALIDATE_ASSERT(vmaCreateBuffer(VmaAllocatorValue, &buffer_create_info, &allocation_create_info, &(buffer_view.Handle), &(buffer_view.Allocation), nullptr) == VK_SUCCESS, "Failed to create buffer");
-
-        /*
-         * Zeroing the buffer
-         */
-        VmaAllocationInfo allocation_info = {};
-        vmaGetAllocationInfo(VmaAllocatorValue, buffer_view.Allocation, &allocation_info);
-        Helpers::secure_memset(allocation_info.pMappedData, 0, byte_size, byte_size);
-
-        // Metadata info
         buffer_view.FrameIndex = SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index;
 
         if (buffer_usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
-        {
-            buffer_view.Type = BufferType::VERTEX;
-        }
+            buffer_view.Type = Core::Memory::BufferType::VERTEX;
         else if (buffer_usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
-        {
-            buffer_view.Type = BufferType::INDEX;
-        }
+            buffer_view.Type = Core::Memory::BufferType::INDEX;
         else if (buffer_usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
-        {
-            buffer_view.Type = BufferType::STORAGE;
-        }
+            buffer_view.Type = Core::Memory::BufferType::STORAGE;
         else if (buffer_usage & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT)
-        {
-            buffer_view.Type = BufferType::INDIRECT;
-        }
+            buffer_view.Type = Core::Memory::BufferType::INDIRECT;
         else if (buffer_usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
-        {
-            buffer_view.Type = BufferType::UNIFORM;
-        }
+            buffer_view.Type = Core::Memory::BufferType::UNIFORM;
 
         return buffer_view;
     }
@@ -1156,7 +971,6 @@ namespace ZEngine::Hardwares
 
     BufferImage VulkanDevice::CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, VkImageCreateFlags image_create_flag_bit)
     {
-        BufferImage       buffer_image                 = {};
         VkImageCreateInfo image_create_info            = {};
         image_create_info.sType                        = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         image_create_info.flags                        = image_create_flag_bit;
@@ -1173,15 +987,11 @@ namespace ZEngine::Hardwares
         image_create_info.sharingMode                  = image_sharing_mode;
         image_create_info.samples                      = image_sample_count;
 
-        VmaAllocationCreateInfo allocation_create_info = {};
-        // allocation_create_info.requiredFlags           = requested_properties;
-        allocation_create_info.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-        allocation_create_info.flags                   = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        Core::Memory::GpuMemoryDomain domain = (image_usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT || image_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+            ? Core::Memory::GpuMemoryDomain::RenderTarget
+            : Core::Memory::GpuMemoryDomain::DeviceTexture;
 
-        ZENGINE_VALIDATE_ASSERT(vmaCreateImage(VmaAllocatorValue, &image_create_info, &allocation_create_info, &(buffer_image.Handle), &(buffer_image.Allocation), nullptr) == VK_SUCCESS, "Failed to create buffer");
-
-        buffer_image.ViewHandle = CreateImageView(buffer_image.Handle, image_format, image_view_type, image_aspect_flag, layer_count);
-        // buffer_image.Sampler    = GlobalLinearWrapSampler;
+        BufferImage buffer_image = GpuMem.AllocateImage(image_create_info, domain, LogicalDevice, image_aspect_flag, image_view_type, layer_count);
 
         // Metadata info
         buffer_image.FrameIndex = SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index;
@@ -1332,141 +1142,6 @@ namespace ZEngine::Hardwares
         }
 
         return handle;
-    }
-
-    void VulkanDevice::DirtyCollector()
-{
-        RunningDirtyCollector.store(true, std::memory_order_release);
-        
-        ZENGINE_CORE_INFO("[*] Dirty Resource Collector started...")
-        
-        while (RunningDirtyCollector.load(std::memory_order_acquire))
-        {
-            uint32_t idle_count = SwapchainPtr->IdleFrameCount.value.load(std::memory_order_acquire);
-            
-            if (idle_count < SwapchainPtr->IdleFrameThreshold)
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                continue;
-            }
-            
-            
-            uint32_t dirty_resource_count = DirtyResources.Size();
-            for (uint32_t i = 0; i < dirty_resource_count; ++i)
-            {
-                auto handle = DirtyResources.ToHandle(i);
-                
-                if (!handle)
-                {
-                    continue;
-                }
-                
-                DirtyResource& res_handle = DirtyResources[handle];
-                if (res_handle.FrameIndex == SwapchainPtr->CurrentFrame->Index)
-                {
-                    switch (res_handle.Type)
-                    {
-                        case Rendering::DeviceResourceType::SAMPLER:
-                            // vkDestroySampler(LogicalDevice, reinterpret_cast<VkSampler>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::FRAMEBUFFER:
-                            vkDestroyFramebuffer(LogicalDevice, reinterpret_cast<VkFramebuffer>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::IMAGEVIEW:
-                            vkDestroyImageView(LogicalDevice, reinterpret_cast<VkImageView>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::IMAGE:
-                            vkDestroyImage(LogicalDevice, reinterpret_cast<VkImage>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::RENDERPASS:
-                            vkDestroyRenderPass(LogicalDevice, reinterpret_cast<VkRenderPass>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::BUFFERMEMORY:
-                            vkFreeMemory(LogicalDevice, reinterpret_cast<VkDeviceMemory>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::BUFFER:
-                            vkDestroyBuffer(LogicalDevice, reinterpret_cast<VkBuffer>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::PIPELINE_LAYOUT:
-                            vkDestroyPipelineLayout(LogicalDevice, reinterpret_cast<VkPipelineLayout>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::PIPELINE:
-                            vkDestroyPipeline(LogicalDevice, reinterpret_cast<VkPipeline>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
-                            vkDestroyDescriptorSetLayout(LogicalDevice, reinterpret_cast<VkDescriptorSetLayout>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::DESCRIPTORPOOL:
-                            vkDestroyDescriptorPool(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::SEMAPHORE:
-                            vkDestroySemaphore(LogicalDevice, reinterpret_cast<VkSemaphore>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::FENCE:
-                            vkDestroyFence(LogicalDevice, reinterpret_cast<VkFence>(res_handle.Handle), nullptr);
-                            break;
-                        case Rendering::DeviceResourceType::DESCRIPTORSET:
-                        {
-                            auto ds = reinterpret_cast<VkDescriptorSet>(res_handle.Handle);
-                            vkFreeDescriptorSets(LogicalDevice, reinterpret_cast<VkDescriptorPool>(res_handle.Data1), 1, &ds);
-                            break;
-                        }
-                        case DeviceResourceType::RESOURCE_COUNT:
-                            break;
-                    }
-                    
-                    DirtyResources.Remove(handle);
-                }
-            }
-            
-            uint32_t dirty_buffer_count = DirtyBuffers.Size();
-            for (uint32_t i = 0; i < dirty_buffer_count; ++i)
-            {
-                auto handle = DirtyBuffers.ToHandle(i);
-                
-                if (!handle)
-                {
-                    continue;
-                }
-                
-                BufferView& buffer = DirtyBuffers[handle];
-                if (buffer && buffer.FrameIndex == SwapchainPtr->CurrentFrame->Index)
-                {
-                    vmaDestroyBuffer(VmaAllocatorValue, buffer.Handle, buffer.Allocation);
-                    buffer.Handle     = VK_NULL_HANDLE;
-                    buffer.Allocation = VK_NULL_HANDLE;
-                    DirtyBuffers.Remove(handle);
-                }
-            }
-            
-            
-            uint32_t dirty_buffer_image_count = DirtyBufferImages.Size();
-            for (uint32_t i = 0; i < dirty_buffer_image_count; ++i)
-            {
-                auto handle = DirtyBufferImages.ToHandle(i);
-                
-                if (!handle)
-                {
-                    continue;
-                }
-                
-                BufferImage& buffer = DirtyBufferImages[handle];
-                
-                if (buffer && buffer.FrameIndex == SwapchainPtr->CurrentFrame->Index)
-                {
-                    vkDestroyImageView(LogicalDevice, buffer.ViewHandle, nullptr);
-                    // vkDestroySampler(LogicalDevice, buffer.Sampler, nullptr);
-                    vmaDestroyImage(VmaAllocatorValue, buffer.Handle, buffer.Allocation);
-                    buffer.Handle     = VK_NULL_HANDLE;
-                    buffer.Allocation = VK_NULL_HANDLE;
-                    DirtyBufferImages.Remove(handle);
-                }
-            }
-            
-            SwapchainPtr->IdleFrameCount.value.store(0, std::memory_order_release);
-        }
-        
-        ZENGINE_CORE_INFO("[*] Dirty Resource Collector stopped...")
     }
 
     Helpers::Handle<Rendering::Shaders::Shader> VulkanDevice::CompileShader(Rendering::Specifications::ShaderSpecification& spec)
@@ -2160,27 +1835,27 @@ namespace ZEngine::Hardwares
 
     BufferView VertexBuffer::CreateBuffer()
     {
-        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, "VertexBuffer");
     }
 
     BufferView StorageBuffer::CreateBuffer()
     {
-        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, "StorageBuffer");
     }
 
     BufferView IndexBuffer::CreateBuffer()
     {
-        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, "IndexBuffer");
     }
 
     BufferView IndirectBuffer::CreateBuffer()
     {
-        return m_device->CreateBuffer(static_cast<VkDeviceSize>(m_total_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+        return m_device->CreateBuffer(static_cast<VkDeviceSize>(m_total_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, "IndirectBuffer");
     }
 
     BufferView UniformBuffer::CreateBuffer()
     {
-        return m_device->CreateBuffer(static_cast<VkDeviceSize>(m_total_size), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+        return m_device->CreateBuffer(static_cast<VkDeviceSize>(m_total_size), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "UniformBuffer");
     }
 
     void IndirectBuffer::Upload(uint8_t frame_index, uint8_t thread_index, const VkDrawIndirectCommand* data, size_t byte_size)
@@ -2269,7 +1944,10 @@ namespace ZEngine::Hardwares
     {
         if (m_buffer_image)
         {
-            Device->EnqueueBufferImageForDeletion(m_buffer_image);
+            DeferredFreeEntry e  = {};
+            e.EntryKind          = DeferredFreeEntry::Kind::Image;
+            e.Data.Image         = m_buffer_image;
+            Device->DeferFree(e);
             m_buffer_image = {};
         }
     }
@@ -2300,7 +1978,7 @@ namespace ZEngine::Hardwares
             m_current_offset = 0;
             m_total_size     = size;
             Buffer           = CreateBuffer();
-            vmaSetAllocationName(m_device->VmaAllocatorValue, Buffer.Allocation, debug_name);
+            vmaSetAllocationName(m_device->GpuMem.Allocator, Buffer.Allocation, debug_name);
         }
     }
 
@@ -2366,7 +2044,10 @@ namespace ZEngine::Hardwares
     {
         if (Buffer)
         {
-            m_device->EnqueueBufferForDeletion(Buffer);
+            DeferredFreeEntry e = {};
+            e.EntryKind         = DeferredFreeEntry::Kind::Buffer;
+            e.Data.Buffer       = Buffer;
+            m_device->DeferFree(e);
             Buffer = {};
         }
     }
@@ -2495,13 +2176,27 @@ namespace ZEngine::Hardwares
             return {};
         }
 
-        auto       resource       = GlobalTextures.Access(handle);
-        auto       image_buf      = Image2DBufferManager.Access(resource->BufferHandle);
+        auto     resource    = GlobalTextures.Access(handle);
+        auto     image_buf   = Image2DBufferManager.Access(resource->BufferHandle);
 
-        BufferView staging_buffer = CreateBuffer(resource->BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
-        MapAndCopyToMemory(staging_buffer, resource->BufferSize, data);
-        command_buf->CopyBufferToImage(staging_buffer, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)]);
-        return staging_buffer;
+        uint32_t ring_offset = 0;
+        void*    ring_ptr    = GpuMem.Ring.Allocate(static_cast<uint32_t>(resource->BufferSize), 4, &ring_offset);
+
+        if (ring_ptr)
+        {
+            Helpers::secure_memcpy(ring_ptr, resource->BufferSize, data, resource->BufferSize);
+            BufferView ring_view = {};
+            ring_view.Handle     = GpuMem.Ring.Buffer;
+            ring_view.Allocation = GpuMem.Ring.Allocation;
+            command_buf->CopyBufferToImage(ring_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)]);
+            // Return empty view — ring owns lifetime, caller must not free
+            return {};
+        }
+
+        BufferView staging_view = CreateBuffer(resource->BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, Core::Memory::GpuMemoryDomain::HostStaging, "WriteTextureData_staging");
+        MapAndCopyToMemory(staging_view, resource->BufferSize, data);
+        command_buf->CopyBufferToImage(staging_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)]);
+        return staging_view;
     }
 
     Rendering::Renderers::RenderPasses::RenderPass* VulkanDevice::CreateRenderPass(const Rendering::Specifications::RenderPassSpecification& spec)
@@ -2509,6 +2204,21 @@ namespace ZEngine::Hardwares
         auto pass = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::RenderPass);
         pass->Initialize(this, spec);
         return pass;
+    }
+
+    void VulkanDevice::TickMemory()
+    {
+        uint64_t completed = 0;
+        vkGetSemaphoreCounterValue(LogicalDevice, SwapchainPtr->RenderTimeline->GetHandle(), &completed);
+        PendingFree.Drain(&GpuMem, LogicalDevice, completed);
+        GpuMem.Ring.Drain(completed);
+        GpuMem.SampleBudgets();
+    }
+
+    void VulkanDevice::DeferFree(DeferredFreeEntry entry)
+    {
+        entry.TimelineValue = SwapchainPtr->RenderTimelineNextValue;
+        PendingFree.Enqueue(entry);
     }
 
     void VulkanDevice::EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& operation)
