@@ -39,8 +39,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                                    Dispose();
         void                                    Bake();
         bool                                    Verify();
-        void                                    SetInput(std::string_view key_name, const Hardwares::UniformBufferSetHandle& buffer);
         void                                    SetInput(std::string_view key_name, const Hardwares::StorageBufferSetHandle& buffer);
+        // Bind a heap-allocated resource as DYNAMIC_UNIFORM_BUFFER.
+        // The heap VkBuffer covers all frames; dynamic offsets are supplied at draw time.
+        void                                    SetInputFromHeap(std::string_view key_name, VkDeviceSize range);
         void                                    SetInput(std::string_view key_name, const Textures::TextureHandle& texture);
         void                                    SetBindlessInput(std::string_view key_name);
         // Todo : This is a temporary solution, we should have a more abstract sampler resource in the future

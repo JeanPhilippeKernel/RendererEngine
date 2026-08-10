@@ -602,6 +602,122 @@ namespace ZEngine::Rendering::Shaders
         }
     }
 
+    void Shader::MarkBindingAsDynamic(uint32_t set, uint32_t binding)
+    {
+        if (!LayoutBindingSpecificationMap.contains(set))
+            return;
+
+        auto& specs = LayoutBindingSpecificationMap[set];
+        for (uint32_t i = 0; i < specs.size(); ++i)
+        {
+            if (specs[i].Binding == binding && specs[i].DescriptorTypeValue == Specifications::DescriptorType::UNIFORM_BUFFER)
+            {
+                specs[i].DescriptorTypeValue = Specifications::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+                break;
+            }
+        }
+
+        if (!InternalDescriptorSetLayoutMap.contains(set))
+            return;
+
+        // Rebuild the set layout with the patched binding type
+        auto                                scratch                   = ZGetScratch(&LocalArena);
+        Array<VkDescriptorSetLayoutBinding> layout_binding_collection = {};
+        layout_binding_collection.init(scratch.Arena, specs.size());
+        for (uint32_t i = 0; i < specs.size(); ++i)
+        {
+            layout_binding_collection.push(VkDescriptorSetLayoutBinding{.binding = specs[i].Binding, .descriptorType = Specifications::DescriptorTypeMap[static_cast<uint32_t>(specs[i].DescriptorTypeValue)], .descriptorCount = specs[i].Count, .stageFlags = Specifications::ShaderStageFlagsMap[static_cast<uint32_t>(specs[i].Flags)], .pImmutableSamplers = nullptr});
+        }
+
+        Array<VkDescriptorBindingFlags> binding_flags_collection = {};
+        binding_flags_collection.init(scratch.Arena, layout_binding_collection.size(), layout_binding_collection.size());
+        for (uint32_t i = 0; i < layout_binding_collection.size(); ++i)
+        {
+            binding_flags_collection[i] = 0;
+        }
+
+        VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info = {};
+        binding_flags_info.sType                                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+        binding_flags_info.bindingCount                                = binding_flags_collection.size();
+        binding_flags_info.pBindingFlags                               = binding_flags_collection.data();
+
+        VkDescriptorSetLayoutCreateInfo layout_info                    = {};
+        layout_info.sType                                              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layout_info.pNext                                              = &binding_flags_info;
+        layout_info.bindingCount                                       = layout_binding_collection.size();
+        layout_info.pBindings                                          = layout_binding_collection.data();
+
+        VkDescriptorSetLayout new_layout                               = VK_NULL_HANDLE;
+        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorSetLayout(m_device->LogicalDevice, &layout_info, nullptr, &new_layout) == VK_SUCCESS, "Failed to recreate DescriptorSetLayout for dynamic binding")
+
+        // Destroy old layout and replace
+        vkDestroyDescriptorSetLayout(m_device->LogicalDevice, InternalDescriptorSetLayoutMap.at(set), nullptr);
+        InternalDescriptorSetLayoutMap[set] = new_layout;
+
+        // SetLayouts is a contiguous array from set 0..max_set (with gaps filled by EmptyDescriptorSetLayout).
+        // The index into SetLayouts equals the set number.
+        if (set < SetLayouts.size())
+            SetLayouts[set] = new_layout;
+
+        // Recreate the descriptor pool to include UNIFORM_BUFFER_DYNAMIC and reallocate descriptor sets.
+        // The old pool (and its sets) are destroyed; DescriptorSetMap[set] gets fresh sets.
+        if (m_descriptor_pool != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(m_device->LogicalDevice, m_descriptor_pool, nullptr);
+            m_descriptor_pool = VK_NULL_HANDLE;
+        }
+
+        // Build pool sizes from all current LayoutBindingSpecificationMaps (including the patched one)
+        Array<VkDescriptorPoolSize> pool_size_collection = {};
+        pool_size_collection.init(scratch.Arena, 10);
+        for (const auto& lbs : LayoutBindingSpecificationMap)
+        {
+            if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(lbs.first))
+                continue;
+            for (uint32_t i = 0; i < lbs.second.size(); ++i)
+            {
+                VkDescriptorType dtype = Specifications::DescriptorTypeMap[static_cast<uint32_t>(lbs.second[i].DescriptorTypeValue)];
+                auto             it    = std::find_if(pool_size_collection.begin(), pool_size_collection.end(), [dtype](const VkDescriptorPoolSize& ps) { return ps.type == dtype; });
+                if (it == pool_size_collection.end())
+                    pool_size_collection.push(VkDescriptorPoolSize{.type = dtype, .descriptorCount = lbs.second[i].Count});
+                else
+                    it->descriptorCount += lbs.second[i].Count;
+            }
+        }
+        for (auto& ps : pool_size_collection)
+            ps.descriptorCount *= m_device->SwapchainPtr->BufferredFrameCount;
+
+        if (!pool_size_collection.empty())
+        {
+            VkDescriptorPoolCreateInfo pool_info = {};
+            pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            pool_info.maxSets                    = m_device->SwapchainPtr->BufferredFrameCount;
+            pool_info.poolSizeCount              = pool_size_collection.size();
+            pool_info.pPoolSizes                 = pool_size_collection.data();
+            ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorPool(m_device->LogicalDevice, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "Failed to recreate descriptor pool for dynamic binding")
+
+            // Reallocate descriptor sets for this set only
+            if (!m_device->ShaderReservedDescriptorSetMap.contains(set))
+            {
+                Array<VkDescriptorSetLayout> layouts = {};
+                layouts.init(scratch.Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
+                for (uint32_t i = 0; i < m_device->SwapchainPtr->BufferredFrameCount; ++i)
+                    layouts[i] = new_layout;
+
+                VkDescriptorSetAllocateInfo alloc_info = {};
+                alloc_info.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+                alloc_info.descriptorPool              = m_descriptor_pool;
+                alloc_info.descriptorSetCount          = m_device->SwapchainPtr->BufferredFrameCount;
+                alloc_info.pSetLayouts                 = layouts.data();
+
+                DescriptorSetMap[set].init(m_device->Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
+                ZENGINE_VALIDATE_ASSERT(vkAllocateDescriptorSets(m_device->LogicalDevice, &alloc_info, DescriptorSetMap[set].data()) == VK_SUCCESS, "Failed to reallocate descriptor sets for dynamic binding")
+            }
+        }
+
+        ZReleaseScratch(scratch);
+    }
+
     void Shader::CreatePushConstantRange()
     {
         if (!PushConstantSpecifications.empty())

@@ -463,6 +463,8 @@ namespace ZEngine::Hardwares
             .pSignalSemaphores    = work_signal_semaphores,
         };
 
+        Device->FrameHeaps[CurrentFrame->Index].Flush(&Device->GpuMem);
+
         auto submit = vkQueueSubmit(queue.Handle, 1, &(submit_info_1), CurrentFrame->Fence->GetHandle());
         ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
 

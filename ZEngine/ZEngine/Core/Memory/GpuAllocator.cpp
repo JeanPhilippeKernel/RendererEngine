@@ -120,6 +120,10 @@ namespace ZEngine::Core::Memory
         view_create_info.image                           = buffer_image.Handle;
         view_create_info.viewType                        = view_type;
         view_create_info.format                          = image_info.format;
+        view_create_info.components.r                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_create_info.components.g                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_create_info.components.b                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_create_info.components.a                    = VK_COMPONENT_SWIZZLE_IDENTITY;
         view_create_info.subresourceRange.aspectMask     = aspect;
         view_create_info.subresourceRange.baseMipLevel   = 0;
         view_create_info.subresourceRange.levelCount     = 1;

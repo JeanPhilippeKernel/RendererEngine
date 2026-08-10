@@ -45,9 +45,7 @@ namespace ZEngine::Hardwares
         ShaderManager.Initialize(arena, 300);
         VertexBufferSetManager.Initialize(arena, 300);
         StorageBufferSetManager.Initialize(arena, 300);
-        IndirectBufferSetManager.Initialize(arena, 300);
         IndexBufferSetManager.Initialize(arena, 300);
-        UniformBufferSetManager.Initialize(arena, 300);
 
         ShaderCaches.init(arena, 10);
         m_queue_map.init(arena, 4);
@@ -474,6 +472,16 @@ namespace ZEngine::Hardwares
         CommandBufferMgr->Initialize(this, SwapchainPtr->BufferredFrameCount);
 
         /*
+         * Creating Per-Frame Upload Heaps
+         */
+        for (uint32_t i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
+        {
+            char name[32];
+            snprintf(name, sizeof(name), "FrameHeap[%u]", i);
+            FrameHeaps[i].Initialize(&GpuMem, name);
+        }
+
+        /*
          * Creating Global Descriptor Pool for : Textures, Samplers
          */
         VkSamplerCreateInfo linear_sampler_create_info                   = {};
@@ -677,9 +685,7 @@ namespace ZEngine::Hardwares
         Image2DBufferManager.Dispose();
         VertexBufferSetManager.Dispose();
         StorageBufferSetManager.Dispose();
-        IndirectBufferSetManager.Dispose();
         IndexBufferSetManager.Dispose();
-        UniformBufferSetManager.Dispose();
         ShaderManager.Dispose();
 
         SwapchainPtr->Dispose();
@@ -708,6 +714,11 @@ namespace ZEngine::Hardwares
         {
             vkDestroyDescriptorPool(LogicalDevice, GlobalDescriptorPoolHandle, nullptr);
             GlobalDescriptorPoolHandle = VK_NULL_HANDLE;
+        }
+
+        for (uint32_t i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
+        {
+            FrameHeaps[i].Shutdown(&GpuMem);
         }
 
         ZENGINE_DESTROY_VULKAN_HANDLE(Instance, vkDestroySurfaceKHR, Surface, nullptr)
@@ -1102,20 +1113,6 @@ namespace ZEngine::Hardwares
         return handle;
     }
 
-    IndirectBufferSetHandle VulkanDevice::CreateIndirectBufferSet()
-    {
-        auto handle = IndirectBufferSetManager.Create();
-        auto buffer = IndirectBufferSetManager.Access(handle);
-        buffer->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
-
-        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
-        {
-            buffer->set[i] = ZPushStructCtorArgs(Arena, IndirectBuffer, this);
-        }
-
-        return handle;
-    }
-
     IndexBufferSetHandle VulkanDevice::CreateIndexBufferSet()
     {
         auto handle = IndexBufferSetManager.Create();
@@ -1125,20 +1122,6 @@ namespace ZEngine::Hardwares
         for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
         {
             buffer->set[i] = ZPushStructCtorArgs(Arena, IndexBuffer, this);
-        }
-
-        return handle;
-    }
-
-    UniformBufferSetHandle VulkanDevice::CreateUniformBufferSet()
-    {
-        auto handle = UniformBufferSetManager.Create();
-        auto buffer = UniformBufferSetManager.Access(handle);
-        buffer->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
-
-        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
-        {
-            buffer->set[i] = ZPushStructCtorArgs(Arena, UniformBuffer, this);
         }
 
         return handle;
@@ -1403,7 +1386,7 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void CommandBuffer::BindDescriptorSets(uint32_t frame_index)
+    void CommandBuffer::BindDescriptorSets(uint32_t frame_index, const uint32_t* dynamic_offsets, uint32_t dynamic_offset_count)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
@@ -1419,8 +1402,6 @@ namespace ZEngine::Hardwares
             Array<VkDescriptorSet> frame_sets         = {};
             frame_sets.init(scratch.Arena, 5);
 
-            // Since SetLayout is ordered by defined Set in shader source
-            // We're safe to use index as Set
             for (uint32_t i = 0; i < set_layout.size(); ++i)
             {
                 if (descriptor_set_map.contains(i))
@@ -1429,9 +1410,25 @@ namespace ZEngine::Hardwares
                 }
             }
 
-            if(!frame_sets.empty())
+            if (!frame_sets.empty())
             {
-                vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, frame_sets.size(), frame_sets.data(), 0, nullptr);
+                // Count actual dynamic bindings in this shader to avoid validation errors
+                uint32_t actual_dynamic_count = 0;
+                for (const auto& lbs : shader->LayoutBindingSpecificationMap)
+                {
+                    for (uint32_t i = 0; i < lbs.second.size(); ++i)
+                    {
+                        if (lbs.second[i].DescriptorTypeValue == Rendering::Specifications::DescriptorType::UNIFORM_BUFFER_DYNAMIC ||
+                            lbs.second[i].DescriptorTypeValue == Rendering::Specifications::DescriptorType::STORAGE_BUFFER_DYNAMIC)
+                        {
+                            ++actual_dynamic_count;
+                        }
+                    }
+                }
+
+                const uint32_t* offsets = (actual_dynamic_count > 0) ? dynamic_offsets : nullptr;
+                uint32_t        count   = (actual_dynamic_count > 0) ? actual_dynamic_count : 0;
+                vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, frame_sets.size(), frame_sets.data(), count, offsets);
             }
             ZReleaseScratch(scratch);
         }
@@ -1459,22 +1456,21 @@ namespace ZEngine::Hardwares
         vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->Handle);
     }
 
-    void CommandBuffer::DrawIndirect(const Hardwares::IndirectBuffer& buffer)
+    void CommandBuffer::DrawIndirect(VkBuffer buffer, uint32_t offset, uint32_t draw_count)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
-        if (buffer.GetNativeBufferHandle())
+        if (buffer != VK_NULL_HANDLE && draw_count > 0)
         {
-            vkCmdDrawIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer.GetNativeBufferHandle()), 0, buffer.CommandCount, sizeof(VkDrawIndirectCommand));
+            vkCmdDrawIndirect(m_command_buffer, buffer, offset, draw_count, sizeof(VkDrawIndirectCommand));
         }
     }
 
-    void CommandBuffer::DrawIndexedIndirect(const Hardwares::IndirectBuffer& buffer, uint32_t count)
+    void CommandBuffer::DrawIndexedIndirect(VkBuffer buffer, uint32_t offset, uint32_t count)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
-
-        if (buffer.GetNativeBufferHandle())
+        if (buffer != VK_NULL_HANDLE && count > 0)
         {
-            vkCmdDrawIndexedIndirect(m_command_buffer, reinterpret_cast<VkBuffer>(buffer.GetNativeBufferHandle()), 0, count, sizeof(VkDrawIndexedIndirectCommand));
+            vkCmdDrawIndexedIndirect(m_command_buffer, buffer, offset, count, sizeof(VkDrawIndexedIndirectCommand));
         }
     }
 
@@ -1848,54 +1844,6 @@ namespace ZEngine::Hardwares
         return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, "IndexBuffer");
     }
 
-    BufferView IndirectBuffer::CreateBuffer()
-    {
-        return m_device->CreateBuffer(static_cast<VkDeviceSize>(m_total_size), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, "IndirectBuffer");
-    }
-
-    BufferView UniformBuffer::CreateBuffer()
-    {
-        return m_device->CreateBuffer(static_cast<VkDeviceSize>(m_total_size), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "UniformBuffer");
-    }
-
-    void IndirectBuffer::Upload(uint8_t frame_index, uint8_t thread_index, const VkDrawIndirectCommand* data, size_t byte_size)
-    {
-        if (byte_size == 0)
-        {
-            return;
-        }
-
-        CommandCount = byte_size / sizeof(VkDrawIndirectCommand);
-        IGraphicBuffer::Upload(frame_index, thread_index, data, byte_size);
-    }
-
-    void IndirectBuffer::Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size)
-    {
-        IGraphicBuffer::Write(frame_index, thread_index, data, byte_size);
-        CommandCount = byte_size / sizeof(VkDrawIndirectCommand);
-    }
-
-    void IndirectBuffer::CleanUpMemory()
-    {
-        CommandCount = 0;
-        IGraphicBuffer::CleanUpMemory();
-    }
-
-    void UniformBuffer::Allocate(uint64_t byte_size, const char* debug_name)
-    {
-        if (m_total_size < byte_size || (!m_uniform_buffer_mapped))
-        {
-            IGraphicBuffer::Allocate(byte_size, debug_name);
-            m_uniform_buffer_mapped = true;
-        }
-    }
-
-    void UniformBuffer::CleanUpMemory()
-    {
-        IGraphicBuffer::CleanUpMemory();
-        m_uniform_buffer_mapped = false;
-    }
-
     void Image2DBuffer::Construct(Hardwares::VulkanDevice* device)
     {
         Device = device;
@@ -2213,6 +2161,19 @@ namespace ZEngine::Hardwares
         PendingFree.Drain(&GpuMem, LogicalDevice, completed);
         GpuMem.Ring.Drain(completed);
         GpuMem.SampleBudgets();
+
+        uint32_t fi = SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index;
+        FrameHeaps[fi].Reset();
+    }
+
+    uint32_t VulkanDevice::MinUniformBufferOffsetAlignment() const
+    {
+        return static_cast<uint32_t>(PhysicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment);
+    }
+
+    uint32_t VulkanDevice::MinStorageBufferOffsetAlignment() const
+    {
+        return static_cast<uint32_t>(PhysicalDeviceProperties.properties.limits.minStorageBufferOffsetAlignment);
     }
 
     void VulkanDevice::DeferFree(DeferredFreeEntry entry)

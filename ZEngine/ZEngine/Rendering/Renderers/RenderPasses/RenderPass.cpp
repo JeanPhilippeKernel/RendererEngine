@@ -149,13 +149,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return verify;
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Hardwares::UniformBufferSetHandle& handle)
+    void RenderPass::SetInputFromHeap(std::string_view key_name, VkDeviceSize range)
     {
         auto validity_output = ValidateInput(key_name);
         if (!validity_output.first)
-        {
             return;
-        }
 
         const auto& spec      = validity_output.second;
         auto        shader    = Pipeline->Shader;
@@ -164,22 +162,29 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
         if (!set_array)
         {
-            ZENGINE_CORE_ERROR("SetInput(UBO): descriptor set {} not found for key '{}'", spec.Set, key_name.data())
+            ZENGINE_CORE_ERROR("SetInputFromHeap: descriptor set {} not found for key '{}'", spec.Set, key_name.data())
             return;
         }
+
         auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        auto ubo_buf     = m_device->UniformBufferSetManager.Access(handle);
         auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
+        auto buf_infos   = std::vector<VkDescriptorBufferInfo>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set      = (*set_array)[i];
-            auto& buf      = ubo_buf->At(i);
-            auto& buf_info = buf->GetDescriptorBufferInfo();
-
-            ZENGINE_VALIDATE_ASSERT((buf_info.buffer), "UniformBuffer can't be null")
-
-            write_reqs[i] = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .pImageInfo = nullptr, .pBufferInfo = &(buf_info), .pTexelBufferView = nullptr};
+            buf_infos[i]  = {.buffer = m_device->FrameHeaps[i].Handle, .offset = 0, .range = range};
+            write_reqs[i] = VkWriteDescriptorSet{
+                .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext            = nullptr,
+                .dstSet           = (*set_array)[i],
+                .dstBinding       = spec.Binding,
+                .dstArrayElement  = 0,
+                .descriptorCount  = 1,
+                .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                .pImageInfo       = nullptr,
+                .pBufferInfo      = &buf_infos[i],
+                .pTexelBufferView = nullptr,
+            };
         }
 
         vkUpdateDescriptorSets(m_device->LogicalDevice, write_reqs.size(), write_reqs.data(), 0, nullptr);

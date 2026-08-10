@@ -413,8 +413,6 @@ namespace ZEngine::Rendering::Renderers
             {
                 // We are safe to call Remove(...) even if Handle is invalid
                 Device->StorageBufferSetManager.Remove(value.ResourceInfo.StorageBufferSetHandle);
-                Device->UniformBufferSetManager.Remove(value.ResourceInfo.UniformBufferSetHandle);
-                Device->IndirectBufferSetManager.Remove(value.ResourceInfo.IndirectBufferSetHandle);
                 Device->VertexBufferSetManager.Remove(value.ResourceInfo.VertexBufferSetHandle);
                 Device->IndexBufferSetManager.Remove(value.ResourceInfo.IndexBufferSetHandle);
             }
@@ -426,15 +424,6 @@ namespace ZEngine::Rendering::Renderers
         Graph->ResourceMap[name].Name                                = name;
         Graph->ResourceMap[name].Type                                = RenderGraphResourceType::BUFFER_SET;
         Graph->ResourceMap[name].ResourceInfo.StorageBufferSetHandle = buffer;
-        Graph->ResourceMap[name].ResourceInfo.External               = true;
-        return Graph->ResourceMap[name];
-    }
-
-    RenderGraphResource& RenderGraphResourceBuilder::AttachBuffer(cstring name, const Hardwares::UniformBufferSetHandle& buffer)
-    {
-        Graph->ResourceMap[name].Name                                = name;
-        Graph->ResourceMap[name].Type                                = RenderGraphResourceType::BUFFER_SET;
-        Graph->ResourceMap[name].ResourceInfo.UniformBufferSetHandle = buffer;
         Graph->ResourceMap[name].ResourceInfo.External               = true;
         return Graph->ResourceMap[name];
     }
@@ -509,12 +498,6 @@ namespace ZEngine::Rendering::Renderers
         Graph->ResourceMap[name].Type = RenderGraphResourceType::BUFFER_SET;
         switch (type)
         {
-            case BufferSetCreationType::INDIRECT:
-                Graph->ResourceMap[name].ResourceInfo.IndirectBufferSetHandle = Graph->Device->CreateIndirectBufferSet();
-                break;
-            case BufferSetCreationType::UNIFORM:
-                Graph->ResourceMap[name].ResourceInfo.UniformBufferSetHandle = Graph->Device->CreateUniformBufferSet();
-                break;
             case BufferSetCreationType::STORAGE:
                 Graph->ResourceMap[name].ResourceInfo.StorageBufferSetHandle = Graph->Device->CreateStorageBufferSet();
                 break;
@@ -523,6 +506,8 @@ namespace ZEngine::Rendering::Renderers
                 break;
             case BufferSetCreationType::VERTEX:
                 Graph->ResourceMap[name].ResourceInfo.VertexBufferSetHandle = Graph->Device->CreateVertexBufferSet();
+                break;
+            default:
                 break;
         }
         Graph->ResourceMap[name].ResourceInfo.External = false;
@@ -609,24 +594,6 @@ namespace ZEngine::Rendering::Renderers
             Graph->ResourceMap[name].Name = name;
         }
         return Graph->ResourceMap[name].ResourceInfo.IndexBufferSetHandle;
-    }
-
-    Hardwares::UniformBufferSetHandle RenderGraphResourceInspector::GetBufferUniformSet(cstring name)
-    {
-        if (!Graph->ResourceMap.contains(name))
-        {
-            Graph->ResourceMap[name].Name = name;
-        }
-        return Graph->ResourceMap[name].ResourceInfo.UniformBufferSetHandle;
-    }
-
-    Hardwares::IndirectBufferSetHandle RenderGraphResourceInspector::GetIndirectBufferSet(cstring name)
-    {
-        if (!Graph->ResourceMap.contains(name))
-        {
-            Graph->ResourceMap[name].Name = name;
-        }
-        return Graph->ResourceMap[name].ResourceInfo.IndirectBufferSetHandle;
     }
 
     RenderGraphNode& RenderGraphResourceInspector::GetNode(cstring name)

@@ -48,12 +48,10 @@ namespace ZEngine::Rendering::Renderers
         Specifications::TextureSpecification TextureSpec;
         union
         {
-            Textures::TextureHandle            TextureHandle;
-            Hardwares::UniformBufferSetHandle  UniformBufferSetHandle;
-            Hardwares::StorageBufferSetHandle  StorageBufferSetHandle;
-            Hardwares::IndirectBufferSetHandle IndirectBufferSetHandle;
-            Hardwares::VertexBufferSetHandle   VertexBufferSetHandle;
-            Hardwares::IndexBufferSetHandle    IndexBufferSetHandle;
+            Textures::TextureHandle           TextureHandle;
+            Hardwares::StorageBufferSetHandle StorageBufferSetHandle;
+            Hardwares::VertexBufferSetHandle  VertexBufferSetHandle;
+            Hardwares::IndexBufferSetHandle   IndexBufferSetHandle;
         };
     };
 
@@ -125,19 +123,17 @@ namespace ZEngine::Rendering::Renderers
 
     struct RenderGraphResourceInspector
     {
-        RenderGraphPtr                     Graph = nullptr;
+        RenderGraphPtr                    Graph = nullptr;
 
-        void                               Initialize(RenderGraphPtr graph);
+        void                              Initialize(RenderGraphPtr graph);
 
-        RenderGraphResource&               GetResource(cstring name);
-        Textures::TextureHandle            GetRenderTarget(cstring name);
-        Textures::TextureHandle            GetTexture(cstring name);
-        Hardwares::StorageBufferSetHandle  GetStorageBufferSet(cstring name);
-        Hardwares::VertexBufferSetHandle   GetVertexBufferSet(cstring name);
-        Hardwares::IndexBufferSetHandle    GetIndexBufferSet(cstring name);
-        Hardwares::UniformBufferSetHandle  GetBufferUniformSet(cstring name);
-        Hardwares::IndirectBufferSetHandle GetIndirectBufferSet(cstring name);
-        RenderGraphNode&                   GetNode(cstring name);
+        RenderGraphResource&              GetResource(cstring name);
+        Textures::TextureHandle           GetRenderTarget(cstring name);
+        Textures::TextureHandle           GetTexture(cstring name);
+        Hardwares::StorageBufferSetHandle GetStorageBufferSet(cstring name);
+        Hardwares::VertexBufferSetHandle  GetVertexBufferSet(cstring name);
+        Hardwares::IndexBufferSetHandle   GetIndexBufferSet(cstring name);
+        RenderGraphNode&                  GetNode(cstring name);
     };
 
     struct RenderGraphResourceBuilder
@@ -150,7 +146,6 @@ namespace ZEngine::Rendering::Renderers
         RenderGraphResource& CreateTexture(cstring name, cstring filename);
         RenderGraphResource& CreateRenderTarget(cstring name, const Specifications::TextureSpecification& spec);
         RenderGraphResource& AttachBuffer(cstring name, const Hardwares::StorageBufferSetHandle& buffer);
-        RenderGraphResource& AttachBuffer(cstring name, const Hardwares::UniformBufferSetHandle& buffer);
         RenderGraphResource& AttachTexture(cstring name, const Textures::TextureHandle& texture);
         RenderGraphResource& AttachRenderTarget(cstring name, const Textures::TextureHandle& texture);
         void                 CreateRenderPassNode(const RenderGraphRenderPassCreation&);

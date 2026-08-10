@@ -18,40 +18,31 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Initialize(Hardwares::VulkanDevicePtr device)
     {
-        Device                                   = device;
-        RenderGraph                              = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
-        RenderSceneData                          = ZPushStructCtor(Device->Arena, Scenes::SceneData);
+        Device                                  = device;
+        RenderGraph                             = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
+        RenderSceneData                         = ZPushStructCtor(Device->Arena, Scenes::SceneData);
         /*
          * Shared Buffers
          */
-        RenderSceneData->SceneCameraBufferHandle = Device->CreateUniformBufferSet();
+        RenderSceneData->VertexBufferHandle     = Device->CreateStorageBufferSet();
+        RenderSceneData->IndexBufferHandle      = Device->CreateStorageBufferSet();
+        RenderSceneData->TransformBufferHandle  = Device->CreateStorageBufferSet();
+        RenderSceneData->RenderDataBufferHandle = Device->CreateStorageBufferSet();
+        RenderSceneData->MaterialBufferHandle   = Device->CreateStorageBufferSet();
 
-        RenderSceneData->VertexBufferHandle      = Device->CreateStorageBufferSet();
-        RenderSceneData->IndexBufferHandle       = Device->CreateStorageBufferSet();
-        RenderSceneData->TransformBufferHandle   = Device->CreateStorageBufferSet();
-        RenderSceneData->RenderDataBufferHandle  = Device->CreateStorageBufferSet();
-        RenderSceneData->MaterialBufferHandle    = Device->CreateStorageBufferSet();
-        RenderSceneData->IndirectBufferHandle    = Device->CreateIndirectBufferSet();
-
-        auto scene_camera                        = Device->UniformBufferSetManager.Access(RenderSceneData->SceneCameraBufferHandle);
-
-        auto vtx_buffer_set                      = Device->StorageBufferSetManager.Access(RenderSceneData->VertexBufferHandle);
-        auto idx_buffer_set                      = Device->StorageBufferSetManager.Access(RenderSceneData->IndexBufferHandle);
-        auto tranform_buffer_set                 = Device->StorageBufferSetManager.Access(RenderSceneData->TransformBufferHandle);
-        auto rd_buffer_set                       = Device->StorageBufferSetManager.Access(RenderSceneData->RenderDataBufferHandle);
-        auto material_buffer_set                 = Device->StorageBufferSetManager.Access(RenderSceneData->MaterialBufferHandle);
-        auto indirect_buffer_set                 = Device->IndirectBufferSetManager.Access(RenderSceneData->IndirectBufferHandle);
+        auto vtx_buffer_set                     = Device->StorageBufferSetManager.Access(RenderSceneData->VertexBufferHandle);
+        auto idx_buffer_set                     = Device->StorageBufferSetManager.Access(RenderSceneData->IndexBufferHandle);
+        auto tranform_buffer_set                = Device->StorageBufferSetManager.Access(RenderSceneData->TransformBufferHandle);
+        auto rd_buffer_set                      = Device->StorageBufferSetManager.Access(RenderSceneData->RenderDataBufferHandle);
+        auto material_buffer_set                = Device->StorageBufferSetManager.Access(RenderSceneData->MaterialBufferHandle);
 
         for (int i = 0; i < Device->SwapchainPtr->BufferredFrameCount; ++i)
         {
-            scene_camera->At(i)->Allocate(sizeof(UBOCameraLayout), RendererResourceName::SceneCameraBufferName);
-
             vtx_buffer_set->At(i)->Allocate(DefaultBufferSize, VertexBufferName);
             idx_buffer_set->At(i)->Allocate(DefaultBufferSize, IndexBufferName);
             tranform_buffer_set->At(i)->Allocate(DefaultBufferSize, TransformBufferName);
             rd_buffer_set->At(i)->Allocate(DefaultBufferSize, RenderDataBufferName);
             material_buffer_set->At(i)->Allocate(DefaultBufferSize, MaterialBufferName);
-            indirect_buffer_set->At(i)->Allocate(DefaultBufferSize, "indirectbuffer");
         }
 
         /*
@@ -109,13 +100,14 @@ namespace ZEngine::Rendering::Renderers
         auto ubo_camera_data     = UBOCameraLayout{.View = camera->GetView(), .Projection = camera->GetProjection(), .Position = Vec4f(camera->GetPosition(), 1.0f)};
 
         auto material_buffer_set = Device->StorageBufferSetManager.Access(RenderSceneData->MaterialBufferHandle);
-        auto camera_buffer_set   = Device->UniformBufferSetManager.Access(RenderSceneData->SceneCameraBufferHandle);
-
-        auto camera_buf          = camera_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
         auto material_buffer     = material_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
 
         material_buffer->Write(frame_index, thread_index, ArrayView{asset_manager->GPUMeshMaterials});
-        camera_buf->Write(frame_index, thread_index, reinterpret_cast<void*>(&ubo_camera_data), sizeof(UBOCameraLayout));
+
+        // Push camera data into the per-frame heap; store offset for dynamic descriptor binding
+        auto& heap                        = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
+        auto  camera_alloc                = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
+        RenderSceneData->CameraHeapOffset = camera_alloc.Offset;
 
         // todo : expand F, T to the render graph
         RenderGraph->Execute(cb);

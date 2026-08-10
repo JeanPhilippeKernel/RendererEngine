@@ -1,3 +1,4 @@
+#include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/RendererPasses.h>
 
@@ -136,7 +137,7 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(w, h);
         }
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
         command_buffer->Draw(3, 1, 0, 0);
         command_buffer->EndRenderPass();
     }
@@ -166,12 +167,13 @@ namespace ZEngine::Rendering::Renderers
             // clang-format off
             *output_pass = device->CreateRenderPass(pass_spec);
             // clang-format on
+            (*output_pass)->Pipeline->Shader->MarkBindingAsDynamic(0, 0);
             (*output_pass)->Bake();
         }
 
         if (scene)
         {
-            (*output_pass)->SetInput("UBCamera", scene->SceneCameraBufferHandle);
+            (*output_pass)->SetInputFromHeap("UBCamera", sizeof(Contracts::UBOCameraLayout));
 
             (*output_pass)->SetInput("VertexSB", scene->VertexBufferHandle);
             (*output_pass)->SetInput("IndexSB", scene->IndexBufferHandle);
@@ -183,12 +185,11 @@ namespace ZEngine::Rendering::Renderers
 
     void DepthPrePass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
-        if (!scene || !scene->IndirectBufferHandle)
+        if (!scene || scene->IndirectCommandCount == 0)
         {
             return;
         }
 
-        auto indirect_buffer = device->IndirectBufferSetManager.Access(scene->IndirectBufferHandle);
         command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
         {
             uint32_t w = pass->GetRenderAreaWidth();
@@ -197,8 +198,8 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(w, h);
         }
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
-        command_buffer->DrawIndirect(*indirect_buffer->At(device->SwapchainPtr->CurrentFrame->Index));
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
+        command_buffer->DrawIndirect(device->FrameHeaps[device->SwapchainPtr->CurrentFrame->Index].Handle, scene->IndirectHeapOffset, scene->IndirectCommandCount);
         command_buffer->EndRenderPass();
     }
 
@@ -252,12 +253,13 @@ namespace ZEngine::Rendering::Renderers
             // clang-format off
             *output_pass = device->CreateRenderPass(pass_spec);
             // clang-format on
+            (*output_pass)->Pipeline->Shader->MarkBindingAsDynamic(0, 0);
             (*output_pass)->Bake();
         }
 
         if (scene)
         {
-            (*output_pass)->SetInput("UBCamera", scene->SceneCameraBufferHandle);
+            (*output_pass)->SetInputFromHeap("UBCamera", sizeof(Contracts::UBOCameraLayout));
             (*output_pass)->SetInput("EnvMap", m_env_map);
             (*output_pass)->SetInput("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
         }
@@ -283,7 +285,7 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
         command_buffer->BindVertexBuffer(*vertex_buffer->At(device->SwapchainPtr->CurrentFrame->Index));
         command_buffer->BindIndexBuffer(*index_buffer->At(device->SwapchainPtr->CurrentFrame->Index), VK_INDEX_TYPE_UINT16);
-        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
         command_buffer->DrawIndexed(36, 1, 0, 0, 0);
         command_buffer->EndRenderPass();
     }
@@ -337,12 +339,13 @@ namespace ZEngine::Rendering::Renderers
             // clang-format off
             *output_pass = device->CreateRenderPass(pass_spec);
             // clang-format on
+            (*output_pass)->Pipeline->Shader->MarkBindingAsDynamic(0, 0);
             (*output_pass)->Bake();
         }
 
         if (scene)
         {
-            (*output_pass)->SetInput("UBCamera", scene->SceneCameraBufferHandle);
+            (*output_pass)->SetInputFromHeap("UBCamera", sizeof(Contracts::UBOCameraLayout));
         }
         (*output_pass)->Verify();
     }
@@ -369,7 +372,7 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
         command_buffer->BindVertexBuffer(*vertex_buffer);
         command_buffer->BindIndexBuffer(*index_buffer, VK_INDEX_TYPE_UINT16);
-        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
         command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GridPushConstantData), &PushData);
         command_buffer->DrawIndexed(6, 1, 0, 0, 0);
         command_buffer->EndRenderPass();
@@ -409,12 +412,13 @@ namespace ZEngine::Rendering::Renderers
         {
             auto pass_spec = pass_builder->SetPipelineName("GBuffer-Pipeline").EnablePipelineDepthTest(true).UseShader("g_buffer").Detach();
             *output_pass   = device->CreateRenderPass(pass_spec);
+            (*output_pass)->Pipeline->Shader->MarkBindingAsDynamic(0, 0);
             (*output_pass)->Bake();
         }
 
         if (scene)
         {
-            (*output_pass)->SetInput("UBCamera", scene->SceneCameraBufferHandle);
+            (*output_pass)->SetInputFromHeap("UBCamera", sizeof(Contracts::UBOCameraLayout));
 
             (*output_pass)->SetInput("VertexSB", scene->VertexBufferHandle);
             (*output_pass)->SetInput("IndexSB", scene->IndexBufferHandle);
@@ -430,9 +434,9 @@ namespace ZEngine::Rendering::Renderers
     void GbufferPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
         CHECK_AND_ESCAPE_NULL(scene)
-        CHECK_AND_ESCAPE_NULL(scene->IndirectBufferHandle)
+        if (scene->IndirectCommandCount == 0)
+            return;
 
-        auto indirect_buffer = device->IndirectBufferSetManager.Access(scene->IndirectBufferHandle);
         command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
         {
             uint32_t w = pass->GetRenderAreaWidth();
@@ -441,8 +445,8 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(w, h);
         }
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
-        command_buffer->DrawIndirect(*indirect_buffer->At(device->SwapchainPtr->CurrentFrame->Index));
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
+        command_buffer->DrawIndirect(device->FrameHeaps[device->SwapchainPtr->CurrentFrame->Index].Handle, scene->IndirectHeapOffset, scene->IndirectCommandCount);
         command_buffer->EndRenderPass();
     }
 

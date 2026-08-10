@@ -91,13 +91,10 @@ namespace ZEngine::Applications
             auto  transform_buffer_set = Device->StorageBufferSetManager.Access(gpu_scene_data->TransformBufferHandle);
             auto  rd_buffer_set        = Device->StorageBufferSetManager.Access(gpu_scene_data->RenderDataBufferHandle);
 
-            auto  indirect_buffer_set  = Device->IndirectBufferSetManager.Access(gpu_scene_data->IndirectBufferHandle);
-
             auto  vtx_buffer           = vtx_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
             auto  idx_buffer           = idx_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
             auto  transform_buffer     = transform_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
             auto  rd_buffer            = rd_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
-            auto  indirect_buffer      = indirect_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
 
             auto& suballocs            = scene->NodeSubMeshesAllocations;
 
@@ -142,7 +139,11 @@ namespace ZEngine::Applications
 
                 rd_buffer->Write(frame_index, thread_index, sub_mesh_alloc_view);
 
-                indirect_buffer->Write(frame_index, thread_index, indirect_commands_view);
+                // Push indirect commands into the per-frame heap
+                auto& heap                           = Device->FrameHeaps[frame_index];
+                auto  indirect_alloc                 = heap.Push(DrawIndirectCommands.data(), DrawIndirectCommands.size() * sizeof(VkDrawIndirectCommand), sizeof(VkDrawIndirectCommand));
+                gpu_scene_data->IndirectHeapOffset   = indirect_alloc.Offset;
+                gpu_scene_data->IndirectCommandCount = static_cast<uint32_t>(DrawIndirectCommands.size());
 
                 ZReleaseScratch(scratch);
             }

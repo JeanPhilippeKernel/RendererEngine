@@ -12,14 +12,18 @@ namespace ZEngine::Rendering::Scenes
 {
     struct SceneData
     {
-        Hardwares::UniformBufferSetHandle  SceneCameraBufferHandle = {};
+        // Camera UBO — migrated to PerFrameUploadHeap; offset updated each frame in DrawScene
+        uint32_t                          CameraHeapOffset       = 0;
 
-        Hardwares::StorageBufferSetHandle  TransformBufferHandle   = {};
-        Hardwares::StorageBufferSetHandle  MaterialBufferHandle    = {};
-        Hardwares::StorageBufferSetHandle  VertexBufferHandle      = {};
-        Hardwares::StorageBufferSetHandle  IndexBufferHandle       = {};
-        Hardwares::StorageBufferSetHandle  RenderDataBufferHandle  = {};
-        Hardwares::IndirectBufferSetHandle IndirectBufferHandle    = {};
+        // Indirect draw commands — migrated to PerFrameUploadHeap
+        uint32_t                          IndirectHeapOffset     = 0;
+        uint32_t                          IndirectCommandCount   = 0;
+
+        Hardwares::StorageBufferSetHandle TransformBufferHandle  = {};
+        Hardwares::StorageBufferSetHandle MaterialBufferHandle   = {};
+        Hardwares::StorageBufferSetHandle VertexBufferHandle     = {};
+        Hardwares::StorageBufferSetHandle IndexBufferHandle      = {};
+        Hardwares::StorageBufferSetHandle RenderDataBufferHandle = {};
     };
     ZDEFINE_PTR(SceneData);
 
