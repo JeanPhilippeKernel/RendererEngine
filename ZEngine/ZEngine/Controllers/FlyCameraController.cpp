@@ -36,12 +36,15 @@ namespace ZEngine::Controllers
 
         m_slot_alt = m_input->RegisterAction("CameraAlt", InputActionType::Button);
         m_input->BindKey(m_slot_alt, GLFW_KEY_LEFT_ALT);
+        m_input->BindKey(m_slot_alt, GLFW_KEY_RIGHT_ALT);
 
         m_slot_shift = m_input->RegisterAction("CameraShift", InputActionType::Button);
         m_input->BindKey(m_slot_shift, GLFW_KEY_LEFT_SHIFT);
+        m_input->BindKey(m_slot_shift, GLFW_KEY_RIGHT_SHIFT);
 
         m_slot_ctrl = m_input->RegisterAction("CameraCtrl", InputActionType::Button);
         m_input->BindKey(m_slot_ctrl, GLFW_KEY_LEFT_CONTROL);
+        m_input->BindKey(m_slot_ctrl, GLFW_KEY_RIGHT_CONTROL);
 
         m_slot_focus = m_input->RegisterAction("CameraFocus", InputActionType::Button);
         m_input->BindKey(m_slot_focus, GLFW_KEY_F);
