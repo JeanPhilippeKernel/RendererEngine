@@ -16,6 +16,9 @@ namespace ZEngine::Rendering::Shaders
         void                                                                                                              Initialize(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec);
         void                                                                                                              Dispose();
         Specifications::LayoutBindingSpecification                                                                        GetLayoutBindingSpecification(cstring name);
+        // Patch a binding's descriptor type to DYNAMIC and rebuild its set layout + descriptor set.
+        // Call after Initialize, before the pipeline is created.
+        void                                                                                                              MarkBindingAsDynamic(uint32_t set, uint32_t binding);
 
         VkDescriptorPool                                                                                                  m_descriptor_pool              = VK_NULL_HANDLE;
         Specifications::ShaderSpecification                                                                               m_specification                = {};

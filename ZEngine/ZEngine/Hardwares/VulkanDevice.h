@@ -1,8 +1,10 @@
 #pragma once
-#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 // clang-format off
+#include <ZEngine/Core/Memory/GpuAllocator.h>
+#include <ZEngine/Hardwares/DeferredFreeQueue.h>
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
+#include <ZEngine/Hardwares/PerFrameUploadHeap.h>
 #include <ZEngine/Hardwares/VulkanLayer.h>
 #include <ZEngine/Helpers/HandleManager.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
@@ -49,6 +51,10 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
 namespace ZEngine::Hardwares
 {
+    using Core::Memory::BufferImage;
+    using Core::Memory::BufferView;
+    using Core::Memory::GpuMemoryDomain;
+
     struct WriteDescriptorSetRequestKey;
     struct WriteDescriptorSetRequest;
     struct CommandBufferManager;
@@ -57,8 +63,6 @@ namespace ZEngine::Hardwares
     /*
      * Vertex | Index | Uniform | Storage Buffers
      */
-    struct BufferView;
-    struct BufferImage;
     struct IGraphicBuffer;
     class StorageBuffer;
     class VertexBuffer;
@@ -68,44 +72,6 @@ namespace ZEngine::Hardwares
      * GPU Device
      */
     struct VulkanDevice;
-
-    enum BufferType : uint8_t
-    {
-        UNKNOWN = 0,
-        VERTEX,
-        INDEX,
-        UNIFORM,
-        STORAGE,
-        INDIRECT
-    };
-    struct BufferView
-    {
-        uint8_t       FrameIndex = std::numeric_limits<uint8_t>::max();
-        BufferType    Type       = BufferType::UNKNOWN;
-        VkBuffer      Handle     = VK_NULL_HANDLE;
-        VmaAllocation Allocation = nullptr;
-        // clang-format off
-        operator bool() const
-        {
-            return (Handle != VK_NULL_HANDLE);
-        }
-        // clang-format on
-    };
-
-    struct BufferImage
-    {
-        uint8_t       FrameIndex{std::numeric_limits<uint8_t>::max()};
-        VkImage       Handle{VK_NULL_HANDLE};
-        VkImageView   ViewHandle{VK_NULL_HANDLE};
-        VkSampler     Sampler{VK_NULL_HANDLE};
-        VmaAllocation Allocation{nullptr};
-        // clang-format off
-        operator bool() const
-        {
-            return (Handle != VK_NULL_HANDLE);
-        }
-        // clang-format on
-    };
 
     struct IGraphicBuffer
     {
@@ -248,142 +214,6 @@ namespace ZEngine::Hardwares
         }
     }
 
-    struct IndirectBuffer : public IGraphicBuffer
-    {
-        explicit IndirectBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        uint32_t           CommandCount = 0;
-
-        virtual BufferView CreateBuffer() override;
-        virtual void       CleanUpMemory() override;
-        virtual void       Upload(uint8_t frame_index, uint8_t thread_index, const VkDrawIndirectCommand* data, size_t byte_size);
-
-        virtual void       Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size) override;
-
-        inline void        Write(uint8_t frame_index, uint8_t thread_index, Core::Containers::ArrayView<VkDrawIndirectCommand> content)
-        {
-            Write(frame_index, thread_index, content.data(), content.size_bytes());
-        }
-
-        virtual ~IndirectBuffer() {}
-    };
-
-    using IndirectBufferSet       = IBufferSet<IndirectBuffer*>;
-    using IndirectBufferSetHandle = Helpers::Handle<IndirectBufferSet>;
-
-    template <>
-    inline void IndirectBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
-
-    class UniformBuffer : public IGraphicBuffer
-    {
-    public:
-        explicit UniformBuffer() : IGraphicBuffer(nullptr) {}
-        explicit UniformBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        explicit UniformBuffer(const UniformBuffer& rhs) = delete;
-
-        explicit UniformBuffer(UniformBuffer& rhs)
-        {
-            this->m_device     = rhs.m_device;
-            this->m_total_size = rhs.m_total_size;
-
-            std::swap(this->Buffer, rhs.Buffer);
-            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
-
-            rhs.m_total_size            = 0;
-            rhs.m_uniform_buffer_mapped = false;
-            rhs.Buffer                  = {};
-        }
-
-        explicit UniformBuffer(UniformBuffer&& rhs) noexcept
-        {
-            this->m_device     = rhs.m_device;
-            this->m_total_size = rhs.m_total_size;
-
-            std::swap(this->Buffer, rhs.Buffer);
-            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
-
-            rhs.m_total_size            = 0;
-            rhs.m_uniform_buffer_mapped = false;
-            rhs.Buffer                  = {};
-        }
-
-        UniformBuffer& operator=(const UniformBuffer& rhs) = delete;
-
-        UniformBuffer& operator=(UniformBuffer& rhs)
-        {
-            if (this == &rhs)
-            {
-                return *this;
-            }
-
-            this->m_total_size = rhs.m_total_size;
-            this->m_device     = rhs.m_device;
-
-            std::swap(this->Buffer, rhs.Buffer);
-            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
-
-            rhs.m_total_size            = 0;
-            rhs.m_uniform_buffer_mapped = false;
-            rhs.Buffer                  = {};
-
-            return *this;
-        }
-
-        UniformBuffer& operator=(UniformBuffer&& rhs) noexcept
-        {
-            if (this == &rhs)
-            {
-                return *this;
-            }
-
-            this->m_total_size = rhs.m_total_size;
-            this->m_device     = rhs.m_device;
-
-            std::swap(this->Buffer, rhs.Buffer);
-            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
-
-            rhs.m_total_size            = 0;
-            rhs.m_uniform_buffer_mapped = false;
-            rhs.Buffer                  = {};
-
-            return *this;
-        }
-
-        virtual void       Allocate(uint64_t byte_size, const char* debug_name) override;
-        virtual BufferView CreateBuffer() override;
-        virtual void       CleanUpMemory() override;
-
-        virtual ~UniformBuffer() {}
-
-    private:
-        bool m_uniform_buffer_mapped{false};
-    };
-
-    using UniformBufferSet       = IBufferSet<UniformBuffer*>;
-    using UniformBufferSetHandle = Helpers::Handle<UniformBufferSet>;
-
-    template <>
-    inline void UniformBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
-
     struct Image2DBuffer
     {
         Image2DBuffer() = default;
@@ -406,14 +236,6 @@ namespace ZEngine::Hardwares
     private:
         BufferImage           m_buffer_image;
         VkDescriptorImageInfo m_image_info;
-    };
-
-    struct DirtyResource
-    {
-        uint32_t                      FrameIndex = UINT32_MAX;
-        void*                         Handle     = nullptr;
-        void*                         Data1      = nullptr;
-        Rendering::DeviceResourceType Type;
     };
 
     struct QueueView
@@ -469,11 +291,11 @@ namespace ZEngine::Hardwares
         void                              ClearDepth(float depth_color, uint32_t stencil);
         void                              BeginRenderPass(Rendering::Renderers::RenderPasses::RenderPass* const, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer);
         void                              EndRenderPass();
-        void                              BindDescriptorSets(uint32_t frame_index = 0);
+        void                              BindDescriptorSets(uint32_t frame_index = 0, const uint32_t* dynamic_offsets = nullptr, uint32_t dynamic_offset_count = 0);
         void                              BindDescriptorSet(const VkDescriptorSet& descriptor);
         void                              BindPipeline(Rendering::Specifications::PipelineBindPoint bind_point, Rendering::Renderers::Pipelines::GraphicPipeline* const pipeline);
-        void                              DrawIndirect(const Hardwares::IndirectBuffer& buffer);
-        void                              DrawIndexedIndirect(const Hardwares::IndirectBuffer& buffer, uint32_t count);
+        void                              DrawIndirect(VkBuffer buffer, uint32_t offset, uint32_t draw_count);
+        void                              DrawIndexedIndirect(VkBuffer buffer, uint32_t offset, uint32_t count);
         void                              DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
         void                              Draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_index, uint32_t first_instance);
         void                              TransitionImageLayout(const Rendering::Primitives::ImageMemoryBarrier& image_barrier);
@@ -614,7 +436,9 @@ namespace ZEngine::Hardwares
         VkDescriptorSetLayout                                                                                                        EmptyDescriptorSetLayout                    = VK_NULL_HANDLE;
         VkDescriptorPool                                                                                                             EmptyDescriptorPoolHandle                   = VK_NULL_HANDLE;
         VkDescriptorSet                                                                                                              EmptyDescriptorSet                          = VK_NULL_HANDLE;
-        VmaAllocator                                                                                                                 VmaAllocatorValue                           = nullptr;
+        Core::Memory::GpuAllocator                                                                                                   GpuMem                                      = {};
+        DeferredFreeQueue                                                                                                            PendingFree                                 = {};
+        PerFrameUploadHeap                                                                                                           FrameHeaps[3]                               = {};
         VkDescriptorImageInfo                                                                                                        GlobalLinearWrapSamplerImageInfo            = {};
         VkDescriptorImageInfo                                                                                                        GlobalLinearClampToEdgeSamplerImageInfo     = {};
         CommandBufferManagerPtr                                                                                                      CommandBufferMgr                            = {};
@@ -635,13 +459,7 @@ namespace ZEngine::Hardwares
         Helpers::HandleManager<Rendering::Shaders::Shader>                                                                           ShaderManager                               = {};
         Helpers::HandleManager<VertexBufferSet>                                                                                      VertexBufferSetManager                      = {};
         Helpers::HandleManager<StorageBufferSet>                                                                                     StorageBufferSetManager                     = {};
-        Helpers::HandleManager<IndirectBufferSet>                                                                                    IndirectBufferSetManager                    = {};
         Helpers::HandleManager<IndexBufferSet>                                                                                       IndexBufferSetManager                       = {};
-        Helpers::HandleManager<UniformBufferSet>                                                                                     UniformBufferSetManager                     = {};
-        Helpers::HandleManager<DirtyResource>                                                                                        DirtyResources                              = {};
-        Helpers::HandleManager<BufferView>                                                                                           DirtyBuffers                                = {};
-        Helpers::HandleManager<BufferImage>                                                                                          DirtyBufferImages                           = {};
-        std::atomic_bool                                                                                                             RunningDirtyCollector                       = {};
         std::mutex                                                                                                                   Mutex                                       = {};
         Windows::CoreWindow*                                                                                                         CurrentWindow                               = nullptr;
         ZEngine::Core::Memory::ArenaAllocator*                                                                                       Arena                                       = nullptr;
@@ -653,15 +471,15 @@ namespace ZEngine::Hardwares
         void                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_timeline);
         bool                                                                                                                         QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
         void                                                                                                                         EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
-        void                                                                                                                         EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
-        void                                                                                                                         EnqueueForDeletion(Rendering::DeviceResourceType resource_type, DirtyResource resource);
-        void                                                                                                                         EnqueueBufferForDeletion(BufferView& buffer);
-        void                                                                                                                         EnqueueBufferImageForDeletion(BufferImage& buffer);
         QueueView                                                                                                                    GetQueue(Rendering::QueueType type);
         void                                                                                                                         QueueWait(Rendering::QueueType type);
         void                                                                                                                         QueueWaitAll();
         void                                                                                                                         MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data);
-        BufferView                                                                                                                   CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags = 0);
+        BufferView                                                                                                                   CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, Core::Memory::GpuMemoryDomain domain, const char* debug_name = nullptr);
+        void                                                                                                                         TickMemory();
+        void                                                                                                                         DeferFree(DeferredFreeEntry entry);
+        uint32_t                                                                                                                     MinUniformBufferOffsetAlignment() const;
+        uint32_t                                                                                                                     MinStorageBufferOffsetAlignment() const;
         VkPipelineStageFlags                                                                                                         CopyBuffer(CommandBuffer* const command_buffer, const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset = 0u, VkDeviceSize dst_buffer_offset = 0u);
         BufferImage                                     CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, VkImageCreateFlags image_create_flag_bit = 0);
         VkFormat                                        FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
@@ -670,10 +488,7 @@ namespace ZEngine::Hardwares
         VkFramebuffer                                   CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1);
         VertexBufferSetHandle                           CreateVertexBufferSet();
         StorageBufferSetHandle                          CreateStorageBufferSet();
-        IndirectBufferSetHandle                         CreateIndirectBufferSet();
         IndexBufferSetHandle                            CreateIndexBufferSet();
-        UniformBufferSetHandle                          CreateUniformBufferSet();
-        void                                            DirtyCollector();
 
         Helpers::Handle<Rendering::Shaders::Shader>     CompileShader(Rendering::Specifications::ShaderSpecification& spec);
 
@@ -690,9 +505,6 @@ namespace ZEngine::Hardwares
         VkDebugUtilsMessengerEXT                                          m_debug_messenger{VK_NULL_HANDLE};
         PFN_vkCreateDebugUtilsMessengerEXT                                __createDebugMessengerPtr{VK_NULL_HANDLE};
         PFN_vkDestroyDebugUtilsMessengerEXT                               __destroyDebugMessengerPtr{VK_NULL_HANDLE};
-        void                                                              __cleanupDirtyResource();
-        void                                                              __cleanupBufferDirtyResource();
-        void                                                              __cleanupBufferImageDirtyResource();
         static VKAPI_ATTR VkBool32 VKAPI_CALL                             __debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
     };
 
@@ -720,25 +532,7 @@ namespace ZEngine::Helpers
     }
 
     template <>
-    inline void HandleManager<Hardwares::IndirectBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
-    template <>
     inline void HandleManager<Hardwares::IndexBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
-    template <>
-    inline void HandleManager<Hardwares::UniformBufferSet>::Dispose()
     {
         for (size_t i = 0; i < m_count; ++i)
         {

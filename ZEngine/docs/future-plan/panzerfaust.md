@@ -120,11 +120,18 @@ the engine and set working paths.
   "projectName": "MyGame",
   "version": "1.0.0",
   "workingSpace": ".",
-  "sceneDir": "Scenes",
-  "sceneDataDir": "SceneData",
-  "defaultImportDir": {
-    "textureDir": "textures",
-    "soundDir": "sounds"
+  "sceneDir": "$(workingSpace)/Scenes",
+  "sceneDataDir": "$(workingSpace)/SceneData",
+  "assetDirs": {
+    "textureDir": "$(workingSpace)/Assets/Textures",
+    "soundDir": "$(workingSpace)/Assets/Sounds",
+    "meshDir": "$(workingSpace)/Assets/Meshes",
+    "materialDir": "$(workingSpace)/Assets/Materials",
+    "spriteDir": "$(workingSpace)/Assets/Sprites",
+    "environmentMapDir": "$(workingSpace)/Assets/EnvironmentMaps"
+  },
+  "sky": {
+    "mode": "atmosphere"
   },
   "sceneList": [
     { "name": "Default", "isDefault": true }
@@ -134,7 +141,8 @@ the engine and set working paths.
 
 Obelisk reads this file, passes `workingSpace` as `GameApplication::WorkingSpacePath`,
 and passes the config path as `GameApplication::ConfigFile`. The VFS mounts
-`workingSpace` as the root for all asset resolution.
+`workingSpace` as the root for all asset resolution. All paths using the
+`$(workingSpace)` token are expanded to absolute paths at parse time.
 
 ### 4.1 `buildCommand` and `gameDllPath` fields
 
@@ -143,11 +151,18 @@ and passes the config path as `GameApplication::ConfigFile`. The VFS mounts
   "projectName": "MyGame",
   "version": "1.0.0",
   "workingSpace": ".",
-  "sceneDir": "Scenes",
-  "sceneDataDir": "SceneData",
-  "defaultImportDir": {
-    "textureDir": "textures",
-    "soundDir": "sounds"
+  "sceneDir": "$(workingSpace)/Scenes",
+  "sceneDataDir": "$(workingSpace)/SceneData",
+  "assetDirs": {
+    "textureDir": "$(workingSpace)/Assets/Textures",
+    "soundDir": "$(workingSpace)/Assets/Sounds",
+    "meshDir": "$(workingSpace)/Assets/Meshes",
+    "materialDir": "$(workingSpace)/Assets/Materials",
+    "spriteDir": "$(workingSpace)/Assets/Sprites",
+    "environmentMapDir": "$(workingSpace)/Assets/EnvironmentMaps"
+  },
+  "sky": {
+    "mode": "atmosphere"
   },
   "sceneList": [
     { "name": "Default", "isDefault": true }

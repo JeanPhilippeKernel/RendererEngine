@@ -211,8 +211,14 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         Shader->Dispose();
 
-        Device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, Layout);
-        Device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, Handle);
+        Hardwares::DeferredFreeEntry pl = {};
+        pl.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+        pl.Data.Vk                      = {Layout, Rendering::DeviceResourceType::PIPELINE_LAYOUT, nullptr};
+        Device->DeferFree(pl);
+        Hardwares::DeferredFreeEntry pp = {};
+        pp.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+        pp.Data.Vk                      = {Handle, Rendering::DeviceResourceType::PIPELINE, nullptr};
+        Device->DeferFree(pp);
         Layout = VK_NULL_HANDLE;
         Handle = VK_NULL_HANDLE;
     }

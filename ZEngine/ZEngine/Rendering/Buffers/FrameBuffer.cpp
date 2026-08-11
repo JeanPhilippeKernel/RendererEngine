@@ -75,7 +75,10 @@ namespace ZEngine::Rendering::Buffers
     {
         if (Handle)
         {
-            m_device->EnqueueForDeletion(Rendering::DeviceResourceType::FRAMEBUFFER, Handle);
+            Hardwares::DeferredFreeEntry e = {};
+            e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+            e.Data.Vk                      = {Handle, Rendering::DeviceResourceType::FRAMEBUFFER, nullptr};
+            m_device->DeferFree(e);
             Handle = VK_NULL_HANDLE;
         }
     }

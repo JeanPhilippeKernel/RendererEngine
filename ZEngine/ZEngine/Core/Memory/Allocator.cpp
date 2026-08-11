@@ -179,7 +179,12 @@ namespace ZEngine::Core::Memory
 
     void ArenaAllocator::CreateSubArena(size_t size, ArenaAllocator* out_arena)
     {
-        out_arena->m_memory                  = reinterpret_cast<uint8_t*>(Allocate(size));
+        ZENGINE_VALIDATE_ASSERT(out_arena != nullptr, "ArenaAllocator::CreateSubArena: out_arena must not be null")
+        ZENGINE_VALIDATE_ASSERT(size > 0, "ArenaAllocator::CreateSubArena: size must be > 0")
+        ZENGINE_VALIDATE_ASSERT((m_current_offset + size) <= m_total_size, "ArenaAllocator::CreateSubArena: not enough space in parent arena")
+
+        out_arena->m_memory = reinterpret_cast<uint8_t*>(Allocate(size));
+        ZENGINE_VALIDATE_ASSERT(out_arena->m_memory != nullptr, "ArenaAllocator::CreateSubArena: failed to allocate sub-arena memory")
         out_arena->m_is_sub_arena            = true;
         out_arena->m_initial_previous_offset = 0;
         out_arena->m_initial_current_offset  = 0;

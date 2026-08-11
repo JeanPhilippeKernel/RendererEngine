@@ -130,43 +130,43 @@ namespace ZEngine::Hardwares
         }
 
         VkMemoryPropertyFlags mem_prop_flags;
-        vmaGetAllocationMemoryProperties(Device->VmaAllocatorValue, buffer_view->Allocation, &mem_prop_flags);
+        vmaGetAllocationMemoryProperties(Device->GpuMem.Allocator, buffer_view->Allocation, &mem_prop_flags);
 
         if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
         {
-            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(Device->VmaAllocatorValue, data, buffer_view->Allocation, offset, byte_size) == VK_SUCCESS, "Failed to perform memory copy operation")
+            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(Device->GpuMem.Allocator, data, buffer_view->Allocation, offset, byte_size) == VK_SUCCESS, "Failed to perform memory copy operation")
 
             // flushing the allocation so the GPU can see it
             if (!(mem_prop_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
             {
-                vmaFlushAllocation(Device->VmaAllocatorValue, buffer_view->Allocation, offset, byte_size);
+                vmaFlushAllocation(Device->GpuMem.Allocator, buffer_view->Allocation, offset, byte_size);
             }
 
             VkAccessFlags        dst_access_mask    = VK_ACCESS_NONE;
             VkPipelineStageFlags dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             switch (buffer_view->Type)
             {
-                case BufferType::VERTEX:
+                case Core::Memory::BufferType::VERTEX:
                     dst_access_mask    = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
                     dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
                     break;
 
-                case BufferType::INDEX:
+                case Core::Memory::BufferType::INDEX:
                     dst_access_mask    = VK_ACCESS_INDEX_READ_BIT;
                     dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
                     break;
 
-                case BufferType::UNIFORM:
+                case Core::Memory::BufferType::UNIFORM:
                     dst_access_mask    = VK_ACCESS_UNIFORM_READ_BIT;
                     dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
                     break;
 
-                case BufferType::STORAGE:
+                case Core::Memory::BufferType::STORAGE:
                     dst_access_mask    = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
                     dst_pipeline_stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
                     break;
 
-                case BufferType::INDIRECT:
+                case Core::Memory::BufferType::INDIRECT:
                     dst_access_mask    = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
                     dst_pipeline_stage = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
                     break;
@@ -232,19 +232,37 @@ namespace ZEngine::Hardwares
             }
         }
 
-        auto       command_buffer = Device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, i);
+        auto                 command_buffer = Device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, i);
 
-        BufferView staging_buffer = Device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+        uint32_t             ring_offset    = 0;
+        void*                ring_ptr       = Device->GpuMem.Ring.Allocate(static_cast<uint32_t>(byte_size), 4, &ring_offset);
 
-        ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(Device->VmaAllocatorValue, data, staging_buffer.Allocation, offset, byte_size) == VK_SUCCESS, "Failed to perform memory copy operation")
+        uint64_t             signal_value   = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
 
-        auto dst_pipeline_stage = Device->CopyBuffer(command_buffer, staging_buffer, *destination, byte_size, 0u, offset);
+        VkPipelineStageFlags dst_pipeline_stage;
+        if (ring_ptr)
+        {
+            Helpers::secure_memmove(ring_ptr, byte_size, data, byte_size);
+            // Borrow a temporary BufferView over the ring buffer so CopyBuffer can use it.
+            BufferView ring_view = {};
+            ring_view.Handle     = Device->GpuMem.Ring.Buffer;
+            ring_view.Allocation = Device->GpuMem.Ring.Allocation;
+            dst_pipeline_stage   = Device->CopyBuffer(command_buffer, ring_view, *destination, byte_size, ring_offset, offset);
+            command_buffer->End();
+            retire_values[i] = signal_value;
+            Device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(byte_size), signal_value);
+        }
+        else
+        {
+            // Ring full (burst load) — fall back to one-shot staging buffer.
+            BufferView staging_buffer = Device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, Core::Memory::GpuMemoryDomain::HostStaging);
+            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(Device->GpuMem.Allocator, data, staging_buffer.Allocation, offset, byte_size) == VK_SUCCESS, "Failed to perform memory copy operation")
+            dst_pipeline_stage = Device->CopyBuffer(command_buffer, staging_buffer, *destination, byte_size, 0u, offset);
+            command_buffer->End();
+            retire_values[i]                    = signal_value;
+            RetireStagingBuffers[pool_index][i] = staging_buffer;
+        }
 
-        command_buffer->End();
-
-        uint64_t signal_value               = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
-        retire_values[i]                    = signal_value;
-        RetireStagingBuffers[pool_index][i] = staging_buffer;
         AsyncTimelineJobQueue.Enqueue({command_buffer, Timelines[pool_index], nullptr, dst_pipeline_stage, signal_value});
     }
 
@@ -256,56 +274,78 @@ namespace ZEngine::Hardwares
         }
 
         VkMemoryPropertyFlags mem_prop_flags;
-        vmaGetAllocationMemoryProperties(Device->VmaAllocatorValue, buffer_view->Allocation, &mem_prop_flags);
+        vmaGetAllocationMemoryProperties(Device->GpuMem.Allocator, buffer_view->Allocation, &mem_prop_flags);
 
         if (mem_prop_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
         {
             VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(Device->VmaAllocatorValue, buffer_view->Allocation, &allocation_info);
+            vmaGetAllocationInfo(Device->GpuMem.Allocator, buffer_view->Allocation, &allocation_info);
             if (allocation_info.pMappedData)
             {
                 auto mapped_buf = reinterpret_cast<uint8_t*>(allocation_info.pMappedData);
                 ZENGINE_VALIDATE_ASSERT(Helpers::secure_memset((mapped_buf + offset), clear_value, allocation_info.size, byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
+                // H5 fix: flush so GPU sees the zeroed data on non-coherent memory
+                if (!(mem_prop_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+                {
+                    vmaFlushAllocation(Device->GpuMem.Allocator, buffer_view->Allocation, offset, byte_size);
+                }
             }
         }
         else
         {
-            BufferView        staging_buffer  = Device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+            uint32_t i             = 0;
+            uint32_t pool_index    = (frame_index * Device->CommandBufferMgr->TotalThreadCount) + thread_index;
+            auto&    retire_values = RetireValues[pool_index];
 
-            VmaAllocationInfo allocation_info = {};
-            vmaGetAllocationInfo(Device->VmaAllocatorValue, staging_buffer.Allocation, &allocation_info);
-
-            if (allocation_info.pMappedData)
+            for (; i < retire_values.size(); ++i)
             {
-
-                uint32_t i             = 0;
-                uint32_t pool_index    = (frame_index * Device->CommandBufferMgr->TotalThreadCount) + thread_index;
-                auto&    retire_values = RetireValues[pool_index];
-
-                for (; i < retire_values.size(); ++i)
+                if (retire_values[i] == 0)
                 {
-                    if (retire_values[i] == 0)
-                    {
-                        break;
-                    }
+                    break;
                 }
+            }
 
-                auto command_buffer = Device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, i);
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memset(allocation_info.pMappedData, clear_value, allocation_info.size, byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
-                ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(Device->VmaAllocatorValue, staging_buffer.Allocation, 0, byte_size) == VK_SUCCESS, "Failed to flush allocation")
+            auto                 command_buffer = Device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, i);
+            uint32_t             ring_offset    = 0;
+            void*                ring_ptr       = Device->GpuMem.Ring.Allocate(static_cast<uint32_t>(byte_size), 4, &ring_offset);
 
-                auto dst_pipeline_stage = Device->CopyBuffer(command_buffer, staging_buffer, *buffer_view, byte_size, 0u, offset);
+            uint64_t             signal_value   = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            VkPipelineStageFlags dst_pipeline_stage;
 
+            if (ring_ptr)
+            {
+                Helpers::secure_memset(ring_ptr, clear_value, byte_size, byte_size);
+                BufferView ring_view = {};
+                ring_view.Handle     = Device->GpuMem.Ring.Buffer;
+                ring_view.Allocation = Device->GpuMem.Ring.Allocation;
+                dst_pipeline_stage   = Device->CopyBuffer(command_buffer, ring_view, *buffer_view, byte_size, ring_offset, offset);
                 command_buffer->End();
-                uint64_t signal_value               = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
-                retire_values[i]                    = signal_value;
-                RetireStagingBuffers[pool_index][i] = staging_buffer;
-                AsyncTimelineJobQueue.Enqueue({command_buffer, Timelines[pool_index], nullptr, dst_pipeline_stage, signal_value});
+                retire_values[i] = signal_value;
+                Device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(byte_size), signal_value);
             }
             else
             {
-                vmaDestroyBuffer(Device->VmaAllocatorValue, staging_buffer.Handle, staging_buffer.Allocation);
+                // Ring full — fall back to one-shot staging buffer.
+                BufferView        staging_buffer  = Device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, Core::Memory::GpuMemoryDomain::HostStaging);
+                VmaAllocationInfo allocation_info = {};
+                vmaGetAllocationInfo(Device->GpuMem.Allocator, staging_buffer.Allocation, &allocation_info);
+                if (allocation_info.pMappedData)
+                {
+                    ZENGINE_VALIDATE_ASSERT(Helpers::secure_memset(allocation_info.pMappedData, clear_value, allocation_info.size, byte_size) == Helpers::MEMORY_OP_SUCCESS, "Failed to perform memory copy operation")
+                    ZENGINE_VALIDATE_ASSERT(vmaFlushAllocation(Device->GpuMem.Allocator, staging_buffer.Allocation, 0, byte_size) == VK_SUCCESS, "Failed to flush allocation")
+                    dst_pipeline_stage = Device->CopyBuffer(command_buffer, staging_buffer, *buffer_view, byte_size, 0u, offset);
+                    command_buffer->End();
+                    retire_values[i]                    = signal_value;
+                    RetireStagingBuffers[pool_index][i] = staging_buffer;
+                }
+                else
+                {
+                    Device->GpuMem.FreeBuffer(staging_buffer);
+                    return;
+                }
             }
+
+            AsyncTimelineJobQueue.Enqueue({command_buffer, Timelines[pool_index], nullptr, dst_pipeline_stage, signal_value});
         }
     }
 
@@ -372,9 +412,10 @@ namespace ZEngine::Hardwares
             img_buf->Layout = release.NewLayout;
             transfer_cmd->End();
 
-            uint64_t transfer_val                       = TransferNextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            TransferRetireValues[pool_index][i]         = transfer_val;
-            TransferRetireStagingBuffers[pool_index][i] = transfer_staging;
+            uint64_t transfer_val               = TransferNextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            TransferRetireValues[pool_index][i] = transfer_val;
+            if (transfer_staging)
+                TransferRetireStagingBuffers[pool_index][i] = transfer_staging;
 
             AsyncTimelineJobQueue.Enqueue({
                 transfer_cmd,
@@ -461,9 +502,10 @@ namespace ZEngine::Hardwares
             cmd->TransitionImageLayout(ImageMemoryBarrier{to_final});
             cmd->End();
 
-            uint64_t signal_value               = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            retire_values[i]                    = signal_value;
-            RetireStagingBuffers[pool_index][i] = single_queue_staging;
+            uint64_t signal_value = NextValues[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            retire_values[i]      = signal_value;
+            if (single_queue_staging)
+                RetireStagingBuffers[pool_index][i] = single_queue_staging;
             AsyncTimelineJobQueue.Enqueue({cmd, Timelines[pool_index], nullptr, (uint32_t) to_final.DestinationStageMask, signal_value, UINT64_MAX});
             img_buf->Layout = to_final.NewLayout;
         }
@@ -574,9 +616,7 @@ namespace ZEngine::Hardwares
                 auto& sb         = RetireStagingBuffers[pool_index][i];
                 if (sb.Handle != VK_NULL_HANDLE)
                 {
-                    vmaDestroyBuffer(Device->VmaAllocatorValue, sb.Handle, sb.Allocation);
-                    sb.Handle     = VK_NULL_HANDLE;
-                    sb.Allocation = VK_NULL_HANDLE;
+                    Device->GpuMem.FreeBuffer(sb);
                 }
             }
         }
@@ -600,9 +640,7 @@ namespace ZEngine::Hardwares
                     auto& tsb          = TransferRetireStagingBuffers[pool_index][i];
                     if (tsb.Handle != VK_NULL_HANDLE)
                     {
-                        vmaDestroyBuffer(Device->VmaAllocatorValue, tsb.Handle, tsb.Allocation);
-                        tsb.Handle     = VK_NULL_HANDLE;
-                        tsb.Allocation = VK_NULL_HANDLE;
+                        Device->GpuMem.FreeBuffer(tsb);
                     }
                 }
             }
@@ -796,18 +834,14 @@ namespace ZEngine::Hardwares
                 auto& sb = RetireStagingBuffers[p][i];
                 if (sb.Handle != VK_NULL_HANDLE)
                 {
-                    vmaDestroyBuffer(Device->VmaAllocatorValue, sb.Handle, sb.Allocation);
-                    sb.Handle     = VK_NULL_HANDLE;
-                    sb.Allocation = VK_NULL_HANDLE;
+                    Device->GpuMem.FreeBuffer(sb);
                 }
                 if (Device->HasSeperateTransfertQueueFamily)
                 {
                     auto& tsb = TransferRetireStagingBuffers[p][i];
                     if (tsb.Handle != VK_NULL_HANDLE)
                     {
-                        vmaDestroyBuffer(Device->VmaAllocatorValue, tsb.Handle, tsb.Allocation);
-                        tsb.Handle     = VK_NULL_HANDLE;
-                        tsb.Allocation = VK_NULL_HANDLE;
+                        Device->GpuMem.FreeBuffer(tsb);
                     }
                 }
             }

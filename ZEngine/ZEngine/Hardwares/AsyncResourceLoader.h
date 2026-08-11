@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Helpers/ThreadSafeQueue.h>
 #include <ZEngine/Rendering/Primitives/Semaphore.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
@@ -7,9 +8,12 @@
 
 namespace ZEngine::Hardwares
 {
+    using Core::Memory::BufferImage;
+    using Core::Memory::BufferView;
+    using Core::Memory::GpuMemoryDomain;
+
     struct VulkanDevice;
     struct AsyncGPUOperation;
-    struct BufferView;
     struct CommandBuffer;
 
     struct TextureFileRequest

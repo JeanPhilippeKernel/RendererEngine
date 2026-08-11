@@ -87,7 +87,7 @@ struct PerFrameUploadHeap {
 
     // Flush the written range if memory is not coherent. Called once per frame after
     // all Push() calls, before command buffer recording begins.
-    void Flush(VmaAllocator allocator);
+    void Flush(GpuAllocator* alloc);
 };
 ```
 
@@ -107,9 +107,9 @@ No branches, no locks, no allocation — a pointer bump and a `memcpy`.
 `Flush` is called once per frame after all `Push` calls complete, before the command buffer
 is recorded. It issues a single `vmaFlushAllocation` covering `[0, WritePos]`:
 ```cpp
-void PerFrameUploadHeap::Flush(VmaAllocator allocator) {
+void PerFrameUploadHeap::Flush(GpuAllocator* alloc) {
     if (!Coherent && WritePos > 0)
-        vmaFlushAllocation(allocator, Allocation, 0, WritePos);
+        vmaFlushAllocation(alloc->Allocator, Allocation, 0, WritePos);
 }
 ```
 
@@ -123,8 +123,8 @@ syscalls from O(resource_count) to O(1).
 `VulkanDevice` gains:
 
 ```cpp
-// VulkanDevice.h
-PerFrameUploadHeap FrameHeaps[3] = {}; // one per BufferredFrameCount
+// VulkanDevice.h — size matches SwapchainPtr->BufferredFrameCount (3)
+PerFrameUploadHeap FrameHeaps[3] = {};
 ```
 
 Initialized in `VulkanDevice::Initialize` after `GpuMem`:
@@ -210,11 +210,15 @@ The per-frame set (set 2) is created once at `VulkanDevice::Initialize`. Its des
 writes point to `FrameHeaps[i].Handle` for frame `i`. Dynamic offsets at bind time select
 the sub-region within the heap for each data type.
 
-`minUniformBufferOffsetAlignment` (queried from `VkPhysicalDeviceLimits`) governs the
-alignment passed to `PerFrameUploadHeap::Push`. Stored as:
+`minUniformBufferOffsetAlignment` and `minStorageBufferOffsetAlignment` (queried from
+`VkPhysicalDeviceLimits`) govern the alignment passed to `PerFrameUploadHeap::Push`.
+Stored as:
 ```cpp
 uint32_t VulkanDevice::MinUniformBufferOffsetAlignment() const {
     return (uint32_t)PhysicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment;
+}
+uint32_t VulkanDevice::MinStorageBufferOffsetAlignment() const {
+    return (uint32_t)PhysicalDeviceProperties.properties.limits.minStorageBufferOffsetAlignment;
 }
 ```
 
@@ -293,7 +297,7 @@ Depends on `gpu-allocator-rearchitecture.md` steps 1–5 being complete (GpuAllo
 | 2 | `VulkanDevice.h` | Add `FrameHeaps[3]`, `MinUniformBufferOffsetAlignment()`. | Low |
 | 3 | `VulkanDevice.cpp` — `Initialize` | Allocate and init 3 heaps. | Low |
 | 4 | `VulkanDevice.cpp` — `TickMemory` | Add `FrameHeaps[fi].Reset()`. | Low |
-| 5 | Shader / descriptor set layout | Add set 2 (`DYNAMIC_UNIFORM_BUFFER` per per-frame type) to shader reflection. Update `CreateDescriptorSets` in `Shader.cpp`. | Medium |
+| 5 | Shader / descriptor set layout | Add `DYNAMIC_UNIFORM_BUFFER` binding type to the SPIRV-cross reflection path in `Shader.cpp::CreateDescriptorSetLayouts`. Create the per-frame set 2 descriptor layout and allocate one set per frame in flight. | Medium |
 | 6 | `GraphicRenderer.cpp` — camera, lights | Migrate camera and light UBOs to `heap.Push`. Update bind calls to pass dynamic offsets. | Medium |
 | 7 | `GraphicScene` — per-object transforms | Migrate per-draw transform UBOs to `heap.Push`. | Medium |
 | 8 | Skinning system (future) | Migrate bone matrix upload to `heap.Push`. | Low — new system |
@@ -305,7 +309,7 @@ Depends on `gpu-allocator-rearchitecture.md` steps 1–5 being complete (GpuAllo
 ## 10. Verification
 
 1. Frame heap `WritePos` after all pushes must be less than `kCapacity`. Assert in Debug builds. Log peak `WritePos` via `MemoryProfiler` to validate budget sizing.
-2. One `vkFlushMappedMemoryRanges` call per frame (not per buffer). Verify with `VK_LAYER_LUNARG_api_dump` — count `vkFlushMappedMemoryRanges` invocations before and after migration.
+2. One `vmaFlushAllocation` call per frame (not per buffer), which maps to one `vkFlushMappedMemoryRanges` at the Vulkan level. Verify with `VK_LAYER_LUNARG_api_dump` — count `vkFlushMappedMemoryRanges` invocations before and after migration.
 3. `vkCmdBindDescriptorSets` for per-frame set uses non-zero dynamic offsets and binds correctly. Verify with RenderDoc: capture a frame and inspect UBO bindings — data should match CPU-side values.
 4. `VkBuffer` object count for per-frame data in RenderDoc: 3 (one per frame in flight) vs. O(N) before.
 5. Scene stress test: 500 draw calls, 60 fps, 100 frames — no validation layer errors, no heap overflow asserts.

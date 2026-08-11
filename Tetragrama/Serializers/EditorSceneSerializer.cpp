@@ -56,6 +56,11 @@ namespace Tetragrama::Serializers
             }
 
             WriteBinaryString(out, scene->Name);
+
+            // Sky configuration
+            WriteBinaryString(out, scene->Sky.Mode.empty() ? "atmosphere" : scene->Sky.Mode.c_str());
+            WriteBinaryString(out, scene->Sky.EnvironmentMap.empty() ? "" : scene->Sky.EnvironmentMap.c_str());
+
             WriteBinaryArray(out, ArrayView{scene->Names});
             WriteBinaryArray(out, ArrayView{scene->Hierarchies});
             WriteBinaryArray(out, ArrayView{scene->LocalTransforms});
@@ -147,7 +152,16 @@ namespace Tetragrama::Serializers
 
             char buf[DEFAULT_STR_BUFFER] = {0};
             ReadBinaryCString(&Arena, in_stream, buf);
-            scene.Name = buf;
+            scene.Name                            = buf;
+
+            // Sky configuration
+            char sky_mode_buf[DEFAULT_STR_BUFFER] = {0};
+            char sky_env_buf[DEFAULT_STR_BUFFER]  = {0};
+            ReadBinaryCString(&Arena, in_stream, sky_mode_buf);
+            ReadBinaryCString(&Arena, in_stream, sky_env_buf);
+            scene.Sky.Mode.init(&Arena, sky_mode_buf);
+            if (sky_env_buf[0] != '\0')
+                scene.Sky.EnvironmentMap.init(&Arena, sky_env_buf);
 
             REPORT_LOG(Context, "Extracting scene's hierarchies info...")
 

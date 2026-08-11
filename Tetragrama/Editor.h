@@ -17,10 +17,15 @@ namespace Tetragrama
     struct EditorConfiguration
     {
         ZEngine::Core::Containers::String WorkingSpacePath         = {};
-        ZEngine::Core::Containers::String DefaultImportTexturePath = {};
-        ZEngine::Core::Containers::String DefaultImportSoundPath   = {};
         ZEngine::Core::Containers::String ScenePath                = {};
         ZEngine::Core::Containers::String SceneDataPath            = {};
+        // Asset import directories (all under Assets/)
+        ZEngine::Core::Containers::String TexturePath              = {};
+        ZEngine::Core::Containers::String SoundPath                = {};
+        ZEngine::Core::Containers::String MeshPath                 = {};
+        ZEngine::Core::Containers::String MaterialPath             = {};
+        ZEngine::Core::Containers::String SpritePath               = {};
+        ZEngine::Core::Containers::String EnvironmentMapImportPath = {};
         ZEngine::Core::Containers::String ProjectName              = {};
         ZEngine::Core::Containers::String ActiveSceneName          = {};
 

@@ -99,49 +99,66 @@ namespace Tetragrama
     void EditorConfiguration::ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file)
     {
         std::ifstream  f(file);
-        nlohmann::json config             = nlohmann::json::parse(f);
-        std::string    root_project_dir   = std::filesystem::path(file).parent_path().string();
+        nlohmann::json config           = nlohmann::json::parse(f);
+        std::string    root_project_dir = std::filesystem::path(file).parent_path().string();
 
-        std::string    working_space_path = config["workingSpace"];
+        // Helper: expand $(workingSpace) token in a json string field
+        auto           expand           = [&](nlohmann::json& node, std::string_view key) {
+            std::string_view lookup("$(workingSpace)");
+            auto             s = node[key].get<std::string>();
+            auto             p = s.find(lookup);
+            if (p != std::string::npos)
+                node[key] = s.replace(p, lookup.size(), "");
+        };
+        auto expand_nested = [&](nlohmann::json& node, std::string_view section, std::string_view key) {
+            std::string_view lookup("$(workingSpace)");
+            auto             s = node[section][key].get<std::string>();
+            auto             p = s.find(lookup);
+            if (p != std::string::npos)
+                node[section][key] = s.replace(p, lookup.size(), "");
+        };
+
+        std::string working_space_path = config["workingSpace"];
         if (working_space_path == ".")
         {
-            std::string_view lookup_key("$(workingSpace)");
-            size_t           length          = lookup_key.size();
-
-            auto&            texture_path    = config["defaultImportDir"]["textureDir"];
-            auto&            sound_path      = config["defaultImportDir"]["soundDir"];
-            auto&            scene_path      = config["sceneDir"];
-            auto&            scene_data_path = config["sceneDataDir"];
-
-            if (texture_path.get<std::string>().find(lookup_key) != std::string::npos)
+            expand(config, "sceneDir");
+            expand(config, "sceneDataDir");
+            // Expand all fields inside assetDirs (new format)
+            if (config.contains("assetDirs"))
             {
-                config["defaultImportDir"]["textureDir"] = texture_path.get<std::string>().replace(texture_path.get<std::string>().find(lookup_key), length, "");
+                for (auto& [key, val] : config["assetDirs"].items())
+                    expand_nested(config, "assetDirs", key);
             }
-
-            if (sound_path.get<std::string>().find(lookup_key) != std::string::npos)
+            // Backward compat: old defaultImportDir format
+            if (config.contains("defaultImportDir"))
             {
-                config["defaultImportDir"]["soundDir"] = sound_path.get<std::string>().replace(sound_path.get<std::string>().find(lookup_key), length, "");
+                expand_nested(config, "defaultImportDir", "textureDir");
+                expand_nested(config, "defaultImportDir", "soundDir");
             }
-
-            if (scene_path.get<std::string>().find(lookup_key) != std::string::npos)
-            {
-                config["sceneDir"] = scene_path.get<std::string>().replace(scene_path.get<std::string>().find(lookup_key), length, "");
-            }
-
-            if (scene_data_path.get<std::string>().find(lookup_key) != std::string::npos)
-            {
-                config["sceneDataDir"] = scene_data_path.get<std::string>().replace(scene_data_path.get<std::string>().find(lookup_key), length, "");
-            }
-
             config["workingSpace"] = root_project_dir;
         }
 
+        auto ws = config["workingSpace"].get<std::string>();
         ProjectName.init(arena, config["projectName"].get<std::string>().c_str());
-        WorkingSpacePath.init(arena, config["workingSpace"].get<std::string>().c_str());
-        DefaultImportTexturePath.init(arena, config["defaultImportDir"]["textureDir"].get<std::string>().c_str());
-        DefaultImportSoundPath.init(arena, config["defaultImportDir"]["soundDir"].get<std::string>().c_str());
+        WorkingSpacePath.init(arena, ws.c_str());
         ScenePath.init(arena, config["sceneDir"].get<std::string>().c_str());
         SceneDataPath.init(arena, config["sceneDataDir"].get<std::string>().c_str());
+
+        // Asset directories — new assetDirs format, fall back to defaultImportDir
+        auto asset_path = [&](const char* asset_key, const char* legacy_section, const char* legacy_key, const char* default_suffix) -> std::string {
+            if (config.contains("assetDirs") && config["assetDirs"].contains(asset_key))
+                return config["assetDirs"][asset_key].get<std::string>();
+            if (legacy_section && config.contains(legacy_section) && config[legacy_section].contains(legacy_key))
+                return config[legacy_section][legacy_key].get<std::string>();
+            return fmt::format("{}{}", ws, default_suffix);
+        };
+
+        TexturePath.init(arena, asset_path("textureDir", "defaultImportDir", "textureDir", "/Assets/Textures").c_str());
+        SoundPath.init(arena, asset_path("soundDir", "defaultImportDir", "soundDir", "/Assets/Sounds").c_str());
+        MeshPath.init(arena, asset_path("meshDir", nullptr, nullptr, "/Assets/Meshes").c_str());
+        MaterialPath.init(arena, asset_path("materialDir", nullptr, nullptr, "/Assets/Materials").c_str());
+        SpritePath.init(arena, asset_path("spriteDir", nullptr, nullptr, "/Assets/Sprites").c_str());
+        EnvironmentMapImportPath.init(arena, asset_path("environmentMapDir", nullptr, nullptr, "/Assets/EnvironmentMaps").c_str());
 
         /*
          * Retreiving the Active Scene

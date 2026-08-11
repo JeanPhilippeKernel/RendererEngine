@@ -111,7 +111,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         if (m_handle)
         {
-            m_device->EnqueueForDeletion(DeviceResourceType::RENDERPASS, m_handle);
+            Hardwares::DeferredFreeEntry e = {};
+            e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+            e.Data.Vk                      = {m_handle, DeviceResourceType::RENDERPASS, nullptr};
+            m_device->DeferFree(e);
             m_handle = VK_NULL_HANDLE;
         }
     }

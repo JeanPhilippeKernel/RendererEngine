@@ -17,14 +17,14 @@ and provides the foundation for 4K resource budgets and cross-platform unified m
 | ID | Location | Problem |
 |---|---|---|
 | C1 | `VulkanDevice.cpp:1179` | `DEDICATED_MEMORY_BIT` hardcoded on every image — exhausts `VkDeviceMemory` object limit on large scenes |
-| C2 | `VulkanDevice.cpp:2501` | Texture staging uses `HOST_ACCESS_RANDOM` — wrong memory type for sequential writes |
+| C2 | `VulkanDevice.cpp:2478` | `WriteTextureData` staging uses `HOST_ACCESS_RANDOM` — wrong memory type for sequential writes |
 | C3 | `VulkanDevice.cpp:477` | `VmaAllocatorCreateInfo` has no flags — no BDA support, no driver budget signals |
 | C4 | Entire codebase | No `vmaGetHeapBudgets` call — engine is blind to VRAM pressure at 4K |
 | H1 | `VulkanDevice.cpp:1042` | All DEVICE_LOCAL allocations share one default pool — geometry holes fragment texture blocks |
-| H2 | `AsyncResourceLoader.cpp:237` | Per-upload `vmaCreateBuffer` / `vmaDestroyBuffer` — `vkAllocateMemory` storm on bulk scene loads |
+| H2 | `AsyncResourceLoader.cpp:237,273` | Per-upload `vmaCreateBuffer` / `vmaDestroyBuffer` — `vkAllocateMemory` storm on bulk scene loads |
 | H3 | `VulkanDevice.cpp:2183` | `UniformBuffer` missing `ALLOW_TRANSFER_INSTEAD` — overflows BAR window to slow system RAM |
 | H4 | `VulkanDevice.cpp:1337` | `DirtyCollector` polls idle frames — queue accumulates unboundedly during continuous rendering |
-| H5 | `AsyncResourceLoader.cpp:261` | `ClearBuffer` host-visible path skips `vmaFlushAllocation` — GPU reads stale data on non-coherent memory |
+| H5 | `AsyncResourceLoader.cpp:261` | `ClearBuffer` direct-map clear path (line 268) skips `vmaFlushAllocation` after `secure_memset` — GPU reads stale data on non-coherent memory |
 | H6 | `VulkanDevice.cpp:1384` | `DirtyResources::BUFFER`/`BUFFERMEMORY` call raw `vkDestroyBuffer`/`vkFreeMemory` — VMA allocation leaks if wrong path is taken |
 
 ---
@@ -49,7 +49,7 @@ Callers declare what they need. `GpuAllocator` selects the pool, the VMA flags, 
 ### `GpuBudget` (compile-time, 4K target — from memory-budget.md §3)
 
 ```cpp
-namespace ZEngine::Hardwares::GpuBudget {
+namespace ZEngine::Core::Memory {
     constexpr uint64_t GeometryBytes     = 512ULL << 20;  // vertex + index + storage
     constexpr uint64_t TextureBytes      = 512ULL << 20;  // BC7/BC5 atlas
     constexpr uint64_t RenderTargetBytes = 172ULL << 20;  // shadow maps + post-process + thumbnails
@@ -74,7 +74,7 @@ One 64 MB allocation, persistently mapped, reused for all uploads. Replaces per-
 
 ```cpp
 struct StagingRing {
-    static constexpr uint32_t kCapacity  = GpuBudget::StagingBytes;
+    static constexpr uint64_t kCapacity  = StagingBytes;
     static constexpr uint32_t kMaxChunks = 256;
 
     struct Chunk {
@@ -148,7 +148,7 @@ struct DeferredFreeQueue {
 ```
 
 `Drain` walks from `Head` while `Entries[Head].TimelineValue <= completed_timeline_value`,
-calls `vmaDestroyBuffer` / `vmaDestroyImage` / `vkDestroy*`, advances `Head`. O(k) where
+calls `GpuAllocator::FreeBuffer` / `FreeImage` / `vkDestroy*`, advances `Head`. O(k) where
 k is the number of resources freed this frame — bounded by `MaxFramesInFlight * MaxResourcesDestroyedPerFrame` in steady state.
 
 ### `GpuAllocator`
@@ -189,15 +189,17 @@ Internal flag mapping (inside `AllocateBuffer` — not exposed to callers):
 
 | Domain | VMA usage | VMA flags |
 |---|---|---|
-| `DeviceGeometry` | `AUTO_PREFER_DEVICE` | `SEQUENTIAL_WRITE \| ALLOW_TRANSFER_INSTEAD \| MAPPED` |
+| `DeviceGeometry` | `AUTO_PREFER_DEVICE` | none (DEVICE_LOCAL only; CPU writes via staging ring) |
 | `DeviceTexture` | `AUTO_PREFER_DEVICE` | none (driver-queried dedicated when advised) |
 | `RenderTarget` | `AUTO_PREFER_DEVICE` | driver-queried dedicated only |
 | `HostUniform` | `AUTO_PREFER_DEVICE` | `SEQUENTIAL_WRITE \| ALLOW_TRANSFER_INSTEAD \| MAPPED` |
 | `HostStaging` | `AUTO_PREFER_DEVICE` | `SEQUENTIAL_WRITE \| MAPPED` |
 
-`AllocateImage` always calls `vkGetImageMemoryRequirements2` with `VkMemoryDedicatedRequirementsKHR`
-chained. `DEDICATED_MEMORY_BIT` is set only when `prefersDedicatedAllocation ||
-requiresDedicatedAllocation`. This replaces the hardcoded flag at `VulkanDevice.cpp:1179`.
+`AllocateImage` calls `vmaCreateImage`, which internally queries `VkMemoryDedicatedRequirementsKHR`
+on the created `VkImage` handle and sets `DEDICATED_MEMORY_BIT` only when
+`prefersDedicatedAllocation || requiresDedicatedAllocation`. This requires the allocator to have
+been created with `VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT` — already guaranteed on
+Vulkan 1.1+ by VMA 3.x. This replaces the hardcoded flag at `VulkanDevice.cpp:1156`.
 
 Pool `maxBlockCount` values derived from `GpuBudget`:
 ```
@@ -286,7 +288,7 @@ GpuMem.Ring.Drain(UINT64_MAX);
 
 `CreateImage` — routes to `GpuMem.AllocateImage`. The hardcoded `DEDICATED_MEMORY_BIT` at line 1179 is removed.
 
-`WriteTextureData` (line 2501) — fix C2:
+`WriteTextureData` (line 2478) — fix C2:
 ```cpp
 // Before: HOST_ACCESS_RANDOM (wrong)
 BufferView staging = CreateBuffer(..., VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
@@ -387,13 +389,13 @@ timeline (previous frame completed) and before any new command buffers are recor
 
 ### `ZEngine/Hardwares/GpuAllocator.h`
 
-Types: `GpuMemoryDomain`, `GpuBudget` constants, `StagingRing`, `GpuAllocator`.
+Types: `GpuMemoryDomain`, budget constants, `StagingRing`, `GpuAllocator`.
 
-`VMA_IMPLEMENTATION` and `VMA_VULKAN_VERSION` move here from `VulkanDevice.cpp`.
-`VulkanDevice.cpp` no longer defines them. `VulkanDevice.h` replaces
-`#include <vk_mem_alloc.h>` at the top level with `#include <ZEngine/Hardwares/GpuAllocator.h>`.
+`VulkanDevice.h` replaces `#include <vk_mem_alloc.h>` with `#include <ZEngine/Hardwares/GpuAllocator.h>`.
 
 ### `ZEngine/Hardwares/GpuAllocator.cpp`
+
+`VMA_IMPLEMENTATION` and `VMA_VULKAN_VERSION` move here from `VulkanDevice.cpp` — they must live in exactly one translation unit. `VulkanDevice.cpp` removes its definitions.
 
 All `GpuAllocator` and `StagingRing` method bodies.
 
@@ -469,7 +471,7 @@ Each step compiles and passes existing tests before the next begins.
 |---|---|---|---|
 | 1 | New `GpuAllocator.h/.cpp` | Define types, Initialize/Shutdown/Allocate/Free. Move `VMA_IMPLEMENTATION` here. | Low — additive |
 | 2 | New `DeferredFreeQueue.h` | Define `DeferredFreeEntry`, `DeferredFreeQueue`. | Low — additive |
-| 3 | `VulkanDevice.h` | Add `GpuMem`, `PendingFree`, `TickMemory`, `DeferFree`. Keep `VmaAllocatorValue` as alias temporarily. | Low |
+| 3 | `VulkanDevice.h` | Add `GpuMem`, `PendingFree`, `TickMemory`, `DeferFree`. Remove `VmaAllocatorValue`. | Low |
 | 4 | `VulkanDevice.cpp` — `Initialize` | Wire `GpuMem.Initialize`. Keep old dirty queues alive. | Low |
 | 5 | `VulkanDevice.cpp` — `CreateBuffer` / `CreateImage` | Route through `GpuMem`. Update typed buffer `CreateBuffer()` to pass `GpuMemoryDomain`. | Medium |
 | 6 | `AsyncResourceLoader.cpp` — flush fix | Add `vmaFlushAllocation` to `ClearBuffer` host-visible path. | None |
