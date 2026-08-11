@@ -128,33 +128,44 @@ namespace Tetragrama
         std::string working_space_path = config["workingSpace"];
         if (working_space_path == ".")
         {
-            expand_nested(config, "defaultImportDir", "textureDir");
-            expand_nested(config, "defaultImportDir", "soundDir");
             expand(config, "sceneDir");
             expand(config, "sceneDataDir");
-            if (config.contains("environmentMapDir"))
-                expand(config, "environmentMapDir");
+            // Expand all fields inside assetDirs (new format)
+            if (config.contains("assetDirs"))
+            {
+                for (auto& [key, val] : config["assetDirs"].items())
+                    expand_nested(config, "assetDirs", key);
+            }
+            // Backward compat: old defaultImportDir format
+            if (config.contains("defaultImportDir"))
+            {
+                expand_nested(config, "defaultImportDir", "textureDir");
+                expand_nested(config, "defaultImportDir", "soundDir");
+            }
             config["workingSpace"] = root_project_dir;
         }
 
+        auto ws = config["workingSpace"].get<std::string>();
         ProjectName.init(arena, config["projectName"].get<std::string>().c_str());
-        WorkingSpacePath.init(arena, config["workingSpace"].get<std::string>().c_str());
-        DefaultImportTexturePath.init(arena, config["defaultImportDir"]["textureDir"].get<std::string>().c_str());
-        DefaultImportSoundPath.init(arena, config["defaultImportDir"]["soundDir"].get<std::string>().c_str());
+        WorkingSpacePath.init(arena, ws.c_str());
         ScenePath.init(arena, config["sceneDir"].get<std::string>().c_str());
         SceneDataPath.init(arena, config["sceneDataDir"].get<std::string>().c_str());
 
-        // Environment map import directory (where .zenvmap files are written)
-        if (config.contains("environmentMapDir"))
-        {
-            EnvironmentMapImportPath.init(arena, config["environmentMapDir"].get<std::string>().c_str());
-        }
-        else
-        {
-            // Default: <project>/Assets/EnvironmentMaps
-            auto default_env_dir = fmt::format("{}/Assets/EnvironmentMaps", config["workingSpace"].get<std::string>());
-            EnvironmentMapImportPath.init(arena, default_env_dir.c_str());
-        }
+        // Asset directories — new assetDirs format, fall back to defaultImportDir
+        auto asset_path = [&](const char* asset_key, const char* legacy_section, const char* legacy_key, const char* default_suffix) -> std::string {
+            if (config.contains("assetDirs") && config["assetDirs"].contains(asset_key))
+                return config["assetDirs"][asset_key].get<std::string>();
+            if (legacy_section && config.contains(legacy_section) && config[legacy_section].contains(legacy_key))
+                return config[legacy_section][legacy_key].get<std::string>();
+            return fmt::format("{}{}", ws, default_suffix);
+        };
+
+        TexturePath.init(arena, asset_path("textureDir", "defaultImportDir", "textureDir", "/Assets/Textures").c_str());
+        SoundPath.init(arena, asset_path("soundDir", "defaultImportDir", "soundDir", "/Assets/Sounds").c_str());
+        MeshPath.init(arena, asset_path("meshDir", nullptr, nullptr, "/Assets/Meshes").c_str());
+        MaterialPath.init(arena, asset_path("materialDir", nullptr, nullptr, "/Assets/Materials").c_str());
+        SpritePath.init(arena, asset_path("spriteDir", nullptr, nullptr, "/Assets/Sprites").c_str());
+        EnvironmentMapImportPath.init(arena, asset_path("environmentMapDir", nullptr, nullptr, "/Assets/EnvironmentMaps").c_str());
 
         // Active environment map: optional — read from "sky.environmentMap" (filename only)
         // Resolved against EnvironmentMapImportPath at runtime.

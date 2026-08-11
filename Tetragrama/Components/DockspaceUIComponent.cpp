@@ -804,7 +804,7 @@ namespace Tetragrama::Components
 
         auto        config            = ZPushStruct(arena, ZEngine::Importers::ImportConfiguration);
         config->OutputWorkingSpacePath.init(arena, editor_config.WorkingSpacePath.c_str());
-        config->OutputTextureFilesPath.init(arena, editor_config.DefaultImportTexturePath.c_str());
+        config->OutputTextureFilesPath.init(arena, editor_config.TexturePath.c_str());
         config->OutputAssetsPath.init(arena, editor_config.SceneDataPath.c_str());
         config->AssetName.init(arena, asset_name.c_str());
         config->OutputAssetFile.init(arena, output_asset_file.c_str());
