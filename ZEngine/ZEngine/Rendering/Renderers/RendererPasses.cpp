@@ -408,10 +408,12 @@ namespace ZEngine::Rendering::Renderers
 
     void GbufferPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        Specifications::TextureSpecification normal_output_spec   = {.IsUsageStorage = true, .Width = 1280, .Height = 780, .Format = ImageFormat::R16G16B16A16_SFLOAT};
-        Specifications::TextureSpecification position_output_spec = {.IsUsageStorage = true, .Width = 1280, .Height = 780, .Format = ImageFormat::R16G16B16A16_SFLOAT};
-        Specifications::TextureSpecification specular_output_spec = {.IsUsageStorage = true, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM};
-        Specifications::TextureSpecification colour_output_spec   = {.IsUsageStorage = true, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM};
+        uint32_t                             rt_w                 = device->SwapchainPtr->SwapchainImageWidth;
+        uint32_t                             rt_h                 = device->SwapchainPtr->SwapchainImageHeight;
+        Specifications::TextureSpecification normal_output_spec   = {.IsUsageStorage = true, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::R16G16B16A16_SFLOAT};
+        Specifications::TextureSpecification position_output_spec = {.IsUsageStorage = true, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::R16G16B16A16_SFLOAT};
+        Specifications::TextureSpecification specular_output_spec = {.IsUsageStorage = true, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::R8G8B8A8_UNORM};
+        Specifications::TextureSpecification colour_output_spec   = {.IsUsageStorage = true, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::R8G8B8A8_UNORM};
 
         auto&                                gbuffer_albedo       = res_builder->CreateRenderTarget("gbuffer_albedo_render_target", colour_output_spec);
         auto&                                gbuffer_specular     = res_builder->CreateRenderTarget("gbuffer_specular_render_target", specular_output_spec);

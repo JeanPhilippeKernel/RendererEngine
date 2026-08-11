@@ -134,6 +134,11 @@ struct InputManager {
         int      gamepad_index = 0
     );
 
+    // Bind the mouse scroll wheel Y axis to an Axis1D action slot.
+    // `scale` = 1.f means scroll up is positive. Use -1.f to invert.
+    // Scroll accumulates between Poll calls and is reset to 0 at the start of each Poll.
+    void BindScrollAxis(uint32_t slot, float scale = 1.f);
+
     // THREAD SAFETY: InputManager is NOT thread-safe.
     // Poll() and all Get* accessors must be called from the main thread only.
     // Do not call GetButton()/GetAxis()/GetCurrentFrame() from physics, audio,
@@ -170,9 +175,13 @@ private:
     InputFrame                    m_prev_frame    = {};
 
     // Mouse state carried between Poll calls
-    Vec2f                         m_last_mouse_pos = {};
-    Vec2f                         m_mouse_delta    = {};
-    Vec2f                         m_mouse_pos      = {};
+    Vec2f                         m_last_mouse_pos    = {};
+    Vec2f                         m_mouse_delta       = {};
+    Vec2f                         m_mouse_pos         = {};
+
+    // Scroll accumulator — written by glfwSetScrollCallback, drained by Poll.
+    float                         m_scroll_accumulator = 0.0f;
+    float                         m_current_scroll     = 0.0f;
 };
 
 } // namespace ZEngine::Input
@@ -337,23 +346,32 @@ void InputSystem::Tick(Scene& scene, const WorldTick& tick)
 
 ---
 
-## 9. Mouse Delta and Screen-Space Coordinates
+## 9. Mouse Delta, Screen-Space Coordinates, and Scroll
 
-Mouse delta and screen-space position are available as direct accessors on `InputManager`, independent of the action map. They are always valid after the first `Poll` call.
+Mouse delta, screen-space position, and scroll delta are available as direct accessors on `InputManager`, independent of the action map. They are always valid after the first `Poll` call.
 
 ```cpp
-// Free-look camera rotation — call from CameraSystem::Tick
+// Free-look camera rotation — call from FlyCameraController::Update
 Vec2f InputManager::GetMouseDelta() const;
 
-// UI hit testing — call from UIContext::ProcessInput
+// UI hit testing, scroll-toward-cursor ray origin
 Vec2f InputManager::GetMousePosition() const;
+
+// Raw scroll wheel Y accumulated this frame — positive = scroll up.
+// Reset to 0.f at the start of each Poll. Also available as a registered
+// Axis1D action via BindScrollAxis for rebindable scroll.
+float InputManager::GetScrollDelta() const;
 ```
 
-`GetMouseDelta` returns the pixel-space delta from the previous frame to the current frame. The delta is computed inside `Poll` by comparing `glfwGetCursorPos` results between successive calls.
+`GetMouseDelta` returns the pixel-space delta in logical pixels (GLFW convention) from the previous frame to the current frame. The delta is computed inside `Poll` by comparing `glfwGetCursorPos` results between successive calls.
 
-`GetMousePosition` returns the current cursor position in screen pixels, origin at top-left, consistent with GLFW's coordinate convention.
+`GetMousePosition` returns the current cursor position in logical screen pixels, origin at top-left, consistent with GLFW's coordinate convention.
 
-Both accessors may return zero before the first `Poll` call. Camera systems that consume mouse delta should clamp or filter the first frame to avoid a large initial jump if the cursor is not centered.
+`GetScrollDelta` returns the raw scroll wheel Y accumulated since the last `Poll`. It is stored in `m_scroll_delta` and set via `glfwSetScrollCallback`. The callback accumulates values between `Poll` calls; `Poll` reads and resets the accumulator. Scroll registered as an Axis1D action via `BindScrollAxis` uses the same accumulator — binding and raw accessor return the same value.
+
+Camera integration: `FlyCameraController` reads scroll via the registered `"CameraScroll"` Axis1D slot (bound with `BindScrollAxis`) and reads mouse delta via `GetMouseDelta()`. The camera never calls `glfwGetCursorPos` or `glfwSetScrollCallback` directly.
+
+Both `GetMouseDelta` and `GetScrollDelta` may return zero before the first `Poll` call. Camera systems should clamp or filter the first frame to avoid a large initial jump.
 
 Mouse capture (hiding the cursor and enabling unlimited movement) is managed by `GameWindow::SetCursorMode(CursorMode::Captured)`. `InputManager` does not manage cursor mode; it only reads position.
 
@@ -401,7 +419,8 @@ Game code accesses it via the engine context or a helper:
 - [ ] `InputManager.cpp` — `Poll`: keyboard, mouse button, gamepad button, gamepad axis
 - [ ] `InputManager.cpp` — `JustDown`/`JustUp` derivation via prev/current frame comparison
 - [ ] `InputManager.cpp` — `ApplyDeadzone` and `ApplyDeadzone2D`
-- [ ] `InputManager.cpp` — `GetMouseDelta`, `GetMousePosition`
+- [ ] `InputManager.cpp` — `GetMouseDelta`, `GetMousePosition`, `GetScrollDelta`
+- [ ] `InputManager.cpp` — `BindScrollAxis`: registers a `glfwSetScrollCallback` (once, on first call), stores scale; `Poll` reads `m_scroll_accumulator`, multiplies by scale, stores in the bound action slot and in `m_current_scroll`, then resets accumulator to 0
 - [ ] `InputManager.cpp` — `SaveBindings`/`LoadBindings` using `GameSaveData` API
 - [ ] `InputSystem.h/.cpp` — ECS system with correct `SystemDeps` masks
 - [ ] `Engine.h` — add `InputManager` to `EngineContext`
