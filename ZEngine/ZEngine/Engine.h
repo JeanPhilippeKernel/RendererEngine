@@ -15,6 +15,7 @@ namespace ZEngine
         Hardwares::VulkanDevicePtr   Device       = nullptr;
         Windows::CoreWindowPtr       Window       = nullptr;
         Core::Memory::ArenaAllocator VFSArena     = {};
+        Core::Memory::ArenaAllocator AssetArena   = {};
         Core::VFS::IVFSContext*      VFS          = nullptr;
         Core::Memory::ArenaAllocator InputArena   = {};
         Input::InputManager*         InputManager = nullptr;

@@ -155,9 +155,10 @@ protected:
         m_scanner.Initialize(m_scan_arena); // slot arenas reuse this arena's page size
         m_mock.Initialize(m_scan_arena);    // mock tree lives here (only written during setup)
 
-        m_scanner.SetOnScanComplete([this](ScanStats stats) {
-            m_stats = stats;
-            m_completed.store(true);
+        m_scanner.SetOnScanComplete(this, [](void* ctx, ScanStats stats) {
+            auto* self    = static_cast<VFSScannerTest*>(ctx);
+            self->m_stats = stats;
+            self->m_completed.store(true);
         });
     }
 

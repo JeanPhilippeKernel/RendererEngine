@@ -49,7 +49,8 @@ namespace ZEngine
         vfs_ctx->Initialize(&g_engine_ctx->VFSArena);
         g_engine_ctx->VFS = vfs_ctx;
 
-        Managers::AssetManager::Initialize(&arena, g_engine_ctx->Device, app->WorkingSpacePath);
+        memory->CreateBudgetedArena(memory->Budget.AssetManager, &g_engine_ctx->AssetArena);
+        Managers::AssetManager::Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->Device, app->WorkingSpacePath);
 
         memory->CreateBudgetedArena(memory->Budget.Input, &g_engine_ctx->InputArena);
         g_engine_ctx->InputManager = ZPushStructCtor(&arena, Input::InputManager);

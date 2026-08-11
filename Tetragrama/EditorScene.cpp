@@ -17,7 +17,7 @@ namespace Tetragrama
         Name = name;
         Sky.Mode.init(&LocalArena, "atmosphere");
 
-        PendingOnLoadHierarchies = CreateRef<ThreadSafeQueue<AssetManager::AssetHandle>>();
+        PendingOnLoadHierarchies = CreateRef<ThreadSafeQueue<AssetHandle>>();
 
         AssetFiles.init(&LocalArena, 500);
         HashToAssetFile.init(&LocalArena, 500);
