@@ -49,18 +49,19 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Renderer Passes
          */
-        auto base_pass           = ZPushStructCtor(Device->Arena, BasePass);
-        auto upload_pass         = ZPushStructCtor(Device->Arena, UploadPass);
-        auto scene_depth_prepass = ZPushStructCtor(Device->Arena, DepthPrePass);
-        auto skybox_pass         = ZPushStructCtor(Device->Arena, SkyboxPass);
-        auto grid_pass           = ZPushStructCtor(Device->Arena, GridPass);
-        auto gbuffer_pass        = ZPushStructCtor(Device->Arena, GbufferPass);
-        auto lighting_pass       = ZPushStructCtor(Device->Arena, LightingPass);
+        auto     base_pass           = ZPushStructCtor(Device->Arena, BasePass);
+        auto     upload_pass         = ZPushStructCtor(Device->Arena, UploadPass);
+        auto     scene_depth_prepass = ZPushStructCtor(Device->Arena, DepthPrePass);
+        auto     skybox_pass         = ZPushStructCtor(Device->Arena, SkyboxPass);
+        auto     grid_pass           = ZPushStructCtor(Device->Arena, GridPass);
+        auto     gbuffer_pass        = ZPushStructCtor(Device->Arena, GbufferPass);
+        auto     lighting_pass       = ZPushStructCtor(Device->Arena, LightingPass);
         // auto composite_pass      = ZPushStructCtor(Device->Arena, CompositePass);
 
-        // FrameSharedRenderTarget  = Device->CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
-        FrameColorRenderTarget   = Device->CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::R8G8B8A8_UNORM});
-        FrameDepthRenderTarget   = Device->CreateTexture({.PerformTransition = false, .Width = 1280, .Height = 780, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
+        uint32_t rt_w                = Device->SwapchainPtr->SwapchainImageWidth;
+        uint32_t rt_h                = Device->SwapchainPtr->SwapchainImageHeight;
+        FrameColorRenderTarget       = Device->CreateTexture({.PerformTransition = false, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::R8G8B8A8_UNORM});
+        FrameDepthRenderTarget       = Device->CreateTexture({.PerformTransition = false, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
 
         Device->TextureHandleToUpdates.Enqueue(FrameColorRenderTarget);
         /*
