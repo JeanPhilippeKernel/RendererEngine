@@ -5,16 +5,19 @@
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Windows/CoreWindow.h>
 
 namespace ZEngine
 {
     struct EngineContext
     {
-        Hardwares::VulkanDevicePtr   Device   = nullptr;
-        Windows::CoreWindowPtr       Window   = nullptr;
-        Core::Memory::ArenaAllocator VFSArena = {};
-        Core::VFS::IVFSContext*      VFS      = nullptr;
+        Hardwares::VulkanDevicePtr   Device       = nullptr;
+        Windows::CoreWindowPtr       Window       = nullptr;
+        Core::Memory::ArenaAllocator VFSArena     = {};
+        Core::VFS::IVFSContext*      VFS          = nullptr;
+        Core::Memory::ArenaAllocator InputArena   = {};
+        Input::InputManager*         InputManager = nullptr;
     };
     ZDEFINE_PTR(EngineContext);
 

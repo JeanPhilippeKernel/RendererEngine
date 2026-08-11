@@ -5,6 +5,7 @@ file(GLOB TEST_SOURCES
     Maths/*.cpp
     Misc/*.cpp
     Logging/*.cpp
+    Input/*.cpp
 )
 
 # macOS and Windows are multi-config
