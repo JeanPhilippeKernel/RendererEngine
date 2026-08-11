@@ -1,5 +1,15 @@
 #include <ZEngine/Core/VFS/VFSContext.h>
+#include <ZEngine/Core/VFS/VFSScanner.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+
+#if defined(__APPLE__)
+#include <ZEngine/Core/VFS/Platform/VFSFSEventsWatcher.h>
+#elif defined(__linux__)
+#include <ZEngine/Core/VFS/Platform/VFSInotifyWatcher.h>
+#elif defined(_WIN32)
+#include <ZEngine/Core/VFS/Platform/VFSRDCWatcher.h>
+#endif
 
 namespace ZEngine::Core::VFS
 {
@@ -7,6 +17,166 @@ namespace ZEngine::Core::VFS
     {
         m_arena = arena;
         m_mount_table.Initialize(m_arena, mount_table_capacity);
+    }
+
+    void VFSContext::InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner)
+    {
+        if (!m_arena)
+        {
+            ZENGINE_LOG_VFS_ERR("InitWatcher: arena is null");
+            return;
+        }
+        if (!project_root_native || project_root_native[0] == '\0')
+        {
+            ZENGINE_LOG_VFS_ERR("InitWatcher: project_root_native is null or empty");
+            return;
+        }
+
+        m_directory_cache   = cache;
+        m_scanner           = scanner;
+
+        const size_t length = Helpers::secure_strlen(project_root_native);
+        Helpers::secure_strncpy(m_project_root_native, sizeof(m_project_root_native), project_root_native, length < MAX_FILE_PATH_COUNT ? length : MAX_FILE_PATH_COUNT - 1);
+
+#if defined(__APPLE__)
+        {
+            void* storage = ZAlloc(m_arena, sizeof(VFSFSEventsWatcher), ZAlignof(VFSFSEventsWatcher));
+            if (!storage)
+            {
+                ZENGINE_LOG_VFS_ERR("InitWatcher: arena allocation failed for VFSFSEventsWatcher");
+                return;
+            }
+            auto* fsevents = new (storage) VFSFSEventsWatcher();
+            fsevents->Initialize(m_arena);
+            if (!fsevents->IsValid())
+            {
+                ZENGINE_LOG_VFS_ERR("InitWatcher: VFSFSEventsWatcher failed to initialize");
+                fsevents->~VFSFSEventsWatcher();
+                return;
+            }
+            m_platform_watcher = fsevents;
+        }
+#elif defined(__linux__)
+        {
+            void* storage = ZAlloc(m_arena, sizeof(VFSInotifyWatcher), ZAlignof(VFSInotifyWatcher));
+            if (!storage)
+            {
+                ZENGINE_LOG_VFS_ERR("InitWatcher: arena allocation failed for VFSInotifyWatcher");
+                return;
+            }
+            auto* inotify = new (storage) VFSInotifyWatcher();
+            inotify->Initialize(m_arena);
+            if (!inotify->IsValid())
+            {
+                ZENGINE_LOG_VFS_ERR("InitWatcher: VFSInotifyWatcher failed to initialize");
+                inotify->~VFSInotifyWatcher();
+                return;
+            }
+            m_platform_watcher = inotify;
+        }
+#elif defined(_WIN32)
+        {
+            void* storage = ZAlloc(m_arena, sizeof(VFSRDCWatcher), ZAlignof(VFSRDCWatcher));
+            if (!storage)
+            {
+                ZENGINE_LOG_VFS_ERR("InitWatcher: arena allocation failed for VFSRDCWatcher");
+                return;
+            }
+            auto* rdc = new (storage) VFSRDCWatcher();
+            rdc->Initialize(m_arena);
+            if (!rdc->IsValid())
+            {
+                ZENGINE_LOG_VFS_ERR("InitWatcher: VFSRDCWatcher failed to initialize");
+                rdc->~VFSRDCWatcher();
+                return;
+            }
+            m_platform_watcher = rdc;
+        }
+#else
+        ZENGINE_LOG_VFS_ERR("InitWatcher: unsupported platform");
+        return;
+#endif
+
+        void* fw_storage = ZAlloc(m_arena, sizeof(VFSFileWatcher), ZAlignof(VFSFileWatcher));
+        if (!fw_storage)
+        {
+            ZENGINE_LOG_VFS_ERR("InitWatcher: arena allocation failed for VFSFileWatcher");
+            m_platform_watcher->~IVFSPlatformWatcher();
+            m_platform_watcher = nullptr;
+            return;
+        }
+        m_file_watcher = new (fw_storage) VFSFileWatcher(m_platform_watcher);
+        m_file_watcher->Initialize(m_arena);
+
+        const WatchHandle root_handle = m_file_watcher->Watch(m_project_root_native, /*recursive=*/true, [this](const VFSWatchEvent& ev) {
+            const bool         full_rescan = (ev.Kind == WatchEventKind::Overflow);
+
+            VFSResult<VFSPath> path        = full_rescan ? VFSPath::FromNative(m_project_root_native) : VFSPath::FromNative(ev.Path);
+            if (path.Failed())
+            {
+                return;
+            }
+
+            const VFSPath target = (ev.IsDirectory || full_rescan) ? path.Value() : path.Value().Parent();
+
+            if (m_directory_cache)
+            {
+                m_directory_cache->Invalidate(target);
+                if (ev.Kind == WatchEventKind::Renamed && ev.OldPath[0] != '\0')
+                {
+                    VFSResult<VFSPath> old_path = VFSPath::FromNative(ev.OldPath);
+                    if (old_path.Succeeded())
+                    {
+                        m_directory_cache->Invalidate(ev.IsDirectory ? old_path.Value() : old_path.Value().Parent());
+                    }
+                }
+            }
+
+            if (m_scanner && m_directory_cache && !m_scanner->IsScanning())
+            {
+                m_scanner->Scan(this, target, m_directory_cache);
+            }
+        });
+
+        if (root_handle == INVALID_WATCH_HANDLE)
+        {
+            ZENGINE_LOG_VFS_ERR("InitWatcher: failed to watch root path '{}'", m_project_root_native);
+            m_file_watcher->~VFSFileWatcher();
+            m_file_watcher = nullptr;
+            m_platform_watcher->~IVFSPlatformWatcher();
+            m_platform_watcher = nullptr;
+            return;
+        }
+
+        m_platform_watcher->StartThread();
+    }
+
+    void VFSContext::Tick()
+    {
+        if (m_file_watcher)
+        {
+            m_file_watcher->Tick();
+        }
+    }
+
+    void VFSContext::ShutdownWatcher()
+    {
+        if (m_platform_watcher)
+        {
+            m_platform_watcher->StopThread();
+        }
+        if (m_file_watcher)
+        {
+            m_file_watcher->~VFSFileWatcher();
+            m_file_watcher = nullptr;
+        }
+        if (m_platform_watcher)
+        {
+            m_platform_watcher->~IVFSPlatformWatcher();
+            m_platform_watcher = nullptr;
+        }
+        m_directory_cache = nullptr;
+        m_scanner         = nullptr;
     }
 
     VFSResult<IVFSFile*> VFSContext::Open(const VFSPath& absolute_path, VFSOpenFlags flags)
