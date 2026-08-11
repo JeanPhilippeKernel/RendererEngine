@@ -31,9 +31,6 @@ namespace ZEngine::Applications
         Rendering::Renderers::GraphicRendererPtr SceneRenderer            = nullptr;
         Rendering::Renderers::ImGUIRendererPtr   ImguiRenderer            = nullptr;
         Hardwares::CommandBufferPtr              CurrentCmdBuf            = nullptr;
-        // Set by the application before Initialize() is called.
-        // Null = no env map configured; SkyboxPass will be disabled.
-        const char*                              ActiveEnvironmentMapPath = nullptr;
 
         void                                     Initialize(Hardwares::VulkanDevicePtr device);
         void                                     Shutdown();

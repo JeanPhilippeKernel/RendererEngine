@@ -10,6 +10,27 @@
 
 namespace ZEngine::Rendering::Scenes
 {
+    // Sky rendering configuration — stored per scene, serialized in .zescene.
+    // Supported modes: "atmosphere" (default), "hdri", "skySphere".
+    struct SkyConfig
+    {
+        ZEngine::Core::Containers::String Mode           = {};  // "atmosphere", "hdri", "skySphere"
+        ZEngine::Core::Containers::String EnvironmentMap = {};  // .zenvmap filename (hdri mode only)
+
+        bool IsHDRI() const
+        {
+            return Mode.c_str() && (strcmp(Mode.c_str(), "hdri") == 0);
+        }
+        bool IsAtmosphere() const
+        {
+            return Mode.empty() || (strcmp(Mode.c_str(), "atmosphere") == 0);
+        }
+        bool IsSkySphere() const
+        {
+            return Mode.c_str() && (strcmp(Mode.c_str(), "skySphere") == 0);
+        }
+    };
+
     struct SceneData
     {
         // Camera UBO — migrated to PerFrameUploadHeap; offset updated each frame in DrawScene
@@ -31,6 +52,10 @@ namespace ZEngine::Rendering::Scenes
     {
         std::atomic_bool                                                                   MeshAllocationDirty[3]   = {false, false, false};
         std::atomic_bool                                                                   TransformBufferDirty[3]  = {false, false, false};
+        std::atomic_bool                                                                   SkyDirty[3]              = {false, false, false};
+
+        // Sky configuration — set when the scene is loaded/changed; one copy per scene object.
+        SkyConfig                                                                          Sky                      = {};
 
         uint32_t                                                                           CurrentTransformOffset   = 0;
         uint32_t                                                                           CurrentVertexOffset      = 0;

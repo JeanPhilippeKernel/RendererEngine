@@ -76,37 +76,11 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_point_light_buffer");
         RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_spot_light_buffer");
 
-        // Wire the env map path from the renderer config; null = no env map, pass skipped
-        skybox_pass->EnvMapPath = ActiveEnvironmentMapPath;
-
-        // Enable the Skybox Pass only when a valid env map path is configured and exists in the VFS.
-        bool skybox_enabled     = false;
-        if (ActiveEnvironmentMapPath && ActiveEnvironmentMapPath[0] != '\0')
-        {
-            auto* vfs = ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->VFS : nullptr;
-            if (vfs)
-            {
-                auto path_result   = ZEngine::Core::VFS::VFSPath::FromNative(ActiveEnvironmentMapPath);
-                auto exists_result = path_result.Succeeded() ? vfs->Exists(path_result.Value()) : ZEngine::Core::VFS::VFSResult<bool>::Fail(ZEngine::Core::VFS::VFSError::InvalidPath);
-                if (exists_result.Failed() || !exists_result.Value())
-                {
-                    ZENGINE_CORE_ERROR("[Renderer] Environment map not found in VFS: {}", ActiveEnvironmentMapPath)
-                }
-                else
-                {
-                    skybox_enabled = true;
-                }
-            }
-            else
-            {
-                ZENGINE_CORE_ERROR("[Renderer] VFS not available — cannot resolve environment map path: {}", ActiveEnvironmentMapPath)
-            }
-        }
-
+        // Skybox starts disabled; ApplySkyConfig enables it when a scene with an HDRI sky loads.
         RenderGraph->AddCallbackPass("Upload Pass", upload_pass);
         RenderGraph->AddCallbackPass("Base Pass", base_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
-        RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass, skybox_enabled);
+        RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass, false);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         //  RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         //      RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
@@ -144,5 +118,46 @@ namespace ZEngine::Rendering::Renderers
     Textures::TextureHandle GraphicRenderer::GetFrameOutput()
     {
         return RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName);
+    }
+
+    void GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky)
+    {
+        auto& node = RenderGraph->NodeMap["Skybox Pass"];
+
+        if (!sky.IsHDRI())
+        {
+            node.Enabled = false;
+            return;
+        }
+
+        auto env_path = sky.EnvironmentMap.c_str();
+        if (!env_path || env_path[0] == '\0')
+        {
+            node.Enabled = false;
+            return;
+        }
+
+        auto* vfs = ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->VFS : nullptr;
+        if (!vfs)
+        {
+            ZENGINE_CORE_ERROR("[Renderer] VFS not available — cannot resolve environment map: {}", env_path)
+            node.Enabled = false;
+            return;
+        }
+
+        auto path_result   = ZEngine::Core::VFS::VFSPath::FromNative(env_path);
+        auto exists_result = path_result.Succeeded()
+                               ? vfs->Exists(path_result.Value())
+                               : ZEngine::Core::VFS::VFSResult<bool>::Fail(ZEngine::Core::VFS::VFSError::InvalidPath);
+        if (exists_result.Failed() || !exists_result.Value())
+        {
+            ZENGINE_CORE_ERROR("[Renderer] Environment map not found in VFS: {}", env_path)
+            node.Enabled = false;
+            return;
+        }
+
+        auto* skybox_pass   = static_cast<SkyboxPass*>(node.CallbackPass);
+        skybox_pass->EnvMapPath = env_path;
+        node.Enabled            = true;
     }
 } // namespace ZEngine::Rendering::Renderers

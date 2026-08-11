@@ -23,6 +23,7 @@ namespace ZEngine::Rendering::Renderers
         void                    Initialize(Hardwares::VulkanDevicePtr device) override;
         void                    Deinitialize() override;
         void                    DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera);
+        void                    ApplySkyConfig(const Scenes::SkyConfig& sky);
         Textures::TextureHandle GetFrameOutput();
     };
     ZDEFINE_PTR(GraphicRenderer);

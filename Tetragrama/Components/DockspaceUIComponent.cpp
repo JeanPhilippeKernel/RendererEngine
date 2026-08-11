@@ -720,6 +720,17 @@ namespace Tetragrama::Components
 
         current_scene->Name = app->Configuration->ActiveSceneName.c_str();
 
+        // Copy sky config from deserialized scene; resolve env map filename to absolute path
+        current_scene->Sky.Mode.init(&current_scene->LocalArena, scene.Sky.Mode.empty() ? "atmosphere" : scene.Sky.Mode.c_str());
+        if (!scene.Sky.EnvironmentMap.empty() && !app->Configuration->EnvironmentMapImportPath.empty())
+        {
+            auto abs_env = fmt::format("{}/{}", app->Configuration->EnvironmentMapImportPath.c_str(), scene.Sky.EnvironmentMap.c_str());
+            current_scene->Sky.EnvironmentMap.init(&current_scene->LocalArena, abs_env.c_str());
+        }
+        current_scene->SkyDirty[0].store(true, std::memory_order_release);
+        current_scene->SkyDirty[1].store(true, std::memory_order_release);
+        current_scene->SkyDirty[2].store(true, std::memory_order_release);
+
         current_scene->MarkDirty(false);
 
         {

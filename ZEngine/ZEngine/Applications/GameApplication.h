@@ -50,12 +50,6 @@ namespace ZEngine::Applications
 
         virtual void                      OnInitializing()              = 0;
         virtual void                      OnInitialized()               = 0;
-        // Override to supply the active environment map path to the render pipeline.
-        // Return null if no env map is configured for this project.
-        virtual const char*               GetActiveEnvironmentMapPath()
-        {
-            return nullptr;
-        }
 
         virtual void OnEvent(Core::CoreEvent&) = 0;
         virtual void OnUpdate(float dt)        = 0;

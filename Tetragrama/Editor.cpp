@@ -47,13 +47,6 @@ namespace Tetragrama
         WindowCfg.Title.init(&Memory->MainArena, title.c_str());
     }
 
-    const char* Editor::GetActiveEnvironmentMapPath()
-    {
-        if (!Configuration || Configuration->ActiveEnvironmentMapPath.empty())
-            return nullptr;
-        return Configuration->ActiveEnvironmentMapPath.c_str();
-    }
-
     void Editor::OnInitialized()
     {
         if (WorkingSpacePath && WorkingSpacePath[0] != '\0')
@@ -166,20 +159,6 @@ namespace Tetragrama
         MaterialPath.init(arena, asset_path("materialDir", nullptr, nullptr, "/Assets/Materials").c_str());
         SpritePath.init(arena, asset_path("spriteDir", nullptr, nullptr, "/Assets/Sprites").c_str());
         EnvironmentMapImportPath.init(arena, asset_path("environmentMapDir", nullptr, nullptr, "/Assets/EnvironmentMaps").c_str());
-
-        // Active environment map: optional — read from "sky.environmentMap" (filename only)
-        // Resolved against EnvironmentMapImportPath at runtime.
-        std::string env_map_file;
-        if (config.contains("sky") && config["sky"].contains("environmentMap"))
-            env_map_file = config["sky"]["environmentMap"].get<std::string>();
-        else if (config.contains("environmentMap"))
-            env_map_file = config["environmentMap"].get<std::string>(); // legacy fallback
-
-        if (!env_map_file.empty())
-        {
-            auto abs_path = fmt::format("{}/{}", EnvironmentMapImportPath.c_str(), env_map_file);
-            ActiveEnvironmentMapPath.init(arena, abs_path.c_str());
-        }
 
         /*
          * Retreiving the Active Scene

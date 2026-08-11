@@ -13,10 +13,9 @@ namespace ZEngine::Applications
         UICommandBufferIndex    = RenderMainThreadIndex + 1u;
         Device->Arena->CreateSubArena(ZMega(30), &LocalArena);
 
-        SceneRenderer                           = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
-        ImguiRenderer                           = ZPushStructCtor(Device->Arena, Rendering::Renderers::ImGUIRenderer);
+        SceneRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
+        ImguiRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::ImGUIRenderer);
 
-        SceneRenderer->ActiveEnvironmentMapPath = ActiveEnvironmentMapPath;
         SceneRenderer->Initialize(Device);
         ImguiRenderer->Initialize(Device);
 
@@ -82,6 +81,11 @@ namespace ZEngine::Applications
         auto swpachain    = Device->SwapchainPtr;
         auto frame_index  = swpachain->CurrentFrame->Index;
         auto thread_index = RenderMainThreadIndex;
+
+        if (scene->SkyDirty[Device->SwapchainPtr->CurrentFrame->Index].exchange(false, std::memory_order_acquire))
+        {
+            SceneRenderer->ApplySkyConfig(scene->Sky);
+        }
 
         if (scene->TransformBufferDirty[Device->SwapchainPtr->CurrentFrame->Index].load(std::memory_order_acquire) || scene->MeshAllocationDirty[Device->SwapchainPtr->CurrentFrame->Index].load(std::memory_order_acquire))
         {
