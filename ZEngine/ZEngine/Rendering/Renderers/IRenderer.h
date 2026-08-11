@@ -60,6 +60,8 @@ namespace ZEngine::Rendering::Renderers
         Hardwares::VulkanDevicePtr Device                                        = nullptr;
         Renderers::RenderGraphPtr  RenderGraph                                   = nullptr;
         Scenes::SceneDataPtr       RenderSceneData                               = nullptr;
+        // Absolute path to the active .zenvmap; empty string if none configured
+        const char*                ActiveEnvironmentMapPath                      = nullptr;
 
         const size_t               DefaultBufferSize                             = ZMega(10);
 

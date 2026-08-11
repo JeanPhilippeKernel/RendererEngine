@@ -13,9 +13,10 @@ namespace ZEngine::Applications
         UICommandBufferIndex    = RenderMainThreadIndex + 1u;
         Device->Arena->CreateSubArena(ZMega(30), &LocalArena);
 
-        SceneRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
-        ImguiRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::ImGUIRenderer);
+        SceneRenderer                           = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
+        ImguiRenderer                           = ZPushStructCtor(Device->Arena, Rendering::Renderers::ImGUIRenderer);
 
+        SceneRenderer->ActiveEnvironmentMapPath = ActiveEnvironmentMapPath;
         SceneRenderer->Initialize(Device);
         ImguiRenderer->Initialize(Device);
 

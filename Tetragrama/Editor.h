@@ -21,6 +21,9 @@ namespace Tetragrama
         ZEngine::Core::Containers::String DefaultImportSoundPath   = {};
         ZEngine::Core::Containers::String ScenePath                = {};
         ZEngine::Core::Containers::String SceneDataPath            = {};
+        ZEngine::Core::Containers::String EnvironmentMapImportPath = {};
+        // Absolute path to the active .zenvmap file; empty if none configured
+        ZEngine::Core::Containers::String ActiveEnvironmentMapPath = {};
         ZEngine::Core::Containers::String ProjectName              = {};
         ZEngine::Core::Containers::String ActiveSceneName          = {};
 
@@ -42,6 +45,7 @@ namespace Tetragrama
         virtual void                       OnInitializing() override;
         virtual void                       OverrideWindowConfiguration() override;
         virtual void                       OnInitialized() override;
+        virtual const char*                GetActiveEnvironmentMapPath() override;
 
         virtual void                       OnUpdate(float dt) override;
         virtual void                       OnEvent(ZEngine::Core::CoreEvent&) override;

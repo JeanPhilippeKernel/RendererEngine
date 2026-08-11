@@ -47,6 +47,13 @@ namespace Tetragrama
         WindowCfg.Title.init(&Memory->MainArena, title.c_str());
     }
 
+    const char* Editor::GetActiveEnvironmentMapPath()
+    {
+        if (!Configuration || Configuration->ActiveEnvironmentMapPath.empty())
+            return nullptr;
+        return Configuration->ActiveEnvironmentMapPath.c_str();
+    }
+
     void Editor::OnInitialized()
     {
         if (WorkingSpacePath && WorkingSpacePath[0] != '\0')
@@ -99,40 +106,34 @@ namespace Tetragrama
     void EditorConfiguration::ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file)
     {
         std::ifstream  f(file);
-        nlohmann::json config             = nlohmann::json::parse(f);
-        std::string    root_project_dir   = std::filesystem::path(file).parent_path().string();
+        nlohmann::json config           = nlohmann::json::parse(f);
+        std::string    root_project_dir = std::filesystem::path(file).parent_path().string();
 
-        std::string    working_space_path = config["workingSpace"];
+        // Helper: expand $(workingSpace) token in a json string field
+        auto           expand           = [&](nlohmann::json& node, std::string_view key) {
+            std::string_view lookup("$(workingSpace)");
+            auto             s = node[key].get<std::string>();
+            auto             p = s.find(lookup);
+            if (p != std::string::npos)
+                node[key] = s.replace(p, lookup.size(), "");
+        };
+        auto expand_nested = [&](nlohmann::json& node, std::string_view section, std::string_view key) {
+            std::string_view lookup("$(workingSpace)");
+            auto             s = node[section][key].get<std::string>();
+            auto             p = s.find(lookup);
+            if (p != std::string::npos)
+                node[section][key] = s.replace(p, lookup.size(), "");
+        };
+
+        std::string working_space_path = config["workingSpace"];
         if (working_space_path == ".")
         {
-            std::string_view lookup_key("$(workingSpace)");
-            size_t           length          = lookup_key.size();
-
-            auto&            texture_path    = config["defaultImportDir"]["textureDir"];
-            auto&            sound_path      = config["defaultImportDir"]["soundDir"];
-            auto&            scene_path      = config["sceneDir"];
-            auto&            scene_data_path = config["sceneDataDir"];
-
-            if (texture_path.get<std::string>().find(lookup_key) != std::string::npos)
-            {
-                config["defaultImportDir"]["textureDir"] = texture_path.get<std::string>().replace(texture_path.get<std::string>().find(lookup_key), length, "");
-            }
-
-            if (sound_path.get<std::string>().find(lookup_key) != std::string::npos)
-            {
-                config["defaultImportDir"]["soundDir"] = sound_path.get<std::string>().replace(sound_path.get<std::string>().find(lookup_key), length, "");
-            }
-
-            if (scene_path.get<std::string>().find(lookup_key) != std::string::npos)
-            {
-                config["sceneDir"] = scene_path.get<std::string>().replace(scene_path.get<std::string>().find(lookup_key), length, "");
-            }
-
-            if (scene_data_path.get<std::string>().find(lookup_key) != std::string::npos)
-            {
-                config["sceneDataDir"] = scene_data_path.get<std::string>().replace(scene_data_path.get<std::string>().find(lookup_key), length, "");
-            }
-
+            expand_nested(config, "defaultImportDir", "textureDir");
+            expand_nested(config, "defaultImportDir", "soundDir");
+            expand(config, "sceneDir");
+            expand(config, "sceneDataDir");
+            if (config.contains("environmentMapDir"))
+                expand(config, "environmentMapDir");
             config["workingSpace"] = root_project_dir;
         }
 
@@ -142,6 +143,32 @@ namespace Tetragrama
         DefaultImportSoundPath.init(arena, config["defaultImportDir"]["soundDir"].get<std::string>().c_str());
         ScenePath.init(arena, config["sceneDir"].get<std::string>().c_str());
         SceneDataPath.init(arena, config["sceneDataDir"].get<std::string>().c_str());
+
+        // Environment map import directory (where .zenvmap files are written)
+        if (config.contains("environmentMapDir"))
+        {
+            EnvironmentMapImportPath.init(arena, config["environmentMapDir"].get<std::string>().c_str());
+        }
+        else
+        {
+            // Default: <project>/Assets/EnvironmentMaps
+            auto default_env_dir = fmt::format("{}/Assets/EnvironmentMaps", config["workingSpace"].get<std::string>());
+            EnvironmentMapImportPath.init(arena, default_env_dir.c_str());
+        }
+
+        // Active environment map: optional — read from "sky.environmentMap" (filename only)
+        // Resolved against EnvironmentMapImportPath at runtime.
+        std::string env_map_file;
+        if (config.contains("sky") && config["sky"].contains("environmentMap"))
+            env_map_file = config["sky"]["environmentMap"].get<std::string>();
+        else if (config.contains("environmentMap"))
+            env_map_file = config["environmentMap"].get<std::string>(); // legacy fallback
+
+        if (!env_map_file.empty())
+        {
+            auto abs_path = fmt::format("{}/{}", EnvironmentMapImportPath.c_str(), env_map_file);
+            ActiveEnvironmentMapPath.init(arena, abs_path.c_str());
+        }
 
         /*
          * Retreiving the Active Scene

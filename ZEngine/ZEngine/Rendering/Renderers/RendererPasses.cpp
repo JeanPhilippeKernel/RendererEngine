@@ -1,3 +1,4 @@
+#include <ZEngine/Engine.h>
 #include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/RendererPasses.h>
@@ -205,9 +206,34 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        auto env_map_res                            = res_builder->CreateTexture("skybox_env_map", "Settings/EnvironmentMaps/bergen_4k.zenvmap");
+        bool env_map_available = false;
+        if (EnvMapPath && EnvMapPath[0] != '\0')
+        {
+            auto* vfs = ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->VFS : nullptr;
+            if (vfs)
+            {
+                auto path_result   = ZEngine::Core::VFS::VFSPath::FromNative(EnvMapPath);
+                auto exists_result = path_result.Succeeded() ? vfs->Exists(path_result.Value()) : ZEngine::Core::VFS::VFSResult<bool>::Fail(ZEngine::Core::VFS::VFSError::InvalidPath);
+                if (exists_result.Failed() || !exists_result.Value())
+                    ZENGINE_CORE_ERROR("[SkyboxPass] Environment map not found in VFS: {}", EnvMapPath)
+                else
+                    env_map_available = true;
+            }
+            else
+            {
+                ZENGINE_CORE_ERROR("[SkyboxPass] VFS not available — cannot resolve environment map path: {}", EnvMapPath)
+            }
+        }
 
-        m_env_map                                   = env_map_res.ResourceInfo.TextureHandle;
+        if (!env_map_available)
+        {
+            m_env_map = {};
+        }
+        else
+        {
+            auto env_map_res = res_builder->CreateTexture("skybox_env_map", EnvMapPath);
+            m_env_map        = env_map_res.ResourceInfo.TextureHandle;
+        }
 
         const auto&                   skybox_vb_set = res_inspector->GetResource("SkyboxVbSet");
         const auto&                   skybox_ib_set = res_inspector->GetResource("SkyboxIbSet");
@@ -257,7 +283,7 @@ namespace ZEngine::Rendering::Renderers
             (*output_pass)->Bake();
         }
 
-        if (scene)
+        if (scene && m_env_map.Valid())
         {
             (*output_pass)->SetInputFromHeap("UBCamera", sizeof(Contracts::UBOCameraLayout));
             (*output_pass)->SetInput("EnvMap", m_env_map);
@@ -269,6 +295,9 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
+        if (!m_env_map.Valid())
+            return;
+
         const auto& vb_handle     = res_inspector->GetVertexBufferSet("SkyboxVbSet");
         const auto& ib_handle     = res_inspector->GetIndexBufferSet("SkyboxIbSet");
 

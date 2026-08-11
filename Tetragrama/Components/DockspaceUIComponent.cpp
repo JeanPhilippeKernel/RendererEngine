@@ -552,7 +552,7 @@ namespace Tetragrama::Components
 
         auto config      = ZPushStruct(arena, ZEngine::Importers::ImportConfiguration);
         config->OutputWorkingSpacePath.init(arena, app->Configuration->WorkingSpacePath.c_str());
-        config->OutputAssetsPath.init(arena, "Settings/EnvironmentMaps");
+        config->OutputAssetsPath.init(arena, app->Configuration->EnvironmentMapImportPath.c_str());
         config->AssetName.init(arena, asset_name.c_str());
         config->OutputAssetFile.init(arena, output_file.c_str());
 

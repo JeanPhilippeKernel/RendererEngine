@@ -17,7 +17,8 @@ namespace ZEngine::Applications
 
         // Step 22 — AppRenderPipeline: must follow Engine::Initialize (device live) and
         // precede OnInitialized so the game DLL sees a fully constructed pipeline
-        RenderPipeline = ZPushStructCtor(&Memory->MainArena, AppRenderPipeline);
+        RenderPipeline                           = ZPushStructCtor(&Memory->MainArena, AppRenderPipeline);
+        RenderPipeline->ActiveEnvironmentMapPath = GetActiveEnvironmentMapPath();
         RenderPipeline->Initialize(Engine::GetContext()->Device);
 
         OnInitialized();
