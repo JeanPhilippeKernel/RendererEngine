@@ -1,7 +1,7 @@
 # ZEngine — Profiling and Instrumentation
 
 **Priority:** P3 — Required to diagnose performance issues in shipped builds
-**Status:** Partially implemented — memory profiling, CPU profiling macros, and profiler buffer introduced; full profiling UI pending
+**Status:** Partially implemented — macros, Tracy integration, lightweight fallback (ScopeGuard, ProfilerBuffer), and MemoryProfiler implemented; GPU timestamp profiler, debug overlay, debug console, and instrumentation coverage pending
 **Depends on:** Nothing (can be implemented first, improves all other work)
 **Blocks:** Nothing critical, but without it performance regressions are invisible
 

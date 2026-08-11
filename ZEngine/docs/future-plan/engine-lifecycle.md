@@ -1,7 +1,7 @@
 # ZEngine — Engine Lifecycle
 
 **Priority:** P0 — All subsystems depend on correct initialization order
-**Status:** Implemented
+**Status:** Partially implemented — core startup/shutdown sequence, VFS wiring, and logging/thread pool lifecycle implemented; ECS, animation, physics, audio, and network initialization steps pending (depend on those systems)
 **Modifies:** `Engine.h`, `Engine.cpp`, `GameApplication.h`, `EngineContext`
 
 ---

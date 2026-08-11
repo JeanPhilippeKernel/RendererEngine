@@ -1,7 +1,7 @@
 # GPU Allocator Rearchitecture — VMA Pools, Staging Ring, Timeline Drain
 
 **Priority:** P0 — Required before 4K resolution target; fixes confirmed correctness bugs  
-**Status:** Partially implemented — VMA segregated pool foundation introduced; full rearchitecture pending  
+**Status:** Implemented — GpuAllocator with VMA segregated pools, staging ring, timeline-gated deferred free, and all C1-C4/H2/H3/H5 bugs fixed (PR #581)  
 **Depends on:** Nothing — self-contained hardware layer change  
 **Blocks:** `per-frame-upload-heap.md` (needs clean allocator API first)
 
