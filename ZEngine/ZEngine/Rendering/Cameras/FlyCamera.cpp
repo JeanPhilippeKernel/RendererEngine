@@ -1,22 +1,20 @@
+#include <GLFW/glfw3.h>
 #include <ZEngine/Core/Maths/MathUtils.h>
 #include <ZEngine/Rendering/Cameras/FlyCamera.h>
-#include <ZEngine/Windows/Inputs/KeyCode.h>
 #include <cmath>
 
 using namespace ZEngine::Core::Maths;
 
 namespace ZEngine::Rendering::Cameras
 {
-    static constexpr float kPitchLimit = 1.5533430f; // radians(89.0f)
-    static constexpr float kMaxDt      = 0.1f;       // cap: prevents teleport after pause/unminimize
+    static constexpr float kPitchLimit = 1.5533430f; // radians(89)
+    static constexpr float kMaxDt      = 0.1f;
 
-    // Frame-rate-independent exponential smoothing: identical feel at any fps.
     static inline float    SmoothT(float factor, float dt)
     {
         return 1.0f - expf(-factor * dt);
     }
 
-    // Wrap angle to [-PI, PI] so lerps always take the shortest arc.
     static inline float WrapAngle(float a)
     {
         while (a > PI<float>)
@@ -26,7 +24,6 @@ namespace ZEngine::Rendering::Cameras
         return a;
     }
 
-    // Shortest-arc lerp for angles stored in radians.
     static inline float LerpAngleRad(float a, float b, float t)
     {
         return a + WrapAngle(b - a) * t;
@@ -34,19 +31,22 @@ namespace ZEngine::Rendering::Cameras
 
     FlyCamera::FlyCamera(float aspectRatio, const CameraSetting& settings)
     {
-        AspectRatio       = aspectRatio;
-        Settings          = settings;
-        Position          = {0.0f, 20.0f, 10.0f};
-        Pitch             = radians(30.0f);
-        m_targetPitch     = Pitch;
-        m_targetPosition  = Position;
-        m_animDuration    = Settings.FocusDuration;
-        Type              = CameraType::PERSPECTIVE;
-
-        m_projectionDirty = true;
-        m_viewDirty       = true;
+        AspectRatio    = aspectRatio;
+        Settings       = settings;
+        Position       = {0.0f, 20.0f, 10.0f};
+        Pitch          = radians(30.0f);
+        m_targetPitch  = Pitch;
+        m_targetPos    = Position;
+        m_animDuration = Settings.FocusDuration;
+        Type           = CameraType::PERSPECTIVE;
+        m_projDirty    = true;
+        m_viewDirty    = true;
         UpdateMatrices();
     }
+
+    // ---------------------------------------------------------------------------
+    // Public accessors
+    // ---------------------------------------------------------------------------
 
     Quaternion<float> FlyCamera::GetOrientation() const
     {
@@ -73,49 +73,22 @@ namespace ZEngine::Rendering::Cameras
         return rotate(GetOrientation(), Vec3f(0.0f, 1.0f, 0.0f));
     }
 
-    void FlyCamera::UpdateMatrices()
+    // ---------------------------------------------------------------------------
+    // Configuration
+    // ---------------------------------------------------------------------------
+
+    void FlyCamera::SetViewportSize(float logicalW, float logicalH)
     {
-        if (m_projectionDirty)
-            RecalculateProjection();
-        if (m_viewDirty)
-            RecalculateView();
-    }
-
-    void FlyCamera::RecalculateView()
-    {
-        Vec3f f     = GetForward();
-        Vec3f r     = GetRight();
-        Vec3f u     = GetUp();
-
-        View        = Mat4f(r.x, r.y, r.z, -dot(r, Position), u.x, u.y, u.z, -dot(u, Position), -f.x, -f.y, -f.z, dot(f, Position), 0.0f, 0.0f, 0.0f, 1.0f);
-        m_viewDirty = false;
-    }
-
-    void FlyCamera::RecalculateProjection()
-    {
-        float fovRad      = radians(Settings.FOV);
-        float tanHalf     = tanf(fovRad * 0.5f);
-        float n           = Settings.NearPlane;
-        float f           = Settings.FarPlane;
-        float a           = AspectRatio;
-
-        // Vulkan: Y flipped, depth range [0, 1].
-        Projection        = Mat4f(1.0f / (a * tanHalf), 0.0f, 0.0f, 0.0f, 0.0f, -1.0f / tanHalf, 0.0f, 0.0f, 0.0f, 0.0f, f / (n - f), (n * f) / (n - f), 0.0f, 0.0f, -1.0f, 0.0f);
-        m_projectionDirty = false;
-    }
-
-    void FlyCamera::SetViewportSize(float width, float height)
-    {
-        m_viewportWidth  = width;
-        m_viewportHeight = height;
-        AspectRatio      = width / height;
-        RecalculateProjection();
+        m_logicalW  = logicalW;
+        m_logicalH  = logicalH;
+        AspectRatio = logicalW / logicalH;
+        m_projDirty = true;
     }
 
     void FlyCamera::SetPosition(Vec3f position)
     {
-        Position = m_targetPosition = position;
-        RecalculateView();
+        Position = m_targetPos = position;
+        m_viewDirty            = true;
     }
 
     void FlyCamera::SetOrientation(float pitchDeg, float yawDeg)
@@ -123,8 +96,218 @@ namespace ZEngine::Rendering::Cameras
         Pitch = m_targetPitch = clamp(radians(pitchDeg), -kPitchLimit, kPitchLimit);
         Yaw = m_targetYaw = WrapAngle(radians(yawDeg));
         m_viewDirty       = true;
-        RecalculateView();
     }
+
+    // ---------------------------------------------------------------------------
+    // OnUpdate — main entry point called once per frame by the controller
+    // ---------------------------------------------------------------------------
+
+    void FlyCamera::OnUpdate(float dt)
+    {
+        if (dt <= 0.0f)
+            return;
+        dt = std::min(dt, kMaxDt);
+
+        // Pan transitions — checked every frame regardless of current state.
+        if (Input.MiddleDown && State != FlyCameraState::Pan && State != FlyCameraState::Animating)
+        {
+            m_stateBeforePan = State;
+            State            = FlyCameraState::Pan;
+        }
+        if (!Input.MiddleDown && State == FlyCameraState::Pan)
+        {
+            State = m_stateBeforePan;
+        }
+
+        // Orbit entry (Alt+LMB, only from Free).
+        if (Input.AltDown && Input.LeftDown && State == FlyCameraState::Free)
+        {
+            float pivotDist = m_orbitDist;
+            if (Hooks.Raycast)
+            {
+                float hit = Hooks.Raycast(Position, GetForward(), m_orbitDist * 2.0f);
+                if (hit < m_orbitDist * 2.0f)
+                    pivotDist = hit;
+            }
+            m_orbitPivot      = Position + GetForward() * pivotDist;
+            m_orbitDist       = clamp((Position - m_orbitPivot).magnitude(), Settings.MinOrbitDistance, Settings.MaxOrbitDistance);
+            m_targetOrbitDist = m_orbitDist;
+            State             = FlyCameraState::Orbit;
+        }
+
+        // Orbit exit (Alt released with no held buttons).
+        if (!Input.AltDown && State == FlyCameraState::Orbit && !Input.LeftDown && !Input.RightDown)
+        {
+            m_targetPos   = Position;
+            m_targetPitch = Pitch;
+            m_targetYaw   = Yaw;
+            State         = FlyCameraState::Free;
+        }
+
+        switch (State)
+        {
+            case FlyCameraState::Animating:
+                UpdateAnimation(dt);
+                break;
+            case FlyCameraState::Pan:
+                UpdatePan(dt);
+                break;
+            case FlyCameraState::Orbit:
+                UpdateOrbit(dt);
+                break;
+            case FlyCameraState::Free:
+                UpdateFree(dt);
+                break;
+        }
+
+        if (Input.Keys[GLFW_KEY_F])
+        {
+            Vec3f center = {0.0f, 0.0f, 0.0f};
+            float radius = 5.0f;
+            if (Hooks.GetSelectionBounds)
+                std::tie(center, radius) = Hooks.GetSelectionBounds();
+            FocusOn(center, radius);
+            Input.Keys[GLFW_KEY_F] = false;
+        }
+
+        for (int i = 0; i < 9; ++i)
+        {
+            int key = GLFW_KEY_1 + i;
+            if (Input.Keys[key])
+            {
+                if (Input.CtrlDown)
+                    SaveBookmark(i);
+                else
+                    RecallBookmark(i);
+                Input.Keys[key] = false;
+            }
+        }
+
+        if (m_projDirty)
+            RecalculateProjection();
+        if (m_viewDirty)
+            RecalculateView();
+
+        Input.FlushDeltas();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Private update methods
+    // ---------------------------------------------------------------------------
+
+    void FlyCamera::UpdateFree(float dt)
+    {
+        float t = SmoothT(Settings.SmoothingFactor, dt);
+
+        if (Input.RightDown)
+        {
+            float speed    = AdaptiveSpeed() * (Input.ShiftDown ? Settings.FastSpeedMultiplier : 1.0f);
+            m_targetPos   += KeyboardMoveDir() * speed * dt;
+
+            float yawSign  = GetUp().y < 0.0f ? -1.0f : 1.0f;
+            m_targetYaw    = WrapAngle(m_targetYaw - yawSign * (Input.MouseDeltaX / m_logicalW) * PI<float> * Settings.RotationSpeed);
+            m_targetPitch  = clamp(m_targetPitch - (Input.MouseDeltaY / m_logicalH) * PI<float> * Settings.RotationSpeed, -kPitchLimit, kPitchLimit);
+        }
+
+        if (Input.ScrollDelta != 0.0f)
+        {
+            Ray   ray    = GetRayFromViewport(Input.MouseViewportX, Input.MouseViewportY);
+            float speed  = AdaptiveSpeed();
+            m_targetPos += ray.Direction * Input.ScrollDelta * Settings.ScrollSpeed * speed;
+        }
+
+        if ((m_targetPos - Position).magnitude() > 0.00001f)
+        {
+            Position    = lerp(Position, m_targetPos, t);
+            m_viewDirty = true;
+        }
+
+        float newPitch = clamp(lerp(Pitch, m_targetPitch, t), -kPitchLimit, kPitchLimit);
+        float newYaw   = LerpAngleRad(Yaw, m_targetYaw, t);
+        if (newPitch != Pitch || newYaw != Yaw)
+        {
+            Pitch       = newPitch;
+            Yaw         = newYaw;
+            m_viewDirty = true;
+        }
+    }
+
+    void FlyCamera::UpdateOrbit(float dt)
+    {
+        float t = SmoothT(Settings.SmoothingFactor, dt);
+
+        if (Input.AltDown && (Input.LeftDown || Input.RightDown))
+        {
+            float yawSign = GetUp().y < 0.0f ? -1.0f : 1.0f;
+            m_targetYaw   = WrapAngle(m_targetYaw - yawSign * (Input.MouseDeltaX / m_logicalW) * PI<float> * Settings.OrbitSpeed);
+            m_targetPitch = clamp(m_targetPitch - (Input.MouseDeltaY / m_logicalH) * PI<float> * Settings.OrbitSpeed, -kPitchLimit, kPitchLimit);
+        }
+
+        if (Input.ScrollDelta != 0.0f)
+        {
+            float dist         = std::max(m_targetOrbitDist * 0.2f, 0.001f);
+            float speed        = std::min(dist * dist, 100.0f);
+            m_targetOrbitDist -= Input.ScrollDelta * speed * Settings.ScrollSpeed;
+            m_targetOrbitDist  = clamp(m_targetOrbitDist, Settings.MinOrbitDistance, Settings.MaxOrbitDistance);
+        }
+
+        Pitch          = clamp(lerp(Pitch, m_targetPitch, t), -kPitchLimit, kPitchLimit);
+        Yaw            = LerpAngleRad(Yaw, m_targetYaw, t);
+        m_orbitDist    = lerp(m_orbitDist, m_targetOrbitDist, t);
+
+        Vec3f fwd      = GetForward();
+        float safeDist = OrbitCollide(m_orbitDist);
+        Position       = m_orbitPivot - fwd * safeDist;
+        m_targetPos    = Position;
+        m_viewDirty    = true;
+    }
+
+    void FlyCamera::UpdatePan(float dt)
+    {
+        float focalDist  = (m_stateBeforePan == FlyCameraState::Orbit) ? m_orbitDist : 10.0f;
+        float fovRad     = radians(Settings.FOV);
+        float planeH     = 2.0f * tanf(fovRad * 0.5f) * focalDist;
+        float planeW     = planeH * AspectRatio;
+
+        Vec3f right      = {View(0, 0), View(0, 1), View(0, 2)};
+        Vec3f screenUp   = {-View(1, 0), -View(1, 1), -View(1, 2)};
+
+        Vec3f pan        = (right * (-(Input.MouseDeltaX / m_logicalW) * planeW * Settings.PanSpeed)) + (screenUp * ((Input.MouseDeltaY / m_logicalH) * planeH * Settings.PanSpeed));
+
+        m_targetPos     += pan;
+        m_orbitPivot    += pan;
+        m_viewDirty      = true;
+
+        // Apply position immediately — pan should feel direct.
+        Position         = m_targetPos;
+    }
+
+    void FlyCamera::UpdateAnimation(float dt)
+    {
+        m_animTimer += dt;
+        float t      = smoothstep(clamp(m_animTimer / m_animDuration, 0.0f, 1.0f));
+
+        Position     = lerp(m_animStartPos, m_animEndPos, t);
+        Pitch        = clamp(lerp(m_animStartPitch, m_animEndPitch, t), -kPitchLimit, kPitchLimit);
+        Yaw          = LerpAngleRad(m_animStartYaw, m_animEndYaw, t);
+        m_viewDirty  = true;
+
+        if (m_animTimer >= m_animDuration)
+        {
+            Position          = m_animEndPos;
+            Pitch             = clamp(m_animEndPitch, -kPitchLimit, kPitchLimit);
+            Yaw               = m_animEndYaw;
+            m_targetPos       = Position;
+            m_targetPitch     = Pitch;
+            m_targetYaw       = Yaw;
+            m_targetOrbitDist = m_orbitDist;
+            State             = m_stateBeforeAnim;
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Focus / bookmarks
+    // ---------------------------------------------------------------------------
 
     void FlyCamera::FocusOn(Vec3f center, float radius)
     {
@@ -137,14 +320,11 @@ namespace ZEngine::Rendering::Cameras
 
         Vec3f lookDir     = -dir;
         float endPitch    = asinf(clamp(lookDir.y, -1.0f, 1.0f));
-        // Derive yaw from the orientation convention: fromEulerAngles(-pitch, -yaw, 0).
-        // Solving for yaw yields: yaw = atan2(-lookDir.x, lookDir.z).  No implicit sign hack.
         float endYaw      = WrapAngle(atan2f(-lookDir.x, lookDir.z));
 
         m_orbitPivot      = center;
-        m_orbitDistance   = distance;
+        m_orbitDist       = distance;
         m_targetOrbitDist = distance;
-        // FocusOn does not change Mode — the caller remains in whatever mode they were in.
 
         m_animStartPos    = Position;
         m_animEndPos      = endPos;
@@ -154,7 +334,8 @@ namespace ZEngine::Rendering::Cameras
         m_animEndYaw      = endYaw;
         m_animTimer       = 0.0f;
         m_animDuration    = Settings.FocusDuration;
-        m_animating       = true;
+        m_stateBeforeAnim = State;
+        State             = FlyCameraState::Animating;
     }
 
     void FlyCamera::FocusOn(Vec3f point)
@@ -168,289 +349,7 @@ namespace ZEngine::Rendering::Cameras
     {
         Vec3f center = (aabbMin + aabbMax) * 0.5f;
         Vec3f extent = (aabbMax - aabbMin) * 0.5f;
-        float radius = extent.magnitude();
-        FocusOn(center, max(radius, 0.01f));
-    }
-
-    void FlyCamera::OnMouseButtonDown(int button)
-    {
-        using KC = Windows::Inputs::GlfwKeyCode;
-
-        if (button == (int) KC::MOUSE_BUTTON_LEFT)
-        {
-            m_leftMouseDown = true;
-            // Alt + LMB = enter orbit pivoting at the scene point under the cursor.
-            if (m_altDown && Mode == CameraMode::Free)
-            {
-                float pivotDist = m_orbitDistance;
-                if (SceneRaycast)
-                {
-                    float hit = SceneRaycast(Position, GetForward(), m_orbitDistance * 2.0f);
-                    if (hit < m_orbitDistance * 2.0f)
-                        pivotDist = hit;
-                }
-                EnterOrbitMode(Position + GetForward() * pivotDist);
-            }
-        }
-        if (button == (int) KC::MOUSE_BUTTON_RIGHT)
-            m_rightMouseDown = true;
-        if (button == (int) KC::MOUSE_BUTTON_MIDDLE)
-            m_middleMouseDown = true;
-    }
-
-    void FlyCamera::OnMouseButtonUp(int button)
-    {
-        using KC = Windows::Inputs::GlfwKeyCode;
-        if (button == (int) KC::MOUSE_BUTTON_LEFT)
-            m_leftMouseDown = false;
-        if (button == (int) KC::MOUSE_BUTTON_RIGHT)
-        {
-            m_rightMouseDown = false;
-            if (!m_altDown && !m_leftMouseDown && Mode == CameraMode::Orbit)
-                ExitOrbitMode();
-        }
-        if (button == (int) KC::MOUSE_BUTTON_MIDDLE)
-            m_middleMouseDown = false;
-    }
-
-    void FlyCamera::OnKeyDown(int key)
-    {
-        using KC = Windows::Inputs::GlfwKeyCode;
-        if (key >= 0 && key < 512)
-            m_keys[key] = true;
-
-        if (key == (int) KC::KEY_LEFT_SHIFT)
-            m_shiftDown = true;
-        if (key == (int) KC::KEY_LEFT_ALT || key == (int) KC::KEY_RIGHT_ALT)
-            m_altDown = true;
-        if (key == (int) KC::KEY_LEFT_CONTROL)
-            m_ctrlDown = true;
-    }
-
-    void FlyCamera::OnKeyUp(int key)
-    {
-        using KC = Windows::Inputs::GlfwKeyCode;
-        if (key >= 0 && key < 512)
-            m_keys[key] = false;
-
-        if (key == (int) KC::KEY_LEFT_SHIFT)
-            m_shiftDown = false;
-
-        if (key == (int) KC::KEY_LEFT_ALT || key == (int) KC::KEY_RIGHT_ALT)
-        {
-            m_altDown = false;
-            if (Mode == CameraMode::Orbit && !m_rightMouseDown && !m_leftMouseDown)
-                ExitOrbitMode();
-        }
-
-        if (key == (int) KC::KEY_LEFT_CONTROL)
-            m_ctrlDown = false;
-
-        // F — frame selected object. Editor injects bounds via OnGetSelectionBounds.
-        if (key == (int) KC::KEY_F)
-        {
-            if (OnGetSelectionBounds)
-            {
-                auto [center, radius] = OnGetSelectionBounds();
-                FocusOn(center, radius);
-            }
-            else
-            {
-                FocusOn(Vec3f(0.0f, 0.0f, 0.0f), 5.0f);
-            }
-        }
-
-        // Ctrl+1…9 = save bookmark; 1…9 alone = recall bookmark.
-        if (key >= (int) KC::KEY_1 && key <= (int) KC::KEY_9)
-        {
-            int slot = key - (int) KC::KEY_1;
-            if (m_ctrlDown)
-                SaveBookmark(slot);
-            else
-                RecallBookmark(slot);
-        }
-    }
-
-    void FlyCamera::OnFocusLost()
-    {
-        for (bool& k : m_keys)
-            k = false;
-        m_rightMouseDown  = false;
-        m_middleMouseDown = false;
-        m_leftMouseDown   = false;
-        m_altDown         = false;
-        m_shiftDown       = false;
-        m_ctrlDown        = false;
-    }
-
-    void FlyCamera::OnMouseMove(float deltaX, float deltaY)
-    {
-        if (m_animating)
-            return;
-
-        float dx = deltaX / m_viewportWidth;
-        float dy = deltaY / m_viewportHeight;
-
-        // 1. Alt + LMB or Alt + RMB = Orbit tumble
-        if (m_altDown && Mode == CameraMode::Orbit && (m_leftMouseDown || m_rightMouseDown))
-        {
-            float yawSign = GetUp().y < 0.0f ? -1.0f : 1.0f;
-            m_targetYaw   = WrapAngle(m_targetYaw - yawSign * dx * PI<float> * Settings.OrbitSpeed);
-            m_targetPitch = clamp(m_targetPitch - dy * PI<float> * Settings.OrbitSpeed, -kPitchLimit, kPitchLimit);
-            return;
-        }
-
-        // 2. MMB = Screen-plane pan
-        if (m_middleMouseDown)
-        {
-            float focalDist   = (Mode == CameraMode::Orbit) ? m_orbitDistance : 10.0f;
-            float fovRad      = radians(Settings.FOV);
-            float planeH      = 2.0f * tanf(fovRad * 0.5f) * focalDist;
-            float planeW      = planeH * AspectRatio;
-
-            // Read orthonormal basis directly from the view matrix rows — pole-safe.
-            Vec3f right       = {View(0, 0), View(0, 1), View(0, 2)};
-            Vec3f screenUp    = {-View(1, 0), -View(1, 1), -View(1, 2)};
-
-            Vec3f pan         = (right * (-dx * planeW * Settings.PanSpeed)) + (screenUp * (dy * planeH * Settings.PanSpeed));
-
-            m_targetPosition += pan;
-            if (Mode == CameraMode::Orbit)
-                m_orbitPivot += pan;
-            m_viewDirty = true;
-            return;
-        }
-
-        // 3. RMB = Free look
-        if (m_rightMouseDown)
-        {
-            float yawSign = GetUp().y < 0.0f ? -1.0f : 1.0f;
-            m_targetYaw   = WrapAngle(m_targetYaw - yawSign * dx * PI<float> * Settings.RotationSpeed);
-            m_targetPitch = clamp(m_targetPitch - dy * PI<float> * Settings.RotationSpeed, -kPitchLimit, kPitchLimit);
-
-            if (Mode == CameraMode::Orbit)
-                ExitOrbitMode();
-        }
-    }
-
-    void FlyCamera::OnMouseScroll(float delta, float mouseX, float mouseY)
-    {
-        if (Mode == CameraMode::Orbit)
-        {
-            float distance     = m_targetOrbitDist * 0.2f;
-            distance           = std::max(distance, 0.001f);
-            float speed        = std::min(distance * distance, 100.0f);
-
-            m_targetOrbitDist -= delta * speed * Settings.ScrollSpeed;
-            m_targetOrbitDist  = clamp(m_targetOrbitDist, Settings.MinOrbitDistance, Settings.MaxOrbitDistance);
-        }
-        else
-        {
-            // Zoom toward the 3D point under the cursor, not just along the view axis.
-            float speed       = ComputeAdaptiveSpeed();
-            Ray   ray         = GetRayFromScreen(mouseX, mouseY);
-            m_targetPosition += ray.Direction * delta * Settings.ScrollSpeed * speed;
-        }
-    }
-
-    void FlyCamera::OnUpdate(float dt)
-    {
-        if (dt <= 0.0f)
-            return;
-
-        dt = std::min(dt, kMaxDt);
-
-        if (m_animating)
-            UpdateAnimation(dt);
-        else if (Mode == CameraMode::Orbit)
-            UpdateOrbitCamera(dt);
-        else
-            UpdateFreeCamera(dt);
-
-        UpdateMatrices();
-    }
-
-    void FlyCamera::UpdateFreeCamera(float dt)
-    {
-        float t = SmoothT(Settings.SmoothingFactor, dt);
-
-        if (m_rightMouseDown)
-        {
-            float speed       = ComputeAdaptiveSpeed() * (m_shiftDown ? Settings.FastSpeedMultiplier : 1.0f);
-            m_targetPosition += GetKeyboardMoveDirection() * speed * dt;
-        }
-
-        if ((m_targetPosition - Position).magnitude() > 0.00001f)
-        {
-            Position    = lerp(Position, m_targetPosition, t);
-            m_viewDirty = true;
-        }
-
-        // Pitch is clamped so it never wraps — plain lerp is correct and cheaper here.
-        float newPitch = clamp(lerp(Pitch, m_targetPitch, t), -kPitchLimit, kPitchLimit);
-        float newYaw   = LerpAngleRad(Yaw, m_targetYaw, t);
-
-        if (newPitch != Pitch || newYaw != Yaw)
-        {
-            Pitch       = newPitch;
-            Yaw         = newYaw;
-            m_viewDirty = true;
-        }
-    }
-
-    void FlyCamera::UpdateOrbitCamera(float dt)
-    {
-        float t          = SmoothT(Settings.SmoothingFactor, dt);
-
-        Pitch            = clamp(lerp(Pitch, m_targetPitch, t), -kPitchLimit, kPitchLimit);
-        Yaw              = LerpAngleRad(Yaw, m_targetYaw, t);
-        m_orbitDistance  = lerp(m_orbitDistance, m_targetOrbitDist, t);
-
-        Vec3f fwd        = GetForward();
-        float safeDist   = CollideCameraRay(m_orbitPivot, -fwd, m_orbitDistance);
-        Position         = m_orbitPivot - fwd * safeDist;
-        m_targetPosition = Position;
-        m_viewDirty      = true;
-    }
-
-    void FlyCamera::UpdateAnimation(float dt)
-    {
-        m_animTimer += dt;
-        float t      = smoothstep(clamp(m_animTimer / m_animDuration, 0.0f, 1.0f));
-
-        Position     = lerp(m_animStartPos, m_animEndPos, t);
-        Pitch        = clamp(lerp(m_animStartPitch, m_animEndPitch, t), -kPitchLimit, kPitchLimit);
-        Yaw          = LerpAngleRad(m_animStartYaw, m_animEndYaw, t);
-
-        m_viewDirty  = true;
-
-        if (m_animTimer >= m_animDuration)
-        {
-            Position          = m_animEndPos;
-            Pitch             = clamp(m_animEndPitch, -kPitchLimit, kPitchLimit);
-            Yaw               = m_animEndYaw;
-            m_animating       = false;
-            m_targetPosition  = Position;
-            m_targetPitch     = Pitch;
-            m_targetYaw       = Yaw;
-            m_targetOrbitDist = m_orbitDistance;
-        }
-    }
-
-    void FlyCamera::EnterOrbitMode(Vec3f pivot)
-    {
-        m_orbitPivot      = pivot;
-        m_orbitDistance   = clamp((Position - pivot).magnitude(), Settings.MinOrbitDistance, Settings.MaxOrbitDistance);
-        m_targetOrbitDist = m_orbitDistance;
-        Mode              = CameraMode::Orbit;
-    }
-
-    void FlyCamera::ExitOrbitMode()
-    {
-        m_targetPosition = Position;
-        m_targetPitch    = Pitch;
-        m_targetYaw      = Yaw;
-        Mode             = CameraMode::Free;
+        FocusOn(center, max(extent.magnitude(), 0.01f));
     }
 
     void FlyCamera::SaveBookmark(int slot)
@@ -464,88 +363,123 @@ namespace ZEngine::Rendering::Cameras
     {
         if (slot < 0 || slot >= 9 || !m_bookmarks[slot].Valid)
             return;
-        const auto& bm   = m_bookmarks[slot];
-
-        m_animStartPos   = Position;
-        m_animEndPos     = bm.Position;
-        m_animStartPitch = Pitch;
-        m_animStartYaw   = Yaw;
-        m_animEndPitch   = bm.Pitch;
-        m_animEndYaw     = bm.Yaw;
-        m_animTimer      = 0.0f;
-        m_animDuration   = Settings.FocusDuration;
-        m_animating      = true;
+        const auto& bm    = m_bookmarks[slot];
+        m_animStartPos    = Position;
+        m_animEndPos      = bm.Pos;
+        m_animStartPitch  = Pitch;
+        m_animStartYaw    = Yaw;
+        m_animEndPitch    = bm.Pitch;
+        m_animEndYaw      = bm.Yaw;
+        m_animTimer       = 0.0f;
+        m_animDuration    = Settings.FocusDuration;
+        m_stateBeforeAnim = State;
+        State             = FlyCameraState::Animating;
     }
 
-    Vec3f FlyCamera::GetKeyboardMoveDirection() const
+    // ---------------------------------------------------------------------------
+    // Ray unprojection
+    // ---------------------------------------------------------------------------
+
+    FlyCamera::Ray FlyCamera::GetRayFromViewport(float viewportX, float viewportY) const
     {
-        using KC      = Windows::Inputs::GlfwKeyCode;
+        // NDC in [-1,1]; viewport coords are logical-pixel-relative, Y=0 at top.
+        float ndcX    = (viewportX / m_logicalW) * 2.0f - 1.0f;
+        float ndcY    = 1.0f - (viewportY / m_logicalH) * 2.0f;
 
-        Vec3f forward = GetForward();
-        Vec3f right   = GetRight();
-        Vec3f up      = Vec3f(Camera::WorldUp.x, Camera::WorldUp.y, Camera::WorldUp.z);
+        float fovRad  = radians(Settings.FOV);
+        float tanHalf = tanf(fovRad * 0.5f);
+        float vx      = ndcX * AspectRatio * tanHalf;
+        float vy      = ndcY * tanHalf;
 
-        Vec3f dir     = {};
-        if (m_keys[(int) KC::KEY_W])
-            dir += forward;
-        if (m_keys[(int) KC::KEY_S])
-            dir -= forward;
-        if (m_keys[(int) KC::KEY_D])
-            dir += right;
-        if (m_keys[(int) KC::KEY_A])
-            dir -= right;
-        if (m_keys[(int) KC::KEY_E])
+        Vec3f r       = GetRight();
+        Vec3f u       = GetUp();
+        Vec3f f       = GetForward();
+        Vec3f dir     = r * vx + u * vy + f;
+
+        float mag     = dir.magnitude();
+        return {Position, mag > 0.0001f ? dir / mag : f};
+    }
+
+    // ---------------------------------------------------------------------------
+    // Private helpers
+    // ---------------------------------------------------------------------------
+
+    Vec3f FlyCamera::KeyboardMoveDir() const
+    {
+        Vec3f fwd = GetForward();
+        Vec3f rgt = GetRight();
+        Vec3f up  = Vec3f(Camera::WorldUp.x, Camera::WorldUp.y, Camera::WorldUp.z);
+        Vec3f dir = {};
+
+        if (Input.Keys[GLFW_KEY_W])
+            dir += fwd;
+        if (Input.Keys[GLFW_KEY_S])
+            dir -= fwd;
+        if (Input.Keys[GLFW_KEY_D])
+            dir += rgt;
+        if (Input.Keys[GLFW_KEY_A])
+            dir -= rgt;
+        if (Input.Keys[GLFW_KEY_E])
             dir += up;
-        if (m_keys[(int) KC::KEY_Q])
+        if (Input.Keys[GLFW_KEY_Q])
             dir -= up;
 
         float mag = dir.magnitude();
         return mag > 0.0001f ? dir / mag : dir;
     }
 
-    float FlyCamera::ComputeAdaptiveSpeed() const
+    float FlyCamera::AdaptiveSpeed() const
     {
-        if (SceneRaycast)
+        if (Hooks.Raycast)
         {
-            float hitFwd  = SceneRaycast(Position, GetForward(), Settings.MaxMoveSpeed * 10.0f);
-            float hitDown = SceneRaycast(Position, {0.0f, -1.0f, 0.0f}, Settings.MaxMoveSpeed * 10.0f);
+            float hitFwd  = Hooks.Raycast(Position, GetForward(), Settings.MaxMoveSpeed * 10.0f);
+            float hitDown = Hooks.Raycast(Position, {0.0f, -1.0f, 0.0f}, Settings.MaxMoveSpeed * 10.0f);
             return clamp(std::min(hitFwd, hitDown) * 0.5f, Settings.MinMoveSpeed, Settings.MaxMoveSpeed);
         }
-        float h = fabsf(Position.y);
-        return clamp(h * 0.5f, Settings.MinMoveSpeed, Settings.MaxMoveSpeed);
+        return clamp(fabsf(Position.y) * 0.5f, Settings.MinMoveSpeed, Settings.MaxMoveSpeed);
     }
 
-    float FlyCamera::CollideCameraRay(Vec3f origin, Vec3f dir, float desiredDist) const
+    float FlyCamera::OrbitCollide(float desired) const
     {
-        if (SceneRaycast)
+        if (Hooks.Raycast)
         {
-            float hit = SceneRaycast(origin, dir, desiredDist);
-            if (hit < desiredDist)
+            Vec3f fwd = GetForward();
+            float hit = Hooks.Raycast(m_orbitPivot, -fwd, desired);
+            if (hit < desired)
                 return hit * 0.9f;
         }
-        return desiredDist;
+        return desired;
     }
 
-    FlyCamera::Ray FlyCamera::GetRayFromScreen(float mouseX, float mouseY) const
+    void FlyCamera::RecalculateView()
     {
-        // NDC in [-1,1], Vulkan Y-up in NDC (screen Y=0 is top).
-        float ndcX     = (mouseX / m_viewportWidth) * 2.0f - 1.0f;
-        float ndcY     = 1.0f - (mouseY / m_viewportHeight) * 2.0f;
+        Vec3f f     = GetForward();
+        Vec3f r     = GetRight();
+        Vec3f u     = GetUp();
+        View        = Mat4f(r.x, r.y, r.z, -dot(r, Position), u.x, u.y, u.z, -dot(u, Position), -f.x, -f.y, -f.z, dot(f, Position), 0.0f, 0.0f, 0.0f, 1.0f);
+        m_viewDirty = false;
+    }
 
-        // Unproject to view space: inv(P) * NDC.
-        float fovRad   = radians(Settings.FOV);
-        float tanHalf  = tanf(fovRad * 0.5f);
-        float viewDirX = ndcX * AspectRatio * tanHalf;
-        float viewDirY = ndcY * tanHalf;
+    void FlyCamera::RecalculateProjection()
+    {
+        float fovRad  = radians(Settings.FOV);
+        float tanHalf = tanf(fovRad * 0.5f);
+        float n       = Settings.NearPlane;
+        float f       = Settings.FarPlane;
+        float a       = AspectRatio;
 
-        // Rotate view-space direction to world space via the camera basis.
-        Vec3f r        = GetRight();
-        Vec3f u        = GetUp();
-        Vec3f f        = GetForward();
-        Vec3f dir      = r * viewDirX + u * viewDirY + f; // f corresponds to view-space (0,0,-1) → forward
+        // Vulkan: Y flipped, depth range [0, 1].
+        Projection    = Mat4f(1.0f / (a * tanHalf), 0.0f, 0.0f, 0.0f, 0.0f, -1.0f / tanHalf, 0.0f, 0.0f, 0.0f, 0.0f, f / (n - f), (n * f) / (n - f), 0.0f, 0.0f, -1.0f, 0.0f);
+        m_projDirty   = false;
+    }
 
-        float mag      = dir.magnitude();
-        return {Position, mag > 0.0001f ? dir / mag : f};
+    // Thin compatibility shim used by RecalculateView/Projection path.
+    void FlyCamera::UpdateMatrices()
+    {
+        if (m_projDirty)
+            RecalculateProjection();
+        if (m_viewDirty)
+            RecalculateView();
     }
 
 } // namespace ZEngine::Rendering::Cameras

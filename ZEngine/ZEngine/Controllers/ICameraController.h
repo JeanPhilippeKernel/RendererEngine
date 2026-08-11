@@ -15,6 +15,13 @@ namespace ZEngine::Controllers
         virtual Core::Maths::Vec3f            GetPosition() const                             = 0;
         virtual void                          SetPosition(const Core::Maths::Vec3f& position) = 0;
         virtual Rendering::Cameras::CameraPtr GetCamera() const                               = 0;
+        virtual void                          Update(Core::TimeStep dt)                       = 0;
+        virtual bool                          OnEvent(Core::CoreEvent&)                       = 0;
+
+        virtual void                          SetViewport(float logicalW, float logicalH)     = 0;
+        virtual void                          SetViewportOrigin(float x, float y)             = 0;
+        virtual void                          ResumeEventProcessing()                         = 0;
+        virtual void                          PauseEventProcessing()                          = 0;
 
         CameraControllerType                  GetControllerType() const
         {

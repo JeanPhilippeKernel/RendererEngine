@@ -1,6 +1,5 @@
 #include <Tetragrama/Components/Events/UIComponentEvent.h>
 #include <Tetragrama/Components/SceneViewportUIComponent.h>
-#include <Tetragrama/Controllers/EditorCameraController.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -56,7 +55,9 @@ namespace Tetragrama::Components
             }
         }
 
-        auto camera_controller = reinterpret_cast<Controllers::EditorCameraControllerPtr>(app->CameraController);
+        auto* camera_controller = app->CameraController;
+
+        camera_controller->SetViewportOrigin(m_viewport_bounds[0].x, m_viewport_bounds[0].y);
 
         if (m_request_renderer_resize)
         {
