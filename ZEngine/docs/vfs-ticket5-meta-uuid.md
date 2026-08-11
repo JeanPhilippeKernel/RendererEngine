@@ -1,7 +1,7 @@
 # Ticket 5 — .meta Sidecars, MetaFileIO, and Stable UUID Persistence
 
 **Priority:** P2 — Implement after Ticket 4  
-**Status:** Ready for implementation  
+**Status:** Implemented  
 **Depends on:** `vfs-ticket4-filewatcher.md`  
 **Blocks:** `vfs-ticket6`, `scene-serialization.md`, `import-pipeline.md`
 

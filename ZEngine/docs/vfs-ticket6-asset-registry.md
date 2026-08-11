@@ -1,7 +1,7 @@
 # Ticket 6 — AssetRegistry: Multi-Index Store, Dependency Graph, and Hot-Reload Cascade
 
 **Priority:** P3 — Implement after all VFS tickets 1–5 are live  
-**Status:** Ready for implementation  
+**Status:** Implemented  
 **Module:** `ZEngine/VFS/Registry/` + `ZEngine/Managers/AssetManager`  
 **Standard:** C++20  
 **Estimated effort:** 5–7 days (1 engineer)  

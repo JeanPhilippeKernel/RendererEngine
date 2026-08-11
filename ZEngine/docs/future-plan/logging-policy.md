@@ -1,7 +1,7 @@
 # ZEngine — Logging Policy
 
 **Priority:** P0 — Without a policy, hot-path logging kills performance in production
-**Status:** Implementation in progress — branch `user/kernel/logging-policy`
+**Status:** Implemented
 **Modifies:** `Logger.h`, `Logger.cpp`, `LoggerConfiguration.h`, `LoggerDefinition.h`, `LogUIComponent.h/.cpp`, `Obelisk/EntryPoint.cpp`, `Scripts/CMake/LoggingDefaults.cmake`
 
 ---

@@ -1,7 +1,7 @@
 # VFS Path Abstraction — Architecture Design
 
 **Priority:** P1 — Implement in parallel with ECS core (Phase 6 of migration-plan.md)  
-**Status:** Ready for implementation  
+**Status:** Implemented  
 **Module:** `ZEngine/Core/VFS/`  
 **Standard:** C++20  
 **Estimated effort:** 2–3 days (1 engineer)  

@@ -1,7 +1,7 @@
 # ZEngine — Input System
 
 **Priority:** P0 — Every game needs input; networking rollback requires deterministic, serializable input frames
-**Status:** Design
+**Status:** Implemented
 **Depends on:** `actor-ecs-architecture.md`, `game-loop.md`, `networking.md` (InputFrame)
 **Modifies:** `GameWindow.h`, `Engine.h` (EngineContext)
 

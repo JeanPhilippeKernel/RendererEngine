@@ -1,7 +1,7 @@
 # ZEngine — Engine Lifecycle
 
 **Priority:** P0 — All subsystems depend on correct initialization order
-**Status:** Design — extends existing Engine.h/.cpp and GameApplication
+**Status:** Implemented
 **Modifies:** `Engine.h`, `Engine.cpp`, `GameApplication.h`, `EngineContext`
 
 ---

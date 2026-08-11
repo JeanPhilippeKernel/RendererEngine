@@ -2,6 +2,7 @@
 
 **Replaces:** `FlyCamera.h/.cpp`, `FlyCameraController.h/.cpp`, `EditorCameraController.h/.cpp`
 **Relates to:** `rendering-flow.md`, `input-system.md`
+**Status:** Implemented
 **Scope:** Ground-up redesign of the editor fly camera — input model, state machine, coordinate system, HiDPI correctness, InputManager integration.
 
 ---

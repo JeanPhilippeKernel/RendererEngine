@@ -2,7 +2,7 @@
 
 **Priority:** P3 — Implement after ECS core, VFS Ticket 5 (stable UUIDs), and import pipeline  
 **Status:** Design  
-**Depends on:** `actor-ecs-architecture.md`, `vfs-ticket5-meta-uuid.md`, `import-pipeline.md`  
+**Depends on:** `actor-ecs-architecture.md`, `vfs-ticket5-meta-uuid.md` (VFS Tickets 5–6 (stable UUIDs, AssetRegistry) — now unblocked on VFS side), `import-pipeline.md`  
 **Blocks:** Editor scene save/load
 
 **Goal**: Serialize and deserialize `Scene` objects through a single `ISceneSerializer`

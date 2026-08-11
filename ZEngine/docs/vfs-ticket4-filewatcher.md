@@ -1,7 +1,7 @@
 # Ticket 4 — VFSFileWatcher: Platform File-Watch + Debounce
 
 **Priority:** P2 — Implement after Ticket 3  
-**Status:** Ready for implementation  
+**Status:** Implemented  
 **Depends on:** `vfs-ticket3-scanner-memory-backend.md`  
 **Blocks:** `vfs-ticket5`, `vfs-ticket6`, `import-pipeline.md` (OnStale hook)
 
