@@ -76,6 +76,9 @@ if(APPLE)
     list(APPEND ZENGINE_SOURCES_CRASH_HANDLERS
         ${CMAKE_CURRENT_SOURCE_DIR}/CrashHandlers/CrashHandlerMacOS.mm
     )
+    list(APPEND ZENGINE_SOURCES_CORE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Core/VFS/Platform/VFSFSEventsWatcher.mm
+    )
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     list(APPEND ZENGINE_SOURCES_CRASH_HANDLERS
         ${CMAKE_CURRENT_SOURCE_DIR}/CrashHandlers/CrashHandlerWindows.cpp
@@ -165,6 +168,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(zEngineLib PUBLIC stdc++fs dl)
     target_compile_definitions(zEngineLib PUBLIC GLFW_EXPOSE_NATIVE_WAYLAND)
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    target_link_libraries(zEngineLib PRIVATE "-lobjc" "-framework AppKit" "-framework CoreGraphics")
+    target_link_libraries(zEngineLib PRIVATE "-lobjc" "-framework AppKit" "-framework CoreGraphics" "-framework CoreServices")
     target_compile_definitions(zEngineLib PUBLIC GLFW_EXPOSE_NATIVE_COCOA)
 endif()
