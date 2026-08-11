@@ -1,7 +1,9 @@
+#include <GLFW/glfw3.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
@@ -25,7 +27,6 @@ namespace ZEngine
 
     void                                    Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
-        // Step 6 — assert Obelisk pre-conditions (Steps 1–5 must be complete before this call)
         ZENGINE_VALIDATE_ASSERT(memory != nullptr, "Engine::Initialize: memory is null — Obelisk must call MemoryManager::Initialize first")
         ZENGINE_VALIDATE_ASSERT(Logging::Logger::IsInitialized(), "Engine::Initialize: Logger not initialized — Obelisk must call Logger::Initialize first")
         ZENGINE_VALIDATE_ASSERT(Helpers::ThreadPoolHelper::IsInitialized(), "Engine::Initialize: ThreadPool not initialized — Obelisk must call ThreadPoolHelper::Initialize first")
@@ -34,25 +35,30 @@ namespace ZEngine
 
         g_engine_ctx = ZPushStruct(&arena, EngineContext);
 
-        // Step 9 — GameWindow (surface must exist before device queries surface capabilities)
         auto window  = ZPushStructCtor(&arena, Windows::GameWindow);
         window->SetCallbackFunction(std::bind(&Applications::GameApplication::ProcessEvent, app, std::placeholders::_1));
         window->Initialize(&arena, *window_cfg_ptr);
         g_engine_ctx->Window         = window;
 
-        // Step 10 — VulkanDevice
         g_engine_ctx->Device         = ZPushStructCtor(&arena, Hardwares::VulkanDevice);
         uint32_t worker_thread_count = std::max(1u, (uint32_t) (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u));
-        g_engine_ctx->Device->Initialize(&arena, window, worker_thread_count /*, k_mailbox_buffer_size */);
+        g_engine_ctx->Device->Initialize(&arena, window, worker_thread_count);
 
-        // Step 11 — VFS
         memory->CreateBudgetedArena(memory->Budget.VirtualFS, &g_engine_ctx->VFSArena);
         auto vfs_ctx = ZPushStructCtor(&g_engine_ctx->VFSArena, Core::VFS::VFSContext);
         vfs_ctx->Initialize(&g_engine_ctx->VFSArena);
         g_engine_ctx->VFS = vfs_ctx;
 
-        // Step 12 — AssetManager
         Managers::AssetManager::Initialize(&arena, g_engine_ctx->Device, app->WorkingSpacePath);
+
+        memory->CreateBudgetedArena(memory->Budget.Input, &g_engine_ctx->InputArena);
+        g_engine_ctx->InputManager = ZPushStructCtor(&arena, Input::InputManager);
+        g_engine_ctx->InputManager->Initialize(&g_engine_ctx->InputArena);
+
+        glfwSetScrollCallback(static_cast<GLFWwindow*>(window->GetNativeWindow()), [](GLFWwindow*, double, double yoffset) {
+            if (g_engine_ctx && g_engine_ctx->InputManager)
+                g_engine_ctx->InputManager->AccumulateScroll(yoffset);
+        });
 
         app->CurrentWindow = g_engine_ctx->Window;
         g_app              = app;

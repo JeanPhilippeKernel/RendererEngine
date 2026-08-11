@@ -35,11 +35,12 @@ namespace ZEngine::Core::Memory
         SubArenaConfig  ShaderCache      = {};
         SubArenaConfig  Serializer       = {};
         SubArenaConfig  Network          = {};
+        SubArenaConfig  Input            = {};
 
         // Returns the total bytes committed by all SubArenaConfig entries.
         inline uint64_t TotalCommitted() const
         {
-            return AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + Importer.SizeBytes + UIContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes;
+            return AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + Importer.SizeBytes + UIContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
         }
 
         // Validates that the sum of all SizeBytes fields does not exceed total_available_bytes.
@@ -67,6 +68,7 @@ namespace ZEngine::Core::Memory
             cfg.ShaderCache        = {"ShaderCache", ZMega(16ULL)};
             cfg.Serializer         = {"Serializer", ZMega(150ULL)};
             cfg.Network            = {"Network", ZMega(32ULL)};
+            cfg.Input              = {"Input", ZMega(1ULL)};
 
             return cfg;
         }

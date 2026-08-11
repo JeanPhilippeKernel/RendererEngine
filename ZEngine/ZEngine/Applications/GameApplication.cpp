@@ -1,3 +1,4 @@
+#include <GLFW/glfw3.h>
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Engine.h>
@@ -30,6 +31,13 @@ namespace ZEngine::Applications
 
     void GameApplication::Update(Core::TimeStep dt)
     {
+        // Poll input once per frame before any system consumes it.
+        auto* ctx = Engine::GetContext();
+        if (ctx && ctx->InputManager && ctx->Window)
+        {
+            ctx->InputManager->Poll(static_cast<GLFWwindow*>(ctx->Window->GetNativeWindow()));
+        }
+
         if (CameraController)
         {
             CameraController->Update(dt);
