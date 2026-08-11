@@ -71,9 +71,10 @@ namespace ZEngine::Hardwares
 
         Array<const char*> validation_layer_name_collection;
         validation_layer_name_collection.init(scratch.Arena, 4);
-        validation_layer_name_collection.push("VK_LAYER_LUNARG_api_dump");
         validation_layer_name_collection.push("VK_LAYER_KHRONOS_validation");
         validation_layer_name_collection.push("VK_LAYER_LUNARG_monitor");
+        // api_dump intentionally excluded — enable via VK_INSTANCE_LAYERS=VK_LAYER_LUNARG_api_dump
+        // when inspecting a specific failing call. Leaving it in floods logs at 50+ MB/run.
 #ifndef __APPLE__
         validation_layer_name_collection.push("VK_LAYER_LUNARG_screenshot");
 #endif
