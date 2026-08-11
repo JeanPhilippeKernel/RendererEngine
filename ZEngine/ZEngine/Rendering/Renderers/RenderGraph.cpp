@@ -207,7 +207,7 @@ namespace ZEngine::Rendering::Renderers
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer, "Command Buffer can't be null")
 
-        command_buffer->ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        command_buffer->ClearColor(0.11f, 0.11f, 0.11f, 1.0f); // #1C1C1C dark carbon
         command_buffer->ClearDepth(1.0f, 0);
 
         for (auto& node_name : SortedNodesMap)
