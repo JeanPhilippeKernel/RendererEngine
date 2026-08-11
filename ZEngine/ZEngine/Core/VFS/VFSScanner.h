@@ -6,17 +6,29 @@
 #include <ZEngine/ZEngineDef.h>
 #include <atomic>
 #include <chrono>
-#include <functional>
-#include <mutex>
 #include <semaphore>
+
+namespace ZEngine
+{
+    namespace Core
+    {
+        namespace VFS
+        {
+            class AssetRegistry;
+        }
+    } // namespace Core
+} // namespace ZEngine
 
 namespace ZEngine::Core::VFS
 {
     struct ScanStats
     {
-        uint64_t FilesFound = 0;
-        uint64_t DirsFound  = 0;
-        uint64_t DurationMs = 0;
+        uint64_t FilesFound    = 0;
+        uint64_t DirsFound     = 0;
+        uint64_t DurationMs    = 0;
+        uint64_t MetasCreated  = 0; // .meta generated for the first time
+        uint64_t MetasUpdated  = 0; // .meta existed but source SHA changed
+        uint64_t MetasUpToDate = 0; // .meta existed and SHA matched
     };
 
     struct VFSScanner
@@ -34,7 +46,11 @@ namespace ZEngine::Core::VFS
 
         bool IsScanning() const;
 
-        void SetOnScanComplete(std::function<void(ScanStats)> callback);
+        void SetOnScanComplete(void* context, void (*callback)(void*, ScanStats));
+        void SetAssetRegistry(ZEngine::Core::VFS::AssetRegistry* registry)
+        {
+            m_registry = registry;
+        }
 
     private:
         struct ScanContext
@@ -44,19 +60,23 @@ namespace ZEngine::Core::VFS
             VFSDirectoryCache* Cache   = nullptr;
         };
 
-        void                                           ScanDirectory(ScanContext ctx, VFSPath dir);
-        void                                           OnTaskComplete(bool cancelled);
+        void  ScanDirectory(ScanContext ctx, VFSPath dir);
+        void  OnTaskComplete(bool cancelled);
 
-        int                                            AcquireSlot();
-        void                                           ReleaseSlot(int slot);
+        int   AcquireSlot();
+        void  ReleaseSlot(int slot);
 
-        std::function<void(ScanStats)>                 m_complete_callback;
+        void* m_complete_callback_ctx                 = nullptr;
+        void (*m_complete_callback)(void*, ScanStats) = nullptr;
 
-        std::atomic<bool>                              m_is_scanning{false};
-        std::atomic<bool>                              m_cancel_requested{false};
-        std::atomic<int32_t>                           m_pending_tasks{0};
-        std::atomic<uint64_t>                          m_files_found{0};
-        std::atomic<uint64_t>                          m_dirs_found{0};
+        PaddedAtomic<bool>                             m_is_scanning{};
+        PaddedAtomic<bool>                             m_cancel_requested{};
+        PaddedAtomic<int32_t>                          m_pending_tasks{};
+        PaddedAtomic<uint64_t>                         m_files_found{};
+        PaddedAtomic<uint64_t>                         m_dirs_found{};
+        PaddedAtomic<uint64_t>                         m_metas_created{};
+        PaddedAtomic<uint64_t>                         m_metas_updated{};
+        PaddedAtomic<uint64_t>                         m_metas_up_to_date{};
         std::chrono::steady_clock::time_point          m_scan_start{};
 
         std::counting_semaphore<MaxConcurrentDirLists> m_dir_semaphore{MaxConcurrentDirLists};
@@ -64,6 +84,7 @@ namespace ZEngine::Core::VFS
         Core::Memory::ArenaAllocator                   m_slot_arenas[MaxConcurrentDirLists];
         PaddedAtomic<bool>                             m_slot_in_use[MaxConcurrentDirLists];
         bool                                           m_arenas_ready = false;
+        ZEngine::Core::VFS::AssetRegistry*             m_registry     = nullptr;
     };
 
 } // namespace ZEngine::Core::VFS

@@ -59,10 +59,10 @@ namespace Tetragrama::Components
 
         if (ParentLayer->CurrentApp)
         {
-            auto                                app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-            auto                                current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+            auto                  app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+            auto                  current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
 
-            Managers::AssetManager::AssetHandle handle        = {};
+            Managers::AssetHandle handle        = {};
             if (current_scene->PendingOnLoadHierarchies->Pop(handle))
             {
                 Importers::AssetNodeHierarchy* mesh_node_hierarchy = Managers::AssetManager::GetAsset<Importers::AssetNodeHierarchy>(handle);
