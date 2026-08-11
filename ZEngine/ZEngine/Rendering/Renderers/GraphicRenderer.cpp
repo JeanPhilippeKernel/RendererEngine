@@ -146,9 +146,7 @@ namespace ZEngine::Rendering::Renderers
         }
 
         auto path_result   = ZEngine::Core::VFS::VFSPath::FromNative(env_path);
-        auto exists_result = path_result.Succeeded()
-                               ? vfs->Exists(path_result.Value())
-                               : ZEngine::Core::VFS::VFSResult<bool>::Fail(ZEngine::Core::VFS::VFSError::InvalidPath);
+        auto exists_result = path_result.Succeeded() ? vfs->Exists(path_result.Value()) : ZEngine::Core::VFS::VFSResult<bool>::Fail(ZEngine::Core::VFS::VFSError::InvalidPath);
         if (exists_result.Failed() || !exists_result.Value())
         {
             ZENGINE_CORE_ERROR("[Renderer] Environment map not found in VFS: {}", env_path)
@@ -156,7 +154,7 @@ namespace ZEngine::Rendering::Renderers
             return;
         }
 
-        auto* skybox_pass   = static_cast<SkyboxPass*>(node.CallbackPass);
+        auto* skybox_pass       = static_cast<SkyboxPass*>(node.CallbackPass);
         skybox_pass->EnvMapPath = env_path;
         node.Enabled            = true;
     }

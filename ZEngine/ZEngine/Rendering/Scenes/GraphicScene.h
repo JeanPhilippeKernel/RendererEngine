@@ -14,10 +14,10 @@ namespace ZEngine::Rendering::Scenes
     // Supported modes: "atmosphere" (default), "hdri", "skySphere".
     struct SkyConfig
     {
-        ZEngine::Core::Containers::String Mode           = {};  // "atmosphere", "hdri", "skySphere"
-        ZEngine::Core::Containers::String EnvironmentMap = {};  // .zenvmap filename (hdri mode only)
+        ZEngine::Core::Containers::String Mode           = {}; // "atmosphere", "hdri", "skySphere"
+        ZEngine::Core::Containers::String EnvironmentMap = {}; // .zenvmap filename (hdri mode only)
 
-        bool IsHDRI() const
+        bool                              IsHDRI() const
         {
             return Mode.c_str() && (strcmp(Mode.c_str(), "hdri") == 0);
         }

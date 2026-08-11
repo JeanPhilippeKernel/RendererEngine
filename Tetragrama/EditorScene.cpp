@@ -14,7 +14,7 @@ namespace Tetragrama
     {
         arena->CreateSubArena(ZMega(200), &LocalArena);
 
-        Name                     = name;
+        Name = name;
         Sky.Mode.init(&LocalArena, "atmosphere");
 
         PendingOnLoadHierarchies = CreateRef<ThreadSafeQueue<AssetManager::AssetHandle>>();

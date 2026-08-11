@@ -51,15 +51,15 @@ namespace ZEngine::Applications
         virtual void                      OnInitializing()              = 0;
         virtual void                      OnInitialized()               = 0;
 
-        virtual void OnEvent(Core::CoreEvent&) = 0;
-        virtual void OnUpdate(float dt)        = 0;
+        virtual void                      OnEvent(Core::CoreEvent&)     = 0;
+        virtual void                      OnUpdate(float dt)            = 0;
 
-        virtual void OnPreRender()             = 0;
-        virtual void OnPostRender()            = 0;
-        virtual void OnRenderUI()              = 0;
+        virtual void                      OnPreRender()                 = 0;
+        virtual void                      OnPostRender()                = 0;
+        virtual void                      OnRenderUI()                  = 0;
 
-        virtual void OnClosing()               = 0;
-        virtual void OnClosed()                = 0;
+        virtual void                      OnClosing()                   = 0;
+        virtual void                      OnClosed()                    = 0;
     };
     ZDEFINE_PTR(GameApplication);
 

@@ -152,7 +152,7 @@ namespace Tetragrama::Serializers
 
             char buf[DEFAULT_STR_BUFFER] = {0};
             ReadBinaryCString(&Arena, in_stream, buf);
-            scene.Name = buf;
+            scene.Name                            = buf;
 
             // Sky configuration
             char sky_mode_buf[DEFAULT_STR_BUFFER] = {0};
