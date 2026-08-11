@@ -1,5 +1,8 @@
 #pragma once
 #include <ZEngine/Controllers/FlyCameraController.h>
+#include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Input/InputManager.h>
+#include <ZEngine/Windows/CoreWindow.h>
 
 namespace Tetragrama::Controllers
 {
@@ -8,7 +11,7 @@ namespace Tetragrama::Controllers
         EditorCameraController()          = default;
         virtual ~EditorCameraController() = default;
 
-        void Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Windows::CoreWindow* window);
+        void Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Windows::CoreWindow* window, ZEngine::Input::InputManager* input_manager);
     };
     ZDEFINE_PTR(EditorCameraController);
 } // namespace Tetragrama::Controllers

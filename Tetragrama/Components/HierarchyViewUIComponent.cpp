@@ -1,6 +1,5 @@
 // clang-format off
 #include <Tetragrama/Components/HierarchyViewUIComponent.h>
-#include <Tetragrama/Controllers/EditorCameraController.h>
 #include <ImGuizmo/ImGuizmo.h>
 #include <Tetragrama/Editor.h>
 #include <ZEngine/Core/Maths/Matrix.h>
@@ -235,8 +234,8 @@ namespace Tetragrama::Components
 
             if (camera && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_F, app->CurrentWindow))
             {
-                auto active_editor_camera = reinterpret_cast<Controllers::EditorCameraControllerPtr>(app->CameraController);
-                // active_editor_camera->SetFocus(Vec3f(global_transform[0][3], global_transform[1][3], global_transform[2][3]));
+                // F-to-frame is handled by FlyCameraController reading the CameraFocus
+                // action slot from InputManager — no direct call needed here.
             }
 
             // snapping

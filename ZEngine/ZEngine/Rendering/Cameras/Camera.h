@@ -15,12 +15,10 @@ namespace ZEngine::Rendering::Cameras
     {
         float MinMoveSpeed        = 1.0f;
         float MaxMoveSpeed        = 500.0f;
-        float PanSpeed            = 1.0f; // multiplier
-        float MoveSpeed           = 10.0f;
-        float FastMoveSpeed       = 40.0f;
-        float RotationSpeed       = 0.25f; // degrees per pixel
-        float OrbitSpeed          = 0.25f; // degrees per pixel
-        float FastSpeedMultiplier = 4.0f;  // shift multiplier
+        float PanSpeed            = 1.0f;
+        float RotationSpeed       = 0.25f;
+        float OrbitSpeed          = 0.25f;
+        float FastSpeedMultiplier = 4.0f;
         float ScrollSpeed         = 3.0f;
         float FocusDuration       = 0.25f; // seconds
         float MinOrbitDistance    = 0.5f;
