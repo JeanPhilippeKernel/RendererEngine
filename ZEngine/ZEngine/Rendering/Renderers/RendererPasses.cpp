@@ -288,9 +288,8 @@ namespace ZEngine::Rendering::Renderers
             (*output_pass)->SetInputFromHeap("UBCamera", sizeof(Contracts::UBOCameraLayout));
             (*output_pass)->SetInput("EnvMap", m_env_map);
             (*output_pass)->SetInput("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
+            (*output_pass)->Verify();
         }
-
-        (*output_pass)->Verify();
     }
 
     void SkyboxPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
