@@ -63,6 +63,8 @@ namespace ZEngine
         g_engine_ctx->ActorManager->Initialize(&g_engine_ctx->ECSArena, *g_engine_ctx->Scene);
         g_engine_ctx->WorldCommands = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldCommands);
         g_engine_ctx->WorldCommands->Initialize(&g_engine_ctx->ECSArena);
+        g_engine_ctx->WorldTick = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldTick);
+        g_engine_ctx->WorldTick->Initialize(&g_engine_ctx->ECSArena);
 
         glfwSetScrollCallback(static_cast<GLFWwindow*>(window->GetNativeWindow()), [](GLFWwindow*, double, double yoffset) {
             if (g_engine_ctx && g_engine_ctx->InputManager)
