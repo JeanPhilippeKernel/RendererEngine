@@ -6,6 +6,10 @@
 #include <ZEngine/Engine/FrameRateCap.h>
 #include <ZEngine/Engine/FrameTimer.h>
 #include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/AssimpImporter.h>
+#include <ZEngine/Importers/EnvironmentMapImporter.h>
+#include <ZEngine/Importers/GltfImporter.h>
+#include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -68,6 +72,35 @@ namespace ZEngine
         g_engine_ctx->WorldCommands->Initialize(&g_engine_ctx->ECSArena);
         g_engine_ctx->WorldTick = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldTick);
         g_engine_ctx->WorldTick->Initialize(&g_engine_ctx->ECSArena);
+
+        g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);
+        g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
+
+        // Register format importers
+        // All importers get their own arenas carved from MainArena (3 GB).
+        // AssetArena is only 78 MB — not enough for intermediate geometry data.
+        static Importers::GltfImporter           s_gltf_importer;
+        static Importers::AssimpImporter         s_assimp_importer;
+        static Importers::EnvironmentMapImporter s_env_map_importer;
+        static Core::Memory::ArenaAllocator      s_gltf_arena;
+        static Core::Memory::ArenaAllocator      s_assimp_arena;
+        static Core::Memory::ArenaAllocator      s_envmap_arena;
+        arena.CreateSubArena(ZMega(64), &s_gltf_arena);
+        arena.CreateSubArena(ZMega(350), &s_assimp_arena);
+        arena.CreateSubArena(ZMega(32), &s_envmap_arena);
+        s_gltf_importer.Initialize(&s_gltf_arena);
+        s_assimp_importer.Initialize(&s_assimp_arena);
+        s_env_map_importer.Initialize(&s_envmap_arena);
+        // GLB/GLTF handled by GltfImporter; FBX/OBJ by AssimpImporter.
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_gltf_importer);
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_assimp_importer);
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_env_map_importer);
+
+        // Wire FileWatcher: Modified → AssetRegistry + ImportCoordinator::Enqueue(Immediate)
+        if (app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0')
+        {
+            static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->InitWatcher(app->WorkingSpacePath, nullptr, nullptr, Managers::AssetManager::Instance()->Registry, g_engine_ctx->ImportCoordinator);
+        }
 
         glfwSetScrollCallback(static_cast<GLFWwindow*>(window->GetNativeWindow()), [](GLFWwindow*, double, double yoffset) {
             if (g_engine_ctx && g_engine_ctx->InputManager)
@@ -162,6 +195,9 @@ namespace ZEngine
             // ── Platform events ─────────────────────────────────────────────
             window->PollEvent();
 
+            // Pump VFS FileWatcher — drains debounce window, fires Modified/Deleted/Renamed callbacks
+            static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->Tick();
+
             if (window->IsMinimized())
                 continue;
 
@@ -188,6 +224,10 @@ namespace ZEngine
             }
 
             float alpha = accumulator.Alpha();
+
+            // ── Import coordinator (up to JOBS_PER_TICK jobs per frame) ─────
+            if (g_engine_ctx->ImportCoordinator)
+                g_engine_ctx->ImportCoordinator->Tick();
 
             // ── Application update (non-ECS game logic) ─────────────────────
             g_app->Update(raw_dt);
@@ -283,7 +323,7 @@ namespace ZEngine
 
     void Engine::Run()
     {
-        Managers::AssetManager::Run();
+
         g_render_thread = std::thread(Engine::RenderThreadRun);
         MainThreadRun();
 

@@ -65,7 +65,10 @@ namespace ZEngine::Core::VFS
         Helpers::Handle<AssetRecord> h = m_index.FindByUUID(uuid);
         if (!h.Valid())
             return false;
-        return m_index.SetState(h, new_state);
+        bool ok = m_index.SetState(h, new_state);
+        if (ok && new_state == AssetState::Loaded && m_reload_cb)
+            m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(&uuid, 1));
+        return ok;
     }
 
     bool AssetRegistry::UpdateMeta(const uuids::uuid& uuid, const Core::VFS::MetaFileData& new_meta, AssetState new_state)

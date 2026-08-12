@@ -9,6 +9,7 @@
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Windows/CoreWindow.h>
 
@@ -17,20 +18,21 @@ namespace ZEngine
     struct EngineContext
     {
         // Sub-arenas (large structs — grouped together to avoid pointer/arena interleaving)
-        Core::Memory::ArenaAllocator VFSArena      = {};
-        Core::Memory::ArenaAllocator AssetArena    = {};
-        Core::Memory::ArenaAllocator InputArena    = {};
-        Core::Memory::ArenaAllocator ECSArena      = {};
+        Core::Memory::ArenaAllocator  VFSArena          = {};
+        Core::Memory::ArenaAllocator  AssetArena        = {};
+        Core::Memory::ArenaAllocator  InputArena        = {};
+        Core::Memory::ArenaAllocator  ECSArena          = {};
 
         // Pointers (8 bytes each — grouped to pack cleanly)
-        Hardwares::VulkanDevicePtr   Device        = nullptr;
-        Windows::CoreWindowPtr       Window        = nullptr;
-        Core::VFS::IVFSContext*      VFS           = nullptr;
-        Input::InputManager*         InputManager  = nullptr;
-        ECS::Scene*                  Scene         = nullptr;
-        ECS::ActorManager*           ActorManager  = nullptr;
-        ECS::WorldCommands*          WorldCommands = nullptr;
-        ECS::WorldTick*              WorldTick     = nullptr;
+        Hardwares::VulkanDevicePtr    Device            = nullptr;
+        Windows::CoreWindowPtr        Window            = nullptr;
+        Core::VFS::IVFSContext*       VFS               = nullptr;
+        Input::InputManager*          InputManager      = nullptr;
+        ECS::Scene*                   Scene             = nullptr;
+        ECS::ActorManager*            ActorManager      = nullptr;
+        ECS::WorldCommands*           WorldCommands     = nullptr;
+        ECS::WorldTick*               WorldTick         = nullptr;
+        Importers::ImportCoordinator* ImportCoordinator = nullptr;
     };
     ZDEFINE_PTR(EngineContext);
 

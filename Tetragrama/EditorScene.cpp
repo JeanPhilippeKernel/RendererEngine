@@ -1,4 +1,5 @@
 #include <Tetragrama/EditorScene.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <stack>
 
@@ -377,11 +378,18 @@ namespace Tetragrama
             NodeNames.insert(k, v);
         }
 
-        auto asset_manager = AssetManager::Instance();
-
+        // Re-ingest cooked assets directly rather than going through the old LoadAssetFile queue.
         for (const auto& file : AssetFiles)
         {
-            asset_manager->LoadAssetFile(ZEngine::Importers::AssetImporterOutput{.Type = file.Type, .Path = file.Path.c_str(), .RootPath = file.RootPath.c_str()});
+            if (file.Type == ZEngine::Importers::AssetFileType::MESH)
+            {
+                ZEngine::Importers::AssetMesh          mesh{};
+                ZEngine::Importers::AssetNodeHierarchy hier{};
+                auto                                   path = ZEngine::Core::Containers::String{};
+                path.init(&LocalArena, fmt::format("{0}{1}{2}", file.RootPath.c_str(), PLATFORM_OS_BACKSLASH, file.Path.c_str()).c_str());
+                ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(&LocalArena, path.c_str(), mesh, hier);
+                AssetManager::IngestMesh(std::move(mesh), std::move(hier));
+            }
         }
     }
 } // namespace Tetragrama

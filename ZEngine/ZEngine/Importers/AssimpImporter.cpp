@@ -1,15 +1,19 @@
 #include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssimpImporter.h>
+#include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <assimp/postprocess.h>
 #include <fmt/format.h>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Meshes;
-using namespace ZEngine::Rendering::Scenes;
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
 using namespace uuids;
@@ -25,84 +29,125 @@ namespace ZEngine::Importers
 
     AssimpImporter::~AssimpImporter() {}
 
-    std::future<void> AssimpImporter::ImportAsync(const char* filename, const ImportConfiguration& cfg)
+    void AssimpImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        ThreadPoolHelper::Submit([this, path = filename, cfg] {
-            std::unique_lock l(m_mutex);
+        arena->CreateSubArena(ZMega(350), &Arena);
+    }
 
-            Arena.Clear();
-            auto                thread_local_arena = &Arena;
-            ImportConfiguration config             = {};
+    bool AssimpImporter::CanImport(const char* extension) const
+    {
+        if (!extension)
+            return false;
+        return secure_strcmp(extension, "fbx") == 0 || secure_strcmp(extension, "obj") == 0;
+    }
 
-            config.OutputWorkingSpacePath.init(thread_local_arena, cfg.OutputWorkingSpacePath.c_str());
-            config.OutputTextureFilesPath.init(thread_local_arena, cfg.OutputTextureFilesPath.c_str());
-            config.OutputAssetsPath.init(thread_local_arena, cfg.OutputAssetsPath.c_str());
-            config.AssetName.init(thread_local_arena, cfg.AssetName.c_str());
-            config.OutputAssetFile.init(thread_local_arena, cfg.OutputAssetFile.c_str());
-            config.InputBaseAssetFilePath.init(thread_local_arena, cfg.InputBaseAssetFilePath.c_str());
+    Core::VFS::VFSResult<void> AssimpImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
+    {
+        // Resolve VFS path to native filesystem path for Assimp.
+        // path is VFS-relative (e.g. /Assets/Lamp01.glb); Assimp needs the full native path.
+        char        native[MAX_FILE_PATH_COUNT] = {};
+        const char* working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
+        if (working_space && working_space[0] != '\0')
+            path.ResolveNative(working_space, native, sizeof(native));
+        else
+            path.ToNative(native, sizeof(native));
 
-            m_is_importing.store(true, std::memory_order_release);
+        Assimp::Importer importer{};
+        const aiScene*   scene = importer.ReadFile(native, m_flags);
 
-            Assimp::Importer importer{};
-            importer.SetProgressHandler(&m_progress_handler);
+        if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
+        {
+            ZENGINE_CORE_ERROR("[AssimpImporter] Failed to read '{}': {}", native, importer.GetErrorString())
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
+        }
 
-            const aiScene* scene = importer.ReadFile(path, m_flags);
+        Core::Memory::ArenaAllocator scratch{};
+        Arena.CreateSubArena(ZMega(64), &scratch);
 
-            if ((!scene) || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
-            {
-                if (m_error_callback)
-                {
-                    m_error_callback(Context, importer.GetErrorString());
-                }
-            }
-            else
-            {
-                std::random_device    rd;
-                std::mt19937          generator(rd());
-                uuid_random_generator gen(&generator);
+        std::random_device    rd;
+        std::mt19937          generator(rd());
+        uuid_random_generator gen(&generator);
 
-                AssetMesh             mesh        = {};
-                AssetNodeHierarchy    hierarchies = {};
-                Array<AssetMaterial>  materials   = {};
-                Array<AssetTexture>   textures    = {};
+        AssetMesh             mesh        = {};
+        AssetNodeHierarchy    hierarchies = {};
+        Array<AssetMaterial>  materials   = {};
+        Array<AssetTexture>   textures    = {};
 
-                ExtractMeshes(thread_local_arena, scene, gen, mesh);
-                ExtractMaterials(thread_local_arena, scene, gen, materials, hierarchies);
-                ExtractTextures(thread_local_arena, scene, gen, materials, textures);
+        ExtractMeshes(&scratch, scene, gen, mesh);
+        mesh.MeshUUID = meta.AssetUUID; // stable UUID from .meta
 
-                CreateHierachy(thread_local_arena, scene, gen, hierarchies, mesh, materials);
-                CopyTextureFiles(thread_local_arena, textures, config);
+        ExtractMaterials(&scratch, scene, gen, materials, hierarchies);
+        ExtractTextures(&scratch, scene, gen, materials, textures);
+        CreateHierachy(&scratch, scene, gen, hierarchies, mesh, materials);
 
-                Array<AssetImporterOutput> outputs = {};
-                outputs.init(thread_local_arena, 100);
+        importer.SetProgressHandler(nullptr);
+        importer.FreeScene();
 
-                auto out_m = SerializeMeshAssetFile(thread_local_arena, mesh, hierarchies, config);
-                outputs.push(out_m);
+        // Ingest directly into AssetManager CPU buffers — no intermediate .zasset round-trip.
+        // Textures before materials (so UUIDToTextureHandle is populated for material GPU maps).
+        // Mesh+Hierarchy last (triggers AssetRegistry::OnAssetReady → hot-reload cascade).
+        if (Managers::AssetManager::Instance())
+        {
+            Managers::AssetManager::IngestTextures(std::move(textures));
+            for (size_t i = 0; i < materials.size(); ++i)
+                Managers::AssetManager::IngestMaterial(std::move(materials[i]));
+            Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchies));
+        }
 
-                auto out_tex = SerializeTextureAssetFiles(thread_local_arena, ArrayView{textures}, config);
-                outputs.push(out_tex);
+        Arena.Clear();
+        return Core::VFS::VFSResult<void>::Ok();
+    }
 
-                for (unsigned i = 0; i < materials.size(); ++i)
-                {
-                    auto& material = materials[i];
-                    auto  out_mat  = SerializeMaterialAssetFile(thread_local_arena, material, config);
-                    outputs.push(out_mat);
-                }
+    void AssimpImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, void (*on_complete)(void*, Core::Containers::ArrayView<AssetImporterOutput>), void (*on_progress)(void*, float), void (*on_error)(void*, std::string_view), void (*on_log)(void*, std::string_view))
+    {
+        AssetCodec::ImportConfiguration config = {};
+        config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
+        config.OutputTextureFilesPath.init(arena, cfg.OutputTextureFilesPath.c_str());
+        config.OutputAssetsPath.init(arena, cfg.OutputAssetsPath.c_str());
+        config.AssetName.init(arena, cfg.AssetName.c_str());
+        config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
+        config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
 
-                auto result = fmt::format("{0}{1}{2}", config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
-                if (m_complete_callback)
-                {
-                    m_complete_callback(Context, ArrayView{outputs});
-                }
-            }
+        Assimp::Importer importer{};
+        importer.SetProgressHandler(&m_progress_handler);
 
-            importer.SetProgressHandler(nullptr);
-            importer.FreeScene();
+        const aiScene* scene = importer.ReadFile(filename, m_flags);
 
-            m_is_importing.store(false, std::memory_order_release);
-        });
+        if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
+        {
+            if (on_error)
+                on_error(context, importer.GetErrorString());
+        }
+        else
+        {
+            std::random_device    rd;
+            std::mt19937          generator(rd());
+            uuid_random_generator gen(&generator);
 
-        co_return;
+            AssetMesh             mesh        = {};
+            AssetNodeHierarchy    hierarchies = {};
+            Array<AssetMaterial>  materials   = {};
+            Array<AssetTexture>   textures    = {};
+
+            ExtractMeshes(arena, scene, gen, mesh);
+            ExtractMaterials(arena, scene, gen, materials, hierarchies);
+            ExtractTextures(arena, scene, gen, materials, textures);
+            CreateHierachy(arena, scene, gen, hierarchies, mesh, materials);
+            CopyTextureFiles(arena, textures, config);
+
+            Array<AssetImporterOutput> outputs = {};
+            outputs.init(arena, 100);
+            outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchies, config));
+            outputs.push(AssetCodec::SerializeTextureAssetFiles(arena, ArrayView{textures}, config));
+            for (size_t i = 0; i < materials.size(); ++i)
+                outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
+
+            if (on_complete)
+                on_complete(context, ArrayView{outputs});
+        }
+
+        importer.SetProgressHandler(nullptr);
+        importer.FreeScene();
     }
 
     void AssimpImporter::ExtractMeshes(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetMesh& mesh)
@@ -133,7 +178,7 @@ namespace ZEngine::Importers
 
         for (uint32_t m = 0; m < t_meshes; ++m)
         {
-            REPORT_LOG(Context, fmt::format("Extrating Meshes : {0}/{1} ", (m + 1), t_meshes).c_str())
+            ZENGINE_CORE_INFO("{}", fmt::format("Extrating Meshes : {0}/{1} ", (m + 1), t_meshes))
 
             aiMesh*  ai_mesh = scene->mMeshes[m];
 
@@ -204,7 +249,7 @@ namespace ZEngine::Importers
 
         for (uint32_t m = 0; m < number_of_materials; ++m)
         {
-            REPORT_LOG(Context, fmt::format("Extrating materials : {0}/{1}", (m + 1), number_of_materials).c_str())
+            ZENGINE_CORE_INFO("{}", fmt::format("Extrating materials : {0}/{1}", (m + 1), number_of_materials))
 
             aiColor4D      color;
             aiMaterial*    ai_material = scene->mMaterials[m];
@@ -305,7 +350,7 @@ namespace ZEngine::Importers
 
         for (uint32_t m = 0; m < number_of_materials; ++m)
         {
-            REPORT_LOG(Context, fmt::format("Extrating Material's textures:  {0}/{1} materials", (m + 1), number_of_materials).c_str())
+            ZENGINE_CORE_INFO("{}", fmt::format("Extrating Material's textures:  {0}/{1} materials", (m + 1), number_of_materials))
 
             aiMaterial*    ai_material = scene->mMaterials[m];
             AssetMaterial& material    = materials[m];
@@ -422,7 +467,7 @@ namespace ZEngine::Importers
         }
     }
 
-    void AssimpImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::Array<AssetTexture>& textures, const ImportConfiguration& config)
+    void AssimpImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::Array<AssetTexture>& textures, const AssetCodec::ImportConfiguration& config)
     {
         /*
          * Normalize file naming
@@ -522,12 +567,8 @@ namespace ZEngine::Importers
         m_importer = importer;
     }
 
-    bool AssimpProgressHandler::Update(float percentage)
+    bool AssimpProgressHandler::Update(float /*percentage*/)
     {
-        if (m_importer && m_importer->m_progress_callback)
-        {
-            m_importer->m_progress_callback(m_importer->Context, percentage);
-        }
         return true;
     }
 } // namespace ZEngine::Importers

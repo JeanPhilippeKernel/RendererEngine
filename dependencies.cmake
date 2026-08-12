@@ -168,6 +168,12 @@ FetchContent_Declare(miniz
     GIT_SHALLOW TRUE
 )
 
+FetchContent_Declare(fastgltf
+    GIT_REPOSITORY https://github.com/spnda/fastgltf.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        v0.9.0
+)
+
 FetchContent_Declare(TracyClient
     GIT_REPOSITORY https://github.com/wolfpld/tracy.git
     GIT_SHALLOW TRUE
@@ -204,6 +210,7 @@ FetchContent_MakeAvailable(
   GTest
   miniz
   TracyClient
+  fastgltf
   )
 
 foreach(_spirv_target IN ITEMS
@@ -292,9 +299,10 @@ target_link_libraries(External_libs
          glslang::glslang
          glslang::glslang-default-resource-limits
          glslang::SPIRV
-         GPUOpen::VulkanMemoryAllocator 
+         GPUOpen::VulkanMemoryAllocator
          nlohmann_json::nlohmann_json
          miniz
+         fastgltf::fastgltf
 )
 
 if(ZENGINE_TRACY)

@@ -1,7 +1,7 @@
 #include <ZEngine/Hardwares/AsyncResourceLoader.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Helpers/ThreadPool.h>
-#include <ZEngine/Importers/EnvironmentMapImporter.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Rendering/Buffers/Bitmap.h>
 #include <filesystem>
 
@@ -522,8 +522,8 @@ namespace ZEngine::Hardwares
 
         if (file_ext == ".zenvmap")
         {
-            Importers::EnvironmentMapFileHeader env_header{};
-            if (!Importers::EnvironmentMapImporter::ReadEnvironmentMapFileHeader(abs_filename.c_str(), env_header))
+            Importers::AssetCodec::EnvironmentMapFileHeader env_header{};
+            if (!Importers::AssetCodec::ReadEnvironmentMapFileHeader(abs_filename.c_str(), env_header))
             {
                 ZENGINE_CORE_ERROR("Failed to read .zenvmap header: {}", abs_filename)
                 return {};
@@ -691,7 +691,7 @@ namespace ZEngine::Hardwares
                         if (cubemap_ext == ".zenvmap")
                         {
                             Buffers::Bitmap cubemap{};
-                            if (!Importers::EnvironmentMapImporter::DeserializeEnvironmentMapFile(file_request.Filename.data(), cubemap))
+                            if (!Importers::AssetCodec::DeserializeEnvironmentMapFile(file_request.Filename.data(), cubemap))
                             {
                                 ZENGINE_CORE_ERROR("Failed to deserialize .zenvmap: {}", file_request.Filename.data())
                                 continue;

@@ -6,6 +6,7 @@
 #include <ZEngine/Helpers/NodeHierarchyHelper.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <uuid.h>
+#include <string>
 
 namespace ZEngine::Importers
 {
@@ -98,5 +99,11 @@ namespace ZEngine::Importers
         AssetMesh                              Mesh      = {};
         Core::Containers::Array<AssetMaterial> Materials = {};
         Core::Containers::Array<AssetTexture>  Textures  = {};
+    };
+    struct AssetImporterOutput
+    {
+        AssetFileType Type     = AssetFileType::UNKNOWN;
+        std::string   Path     = "";
+        std::string   RootPath = "";
     };
 } // namespace ZEngine::Importers
