@@ -5,6 +5,7 @@
 #include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/ECS/Scene.h>
 #include <ZEngine/ECS/WorldCommands.h>
+#include <ZEngine/ECS/WorldTick.h>
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
@@ -29,6 +30,7 @@ namespace ZEngine
         ECS::Scene*                  Scene         = nullptr;
         ECS::ActorManager*           ActorManager  = nullptr;
         ECS::WorldCommands*          WorldCommands = nullptr;
+        ECS::WorldTick*              WorldTick     = nullptr;
     };
     ZDEFINE_PTR(EngineContext);
 
