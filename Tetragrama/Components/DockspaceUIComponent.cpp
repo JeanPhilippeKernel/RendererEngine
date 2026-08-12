@@ -3,8 +3,8 @@
 #include <Tetragrama/Helpers/UIDispatcher.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
-#include <ZEngine/Importers/AssimpImporter.h>
-#include <ZEngine/Importers/EnvironmentMapImporter.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Importers/ImportJob.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <fmt/format.h>
 #include <imgui/imgui_internal.h>
@@ -41,20 +41,16 @@ namespace Tetragrama::Components
         parent->LocalArena.CreateSubArena(ZMega(1), &LocalArena);
 
         m_asset_importer    = ZPushStructCtor(parent->Arena, ZEngine::Importers::AssimpImporter);
-        m_env_map_importer  = ZPushStructCtor(parent->Arena, ZEngine::Importers::EnvironmentMapImporter);
         m_editor_serializer = ZPushStructCtor(parent->Arena, Serializers::EditorSceneSerializer);
 
         m_editor_serializer->Initialize(parent->Arena);
         m_asset_importer->Initialize(parent->Arena);
-        m_env_map_importer->Initialize(parent->Arena);
 
         m_dockspace_node_flag                 = ImGuiDockNodeFlags_NoWindowMenuButton | static_cast<decltype(ImGuiDockNodeFlags_NoWindowMenuButton)>(ImGuiDockNodeFlags_PassthruCentralNode);
         m_window_flags                        = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
         auto app                              = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
         m_editor_serializer->Context          = app;
-        m_asset_importer->Context             = app;
-        m_env_map_importer->Context           = app;
 
         auto editor_serializer_default_output = fmt::format("{0}{1}{2}", app->Configuration->WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, app->Configuration->ScenePath.c_str());
 
@@ -64,16 +60,6 @@ namespace Tetragrama::Components
         m_editor_serializer->SetOnDeserializeCompleteCallback(OnEditorSceneSerializerDeserializeComplete);
         m_editor_serializer->SetOnLogCallback(OnEditorSceneSerializerLog);
         m_editor_serializer->SetOnErrorCallback(OnEditorSceneSerializerError);
-
-        m_asset_importer->SetOnCompleteCallback(OnAssetImporterComplete);
-        m_asset_importer->SetOnProgressCallback(OnAssetImporterProgress);
-        m_asset_importer->SetOnLogCallback(OnAssetImporterLog);
-        m_asset_importer->SetOnErrorCallback(OnAssetImporterError);
-
-        m_env_map_importer->SetOnCompleteCallback(OnEnvMapImporterComplete);
-        m_env_map_importer->SetOnProgressCallback(OnEnvMapImporterProgress);
-        m_env_map_importer->SetOnLogCallback(OnEnvMapImporterLog);
-        m_env_map_importer->SetOnErrorCallback(OnEnvMapImporterError);
     }
 
     void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt) {}
@@ -159,7 +145,7 @@ namespace Tetragrama::Components
         ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
         ImGui::SetNextWindowSize(ImVec2(700, 100), ImGuiCond_Always);
 
-        bool is_import_button_enabled = !m_asset_importer->IsImporting();
+        bool is_import_button_enabled = true;
 
         if (ImGui::BeginPopupModal(str_id, NULL, ImGuiWindowFlags_AlwaysAutoResize))
         {
@@ -212,16 +198,9 @@ namespace Tetragrama::Components
             ImGui::SameLine();
             if (ImGui::Button("Close", ImVec2(80, 0)))
             {
-                if (m_asset_importer->IsImporting())
-                {
-                    ZENGINE_CORE_WARN("Import in progress : {}", s_asset_importer_input_buffer)
-                }
-                else
-                {
-                    m_open_asset_importer = false;
-                    ResetImporterBuffers();
-                    ImGui::CloseCurrentPopup();
-                }
+                m_open_asset_importer = false;
+                ResetImporterBuffers();
+                ImGui::CloseCurrentPopup();
             }
 
             ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
@@ -487,7 +466,7 @@ namespace Tetragrama::Components
             ImGui::SetCursorPosX(ImGui::GetWindowSize().x - 180);
             ImGui::SetCursorPosY(ImGui::GetWindowSize().y - ImGui::GetFrameHeightWithSpacing() - 5);
 
-            bool is_import_button_enabled = !std::string_view(s_env_map_importer_input_buffer).empty() && !m_env_map_importer->IsImporting();
+            bool is_import_button_enabled = !std::string_view(s_env_map_importer_input_buffer).empty();
 
             if (!is_import_button_enabled)
             {
@@ -504,12 +483,6 @@ namespace Tetragrama::Components
             if (!is_import_button_enabled)
             {
                 ImGui::PopStyleColor(3);
-            }
-
-            if (m_env_map_importer->IsImporting())
-            {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(importing...)");
             }
 
             ImGui::SameLine();
@@ -538,28 +511,34 @@ namespace Tetragrama::Components
 
     std::future<void> DockspaceUIComponent::OnImportEnvironmentMapAsync(const char* filename)
     {
-        if (ZEngine::Helpers::secure_strlen(filename) == 0 || m_env_map_importer->IsImporting())
+        if (ZEngine::Helpers::secure_strlen(filename) == 0)
         {
             co_return;
         }
 
-        LocalArena.Clear();
-
-        auto app         = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-        auto arena       = &LocalArena;
-        auto asset_name  = fs::path(filename).filename().replace_extension().string();
-        auto output_file = fmt::format("{}.zenvmap", asset_name.c_str());
-
-        auto config      = ZPushStruct(arena, ZEngine::Importers::ImportConfiguration);
-        config->OutputWorkingSpacePath.init(arena, app->Configuration->WorkingSpacePath.c_str());
-        config->OutputAssetsPath.init(arena, app->Configuration->EnvironmentMapImportPath.c_str());
-        config->AssetName.init(arena, asset_name.c_str());
-        config->OutputAssetFile.init(arena, output_file.c_str());
+        auto* ctx = ZEngine::Engine::GetContext();
+        if (!ctx || !ctx->ImportCoordinator || !ctx->VFS)
+        {
+            co_return;
+        }
 
         s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
         s_env_map_importer_report_msg       = "Importing...";
 
-        m_env_map_importer->ImportAsync(filename, *config);
+        // Convert native path to VFS path and enqueue at Immediate priority.
+        auto vfs_path_result                = ZEngine::Core::VFS::VFSPath::FromNative(filename);
+        if (!vfs_path_result.Succeeded())
+        {
+            s_env_map_importer_report_msg_color = {1.0f, 0.0f, 0.0f, 1.0f};
+            s_env_map_importer_report_msg       = "Invalid path";
+            co_return;
+        }
+
+        ctx->ImportCoordinator->Enqueue(vfs_path_result.Value(), ZEngine::Importers::ImportPriority::Immediate, {&s_env_map_importer_report_msg, [](void* ctx, bool success) {
+                                                                                                                     auto* msg = static_cast<std::string*>(ctx);
+                                                                                                                     *msg      = success ? "Completed" : "Failed";
+                                                                                                                 }});
+
         co_return;
     }
 
@@ -779,8 +758,8 @@ namespace Tetragrama::Components
 
     std::future<void> DockspaceUIComponent::OnOpenMeshRequestAsync(const char* filename)
     {
-        ZEngine::Importers::AssetMeshFileHeader header;
-        if (ZEngine::Importers::IAssetImporter::ReadAssetMeshFileHeader(filename, header))
+        ZEngine::Importers::AssetCodec::AssetMeshFileHeader header;
+        if (ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(filename, header))
         {
             auto asset_mesh = ZEngine::Managers::AssetManager::GetAsset<ZEngine::Importers::AssetMesh>(header.Id);
             if (asset_mesh)
@@ -798,7 +777,7 @@ namespace Tetragrama::Components
 
     std::future<void> DockspaceUIComponent::OnImportAssetAsync(const char* filename)
     {
-        if ((ZEngine::Helpers::secure_strlen(filename) == 0) || m_asset_importer->IsImporting())
+        if (ZEngine::Helpers::secure_strlen(filename) == 0)
         {
             co_return;
         }
@@ -806,14 +785,13 @@ namespace Tetragrama::Components
         LocalArena.Clear();
 
         auto        app               = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-
         auto        arena             = &LocalArena;
         const auto& editor_config     = *(app->Configuration);
         auto        parent_path       = std::filesystem::path(filename).parent_path().string();
         auto        asset_name        = fs::path(filename).filename().replace_extension().string();
         auto        output_asset_file = fmt::format("{}.zemesh", asset_name.c_str());
 
-        auto        config            = ZPushStruct(arena, ZEngine::Importers::ImportConfiguration);
+        auto        config            = ZPushStruct(arena, ZEngine::Importers::AssetCodec::ImportConfiguration);
         config->OutputWorkingSpacePath.init(arena, editor_config.WorkingSpacePath.c_str());
         config->OutputTextureFilesPath.init(arena, editor_config.TexturePath.c_str());
         config->OutputAssetsPath.init(arena, editor_config.SceneDataPath.c_str());
@@ -821,7 +799,8 @@ namespace Tetragrama::Components
         config->OutputAssetFile.init(arena, output_asset_file.c_str());
         config->InputBaseAssetFilePath.init(arena, parent_path.c_str());
 
-        m_asset_importer->ImportAsync(filename, *config);
+        ZEngine::Helpers::ThreadPoolHelper::Submit([this, fn = std::string(filename), cfg = *config, app, arena]() mutable { m_asset_importer->ImportFile(fn.c_str(), cfg, arena, app, OnAssetImporterComplete, OnAssetImporterProgress, OnAssetImporterError, nullptr); });
+
         co_return;
     }
 

@@ -2,7 +2,9 @@
 #include <Tetragrama/Components/UIComponent.h>
 #include <Tetragrama/Messengers/Message.h>
 #include <Tetragrama/Serializers/EditorSceneSerializer.h>
-#include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Importers/AssetCodec.h>
+#include <ZEngine/Importers/AssimpImporter.h>
+#include <ZEngine/Importers/EnvironmentMapImporter.h>
 #include <imgui.h>
 
 namespace Tetragrama::Components
@@ -76,18 +78,17 @@ namespace Tetragrama::Components
         static char        s_env_map_importer_input_buffer[1024];
 
     private:
-        bool                                    m_open_asset_importer{false};
-        bool                                    m_open_env_map_importer{false};
-        bool                                    m_open_exit{false};
-        bool                                    m_pending_shutdown{false};
-        bool                                    m_open_save_scene{false};
-        bool                                    m_open_save_scene_as{false};
-        bool                                    m_request_save_scene_ui_close{false};
-        ImGuiDockNodeFlags                      m_dockspace_node_flag;
-        ImGuiWindowFlags                        m_window_flags;
-        ZEngine::Importers::ImportConfiguration m_default_import_configuration;
-        ZRawPtr(ZEngine::Importers::IAssetImporter) m_asset_importer;
-        ZRawPtr(ZEngine::Importers::IAssetImporter) m_env_map_importer;
+        bool                                                m_open_asset_importer{false};
+        bool                                                m_open_env_map_importer{false};
+        bool                                                m_open_exit{false};
+        bool                                                m_pending_shutdown{false};
+        bool                                                m_open_save_scene{false};
+        bool                                                m_open_save_scene_as{false};
+        bool                                                m_request_save_scene_ui_close{false};
+        ImGuiDockNodeFlags                                  m_dockspace_node_flag;
+        ImGuiWindowFlags                                    m_window_flags;
+        ZEngine::Importers::AssetCodec::ImportConfiguration m_default_import_configuration;
+        ZRawPtr(ZEngine::Importers::AssimpImporter) m_asset_importer;
         ZRawPtr(Serializers::EditorSceneSerializer) m_editor_serializer;
     };
 } // namespace Tetragrama::Components

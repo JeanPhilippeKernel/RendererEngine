@@ -2,7 +2,9 @@
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
+#include <ZEngine/Core/VFS/Registry/AssetRecord.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -34,7 +36,7 @@ namespace Tetragrama
         WorkingSpacePath = Configuration->WorkingSpacePath.c_str();
         if (WorkingSpacePath && WorkingSpacePath[0] != '\0')
         {
-            WorkingSpaceBackend.Initialize(WorkingSpacePath, ZEngine::Core::VFS::VFSBackendCaps::Read | ZEngine::Core::VFS::VFSBackendCaps::List, &Memory->MainArena);
+            WorkingSpaceBackend.Initialize(WorkingSpacePath, ZEngine::Core::VFS::VFSBackendCaps::Read | ZEngine::Core::VFS::VFSBackendCaps::Write | ZEngine::Core::VFS::VFSBackendCaps::List, &Memory->MainArena);
         }
     }
 
@@ -67,6 +69,40 @@ namespace Tetragrama
 
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
+
+        // When AssetManager::__Run finishes loading a MESH_HIERARCHY asset, automatically
+        // enqueue its handle into EditorScene::PendingOnLoadHierarchies so the hierarchy
+        // view rebuilds GlobalTransforms without a manual "open mesh" step.
+        auto* registry   = ZEngine::Managers::AssetManager::Instance() ? ZEngine::Managers::AssetManager::Instance()->Registry : nullptr;
+        if (registry)
+        {
+            struct HotReloadCtx
+            {
+                EditorScene* Scene;
+            };
+            auto* ctx  = ZPushStruct(&Memory->MainArena, HotReloadCtx);
+            ctx->Scene = editor_scene;
+
+            registry->SetHotReloadCallback(ctx, [](void* raw, std::span<const uuids::uuid> cascade) {
+                auto* c   = static_cast<HotReloadCtx*>(raw);
+                auto* mgr = ZEngine::Managers::AssetManager::Instance();
+                if (!mgr)
+                    return;
+
+                for (const auto& uuid : cascade)
+                {
+                    auto* rec = mgr->Registry->FindByUUID(uuid);
+                    if (!rec || rec->Type != ZEngine::Managers::AssetType::MESH_HIERARCHY)
+                        continue;
+                    if (rec->State != ZEngine::Core::VFS::AssetState::Loaded)
+                        continue;
+
+                    auto handle = mgr->GetMeshNodeHierarchyHandle(uuid);
+                    if (handle != 0)
+                        c->Scene->PendingOnLoadHierarchies->Enqueue(handle);
+                }
+            });
+        }
     }
 
     void Editor::OnUpdate(float dt)

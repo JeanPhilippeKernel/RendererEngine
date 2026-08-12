@@ -1,6 +1,8 @@
+#include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSScanner.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 
 #if defined(__APPLE__)
@@ -19,7 +21,7 @@ namespace ZEngine::Core::VFS
         m_mount_table.Initialize(m_arena, mount_table_capacity);
     }
 
-    void VFSContext::InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner)
+    void VFSContext::InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner, AssetRegistry* registry, Importers::ImportCoordinator* coordinator)
     {
         if (!m_arena)
         {
@@ -34,6 +36,8 @@ namespace ZEngine::Core::VFS
 
         m_directory_cache   = cache;
         m_scanner           = scanner;
+        m_registry          = registry;
+        m_coordinator       = coordinator;
 
         const size_t length = Helpers::secure_strlen(project_root_native);
         Helpers::secure_strncpy(m_project_root_native, sizeof(m_project_root_native), project_root_native, length < MAX_FILE_PATH_COUNT ? length : MAX_FILE_PATH_COUNT - 1);
@@ -113,12 +117,12 @@ namespace ZEngine::Core::VFS
 
             VFSResult<VFSPath> path        = full_rescan ? VFSPath::FromNative(m_project_root_native) : VFSPath::FromNative(ev.Path);
             if (path.Failed())
-            {
                 return;
-            }
 
-            const VFSPath target = (ev.IsDirectory || full_rescan) ? path.Value() : path.Value().Parent();
+            const VFSPath target    = (ev.IsDirectory || full_rescan) ? path.Value() : path.Value().Parent();
+            const VFSPath file_path = path.Value();
 
+            // Invalidate directory cache
             if (m_directory_cache)
             {
                 m_directory_cache->Invalidate(target);
@@ -126,16 +130,51 @@ namespace ZEngine::Core::VFS
                 {
                     VFSResult<VFSPath> old_path = VFSPath::FromNative(ev.OldPath);
                     if (old_path.Succeeded())
-                    {
                         m_directory_cache->Invalidate(ev.IsDirectory ? old_path.Value() : old_path.Value().Parent());
-                    }
                 }
             }
 
-            if (m_scanner && m_directory_cache && !m_scanner->IsScanning())
+            // Notify AssetRegistry and ImportCoordinator for file (non-directory) events
+            // Skip .meta sidecar files — they are written by the coordinator itself and must
+            // not be fed back into the import queue.
+            auto is_meta = [](const VFSPath& p) -> bool {
+                auto ext = p.Extension();
+                return ext.Data && ext.Length == 5 && // ".meta"
+                       ext.Data[0] == '.' && ext.Data[1] == 'm' && ext.Data[2] == 'e' && ext.Data[3] == 't' && ext.Data[4] == 'a';
+            };
+            if (!ev.IsDirectory && !full_rescan && !is_meta(file_path))
             {
-                m_scanner->Scan(this, target, m_directory_cache);
+                switch (ev.Kind)
+                {
+                    case WatchEventKind::Modified:
+                        if (m_registry)
+                            m_registry->OnAssetModified(file_path);
+                        if (m_coordinator)
+                            m_coordinator->Enqueue(file_path, Importers::ImportPriority::Immediate);
+                        break;
+
+                    case WatchEventKind::Deleted:
+                        if (m_registry)
+                            m_registry->OnAssetDeleted(file_path);
+                        break;
+
+                    case WatchEventKind::Renamed:
+                        if (m_registry && ev.OldPath[0] != '\0')
+                        {
+                            VFSResult<VFSPath> old_path = VFSPath::FromNative(ev.OldPath);
+                            if (old_path.Succeeded())
+                                m_registry->OnAssetRenamed(old_path.Value(), file_path);
+                        }
+                        break;
+
+                    default:
+                        break;
+                }
             }
+
+            // Rescan directory
+            if (m_scanner && m_directory_cache && !m_scanner->IsScanning())
+                m_scanner->Scan(this, target, m_directory_cache);
         });
 
         if (root_handle == INVALID_WATCH_HANDLE)

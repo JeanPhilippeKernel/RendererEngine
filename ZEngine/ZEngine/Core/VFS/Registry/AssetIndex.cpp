@@ -21,7 +21,8 @@ namespace ZEngine::Core::VFS
         if (m_by_uuid.contains(uuid))
             return {.Error = RegisterError::DuplicateUUID};
 
-        if (m_by_path.contains(path.Hash()))
+        // Only check path uniqueness when a real path is provided.
+        if (path.IsValid() && m_by_path.contains(path.Hash()))
             return {.Error = RegisterError::DuplicatePath};
 
         Helpers::Handle<AssetRecord> handle = m_handles.Create();
@@ -48,7 +49,8 @@ namespace ZEngine::Core::VFS
         }
 
         m_by_uuid.insert(uuid, handle);
-        m_by_path.insert(path.Hash(), handle);
+        if (path.IsValid())
+            m_by_path.insert(path.Hash(), handle);
 
         uint8_t type_idx = static_cast<uint8_t>(type);
         if (type_idx < ASSET_TYPE_COUNT)

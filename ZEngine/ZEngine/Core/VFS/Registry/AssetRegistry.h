@@ -55,20 +55,24 @@ namespace ZEngine::Core::VFS
             uint32_t                                              Count = 0;
         };
 
-        QueryResult                Query(const QueryFilter& filter, Core::Memory::ArenaAllocator* arena) const;
+        QueryResult            Query(const QueryFilter& filter, Core::Memory::ArenaAllocator* arena) const;
 
         // Hot-reload callback: void(*)(void* ctx, span<const uuid> cascade)
-        void                       SetHotReloadCallback(void* ctx, void (*cb)(void*, std::span<const uuids::uuid>));
+        void                   SetHotReloadCallback(void* ctx, void (*cb)(void*, std::span<const uuids::uuid>));
 
-        void                       OnAssetModified(const Core::VFS::VFSPath& path);
-        void                       OnAssetDeleted(const Core::VFS::VFSPath& path);
-        void                       OnAssetRenamed(const Core::VFS::VFSPath& old_path, const Core::VFS::VFSPath& new_path);
+        void                   OnAssetModified(const Core::VFS::VFSPath& path);
+        void                   OnAssetDeleted(const Core::VFS::VFSPath& path);
+        void                   OnAssetRenamed(const Core::VFS::VFSPath& old_path, const Core::VFS::VFSPath& new_path);
 
         // Called per-file from the scanner's ScanComplete callback.
-        void                       OnScanFileDiscovered(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, Managers::AssetType type);
+        void                   OnScanFileDiscovered(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, Managers::AssetType type);
 
-        uint32_t                   RecordCount() const;
-        uint32_t                   EdgeCount() const;
+        uint32_t               RecordCount() const;
+        uint32_t               EdgeCount() const;
+        const DependencyGraph& GetGraph() const
+        {
+            return m_graph;
+        }
 
         // Write DOT-format graph to out_buf. Returns bytes written (0 if buffer too small).
         uint32_t                   DumpGraphDOT(char* out_buf, uint32_t out_len) const;

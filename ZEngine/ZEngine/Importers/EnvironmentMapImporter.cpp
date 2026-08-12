@@ -1,104 +1,75 @@
-#include <ZEngine/Core/Coroutine.h>
-#include <ZEngine/Helpers/ThreadPool.h>
-#include <ZEngine/Importers/AssetTypes.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/EnvironmentMapImporter.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/ZEngineDef.h>
 #include <fmt/format.h>
+#include <uuid.h>
 #include <filesystem>
 
 // stb_image implementation is defined once in AsyncResourceLoader.cpp.
 #include <stb/stb_image.h>
 
-using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Buffers;
-using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Importers
 {
-    std::future<void> EnvironmentMapImporter::ImportAsync(const char* filename, const ImportConfiguration& cfg)
+    void EnvironmentMapImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        ThreadPoolHelper::Submit([this, path = std::string(filename), cfg] {
-            std::unique_lock l(m_mutex);
-
-            Arena.Clear();
-            auto                thread_local_arena = &Arena;
-            ImportConfiguration config             = {};
-
-            config.OutputWorkingSpacePath.init(thread_local_arena, cfg.OutputWorkingSpacePath.c_str());
-            config.OutputAssetsPath.init(thread_local_arena, cfg.OutputAssetsPath.c_str());
-            config.AssetName.init(thread_local_arena, cfg.AssetName.c_str());
-            config.OutputAssetFile.init(thread_local_arena, cfg.OutputAssetFile.c_str());
-
-            std::string dir_path      = fmt::format("{0}{1}{2}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetsPath.c_str());
-            std::string fullname_path = fmt::format("{0}{1}{2}", dir_path, PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
-
-            if (std::filesystem::exists(fullname_path))
-            {
-                REPORT_LOG(Context, fmt::format("Environment map already exists"))
-                return;
-            }
-
-            m_is_importing.store(true, std::memory_order_release);
-
-            int          width = 0, height = 0, channel = 0;
-            // stbi_set_flip_vertically_on_load(1);
-            const float* image_data = stbi_loadf(path.c_str(), &width, &height, &channel, 4);
-
-            if (!image_data)
-            {
-                if (m_error_callback)
-                {
-                    m_error_callback(Context, fmt::format("Failed to decode '{}': {}", path, stbi_failure_reason()));
-                }
-                m_is_importing.store(false, std::memory_order_release);
-                return;
-            }
-
-            if (m_progress_callback)
-            {
-                m_progress_callback(Context, 0.33f);
-            }
-
-            Bitmap equirect = {width, height, 4, BitmapFormat::FLOAT, image_data};
-            stbi_image_free(const_cast<float*>(image_data));
-
-            Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(equirect);
-            Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
-
-            if (m_progress_callback)
-            {
-                m_progress_callback(Context, 0.75f);
-            }
-
-            auto output = IAssetImporter::SerializeEnvironmentMapFile(cubemap, config);
-
-            m_is_importing.store(false, std::memory_order_release);
-
-            if (output.Type == AssetFileType::ENVIRONMENT_MAP)
-            {
-                if (m_progress_callback)
-                {
-                    m_progress_callback(Context, 1.0f);
-                }
-
-                Array<AssetImporterOutput> outputs = {};
-                outputs.init(thread_local_arena, 1);
-                outputs.push(output);
-
-                if (m_complete_callback)
-                {
-                    m_complete_callback(Context, ArrayView{outputs});
-                }
-            }
-            else
-            {
-                if (m_error_callback)
-                {
-                    m_error_callback(Context, fmt::format("Failed to write .zenvmap"));
-                }
-            }
-        });
-
-        co_return;
+        arena->CreateSubArena(ZMega(32), &Arena);
     }
 
+    bool EnvironmentMapImporter::CanImport(const char* extension) const
+    {
+        if (!extension)
+            return false;
+        return Helpers::secure_strcmp(extension, "hdr") == 0 || Helpers::secure_strcmp(extension, "exr") == 0;
+    }
+
+    Core::VFS::VFSResult<void> EnvironmentMapImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
+    {
+        // Resolve to native path — stb_image works on the filesystem, not the VFS.
+        char native[MAX_FILE_PATH_COUNT] = {};
+        path.ToNative(native, sizeof(native));
+
+        int          width = 0, height = 0, channel = 0;
+        const float* image_data = stbi_loadf(native, &width, &height, &channel, 4);
+        if (!image_data)
+        {
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to load '{}': {}", native, stbi_failure_reason())
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
+        }
+
+        Bitmap equirect = {width, height, 4, BitmapFormat::FLOAT, image_data};
+        stbi_image_free(const_cast<float*>(image_data));
+
+        Bitmap vertical_cross                    = Bitmap::EquirectangularMapToVerticalCross(equirect);
+        Bitmap cubemap                           = Bitmap::VerticalCrossToCubemap(vertical_cross);
+
+        // Write to project://_cache/envmaps/<uuid>.zenvmap via VFS.
+        // Keyed by UUID — regenerable, gitignored, transparent to game code.
+        char   vfs_path_buf[MAX_FILE_PATH_COUNT] = {};
+        std::snprintf(vfs_path_buf, sizeof(vfs_path_buf), "/_cache/envmaps/%s.zenvmap", uuids::to_string(meta.AssetUUID).c_str());
+
+        auto out_path_result = Core::VFS::VFSPath::Parse(vfs_path_buf);
+        if (!out_path_result.Succeeded())
+        {
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: invalid output path '{}'", vfs_path_buf)
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
+
+        // Ensure the cache directory exists
+        auto cache_dir = Core::VFS::VFSPath::Parse("/_cache/envmaps").Value();
+        ctx.CreateDir(cache_dir); // no-op if already exists
+
+        auto write_result = AssetCodec::SerializeEnvironmentMapFileVFS(ctx, out_path_result.Value(), cubemap);
+        if (write_result.Failed())
+        {
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to write .zenvmap for '{}'", native)
+            return write_result;
+        }
+
+        ZENGINE_CORE_INFO("EnvironmentMapImporter: cooked '{}' → '{}'", native, vfs_path_buf)
+        return Core::VFS::VFSResult<void>::Ok();
+    }
 } // namespace ZEngine::Importers

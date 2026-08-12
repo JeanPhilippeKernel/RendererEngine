@@ -2,12 +2,15 @@
 #include <Tetragrama/Components/SceneViewportUIComponent.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Importers/ImportJob.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 /**/
 #include <ImGuizmo/ImGuizmo.h>
 #include <Tetragrama/Editor.h>
+#include <cstring>
 #include <filesystem>
 
 using namespace Tetragrama::Components::Event;
@@ -141,6 +144,44 @@ namespace Tetragrama::Components
                     else if (file_ext == ".zemesh")
                     {
                         Messengers::IMessenger::SendAsync<ZEngine::Applications::Layer, Messengers::GenericMessage<std::string>>(EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENMESH, Messengers::GenericMessage<std::string>(buf));
+                    }
+                    else if (file_ext == ".glb" || file_ext == ".gltf" || file_ext == ".fbx" || file_ext == ".obj")
+                    {
+                        ZENGINE_CORE_INFO("SceneViewport: dropped native='{}'", buf)
+                        auto* ctx = ZEngine::Engine::GetContext();
+                        if (!ctx || !ctx->ImportCoordinator || !ctx->VFS)
+                        {
+                            ZENGINE_CORE_ERROR("SceneViewport: missing engine context, coordinator, or VFS")
+                        }
+                        else
+                        {
+                            // buf is a native absolute path. Strip WorkingSpacePath prefix to get
+                            // the VFS-relative path that the VFS backend is mounted on.
+                            auto                        app = reinterpret_cast<Tetragrama::EditorPtr>(ParentLayer->CurrentApp);
+                            const char*                 ws  = app ? app->WorkingSpacePath : "";
+
+                            ZEngine::Core::VFS::VFSPath vfs_path;
+                            size_t                      ws_len = ZEngine::Helpers::secure_strlen(ws);
+                            if (ws_len > 0 && std::strncmp(buf, ws, ws_len) == 0)
+                            {
+                                // Strip working space prefix — remainder is VFS path
+                                auto relative = ZEngine::Core::VFS::VFSPath::Parse(buf + ws_len);
+                                if (relative.Succeeded())
+                                {
+                                    vfs_path = relative.Value();
+                                    ZENGINE_CORE_INFO("SceneViewport: VFS path='{}'", vfs_path.CStr())
+                                    ctx->ImportCoordinator->Enqueue(vfs_path, ZEngine::Importers::ImportPriority::Immediate);
+                                }
+                                else
+                                {
+                                    ZENGINE_CORE_ERROR("SceneViewport: failed to parse VFS path from '{}'", buf + ws_len)
+                                }
+                            }
+                            else
+                            {
+                                ZENGINE_CORE_WARN("SceneViewport: native path '{}' is outside working space '{}'", buf, ws)
+                            }
+                        }
                     }
                 }
             }

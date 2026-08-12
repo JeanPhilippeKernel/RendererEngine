@@ -6,28 +6,19 @@
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
-#include <ZEngine/Helpers/ThreadSafeQueue.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Managers/AssetTypes.h>
-#include <condition_variable>
+#include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <mutex>
 
 namespace ZEngine::Managers
 {
-
     struct AssetManager
     {
-        // Flat slot index into the corresponding Array<T> buffer.
-        // Type is encoded in the high 4 bits, index in the low 28 bits.
-
         Core::Memory::ArenaAllocator                                                        Arena                   = {};
-        Core::Memory::ArenaAllocator                                                        ThreadLocalArena        = {};
-
         cstring                                                                             CurrentWorkingSpacePath = "";
-
-        std::atomic_bool                                                                    IsLoading               = false;
-        std::atomic_bool                                                                    RequestShutdown         = false;
 
         // CPU-side import buffers — owned by the import pipeline.
         Core::Containers::Array<Importers::AssetNodeHierarchy>                              NodeHierarchies         = {};
@@ -43,43 +34,35 @@ namespace ZEngine::Managers
 
         Hardwares::StorageBufferSetHandle                                                   MaterialBufferHandle    = {};
 
-        std::mutex                                                                          Mut;
-        std::condition_variable                                                             Cond;
+        // Mutex guards direct-ingest methods called from import threads.
+        mutable std::mutex                                                                  IngestMutex;
 
-        Helpers::ThreadSafeQueue<Importers::AssetImporterOutput>                            PendingAssetFiles           = {};
-        Helpers::ThreadSafeQueue<Importers::AssetMesh>                                      PendingAssetMeshes          = {};
-        Helpers::ThreadSafeQueue<Importers::AssetNodeHierarchy>                             PendingAssetNodeHierarchies = {};
-        Helpers::ThreadSafeQueue<Importers::AssetMaterial>                                  PendingAssetMaterials       = {};
-        Helpers::ThreadSafeQueue<Core::Containers::Array<Importers::AssetTexture>>          PendingAssetTextures        = {};
+        Hardwares::VulkanDevice*                                                            Device   = nullptr;
+        ::ZEngine::Core::VFS::AssetRegistry*                                                Registry = nullptr;
 
-        Hardwares::VulkanDevice*                                                            Device                      = nullptr;
-        ::ZEngine::Core::VFS::AssetRegistry*                                                Registry                    = nullptr;
-
-        // CPU buffer accessors — index via flat slot stored in AssetRecord::SlotHandle.
+        // CPU buffer accessors
         Importers::AssetMesh*                                                               GetMeshAsset(const uuids::uuid& id);
         Importers::AssetNodeHierarchy*                                                      GetMeshNodeHierarchy(const uuids::uuid& id);
         AssetHandle                                                                         GetMeshNodeHierarchyHandle(const uuids::uuid& id);
         AssetHandle                                                                         GetMaterialHandleFromUUID(const uuids::uuid& material_uuid);
-
         Importers::AssetTexture*                                                            LoadTextureFileAsAsset(cstring file, bool absolute);
 
         static AssetManager*                                                                Instance();
-
         static AssetHandle                                                                  CreateHandle(uint32_t index, AssetType type);
         static uint32_t                                                                     ReadAssetHandleIndex(AssetHandle h);
         static AssetType                                                                    ReadAssetHandleType(AssetHandle h);
 
         static void                                                                         Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path);
-        static void                                                                         Run();
         static void                                                                         Shutdown();
-
-        static bool                                                                         IsLoadingAsset();
-
-        // Register a newly imported asset into both the flat buffer and the registry.
 
         static AssetHandle                                                                  RegisterAsset(AssetType type, const uuids::uuid& uuid, uint32_t slot_index, const Core::VFS::VFSPath& path = {}, const Core::VFS::MetaFileData& meta = {});
 
-        static void                                                                         LoadAssetFile(const Importers::AssetImporterOutput& file);
+        // Direct ingest — called from ImportCoordinator thread after AssetCodec cooks the file.
+        // Each method copies the data into the arena-backed flat buffers and calls RegisterAsset.
+        // Thread-safe via IngestMutex.
+        static void                                                                         IngestMesh(Importers::AssetMesh&& mesh, Importers::AssetNodeHierarchy&& hierarchy);
+        static void                                                                         IngestTextures(Core::Containers::Array<Importers::AssetTexture>&& textures);
+        static void                                                                         IngestMaterial(Importers::AssetMaterial&& material);
 
         static uuids::uuid                                                                  GetOrCreateUUID(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& asset_path, const char* importer_name);
 
@@ -88,9 +71,6 @@ namespace ZEngine::Managers
         {
             return nullptr;
         }
-
-    private:
-        void __Run();
     };
 
     template <>

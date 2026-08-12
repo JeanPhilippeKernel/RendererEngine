@@ -50,15 +50,15 @@ namespace
             out << contents;
         }
 
-        void Drain(VFSFSEventsWatcher& watcher, int timeout_ms = 2000)
+        void Drain(VFSFSEventsWatcher& watcher, int timeout_ms = 3000)
         {
-            // Poll in 50ms increments until at least one event arrives or deadline passes.
-            // A fixed 400ms sleep was too short on slow CI runners.
+            // Poll in 50ms increments, accumulating events, until at least one
+            // arrives or the deadline passes. Do NOT clear between polls — on slow
+            // CI runners FSEvents may batch events across multiple Poll calls.
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{timeout_ms};
             do
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds{50});
-                m_events.clear();
                 watcher.Poll([](void* ctx, const VFSWatchEvent& ev) { reinterpret_cast<VFSFSEventsWatcherTest*>(ctx)->m_events.push(ev); }, this);
             } while (m_events.empty() && std::chrono::steady_clock::now() < deadline);
         }
@@ -85,6 +85,11 @@ namespace
                 }
             }
             return false;
+        }
+
+        void ClearEvents()
+        {
+            m_events.clear();
         }
 
         size_t EventCount() const
@@ -130,6 +135,7 @@ TEST_F(VFSFSEventsWatcherTest, ReportsFileModification)
     ASSERT_NE(watcher.AddWatch(m_root.c_str(), true), INVALID_WATCH_HANDLE);
     watcher.StartThread();
     Drain(watcher);
+    ClearEvents();
 
     WriteFile(file, "second");
 
@@ -150,6 +156,7 @@ TEST_F(VFSFSEventsWatcherTest, DeletionIsClassifiedByStat)
     ASSERT_NE(watcher.AddWatch(m_root.c_str(), true), INVALID_WATCH_HANDLE);
     watcher.StartThread();
     Drain(watcher);
+    ClearEvents();
 
     std::error_code ec;
     std::filesystem::remove(file, ec);
@@ -172,6 +179,7 @@ TEST_F(VFSFSEventsWatcherTest, RenameArrivesAsTwoSeparateEvents)
     ASSERT_NE(watcher.AddWatch(m_root.c_str(), true), INVALID_WATCH_HANDLE);
     watcher.StartThread();
     Drain(watcher);
+    ClearEvents();
 
     std::error_code ec;
     std::filesystem::rename(original, renamed, ec);
@@ -229,6 +237,7 @@ TEST_F(VFSFSEventsWatcherTest, RemoveWatchStopsEvents)
 
     watcher.RemoveWatch(handle);
     EXPECT_EQ(watcher.WatchCount(), 0u);
+    ClearEvents();
 
     WriteFile(m_root / "ignored.glb", "x");
     Drain(watcher);
