@@ -56,6 +56,14 @@ namespace ZEngine
         g_engine_ctx->InputManager = ZPushStructCtor(&arena, Input::InputManager);
         g_engine_ctx->InputManager->Initialize(&g_engine_ctx->InputArena);
 
+        memory->CreateBudgetedArena(memory->Budget.ECSScene, &g_engine_ctx->ECSArena);
+        g_engine_ctx->Scene = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::Scene);
+        g_engine_ctx->Scene->Initialize(&g_engine_ctx->ECSArena);
+        g_engine_ctx->ActorManager = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::ActorManager);
+        g_engine_ctx->ActorManager->Initialize(&g_engine_ctx->ECSArena, *g_engine_ctx->Scene);
+        g_engine_ctx->WorldCommands = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldCommands);
+        g_engine_ctx->WorldCommands->Initialize(&g_engine_ctx->ECSArena);
+
         glfwSetScrollCallback(static_cast<GLFWwindow*>(window->GetNativeWindow()), [](GLFWwindow*, double, double yoffset) {
             if (g_engine_ctx && g_engine_ctx->InputManager)
                 g_engine_ctx->InputManager->AccumulateScroll(yoffset);
@@ -78,7 +86,13 @@ namespace ZEngine
             g_render_thread.join();
         }
 
-        // Step 3 — drain async import queue before pipeline/device teardown
+        // Step 3 — ECS shutdown: ActorManager before Scene (lifecycle order)
+        if (g_engine_ctx->ActorManager)
+            g_engine_ctx->ActorManager->Shutdown();
+        if (g_engine_ctx->Scene)
+            g_engine_ctx->Scene->Shutdown();
+
+        // Step 4 — drain async import queue before pipeline/device teardown
         Managers::AssetManager::Shutdown();
 
         // Step 4 — destroy framebuffers, render passes, descriptor sets

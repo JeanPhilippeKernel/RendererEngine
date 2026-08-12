@@ -50,12 +50,17 @@ namespace
             out << contents;
         }
 
-        void Drain(VFSFSEventsWatcher& watcher)
+        void Drain(VFSFSEventsWatcher& watcher, int timeout_ms = 2000)
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds{400});
-
-            m_events.clear();
-            watcher.Poll([](void* ctx, const VFSWatchEvent& ev) { reinterpret_cast<VFSFSEventsWatcherTest*>(ctx)->m_events.push(ev); }, this);
+            // Poll in 50ms increments until at least one event arrives or deadline passes.
+            // A fixed 400ms sleep was too short on slow CI runners.
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{timeout_ms};
+            do
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds{50});
+                m_events.clear();
+                watcher.Poll([](void* ctx, const VFSWatchEvent& ev) { reinterpret_cast<VFSFSEventsWatcherTest*>(ctx)->m_events.push(ev); }, this);
+            } while (m_events.empty() && std::chrono::steady_clock::now() < deadline);
         }
 
         bool Contains(const char* path, WatchEventKind kind) const

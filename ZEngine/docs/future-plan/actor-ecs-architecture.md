@@ -1,8 +1,20 @@
 # ZEngine — Hybrid Actor-ECS Architecture
 
 **Priority:** P1 — Implement first; all other systems depend on this  
-**Status:** Design  
+**Status:** Design — doc updated with final capacity and lifetime decisions  
 **Blocks:** `system-scheduler.md`, `animation-system.md`, `scene-serialization.md`
+
+## Capacity constants
+
+| Constant | Value | Rationale |
+|---|---|---|
+| `ActorManager::MAX_ACTORS` | 1024 | Tier 1 objects are few by design (players, cameras, lights, key NPCs, vehicles). Rarely exceeds a few hundred in practice. |
+| `EntityRegistry::MAX_ENTITIES` | 65536 | Covers all EntityIDs — Tier 1 Actors + Tier 2 pure ECS entities combined. Sufficient for mid-scale games (action, RPG, ~32-player shooters). High-density objects (foliage, particles, building pieces) belong in dedicated systems, not the ECS. |
+
+Memory cost at these limits (ECS sub-arena budget: 128 MB):
+- `EntityRegistry` slots: 65536 × 12 bytes = ~750 KB
+- `ActorManager` handle array: 1024 × sizeof(Actor) — Actor base is ~24 bytes = ~25 KB
+- `ComponentStorage<T>` dense arrays dominate; with 8 component types at 30% occupancy: ~75 MB
 
 ---
 
@@ -68,7 +80,9 @@ An Actor is a C++ object that:
 - Holds a non-owning reference to the `ECS::Scene` it lives in
 - Exposes component access as thin wrappers over `Scene`
 - Has virtual lifecycle hooks (`OnCreate`, `OnDestroy`, `OnTick`)
-- Is reference-counted via `Ref<Actor>` (intrusive ptr, consistent with ZEngine convention)
+- Is accessed externally via `Helpers::Handle<Actor>` — a generational index into `ActorManager`'s arena-backed slot array
+
+**`Ref<Actor>` (intrusive ref-counting) is NOT used.** Ref-counting is incompatible with the arena allocator model: the destructor would fire at an unpredictable time driven by the last pointer going out of scope, rather than at an explicit engine-controlled point. `Handle<Actor>` provides the same stale-handle safety via generation checks with zero atomic overhead and no heap allocation.
 
 ### 3.1 `Actor` base class
 
@@ -76,21 +90,12 @@ An Actor is a C++ object that:
 // ZEngine/ECS/Actor.h
 #pragma once
 #include <ECS/Scene.h>
-#include <Helpers/IntrusivePtr.h>
+#include <Helpers/HandleManager.h>
 
 namespace ZEngine::ECS {
 
-    class Actor : public Helpers::RefCounted {
+    class Actor {
     public:
-        // Creates a new entity in `scene`, stores its ID, calls OnCreate.
-        static Ref<Actor> Create(Scene& scene);
-
-        // Wraps an existing entity. Does NOT call OnCreate.
-        // Use when deserializing or promoting a Tier 2 entity.
-        static Ref<Actor> Wrap(Scene& scene, EntityID id);
-
-        virtual ~Actor();
-
         [[nodiscard]] EntityID      GetEntityID() const { return m_entity_id; }
         [[nodiscard]] bool          IsAlive()     const;
 
@@ -115,22 +120,24 @@ namespace ZEngine::ECS {
         virtual void OnDestroy()       {}
         virtual void OnTick(float dt)  {}
 
-        // Call before Scene shutdown if Actor may outlive its Scene.
-        // Nulls m_scene so the destructor skips DestroyEntity.
-        void Detach();
-
     protected:
         Actor() = default;
+        virtual ~Actor() = default;
 
     private:
+        friend class ActorManager;   // only ActorManager sets these fields
+
         EntityID  m_entity_id = INVALID_ENTITY;
-        Scene*    m_scene     = nullptr;  // non-owning. Scene must outlive Actor.
-                                          // Call Detach() before Scene shutdown if order cannot be guaranteed.
-                                          // Destructor guards: if (!m_scene) skips DestroyEntity.
+        Scene*    m_scene     = nullptr;  // non-owning; set by ActorManager::Create
     };
 
 }  // namespace ZEngine::ECS
 ```
+
+Actors are allocated inside `ActorManager`'s `HandleManager<Actor>` slot array (arena-backed).
+External code holds `Helpers::Handle<Actor>` — 16 bytes (`{Index, Generation}`), no vtable, no count.
+Destruction is explicit: `ActorManager::Destroy(handle)` calls `OnDestroy()` then `scene.DestroyEntity(id)`.
+No `Detach()` method needed — `ActorManager::Shutdown()` runs before `Scene::Shutdown()`, guaranteed by engine lifecycle order.
 
 ### 3.2 Subclassing
 
@@ -150,26 +157,70 @@ public:
         // read input, move transform ...
     }
 };
+
+// Creation — returns a Handle<Actor>, not a pointer or Ref
+Helpers::Handle<Actor> player = actor_manager.Create<PlayerActor>();
+
+// Access
+if (Actor* a = actor_manager.Access(player))
+    a->OnTick(dt);
+
+// Destruction — explicit, engine-controlled
+actor_manager.Destroy(player);
+// player handle is now stale; actor_manager.Access(player) returns nullptr
+```
+
+### 3.3 `ActorManager`
+
+`ActorManager` owns all Actor objects in a `HandleManager<Actor>` backed by the ECS sub-arena.
+
+```cpp
+// ZEngine/ECS/ActorManager.h
+class ActorManager {
+public:
+    static constexpr uint32_t MAX_ACTORS = 1024;
+
+    void Initialize(Core::Memory::ArenaAllocator* arena, Scene& scene);
+
+    // Allocates an Actor slot, creates an EntityID, calls OnCreate().
+    // Returns a generational handle — 16 bytes, no heap, no ref count.
+    template<typename T = Actor>
+    Helpers::Handle<Actor> Create();
+
+    // Calls OnDestroy(), destroys the EntityID, frees the slot.
+    // Stale handles (already destroyed) are silently ignored.
+    void Destroy(Helpers::Handle<Actor> handle);
+
+    // Returns nullptr if handle is stale.
+    Actor*       Access(Helpers::Handle<Actor> handle);
+    const Actor* Access(Helpers::Handle<Actor> handle) const;
+
+    bool IsLive(Helpers::Handle<Actor> handle) const;
+
+    // Calls OnTick(dt) on all live Actors.
+    void Tick(float dt);
+
+    // Destroys all live Actors in reverse creation order, then shuts down the handle array.
+    // Must be called before Scene::Shutdown().
+    void Shutdown();
+
+private:
+    Helpers::HandleManager<Actor> m_handles;
+    Scene*                        m_scene = nullptr;
+};
 ```
 
 ### 3.3 Lifetime Rules
 
-- `Actor::Create(scene)` allocates the Actor object, creates an `EntityID` in the scene,
-  stores it, then calls `OnCreate()`.
-- `Actor` destructor implementation:
-  ```cpp
-  ~Actor() {
-      if (m_scene && IsAlive()) {  // IsAlive checks generation — safe in release builds
-          OnDestroy();
-          m_scene->DestroyEntity(m_entity_id);
-      }
-  }
-  ```
-  > **Note:** The `IsAlive()` guard prevents double-destroy if two Actors accidentally wrap the same EntityID. This fires in both debug and release builds, not just debug.
-- If the Scene is destroyed before the Actor, the Actor's destructor must not call
-  `DestroyEntity`. Use a weak reference or an explicit `Detach()` call before Scene
-  shutdown. The engine startup/shutdown order must ensure Scene outlives all Actors.
-- Two Actors must never wrap the same `EntityID`. This is asserted in debug builds.
+- `ActorManager::Create<T>()` allocates a slot in the arena, creates an `EntityID` in the
+  scene, sets `Actor::m_scene` and `Actor::m_entity_id`, then calls `OnCreate()`.
+  Returns a `Handle<Actor>` — the only way to reference an Actor externally.
+- `ActorManager::Destroy(handle)` calls `OnDestroy()`, calls `m_scene->DestroyEntity(id)`,
+  then frees the slot (increments generation). All existing handles to this Actor become stale.
+- `ActorManager::Shutdown()` is called by the engine before `Scene::Shutdown()`, guaranteed
+  by the engine lifecycle order defined in `engine-lifecycle.md`. No manual `Detach()` needed.
+- Two Actors must never wrap the same `EntityID`. Asserted in debug builds in `Create()`.
+- Actors are never heap-allocated individually. The arena owns the backing memory.
 
 ### 3.4 Component Access Implementation
 
@@ -193,6 +244,80 @@ T* Actor::GetComponent() {
 ---
 
 ## 4. ECS Core
+
+### Concepts: Archetype and Sparse-Set
+
+Two ideas underpin the entire ECS implementation. Understanding them makes every design
+decision in this section obvious.
+
+**Archetype**
+
+An archetype is the set of component types an entity has — its "shape". An entity with
+`{TransformComponent, RigidBodyComponent}` has a different archetype from one with just
+`{TransformComponent}`. We encode the archetype as a bitmask: one bit per component type.
+
+```
+ComponentTypeID:     0                   1                  2
+                     TransformComponent  RigidBodyComponent  MeshComponent
+
+Entity A  mask:      1                   1                  0   = 0b011
+Entity B  mask:      1                   0                  1   = 0b101
+Entity C  mask:      1                   1                  1   = 0b111
+```
+
+`ForEach<TransformComponent, RigidBodyComponent>` computes `required = 0b011` and
+eliminates non-matching entities with a single bitwise AND — O(1) per entity. Without
+this guard, `ForEach` would call `ComponentStorage::Get` on every entity for every
+component type, degrading to O(entities × types). The mask check is not an optimization;
+it is a correctness-preserving performance requirement.
+
+**Sparse-Set**
+
+A sparse-set gives O(1) lookup by `EntityID` while keeping component data in a dense,
+packed array for cache-friendly iteration. Three arrays work together:
+
+```
+m_sparse    [entity Index → dense index, or INVALID if absent]
+m_dense     [packed component data, no holes]
+m_dense_ids [full EntityID at each dense slot — for generation check]
+```
+
+Example — 4 entities, entities 0 and 3 have `TransformComponent`:
+
+```
+m_sparse:    [0]   [INV] [INV] [1]     entity 0 → dense[0], entity 3 → dense[1]
+
+m_dense:     [T0]  [T3]                packed, no gaps
+m_dense_ids: [{0,1}] [{3,1}]           full EntityID stored for generation check
+```
+
+`Get(entity 3)`: `m_sparse[3] = 1` → check `m_dense_ids[1] == {3,1}` → return `&m_dense[1]`.
+
+`Remove(entity 0)` uses swap-and-pop to keep the dense array packed:
+swap `m_dense[0]` with the last element, update `m_sparse` for the moved entity, pop.
+The dense array stays contiguous — `ForEach` iterates it with zero cache misses.
+
+**How they work together**
+
+```
+ForEach<TransformComponent, RigidBodyComponent>(fn)
+    |
+    +-- EntityRegistry::ForEachAlive   iterate live entity slots
+    |       for each entity:
+    |           MaskMatches(mask, required)?  <- ARCHETYPE check, O(1)
+    |               no  -> skip (one bitwise AND)
+    |               yes -> call fn(id, transform, rigidbody)
+    |
+    +-- ComponentStorage::Get          <- SPARSE-SET lookup, O(1)
+            m_sparse[id.Index] -> dense_idx
+            generation check (m_dense_ids[dense_idx] == id?)
+            return &m_dense[dense_idx]   direct pointer into packed array
+```
+
+Archetype filtering keeps the number of `Get` calls small.
+Sparse-set makes each `Get` O(1) with cache-friendly data for the entities that do match.
+
+---
 
 ### 4.1 `EntityID`
 
@@ -292,8 +417,12 @@ T* Get(EntityID id) {
 
 Generational slot allocator with free-list.
 
+```cpp
+static constexpr uint32_t MAX_ENTITIES = 65536;  // Tier 1 + Tier 2 combined
 ```
-m_slots      — Array<EntitySlot{Generation, ArchetypeMask}>
+
+```
+m_slots      — Array<EntitySlot{Generation, ArchetypeMask}>  (MAX_ENTITIES slots, arena-allocated)
 m_free_list  — Array<uint32_t> of recyclable slot indices
 m_alive_count
 ```
@@ -552,7 +681,101 @@ programmer error and asserts in debug.
 
 ---
 
-## 8. File Layout
+## 8. Memory Layout
+
+All ECS memory is carved from a single `ECSScene` sub-arena (128 MB, budgeted in
+`MemoryBudgetConfig`). Nothing is heap-allocated individually.
+
+```
+MemoryManager::MainArena  (3 GB)
+│
+└── ECSScene sub-arena  (128 MB)
+    │
+    ├── EntityRegistry::m_slots          [65536 × 12 B = ~750 KB]
+    │     EntitySlot { Generation(4), ArchetypeMask(8) }
+    │     [0][1][2]...[65535]
+    │      ↑   ↑
+    │      │   └── Tier 2 pure ECS entity (dense data, no object)
+    │      └────── Tier 1 Actor entity (EntityID stored in Actor object)
+    │
+    ├── EntityRegistry::m_free_list      [up to 65536 × 4 B = ~256 KB]
+    │     recycled slot indices
+    │
+    ├── ActorManager::m_handles          [HandleManager<Actor>]
+    │     Slot array: 1024 × sizeof(Actor) ≈ 1024 × 24 B = ~25 KB
+    │     Generation array: 1024 × 8 B = ~8 KB
+    │     Free-list next: 1024 × 4 B = ~4 KB
+    │
+    │     Slot 0: Actor { m_entity_id={0,1}, m_scene=* }  ← PlayerActor
+    │     Slot 1: Actor { m_entity_id={1,1}, m_scene=* }  ← CameraActor
+    │     Slot 2: Actor { m_entity_id={2,1}, m_scene=* }  ← DirectionalLight
+    │     ...
+    │     Slot 1023: (free)
+    │
+    ├── ComponentStorage<TransformComponent>
+    │     m_dense     [packed array of TransformComponent, no holes]
+    │     │  [T0][T1][T2][T3]...[Tn]
+    │     m_dense_ids [EntityID at each dense index]
+    │     │  [e0][e1][e2][e3]...[en]
+    │     m_sparse    [entity Index → dense index, UINT32_MAX = absent]
+    │        [0→0][1→1][2→2][3→UINT32_MAX][4→3]...
+    │
+    │     NOTE: Tier 1 Actor entities and Tier 2 pure entities occupy the
+    │     same dense slots — no separation, uniform iteration.
+    │
+    ├── ComponentStorage<RigidBodyComponent>
+    │     (same layout)
+    │
+    ├── ComponentStorage<MeshComponent>
+    │     (same layout)
+    │
+    ├── ... (one storage per registered component type, up to 64 in v1)
+    │
+    ├── WorldCommands::m_commands        [per-frame deferred mutation buffer]
+    │     cleared each frame after Flush()
+    │
+    └── Query scratch / system temporaries
+```
+
+### How a Handle<Actor> resolves to component data
+
+```
+Handle<Actor> player = { Index=0, Generation=1 }
+    │
+    ▼
+ActorManager::m_handles[0]
+    Actor { m_entity_id = {Index=0, Generation=1}, m_scene = &scene }
+    │
+    ▼
+scene.GetComponent<TransformComponent>({Index=0, Generation=1})
+    │
+    ▼
+ComponentStorage<TransformComponent>
+    m_sparse[0] = 7            (dense index)
+    m_dense_ids[7] == {0,1}    (generation check passes)
+    return &m_dense[7]         (direct pointer into dense array)
+```
+
+### What lives where at runtime (example: 200 Actors + 5000 Tier 2 entities)
+
+```
+EntityRegistry::m_slots
+  [0..199]   Tier 1 — Actor-backed entities
+  [200..5199] Tier 2 — pure ECS entities
+  [5200..65535] free
+
+ActorManager::m_handles
+  [0..199]   live Actor objects
+  [200..1023] free
+
+ComponentStorage<TransformComponent>::m_dense
+  [0..5199]  all 5200 entities that have a TransformComponent (packed, no gaps)
+  Tier 1 and Tier 2 are interleaved — ForEach iterates them uniformly
+```
+
+---
+
+## 9. File Layout
 
 ```
 ZEngine/
@@ -589,7 +812,7 @@ tests/
 
 ---
 
-## 9. What Is Not in This Document
+## 10. What Is Not in This Document
 
 | Topic | Document |
 |---|---|
@@ -613,21 +836,21 @@ tests/
 
 ---
 
-## 10. Deliverables Checklist
+## 11. Deliverables Checklist
 
-- [ ] `ZEngine/ECS/EntityID.h`
-- [ ] `ZEngine/ECS/ComponentTypeID.h` — atomic counter
-- [ ] `ZEngine/ECS/ArchetypeMask.h` — runtime bounds check in `MaskBit`
-- [ ] `ZEngine/ECS/ComponentStorage.h` — generation check in `Get`, `Has`, `Remove`
-- [ ] `ZEngine/ECS/IComponentStorage.h`
-- [ ] `ZEngine/ECS/EntityRegistry.h` + `.cpp`
-- [ ] `ZEngine/ECS/Scene.h` + `.cpp` — includes `GetMask(EntityID)`, `SnapshotTransforms()`, `FillRenderableTransforms(alpha, out)`
-- [ ] `ZEngine/ECS/WorldCommands.h` + `.cpp` — deferred mutations, `Flush(Scene&)`, `Clear()`
-- [ ] `ZEngine/ECS/Query.h`
-- [ ] `ZEngine/ECS/WorldTick.h` + `.cpp`
-- [ ] `ZEngine/ECS/Actor.h` + `.cpp`
-- [ ] `ZEngine/ECS/ActorManager.h` + `.cpp`
-- [ ] `ZEngine/ECS/Components/TransformComponent.h` — plain data, separate from old type
-- [ ] `tests/ECS/ECSTest.cpp` — entity/component/query/generational handle tests
-- [ ] `tests/ECS/ActorTest.cpp` — Actor create/destroy, component access via Actor, ECS system sees Actor entity
-- [ ] `tests/ECS/WorldCommandsTest.cpp` — deferred spawn, deferred destroy, duplicate destroy guard, flush ordering
+- [x] `ZEngine/ECS/EntityID.h`
+- [x] `ZEngine/ECS/ComponentTypeID.h` — atomic counter
+- [x] `ZEngine/ECS/ArchetypeMask.h` — runtime bounds check in `MaskBit`
+- [x] `ZEngine/ECS/ComponentStorage.h` — generation check in `Get`, `Has`, `Remove`
+- [x] `ZEngine/ECS/IComponentStorage.h`
+- [x] `ZEngine/ECS/EntityRegistry.h` + `.cpp` — `MAX_ENTITIES = 65536`; arena-allocated slot array
+- [x] `ZEngine/ECS/Scene.h` + `.cpp` — includes `GetMask(EntityID)`, `SnapshotTransforms()`, `FillRenderableTransforms(alpha, out)`
+- [x] `ZEngine/ECS/WorldCommands.h` + `.cpp` — deferred mutations, `Flush(Scene&)`, `Clear()`
+- [x] `ZEngine/ECS/Query.h`
+- [ ] `ZEngine/ECS/WorldTick.h` — deferred to system-scheduler.md + `.cpp`
+- [x] `ZEngine/ECS/Actor.h` + `.cpp` — no `Ref<Actor>`, no `RefCounted`; lifetime owned by `ActorManager`
+- [x] `ZEngine/ECS/ActorManager.h` + `.cpp` — `HandleManager<Actor>` with `MAX_ACTORS = 1024`; `Create<T>()`, `Destroy(handle)`, `Access(handle)`, `Tick(dt)`, `Shutdown()`
+- [x] `ZEngine/ECS/Components/TransformComponent.h` — plain data, separate from old type
+- [x] `tests/ECS/ECSTest.cpp` — entity/component/query/generational handle tests
+- [x] `tests/ECS/ActorTest.cpp` — covered in ECSTest.cpp — Actor create/destroy, component access via Actor, ECS system sees Actor entity
+- [x] `tests/ECS/WorldCommandsTest.cpp` — covered in ECSTest.cpp — deferred spawn, deferred destroy, duplicate destroy guard, flush ordering

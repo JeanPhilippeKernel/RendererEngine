@@ -2,6 +2,9 @@
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/VFS/IVFSContext.h>
+#include <ZEngine/ECS/ActorManager.h>
+#include <ZEngine/ECS/Scene.h>
+#include <ZEngine/ECS/WorldCommands.h>
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
@@ -12,13 +15,20 @@ namespace ZEngine
 {
     struct EngineContext
     {
-        Hardwares::VulkanDevicePtr   Device       = nullptr;
-        Windows::CoreWindowPtr       Window       = nullptr;
-        Core::Memory::ArenaAllocator VFSArena     = {};
-        Core::Memory::ArenaAllocator AssetArena   = {};
-        Core::VFS::IVFSContext*      VFS          = nullptr;
-        Core::Memory::ArenaAllocator InputArena   = {};
-        Input::InputManager*         InputManager = nullptr;
+        // Sub-arenas (large structs — grouped together to avoid pointer/arena interleaving)
+        Core::Memory::ArenaAllocator VFSArena      = {};
+        Core::Memory::ArenaAllocator AssetArena    = {};
+        Core::Memory::ArenaAllocator InputArena    = {};
+        Core::Memory::ArenaAllocator ECSArena      = {};
+
+        // Pointers (8 bytes each — grouped to pack cleanly)
+        Hardwares::VulkanDevicePtr   Device        = nullptr;
+        Windows::CoreWindowPtr       Window        = nullptr;
+        Core::VFS::IVFSContext*      VFS           = nullptr;
+        Input::InputManager*         InputManager  = nullptr;
+        ECS::Scene*                  Scene         = nullptr;
+        ECS::ActorManager*           ActorManager  = nullptr;
+        ECS::WorldCommands*          WorldCommands = nullptr;
     };
     ZDEFINE_PTR(EngineContext);
 
