@@ -2,6 +2,9 @@
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Engine/FixedTimestepAccumulator.h>
+#include <ZEngine/Engine/FrameRateCap.h>
+#include <ZEngine/Engine/FrameTimer.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Logging/Logger.h>
@@ -136,37 +139,67 @@ namespace ZEngine
 
     void Engine::MainThreadRun()
     {
+        Timing::FrameTimer               frame_timer;
+        Timing::FixedTimestepAccumulator accumulator;
+        Timing::FrameRateCap             frame_cap;
+
+        uint64_t                         frame_index = 0;
+
+        ZENGINE_CORE_INFO("Engine main loop starting — FixedDT={:.4f}s MaxSteps=5", accumulator.FixedDt())
+
         while (!s_close_requested.load(std::memory_order_acquire))
         {
             if (!g_engine_ctx || !g_engine_ctx->Window || !g_engine_ctx->Device)
-            {
                 break;
-            }
 
-            auto  window = g_engine_ctx->Window;
+            auto window = g_engine_ctx->Window;
 
-            float dt     = window->GetDeltaTime();
+            // ── Frame bookkeeping ───────────────────────────────────────────
+            frame_timer.Begin();
+            frame_cap.MarkFrameStart();
+            ++frame_index;
 
+            // ── Platform events ─────────────────────────────────────────────
             window->PollEvent();
 
             if (window->IsMinimized())
-            {
                 continue;
+
+            // ── Measure raw delta ───────────────────────────────────────────
+            float raw_dt = frame_timer.End();
+            accumulator.Accumulate(raw_dt);
+
+            // ── Fixed simulation steps ──────────────────────────────────────
+            // ECS systems, Actor OnTick, and WorldCommands flush run inside each
+            // fixed step so simulation is frame-rate independent.
+            if (g_engine_ctx->WorldTick && g_engine_ctx->WorldTick->SystemCount() > 0)
+            {
+                while (accumulator.ShouldStep())
+                {
+                    float fixed_dt = accumulator.FixedDt();
+
+                    g_engine_ctx->WorldTick->Tick(*g_engine_ctx->Scene, fixed_dt, *g_engine_ctx->WorldCommands);
+                    g_engine_ctx->WorldCommands->Flush(*g_engine_ctx->Scene);
+                    g_engine_ctx->ActorManager->Tick(fixed_dt);
+                    g_engine_ctx->Scene->SnapshotTransforms(); // must be after Tick
+
+                    accumulator.ConsumeStep();
+                }
             }
 
-            g_app->Update(dt);
+            float alpha = accumulator.Alpha();
 
+            // ── Application update (non-ECS game logic) ─────────────────────
+            g_app->Update(raw_dt);
+
+            // ── Render payload ──────────────────────────────────────────────
             auto     pipeline = g_app->RenderPipeline;
-
             uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
             uint32_t next     = (head + 1) % pipeline->MaxMailBoxBufferCount;
             uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
 
-            // Buffer full, drop frame (non-blocking)
             if (next == tail)
-            {
-                continue;
-            }
+                continue; // buffer full — drop frame
 
             auto& r_payload                   = pipeline->RenderPayloads[head];
             r_payload.UIOverlay.DrawDataIndex = 0;
@@ -177,7 +210,6 @@ namespace ZEngine
                 pipeline->BeginOverlayFrame();
                 g_app->OnRenderUI();
                 pipeline->EndOverlayFrame();
-
                 r_payload.RenderUIOverlay.value.store(true, std::memory_order_release);
                 pipeline->FillOverlayPayload(r_payload.UIOverlay);
             }
@@ -185,7 +217,13 @@ namespace ZEngine
             g_app->PrepareScene(r_payload);
 
             pipeline->MailBoxBufferHead.value.store(next, std::memory_order_release);
+
+            // ── Frame rate cap (vsync-off only) ─────────────────────────────
+            if (!window->IsVSyncEnable())
+                frame_cap.WaitForFrameBudget();
         }
+
+        ZENGINE_CORE_INFO("Engine main loop exited after {} frames", frame_index)
     }
 
     void Engine::RenderThreadRun()

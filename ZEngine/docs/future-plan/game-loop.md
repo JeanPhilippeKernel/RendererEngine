@@ -119,7 +119,7 @@ appear to slow down in simulation time rather than locking up.
 #pragma once
 #include <cstdint>
 
-namespace ZEngine::Engine {
+namespace ZEngine::Timing {
 
     struct FixedTimestepAccumulatorConfig {
         float FixedDt      = 1.0f / 60.0f;   // 16.6̄ ms
@@ -186,7 +186,7 @@ namespace ZEngine::Engine {
         uint64_t m_StepCount{0};
     };
 
-} // namespace ZEngine::Engine
+} // namespace ZEngine::Timing
 ```
 
 ### 3.4 Integration contract
@@ -237,7 +237,7 @@ directly.
 #include <Core/Maths/Vec3f.h>
 #include <ECS/EntityID.h>
 
-namespace ZEngine::Engine {
+namespace ZEngine::Timing {
 
     struct RenderableTransform {
         ECS::EntityID   Entity;
@@ -264,7 +264,7 @@ namespace ZEngine::Engine {
     // This is a single-producer single-consumer pattern — no mutex needed.
     // Pre-allocate Transforms array at scene load time to avoid per-frame growth.
 
-} // namespace ZEngine::Engine
+} // namespace ZEngine::Timing
 ```
 
 The frame packet is allocated from a per-frame arena. `RenderThreadRun` reads from the
@@ -304,7 +304,7 @@ For sub-millisecond accuracy, spin-wait the last ~500 µs rather than sleeping.
 #include <thread>
 #include <cstdint>
 
-namespace ZEngine::Engine {
+namespace ZEngine::Timing {
 
     struct FrameRateCap {
     public:
@@ -352,7 +352,7 @@ namespace ZEngine::Engine {
         int64_t m_FrameBudgetNs;
     };
 
-} // namespace ZEngine::Engine
+} // namespace ZEngine::Timing
 ```
 
 ### 5.3 Interaction with vsync
@@ -388,7 +388,7 @@ if (!CoreWindow::IsVSyncEnable()) {
 #include <cstdint>
 #include <algorithm>
 
-namespace ZEngine::Engine {
+namespace ZEngine::Timing {
 
     struct FrameTimer {
     public:
@@ -445,7 +445,7 @@ namespace ZEngine::Engine {
         int      m_SampleIndex{0};
     };
 
-} // namespace ZEngine::Engine
+} // namespace ZEngine::Timing
 ```
 
 ### 6.3 Usage sequence
