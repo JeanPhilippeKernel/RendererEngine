@@ -30,20 +30,26 @@ namespace Tetragrama::Components
 
         if (ParentLayer && ParentLayer->CurrentApp)
         {
-            auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+            auto    app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
 
-            auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
-            auto idx           = current_scene->SelectedSceneNode.load(std::memory_order_acquire);
-            if (idx != -1)
+            auto    current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+            int32_t selected_id   = current_scene->SelectedInstanceId.value.load(std::memory_order_acquire);
+            if (selected_id != -1)
             {
-                auto  name_idx = current_scene->NodeNames[idx];
-                auto& name     = current_scene->Names[name_idx];
+                auto                                                                       scratch = ZGetScratch(&ParentLayer->LocalArena);
+                ZEngine::Core::Containers::Array<ZEngine::Rendering::Scenes::MeshInstance> instances;
+                current_scene->GetInstancesSnapshot(scratch.Arena, instances);
 
-                ImGui::Dummy(ImVec2(0, 3));
-                Helpers::DrawInputTextControl("Name", name.c_str(), [&](std::string_view value) {
-                    name.clear();
-                    name.append(value.data());
-                });
+                for (uint32_t i = 0; i < instances.size(); ++i)
+                {
+                    if ((int32_t) instances[i].Id == selected_id)
+                    {
+                        ImGui::Dummy(ImVec2(0, 3));
+                        ImGui::Text("Mesh: %s", instances[i].Name[0] ? instances[i].Name : "Unnamed");
+                        break;
+                    }
+                }
+                ZReleaseScratch(scratch);
             }
         }
 

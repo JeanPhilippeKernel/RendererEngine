@@ -32,8 +32,6 @@ namespace ZEngine::Managers
         // GPU texture handle map — needed to resolve material → texture handles at upload time.
         Core::Containers::UnorderedHashMap<uuids::uuid, Rendering::Textures::TextureHandle> UUIDToTextureHandle     = {};
 
-        Hardwares::StorageBufferSetHandle                                                   MaterialBufferHandle    = {};
-
         // Mutex guards direct-ingest methods called from import threads.
         mutable std::mutex                                                                  IngestMutex;
 

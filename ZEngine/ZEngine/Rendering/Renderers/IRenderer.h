@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
 
 namespace ZEngine::Rendering::Renderers
@@ -32,18 +33,18 @@ namespace ZEngine::Rendering::Renderers
 
     struct RenderOverlayPayload
     {
-        bool                             IsIndexBufferUint16 = false;
-        uint32_t                         VertexCount         = 0;
-        uint32_t                         IndexCount          = 0;
-        uint32_t                         DrawDataIndex       = 0;
-        float                            Pc[4]               = {0.0f}; // {Scale}-{Translate}
-        Hardwares::VertexBufferSetHandle VBHandle            = {};
-        Hardwares::IndexBufferSetHandle  IdxBHandle          = {};
-        std::vector<uint32_t>            TextureIds          = {};
-        std::vector<unsigned short>      IndexData           = {};
-        std::vector<UIDrawVert>          VertexData          = {};
-        std::vector<ScissorCmd>          ScissorCmds         = {};
-        std::vector<IndexedCmd>          IndexedCmds         = {};
+        bool                        IsIndexBufferUint16 = false;
+        uint32_t                    VertexCount         = 0;
+        uint32_t                    IndexCount          = 0;
+        uint32_t                    DrawDataIndex       = 0;
+        float                       Pc[4]               = {0.0f}; // {Scale}-{Translate}
+        Core::Memory::BufferView    VBHandle            = {};
+        Core::Memory::BufferView    IdxBHandle          = {};
+        std::vector<uint32_t>       TextureIds          = {};
+        std::vector<unsigned short> IndexData           = {};
+        std::vector<UIDrawVert>     VertexData          = {};
+        std::vector<ScissorCmd>     ScissorCmds         = {};
+        std::vector<IndexedCmd>     IndexedCmds         = {};
     };
 
     struct RendererResourceName

@@ -240,41 +240,53 @@ recorded when they were enqueued in `DeferFree`).
 
 ---
 
-## 5. Post-Rearchitecture Flow Changes
+## 5. RRM Upload Path (Current Implementation)
 
-With `gpu-allocator-rearchitecture.md` and `per-frame-upload-heap.md` landed, the
-`RenderScene` upload section simplifies significantly.
+`RenderResourceManager` now owns all buffer uploads. `AsyncResourceLoader` retains only texture uploads.
 
-### Before
+### Buffer domains
+
+| Buffer | Domain | Write path | Stall |
+|---|---|---|---|
+| Vertex (geometry) | DeviceGeometry | Ring staging + dedicated cmd + vkWaitForFences | Once when MeshAllocationDirty |
+| Index (geometry) | DeviceGeometry | Ring staging + dedicated cmd + vkWaitForFences | Once when MeshAllocationDirty |
+| Transform | HostUniform | vmaCopyMemoryToAllocation | Zero (HOST_VISIBLE) |
+| RenderData (sub-mesh) | HostUniform | vmaCopyMemoryToAllocation | Zero |
+| Material | HostUniform | vmaCopyMemoryToAllocation | Zero |
+| ImGui VB/IB | HostUniform | vmaCopyMemoryToAllocation | Zero |
+
+### MeshAllocationDirty collapse
+
+`MeshAllocationDirty[3]` collapsed to a single `atomic_bool`. Because geometry uses one DEVICE_LOCAL buffer shared by all frames, there is no per-frame triple copy — when the flag is set and cleared, all frames see the same buffer.
+
+### RRM dedicated command pool
 
 ```
-MeshAllocationDirty[fi] == true
-  vtx_buffer_set->At(fi).Write()    -> AsyncResLoader->UploadBuffer
-    -> vmaGetAllocationMemoryProperties
-    -> HOST_VISIBLE? vmaCopyMemoryToAllocation
-    -> else: Device->CreateBuffer(TRANSFER_SRC, HOST_ACCESS_SEQUENTIAL_WRITE)
-                     ^ vkAllocateMemory per upload
-            RetireStagingBuffers[pool][slot] = staging_buffer
+RRM::Initialize()
+  vkCreateCommandPool(GRAPHIC, RESET_COMMAND_BUFFER_BIT) -> m_upload_pool
+  vkAllocateCommandBuffers(m_upload_pool, 1)             -> m_upload_cmd
+  vkCreateFence()                                        -> m_upload_fence
 ```
 
-### After
+`UpdateBuffer(dst, data, byte_size, offset)`:
+- HOST_VISIBLE dst: `vmaCopyMemoryToAllocation` + optional flush, return immediately
+- DEVICE_LOCAL dst: `GpuMem.Ring.Allocate` -> `vkCmdCopyBuffer` -> `vkQueueSubmit` -> `vkWaitForFences`
+
+No per-pool slot tracking. No `RetireValues` array. No `AsyncTimelineJobQueue` for buffer uploads.
+
+### Frame boundary placement
 
 ```
-MeshAllocationDirty[fi] == true
-  heap = Device->FrameHeaps[fi]
+AppRenderPipeline::BeginFrame()
+  swapchain->AcquireNextImage()       <- frame_index valid after this
+  RRM::BeginFrame(fi)                 <- flush pending asset uploads
+  CommandBufferMgr::ResetPool(fi)
+  AsyncResLoader::CompleteDeferrals()
 
-  vtx_alloc      = heap.Push(scene->Vertices.data(), vtx_byte_size, 4)
-  idx_alloc      = heap.Push(scene->Indices.data(), idx_byte_size, 4)
-  rd_alloc       = heap.Push(SubMeshAllocations.data(), rd_byte_size, 4)
-  indirect_alloc = heap.Push(DrawCommands.data(), indirect_byte_size, sizeof(VkDrawIndirectCommand))
-
-  heap.Flush(GpuMem.Allocator)   <- one flush covering all 4 uploads
-
-  vkCmdBindDescriptorSets(..., {vtx_alloc.Offset, idx_alloc.Offset, ...})
-```
-
-No `vkAllocateMemory`. No staging buffer lifecycle. No `RetireStagingBuffers` array.
-The GPU reads the data directly from the frame heap buffer using dynamic offsets.
+AppRenderPipeline::EndFrame()
+  AsyncResLoader::SubmitAsyncJobs()   <- texture uploads only
+  Present()
+  RRM::EndFrame(fi)                   <- drain aged swap entries
 
 ---
 
@@ -282,15 +294,42 @@ The GPU reads the data directly from the frame heap buffer using dynamic offsets
 
 | Type | Location | Issue |
 |---|---|---|
-| BUG | `HierarchyViewUIComponent.cpp:252` | ImGuizmo manipulate mutates `GlobalTransforms` but does NOT set `TransformBufferDirty`. Transform change never reaches GPU. |
-| GAP | `AppRenderPipeline.cpp` | `MeshAllocationDirty` is set for all 3 frames when a mesh loads, but only cleared for `fi`. Frames fi+1, fi+2 will re-upload the same data redundantly. |
+| BUG | `HierarchyViewUIComponent.cpp` | ImGuizmo manipulate mutates `GlobalTransforms` but does NOT set `TransformBufferDirty`. Transform change never reaches GPU. |
 | GAP | `RenderScene()` | No LRU eviction path when `GpuMem.AllocateBuffer` returns null (pool full). Engine would assert rather than gracefully degrade. |
-| GAP | `SceneViewportUIComponent.cpp` | Viewport resize request is not rate-limited. Rapid window dragging fires one `RenderGraph::Resize()` per render frame during the drag, each resize allocates and frees render targets. |
-| NOTE | `AppRenderPipeline.cpp` | `camera_buffer->Write()` fires every frame unconditionally even when the camera has not moved. Post-heap migration this is free (just a `memcpy` into the frame heap). Before migration it submits a timeline job every frame. |
+| GAP | `SceneViewportUIComponent.cpp` | Viewport resize request is not rate-limited. Rapid window dragging fires one `RenderGraph::Resize()` per render frame during the drag. |
+| GAP | `RRM::UpdateBuffer` | vkWaitForFences on DEVICE_LOCAL uploads stalls the render thread. For mesh data written at load time this is acceptable; for streaming it is not. Needs async transfer queue path. |
+| GAP | Multi-instance drag-drop | Re-dropping an already-loaded mesh is a no-op. Multi-instance support requires calling `SetState(Loaded)` on the existing hierarchy UUID to re-fire the hierarchy callback without re-importing. Deferred to scene-instancing milestone. |
 
 ---
 
-## 7. Full Dependency Graph — Frame N
+## 7. Multi-Threaded Rendering Extension (Design)
+
+The current architecture uses two threads (main + render). Extending to N render workers requires these changes:
+
+### Command buffer recording
+Each worker thread gets its own `CommandBuffer` from `CommandBufferMgr->GetCommandBuffer(GRAPHIC, fi, thread_idx, 0)`. Secondary command buffers are recorded in parallel then submitted as a batch on the primary.
+
+### RRM per-thread upload pools
+`m_upload_cmd` and `m_upload_fence` become arrays indexed by `thread_idx`:
+```cpp
+VkCommandPool   m_upload_pool[MAX_RENDER_THREADS];
+VkCommandBuffer m_upload_cmd[MAX_RENDER_THREADS];
+VkFence         m_upload_fence[MAX_RENDER_THREADS];
+```
+No mutex needed — each thread owns its slot.
+
+### GpuAllocator::Ring
+`Ring.Allocate` is already thread-safe (spinlock on `WritePos`). Multiple worker threads can push staging data simultaneously.
+
+### Descriptor set binding
+Descriptor sets are immutable after `vkUpdateDescriptorSets`. Workers bind them read-only — no synchronization needed.
+
+### TransformBufferDirty
+Transforms are HOST_VISIBLE; the main thread writes them via `vmaCopyMemoryToAllocation` before the render thread starts. A `std::atomic_thread_fence(release)` on the main thread + `acquire` on the render thread ensures visibility — no GPU sync needed.
+
+---
+
+## 8. Full Dependency Graph — Frame N
 
 ```
 MAIN THREAD                         RENDER THREAD

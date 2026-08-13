@@ -2,6 +2,7 @@
 #include <vulkan/vulkan.h>
 // clang-format off
 #include <ZEngine/Core/Memory/GpuAllocator.h>
+#include <ZEngine/Rendering/RenderHandle.h>
 #include <ZEngine/Hardwares/DeferredFreeQueue.h>
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/PerFrameUploadHeap.h>
@@ -21,7 +22,6 @@
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
-#include <ZEngine/Hardwares/AsyncResourceLoader.h>
 #include <set>
 #include <unordered_set>
 #include <limits>
@@ -61,158 +61,9 @@ namespace ZEngine::Hardwares
     struct AsyncGPUOperation;
     struct AsyncGPUOperationHandle;
     /*
-     * Vertex | Index | Uniform | Storage Buffers
-     */
-    struct IGraphicBuffer;
-    class StorageBuffer;
-    class VertexBuffer;
-    class IndexBuffer;
-    class UniformBuffer;
-    /*
      * GPU Device
      */
     struct VulkanDevice;
-
-    struct IGraphicBuffer
-    {
-        IGraphicBuffer() {}
-        IGraphicBuffer(Hardwares::VulkanDevice* device) : m_device(device) {}
-        virtual ~IGraphicBuffer();
-
-        virtual BufferView CreateBuffer() = 0;
-
-        virtual void       Allocate(uint64_t size, const char* debug_name);
-        virtual void       Clear(uint8_t frame_index, uint8_t thread_index);
-        virtual void       ClearRange(uint8_t frame_index, uint8_t thread_index, uint8_t value, uint32_t offset, size_t size);
-        virtual void       UploadRange(uint8_t frame_index, uint8_t thread_index, const void* data, uint32_t offset, size_t size);
-        virtual void       Upload(uint8_t frame_index, uint8_t thread_index, const void* data, size_t size);
-
-        virtual void       Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size);
-
-        template <typename T>
-        inline void Write(uint8_t frame_index, uint8_t thread_index, Core::Containers::ArrayView<T> content)
-        {
-            Write(frame_index, thread_index, content.data(), content.size_bytes());
-        }
-
-        template <typename T>
-        inline void Upload(uint8_t frame_index, uint8_t thread_index, Core::Containers::ArrayView<T> content)
-        {
-            Upload(frame_index, thread_index, content.data(), content.size_bytes());
-        }
-
-        virtual void                          CleanUpMemory();
-        virtual void*                         GetNativeBufferHandle() const;
-        virtual const VkDescriptorBufferInfo& GetDescriptorBufferInfo();
-        virtual void                          Dispose();
-
-        uint64_t                              m_total_size     = 0;
-        uint64_t                              m_current_offset = 0;
-        Hardwares::VulkanDevice*              m_device         = nullptr;
-        BufferView                            Buffer           = {};
-        VkDescriptorBufferInfo                BufferInfo       = {};
-    };
-
-    template <typename T /*, typename = std::enable_if_t<std::is_base_of_v<IGraphicBuffer, T>> */>
-    struct IBufferSet
-    {
-        Core::Containers::Array<T> set = {};
-
-        T&                         operator[](uint32_t index)
-        {
-            ZENGINE_VALIDATE_ASSERT(index < set.size(), "Index out of range")
-            return set[index];
-        }
-
-        T& At(uint32_t index)
-        {
-            ZENGINE_VALIDATE_ASSERT(index < set.size(), "Index out of range")
-            return set[index];
-        }
-
-        template <typename K>
-        void SetData(uint32_t index, Core::Containers::ArrayView<K> data)
-        {
-            ZENGINE_VALIDATE_ASSERT(index < set.size(), "Index out of range")
-
-            T& entry = set[index];
-            entry->template Upload<K>(data);
-        }
-
-        void Dispose() {}
-    };
-
-    struct VertexBuffer : public IGraphicBuffer
-    {
-        explicit VertexBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        virtual BufferView CreateBuffer() override;
-
-        virtual ~VertexBuffer() {}
-    };
-
-    using VertexBufferSet       = IBufferSet<VertexBuffer*>;
-    using VertexBufferSetHandle = Helpers::Handle<VertexBufferSet>;
-
-    template <>
-    inline void VertexBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
-
-    struct StorageBuffer : public IGraphicBuffer
-    {
-        explicit StorageBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        virtual BufferView CreateBuffer() override;
-
-        virtual ~StorageBuffer() {}
-    };
-
-    using StorageBufferSet       = IBufferSet<StorageBuffer*>;
-    using StorageBufferSetHandle = Helpers::Handle<StorageBufferSet>;
-
-    template <>
-    inline void StorageBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
-
-    struct IndexBuffer : public IGraphicBuffer
-    {
-        IndexBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        virtual BufferView CreateBuffer() override;
-
-        virtual ~IndexBuffer() {}
-    };
-
-    using IndexBufferSet       = IBufferSet<IndexBuffer*>;
-    using IndexBufferSetHandle = Helpers::Handle<IndexBufferSet>;
-
-    template <>
-    inline void IndexBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
 
     struct Image2DBuffer
     {
@@ -300,8 +151,8 @@ namespace ZEngine::Hardwares
         void                              Draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_index, uint32_t first_instance);
         void                              TransitionImageLayout(const Rendering::Primitives::ImageMemoryBarrier& image_barrier);
         void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout);
-        void                              BindVertexBuffer(Hardwares::VertexBuffer& buffer);
-        void                              BindIndexBuffer(const Hardwares::IndexBuffer& buffer, VkIndexType type);
+        void                              BindVertexBuffer(const Core::Memory::BufferView& buffer);
+        void                              BindIndexBuffer(const Core::Memory::BufferView& buffer, VkIndexType type);
         void                              SetScissor(uint32_t w, uint32_t h, int32_t x = 0, int32_t y = 0);
         void                              SetViewport(uint32_t w, uint32_t h, float x = 0.0f, float y = 0.0f, float min_depth = 0.0f, float max_depth = 1.0f);
         void                              PushConstants(VkShaderStageFlags stage_flags, uint32_t offset, uint32_t size, const void* data);
@@ -457,13 +308,10 @@ namespace ZEngine::Hardwares
         Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                                                                 TextureHandleToDispose                      = {};
         Helpers::ThreadSafeQueue<AsyncGPUOperationHandle>                                                                            AsyncGPUOperations                          = {};
         Helpers::HandleManager<Rendering::Shaders::Shader>                                                                           ShaderManager                               = {};
-        Helpers::HandleManager<VertexBufferSet>                                                                                      VertexBufferSetManager                      = {};
-        Helpers::HandleManager<StorageBufferSet>                                                                                     StorageBufferSetManager                     = {};
-        Helpers::HandleManager<IndexBufferSet>                                                                                       IndexBufferSetManager                       = {};
         std::mutex                                                                                                                   Mutex                                       = {};
         Windows::CoreWindow*                                                                                                         CurrentWindow                               = nullptr;
         ZEngine::Core::Memory::ArenaAllocator*                                                                                       Arena                                       = nullptr;
-        AsyncResourceLoaderPtr                                                                                                       AsyncResLoader                              = nullptr;
+        void*                                                                                                                        RRM                                         = nullptr;
 
         void                                                                                                                         Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count);
         void                                                                                                                         Deinitialize();
@@ -486,9 +334,6 @@ namespace ZEngine::Hardwares
         VkFormat                                        FindDepthFormat();
         VkImageView                                     CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
         VkFramebuffer                                   CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1);
-        VertexBufferSetHandle                           CreateVertexBufferSet();
-        StorageBufferSetHandle                          CreateStorageBufferSet();
-        IndexBufferSetHandle                            CreateIndexBufferSet();
 
         Helpers::Handle<Rendering::Shaders::Shader>     CompileShader(Rendering::Specifications::ShaderSpecification& spec);
 
@@ -513,33 +358,6 @@ namespace ZEngine::Hardwares
 
 namespace ZEngine::Helpers
 {
-    template <>
-    inline void HandleManager<Hardwares::VertexBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
-    template <>
-    inline void HandleManager<Hardwares::StorageBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
-    template <>
-    inline void HandleManager<Hardwares::IndexBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
     template <>
     inline void HandleManager<Hardwares::Image2DBuffer>::Dispose()
     {

@@ -96,6 +96,11 @@ namespace ZEngine
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_assimp_importer);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_env_map_importer);
 
+        // RenderResourceManager — GPU lifetime authority, bridges asset layer and VulkanDevice
+        g_engine_ctx->RenderResourceManager = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);
+        g_engine_ctx->RenderResourceManager->Initialize(g_engine_ctx->Device, Managers::AssetManager::Instance()->Registry);
+        g_engine_ctx->Device->RRM = g_engine_ctx->RenderResourceManager;
+
         // Wire FileWatcher: Modified → AssetRegistry + ImportCoordinator::Enqueue(Immediate)
         if (app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0')
         {
@@ -130,7 +135,11 @@ namespace ZEngine
         if (g_engine_ctx->Scene)
             g_engine_ctx->Scene->Shutdown();
 
-        // Step 4 — drain async import queue before pipeline/device teardown
+        // Step 4 — shut down RRM before pipeline teardown (GPU must still be alive)
+        if (g_engine_ctx->RenderResourceManager)
+            g_engine_ctx->RenderResourceManager->Shutdown();
+
+        // Step 5 — drain async import queue before pipeline/device teardown
         Managers::AssetManager::Shutdown();
 
         // Step 4 — destroy framebuffers, render passes, descriptor sets

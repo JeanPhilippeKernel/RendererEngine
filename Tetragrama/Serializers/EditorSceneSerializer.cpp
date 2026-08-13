@@ -61,13 +61,20 @@ namespace Tetragrama::Serializers
             WriteBinaryString(out, scene->Sky.Mode.empty() ? "atmosphere" : scene->Sky.Mode.c_str());
             WriteBinaryString(out, scene->Sky.EnvironmentMap.empty() ? "" : scene->Sky.EnvironmentMap.c_str());
 
-            WriteBinaryArray(out, ArrayView{scene->Names});
-            WriteBinaryArray(out, ArrayView{scene->Hierarchies});
-            WriteBinaryArray(out, ArrayView{scene->LocalTransforms});
-            WriteBinaryArray(out, ArrayView{scene->GlobalTransforms});
-
-            // WriteBinaryHashMap(out, scene->NodeMeshes);
-            WriteBinaryHashMap(out, scene->NodeNames);
+            // Serialize mesh instances (seqlock snapshot).
+            {
+                auto                                                                       scratch = ZGetScratch(&Arena);
+                ZEngine::Core::Containers::Array<ZEngine::Rendering::Scenes::MeshInstance> instances;
+                scene->GetInstancesSnapshot(scratch.Arena, instances);
+                WriteBinary(out, static_cast<uint32_t>(instances.size()));
+                for (uint32_t i = 0; i < instances.size(); ++i)
+                {
+                    WriteBinary(out, instances[i].MeshUUID);
+                    WriteBinary(out, instances[i].Transform);
+                    WriteBinary(out, instances[i].Name);
+                }
+                ZReleaseScratch(scratch);
+            }
 
             out.close();
 
@@ -163,15 +170,28 @@ namespace Tetragrama::Serializers
             if (sky_env_buf[0] != '\0')
                 scene.Sky.EnvironmentMap.init(&Arena, sky_env_buf);
 
-            REPORT_LOG(Context, "Extracting scene's hierarchies info...")
+            REPORT_LOG(Context, "Extracting mesh instances...")
 
-            ReadBinaryArray(&Arena, in_stream, scene.Names);
-            ReadBinaryArray(&Arena, in_stream, scene.Hierarchies);
-            ReadBinaryArray(&Arena, in_stream, scene.LocalTransforms);
-            ReadBinaryArray(&Arena, in_stream, scene.GlobalTransforms);
+            uint32_t instance_count = 0;
+            ReadBinary(in_stream, instance_count);
+            if (instance_count > 0)
+            {
+                // Initialize instance storage in the serializer's scratch arena.
+                Arena.CreateSubArena(ZMega(4), &scene.InstanceArena);
+                scene.Instances.init(&scene.InstanceArena, instance_count);
+                for (uint32_t i = 0; i < instance_count; ++i)
+                {
+                    uuids::uuid                 uuid;
+                    ZEngine::Core::Maths::Mat4f transform;
+                    char                        name[128] = {};
+                    ReadBinary(in_stream, uuid);
+                    ReadBinary(in_stream, transform);
+                    ReadBinary(in_stream, name);
 
-            // ReadHashMap(&Arena, in_stream, scene.NodeMeshes);
-            ReadHashMap(&Arena, in_stream, scene.NodeNames);
+                    uint32_t id = scene.AddMeshInstance(uuid, name);
+                    scene.SetInstanceTransform(id, transform);
+                }
+            }
 
             if (m_deserialize_complete_callback)
             {

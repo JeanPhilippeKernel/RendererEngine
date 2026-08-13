@@ -66,8 +66,17 @@ namespace ZEngine::Core::VFS
         if (!h.Valid())
             return false;
         bool ok = m_index.SetState(h, new_state);
-        if (ok && new_state == AssetState::Loaded && m_reload_cb)
-            m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(&uuid, 1));
+        if (ok && new_state == AssetState::Loaded)
+        {
+            if (m_reload_cb)
+                m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(&uuid, 1));
+            if (m_ready_cb)
+            {
+                const AssetRecord* rec = m_index.Access(h);
+                if (rec)
+                    m_ready_cb(m_ready_cb_ctx, uuid, rec->SlotHandle);
+            }
+        }
         return ok;
     }
 
@@ -109,6 +118,18 @@ namespace ZEngine::Core::VFS
         m_reload_cb     = cb;
     }
 
+    void AssetRegistry::SetOnReadyCallback(void* ctx, void (*cb)(void*, const uuids::uuid&, Managers::AssetHandle))
+    {
+        m_ready_cb_ctx = ctx;
+        m_ready_cb     = cb;
+    }
+
+    void AssetRegistry::SetOnStaleCallback(void* ctx, void (*cb)(void*, const uuids::uuid&))
+    {
+        m_stale_cb_ctx = ctx;
+        m_stale_cb     = cb;
+    }
+
     void AssetRegistry::OnAssetModified(const Core::VFS::VFSPath& path)
     {
         Helpers::Handle<AssetRecord> handle = m_index.FindByPath(path);
@@ -137,6 +158,12 @@ namespace ZEngine::Core::VFS
 
         if (m_reload_cb)
             m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(cascade.data(), cascade.size()));
+
+        if (m_stale_cb)
+        {
+            for (uint32_t i = 0; i < cascade.size(); ++i)
+                m_stale_cb(m_stale_cb_ctx, cascade[i]);
+        }
     }
 
     void AssetRegistry::OnAssetDeleted(const Core::VFS::VFSPath& path)

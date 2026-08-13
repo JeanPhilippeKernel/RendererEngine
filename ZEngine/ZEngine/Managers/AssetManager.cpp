@@ -4,6 +4,7 @@
 #include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <random>
 
 using namespace ZEngine::Core::Containers;
@@ -156,7 +157,7 @@ namespace ZEngine::Managers
                 // Copy path into arena-backed storage for the async job.
                 Core::Containers::String stable_path;
                 stable_path.init(&s_Instance->Arena, path.c_str());
-                new_tex.Handle = s_Instance->Device->AsyncResLoader->Submit(0, 0, {.TextureUpload = {.Filename = stable_path.c_str()}});
+                new_tex.Handle = s_Instance->Device->RRM ? static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM)->SubmitTextureFile(0, 0, stable_path.c_str()) : Rendering::Textures::TextureHandle{};
             }
 
             RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, slot);
@@ -252,7 +253,7 @@ namespace ZEngine::Managers
             const auto               tex_path_str = absolute ? std::string(file) : fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, file);
             Core::Containers::String stable_path;
             stable_path.init(&s_Instance->Arena, tex_path_str.c_str());
-            new_tex.Handle = s_Instance->Device->AsyncResLoader->Submit(0, 0, {.TextureUpload = {.Filename = stable_path.c_str()}});
+            new_tex.Handle = s_Instance->Device->RRM ? static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM)->SubmitTextureFile(0, 0, stable_path.c_str()) : Rendering::Textures::TextureHandle{};
         }
 
         RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, asset_id);

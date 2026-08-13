@@ -25,7 +25,14 @@ namespace ZEngine::Timing
             m_accumulator      += raw_dt;
             if (m_accumulator > max_dt)
             {
-                ZENGINE_CORE_WARN("FixedTimestepAccumulator: spiral-of-death guard triggered")
+                // Rate-limit to once per 5 seconds — the render thread stalls during
+                // RRM uploads, causing sustained spiral-of-death on every frame.
+                auto now_ns = std::chrono::steady_clock::now().time_since_epoch().count();
+                if (now_ns - m_last_warn_ns > 5'000'000'000LL)
+                {
+                    ZENGINE_CORE_WARN("FixedTimestepAccumulator: spiral-of-death guard triggered")
+                    m_last_warn_ns = now_ns;
+                }
                 m_accumulator = max_dt;
             }
         }
@@ -67,5 +74,6 @@ namespace ZEngine::Timing
         FixedTimestepAccumulatorConfig m_config;
         float                          m_accumulator{0.f};
         uint64_t                       m_step_count{0};
+        int64_t                        m_last_warn_ns{INT64_MIN};
     };
 } // namespace ZEngine::Timing

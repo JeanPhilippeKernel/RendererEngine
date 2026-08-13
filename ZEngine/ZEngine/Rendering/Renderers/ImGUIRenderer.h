@@ -16,18 +16,19 @@ namespace ZEngine::Rendering::Renderers
     struct ImGUIRenderer : public IRenderer
     {
 
-        RenderPasses::RenderPass*        UIPass     = nullptr;
-        Hardwares::VertexBufferSetHandle VBHandle   = {};
-        Hardwares::IndexBufferSetHandle  IdxBHandle = {};
+        static constexpr uint32_t FRAMES_IN_FLIGHT              = 3;
+        RenderPasses::RenderPass* UIPass                        = nullptr;
+        Core::Memory::BufferView  VBHandles[FRAMES_IN_FLIGHT]   = {};
+        Core::Memory::BufferView  IdxBHandles[FRAMES_IN_FLIGHT] = {};
 
-        void                             Initialize(Hardwares::VulkanDevicePtr device) override;
-        void                             Deinitialize() override;
+        void                      Initialize(Hardwares::VulkanDevicePtr device) override;
+        void                      Deinitialize() override;
 
-        void                             StyleDarkTheme();
+        void                      StyleDarkTheme();
 
-        void                             NewFrame();
-        void                             EndFrame();
-        void                             PreparePayload(RenderOverlayPayload& payload);
+        void                      NewFrame();
+        void                      EndFrame();
+        void                      PreparePayload(RenderOverlayPayload& payload);
     };
 
     ZDEFINE_PTR(ImGUIRenderer);

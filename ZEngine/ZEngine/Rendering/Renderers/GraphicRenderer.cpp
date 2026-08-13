@@ -1,5 +1,6 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/RendererPasses.h>
@@ -19,49 +20,31 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Initialize(Hardwares::VulkanDevicePtr device)
     {
-        Device                                  = device;
-        RenderGraph                             = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
-        RenderSceneData                         = ZPushStructCtor(Device->Arena, Scenes::SceneData);
+        Device                            = device;
+        RenderGraph                       = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
+        RenderSceneData                   = ZPushStructCtor(Device->Arena, Scenes::SceneData);
         /*
          * Shared Buffers
          */
-        RenderSceneData->VertexBufferHandle     = Device->CreateStorageBufferSet();
-        RenderSceneData->IndexBufferHandle      = Device->CreateStorageBufferSet();
-        RenderSceneData->TransformBufferHandle  = Device->CreateStorageBufferSet();
-        RenderSceneData->RenderDataBufferHandle = Device->CreateStorageBufferSet();
-        RenderSceneData->MaterialBufferHandle   = Device->CreateStorageBufferSet();
-
-        auto vtx_buffer_set                     = Device->StorageBufferSetManager.Access(RenderSceneData->VertexBufferHandle);
-        auto idx_buffer_set                     = Device->StorageBufferSetManager.Access(RenderSceneData->IndexBufferHandle);
-        auto tranform_buffer_set                = Device->StorageBufferSetManager.Access(RenderSceneData->TransformBufferHandle);
-        auto rd_buffer_set                      = Device->StorageBufferSetManager.Access(RenderSceneData->RenderDataBufferHandle);
-        auto material_buffer_set                = Device->StorageBufferSetManager.Access(RenderSceneData->MaterialBufferHandle);
-
-        for (int i = 0; i < Device->SwapchainPtr->BufferredFrameCount; ++i)
-        {
-            vtx_buffer_set->At(i)->Allocate(DefaultBufferSize, VertexBufferName);
-            idx_buffer_set->At(i)->Allocate(DefaultBufferSize, IndexBufferName);
-            tranform_buffer_set->At(i)->Allocate(DefaultBufferSize, TransformBufferName);
-            rd_buffer_set->At(i)->Allocate(DefaultBufferSize, RenderDataBufferName);
-            material_buffer_set->At(i)->Allocate(DefaultBufferSize, MaterialBufferName);
-        }
+        // All scene buffers are plain HOST_VISIBLE BufferViews — one per buffer type,
+        // shared across all frame indices.  Written via RRM::UpdateBuffer each frame.
+        RenderSceneData->TransformBuffer  = Device->GpuMem.AllocateBuffer(DefaultBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, TransformBufferName);
+        RenderSceneData->RenderDataBuffer = Device->GpuMem.AllocateBuffer(DefaultBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, RenderDataBufferName);
+        RenderSceneData->MaterialBuffer   = Device->GpuMem.AllocateBuffer(DefaultBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, MaterialBufferName);
 
         /*
          * Renderer Passes
          */
-        auto     base_pass           = ZPushStructCtor(Device->Arena, BasePass);
-        auto     upload_pass         = ZPushStructCtor(Device->Arena, UploadPass);
-        auto     scene_depth_prepass = ZPushStructCtor(Device->Arena, DepthPrePass);
-        auto     skybox_pass         = ZPushStructCtor(Device->Arena, SkyboxPass);
-        auto     grid_pass           = ZPushStructCtor(Device->Arena, GridPass);
-        auto     gbuffer_pass        = ZPushStructCtor(Device->Arena, GbufferPass);
-        auto     lighting_pass       = ZPushStructCtor(Device->Arena, LightingPass);
-        // auto composite_pass      = ZPushStructCtor(Device->Arena, CompositePass);
+        auto     base_pass                = ZPushStructCtor(Device->Arena, BasePass);
+        auto     upload_pass              = ZPushStructCtor(Device->Arena, UploadPass);
+        auto     scene_depth_prepass      = ZPushStructCtor(Device->Arena, DepthPrePass);
+        auto     skybox_pass              = ZPushStructCtor(Device->Arena, SkyboxPass);
+        auto     grid_pass                = ZPushStructCtor(Device->Arena, GridPass);
 
-        uint32_t rt_w                = Device->SwapchainPtr->SwapchainImageWidth;
-        uint32_t rt_h                = Device->SwapchainPtr->SwapchainImageHeight;
-        FrameColorRenderTarget       = Device->CreateTexture({.PerformTransition = false, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::R8G8B8A8_UNORM});
-        FrameDepthRenderTarget       = Device->CreateTexture({.PerformTransition = false, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
+        uint32_t rt_w                     = Device->SwapchainPtr->SwapchainImageWidth;
+        uint32_t rt_h                     = Device->SwapchainPtr->SwapchainImageHeight;
+        FrameColorRenderTarget            = Device->CreateTexture({.PerformTransition = false, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::R8G8B8A8_UNORM});
+        FrameDepthRenderTarget            = Device->CreateTexture({.PerformTransition = false, .Width = rt_w, .Height = rt_h, .Format = ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
 
         Device->TextureHandleToUpdates.Enqueue(FrameColorRenderTarget);
         /*
@@ -69,13 +52,8 @@ namespace ZEngine::Rendering::Renderers
          */
         RenderGraph->Initialize(Device, RenderSceneData);
 
-        // RenderGraph->ResourceBuilder->AttachRenderTarget(RendererResourceName::FrameSharedRenderTargetName, FrameSharedRenderTarget);
         RenderGraph->ResourceBuilder->AttachRenderTarget(RendererResourceName::FrameDepthRenderTargetName, FrameDepthRenderTarget);
         RenderGraph->ResourceBuilder->AttachRenderTarget(RendererResourceName::FrameColorRenderTargetName, FrameColorRenderTarget);
-
-        RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_directional_light_buffer");
-        RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_point_light_buffer");
-        RenderGraph->ResourceBuilder->CreateBufferSet("g_scene_spot_light_buffer");
 
         // Skybox starts disabled; ApplySkyConfig enables it when a scene with an HDRI sky loads.
         RenderGraph->AddCallbackPass("Upload Pass", upload_pass);
@@ -83,8 +61,6 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass, false);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
-        //  RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
-        //      RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
 
         RenderGraph->Setup();
         RenderGraph->Compile();
@@ -95,24 +71,84 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->Dispose();
         Device->GlobalTextures.Remove(FrameColorRenderTarget);
         Device->GlobalTextures.Remove(FrameDepthRenderTarget);
+        if (RenderSceneData)
+        {
+            Device->GpuMem.FreeBuffer(RenderSceneData->TransformBuffer);
+            Device->GpuMem.FreeBuffer(RenderSceneData->RenderDataBuffer);
+            Device->GpuMem.FreeBuffer(RenderSceneData->MaterialBuffer);
+        }
+    }
+
+    void GraphicRenderer::UpdateRMMBindings(Scenes::SceneDataPtr scene)
+    {
+        if (!scene)
+            return;
+
+        // Bind static per-scene buffers once (TransformSB, DrawDataSB, MatSB).
+        // These are HOST_VISIBLE BufferViews — descriptor binding is set once,
+        // data is written directly via vmaCopyMemoryToAllocation each frame.
+        if (!m_static_buffers_bound && scene->TransformBuffer.Handle)
+        {
+            auto& depth_node = RenderGraph->NodeMap["Depth Pre-Pass"];
+            auto& base_node  = RenderGraph->NodeMap["Base Pass"];
+            if (depth_node.Handle)
+            {
+                depth_node.Handle->SetInput("TransformSB", &scene->TransformBuffer);
+                depth_node.Handle->SetInput("DrawDataSB", &scene->RenderDataBuffer);
+            }
+            if (base_node.Handle)
+            {
+                base_node.Handle->SetInput("TransformSB", &scene->TransformBuffer);
+                base_node.Handle->SetInput("DrawDataSB", &scene->RenderDataBuffer);
+                base_node.Handle->SetInput("MatSB", &scene->MaterialBuffer);
+            }
+            m_static_buffers_bound = true;
+            ZENGINE_CORE_INFO("[GraphicRenderer] Bound TransformSB/DrawDataSB/MatSB to RMM buffers")
+        }
+
+        if (!Device->RRM)
+            return;
+
+        auto* rrm = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
+
+        // Global vertex + index buffers — bind once when they become ready.
+        // All meshes share these two VkBuffers; per-mesh offsets are in DrawDataSB.
+        if (!m_global_buffers_bound && rrm->GlobalBuffersReady())
+        {
+            const auto* vtx_buf    = rrm->GetGlobalVertexBuffer();
+            const auto* idx_buf    = rrm->GetGlobalIndexBuffer();
+            auto&       depth_node = RenderGraph->NodeMap["Depth Pre-Pass"];
+            auto&       base_node  = RenderGraph->NodeMap["Base Pass"];
+            // VertexSB = set 0, binding 1 — IndexSB = set 0, binding 2 (vertex_common.glsl).
+            // Use SetInputByBinding to bypass ValidateInput (name lookup inconsistency).
+            // Only bind to passes that include vertex_common.glsl (Depth Pre-Pass).
+            // Base Pass uses a stub shader with no bindings — skip it.
+            if (depth_node.Handle)
+            {
+                depth_node.Handle->SetInputByBinding(0, 1, vtx_buf);
+                depth_node.Handle->SetInputByBinding(0, 2, idx_buf);
+            }
+            m_global_buffers_bound = true;
+            ZENGINE_CORE_INFO("[GraphicRenderer] Bound global VertexSB/IndexSB to packed geometry buffers")
+        }
     }
 
     void GraphicRenderer::DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera)
     {
-        auto asset_manager       = Managers::AssetManager::Instance();
-        auto ubo_camera_data     = UBOCameraLayout{.View = camera->GetView(), .Projection = camera->GetProjection(), .Position = Vec4f(camera->GetPosition(), 1.0f)};
+        auto asset_manager   = Managers::AssetManager::Instance();
+        auto ubo_camera_data = UBOCameraLayout{.View = camera->GetView(), .Projection = camera->GetProjection(), .Position = Vec4f(camera->GetPosition(), 1.0f)};
 
-        auto material_buffer_set = Device->StorageBufferSetManager.Access(RenderSceneData->MaterialBufferHandle);
-        auto material_buffer     = material_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
-
-        material_buffer->Write(frame_index, thread_index, ArrayView{asset_manager->GPUMeshMaterials});
+        if (Device->RRM && RenderSceneData->MaterialBuffer.Handle)
+        {
+            auto* rrm = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
+            rrm->UpdateBuffer(RenderSceneData->MaterialBuffer, asset_manager->GPUMeshMaterials.data(), asset_manager->GPUMeshMaterials.size() * sizeof(asset_manager->GPUMeshMaterials[0]));
+        }
 
         // Push camera data into the per-frame heap; store offset for dynamic descriptor binding
         auto& heap                        = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
         auto  camera_alloc                = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
         RenderSceneData->CameraHeapOffset = camera_alloc.Offset;
 
-        // todo : expand F, T to the render graph
         RenderGraph->Execute(cb);
     }
 

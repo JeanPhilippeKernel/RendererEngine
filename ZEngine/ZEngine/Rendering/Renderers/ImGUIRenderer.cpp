@@ -1,4 +1,5 @@
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/ImGUIRenderer.h>
 #include <ZEngine/Windows/CoreWindow.h>
 // clang-format off
@@ -58,27 +59,19 @@ namespace ZEngine::Rendering::Renderers
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window), false);
 
-        VBHandle            = Device->CreateVertexBufferSet();
-        IdxBHandle          = Device->CreateIndexBufferSet();
-
-        auto vb_buffer_set  = Device->VertexBufferSetManager.Access(VBHandle);
-        auto idx_buffer_set = Device->IndexBufferSetManager.Access(IdxBHandle);
-        for (unsigned i = 0; i < Device->SwapchainPtr->BufferredFrameCount; ++i)
+        // HOST_VISIBLE — one buffer per frame-in-flight to avoid write-after-read hazard.
+        for (uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {
-            vb_buffer_set->At(i)->Allocate(ZMega(5), "ImguiVertexBuffer");
-            idx_buffer_set->At(i)->Allocate(ZMega(5), "ImguiIndexBuffer");
+            VBHandles[i]   = Device->GpuMem.AllocateBuffer(ZMega(5), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "ImguiVertexBuffer");
+            IdxBHandles[i] = Device->GpuMem.AllocateBuffer(ZMega(5), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "ImguiIndexBuffer");
         }
 
         /*
          * Font uploading
          */
-        AsyncResourceLoader::DeferralUpload deferral = {.Buffer = nullptr};
-        deferral.Type                                = AsyncResourceLoader::UploadType::TEXTURE_BUFFER;
-
         unsigned char* pixels;
         int            width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        size_t                               upload_size   = width * height * 4 * sizeof(uint8_t);
 
         Specifications::TextureSpecification font_tex_spec = {};
         font_tex_spec.Width                                = width;
@@ -86,10 +79,18 @@ namespace ZEngine::Rendering::Renderers
         font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
 
         auto font_tex_handle                               = Device->CreateTexture(font_tex_spec);
-        deferral.TexHandle                                 = font_tex_handle;
-        deferral.Buffer                                    = pixels;
 
-        Device->AsyncResLoader->SubmitDeferral(std::move(deferral));
+        if (Device->RRM)
+        {
+            auto*                                  rrm = static_cast<RenderResourceManager*>(Device->RRM);
+            RenderResourceManager::TextureDeferral deferral;
+            deferral.FrameIdx  = 0;
+            deferral.ThreadIdx = 0;
+            deferral.TexHandle = font_tex_handle;
+            deferral.Buffer    = pixels;
+            deferral.IsLarge   = false;
+            rrm->EnqueueTextureDeferral(std::move(deferral));
+        }
 
         // We enqueue the tex handle so, we write the DescriptorSet at Present(...)
         Device->TextureHandleToUpdates.Enqueue(font_tex_handle);
@@ -133,6 +134,14 @@ namespace ZEngine::Rendering::Renderers
     void ImGUIRenderer::Deinitialize()
     {
         UIPass->Dispose();
+
+        for (uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i)
+        {
+            if (VBHandles[i])
+                Device->GpuMem.FreeBuffer(VBHandles[i]);
+            if (IdxBHandles[i])
+                Device->GpuMem.FreeBuffer(IdxBHandles[i]);
+        }
 
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
@@ -224,8 +233,7 @@ namespace ZEngine::Rendering::Renderers
         r_payload.VertexCount         = vertex_count;
         r_payload.IndexCount          = index_count;
         r_payload.IsIndexBufferUint16 = sizeof(ImDrawIdx) == 2;
-        r_payload.VBHandle            = VBHandle;
-        r_payload.IdxBHandle          = IdxBHandle;
+        // VBHandle/IdxBHandle are set in RenderOverlay after BeginFrame sets CurrentFrame.
 
         r_payload.VertexData.clear();
         r_payload.IndexData.clear();

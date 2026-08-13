@@ -7,6 +7,7 @@
 #include <ZEngine/Importers/ImportJob.h>
 #include <ZEngine/Importers/ImportQueue.h>
 #include <ZEngine/ZEngineDef.h>
+#include <uuid.h>
 #include <atomic>
 
 namespace ZEngine::Importers
@@ -30,9 +31,10 @@ namespace ZEngine::Importers
         // Register a concrete importer. Ownership is not transferred; caller ensures lifetime.
         void                      RegisterImporter(IAssetImporter* importer);
 
-        // Enqueue a single asset. Reads meta from VFS via MetaFileIO.
-        // No-op if the path is already queued at equal or higher priority.
-        void                      Enqueue(Core::VFS::VFSPath path, ImportPriority priority = ImportPriority::Normal, ImportCallback cb = {});
+        // Enqueue a single asset. Returns the asset UUID from the meta file so callers
+        // can act immediately (e.g. create a scene instance) regardless of whether the
+        // import runs now or was already cached. Returns a null UUID on failure.
+        uuids::uuid               Enqueue(Core::VFS::VFSPath path, ImportPriority priority = ImportPriority::Normal, ImportCallback cb = {});
 
         // Enqueue multiple paths at Normal priority (scanner batch).
         void                      EnqueueBatch(const Core::Containers::Array<Core::VFS::VFSPath>& paths);

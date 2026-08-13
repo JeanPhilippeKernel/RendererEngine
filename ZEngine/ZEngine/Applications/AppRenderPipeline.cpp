@@ -1,5 +1,7 @@
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 
 using namespace ZEngine::Core::Containers;
@@ -48,19 +50,20 @@ namespace ZEngine::Applications
 
         swapchain->AcquireNextImage(CurrentMailBoxBufferHead);
 
+        // RRM::BeginFrame AFTER AcquireNextImage so CurrentFrame->Index is valid.
+        if (Device->RRM)
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
+
         for (uint8_t thread_idx = 0; thread_idx < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
         {
             Device->CommandBufferMgr->ResetPool(swapchain->CurrentFrame->Index, thread_idx);
-            Device->AsyncResLoader->ResetCommandBuffers(swapchain->CurrentFrame->Index, thread_idx);
+            if (Device->RRM)
+                static_cast<Rendering::RenderResourceManager*>(Device->RRM)->RetireTextureSlots(swapchain->CurrentFrame->Index, thread_idx);
         }
 
-        Device->AsyncResLoader->CompleteDeferrals();
+        if (Device->RRM)
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->CompleteDeferrals();
 
-        // uint8_t render_worker_thread_idx = RenderThreadIndex + 1;
-        // for (uint8_t worker_thread_idx = 0; worker_thread_idx < RenderWorkerThreadCount; ++worker_thread_idx)
-        // {
-        //     auto thread_idx                             = render_worker_thread_idx + worker_thread_idx;
-        // }
         CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, swapchain->CurrentFrame->Index, RenderMainThreadIndex, 0, false);
         vkResetCommandBuffer(CurrentCmdBuf->GetHandle(), 0);
         CurrentCmdBuf->ResetState();
@@ -69,11 +72,16 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::EndFrame()
     {
-        Device->AsyncResLoader->SubmitAsyncJobs();
+        if (Device->RRM)
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitTextureJobs();
         Device->CommandBufferMgr->EnqueueBuffer(CurrentCmdBuf);
         Device->CommandBufferMgr->EndEnqueuedBuffers();
 
         Device->SwapchainPtr->Present();
+
+        // RRM::EndFrame AFTER Present so swap entries drain with the correct frame counter.
+        if (Device->RRM)
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame(Device->SwapchainPtr->CurrentFrame->Index);
     }
 
     void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene)
@@ -82,80 +90,104 @@ namespace ZEngine::Applications
         auto frame_index  = swpachain->CurrentFrame->Index;
         auto thread_index = RenderMainThreadIndex;
 
-        if (scene->SkyDirty[Device->SwapchainPtr->CurrentFrame->Index].exchange(false, std::memory_order_acquire))
+        if (scene->SkyDirty[frame_index].value.exchange(false, std::memory_order_acquire))
         {
             SceneRenderer->ApplySkyConfig(scene->Sky);
         }
 
-        if (scene->TransformBufferDirty[Device->SwapchainPtr->CurrentFrame->Index].load(std::memory_order_acquire) || scene->MeshAllocationDirty[Device->SwapchainPtr->CurrentFrame->Index].load(std::memory_order_acquire))
+        auto* gpu = SceneRenderer->RenderSceneData;
+
+        if (scene->InstancesDirty[frame_index].value.exchange(false, std::memory_order_acquire))
         {
-            auto  gpu_scene_data       = SceneRenderer->RenderSceneData;
+            auto*                                                    rrm     = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+            auto*                                                    mgr     = Managers::AssetManager::Instance();
 
-            auto  vtx_buffer_set       = Device->StorageBufferSetManager.Access(gpu_scene_data->VertexBufferHandle);
-            auto  idx_buffer_set       = Device->StorageBufferSetManager.Access(gpu_scene_data->IndexBufferHandle);
-            auto  transform_buffer_set = Device->StorageBufferSetManager.Access(gpu_scene_data->TransformBufferHandle);
-            auto  rd_buffer_set        = Device->StorageBufferSetManager.Access(gpu_scene_data->RenderDataBufferHandle);
+            auto                                                     scratch = ZGetScratch(&LocalArena);
 
-            auto  vtx_buffer           = vtx_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
-            auto  idx_buffer           = idx_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
-            auto  transform_buffer     = transform_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
-            auto  rd_buffer            = rd_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
+            // Seqlock snapshot — consistent copy of the instance list.
+            Core::Containers::Array<Rendering::Scenes::MeshInstance> instances;
+            scene->GetInstancesSnapshot(scratch.Arena, instances);
 
-            auto& suballocs            = scene->NodeSubMeshesAllocations;
+            // Pre-size scratch arrays (worst-case: each mesh has multiple submeshes).
+            Core::Containers::Array<Rendering::Meshes::SubMeshAllocation> allocs;
+            Core::Containers::Array<VkDrawIndirectCommand>                draws;
+            Core::Containers::Array<Core::Maths::Mat4f>                   transforms;
+            allocs.init(scratch.Arena, instances.size() * 4);
+            draws.init(scratch.Arena, instances.size() * 4);
+            transforms.init(scratch.Arena, instances.size());
 
-            if (scene->TransformBufferDirty[Device->SwapchainPtr->CurrentFrame->Index].exchange(false, std::memory_order_acquire))
+            for (uint32_t inst_i = 0; inst_i < instances.size(); ++inst_i)
             {
-                auto transform_data_view = ArrayView{scene->GlobalTransforms};
-                transform_buffer->Write(frame_index, thread_index, transform_data_view);
+                const auto& inst   = instances[inst_i];
+
+                auto        handle = rrm ? rrm->FindMeshBuffer(inst.MeshUUID) : Rendering::BufferHandle{};
+                if (!handle.IsValid())
+                    continue;
+
+                uint32_t vtx_base = 0, idx_base = 0;
+                rrm->GetMeshOffsets(handle, vtx_base, idx_base);
+
+                auto* mesh = mgr ? mgr->GetMeshAsset(inst.MeshUUID) : nullptr;
+                if (!mesh)
+                    continue;
+
+                transforms.push(inst.Transform);
+                uint32_t transform_idx = static_cast<uint32_t>(transforms.size() - 1);
+
+                for (uint32_t sub_i = 0; sub_i < static_cast<uint32_t>(mesh->SubMeshes.size()); ++sub_i)
+                {
+                    const auto&                          sub      = mesh->SubMeshes[sub_i];
+                    auto                                 mat_h    = mgr->GetMaterialHandleFromUUID(sub.MaterialUUID);
+                    uint32_t                             mat_idx  = Managers::AssetManager::ReadAssetHandleIndex(mat_h);
+                    uint32_t                             draw_idx = static_cast<uint32_t>(allocs.size());
+
+                    Rendering::Meshes::SubMeshAllocation alloc    = {};
+                    alloc.VertexOffset                            = vtx_base + sub.VertexOffset;
+                    alloc.VertexCount                             = sub.VertexCount;
+                    alloc.IndexOffset                             = idx_base + sub.IndexOffset;
+                    alloc.IndexCount                              = sub.IndexCount;
+                    alloc.InstanceCount                           = 1;
+                    alloc.TransformId                             = transform_idx;
+                    alloc.MaterialId                              = mat_idx;
+                    allocs.push(alloc);
+                    draws.push({.vertexCount = sub.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_idx});
+                }
             }
 
-            if (scene->MeshAllocationDirty[Device->SwapchainPtr->CurrentFrame->Index].exchange(false, std::memory_order_acquire))
-            {
-                auto                                                                            scratch              = ZGetScratch(&LocalArena);
+            if (rrm && gpu->TransformBuffer.Handle && transforms.size() > 0)
+                rrm->UpdateBuffer(gpu->TransformBuffer, transforms.data(), transforms.size() * sizeof(Core::Maths::Mat4f));
 
-                ZEngine::Core::Containers::Array<ZEngine::Rendering::Meshes::SubMeshAllocation> SubMeshAllocations   = {};
-                ZEngine::Core::Containers::Array<VkDrawIndirectCommand>                         DrawIndirectCommands = {};
-                SubMeshAllocations.init(scratch.Arena, suballocs.size());
+            if (rrm && gpu->RenderDataBuffer.Handle && allocs.size() > 0)
+                rrm->UpdateBuffer(gpu->RenderDataBuffer, allocs.data(), allocs.size() * sizeof(Rendering::Meshes::SubMeshAllocation));
 
-                for (const auto& [_, alloc] : suballocs)
-                {
-                    SubMeshAllocations.push(alloc);
-                }
+            // Cache draw commands — the heap resets each frame so we must re-push
+            // every frame. The cache holds the latest snapshot.
+            gpu->IndirectCommandCount = static_cast<uint32_t>(draws.size());
+            ZENGINE_VALIDATE_ASSERT(gpu->IndirectCommandCount <= Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS, "Too many draw commands — increase SceneData::MAX_DRAW_COMMANDS")
+            for (uint32_t dc = 0; dc < gpu->IndirectCommandCount; ++dc)
+                gpu->CachedDrawCmds[dc] = draws[dc];
 
-                DrawIndirectCommands.init(scratch.Arena, SubMeshAllocations.size());
-                for (unsigned i = 0; i < SubMeshAllocations.size(); ++i)
-                {
-                    DrawIndirectCommands.push({
-                        .vertexCount   = SubMeshAllocations[i].IndexCount,
-                        .instanceCount = SubMeshAllocations[i].InstanceCount,
-                        .firstVertex   = 0,
-                        .firstInstance = i,
-                    });
-                }
-
-                auto vertex_data_view       = ArrayView{scene->Vertices};
-                auto index_data_view        = ArrayView{scene->Indices};
-
-                auto sub_mesh_alloc_view    = ArrayView{SubMeshAllocations};
-                auto indirect_commands_view = ArrayView{DrawIndirectCommands};
-
-                vtx_buffer->Write(frame_index, thread_index, vertex_data_view);
-                idx_buffer->Write(frame_index, thread_index, index_data_view);
-
-                rd_buffer->Write(frame_index, thread_index, sub_mesh_alloc_view);
-
-                // Push indirect commands into the per-frame heap
-                auto& heap                           = Device->FrameHeaps[frame_index];
-                auto  indirect_alloc                 = heap.Push(DrawIndirectCommands.data(), DrawIndirectCommands.size() * sizeof(VkDrawIndirectCommand), sizeof(VkDrawIndirectCommand));
-                gpu_scene_data->IndirectHeapOffset   = indirect_alloc.Offset;
-                gpu_scene_data->IndirectCommandCount = static_cast<uint32_t>(DrawIndirectCommands.size());
-
-                ZReleaseScratch(scratch);
-            }
+            ZReleaseScratch(scratch);
         }
 
-        // Todo (Kernel) : When we'll start considering multithreaded support
-        // we might want to renderer->EnqueueAsync({command_buffer, {camera, frame_data} })
+        // Always push draw commands to the heap this frame (heap resets every frame).
+        if (gpu->IndirectCommandCount > 0)
+        {
+            auto& heap              = Device->FrameHeaps[frame_index];
+            auto  indirect_alloc    = heap.Push(gpu->CachedDrawCmds, gpu->IndirectCommandCount * sizeof(VkDrawIndirectCommand), sizeof(VkDrawIndirectCommand));
+            gpu->IndirectHeapOffset = indirect_alloc.Offset;
+        }
+
+        if (Device->RRM)
+        {
+            auto* rrm      = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
+            auto* gpu_data = SceneRenderer->RenderSceneData;
+            // Mark global buffers ready so draw guard allows rendering.
+            if (!gpu_data->RMMVertexHandle.IsValid() && rrm->GlobalBuffersReady())
+                gpu_data->RMMVertexHandle = {0, 1}; // sentinel — just needs IsValid() == true
+            SceneRenderer->UpdateRMMBindings(gpu_data);
+        }
+
         SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
     }
 
@@ -176,25 +208,26 @@ namespace ZEngine::Applications
             return;
         }
 
-        auto swpachain           = Device->SwapchainPtr;
-        auto frame_index         = swpachain->CurrentFrame->Index;
-        auto thread_index        = RenderMainThreadIndex;
+        auto     swpachain           = Device->SwapchainPtr;
+        auto     frame_index         = swpachain->CurrentFrame->Index;
+        auto     thread_index        = RenderMainThreadIndex;
 
-        auto current_framebuffer = Device->SwapchainPtr->SwapchainFramebuffers[Device->SwapchainPtr->CurrentFrame->ImageIndex];
+        auto     current_framebuffer = Device->SwapchainPtr->SwapchainFramebuffers[Device->SwapchainPtr->CurrentFrame->ImageIndex];
+
+        // Resolve per-frame ImGui buffers now that BeginFrame has set CurrentFrame.
+        uint32_t fi                  = frame_index % Rendering::Renderers::ImGUIRenderer::FRAMES_IN_FLIGHT;
+        auto     vb                  = ImguiRenderer->VBHandles[fi];
+        auto     ib                  = ImguiRenderer->IdxBHandles[fi];
 
         CurrentCmdBuf->BeginRenderPass(ImguiRenderer->UIPass, current_framebuffer, true);
         {
-            auto vtx_data_view     = ArrayView{payload.VertexData.data(), payload.VertexData.size()};
-            auto idx_data_view     = ArrayView{payload.IndexData.data(), payload.IndexData.size()};
-
-            auto vertex_buffer_set = Device->VertexBufferSetManager.Access(payload.VBHandle);
-            auto index_buffer_set  = Device->IndexBufferSetManager.Access(payload.IdxBHandle);
-
-            auto vertex_buffer     = vertex_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
-            auto index_buffer      = index_buffer_set->At(Device->SwapchainPtr->CurrentFrame->Index);
-
-            vertex_buffer->Write(frame_index, thread_index, vtx_data_view);
-            index_buffer->Write(frame_index, thread_index, idx_data_view);
+            // Direct HOST_VISIBLE writes — one buffer per frame-in-flight, no WAR hazard.
+            auto* rrm = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+            if (rrm)
+            {
+                rrm->UpdateBuffer(vb, payload.VertexData.data(), payload.VertexData.size() * sizeof(payload.VertexData[0]));
+                rrm->UpdateBuffer(ib, payload.IndexData.data(), payload.IndexData.size() * sizeof(payload.IndexData[0]));
+            }
 
             auto ui_second_cb = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, Device->SwapchainPtr->CurrentFrame->Index, RenderMainThreadIndex, UICommandBufferIndex, false);
             ui_second_cb->ResetState();
@@ -203,8 +236,8 @@ namespace ZEngine::Applications
 
             ui_second_cb->BindPipeline(Rendering::Specifications::PipelineBindPoint::GRAPHIC, ImguiRenderer->UIPass->Pipeline);
 
-            ui_second_cb->BindVertexBuffer(*vertex_buffer);
-            ui_second_cb->BindIndexBuffer(*index_buffer, payload.IsIndexBufferUint16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+            ui_second_cb->BindVertexBuffer(vb);
+            ui_second_cb->BindIndexBuffer(ib, payload.IsIndexBufferUint16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 
             Rendering::Renderers::PushConstantData pc_data = {};
             pc_data.Scale[0]                               = payload.Pc[0];

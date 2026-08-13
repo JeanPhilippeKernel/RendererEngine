@@ -1,8 +1,9 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
-#include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <ZEngine/ZEngineDef.h>
 
 #define WRITE_BUFFERS_ONCE(frame_index, body)          \
@@ -21,10 +22,10 @@ namespace ZEngine::Rendering::Renderers
         Core::Containers::Array<uint16_t> SkyboxIndexData  = {};
         Core::Containers::Array<uint16_t> GridIndexData    = {};
 
-        Hardwares::VertexBufferSetHandle  SkyboxVBHandle   = {};
-        Hardwares::VertexBufferSetHandle  GridVBHandle     = {};
-        Hardwares::IndexBufferSetHandle   SkyboxIBHandle   = {};
-        Hardwares::IndexBufferSetHandle   GridIBHandle     = {};
+        Core::Memory::BufferView          SkyboxVBHandle   = {};
+        Core::Memory::BufferView          GridVBHandle     = {};
+        Core::Memory::BufferView          SkyboxIBHandle   = {};
+        Core::Memory::BufferView          GridIBHandle     = {};
 
         Core::Containers::Array<uint8_t>  WriteOnceControl = {};
 

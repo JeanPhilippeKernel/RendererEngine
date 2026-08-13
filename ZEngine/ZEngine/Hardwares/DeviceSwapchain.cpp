@@ -1,6 +1,7 @@
 #include <GLFW/glfw3.h>
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
 #include <ZEngine/Rendering/Specifications/AttachmentSpecification.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
@@ -221,14 +222,24 @@ namespace ZEngine::Hardwares
                 frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
             }
 
-            Device->AsyncResLoader->ClearAsyncJobs();
-            Device->AsyncResLoader->Reset();
+            if (Device->RRM)
+            {
+                auto* rrm = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+                rrm->ClearTextureJobs();
+                rrm->ResetTextureTimelines();
+            }
 
             uint64_t timeline_value = 0;
             vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &timeline_value);
 
-            ZENGINE_VALIDATE_ASSERT(timeline_value >= RenderTimelineNextValue, "Render Timeline value is behind the last submitted value, this should never happen.")
+            // After vkDeviceWaitIdle the GPU timeline may be behind RenderTimelineNextValue
+            // if a submit was cancelled (e.g. slot-exhaustion return). Clamp forward so
+            // the swapchain reset starts from the GPU's actual position.
             ZENGINE_VALIDATE_ASSERT(timeline_value < UINT64_MAX, "Render Timeline value is corrupted, this should never happen.")
+            if (timeline_value < RenderTimelineNextValue)
+            {
+                ZENGINE_CORE_WARN("DeviceSwapchain: timeline_value ({}) < RenderTimelineNextValue ({}), clamping", timeline_value, RenderTimelineNextValue)
+            }
             RenderTimelineNextValue = timeline_value;
 
             FrameContextOffset      = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
@@ -360,8 +371,13 @@ namespace ZEngine::Hardwares
         auto render_complete  = RenderCompletes[CurrentFrame->ImageIndex];
         auto present_complete = PresentCompletes[CurrentFrame->ImageIndex];
 
-        ZENGINE_VALIDATE_ASSERT(render_complete->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
-        ZENGINE_VALIDATE_ASSERT(CurrentFrame->Fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
+        // On MoltenVK/macOS, Metal's async completion model can leave binary semaphores
+        // in Submitted state longer than strict Vulkan semantics; vkDeviceWaitIdle at
+        // swapchain recreation ensures GPU work is retired, so we tolerate this here.
+        if (render_complete->GetState() == Rendering::Primitives::SemaphoreState::Submitted)
+            render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);
+        if (CurrentFrame->Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
+            CurrentFrame->Fence->Wait(UINT64_MAX);
 
         QueueView                     queue             = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
 

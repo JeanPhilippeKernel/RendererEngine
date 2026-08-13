@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Rendering/Buffers/Framebuffer.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/RendererPipeline.h>
@@ -39,7 +40,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                                    Dispose();
         void                                    Bake();
         bool                                    Verify();
-        void                                    SetInput(std::string_view key_name, const Hardwares::StorageBufferSetHandle& buffer);
+        // Binds a single device-local BufferView to ALL frame descriptor sets.
+        void                                    SetInput(std::string_view key_name, const Core::Memory::BufferView* buffer);
+        // Direct binding by (set, binding) index — bypasses name lookup for well-known bindings.
+        void                                    SetInputByBinding(uint32_t set, uint32_t binding, const Core::Memory::BufferView* buffer);
         // Bind a heap-allocated resource as DYNAMIC_UNIFORM_BUFFER.
         // The heap VkBuffer covers all frames; dynamic offsets are supplied at draw time.
         void                                    SetInputFromHeap(std::string_view key_name, VkDeviceSize range);

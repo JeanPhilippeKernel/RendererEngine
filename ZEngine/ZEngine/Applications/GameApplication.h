@@ -4,7 +4,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/TimeStep.h>
-#include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <ZEngine/Windows/WindowConfiguration.h>
 #include <ZEngine/ZEngineDef.h>
