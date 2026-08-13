@@ -67,34 +67,21 @@ namespace ZEngine::Rendering::Renderers
         }
 
         /*
-         * Font uploading
+         * Font uploading — RRM creates the texture and copies pixel data into an
+         * owned buffer. The GPU upload is deferred to the first BeginFrame call.
          */
         unsigned char* pixels;
         int            width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
-        Specifications::TextureSpecification font_tex_spec = {};
-        font_tex_spec.Width                                = width;
-        font_tex_spec.Height                               = height;
-        font_tex_spec.Format                               = Specifications::ImageFormat::R8G8B8A8_UNORM;
-
-        auto font_tex_handle                               = Device->CreateTexture(font_tex_spec);
-
+        TextureHandle font_tex_handle = {};
         if (Device->RRM)
         {
-            auto*                                  rrm = static_cast<RenderResourceManager*>(Device->RRM);
-            RenderResourceManager::TextureDeferral deferral;
-            deferral.FrameIdx  = 0;
-            deferral.ThreadIdx = 0;
-            deferral.TexHandle = font_tex_handle;
-            deferral.Buffer    = pixels;
-            deferral.IsLarge   = false;
-            rrm->EnqueueTextureDeferral(std::move(deferral));
+            auto* rrm       = static_cast<RenderResourceManager*>(Device->RRM);
+            font_tex_handle = rrm->UploadFontAtlas(pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
         }
 
-        // We enqueue the tex handle so, we write the DescriptorSet at Present(...)
         Device->TextureHandleToUpdates.Enqueue(font_tex_handle);
-
         io.Fonts->TexID   = (ImTextureID) font_tex_handle.Index;
 
         auto pass_builder = RenderGraph->RenderPassBuilder;

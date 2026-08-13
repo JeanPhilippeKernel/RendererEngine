@@ -57,10 +57,16 @@ namespace ZEngine::Rendering
         BufferHandle                       UploadMesh(Managers::AssetHandle asset_handle);
         ImageHandle                        UploadTexture(Managers::AssetHandle asset_handle);
 
-        // Direct texture upload from raw pixel data (e.g. ImGui font, procedural textures).
-        // Returns a TextureHandle; submits via timeline job queue (same path as file-based uploads).
-        // Thread-safe — may be called from any thread; submission drains in SubmitTextureJobs().
+        // Direct texture upload from raw pixel data (e.g. procedural textures).
+        // Submits via timeline job queue; submission drains in SubmitTextureJobs().
         Rendering::Textures::TextureHandle UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data);
+
+        // Create the font atlas texture and enqueue an owned-copy deferral.
+        // The pixel data is copied immediately so the caller may free its buffer after
+        // this call returns. The GPU upload is dispatched by CompleteDeferrals on the
+        // next BeginFrame. Caller must enqueue the returned handle to
+        // TextureHandleToUpdates for bindless descriptor registration.
+        Rendering::Textures::TextureHandle UploadFontAtlas(unsigned char* pixels, uint32_t width, uint32_t height);
 
         // Load a texture file from disk, decode it on the thread pool, and upload to GPU.
         Rendering::Textures::TextureHandle SubmitTextureFile(uint8_t frame_index, uint8_t thread_index, const char* filename);
