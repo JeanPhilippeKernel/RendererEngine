@@ -45,13 +45,6 @@ FetchContent_Declare(
   )
 
 FetchContent_Declare(
-  EnTT 
-  GIT_REPOSITORY https://github.com/skypjack/entt.git
-  GIT_SHALLOW TRUE 
-  GIT_TAG v3.16.0
-  )
-
-FetchContent_Declare(
   assimp
   GIT_REPOSITORY https://github.com/assimp/assimp.git
   GIT_SHALLOW TRUE
@@ -194,7 +187,6 @@ FetchContent_MakeAvailable(
   stb
   glfw3
   spdlog
-  EnTT
   assimp
   stduuid
   yaml-cpp
@@ -290,7 +282,6 @@ target_link_libraries(External_libs
          fmt::fmt
          imguizmo
          spdlog::spdlog
-         EnTT::EnTT
          assimp::assimp
          stduuid
          yaml-cpp::yaml-cpp
