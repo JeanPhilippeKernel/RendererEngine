@@ -212,14 +212,30 @@ namespace ZEngine::Core::VFS
             return;
         }
 
+        {
+            std::lock_guard<std::mutex> lk(m_ready_mutex);
+            m_thread_ready = false;
+        }
+
         m_thread = std::thread([this] {
             m_run_loop = CFRunLoopGetCurrent();
             {
                 std::lock_guard<std::mutex> lock(m_watch_mutex);
                 RebuildStream();
             }
+            // Signal that FSEventStreamStart has been called and the run loop
+            // is about to enter — callers of StartThread() can safely write
+            // files and expect events to be captured from this point on.
+            {
+                std::lock_guard<std::mutex> lk(m_ready_mutex);
+                m_thread_ready = true;
+                m_ready_cv.notify_one();
+            }
             CFRunLoopRun();
         });
+
+        std::unique_lock<std::mutex> lk(m_ready_mutex);
+        m_ready_cv.wait(lk, [this] { return m_thread_ready; });
     }
 
     void VFSFSEventsWatcher::StopThread()
