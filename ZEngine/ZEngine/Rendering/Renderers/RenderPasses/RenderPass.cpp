@@ -192,13 +192,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Inputs.insert(key_name.data());
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Hardwares::StorageBufferSetHandle& handle)
+    void RenderPass::SetInput(std::string_view key_name, const Core::Memory::BufferView* buffer)
     {
-        auto validity_output = ValidateInput(key_name);
-        if (!validity_output.first)
+        if (!buffer || !buffer->Handle)
         {
+            ZENGINE_CORE_WARN("SetInput(BufferView): null buffer for key '{}'", key_name.data())
             return;
         }
+
+        auto validity_output = ValidateInput(key_name);
+        if (!validity_output.first)
+            return;
 
         const auto& spec      = validity_output.second;
         auto        shader    = Pipeline->Shader;
@@ -207,27 +211,60 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
         if (!set_array)
         {
-            ZENGINE_CORE_ERROR("SetInput(SBO): descriptor set {} not found for key '{}'", spec.Set, key_name.data())
+            ZENGINE_CORE_ERROR("SetInput(BufferView): descriptor set {} not found for key '{}'", spec.Set, key_name.data())
             return;
         }
-        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        auto sbo_buf     = m_device->StorageBufferSetManager.Access(handle);
-        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
 
+        auto                              frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        VkDescriptorBufferInfo            buf_info    = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+        std::vector<VkWriteDescriptorSet> write_reqs(frame_count);
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto  set      = (*set_array)[i];
-            auto& buf      = sbo_buf->At(i);
-            auto& buf_info = buf->GetDescriptorBufferInfo();
+            write_reqs[i] = VkWriteDescriptorSet{
+                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet          = (*set_array)[i],
+                .dstBinding      = spec.Binding,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo     = &buf_info,
+            };
+        }
+        vkUpdateDescriptorSets(m_device->LogicalDevice, (uint32_t) write_reqs.size(), write_reqs.data(), 0, nullptr);
+        Inputs.insert(key_name.data());
+    }
 
-            ZENGINE_VALIDATE_ASSERT((buf_info.buffer), "StorageBuffer can't be null")
+    void RenderPass::SetInputByBinding(uint32_t set, uint32_t binding, const Core::Memory::BufferView* buffer)
+    {
+        if (!buffer || !buffer->Handle)
+            return;
 
-            write_reqs[i] = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo = nullptr, .pBufferInfo = &(buf_info), .pTexelBufferView = nullptr};
+        auto        shader    = Pipeline->Shader;
+        const auto* set_array = shader->DescriptorSetMap.find(set);
+        if (!set_array)
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(set);
+        if (!set_array)
+        {
+            ZENGINE_CORE_ERROR("SetInputByBinding: descriptor set {} not found", set)
+            return;
         }
 
-        vkUpdateDescriptorSets(m_device->LogicalDevice, write_reqs.size(), write_reqs.data(), 0, nullptr);
-
-        Inputs.insert(key_name.data());
+        auto                              frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        VkDescriptorBufferInfo            buf_info    = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+        std::vector<VkWriteDescriptorSet> write_reqs(frame_count);
+        for (unsigned i = 0; i < frame_count; ++i)
+        {
+            write_reqs[i] = VkWriteDescriptorSet{
+                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet          = (*set_array)[i],
+                .dstBinding      = binding,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo     = &buf_info,
+            };
+        }
+        vkUpdateDescriptorSets(m_device->LogicalDevice, (uint32_t) write_reqs.size(), write_reqs.data(), 0, nullptr);
     }
 
     void RenderPass::SetInput(std::string_view key_name, const Textures::TextureHandle& handle)

@@ -6,6 +6,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/VFS/IVFSPlatformWatcher.h>
 #include <ZEngine/ZEngineDef.h>
+#include <condition_variable>
 #include <mutex>
 #include <thread>
 
@@ -61,6 +62,9 @@ namespace ZEngine::Core::VFS
         CFRunLoopRef                                          m_run_loop       = nullptr;
         std::thread                                           m_thread;
         PaddedAtomic<bool>                                    m_running = {};
+        std::condition_variable                               m_ready_cv;
+        std::mutex                                            m_ready_mutex;
+        bool                                                  m_thread_ready = false;
 
         std::mutex                                            m_queue_mutex;
         Containers::Array<VFSWatchEvent>                      m_queue;

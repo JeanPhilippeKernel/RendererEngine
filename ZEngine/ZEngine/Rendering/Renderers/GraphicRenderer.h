@@ -23,8 +23,14 @@ namespace ZEngine::Rendering::Renderers
         void                    Initialize(Hardwares::VulkanDevicePtr device) override;
         void                    Deinitialize() override;
         void                    DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera);
+        // Rebinds VertexSB/IndexSB to the RMM-owned device-local buffers when handles become valid.
+        void                    UpdateRMMBindings(Scenes::SceneDataPtr scene);
         void                    ApplySkyConfig(const Scenes::SkyConfig& sky);
         Textures::TextureHandle GetFrameOutput();
+
+    private:
+        bool m_static_buffers_bound = false;
+        bool m_global_buffers_bound = false;
     };
     ZDEFINE_PTR(GraphicRenderer);
 } // namespace ZEngine::Rendering::Renderers

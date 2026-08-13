@@ -121,7 +121,7 @@
 #define ZESCENE_MAGIC                                          MAKE_MAGIC('Z', 'S', 'C', 'N')
 #define ZENVMAP_MAGIC                                          MAKE_MAGIC('Z', 'E', 'N', 'V')
 #define ASSET_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
-#define SCENE_FILE_VERSION                                     MAKE_VERSION(1, 1, 0)
+#define SCENE_FILE_VERSION                                     MAKE_VERSION(2, 0, 0)
 
 typedef const char* cstring;
 

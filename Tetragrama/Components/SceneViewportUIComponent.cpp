@@ -164,13 +164,28 @@ namespace Tetragrama::Components
                             size_t                      ws_len = ZEngine::Helpers::secure_strlen(ws);
                             if (ws_len > 0 && std::strncmp(buf, ws, ws_len) == 0)
                             {
-                                // Strip working space prefix — remainder is VFS path
                                 auto relative = ZEngine::Core::VFS::VFSPath::Parse(buf + ws_len);
                                 if (relative.Succeeded())
                                 {
                                     vfs_path = relative.Value();
                                     ZENGINE_CORE_INFO("SceneViewport: VFS path='{}'", vfs_path.CStr())
-                                    ctx->ImportCoordinator->Enqueue(vfs_path, ZEngine::Importers::ImportPriority::Immediate);
+
+                                    // Enqueue returns the asset UUID from the meta file — valid
+                                    // regardless of whether the import runs now (first drop) or
+                                    // was already cached (re-drop). Create the scene instance
+                                    // immediately; the render system shows it once the mesh uploads.
+                                    auto uuid = ctx->ImportCoordinator->Enqueue(vfs_path, ZEngine::Importers::ImportPriority::Immediate);
+                                    if (uuid != uuids::uuid{})
+                                    {
+                                        auto* scene = reinterpret_cast<Tetragrama::EditorScenePtr>(app->CurrentScene);
+                                        if (scene)
+                                        {
+                                            const char* p    = vfs_path.CStr();
+                                            const char* name = strrchr(p, '/');
+                                            name             = name ? name + 1 : p;
+                                            scene->AddMeshInstance(uuid, name);
+                                        }
+                                    }
                                 }
                                 else
                                 {

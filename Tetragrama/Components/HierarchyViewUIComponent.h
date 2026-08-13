@@ -1,6 +1,6 @@
 #pragma once
 #include <Tetragrama/Components/UIComponent.h>
-#include <Tetragrama/EditorScene.h>
+#include <Tetragrama/Editor.h>
 #include <imgui.h>
 
 namespace Tetragrama::Components
@@ -12,17 +12,12 @@ namespace Tetragrama::Components
         virtual ~HierarchyViewUIComponent();
 
         void         Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Hierarchy", bool visibility = true, bool closed = false) override;
-
         void         Update(ZEngine::Core::TimeStep dt) override;
         virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
-        void         RenderTreeNodes();
-        void         RenderGuizmo();
-        void         RenderNode(EditorScene* scene, int root_id, std::atomic_int& selected);
-
     private:
-        ImGuiTreeNodeFlags m_node_flag;
-        bool               m_is_node_opened{false};
-        int                m_gizmo_operation{-1};
+        void RenderGuizmo(EditorPtr app, EditorScenePtr scene);
+
+        int  m_gizmo_operation{-1};
     };
 } // namespace Tetragrama::Components

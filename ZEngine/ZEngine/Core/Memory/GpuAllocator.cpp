@@ -83,18 +83,32 @@ namespace ZEngine::Core::Memory
         buffer_create_info.sharingMode                 = VK_SHARING_MODE_EXCLUSIVE;
 
         VmaAllocationCreateInfo allocation_create_info = {.flags = 0};
-        if (domain == GpuMemoryDomain::DeviceGeometry || domain == GpuMemoryDomain::DeviceTexture || domain == GpuMemoryDomain::RenderTarget || domain == GpuMemoryDomain::HostUniform || domain == GpuMemoryDomain::HostStaging)
+        if (domain == GpuMemoryDomain::DeviceGeometry || domain == GpuMemoryDomain::DeviceTexture || domain == GpuMemoryDomain::RenderTarget)
         {
             allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
         }
 
         if (domain == GpuMemoryDomain::HostUniform)
         {
-            allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+            // VMA_MEMORY_USAGE_AUTO (not PREFER_DEVICE) + HOST_ACCESS_SEQUENTIAL_WRITE_BIT:
+            // This guarantees HOST_VISIBLE on ALL GPU classes:
+            //   Apple Silicon / UMA    → HOST_VISIBLE (same physical RAM as GPU)
+            //   Discrete + ReBAR       → DEVICE_LOCAL | HOST_VISIBLE (256 MB BAR window)
+            //   Discrete without ReBAR → HOST_VISIBLE system RAM (no DEVICE_LOCAL)
+            //
+            // We intentionally do NOT use ALLOW_TRANSFER_INSTEAD_BIT: on discrete GPUs
+            // without ReBAR, VMA may choose DEVICE_LOCAL-only memory which would require
+            // a staging copy path in UpdateBuffer — but that path requires a valid
+            // CurrentFrameCmd (not available during initialization).  By using AUTO
+            // without ALLOW_TRANSFER_INSTEAD, VMA is required to satisfy the
+            // HOST_VISIBLE constraint or fail allocation.
+            allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+            allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
         }
 
         if (domain == GpuMemoryDomain::HostStaging)
         {
+            allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
             allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
         }
 

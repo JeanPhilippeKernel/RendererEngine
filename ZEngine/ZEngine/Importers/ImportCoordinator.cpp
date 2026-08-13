@@ -29,10 +29,10 @@ namespace ZEngine::Importers
         m_importers.push(importer);
     }
 
-    void ImportCoordinator::Enqueue(Core::VFS::VFSPath path, ImportPriority priority, ImportCallback cb)
+    uuids::uuid ImportCoordinator::Enqueue(Core::VFS::VFSPath path, ImportPriority priority, ImportCallback cb)
     {
         if (!m_vfs_ctx)
-            return;
+            return {};
 
         // Compute source hash and read/create .meta
         auto hash_result = Core::VFS::MetaFileIO::ComputeHash(*m_vfs_ctx, path);
@@ -40,17 +40,21 @@ namespace ZEngine::Importers
         if (!meta_result.Succeeded())
         {
             ZENGINE_CORE_ERROR("[ImportCoordinator] Enqueue: MetaFileIO::GetOrCreate failed for '{}' (VFS write permission?)", path.CStr())
-            return;
+            return {};
         }
 
         ImportJob job;
-        job.Path     = path;
-        job.Meta     = meta_result.Value();
-        job.Priority = priority;
-        job.Callback = cb;
+        job.Path               = path;
+        job.Meta               = meta_result.Value();
+        job.Priority           = priority;
+        job.Callback           = cb;
+
+        uuids::uuid asset_uuid = job.Meta.AssetUUID;
 
         m_queue.Enqueue(job);
         m_total.value.fetch_add(1, std::memory_order_relaxed);
+
+        return asset_uuid;
     }
 
     void ImportCoordinator::EnqueueBatch(const Core::Containers::Array<Core::VFS::VFSPath>& paths)

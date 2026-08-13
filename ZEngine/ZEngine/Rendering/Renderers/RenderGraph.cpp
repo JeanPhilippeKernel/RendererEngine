@@ -1,4 +1,5 @@
 #include <ZEngine/Core/Containers/UnorderedHashSet.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/IRenderer.h>
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
 #include <stack>
@@ -409,23 +410,7 @@ namespace ZEngine::Rendering::Renderers
             {
                 Device->GlobalTextures.Remove(value.ResourceInfo.TextureHandle);
             }
-            else if (value.Type == RenderGraphResourceType::BUFFER_SET)
-            {
-                // We are safe to call Remove(...) even if Handle is invalid
-                Device->StorageBufferSetManager.Remove(value.ResourceInfo.StorageBufferSetHandle);
-                Device->VertexBufferSetManager.Remove(value.ResourceInfo.VertexBufferSetHandle);
-                Device->IndexBufferSetManager.Remove(value.ResourceInfo.IndexBufferSetHandle);
-            }
         }
-    }
-
-    RenderGraphResource& RenderGraphResourceBuilder::AttachBuffer(cstring name, const Hardwares::StorageBufferSetHandle& buffer)
-    {
-        Graph->ResourceMap[name].Name                                = name;
-        Graph->ResourceMap[name].Type                                = RenderGraphResourceType::BUFFER_SET;
-        Graph->ResourceMap[name].ResourceInfo.StorageBufferSetHandle = buffer;
-        Graph->ResourceMap[name].ResourceInfo.External               = true;
-        return Graph->ResourceMap[name];
     }
 
     RenderGraphResource& RenderGraphResourceBuilder::AttachTexture(cstring name, const Textures::TextureHandle& handle)
@@ -467,7 +452,7 @@ namespace ZEngine::Rendering::Renderers
     {
         Graph->ResourceMap[name].Name                       = name;
         Graph->ResourceMap[name].Type                       = RenderGraphResourceType::TEXTURE;
-        Graph->ResourceMap[name].ResourceInfo.TextureHandle = Graph->Device->AsyncResLoader->Submit(0, 1 /* 1 : just for testing*/, {.TextureUpload = {.Filename = filename}});
+        Graph->ResourceMap[name].ResourceInfo.TextureHandle = Graph->Device->RRM ? static_cast<RenderResourceManager*>(Graph->Device->RRM)->SubmitTextureFile(0, 0, filename) : Rendering::Textures::TextureHandle{};
         return Graph->ResourceMap[name];
     }
 
@@ -484,34 +469,12 @@ namespace ZEngine::Rendering::Renderers
         Graph->NodeMap[creation.Name].Creation = creation;
         for (const auto& output : creation.Outputs)
         {
-            if ((output.Type == RenderGraphResourceType::ATTACHMENT) || (output.Type == RenderGraphResourceType::BUFFER_SET))
+            if (output.Type == RenderGraphResourceType::ATTACHMENT)
             {
                 RenderGraphResource& resource = Graph->ResourceMap[output.Name];
                 resource.ProducerNodeName     = creation.Name;
             }
         }
-    }
-
-    RenderGraphResource& RenderGraphResourceBuilder::CreateBufferSet(cstring name, BufferSetCreationType type)
-    {
-        Graph->ResourceMap[name].Name = name;
-        Graph->ResourceMap[name].Type = RenderGraphResourceType::BUFFER_SET;
-        switch (type)
-        {
-            case BufferSetCreationType::STORAGE:
-                Graph->ResourceMap[name].ResourceInfo.StorageBufferSetHandle = Graph->Device->CreateStorageBufferSet();
-                break;
-            case BufferSetCreationType::INDEX:
-                Graph->ResourceMap[name].ResourceInfo.IndexBufferSetHandle = Graph->Device->CreateIndexBufferSet();
-                break;
-            case BufferSetCreationType::VERTEX:
-                Graph->ResourceMap[name].ResourceInfo.VertexBufferSetHandle = Graph->Device->CreateVertexBufferSet();
-                break;
-            default:
-                break;
-        }
-        Graph->ResourceMap[name].ResourceInfo.External = false;
-        return Graph->ResourceMap[name];
     }
 
     void RenderGraphResourceInspector::Initialize(RenderGraphPtr graph)
@@ -567,33 +530,6 @@ namespace ZEngine::Rendering::Renderers
             output = handle;
         }
         return output;
-    }
-
-    Hardwares::StorageBufferSetHandle RenderGraphResourceInspector::GetStorageBufferSet(cstring name)
-    {
-        if (!Graph->ResourceMap.contains(name))
-        {
-            Graph->ResourceMap[name].Name = name;
-        }
-        return Graph->ResourceMap[name].ResourceInfo.StorageBufferSetHandle;
-    }
-
-    Hardwares::VertexBufferSetHandle RenderGraphResourceInspector::GetVertexBufferSet(cstring name)
-    {
-        if (!Graph->ResourceMap.contains(name))
-        {
-            Graph->ResourceMap[name].Name = name;
-        }
-        return Graph->ResourceMap[name].ResourceInfo.VertexBufferSetHandle;
-    }
-
-    Hardwares::IndexBufferSetHandle RenderGraphResourceInspector::GetIndexBufferSet(cstring name)
-    {
-        if (!Graph->ResourceMap.contains(name))
-        {
-            Graph->ResourceMap[name].Name = name;
-        }
-        return Graph->ResourceMap[name].ResourceInfo.IndexBufferSetHandle;
     }
 
     RenderGraphNode& RenderGraphResourceInspector::GetNode(cstring name)

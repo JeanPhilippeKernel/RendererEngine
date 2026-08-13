@@ -446,9 +446,7 @@ namespace ZEngine::Importers
         auto* mgr = Managers::AssetManager::Instance();
         if (mgr)
         {
-            // Skip re-ingest if already loaded. Multi-instance support deferred
-            // to RRM — re-using the same command buffer slot before GPU retirement
-            // causes vkQueueSubmit to crash (AsyncResourceLoader limitation).
+            // Skip re-ingest if already loaded. Multi-instance support deferred to RRM.
             auto* reg = mgr->Registry;
             if (reg)
             {

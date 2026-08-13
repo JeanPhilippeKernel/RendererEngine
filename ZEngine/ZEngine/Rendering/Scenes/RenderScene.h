@@ -1,11 +1,11 @@
 ﻿#pragma once
+#include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Maths/Matrix.h>
+#include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
-#include <ZEngine/Helpers/NodeHierarchyHelper.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <ZEngine/ZEngineDef.h>
-#include <entt/entt.hpp>
 #include <uuid.h>
 
 namespace ZEngine::Rendering::Scenes
@@ -34,55 +34,82 @@ namespace ZEngine::Rendering::Scenes
     struct SceneData
     {
         // Camera UBO — migrated to PerFrameUploadHeap; offset updated each frame in DrawScene
-        uint32_t                          CameraHeapOffset       = 0;
+        uint32_t                  CameraHeapOffset                  = 0;
 
-        // Indirect draw commands — migrated to PerFrameUploadHeap
-        uint32_t                          IndirectHeapOffset     = 0;
-        uint32_t                          IndirectCommandCount   = 0;
+        // Indirect draw commands — migrated to PerFrameUploadHeap each frame.
+        // The heap is reset every frame so we cache the commands here and re-push every frame.
+        uint32_t                  IndirectHeapOffset                = 0;
+        uint32_t                  IndirectCommandCount              = 0;
+        static constexpr uint32_t MAX_DRAW_COMMANDS                 = 512;
+        VkDrawIndirectCommand     CachedDrawCmds[MAX_DRAW_COMMANDS] = {};
 
-        Hardwares::StorageBufferSetHandle TransformBufferHandle  = {};
-        Hardwares::StorageBufferSetHandle MaterialBufferHandle   = {};
-        Hardwares::StorageBufferSetHandle VertexBufferHandle     = {};
-        Hardwares::StorageBufferSetHandle IndexBufferHandle      = {};
-        Hardwares::StorageBufferSetHandle RenderDataBufferHandle = {};
+        // RMM-owned HOST_VISIBLE buffers — written via RRM::UpdateBuffer every frame.
+        Core::Memory::BufferView  TransformBuffer                   = {};
+        Core::Memory::BufferView  MaterialBuffer                    = {};
+        Core::Memory::BufferView  RenderDataBuffer                  = {};
+
+        // RRM vertex buffer handle — index buffer is paired via RRM::GetIndexBuffer(RMMVertexHandle).
+        Rendering::BufferHandle   RMMVertexHandle                   = {};
     };
     ZDEFINE_PTR(SceneData);
 
+    // One placed instance of a mesh asset in the scene.
+    // Every drag-drop creates a new MeshInstance — even the same mesh dropped
+    // twice produces two independent instances with separate transforms.
+    struct MeshInstance
+    {
+        uint32_t           Id        = 0;
+        uuids::uuid        MeshUUID  = {};
+        Core::Maths::Mat4f Transform = {};
+        char               Name[128] = {};
+    };
+
+    // Seqlock-protected scene state.
+    //   Main thread:   Add/Remove/SetTransform + MarkInstancesDirty
+    //   Render thread: GetInstancesSnapshot (spin-wait when seq is odd)
+    //
+    // Sequence counter convention:
+    //   even → data stable (safe to snapshot)
+    //   odd  → write in progress (reader spins)
+    //
+    // Arena allocators never free: even a "torn" pointer to Instances.m_data
+    // points at still-valid memory, so retry-on-mismatch is safe.
     struct RenderScene
     {
-        std::atomic_bool                                                                   MeshAllocationDirty[3]   = {false, false, false};
-        std::atomic_bool                                                                   TransformBufferDirty[3]  = {false, false, false};
-        std::atomic_bool                                                                   SkyDirty[3]              = {false, false, false};
+        // Seqlock counter — even = stable, odd = main-thread writing.
+        PaddedAtomic<uint64_t>                m_seq              = {};
 
-        // Sky configuration — set when the scene is loaded/changed; one copy per scene object.
-        SkyConfig                                                                          Sky                      = {};
+        Core::Containers::Array<MeshInstance> Instances          = {};
+        Core::Memory::ArenaAllocator          InstanceArena      = {};
+        uint32_t                              NextInstanceId     = 1;
+        PaddedAtomic<int32_t>                 SelectedInstanceId = {};
 
-        uint32_t                                                                           CurrentTransformOffset   = 0;
-        uint32_t                                                                           CurrentVertexOffset      = 0;
-        uint32_t                                                                           CurrentIndexOffset       = 0;
+        // Set by main thread after every add/remove/transform-change.
+        PaddedAtomic<bool>                    InstancesDirty[3]  = {};
 
-        Core::Containers::Array<Helpers::NodeHierarchy>                                    Hierarchies              = {};
-        Core::Containers::Array<Core::Maths::Mat4f>                                        LocalTransforms          = {};
-        Core::Containers::Array<Core::Maths::Mat4f>                                        GlobalTransforms         = {};
+        PaddedAtomic<bool>                    SkyDirty[3]        = {};
+        SkyConfig                             Sky                = {};
 
-        Core::Containers::Array<float>                                                     Vertices                 = {};
-        Core::Containers::Array<uint32_t>                                                  Indices                  = {};
-        Core::Containers::UnorderedHashMap<uuids::uuid, Rendering::Meshes::MeshAllocation> MeshAllocations          = {};
-        Core::Containers::UnorderedHashMap<uint32_t, Rendering::Meshes::SubMeshAllocation> NodeSubMeshesAllocations = {};
+        // --- Main-thread-only write operations ---
+        uint32_t                              AddMeshInstance(const uuids::uuid& uuid, const char* name);
+        void                                  RemoveMeshInstance(uint32_t id);
+        void                                  SetInstanceTransform(uint32_t id, const Core::Maths::Mat4f& t);
+        void                                  MarkInstancesDirty();
+
+        // --- Render-thread read (seqlock snapshot) ---
+        // Fills `out` with a consistent copy; retries if a write was in progress.
+        void                                  GetInstancesSnapshot(Core::Memory::ArenaAllocator* scratch, Core::Containers::Array<MeshInstance>& out) const;
+
+    protected:
+        void SeqBeginWrite();
+        void SeqEndWrite();
     };
     ZDEFINE_PTR(RenderScene);
 
+// GraphicScene, SceneRawData, SceneNodeHierarchy, SceneEntity removed.
+// The ECS::Scene (sparse-set entity store) and EditorScene (RenderScene extension)
+// replaced the old entity-graph approach.
 #if 0
-    /*
-     * This internal defragmented storage represents SceneNode struct with a DoD (Data-Oriented Design) approach
-     * The access is index based.
-     *
-     *  (1)
-     *  /
-     * (2) --> (3) --> (4) --> (5) --> ##-1
-     *         /
-     *        (6) --> ##-1
-     */
     struct SceneNodeHierarchy
     {
         int Parent       = -1;
@@ -222,8 +249,6 @@ namespace ZEngine::Rendering::Scenes
 
         bool                           IsDrawDataDirty = false;
         Helpers::Ref<SceneRawData>     SceneData       = nullptr;
-
-        void                           InitOrResetDrawBuffer(Hardwares::VulkanDevice* device, Renderers::RenderGraph* render_graph, Renderers::AsyncResourceLoader* async_loader);
 
         void                           SetRootNodeName(std::string_view);
         void                           Merge(std::span<SceneRawData> scenes);

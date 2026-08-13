@@ -3,6 +3,7 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Rendering/Pools/CommandPool.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
@@ -33,7 +34,6 @@ namespace ZEngine::Hardwares
         CurrentWindow             = window;
         WorkerThreadCount         = worker_thread_count;
         ShaderReservedBindingSets = {1}; // Todo: we should introduce HashSet<>
-        AsyncResLoader            = ZPushStructCtor(Arena, AsyncResourceLoader);
         CommandBufferMgr          = ZPushStructCtor(Arena, CommandBufferManager);
         SwapchainPtr              = ZPushStructCtor(Arena, DeviceSwapchain);
 
@@ -43,9 +43,6 @@ namespace ZEngine::Hardwares
         DefaultDepthFormats.push(VK_FORMAT_D24_UNORM_S8_UINT);
 
         ShaderManager.Initialize(arena, 300);
-        VertexBufferSetManager.Initialize(arena, 300);
-        StorageBufferSetManager.Initialize(arena, 300);
-        IndexBufferSetManager.Initialize(arena, 300);
 
         ShaderCaches.init(arena, 10);
         m_queue_map.init(arena, 4);
@@ -651,8 +648,6 @@ namespace ZEngine::Hardwares
         }
 
         ZReleaseScratch(scratch);
-
-        AsyncResLoader->Initialize(this);
     }
 
     void VulkanDevice::Deinitialize()
@@ -661,8 +656,6 @@ namespace ZEngine::Hardwares
 
         PendingFree.Drain(&GpuMem, LogicalDevice, UINT64_MAX);
         GpuMem.Ring.Drain(UINT64_MAX);
-
-        AsyncResLoader->Shutdown();
 
         {
             Rendering::Textures::TextureHandle tex_to_dispose = {};
@@ -684,9 +677,6 @@ namespace ZEngine::Hardwares
 
         GlobalTextures.Dispose();
         Image2DBufferManager.Dispose();
-        VertexBufferSetManager.Dispose();
-        StorageBufferSetManager.Dispose();
-        IndexBufferSetManager.Dispose();
         ShaderManager.Dispose();
 
         SwapchainPtr->Dispose();
@@ -1087,46 +1077,8 @@ namespace ZEngine::Hardwares
         return framebuffer;
     }
 
-    VertexBufferSetHandle VulkanDevice::CreateVertexBufferSet()
-    {
-        auto handle     = VertexBufferSetManager.Create();
-        auto buffer_set = VertexBufferSetManager.Access(handle);
-        buffer_set->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
 
-        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
-        {
-            buffer_set->set[i] = ZPushStructCtorArgs(Arena, VertexBuffer, this);
-        }
 
-        return handle;
-    }
-
-    StorageBufferSetHandle VulkanDevice::CreateStorageBufferSet()
-    {
-        auto handle = StorageBufferSetManager.Create();
-        auto buffer = StorageBufferSetManager.Access(handle);
-        buffer->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
-
-        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
-        {
-            buffer->set[i] = ZPushStructCtorArgs(Arena, StorageBuffer, this);
-        }
-        return handle;
-    }
-
-    IndexBufferSetHandle VulkanDevice::CreateIndexBufferSet()
-    {
-        auto handle = IndexBufferSetManager.Create();
-        auto buffer = IndexBufferSetManager.Access(handle);
-        buffer->set.init(Arena, SwapchainPtr->BufferredFrameCount, SwapchainPtr->BufferredFrameCount);
-
-        for (unsigned i = 0; i < SwapchainPtr->BufferredFrameCount; ++i)
-        {
-            buffer->set[i] = ZPushStructCtorArgs(Arena, IndexBuffer, this);
-        }
-
-        return handle;
-    }
 
     Helpers::Handle<Rendering::Shaders::Shader> VulkanDevice::CompileShader(Rendering::Specifications::ShaderSpecification& spec)
     {
@@ -1516,27 +1468,23 @@ namespace ZEngine::Hardwares
         vkCmdCopyBufferToImage(m_command_buffer, source.Handle, destination.Handle, new_layout, 1, &buffer_image_copy);
     }
 
-    void CommandBuffer::BindVertexBuffer(Hardwares::VertexBuffer& buffer)
+
+
+    void CommandBuffer::BindVertexBuffer(const Core::Memory::BufferView& buffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
-
-        void* handle = buffer.GetNativeBufferHandle();
-
-        if (handle)
+        if (buffer.Handle)
         {
-            VkDeviceSize vertex_offset[1]  = {0};
-            VkBuffer     vertex_buffers[1] = {reinterpret_cast<VkBuffer>(handle)};
-            vkCmdBindVertexBuffers(m_command_buffer, 0, 1, vertex_buffers, vertex_offset);
+            VkDeviceSize offset = 0;
+            vkCmdBindVertexBuffers(m_command_buffer, 0, 1, &buffer.Handle, &offset);
         }
     }
 
-    void CommandBuffer::BindIndexBuffer(const Hardwares::IndexBuffer& buffer, VkIndexType type)
+    void CommandBuffer::BindIndexBuffer(const Core::Memory::BufferView& buffer, VkIndexType type)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
-        if (buffer.GetNativeBufferHandle())
-        {
-            vkCmdBindIndexBuffer(m_command_buffer, reinterpret_cast<VkBuffer>(buffer.GetNativeBufferHandle()), 0, type);
-        }
+        if (buffer.Handle)
+            vkCmdBindIndexBuffer(m_command_buffer, buffer.Handle, 0, type);
     }
 
     void CommandBuffer::SetScissor(uint32_t w, uint32_t h, int32_t x, int32_t y)
@@ -1708,8 +1656,7 @@ namespace ZEngine::Hardwares
         if (begin)
         {
             buffer->ResetState();
-            // Todo : We want to merge vkResetCommandBuffer with ResetState() when buffer is instant type
-            // vkResetCommandBuffer(buffer->GetHandle(), VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+            vkResetCommandBuffer(buffer->GetHandle(), VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
             buffer->Begin();
         }
         return buffer;
@@ -1830,20 +1777,8 @@ namespace ZEngine::Hardwares
         return m_is_initialized;
     }
 
-    BufferView VertexBuffer::CreateBuffer()
-    {
-        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, "VertexBuffer");
-    }
 
-    BufferView StorageBuffer::CreateBuffer()
-    {
-        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, "StorageBuffer");
-    }
 
-    BufferView IndexBuffer::CreateBuffer()
-    {
-        return m_device->CreateBuffer(m_total_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, "IndexBuffer");
-    }
 
     void Image2DBuffer::Construct(Hardwares::VulkanDevice* device)
     {
@@ -1914,109 +1849,15 @@ namespace ZEngine::Hardwares
         return m_buffer_image.ViewHandle;
     }
 
-    IGraphicBuffer::~IGraphicBuffer()
-    {
-        CleanUpMemory();
-    }
 
-    void IGraphicBuffer::Allocate(uint64_t size, const char* debug_name)
-    {
-        if (m_total_size < size)
-        {
-            CleanUpMemory();
-            m_current_offset = 0;
-            m_total_size     = size;
-            Buffer           = CreateBuffer();
-            vmaSetAllocationName(m_device->GpuMem.Allocator, Buffer.Allocation, debug_name);
-        }
-    }
 
-    void IGraphicBuffer::Clear(uint8_t frame_index, uint8_t thread_index)
-    {
-        m_current_offset = 0;
-        ClearRange(frame_index, thread_index, 0, m_current_offset, m_total_size);
-    }
 
-    void IGraphicBuffer::ClearRange(uint8_t frame_index, uint8_t thread_index, uint8_t value, uint32_t offset, size_t byte_size)
-    {
-        if (byte_size == 0)
-        {
-            ZENGINE_CORE_WARN("{} : Invalid operation, the byte size is zero", __FUNCTION__)
-            return;
-        }
 
-        if ((offset + byte_size) > m_total_size)
-        {
-            ZENGINE_CORE_WARN("{} : Invalid operation, range is out of bound", __FUNCTION__)
-            return;
-        }
 
-        AsyncResourceLoader::UploadRequest request = {
-            .BufferUpload = {.Buffer = &Buffer, .Offset = offset, .ClearValue = value, .ByteSize = byte_size}
-        };
-        m_device->AsyncResLoader->Submit(AsyncResourceLoader::UploadType::BUFFER_CLEAR, frame_index, thread_index, request);
-    }
 
-    void IGraphicBuffer::UploadRange(uint8_t frame_index, uint8_t thread_index, const void* data, uint32_t offset, size_t byte_size)
-    {
-        if (byte_size == 0)
-        {
-            // ZENGINE_CORE_WARN("{} : Invalid operation, the byte size is zero", __FUNCTION__)
-            return;
-        }
 
-        if ((offset + byte_size) > m_total_size)
-        {
-            // ZENGINE_CORE_WARN("{} : Invalid operation, the buffer is full", __FUNCTION__)
-            return;
-        }
 
-        AsyncResourceLoader::UploadRequest request = {
-            .BufferUpload = {.Buffer = &Buffer, .Data = data, .Offset = offset, .ByteSize = byte_size}
-        };
-        m_device->AsyncResLoader->Submit(AsyncResourceLoader::UploadType::BUFFER, frame_index, thread_index, request);
-    }
 
-    void IGraphicBuffer::Upload(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size)
-    {
-        UploadRange(frame_index, thread_index, data, m_current_offset, byte_size);
-        m_current_offset += byte_size;
-    }
-
-    void IGraphicBuffer::Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size)
-    {
-        UploadRange(frame_index, thread_index, data, 0, byte_size);
-        m_current_offset = byte_size;
-    }
-
-    void IGraphicBuffer::CleanUpMemory()
-    {
-        if (Buffer)
-        {
-            DeferredFreeEntry e = {};
-            e.EntryKind         = DeferredFreeEntry::Kind::Buffer;
-            e.Data.Buffer       = Buffer;
-            m_device->DeferFree(e);
-            Buffer = {};
-        }
-    }
-
-    void* IGraphicBuffer::GetNativeBufferHandle() const
-    {
-        return reinterpret_cast<void*>(Buffer.Handle);
-    }
-
-    const VkDescriptorBufferInfo& IGraphicBuffer::GetDescriptorBufferInfo()
-    {
-        BufferInfo.buffer = Buffer.Handle;
-        BufferInfo.offset = 0;
-        BufferInfo.range  = m_total_size;
-        return BufferInfo;
-    }
-    void IGraphicBuffer::Dispose()
-    {
-        CleanUpMemory();
-    }
 
     Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(uint32_t width, uint32_t height)
     {
@@ -2062,12 +1903,8 @@ namespace ZEngine::Hardwares
             image_data[i + 3] = a_byte;
         }
 
-        // todo : maybe we want to review how we handle threading here, for now we assume its creation on MainRenderThread
-        AsyncResourceLoader::UploadRequest request = {
-            .TextureUpload = {.Data = image_data.data(), .TexHandle = tex_handle}
-        };
-
-        AsyncResLoader->Submit(AsyncResourceLoader::UploadType::TEXTURE_BUFFER, 0, 0, request);
+        if (RRM)
+            static_cast<Rendering::RenderResourceManager*>(RRM)->UploadTextureBuffer(0, 0, tex_handle, image_data.data());
         ZReleaseScratch(scratch);
 
         return tex_handle;

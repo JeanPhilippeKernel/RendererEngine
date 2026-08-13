@@ -58,7 +58,18 @@ namespace ZEngine::Core::VFS
         QueryResult            Query(const QueryFilter& filter, Core::Memory::ArenaAllocator* arena) const;
 
         // Hot-reload callback: void(*)(void* ctx, span<const uuid> cascade)
+        // Fired when any asset transitions to Loaded (first-time or re-import).
         void                   SetHotReloadCallback(void* ctx, void (*cb)(void*, std::span<const uuids::uuid>));
+
+        // RRM callbacks — separate from the hot-reload callback so RRM can distinguish
+        // first-time upload (OnReady) from hot-reload swap (OnStale).
+        //
+        // OnReady:  fired when SetState transitions an asset to Loaded.
+        //           Signature: void(void* ctx, const uuids::uuid& uuid, Managers::AssetHandle slot_handle)
+        // OnStale:  fired when OnAssetModified marks an asset Stale.
+        //           Signature: void(void* ctx, const uuids::uuid& uuid)
+        void                   SetOnReadyCallback(void* ctx, void (*cb)(void*, const uuids::uuid&, Managers::AssetHandle));
+        void                   SetOnStaleCallback(void* ctx, void (*cb)(void*, const uuids::uuid&));
 
         void                   OnAssetModified(const Core::VFS::VFSPath& path);
         void                   OnAssetDeleted(const Core::VFS::VFSPath& path);
@@ -81,11 +92,17 @@ namespace ZEngine::Core::VFS
         static bool                ExtensionMatches(const Core::VFS::VFSPath& path, const char* ext);
 
     private:
-        AssetIndex      m_index                                  = {};
-        DependencyGraph m_graph                                  = {};
-        void*           m_reload_cb_ctx                          = nullptr;
-        void (*m_reload_cb)(void*, std::span<const uuids::uuid>) = nullptr;
-        Core::Memory::ArenaAllocator m_scratch                   = {};
+        AssetIndex      m_index                                              = {};
+        DependencyGraph m_graph                                              = {};
+        void*           m_reload_cb_ctx                                      = nullptr;
+        void (*m_reload_cb)(void*, std::span<const uuids::uuid>)             = nullptr;
+
+        void* m_ready_cb_ctx                                                 = nullptr;
+        void (*m_ready_cb)(void*, const uuids::uuid&, Managers::AssetHandle) = nullptr;
+        void* m_stale_cb_ctx                                                 = nullptr;
+        void (*m_stale_cb)(void*, const uuids::uuid&)                        = nullptr;
+
+        Core::Memory::ArenaAllocator m_scratch                               = {};
 
         bool                         PassesFilter(const AssetRecord& rec, const QueryFilter& f) const;
     };

@@ -70,39 +70,8 @@ namespace Tetragrama
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
 
-        // When AssetManager::__Run finishes loading a MESH_HIERARCHY asset, automatically
-        // enqueue its handle into EditorScene::PendingOnLoadHierarchies so the hierarchy
-        // view rebuilds GlobalTransforms without a manual "open mesh" step.
-        auto* registry   = ZEngine::Managers::AssetManager::Instance() ? ZEngine::Managers::AssetManager::Instance()->Registry : nullptr;
-        if (registry)
-        {
-            struct HotReloadCtx
-            {
-                EditorScene* Scene;
-            };
-            auto* ctx  = ZPushStruct(&Memory->MainArena, HotReloadCtx);
-            ctx->Scene = editor_scene;
-
-            registry->SetHotReloadCallback(ctx, [](void* raw, std::span<const uuids::uuid> cascade) {
-                auto* c   = static_cast<HotReloadCtx*>(raw);
-                auto* mgr = ZEngine::Managers::AssetManager::Instance();
-                if (!mgr)
-                    return;
-
-                for (const auto& uuid : cascade)
-                {
-                    auto* rec = mgr->Registry->FindByUUID(uuid);
-                    if (!rec || rec->Type != ZEngine::Managers::AssetType::MESH_HIERARCHY)
-                        continue;
-                    if (rec->State != ZEngine::Core::VFS::AssetState::Loaded)
-                        continue;
-
-                    auto handle = mgr->GetMeshNodeHierarchyHandle(uuid);
-                    if (handle != 0)
-                        c->Scene->PendingOnLoadHierarchies->Enqueue(handle);
-                }
-            });
-        }
+        // Scene instance creation is handled directly in SceneViewportUIComponent::OnDrop
+        // via ImportCoordinator::Enqueue's returned UUID — no callback needed here.
     }
 
     void Editor::OnUpdate(float dt)

@@ -7,7 +7,7 @@
 #include <uuid.h>
 #include <filesystem>
 
-// stb_image implementation is defined once in AsyncResourceLoader.cpp.
+// stb_image implementation is defined once in RenderResourceManager.cpp.
 #include <stb/stb_image.h>
 
 using namespace ZEngine::Rendering::Buffers;

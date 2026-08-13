@@ -7,6 +7,7 @@ file(GLOB TEST_SOURCES
     Logging/*.cpp
     Input/*.cpp
     ECS/*.cpp
+    Rendering/*.cpp
 )
 
 # macOS and Windows are multi-config

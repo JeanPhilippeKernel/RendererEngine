@@ -680,7 +680,7 @@ namespace Tetragrama::Components
     {
         auto app           = reinterpret_cast<EditorPtr>(context);
         auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
-        current_scene->HasPendingChanges.store(false, std::memory_order_release);
+        current_scene->HasPendingChanges.value.store(false, std::memory_order_release);
     }
 
     void DockspaceUIComponent::OnEditorSceneSerializerDeserializeComplete(void* const context, EditorScene&& scene)
@@ -693,7 +693,7 @@ namespace Tetragrama::Components
         app->Configuration->ActiveSceneName.append(scene.Name);
 
         current_scene->MarkDirty(true);
-        current_scene->SelectedSceneNode.store(-1, std::memory_order_release);
+        current_scene->SelectedInstanceId.value.store(-1, std::memory_order_release);
         current_scene->Reset();
         current_scene->ExtractAsync(scene);
 
@@ -706,9 +706,9 @@ namespace Tetragrama::Components
             auto abs_env = fmt::format("{}/{}", app->Configuration->EnvironmentMapImportPath.c_str(), scene.Sky.EnvironmentMap.c_str());
             current_scene->Sky.EnvironmentMap.init(&current_scene->LocalArena, abs_env.c_str());
         }
-        current_scene->SkyDirty[0].store(true, std::memory_order_release);
-        current_scene->SkyDirty[1].store(true, std::memory_order_release);
-        current_scene->SkyDirty[2].store(true, std::memory_order_release);
+        current_scene->SkyDirty[0].value.store(true, std::memory_order_release);
+        current_scene->SkyDirty[1].value.store(true, std::memory_order_release);
+        current_scene->SkyDirty[2].value.store(true, std::memory_order_release);
 
         current_scene->MarkDirty(false);
 
@@ -764,12 +764,12 @@ namespace Tetragrama::Components
             auto asset_mesh = ZEngine::Managers::AssetManager::GetAsset<ZEngine::Importers::AssetMesh>(header.Id);
             if (asset_mesh)
             {
-                auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-                auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
-                auto asset_manager = ZEngine::Managers::AssetManager::Instance();
+                auto        app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+                auto        current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
 
-                auto handle_ref    = asset_manager->GetMeshNodeHierarchyHandle(asset_mesh->MeshUUID);
-                current_scene->PendingOnLoadHierarchies->Enqueue(handle_ref);
+                const char* name          = strrchr(filename, '/');
+                name                      = name ? name + 1 : filename;
+                current_scene->AddMeshInstance(asset_mesh->MeshUUID, name);
             }
         }
         co_return;
