@@ -175,6 +175,12 @@ namespace ZEngine::Rendering
                 m_device->GpuMem.FreeImage(m_image_slots[i].Data, m_device->LogicalDevice);
         }
 
+        for (uint32_t i = 0; i < m_gbuf_slot_count; ++i)
+        {
+            if (m_gbuf_slots[i].Generation != 0 && m_gbuf_slots[i].Data)
+                m_device->GpuMem.FreeBuffer(m_gbuf_slots[i].Data);
+        }
+
         m_device   = nullptr;
         m_registry = nullptr;
     }
@@ -508,11 +514,32 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::Release(BufferHandle handle)
     {
-        // Per-mesh release in the packed buffer model just invalidates the slot.
-        // The global buffer is append-only; physical reclamation requires compaction (future).
-        if (!handle.IsValid() || handle.Index >= m_mesh_slot_count)
+        if (!handle.IsValid())
             return;
-        m_mesh_slots[handle.Index].Generation = 0;
+
+        if (handle.Generation & GBUF_GEN_TAG)
+        {
+            // Generic device-local buffer — deferred-free the VmaAllocation.
+            if (handle.Index >= m_gbuf_slot_count)
+                return;
+            auto& slot = m_gbuf_slots[handle.Index];
+            if (slot.Generation != handle.Generation)
+                return;
+            DeferredFreeEntry e;
+            e.EntryKind     = DeferredFreeEntry::Kind::Buffer;
+            e.TimelineValue = m_device->SwapchainPtr->RenderTimelineNextValue;
+            e.Data.Buffer   = slot.Data;
+            m_device->DeferFree(e);
+            slot.Data       = {};
+            slot.Generation = 0;
+        }
+        else
+        {
+            // Mesh slot — packed global buffer is append-only; just invalidate the slot.
+            if (handle.Index >= m_mesh_slot_count)
+                return;
+            m_mesh_slots[handle.Index].Generation = 0;
+        }
     }
 
     void RenderResourceManager::Release(ImageHandle handle)
@@ -552,6 +579,57 @@ namespace ZEngine::Rendering
         m_device->DeferFree(entry);
     }
 
+    void RenderResourceManager::EnqueueDeletion(VkShaderModule module)
+    {
+        if (module == VK_NULL_HANDLE)
+            return;
+        DeferredFreeEntry e;
+        e.EntryKind      = DeferredFreeEntry::Kind::VkHandle;
+        e.TimelineValue  = m_device->SwapchainPtr->RenderTimelineNextValue;
+        e.Data.Vk.Handle = reinterpret_cast<void*>(module);
+        e.Data.Vk.Type   = Rendering::DeviceResourceType::SHADERMODULE;
+        e.Data.Vk.Extra  = nullptr;
+        m_device->DeferFree(e);
+    }
+
+    void RenderResourceManager::EnqueueDeletion(VkPipeline pipeline)
+    {
+        if (pipeline == VK_NULL_HANDLE)
+            return;
+        DeferredFreeEntry e;
+        e.EntryKind      = DeferredFreeEntry::Kind::VkHandle;
+        e.TimelineValue  = m_device->SwapchainPtr->RenderTimelineNextValue;
+        e.Data.Vk.Handle = reinterpret_cast<void*>(pipeline);
+        e.Data.Vk.Type   = Rendering::DeviceResourceType::PIPELINE;
+        e.Data.Vk.Extra  = nullptr;
+        m_device->DeferFree(e);
+    }
+
+    void RenderResourceManager::EnqueueDeletion(VkBuffer buffer, VmaAllocation allocation)
+    {
+        if (buffer == VK_NULL_HANDLE)
+            return;
+        DeferredFreeEntry e;
+        e.EntryKind              = DeferredFreeEntry::Kind::Buffer;
+        e.TimelineValue          = m_device->SwapchainPtr->RenderTimelineNextValue;
+        e.Data.Buffer.Handle     = buffer;
+        e.Data.Buffer.Allocation = allocation;
+        m_device->DeferFree(e);
+    }
+
+    void RenderResourceManager::EnqueueDeletion(VkImage image, VkImageView view, VmaAllocation allocation)
+    {
+        if (image == VK_NULL_HANDLE)
+            return;
+        DeferredFreeEntry e;
+        e.EntryKind             = DeferredFreeEntry::Kind::Image;
+        e.TimelineValue         = m_device->SwapchainPtr->RenderTimelineNextValue;
+        e.Data.Image.Handle     = image;
+        e.Data.Image.ViewHandle = view;
+        e.Data.Image.Allocation = allocation;
+        m_device->DeferFree(e);
+    }
+
     uint32_t RenderResourceManager::AllocMeshSlot()
     {
         for (uint32_t i = 0; i < m_mesh_slot_count; ++i)
@@ -582,6 +660,49 @@ namespace ZEngine::Rendering
         uint32_t idx                  = m_image_slot_count++;
         m_image_slots[idx].Generation = idx + 1;
         return idx;
+    }
+
+    uint32_t RenderResourceManager::AllocGBufSlot()
+    {
+        for (uint32_t i = 0; i < m_gbuf_slot_count; ++i)
+        {
+            if (m_gbuf_slots[i].Generation == 0)
+            {
+                m_gbuf_slots[i].Generation = (i + 1) | GBUF_GEN_TAG;
+                return i;
+            }
+        }
+        ZENGINE_VALIDATE_ASSERT(m_gbuf_slot_count < MAX_GENERIC_BUFS, "RRM: MAX_GENERIC_BUFS exceeded")
+        uint32_t idx                 = m_gbuf_slot_count++;
+        m_gbuf_slots[idx].Generation = (idx + 1) | GBUF_GEN_TAG;
+        return idx;
+    }
+
+    BufferHandle RenderResourceManager::UploadBuffer(const void* data, size_t byte_size, VkBufferUsageFlags usage, const char* debug_name)
+    {
+        if (!data || byte_size == 0)
+            return {};
+
+        Core::Memory::BufferView buf = m_device->GpuMem.AllocateBuffer(static_cast<VkDeviceSize>(byte_size), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, debug_name ? debug_name : "RRM::UploadBuffer");
+
+        if (!buf)
+            return {};
+
+        AppendToGlobalBuffer(buf, data, byte_size, 0, 0);
+
+        uint32_t slot_idx           = AllocGBufSlot();
+        m_gbuf_slots[slot_idx].Data = buf;
+        return {slot_idx, m_gbuf_slots[slot_idx].Generation};
+    }
+
+    const Core::Memory::BufferView* RenderResourceManager::GetBuffer(BufferHandle handle) const
+    {
+        if (!handle.IsValid() || !(handle.Generation & GBUF_GEN_TAG))
+            return nullptr;
+        if (handle.Index >= m_gbuf_slot_count)
+            return nullptr;
+        const auto& slot = m_gbuf_slots[handle.Index];
+        return slot.Generation == handle.Generation ? &slot.Data : nullptr;
     }
 
     void RenderResourceManager::InitTextureTimelines()

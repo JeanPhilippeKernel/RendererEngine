@@ -19,6 +19,7 @@ namespace ZEngine::Rendering
         BUFFERMEMORY,
         PIPELINE_LAYOUT,
         PIPELINE,
+        SHADERMODULE,
         SEMAPHORE,
         FENCE,
         DESCRIPTORSETLAYOUT,
