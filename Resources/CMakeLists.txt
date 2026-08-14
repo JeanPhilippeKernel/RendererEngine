@@ -11,16 +11,27 @@ endif()
 file (MAKE_DIRECTORY "${ShaderOutputPath}")
 
 # Mirror locations that the engine binary reads at runtime.
-set(ShaderBinOutputPath "${CMAKE_INSTALL_PREFIX}/bin/Shaders/Cache")
+set(ShaderBinOutputPath "${CMAKE_INSTALL_PREFIX}/bin/ZodiacEngine/Shaders/Cache")
 if (UNIX AND NOT APPLE)
-  set(ShaderObeliskOutputPath "${CMAKE_INSTALL_PREFIX}/Obelisk/Shaders/Cache")
+  set(ShaderObeliskOutputPath "${CMAKE_INSTALL_PREFIX}/Obelisk/ZodiacEngine/Shaders/Cache")
 else()
-  set(ShaderObeliskOutputPath "${CMAKE_INSTALL_PREFIX}/Obelisk/${CMAKE_BUILD_TYPE}/Shaders/Cache")
+  set(ShaderObeliskOutputPath "${CMAKE_INSTALL_PREFIX}/Obelisk/${CMAKE_BUILD_TYPE}/ZodiacEngine/Shaders/Cache")
+endif()
+
+set(SettingsSourcePath "${CMAKE_CURRENT_SOURCE_DIR}/Editor/Settings")
+set(SettingsBinOutputPath "${CMAKE_INSTALL_PREFIX}/bin/ZodiacEngine/Settings")
+if (UNIX AND NOT APPLE)
+  set(SettingsObeliskOutputPath "${CMAKE_INSTALL_PREFIX}/Obelisk/ZodiacEngine/Settings")
+else()
+  set(SettingsObeliskOutputPath "${CMAKE_INSTALL_PREFIX}/Obelisk/${CMAKE_BUILD_TYPE}/ZodiacEngine/Settings")
 endif()
 
 file (MAKE_DIRECTORY "${ShaderBinOutputPath}")
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   file (MAKE_DIRECTORY "${ShaderObeliskOutputPath}")
+  add_custom_target(CopyEngineSettings ALL
+      COMMAND ${CMAKE_COMMAND} -E copy_directory "${SettingsSourcePath}" "${SettingsObeliskOutputPath}"
+      COMMENT "Copying engine Settings to ZodiacEngine/")
 endif()
 
 file (GLOB VertexShaders CONFIGURE_DEPENDS "${ShaderPath}/*.vert")
@@ -64,15 +75,15 @@ foreach(FragmentShader ${FragmentShaders})
 
 endforeach()
 
-install(DIRECTORY Editor/Settings DESTINATION bin)
-install(DIRECTORY Shaders/Cache DESTINATION bin/Shaders)
+install(DIRECTORY Editor/Settings DESTINATION bin/ZodiacEngine)
+install(DIRECTORY Shaders/Cache DESTINATION bin/ZodiacEngine/Shaders)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   if (UNIX AND NOT APPLE)
-    install(DIRECTORY Editor/Settings DESTINATION Obelisk)
-    install(DIRECTORY Shaders/Cache DESTINATION Obelisk/Shaders)
+    install(DIRECTORY Editor/Settings DESTINATION Obelisk/ZodiacEngine)
+    install(DIRECTORY Shaders/Cache DESTINATION Obelisk/ZodiacEngine/Shaders)
   else()
-    install(DIRECTORY Editor/Settings DESTINATION Obelisk/${CMAKE_BUILD_TYPE})
-    install(DIRECTORY Shaders/Cache DESTINATION Obelisk/${CMAKE_BUILD_TYPE}/Shaders)
+    install(DIRECTORY Editor/Settings DESTINATION Obelisk/${CMAKE_BUILD_TYPE}/ZodiacEngine)
+    install(DIRECTORY Shaders/Cache DESTINATION Obelisk/${CMAKE_BUILD_TYPE}/ZodiacEngine/Shaders)
   endif()
 endif()

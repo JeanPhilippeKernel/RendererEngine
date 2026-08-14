@@ -391,6 +391,7 @@ namespace ZEngine::Rendering::Renderers
         for (auto& node_name : SortedNodesMap)
         {
             auto& node = NodeMap[node_name];
+            node.CallbackPass->Deinitialize(Device);
             node.Handle->Dispose();
             if (node.Handle->Specification.Type == Specifications::RenderPassType::GRAPHIC)
             {
@@ -408,7 +409,8 @@ namespace ZEngine::Rendering::Renderers
 
             if (value.Type == RenderGraphResourceType::ATTACHMENT || value.Type == RenderGraphResourceType::TEXTURE)
             {
-                Device->GlobalTextures.Remove(value.ResourceInfo.TextureHandle);
+                if (value.ResourceInfo.TextureHandle.Valid())
+                    Device->TextureHandleToDispose.Enqueue(value.ResourceInfo.TextureHandle);
             }
         }
     }

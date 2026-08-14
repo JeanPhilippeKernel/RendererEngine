@@ -57,6 +57,10 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
+        [[nodiscard]] virtual VFSResult<void> RemoveAll(const VFSPath& path)
+        {
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
 
         virtual cstring        BackendType() const  = 0;
         virtual VFSBackendCaps Capabilities() const = 0;

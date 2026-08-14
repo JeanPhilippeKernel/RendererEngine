@@ -1,6 +1,8 @@
 #include <GLFW/glfw3.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
+#include <ZEngine/Core/VFS/VFSDiskBackend.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Engine/FixedTimestepAccumulator.h>
 #include <ZEngine/Engine/FrameRateCap.h>
@@ -16,6 +18,7 @@
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Windows/GameWindow.h>
 #include <chrono>
+#include <filesystem>
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -40,7 +43,7 @@ namespace ZEngine
 
         auto& arena  = memory->MainArena;
 
-        g_engine_ctx = ZPushStruct(&arena, EngineContext);
+        g_engine_ctx = ZPushStructCtor(&arena, EngineContext);
 
         auto window  = ZPushStructCtor(&arena, Windows::GameWindow);
         window->SetCallbackFunction(std::bind(&Applications::GameApplication::ProcessEvent, app, std::placeholders::_1));
@@ -55,6 +58,14 @@ namespace ZEngine
         auto vfs_ctx = ZPushStructCtor(&g_engine_ctx->VFSArena, Core::VFS::VFSContext);
         vfs_ctx->Initialize(&g_engine_ctx->VFSArena);
         g_engine_ctx->VFS = vfs_ctx;
+
+        {
+            const std::string engine_dir = std::filesystem::current_path().string() + "/ZodiacEngine";
+            g_engine_ctx->EngineAssetsBackend.Initialize(engine_dir.c_str(), Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
+            auto mount_path = Core::VFS::VFSPath::Parse("/ZodiacEngine");
+            if (mount_path.Succeeded())
+                vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1);
+        }
 
         memory->CreateBudgetedArena(memory->Budget.AssetManager, &g_engine_ctx->AssetArena);
         Managers::AssetManager::Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->Device, app->WorkingSpacePath);

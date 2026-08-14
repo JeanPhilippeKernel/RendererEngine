@@ -27,6 +27,9 @@ namespace ZEngine::Core::VFS
 
         [[nodiscard]] virtual VFSResult<void>                           Remove(const VFSPath& absolute_path)                                   = 0;
 
+        // Recursively remove a directory and all its contents.
+        [[nodiscard]] virtual VFSResult<void>                           RemoveAll(const VFSPath& absolute_path)                                = 0;
+
         [[nodiscard]] virtual VFSResult<void>                           Rename(const VFSPath& src, const VFSPath& dst)                         = 0;
 
         virtual void                                                    Close(IVFSFile* const file)                                            = 0;

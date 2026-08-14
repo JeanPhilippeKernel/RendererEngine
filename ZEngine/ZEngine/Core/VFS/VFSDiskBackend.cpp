@@ -481,6 +481,22 @@ namespace ZEngine::Core::VFS
         return VFSResult<void>::Ok();
     }
 
+    VFSResult<void> VFSDiskBackend::RemoveAll(const VFSPath& relative_path)
+    {
+        if (!HasCap(m_caps, VFSBackendCaps::Write))
+        {
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
+        char native[MAX_FILE_PATH_COUNT] = {};
+        if (!ResolveNativePath(relative_path, native))
+        {
+            return VFSResult<void>::Fail(VFSError::PermissionDenied);
+        }
+        std::error_code ec;
+        std::filesystem::remove_all(native, ec);
+        return ec ? VFSResult<void>::Fail(VFSError::IOError) : VFSResult<void>::Ok();
+    }
+
     VFSResult<void> VFSDiskBackend::Rename(const VFSPath& rel_src, const VFSPath& rel_dst)
     {
         if (!HasCap(m_caps, VFSBackendCaps::Write))

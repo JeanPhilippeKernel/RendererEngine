@@ -9,61 +9,6 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    // File-scoped pointers so SkyboxPass/GridPass can access UploadPass's BufferViews
-    // without going through the RenderGraph resource inspector (which only handles BufferSets).
-    static UploadPass* s_upload_pass_instance = nullptr;
-
-    void               UploadPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
-    {
-        WriteOnceControl.init(device->Arena, device->SwapchainPtr->BufferredFrameCount, device->SwapchainPtr->BufferredFrameCount);
-
-        SkyboxVertexData.init(device->Arena, 24, make_initializer_list(device->Arena, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f));
-        SkyboxIndexData.init(device->Arena, 36, make_initializer_list<uint16_t>(device->Arena, 0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 5, 4, 7, 7, 6, 5, 4, 0, 3, 3, 7, 4, 3, 2, 6, 6, 7, 3, 4, 5, 1, 1, 0, 4));
-        GridVertexData.init(device->Arena, 12, make_initializer_list<float>(device->Arena, -1000.0f, 0.01f, -1000.0f, 1000.0f, 0.01f, -1000.0f, 1000.0f, 0.01f, 1000.0f, -1000.0f, 0.01f, 1000.0f));
-        GridIndexData.init(device->Arena, 6, make_initializer_list<uint16_t>(device->Arena, 0, 1, 2, 2, 3, 0));
-
-        // Allocate HOST_VISIBLE vertex/index buffers directly — no per-frame copies.
-        SkyboxVBHandle                          = device->GpuMem.AllocateBuffer(ArrayView{SkyboxVertexData}.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "SkyboxVb");
-        SkyboxIBHandle                          = device->GpuMem.AllocateBuffer(ArrayView{SkyboxIndexData}.size_bytes(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "SkyboxIb");
-        GridVBHandle                            = device->GpuMem.AllocateBuffer(ArrayView{GridVertexData}.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "GridVb");
-        GridIBHandle                            = device->GpuMem.AllocateBuffer(ArrayView{GridIndexData}.size_bytes(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "GridIb");
-
-        s_upload_pass_instance                  = this;
-
-        RenderGraphRenderPassCreation pass_node = {.Name = name};
-        pass_node.Inputs.init(device->Arena, 1);
-        pass_node.Outputs.init(device->Arena, 0);
-        res_builder->CreateRenderPassNode(pass_node);
-    }
-
-    void UploadPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
-    {
-        CHECK_AND_ESCAPE_NULL(output_pass)
-
-        if (output_pass && !(*output_pass))
-        {
-            auto pass_spec = pass_builder->Detach();
-            pass_spec.Type = Specifications::RenderPassType::TRANSFER;
-            *output_pass   = device->CreateRenderPass(pass_spec);
-            (*output_pass)->Bake();
-        }
-    }
-
-    void UploadPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
-    {
-        auto index = device->SwapchainPtr->CurrentFrame->Index;
-        if (WriteOnceControl[index] != 0)
-            return;
-
-        // Write geometry once via direct vmaCopyMemoryToAllocation (HOST_VISIBLE).
-        auto copy = [&](Core::Memory::BufferView& buf, const void* data, size_t size) { vmaCopyMemoryToAllocation(device->GpuMem.Allocator, data, buf.Allocation, 0, size); };
-        copy(SkyboxVBHandle, SkyboxVertexData.data(), ArrayView{SkyboxVertexData}.size_bytes());
-        copy(SkyboxIBHandle, SkyboxIndexData.data(), ArrayView{SkyboxIndexData}.size_bytes());
-        copy(GridVBHandle, GridVertexData.data(), ArrayView{GridVertexData}.size_bytes());
-        copy(GridIBHandle, GridIndexData.data(), ArrayView{GridIndexData}.size_bytes());
-
-        WriteOnceControl[index] = 1;
-    }
 
     void BasePass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
@@ -171,6 +116,16 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
+        static constexpr float verts[] = {
+            -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
+        };
+        static constexpr uint16_t idxs[] = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 5, 4, 7, 7, 6, 5, 4, 0, 3, 3, 7, 4, 3, 2, 6, 6, 7, 3, 4, 5, 1, 1, 0, 4};
+
+        VBHandle                         = device->GpuMem.AllocateBuffer(sizeof(verts), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "SkyboxVb");
+        IBHandle                         = device->GpuMem.AllocateBuffer(sizeof(idxs), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "SkyboxIb");
+        vmaCopyMemoryToAllocation(device->GpuMem.Allocator, verts, VBHandle.Allocation, 0, sizeof(verts));
+        vmaCopyMemoryToAllocation(device->GpuMem.Allocator, idxs, IBHandle.Allocation, 0, sizeof(idxs));
+
         bool env_map_available = false;
         if (EnvMapPath && EnvMapPath[0] != '\0')
         {
@@ -190,29 +145,17 @@ namespace ZEngine::Rendering::Renderers
             }
         }
 
-        if (!env_map_available)
-        {
-            m_env_map = {};
-        }
-        else
+        if (env_map_available)
         {
             auto env_map_res = res_builder->CreateTexture("skybox_env_map", EnvMapPath);
             m_env_map        = env_map_res.ResourceInfo.TextureHandle;
         }
 
-        const auto&                   skybox_vb_set = res_inspector->GetResource("SkyboxVbSet");
-        const auto&                   skybox_ib_set = res_inspector->GetResource("SkyboxIbSet");
-
-        RenderGraphRenderPassCreation pass_node     = {.Name = name};
-
-        pass_node.Inputs.init(device->Arena, 4);
+        RenderGraphRenderPassCreation pass_node = {.Name = name};
+        pass_node.Inputs.init(device->Arena, 2);
         pass_node.Outputs.init(device->Arena, 1);
-
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = skybox_vb_set.Name, .Type = skybox_vb_set.Type});
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = skybox_ib_set.Name, .Type = skybox_ib_set.Type});
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-
         res_builder->CreateRenderPassNode(pass_node);
     }
 
@@ -258,7 +201,7 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
-        if (!m_env_map.Valid() || !s_upload_pass_instance)
+        if (!m_env_map.Valid())
             return;
 
         command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
@@ -269,30 +212,36 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(w, h);
         }
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindVertexBuffer(s_upload_pass_instance->SkyboxVBHandle);
-        command_buffer->BindIndexBuffer(s_upload_pass_instance->SkyboxIBHandle, VK_INDEX_TYPE_UINT16);
+        command_buffer->BindVertexBuffer(VBHandle);
+        command_buffer->BindIndexBuffer(IBHandle, VK_INDEX_TYPE_UINT16);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
         command_buffer->DrawIndexed(36, 1, 0, 0, 0);
         command_buffer->EndRenderPass();
     }
 
+    void SkyboxPass::Deinitialize(Hardwares::VulkanDevicePtr const device)
+    {
+        if (VBHandle)
+            device->GpuMem.FreeBuffer(VBHandle);
+        if (IBHandle)
+            device->GpuMem.FreeBuffer(IBHandle);
+    }
+
     void GridPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        auto                          arena       = device->Arena;
+        static constexpr float    verts[] = {-1000.0f, 0.01f, -1000.0f, 1000.0f, 0.01f, -1000.0f, 1000.0f, 0.01f, 1000.0f, -1000.0f, 0.01f, 1000.0f};
+        static constexpr uint16_t idxs[]  = {0, 1, 2, 2, 3, 0};
 
-        const auto&                   grid_vb_set = res_inspector->GetResource("GridVbSet");
-        const auto&                   grid_ib_set = res_inspector->GetResource("GridIbSet");
+        VBHandle                          = device->GpuMem.AllocateBuffer(sizeof(verts), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "GridVb");
+        IBHandle                          = device->GpuMem.AllocateBuffer(sizeof(idxs), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "GridIb");
+        vmaCopyMemoryToAllocation(device->GpuMem.Allocator, verts, VBHandle.Allocation, 0, sizeof(verts));
+        vmaCopyMemoryToAllocation(device->GpuMem.Allocator, idxs, IBHandle.Allocation, 0, sizeof(idxs));
 
-        RenderGraphRenderPassCreation pass_node   = {.Name = name};
-
-        pass_node.Inputs.init(arena, 4);
-        pass_node.Outputs.init(arena, 1);
-
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = grid_vb_set.Name, .Type = grid_vb_set.Type});
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = grid_ib_set.Name, .Type = grid_ib_set.Type});
+        RenderGraphRenderPassCreation pass_node = {.Name = name};
+        pass_node.Inputs.init(device->Arena, 2);
+        pass_node.Outputs.init(device->Arena, 1);
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-
         res_builder->CreateRenderPassNode(pass_node);
     }
 
@@ -337,10 +286,6 @@ namespace ZEngine::Rendering::Renderers
 
     void GridPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
-
-        if (!s_upload_pass_instance)
-            return;
-
         command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
         {
             uint32_t w = pass->GetRenderAreaWidth();
@@ -349,12 +294,20 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(w, h);
         }
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindVertexBuffer(s_upload_pass_instance->GridVBHandle);
-        command_buffer->BindIndexBuffer(s_upload_pass_instance->GridIBHandle, VK_INDEX_TYPE_UINT16);
+        command_buffer->BindVertexBuffer(VBHandle);
+        command_buffer->BindIndexBuffer(IBHandle, VK_INDEX_TYPE_UINT16);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
         command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GridPushConstantData), &PushData);
         command_buffer->DrawIndexed(6, 1, 0, 0, 0);
         command_buffer->EndRenderPass();
+    }
+
+    void GridPass::Deinitialize(Hardwares::VulkanDevicePtr const device)
+    {
+        if (VBHandle)
+            device->GpuMem.FreeBuffer(VBHandle);
+        if (IBHandle)
+            device->GpuMem.FreeBuffer(IBHandle);
     }
 
     void GbufferPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)

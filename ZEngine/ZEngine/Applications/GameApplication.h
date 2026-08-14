@@ -4,6 +4,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/TimeStep.h>
+#include <ZEngine/Core/VFS/IVFSBackend.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <ZEngine/Windows/WindowConfiguration.h>
@@ -30,6 +31,7 @@ namespace ZEngine::Applications
         bool                              EnableRenderOverlay = false;
         cstring                           ConfigFile          = nullptr;
         cstring                           WorkingSpacePath    = nullptr;
+        Core::VFS::IVFSBackend*           VFSBackend          = nullptr;
         Windows::WindowConfiguration      WindowCfg           = {};
 
         Core::Memory::MemoryManager*      Memory              = nullptr;

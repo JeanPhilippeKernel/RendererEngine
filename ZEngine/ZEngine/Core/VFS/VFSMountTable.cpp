@@ -94,19 +94,31 @@ namespace ZEngine::Core::VFS
     {
         std::shared_lock<std::shared_mutex> lock(m_mutex);
 
+        // Select the mount with the longest matching prefix (most specific).
+        // Among equal-length prefixes, the higher-priority mount wins (mounts are
+        // stored highest-priority-first so the first same-length match is best).
+        size_t                              best_idx    = SIZE_MAX;
+        size_t                              best_prefix = 0;
+
         for (size_t i = 0; i < m_mounts.size(); ++i)
         {
-            if (IsPrefixOf(m_mounts[i].LogicalRoot, path))
+            if (!IsPrefixOf(m_mounts[i].LogicalRoot, path))
+                continue;
+            const size_t prefix_len = m_mounts[i].LogicalRoot.Length();
+            if (prefix_len > best_prefix)
             {
-                VFSResult<VFSPath> rel = StripPrefix(m_mounts[i].LogicalRoot, path);
-                if (rel.Failed())
-                {
-                    return VFSResult<ResolveResult>::Fail(rel.Error());
-                }
-                return VFSResult<ResolveResult>::Ok(ResolveResult{m_mounts[i].Backend, rel.Value()});
+                best_prefix = prefix_len;
+                best_idx    = i;
             }
         }
-        return VFSResult<ResolveResult>::Fail(VFSError::NotFound);
+
+        if (best_idx == SIZE_MAX)
+            return VFSResult<ResolveResult>::Fail(VFSError::NotFound);
+
+        VFSResult<VFSPath> rel = StripPrefix(m_mounts[best_idx].LogicalRoot, path);
+        if (rel.Failed())
+            return VFSResult<ResolveResult>::Fail(rel.Error());
+        return VFSResult<ResolveResult>::Ok(ResolveResult{m_mounts[best_idx].Backend, rel.Value()});
     }
 
     VFSResult<void> VFSMountTable::ResolveAll(const VFSPath& dir_path, Containers::Array<ResolveResult>& out_results) const

@@ -6,33 +6,8 @@
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <ZEngine/ZEngineDef.h>
 
-#define WRITE_BUFFERS_ONCE(frame_index, body)          \
-    if (!m_write_once_control.contains(frame_index))   \
-    {                                                  \
-        body m_write_once_control[frame_index] = true; \
-    }
-
 namespace ZEngine::Rendering::Renderers
 {
-
-    struct UploadPass : public IRenderGraphCallbackPass
-    {
-        Core::Containers::Array<float>    SkyboxVertexData = {};
-        Core::Containers::Array<float>    GridVertexData   = {};
-        Core::Containers::Array<uint16_t> SkyboxIndexData  = {};
-        Core::Containers::Array<uint16_t> GridIndexData    = {};
-
-        Core::Memory::BufferView          SkyboxVBHandle   = {};
-        Core::Memory::BufferView          GridVBHandle     = {};
-        Core::Memory::BufferView          SkyboxIBHandle   = {};
-        Core::Memory::BufferView          GridIBHandle     = {};
-
-        Core::Containers::Array<uint8_t>  WriteOnceControl = {};
-
-        virtual void                      Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
-        virtual void                      Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) override;
-        virtual void                      Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
-    };
 
     struct BasePass : public IRenderGraphCallbackPass
     {
@@ -51,11 +26,15 @@ namespace ZEngine::Rendering::Renderers
     struct SkyboxPass : public IRenderGraphCallbackPass
     {
         // Set before Setup() is called. Empty string = no env map, pass is disabled.
-        cstring      EnvMapPath = nullptr;
+        cstring                  EnvMapPath = nullptr;
 
-        virtual void Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
-        virtual void Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) override;
-        virtual void Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        Core::Memory::BufferView VBHandle   = {};
+        Core::Memory::BufferView IBHandle   = {};
+
+        virtual void             Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
+        virtual void             Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) override;
+        virtual void             Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        virtual void             Deinitialize(Hardwares::VulkanDevicePtr const device) override;
 
     private:
         Textures::TextureHandle m_env_map = {};
@@ -73,11 +52,14 @@ namespace ZEngine::Rendering::Renderers
 
     struct GridPass : public IRenderGraphCallbackPass
     {
-        GridPushConstantData PushData = {};
+        GridPushConstantData     PushData = {};
+        Core::Memory::BufferView VBHandle = {};
+        Core::Memory::BufferView IBHandle = {};
 
-        virtual void         Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
-        virtual void         Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) override;
-        virtual void         Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        virtual void             Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
+        virtual void             Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) override;
+        virtual void             Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        virtual void             Deinitialize(Hardwares::VulkanDevicePtr const device) override;
     };
 
     struct GbufferPass : public IRenderGraphCallbackPass
