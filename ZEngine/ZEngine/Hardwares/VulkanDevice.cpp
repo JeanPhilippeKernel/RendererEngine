@@ -1,3 +1,5 @@
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
@@ -552,13 +554,14 @@ namespace ZEngine::Hardwares
         ShaderReservedLayoutBindingSpecificationMap[1].init(Arena, 2);
         ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 0, .Count = MaxGlobalTexture, .Name = "TextureArray", .DescriptorTypeValue = DescriptorType::SAMPLED_IMAGE, .Flags = ShaderStageFlags::FRAGMENT});
         ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 1, .Count = 1, .Name = "LinearWrapSampler", .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
+        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 2, .Count = 1, .Name = "LinearClampSampler", .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
 
         ShaderReservedDescriptorSetMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
         ShaderReservedDescriptorSetLayoutMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
 
         VkDescriptorPoolSize pool_sizes[] = {
             {.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = (MaxGlobalTexture * SwapchainPtr->BufferredFrameCount)},
-            {      .type = VK_DESCRIPTOR_TYPE_SAMPLER,                .descriptorCount = (1 * SwapchainPtr->BufferredFrameCount)}
+            {      .type = VK_DESCRIPTOR_TYPE_SAMPLER,                .descriptorCount = (2 * SwapchainPtr->BufferredFrameCount)}
         };
 
         for (const auto& layout_binding_set : ShaderReservedLayoutBindingSpecificationMap)
@@ -1082,10 +1085,6 @@ namespace ZEngine::Hardwares
 
     Helpers::Handle<Rendering::Shaders::Shader> VulkanDevice::CompileShader(Rendering::Specifications::ShaderSpecification& spec)
     {
-        const char* base_dir           = "Shaders/Cache/";
-        const char* vertex_name_part   = "_vertex.spv";
-        const char* fragment_name_part = "_fragment.spv";
-
         if (ShaderCaches.contains(spec.Name))
         {
             return ShaderCaches.at(spec.Name);
@@ -1096,24 +1095,22 @@ namespace ZEngine::Hardwares
 
         if (shader)
         {
-            auto vertex_file   = fmt::format("{}{}{}", base_dir, spec.Name, vertex_name_part);
-            auto fragment_file = fmt::format("{}{}{}", base_dir, spec.Name, fragment_name_part);
+            auto* vfs      = Engine::GetContext()->VFS;
+            auto  try_set  = [&](const std::string& path, cstring& out) {
+                auto vfs_path = Core::VFS::VFSPath::Parse(path.c_str());
+                if (!vfs_path.Succeeded())
+                    return;
+                auto exists = vfs->Exists(vfs_path.Value());
+                if (!exists.Succeeded() || !exists.Value())
+                    return;
+                auto n = path.size() + 1u;
+                auto s = ZPushString(Arena, n);
+                Helpers::secure_strcpy(s, n, path.c_str());
+                out = s;
+            };
 
-            if (std::filesystem::exists(vertex_file))
-            {
-                                auto name_c_size = (vertex_file.size() + 1u);
-                auto name_c_str  = ZPushString(Arena, name_c_size);
-                Helpers::secure_strcpy(name_c_str, name_c_size, vertex_file.c_str());
-                spec.VertexFilename = name_c_str;
-            }
-
-            if (std::filesystem::exists(fragment_file))
-            {
-                                                auto name_c_size = (fragment_file.size() + 1u);
-                auto name_c_str  = ZPushString(Arena, name_c_size);
-                Helpers::secure_strcpy(name_c_str, name_c_size, fragment_file.c_str());
-                spec.FragmentFilename = name_c_str;
-            }
+            try_set(fmt::format("/ZodiacEngine/Shaders/Cache/{}_vertex.spv", spec.Name), spec.VertexFilename);
+            try_set(fmt::format("/ZodiacEngine/Shaders/Cache/{}_fragment.spv", spec.Name), spec.FragmentFilename);
 
             shader->Initialize(this, spec);
         }

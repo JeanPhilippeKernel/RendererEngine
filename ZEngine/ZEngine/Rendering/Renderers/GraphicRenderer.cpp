@@ -36,7 +36,6 @@ namespace ZEngine::Rendering::Renderers
          * Renderer Passes
          */
         auto     base_pass                = ZPushStructCtor(Device->Arena, BasePass);
-        auto     upload_pass              = ZPushStructCtor(Device->Arena, UploadPass);
         auto     scene_depth_prepass      = ZPushStructCtor(Device->Arena, DepthPrePass);
         auto     skybox_pass              = ZPushStructCtor(Device->Arena, SkyboxPass);
         auto     grid_pass                = ZPushStructCtor(Device->Arena, GridPass);
@@ -56,7 +55,6 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->ResourceBuilder->AttachRenderTarget(RendererResourceName::FrameColorRenderTargetName, FrameColorRenderTarget);
 
         // Skybox starts disabled; ApplySkyConfig enables it when a scene with an HDRI sky loads.
-        RenderGraph->AddCallbackPass("Upload Pass", upload_pass);
         RenderGraph->AddCallbackPass("Base Pass", base_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass, false);
@@ -69,8 +67,10 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::Deinitialize()
     {
         RenderGraph->Dispose();
-        Device->GlobalTextures.Remove(FrameColorRenderTarget);
-        Device->GlobalTextures.Remove(FrameDepthRenderTarget);
+        // Queue render targets for proper GPU memory release — TextureHandleToDispose
+        // is drained in VulkanDevice::Deinitialize which runs after this call.
+        Device->TextureHandleToDispose.Enqueue(FrameColorRenderTarget);
+        Device->TextureHandleToDispose.Enqueue(FrameDepthRenderTarget);
         if (RenderSceneData)
         {
             Device->GpuMem.FreeBuffer(RenderSceneData->TransformBuffer);

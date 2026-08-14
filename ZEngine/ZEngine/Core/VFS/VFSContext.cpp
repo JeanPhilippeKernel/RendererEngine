@@ -373,6 +373,15 @@ namespace ZEngine::Core::VFS
         return hit.Backend->Remove(hit.RelativePath);
     }
 
+    VFSResult<void> VFSContext::RemoveAll(const VFSPath& absolute_path)
+    {
+        VFSResult<ResolveResult> writable = ResolveWritable(absolute_path);
+        if (writable.Failed())
+            return VFSResult<void>::Fail(writable.Error());
+        const ResolveResult& hit = writable.Value();
+        return hit.Backend->RemoveAll(hit.RelativePath);
+    }
+
     VFSResult<void> VFSContext::Rename(const VFSPath& src, const VFSPath& dst)
     {
         VFSResult<ResolveResult> src_hit = ResolveWritable(src);

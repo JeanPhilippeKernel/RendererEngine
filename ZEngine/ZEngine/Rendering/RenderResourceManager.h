@@ -91,16 +91,10 @@ namespace ZEngine::Rendering
         /// @return The same handle on success; invalid handle if no free upload slot.
         Rendering::Textures::TextureHandle UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data);
 
-        /// @brief Create the ImGui font atlas texture and enqueue an owned-copy deferral.
-        /// @details The pixel data is copied immediately into an owned std::vector so the
-        ///          caller (ImGui) can release its atlas memory after this call returns.
-        ///          The GPU upload runs on the first BeginFrame via CompleteDeferrals.
-        ///          Caller must enqueue the returned handle to TextureHandleToUpdates for
-        ///          bindless descriptor registration.
-        /// @param pixels  Pointer to RGBA atlas data (from io.Fonts->GetTexDataAsRGBA32).
-        /// @param width   Atlas width in pixels.
-        /// @param height  Atlas height in pixels.
-        /// @return A valid TextureHandle for the font atlas.
+        // Upload the ImGui font atlas synchronously using m_upload_cmd/m_upload_fence.
+        // Blocks until the GPU copy is complete so the texture is ready before the first
+        // frame renders. Caller must enqueue the returned handle to
+        // TextureHandleToUpdates for bindless descriptor registration.
         Rendering::Textures::TextureHandle UploadFontAtlas(unsigned char* pixels, uint32_t width, uint32_t height);
 
         /// @brief Load a texture file from disk, decode it on the thread pool, and upload.

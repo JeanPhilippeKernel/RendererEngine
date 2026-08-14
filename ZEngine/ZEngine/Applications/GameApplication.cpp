@@ -1,7 +1,9 @@
 #include <GLFW/glfw3.h>
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 
 namespace ZEngine::Applications
 {
@@ -16,8 +18,14 @@ namespace ZEngine::Applications
 
         Engine::Initialize(Memory, &WindowCfg, this);
 
-        // Step 22 — AppRenderPipeline: must follow Engine::Initialize (device live) and
-        // precede OnInitialized so the game DLL sees a fully constructed pipeline
+        if (VFSBackend)
+        {
+            if (Engine::GetContext()->VFS->Mount(VFSBackend, Core::VFS::VFSPath::Root(), 0).Failed())
+            {
+                ZENGINE_CORE_ERROR("GameApplication: failed to mount VFSBackend")
+            }
+        }
+
         RenderPipeline = ZPushStructCtor(&Memory->MainArena, AppRenderPipeline);
         RenderPipeline->Initialize(Engine::GetContext()->Device);
 

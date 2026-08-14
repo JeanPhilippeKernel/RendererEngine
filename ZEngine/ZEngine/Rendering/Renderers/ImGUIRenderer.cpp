@@ -1,3 +1,7 @@
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/VFS/IVFSFile.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/ImGUIRenderer.h>
@@ -6,7 +10,6 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <ImGuizmo/ImGuizmo.h>
-#include <filesystem>
 // clang-format on
 
 using namespace ZEngine::Hardwares;
@@ -28,20 +31,27 @@ namespace ZEngine::Rendering::Renderers
         ImGui::CreateContext();
         StyleDarkTheme();
 
-        ImGuiIO& io                          = ImGui::GetIO();
-        io.ConfigViewportsNoTaskBarIcon      = true;
-        io.ConfigViewportsNoDecoration       = true;
-        io.BackendFlags                     |= ImGuiBackendFlags_RendererHasViewports;
-        io.BackendFlags                     |= ImGuiBackendFlags_RendererHasVtxOffset;
-        io.BackendFlags                     |= ImGuiBackendFlags_HasMouseHoveredViewport;
-        io.BackendRendererName               = "ZEngine-Imgui";
+        ImGuiIO& io                      = ImGui::GetIO();
+        io.ConfigViewportsNoTaskBarIcon  = true;
+        io.ConfigViewportsNoDecoration   = true;
+        io.BackendFlags                 |= ImGuiBackendFlags_RendererHasViewports;
+        io.BackendFlags                 |= ImGuiBackendFlags_RendererHasVtxOffset;
+        io.BackendFlags                 |= ImGuiBackendFlags_HasMouseHoveredViewport;
+        io.BackendRendererName           = "ZEngine-Imgui";
 
-        std::string_view default_layout_ini  = "Settings/DefaultLayout.ini";
-        const auto       current_directoy    = std::filesystem::current_path();
-        auto             layout_file_path    = fmt::format("{0}/{1}", current_directoy.string(), default_layout_ini);
-        if (std::filesystem::exists(std::filesystem::path(layout_file_path)))
         {
-            io.IniFilename = default_layout_ini.data();
+            auto* ctx          = Engine::GetContext();
+            auto  ini_vfs_path = Core::VFS::VFSPath::Parse("/ZodiacEngine/Settings/DefaultLayout.ini");
+            if (ini_vfs_path.Succeeded())
+            {
+                auto exists = ctx->VFS->Exists(ini_vfs_path.Value());
+                if (exists.Succeeded() && exists.Value())
+                {
+                    static char s_ini_path[MAX_FILE_PATH_COUNT];
+                    fmt::format_to_n(s_ini_path, sizeof(s_ini_path) - 1, "{}/Settings/DefaultLayout.ini", ctx->EngineAssetsBackend.NativeRoot());
+                    io.IniFilename = s_ini_path;
+                }
+            }
         }
 
         io.ConfigFlags         |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -53,9 +63,30 @@ namespace ZEngine::Rendering::Renderers
         style.ChildBorderSize   = 0.f;
         style.FrameRounding     = 7.0f;
 
-        io.FontDefault          = io.Fonts->AddFontFromFileTTF("Settings/Fonts/OpenSans/OpenSans-Regular.ttf", 17.f);
+        {
+            auto* vfs      = Engine::GetContext()->VFS;
+            auto  font_res = Core::VFS::VFSPath::Parse("/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf");
+            if (font_res.Succeeded())
+            {
+                auto file_res = vfs->Open(font_res.Value(), Core::VFS::VFSOpenFlags::Read);
+                if (file_res.Succeeded())
+                {
+                    auto* f        = file_res.Value();
+                    auto  size_res = f->Size();
+                    if (size_res.Succeeded())
+                    {
+                        const uint64_t                       sz   = size_res.Value();
+                        void*                                data = IM_ALLOC(static_cast<size_t>(sz));
+                        Core::Containers::ArrayView<uint8_t> view{static_cast<uint8_t*>(data), sz};
+                        f->ReadAll(view);
+                        io.FontDefault = io.Fonts->AddFontFromMemoryTTF(data, static_cast<int>(sz), 17.f);
+                    }
+                    vfs->Close(f);
+                }
+            }
+        }
 
-        auto current_window     = Device->CurrentWindow->GetNativeWindow();
+        auto current_window = Device->CurrentWindow->GetNativeWindow();
 
         ImGui_ImplGlfw_InitForVulkan(reinterpret_cast<GLFWwindow*>(current_window), false);
 
@@ -74,15 +105,14 @@ namespace ZEngine::Rendering::Renderers
         int            width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
-        TextureHandle font_tex_handle = {};
         if (Device->RRM)
         {
-            auto* rrm       = static_cast<RenderResourceManager*>(Device->RRM);
-            font_tex_handle = rrm->UploadFontAtlas(pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+            auto* rrm   = static_cast<RenderResourceManager*>(Device->RRM);
+            FontTexture = rrm->UploadFontAtlas(pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
         }
 
-        Device->TextureHandleToUpdates.Enqueue(font_tex_handle);
-        io.Fonts->TexID   = (ImTextureID) font_tex_handle.Index;
+        Device->TextureHandleToUpdates.Enqueue(FontTexture);
+        io.Fonts->TexID   = (ImTextureID) FontTexture.Index;
 
         auto pass_builder = RenderGraph->RenderPassBuilder;
         pass_builder->SetName("Imgui Pass")
@@ -114,6 +144,7 @@ namespace ZEngine::Rendering::Renderers
         UIPass = Device->CreateRenderPass(pass_builder->Detach());
         UIPass->SetBindlessInput("TextureArray");
         UIPass->SetInput("LinearWrapSampler", Device->GlobalLinearWrapSamplerImageInfo);
+        UIPass->SetInput("LinearClampSampler", Device->GlobalLinearClampToEdgeSamplerImageInfo);
         UIPass->Verify();
         UIPass->Bake();
     }
@@ -121,6 +152,9 @@ namespace ZEngine::Rendering::Renderers
     void ImGUIRenderer::Deinitialize()
     {
         UIPass->Dispose();
+
+        if (FontTexture.Valid())
+            Device->TextureHandleToDispose.Enqueue(FontTexture);
 
         for (uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {

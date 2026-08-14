@@ -109,6 +109,10 @@ namespace
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
+        VFSResult<void> RemoveAll(const VFSPath&) override
+        {
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
         VFSResult<void> Rename(const VFSPath&, const VFSPath&) override
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);

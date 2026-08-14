@@ -61,9 +61,14 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const override;
         [[nodiscard]] VFSResult<void>                                 CreateDir(const VFSPath& relative_path) override;
         [[nodiscard]] VFSResult<void>                                 Remove(const VFSPath& relative_path) override;
+        [[nodiscard]] VFSResult<void>                                 RemoveAll(const VFSPath& relative_path) override;
         [[nodiscard]] VFSResult<void>                                 Rename(const VFSPath& rel_src, const VFSPath& rel_dst) override;
         cstring                                                       BackendType() const override;
         VFSBackendCaps                                                Capabilities() const override;
+        cstring                                                       NativeRoot() const
+        {
+            return m_native_root;
+        }
 
     private:
         bool                    ResolveNativePath(const VFSPath& relative, char* out_buf) const;

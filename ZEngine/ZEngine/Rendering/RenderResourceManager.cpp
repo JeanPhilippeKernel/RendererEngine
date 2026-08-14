@@ -912,29 +912,73 @@ namespace ZEngine::Rendering
     Rendering::Textures::TextureHandle RenderResourceManager::UploadFontAtlas(unsigned char* pixels, uint32_t width, uint32_t height)
     {
         using namespace Rendering::Specifications;
+        using namespace Rendering::Primitives;
 
         if (!pixels || width == 0 || height == 0)
             return {};
 
-        TextureSpecification spec = {};
-        spec.Width                = width;
-        spec.Height               = height;
-        spec.Format               = ImageFormat::R8G8B8A8_UNORM;
-        spec.PerformTransition    = false;
+        TextureSpecification spec                     = {};
+        spec.Width                                    = width;
+        spec.Height                                   = height;
+        spec.Format                                   = ImageFormat::R8G8B8A8_UNORM;
+        spec.PerformTransition                        = false;
 
-        auto            handle    = m_device->CreateTexture(spec);
+        auto                            handle        = m_device->CreateTexture(spec);
+        auto                            texture       = m_device->GlobalTextures.Access(handle);
+        auto                            img_buf       = m_device->Image2DBufferManager.Access(texture->BufferHandle);
+        auto                            buffer_handle = img_buf->GetHandle();
 
-        // Copy pixel data into an owned buffer so the caller (ImGui) can release
-        // its atlas memory at any time after this call returns.
-        const size_t    byte_size = static_cast<size_t>(width) * height * 4u;
-        TextureDeferral deferral  = {};
-        deferral.FrameIdx         = 0;
-        deferral.ThreadIdx        = 0;
-        deferral.TexHandle        = handle;
-        deferral.IsLarge          = true;
-        deferral.Buffer           = std::vector<uint8_t>(pixels, pixels + byte_size);
+        ImageMemoryBarrierSpecification to_transfer   = {};
+        to_transfer.ImageHandle                       = buffer_handle;
+        to_transfer.OldLayout                         = img_buf->Layout;
+        to_transfer.NewLayout                         = ImageLayout::TRANSFER_DST_OPTIMAL;
+        to_transfer.ImageAspectMask                   = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_transfer.SourceAccessMask                  = VK_ACCESS_NONE;
+        to_transfer.DestinationAccessMask             = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_transfer.SourceStageMask                   = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        to_transfer.DestinationStageMask              = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        to_transfer.LayerCount                        = 1;
+        to_transfer.SourceQueueFamily                 = m_device->GraphicFamilyIndex;
+        to_transfer.DestinationQueueFamily            = m_device->GraphicFamilyIndex;
 
-        EnqueueTextureDeferral(std::move(deferral));
+        ImageMemoryBarrierSpecification to_final      = {};
+        to_final.ImageHandle                          = buffer_handle;
+        to_final.OldLayout                            = ImageLayout::TRANSFER_DST_OPTIMAL;
+        to_final.NewLayout                            = ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+        to_final.ImageAspectMask                      = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_final.SourceAccessMask                     = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_final.DestinationAccessMask                = VK_ACCESS_SHADER_READ_BIT;
+        to_final.SourceStageMask                      = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        to_final.DestinationStageMask                 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        to_final.LayerCount                           = 1;
+        to_final.SourceQueueFamily                    = m_device->GraphicFamilyIndex;
+        to_final.DestinationQueueFamily               = m_device->GraphicFamilyIndex;
+
+        auto* cmd                                     = m_upload_cmd;
+        cmd->ResetState();
+        vkResetCommandBuffer(cmd->GetHandle(), 0);
+        cmd->Begin();
+        cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
+        img_buf->Layout    = to_transfer.NewLayout;
+        BufferView staging = m_device->WriteTextureData(cmd, handle, pixels);
+        cmd->TransitionImageLayout(ImageMemoryBarrier{to_final});
+        img_buf->Layout = to_final.NewLayout;
+        cmd->End();
+
+        VkQueue         gfx_queue = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
+        VkCommandBuffer raw       = cmd->GetHandle();
+        VkSubmitInfo    submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers    = &raw;
+
+        vkWaitForFences(m_device->LogicalDevice, 1, &m_upload_fence, VK_TRUE, UINT64_MAX);
+        vkResetFences(m_device->LogicalDevice, 1, &m_upload_fence);
+        vkQueueSubmit(gfx_queue, 1, &submit, m_upload_fence);
+        vkWaitForFences(m_device->LogicalDevice, 1, &m_upload_fence, VK_TRUE, UINT64_MAX);
+        cmd->ResetState();
+
+        if (staging)
+            m_device->GpuMem.FreeBuffer(staging);
 
         return handle;
     }

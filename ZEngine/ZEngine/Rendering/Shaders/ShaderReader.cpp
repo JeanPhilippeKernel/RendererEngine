@@ -1,4 +1,8 @@
+#include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Core/VFS/IVFSFile.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Rendering/Shaders/ShaderReader.h>
 
@@ -17,20 +21,35 @@ namespace ZEngine::Rendering::Shaders
 
     std::vector<uint32_t> ShaderReader::ReadAsBinary(std::string_view filename)
     {
-        std::ifstream file_stream = {};
-        file_stream.open(std::string(filename), std::ifstream::binary | std::ifstream::ate);
-        if (!file_stream.is_open())
+        auto* vfs      = Engine::GetContext()->VFS;
+        auto  path_res = Core::VFS::VFSPath::Parse(filename.data());
+        if (path_res.Failed())
+        {
+            ZENGINE_CORE_ERROR("====== Shader file : {} — invalid VFS path ======", filename.data())
+            ZENGINE_EXIT_FAILURE()
+        }
+
+        auto file_res = vfs->Open(path_res.Value(), Core::VFS::VFSOpenFlags::Read);
+        if (file_res.Failed())
         {
             ZENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename.data())
             ZENGINE_EXIT_FAILURE()
         }
 
-        size_t                buffer_size = static_cast<size_t>(file_stream.tellg());
-        std::vector<uint32_t> buffer(buffer_size / 4);
-        file_stream.seekg(std::ifstream::beg);
-        file_stream.read(reinterpret_cast<char*>(buffer.data()), buffer_size);
-        file_stream.close();
+        auto* file     = file_res.Value();
+        auto  size_res = file->Size();
+        if (size_res.Failed())
+        {
+            vfs->Close(file);
+            ZENGINE_CORE_ERROR("====== Shader file : {} cannot get size ======", filename.data())
+            ZENGINE_EXIT_FAILURE()
+        }
 
+        const uint64_t                       byte_size = size_res.Value();
+        std::vector<uint32_t>                buffer(byte_size / 4);
+        Core::Containers::ArrayView<uint8_t> view{reinterpret_cast<uint8_t*>(buffer.data()), byte_size};
+        file->ReadAll(view);
+        vfs->Close(file);
         return buffer;
     }
 

@@ -2,6 +2,7 @@
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/VFS/IVFSContext.h>
+#include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/ECS/Scene.h>
 #include <ZEngine/ECS/WorldCommands.h>
@@ -18,6 +19,11 @@ namespace ZEngine
 {
     struct EngineContext
     {
+        // VFS backend for engine-owned assets (Shaders/, Settings/).
+        // Mounted at VFSPath::Root() with priority -1 so the workspace backend
+        // (priority 0) takes precedence for any overlapping paths.
+        Core::VFS::VFSDiskBackend         EngineAssetsBackend   = {};
+
         // Sub-arenas (large structs — grouped together to avoid pointer/arena interleaving)
         Core::Memory::ArenaAllocator      VFSArena              = {};
         Core::Memory::ArenaAllocator      AssetArena            = {};
