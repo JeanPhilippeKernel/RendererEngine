@@ -81,6 +81,9 @@ namespace ZEngine::Hardwares
                             case Rendering::DeviceResourceType::PIPELINE:
                                 vkDestroyPipeline(device, reinterpret_cast<VkPipeline>(e.Data.Vk.Handle), nullptr);
                                 break;
+                            case Rendering::DeviceResourceType::SHADERMODULE:
+                                vkDestroyShaderModule(device, reinterpret_cast<VkShaderModule>(e.Data.Vk.Handle), nullptr);
+                                break;
                             case Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT:
                                 vkDestroyDescriptorSetLayout(device, reinterpret_cast<VkDescriptorSetLayout>(e.Data.Vk.Handle), nullptr);
                                 break;
