@@ -62,7 +62,7 @@ FetchContent_Declare(
   yaml-cpp
   GIT_REPOSITORY https://github.com/jbeder/yaml-cpp
   GIT_SHALLOW TRUE
-   
+  GIT_TAG yaml-cpp-0.9.0
   )
 
 
@@ -103,6 +103,7 @@ FetchContent_Declare(
     GIT_TAG vulkan-sdk-1.3.296.0
 )
 
+set(YAML_MSVC_SHARED_RT ON CACHE BOOL "" FORCE)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 Fetchcontent_Declare(
     GTest
