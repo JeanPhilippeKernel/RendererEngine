@@ -788,6 +788,36 @@ namespace ZEngine::Rendering
         return handle;
     }
 
+    Rendering::Textures::TextureHandle RenderResourceManager::UploadFontAtlas(unsigned char* pixels, uint32_t width, uint32_t height)
+    {
+        using namespace Rendering::Specifications;
+
+        if (!pixels || width == 0 || height == 0)
+            return {};
+
+        TextureSpecification spec = {};
+        spec.Width                = width;
+        spec.Height               = height;
+        spec.Format               = ImageFormat::R8G8B8A8_UNORM;
+        spec.PerformTransition    = false;
+
+        auto            handle    = m_device->CreateTexture(spec);
+
+        // Copy pixel data into an owned buffer so the caller (ImGui) can release
+        // its atlas memory at any time after this call returns.
+        const size_t    byte_size = static_cast<size_t>(width) * height * 4u;
+        TextureDeferral deferral  = {};
+        deferral.FrameIdx         = 0;
+        deferral.ThreadIdx        = 0;
+        deferral.TexHandle        = handle;
+        deferral.IsLarge          = true;
+        deferral.Buffer           = std::vector<uint8_t>(pixels, pixels + byte_size);
+
+        EnqueueTextureDeferral(std::move(deferral));
+
+        return handle;
+    }
+
     void RenderResourceManager::EnqueueTextureDeferral(TextureDeferral&& deferral)
     {
         m_tex_deferral_queue.Emplace(std::forward<TextureDeferral>(deferral));
