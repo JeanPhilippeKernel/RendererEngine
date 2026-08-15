@@ -24,17 +24,22 @@ namespace Tetragrama::Components
         // Console overlay log ring
         struct OverlayEntry
         {
-            char  Text[256] = {};
-            float Color[4]  = {0.8f, 0.8f, 0.8f, 1.0f};
+            char    Text[256] = {};
+            float   Color[4]  = {0.8f, 0.8f, 0.8f, 1.0f};
+            uint8_t Level     = 0; // 0=info,1=error,2=warn,3=critical,4=trace
         };
         static constexpr int kMaxEntries             = 512;
         OverlayEntry         m_log_ring[kMaxEntries] = {};
         int                  m_log_head              = 0;
         int                  m_log_count             = 0;
         std::mutex           m_log_mutex;
-        uint32_t             m_log_cookie       = 0;
-        bool                 m_console_open     = false;
-        bool                 m_scroll_to_bottom = false;
+        uint32_t             m_log_cookie             = 0;
+        bool                 m_console_target_open    = false; // desired state
+        float                m_overlay_current_height = 0.0f;  // animated height
+        bool                 m_scroll_to_bottom       = false;
+        char                 m_search_buffer[256]     = {};
+        bool                 m_copy_requested         = false;
+        int                  m_filter_level           = 5; // 5 = All
 
         void                 PushEntry(const OverlayEntry& e);
         static void          OnLogEntry(void* ctx, const ZEngine::Logging::LogMessage& msg);
