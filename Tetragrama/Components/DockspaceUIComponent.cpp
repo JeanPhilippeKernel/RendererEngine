@@ -6,6 +6,7 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Importers/ImportJob.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Profiling/MemoryProfiler.h>
 #include <fmt/format.h>
 #include <imgui/imgui_internal.h>
 #include <filesystem>
@@ -56,6 +57,8 @@ namespace Tetragrama::Components
         m_editor_serializer->SetOnDeserializeCompleteCallback(OnEditorSceneSerializerDeserializeComplete);
         m_editor_serializer->SetOnLogCallback(OnEditorSceneSerializerLog);
         m_editor_serializer->SetOnErrorCallback(OnEditorSceneSerializerError);
+
+        ApplyTheme(m_active_theme);
     }
 
     void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt) {}
@@ -117,6 +120,7 @@ namespace Tetragrama::Components
 
         RenderImporter();
         RenderEngineSettingsWindow();
+        RenderMemoryProfilerWindow();
 
         RenderExitPopup();
 
@@ -432,6 +436,19 @@ namespace Tetragrama::Components
                 dl->AddRect(pos, {pos.x + sz, pos.y + sz}, col, 2.0f, 0, 1.5f);
                 dl->AddCircleFilled({pos.x + sz * 0.5f, pos.y + sz * 0.5f}, sz * 0.22f, col, 8);
                 break;
+            case SettingsPageId::Theme:
+            {
+                const float cx = pos.x + sz * 0.5f, cy = pos.y + sz * 0.5f;
+                dl->AddCircleFilled({cx, cy}, sz * 0.28f, col, 12);
+                // 8 short rays
+                for (int r = 0; r < 8; ++r)
+                {
+                    float a  = r * 3.14159f / 4.0f;
+                    float r0 = sz * 0.38f, r1 = sz * 0.50f;
+                    dl->AddLine({cx + cosf(a) * r0, cy + sinf(a) * r0}, {cx + cosf(a) * r1, cy + sinf(a) * r1}, col, 1.0f);
+                }
+                break;
+            }
             default:
                 break;
         }
@@ -447,6 +464,7 @@ namespace Tetragrama::Components
             cstring        Label;
             SettingsPageId Id;
         } kPages[] = {
+            {   "Theme",    SettingsPageId::Theme},
             {    "Grid",     SettingsPageId::Grid},
             {"Renderer", SettingsPageId::Renderer},
         };
@@ -477,6 +495,9 @@ namespace Tetragrama::Components
         ImGui::BeginChild("##settings_content", ImVec2(0, 0), false);
         switch (m_active_settings_page)
         {
+            case SettingsPageId::Theme:
+                RenderSettingsContentTheme();
+                break;
             case SettingsPageId::Grid:
                 RenderSettingsContentGrid();
                 break;
@@ -538,6 +559,254 @@ namespace Tetragrama::Components
         ImGui::Separator();
         ImGui::Spacing();
         ImGui::TextDisabled("No renderer settings yet.");
+    }
+
+    void DockspaceUIComponent::RenderMemoryProfilerWindow()
+    {
+        if (!m_open_memory_profiler)
+            return;
+
+        ZEngine::Profiling::MemoryProfiler::Update();
+
+        ImGui::SetNextWindowSize({520, 500}, ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin("Memory Profiler", &m_open_memory_profiler))
+        {
+            ImGui::End();
+            return;
+        }
+
+        auto                                                             scratch = ZGetScratch(&LocalArena);
+        ZEngine::Core::Containers::Array<ZEngine::Profiling::ArenaStats> stats;
+        stats.init(scratch.Arena, 32);
+        ZEngine::Profiling::MemoryProfiler::GetStats(stats);
+
+        if (stats.size() == 0)
+        {
+            ImGui::TextDisabled("No arenas tracked — ensure ZENGINE_PROFILING=1.");
+            ZReleaseScratch(scratch);
+            ImGui::End();
+            return;
+        }
+
+        auto fmt_bytes = [](uint64_t b, char* buf, size_t n) {
+            if (b >= 1024u * 1024u)
+                snprintf(buf, n, "%.1f MB", b / (1024.0 * 1024.0));
+            else if (b >= 1024u)
+                snprintf(buf, n, "%.1f KB", b / 1024.0);
+            else
+                snprintf(buf, n, "%u B", static_cast<uint32_t>(b));
+        };
+
+        // Resize history array if arena count changed
+        uint32_t n = static_cast<uint32_t>(stats.size());
+        if (n > kMaxArenas)
+            n = kMaxArenas;
+        if (m_arena_history_count != n)
+        {
+            for (uint32_t i = m_arena_history_count; i < n; ++i)
+                m_arena_history[i] = {};
+            m_arena_history_count = n;
+        }
+
+        // Append this frame's samples
+        for (uint32_t i = 0; i < n; ++i)
+        {
+            auto& h           = m_arena_history[i];
+            float val_mb      = static_cast<float>(stats[i].CurrentOffset) / (1024.0f * 1024.0f);
+            h.samples[h.head] = val_mb;
+            h.head            = (h.head + 1) % kMemHistorySize;
+            if (h.count < kMemHistorySize)
+                ++h.count;
+        }
+
+        // Header
+        uint64_t total_used = 0, total_cap = 0;
+        for (uint32_t i = 0; i < n; ++i)
+        {
+            total_used += stats[i].CurrentOffset;
+            total_cap  += stats[i].Capacity;
+        }
+        char t_used[32], t_cap[32];
+        fmt_bytes(total_used, t_used, sizeof(t_used));
+        fmt_bytes(total_cap, t_cap, sizeof(t_cap));
+        ImGui::Text("Total  %s / %s", t_used, t_cap);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Reset Peaks"))
+            ZEngine::Profiling::MemoryProfiler::ResetPeaks();
+        ImGui::Separator();
+
+        const float graph_h = 45.0f;
+        const float avail_w = ImGui::GetContentRegionAvail().x;
+
+        for (uint32_t i = 0; i < n; ++i)
+        {
+            const auto& s        = stats[i];
+            auto&       h        = m_arena_history[i];
+            float       frac     = s.Capacity > 0 ? static_cast<float>(s.CurrentOffset) / s.Capacity : 0.0f;
+            float       cap_mb   = static_cast<float>(s.Capacity) / (1024.0f * 1024.0f);
+
+            // Color by usage level
+            ImVec4      line_col = frac > 0.85f ? ImVec4{0.90f, 0.25f, 0.25f, 1.0f} : frac > 0.60f ? ImVec4{0.90f, 0.70f, 0.10f, 1.0f} : ImVec4{0.30f, 0.75f, 0.45f, 1.0f};
+
+            // Label row: name + numbers
+            char        used_s[32], peak_s[32], cap_s[32];
+            fmt_bytes(s.CurrentOffset, used_s, sizeof(used_s));
+            fmt_bytes(s.PeakOffset, peak_s, sizeof(peak_s));
+            fmt_bytes(s.Capacity, cap_s, sizeof(cap_s));
+
+            ImGui::PushStyleColor(ImGuiCol_Text, line_col);
+            ImGui::TextUnformatted(s.Name ? s.Name : "?");
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s / %s  (peak %s)", used_s, cap_s, peak_s);
+
+            // Graph
+            char graph_id[64];
+            snprintf(graph_id, sizeof(graph_id), "##graph_%u", i);
+            char overlay[32];
+            snprintf(overlay, sizeof(overlay), "%.1f%%", frac * 100.0f);
+            ImGui::PushStyleColor(ImGuiCol_PlotLines, line_col);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4{line_col.x, line_col.y, line_col.z, 0.08f});
+            ImGui::PlotLines(graph_id, h.samples, kMemHistorySize, h.head, overlay, 0.0f, cap_mb > 0.0f ? cap_mb : 1.0f, ImVec2(avail_w, graph_h));
+            ImGui::PopStyleColor(2);
+
+            ImGui::Spacing();
+        }
+
+        ZReleaseScratch(scratch);
+        ImGui::End();
+    }
+
+    void DockspaceUIComponent::ApplyTheme(ThemeId theme)
+    {
+        // Propagate to EditorConfiguration so other components can read it.
+        if (ParentLayer && ParentLayer->CurrentApp)
+        {
+            auto app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+            if (app->Configuration)
+                app->Configuration->DarkTheme = (theme == ThemeId::Dark);
+        }
+
+        auto& colors = ImGui::GetStyle().Colors;
+        if (theme == ThemeId::Dark)
+        {
+            ImGui::StyleColorsDark();
+            colors[ImGuiCol_WindowBg]           = {0.10f, 0.105f, 0.11f, 1.0f};
+            colors[ImGuiCol_Header]             = {0.20f, 0.205f, 0.21f, 1.0f};
+            colors[ImGuiCol_HeaderHovered]      = {0.30f, 0.305f, 0.31f, 1.0f};
+            colors[ImGuiCol_HeaderActive]       = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_Button]             = {0.20f, 0.205f, 0.21f, 1.0f};
+            colors[ImGuiCol_ButtonHovered]      = {0.30f, 0.305f, 0.31f, 1.0f};
+            colors[ImGuiCol_ButtonActive]       = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_FrameBg]            = {0.20f, 0.205f, 0.21f, 1.0f};
+            colors[ImGuiCol_FrameBgHovered]     = {0.30f, 0.305f, 0.31f, 1.0f};
+            colors[ImGuiCol_FrameBgActive]      = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_Tab]                = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_TabHovered]         = {0.38f, 0.380f, 0.38f, 1.0f};
+            colors[ImGuiCol_TabActive]          = {0.28f, 0.280f, 0.28f, 1.0f};
+            colors[ImGuiCol_TabUnfocused]       = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_TabUnfocusedActive] = {0.20f, 0.205f, 0.21f, 1.0f};
+            colors[ImGuiCol_TitleBg]            = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_TitleBgActive]      = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_TitleBgCollapsed]   = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_DockingPreview]     = {0.20f, 0.205f, 0.21f, 0.5f};
+            colors[ImGuiCol_SeparatorHovered]   = {1.00f, 1.000f, 1.00f, 0.5f};
+            colors[ImGuiCol_SeparatorActive]    = {1.00f, 1.000f, 1.00f, 0.5f};
+            colors[ImGuiCol_CheckMark]          = {1.00f, 1.000f, 1.00f, 1.0f};
+            colors[ImGuiCol_PlotHistogram]      = {1.00f, 1.000f, 1.00f, 1.0f};
+        }
+        else
+        {
+            // Option C: pure neutral charcoal — all grays have R=G=B so zero colour cast.
+            ImGui::StyleColorsLight();
+
+            // -- palette (all R=G=B) --
+            static constexpr ImVec4 kText          = {0.110f, 0.110f, 0.110f, 1.0f}; // #1C1C1C
+            static constexpr ImVec4 kInk           = {0.110f, 0.110f, 0.110f, 1.0f}; // #1C1C1C  title active
+            static constexpr ImVec4 kDark          = {0.235f, 0.235f, 0.235f, 1.0f}; // #3C3C3C  pressed / marks
+            static constexpr ImVec4 kMid           = {0.361f, 0.361f, 0.361f, 1.0f}; // #5C5C5C  hover grabs
+            static constexpr ImVec4 kBorder        = {0.878f, 0.878f, 0.878f, 1.0f}; // #E0E0E0
+            static constexpr ImVec4 kBgAlt         = {0.941f, 0.941f, 0.941f, 1.0f}; // #F0F0F0
+            static constexpr ImVec4 kBg            = {0.973f, 0.973f, 0.973f, 1.0f}; // #F8F8F8
+            static constexpr ImVec4 kSel           = {0.863f, 0.863f, 0.863f, 1.0f}; // #DCDCDC  selection fill
+            static constexpr ImVec4 kWhite         = {1.000f, 1.000f, 1.000f, 1.0f};
+
+            // -- all colors that StyleColorsLight leaves blue-tinted --
+            colors[ImGuiCol_Text]                  = kText;
+            colors[ImGuiCol_WindowBg]              = kBg;
+            colors[ImGuiCol_ChildBg]               = kWhite;
+            colors[ImGuiCol_PopupBg]               = kWhite;
+            colors[ImGuiCol_Border]                = kBorder;
+            colors[ImGuiCol_FrameBg]               = {0.910f, 0.910f, 0.910f, 1.0f}; // #E8E8E8 visible trough
+            colors[ImGuiCol_FrameBgHovered]        = {0.863f, 0.863f, 0.863f, 1.0f}; // slightly darker on hover
+            colors[ImGuiCol_FrameBgActive]         = {0.780f, 0.780f, 0.780f, 1.0f};
+            colors[ImGuiCol_TitleBg]               = kBgAlt;
+            colors[ImGuiCol_TitleBgActive]         = {0.780f, 0.780f, 0.780f, 1.0f}; // #C7C7C7 — medium gray
+            colors[ImGuiCol_TitleBgCollapsed]      = kBgAlt;
+            colors[ImGuiCol_MenuBarBg]             = kBg;
+            colors[ImGuiCol_ScrollbarBg]           = kBg;
+            colors[ImGuiCol_ScrollbarGrab]         = kBorder;
+            colors[ImGuiCol_ScrollbarGrabHovered]  = kMid;
+            colors[ImGuiCol_ScrollbarGrabActive]   = kDark;
+            colors[ImGuiCol_CheckMark]             = kDark;
+            colors[ImGuiCol_SliderGrab]            = kMid;
+            colors[ImGuiCol_SliderGrabActive]      = kDark;
+            colors[ImGuiCol_Button]                = kBorder;
+            colors[ImGuiCol_ButtonHovered]         = kBgAlt;
+            colors[ImGuiCol_ButtonActive]          = kDark;
+            colors[ImGuiCol_Header]                = kSel;
+            colors[ImGuiCol_HeaderHovered]         = kBgAlt;
+            colors[ImGuiCol_HeaderActive]          = kBorder;
+            colors[ImGuiCol_ResizeGrip]            = {kBorder.x, kBorder.y, kBorder.z, 0.5f};
+            colors[ImGuiCol_ResizeGripHovered]     = kMid;
+            colors[ImGuiCol_ResizeGripActive]      = kDark;
+            colors[ImGuiCol_Separator]             = kBorder;
+            colors[ImGuiCol_SeparatorHovered]      = kMid;
+            colors[ImGuiCol_SeparatorActive]       = kDark;
+            colors[ImGuiCol_Tab]                   = kBgAlt;
+            colors[ImGuiCol_TabHovered]            = kSel;
+            colors[ImGuiCol_TabActive]             = kWhite;
+            colors[ImGuiCol_TabUnfocused]          = kBgAlt;
+            colors[ImGuiCol_TabUnfocusedActive]    = kBg;
+            colors[ImGuiCol_NavHighlight]          = {kDark.x, kDark.y, kDark.z, 0.7f};
+            colors[ImGuiCol_NavWindowingHighlight] = {kDark.x, kDark.y, kDark.z, 0.7f};
+            colors[ImGuiCol_NavWindowingDimBg]     = {kDark.x, kDark.y, kDark.z, 0.2f};
+            colors[ImGuiCol_DockingPreview]        = {kDark.x, kDark.y, kDark.z, 0.4f};
+            colors[ImGuiCol_TextSelectedBg]        = {kSel.x, kSel.y, kSel.z, 0.6f};
+            colors[ImGuiCol_PlotLines]             = kMid;
+            colors[ImGuiCol_PlotLinesHovered]      = kDark;
+            colors[ImGuiCol_PlotHistogram]         = kMid;
+            colors[ImGuiCol_PlotHistogramHovered]  = kDark;
+        }
+    }
+
+    void DockspaceUIComponent::RenderSettingsContentTheme()
+    {
+        ImGui::TextUnformatted("Theme");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        auto select = [&](ThemeId id, cstring label, cstring desc) {
+            bool active = (m_active_theme == id);
+            if (active)
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
+            ImGui::BeginChild(label, ImVec2(160, 70), true);
+            if (active)
+                ImGui::PopStyleColor();
+            ImGui::Spacing();
+            ImGui::TextUnformatted(label);
+            ImGui::TextDisabled("%s", desc);
+            ImGui::EndChild();
+            if (ImGui::IsItemClicked() && !active)
+            {
+                m_active_theme = id;
+                ApplyTheme(id);
+            }
+        };
+
+        select(ThemeId::Dark, "Dark", "Dark background");
+        ImGui::SameLine();
+        select(ThemeId::Light, "Light", "Light background");
     }
 
     void DockspaceUIComponent::ResetSaveAsBuffers()
@@ -631,6 +900,12 @@ namespace Tetragrama::Components
             if (ImGui::BeginMenu("Settings"))
             {
                 ImGui::MenuItem("Engine", NULL, &m_open_engine_settings);
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("Performances"))
+            {
+                ImGui::MenuItem("Memory Profiler", NULL, &m_open_memory_profiler);
                 ImGui::EndMenu();
             }
 

@@ -240,11 +240,24 @@ namespace Tetragrama::Components
         }
 
         // ---- DrawList rendering ----
-        ImDrawList* dl       = ImGui::GetWindowDrawList();
-        ImVec2      icon_end = {origin.x + card_w, origin.y + sz};
+        ImDrawList* dl         = ImGui::GetWindowDrawList();
+        ImVec2      icon_end   = {origin.x + card_w, origin.y + sz};
+
+        // Resolve current theme
+        bool        dark_theme = true;
+        if (ParentLayer && ParentLayer->CurrentApp)
+        {
+            auto* app = reinterpret_cast<Tetragrama::EditorPtr>(ParentLayer->CurrentApp);
+            if (app->Configuration)
+                dark_theme = app->Configuration->DarkTheme;
+        }
 
         // Card body background
-        dl->AddRectFilled(origin, card_end, hov ? IM_COL32(70, 70, 70, 200) : IM_COL32(42, 42, 42, 140), rounding);
+        const ImU32 card_bg     = dark_theme ? (hov ? IM_COL32(70, 70, 70, 200) : IM_COL32(42, 42, 42, 140)) : (hov ? IM_COL32(213, 217, 224, 240) : IM_COL32(237, 239, 243, 210));
+        const ImU32 card_border = dark_theme ? IM_COL32(0, 0, 0, 0) : IM_COL32(200, 204, 212, 180);
+        dl->AddRectFilled(origin, card_end, card_bg, rounding);
+        if (!dark_theme)
+            dl->AddRect(origin, card_end, card_border, rounding, 0, 1.0f);
 
         // --- Icon (vector, centered in the thumbnail area) ---
         // When a per-asset thumbnail is ready, call
@@ -254,20 +267,21 @@ namespace Tetragrama::Components
         const float ofx = (sz - ic) * 0.5f + pad;
         const float ofy = (sz - ic * 0.92f) * 0.5f;
         ImVec2      ixo = {origin.x + ofx, origin.y + ofy};
-
-        DrawContentIcon(dl, ixo, ic, GetContentIconType(entry.IsDirectory, entry.Path.Extension()), true);
+        DrawContentIcon(dl, ixo, ic, GetContentIconType(entry.IsDirectory, entry.Path.Extension()), dark_theme);
 
         // Semi-transparent footer strip
-        ImVec2 footer_min = {origin.x, origin.y + sz};
-        dl->AddRectFilled(footer_min, card_end, IM_COL32(0, 0, 0, 140), rounding, ImDrawFlags_RoundCornersBottom);
+        ImVec2      footer_min = {origin.x, origin.y + sz};
+        const ImU32 footer_col = dark_theme ? IM_COL32(0, 0, 0, 140) : IM_COL32(200, 204, 212, 180);
+        dl->AddRectFilled(footer_min, card_end, footer_col, rounding, ImDrawFlags_RoundCornersBottom);
 
-        // Name text inside footer (single line, truncated)
+        // Name text inside footer
         {
-            const float  text_x = footer_min.x + pad;
-            const float  text_y = footer_min.y + pad;
-            const float  max_w  = card_w - pad * 2.0f;
-            const ImVec4 clip   = {text_x, text_y, text_x + max_w, text_y + line_h * 2.0f};
-            dl->AddText(nullptr, 0.0f, {text_x, text_y}, IM_COL32(230, 230, 230, 255), name, nullptr, max_w, &clip);
+            const float  text_x   = footer_min.x + pad;
+            const float  text_y   = footer_min.y + pad;
+            const float  max_w    = card_w - pad * 2.0f;
+            const ImVec4 clip     = {text_x, text_y, text_x + max_w, text_y + line_h * 2.0f};
+            const ImU32  text_col = dark_theme ? IM_COL32(230, 230, 230, 255) : IM_COL32(31, 41, 55, 255);
+            dl->AddText(nullptr, 0.0f, {text_x, text_y}, text_col, name, nullptr, max_w, &clip);
         }
 
         ImGui::PopID();

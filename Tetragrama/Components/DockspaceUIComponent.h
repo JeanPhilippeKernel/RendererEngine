@@ -8,10 +8,17 @@
 
 namespace Tetragrama::Components
 {
+    enum class ThemeId
+    {
+        Dark  = 0,
+        Light = 1,
+    };
+
     enum class SettingsPageId
     {
         Grid     = 0,
         Renderer = 1,
+        Theme    = 2,
         COUNT
     };
 
@@ -43,12 +50,19 @@ namespace Tetragrama::Components
         static void                           OnAssetImporterLog(void* const, std::string_view);
 
         /*
+         * Performances Menu Windows
+         */
+        void                                  RenderMemoryProfilerWindow();
+
+        /*
          * Engine Settings Window
          */
         void                                  RenderEngineSettingsWindow();
         void                                  RenderSettingsContentGrid();
         void                                  RenderSettingsContentRenderer();
+        void                                  RenderSettingsContentTheme();
         static void                           DrawSettingsIcon(ImDrawList* dl, ImVec2 pos, SettingsPageId id, bool selected);
+        void                                  ApplyTheme(ThemeId theme);
 
         /*
          * Editor Scene Funcs
@@ -77,14 +91,27 @@ namespace Tetragrama::Components
         static float       s_editor_scene_serializer_progress;
 
     private:
-        bool                                                m_open_asset_importer{false};
-        bool                                                m_open_engine_settings{false};
+        bool                 m_open_asset_importer{false};
+        bool                 m_open_engine_settings{false};
+        bool                 m_open_memory_profiler{false};
+
+        static constexpr int kMemHistorySize = 128;
+        static constexpr int kMaxArenas      = 32;
+        struct ArenaHistory
+        {
+            float    samples[kMemHistorySize] = {};
+            int      head                     = 0;
+            uint32_t count                    = 0;
+        };
+        ArenaHistory                                        m_arena_history[kMaxArenas] = {};
+        uint32_t                                            m_arena_history_count       = 0;
         bool                                                m_open_exit{false};
+        ThemeId                                             m_active_theme{ThemeId::Light};
         bool                                                m_pending_shutdown{false};
         bool                                                m_open_save_scene{false};
         bool                                                m_open_save_scene_as{false};
         bool                                                m_request_save_scene_ui_close{false};
-        SettingsPageId                                      m_active_settings_page{SettingsPageId::Grid};
+        SettingsPageId                                      m_active_settings_page{SettingsPageId::Theme};
         ImGuiDockNodeFlags                                  m_dockspace_node_flag;
         ImGuiWindowFlags                                    m_window_flags;
         ZEngine::Importers::AssetCodec::ImportConfiguration m_default_import_configuration;

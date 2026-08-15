@@ -58,20 +58,16 @@ namespace Tetragrama::Layers
         auto inspector_view_cmp              = ZPushStructCtor(arena, Components::InspectorViewUIComponent);
         auto hierarchy_view_cmp              = ZPushStructCtor(arena, Components::HierarchyViewUIComponent);
 
-        auto demo_cmp                        = ZPushStructCtor(arena, Components::DemoUIComponent);
-
         dockspace_cmp->Initialize(this);
         scene_cmp->Initialize(this);
         editor_log_cmp->Initialize(this);
         project_view_cmp->Initialize(this);
         inspector_view_cmp->Initialize(this);
         hierarchy_view_cmp->Initialize(this);
-        demo_cmp->Initialize(this);
 
-        dockspace_cmp->Children.init(arena, 8);
+        dockspace_cmp->Children.init(arena, 5);
         dockspace_cmp->Children.push(scene_cmp);
         dockspace_cmp->Children.push(editor_log_cmp);
-        dockspace_cmp->Children.push(demo_cmp);
         dockspace_cmp->Children.push(project_view_cmp);
         dockspace_cmp->Children.push(inspector_view_cmp);
         dockspace_cmp->Children.push(hierarchy_view_cmp);

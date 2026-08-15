@@ -28,6 +28,8 @@ namespace Tetragrama
         ZEngine::Core::Containers::String EnvironmentMapImportPath = {};
         ZEngine::Core::Containers::String ProjectName              = {};
         ZEngine::Core::Containers::String ActiveSceneName          = {};
+        bool                              DarkTheme                = false;
+        int                               GizmoOperation           = -1;
 
         void                              ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };

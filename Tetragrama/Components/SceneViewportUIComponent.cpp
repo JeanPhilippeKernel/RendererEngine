@@ -112,6 +112,7 @@ namespace Tetragrama::Components
         {
             ImGui::Image((ImTextureID) m_scene_texture.Index, m_viewport_size, ImVec2(0, 0), ImVec2(1, 1));
         }
+
         // ViewPort bound computation
         ImVec2 viewport_windows_size  = ImGui::GetWindowSize();
         ImVec2 minimum_bound          = ImGui::GetWindowPos();
@@ -201,6 +202,106 @@ namespace Tetragrama::Components
                 }
             }
             ImGui::EndDragDropTarget();
+        }
+
+        // Viewport overlay toolbar — after drag-drop so Image stays the last item for drop target.
+        {
+            typedef void (*DrawIconFn)(ImDrawList*, ImVec2, float, ImU32);
+
+            auto overlay_btn = [](cstring id, ImVec2 pos, float btn_sz, bool active, ImVec4 active_col, cstring tip, ImDrawList* dl, DrawIconFn icon_fn) -> bool {
+                ImVec4 bg = active ? ImVec4{active_col.x * .25f, active_col.y * .25f, active_col.z * .25f, .92f} : ImVec4{.12f, .12f, .12f, .70f};
+                ImGui::SetCursorScreenPos(pos);
+                ImGui::PushStyleColor(ImGuiCol_Button, bg);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{.30f, .30f, .30f, .90f});
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, {active_col.x * .4f, active_col.y * .4f, active_col.z * .4f, 1.f});
+                bool hit = ImGui::Button(id, {btn_sz, btn_sz});
+                ImGui::PopStyleColor(3);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", tip);
+                ImVec4 ic = active ? active_col : ImVec4{active_col.x * .5f, active_col.y * .5f, active_col.z * .5f, 1.f};
+                icon_fn(dl, pos, btn_sz, ImGui::ColorConvertFloat4ToU32(ic));
+                return hit;
+            };
+
+            static DrawIconFn icon_grid = [](ImDrawList* d, ImVec2 p, float sz, ImU32 c) {
+                float  m  = 5.f;
+                ImVec2 p0 = {p.x + m, p.y + m};
+                float  s  = sz - m * 2.f;
+                for (int i = 1; i <= 3; ++i)
+                {
+                    float tx = p0.x + s * i / 4.f, ty = p0.y + s * i / 4.f;
+                    d->AddLine({tx, p0.y}, {tx, p0.y + s}, c, 1.2f);
+                    d->AddLine({p0.x, ty}, {p0.x + s, ty}, c, 1.2f);
+                }
+            };
+            static DrawIconFn icon_translate = [](ImDrawList* d, ImVec2 p, float sz, ImU32 c) {
+                float cx = p.x + sz * .5f, cy = p.y + sz * .5f, r = sz * .28f, al = r * .9f, aw = r * .35f;
+                d->AddLine({cx, cy - al}, {cx, cy + al}, c, 1.5f);
+                d->AddLine({cx - al, cy}, {cx + al, cy}, c, 1.5f);
+                d->AddTriangleFilled({cx, cy - al - aw}, {cx - aw * .6f, cy - al + aw * .5f}, {cx + aw * .6f, cy - al + aw * .5f}, c);
+                d->AddTriangleFilled({cx, cy + al + aw}, {cx - aw * .6f, cy + al - aw * .5f}, {cx + aw * .6f, cy + al - aw * .5f}, c);
+                d->AddTriangleFilled({cx - al - aw, cy}, {cx - al + aw * .5f, cy - aw * .6f}, {cx - al + aw * .5f, cy + aw * .6f}, c);
+                d->AddTriangleFilled({cx + al + aw, cy}, {cx + al - aw * .5f, cy - aw * .6f}, {cx + al - aw * .5f, cy + aw * .6f}, c);
+            };
+            static DrawIconFn icon_rotate = [](ImDrawList* d, ImVec2 p, float sz, ImU32 c) {
+                float cx = p.x + sz * .5f, cy = p.y + sz * .5f, r = sz * .28f, aw = r * .45f;
+                d->AddCircle({cx, cy}, r, c, 24, 1.8f);
+                d->AddTriangleFilled({cx + r, cy}, {cx + r - aw, cy - aw * .6f}, {cx + r - aw, cy + aw * .6f}, c);
+            };
+            static DrawIconFn icon_scale = [](ImDrawList* d, ImVec2 p, float sz, ImU32 c) {
+                float cx = p.x + sz * .5f, cy = p.y + sz * .5f, r = sz * .28f, h = r * .75f, dot = r * .22f;
+                d->AddRect({cx - h, cy - h}, {cx + h, cy + h}, c, 0, 0, 1.5f);
+                for (int dx = -1; dx <= 1; dx += 2)
+                    for (int dy = -1; dy <= 1; dy += 2)
+                        d->AddCircleFilled({cx + dx * h, cy + dy * h}, dot, c, 6);
+            };
+
+            auto*       scene  = app->CurrentScene ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+            int&        gizmo  = app->Configuration->GizmoOperation;
+
+            const float btn_sz = 28.0f, pad = 8.0f, gap = 4.0f;
+            ImVec2      base  = ImGui::GetWindowPos();
+            base.x           += viewport_offset.x + pad;
+            base.y           += viewport_offset.y + pad;
+            ImDrawList* dl    = ImGui::GetWindowDrawList();
+
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+
+            if (scene)
+            {
+                bool grid_on = scene->Grid.Enabled;
+                if (overlay_btn("##grid", base, btn_sz, grid_on, {0.30f, 0.80f, 0.90f, 1.0f}, grid_on ? "Hide Grid" : "Show Grid", dl, icon_grid))
+                {
+                    scene->Grid.Enabled = !grid_on;
+                    scene->GridDirty[0].value.store(true, std::memory_order_release);
+                    scene->GridDirty[1].value.store(true, std::memory_order_release);
+                    scene->GridDirty[2].value.store(true, std::memory_order_release);
+                }
+            }
+
+            dl->AddLine({base.x + 4.f, base.y + btn_sz + gap}, {base.x + btn_sz - 4.f, base.y + btn_sz + gap}, IM_COL32(255, 255, 255, 40), 1.f);
+
+            struct
+            {
+                cstring    id;
+                int        op;
+                ImVec4     col;
+                cstring    tip;
+                DrawIconFn fn;
+            } kBtns[] = {
+                {"##gt", ImGuizmo::OPERATION::TRANSLATE,  {.33f, .60f, 1.f, 1.f}, "Translate (T)", icon_translate},
+                {"##gr",    ImGuizmo::OPERATION::ROTATE,  {1.f, .60f, .20f, 1.f},    "Rotate (R)",    icon_rotate},
+                {"##gs",     ImGuizmo::OPERATION::SCALE, {.30f, .85f, .40f, 1.f},     "Scale (S)",     icon_scale},
+            };
+            float gy = base.y + btn_sz + gap * 3.f;
+            for (int i = 0; i < 3; ++i)
+            {
+                bool on = (gizmo == kBtns[i].op);
+                if (overlay_btn(kBtns[i].id, {base.x, gy + i * (btn_sz + gap)}, btn_sz, on, kBtns[i].col, kBtns[i].tip, dl, kBtns[i].fn))
+                    gizmo = on ? -1 : kBtns[i].op;
+            }
+
+            ImGui::PopStyleVar();
         }
 
         ImGui::End();

@@ -102,44 +102,10 @@ namespace ZEngine::Core::Memory
         ArenaAllocator     MainArena = {};
         MemoryBudgetConfig Budget    = {};
 
-        void               Initialize(uint64_t buffer_size, const MemoryBudgetConfig& config)
-        {
-            Budget = config;
-            config.Validate(buffer_size);
+        void               Initialize(uint64_t buffer_size, const MemoryBudgetConfig& config);
+        void               CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result);
 
-            unsigned long page_size = 0ul;
-
-            // Get the system page size
-            // This is platform-specific, so we need to handle it differently for Windows and Linux/macOS
-            // 4KB is the default page size, but it isn't guaranteed.
-            // Linux on ARM64 has a 16KB page size, macOS on ARM64 has a 16KB page size, and Windows on ARM64 has a 4KB page size.
-#ifdef _WIN32
-            SYSTEM_INFO sys_info;
-            GetSystemInfo(&sys_info);
-            page_size = sys_info.dwPageSize;
-#elif defined(__linux__) || defined(__APPLE__)
-            page_size = sysconf(_SC_PAGESIZE);
-#endif
-            MainArena.Initialize(buffer_size, page_size);
-
-#if ZENGINE_PROFILING
-            Profiling::MemoryProfiler::Initialize(&MainArena);
-#endif
-        }
-
-        void CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result)
-        {
-            ZENGINE_VALIDATE_ASSERT(config.SizeBytes > 0, "MemoryManager::CreateBudgetedArena: SizeBytes must be > 0")
-            ZENGINE_VALIDATE_ASSERT(result != nullptr, "MemoryManager::CreateBudgetedArena: out must not be null")
-
-            MainArena.CreateSubArena(config.SizeBytes, result);
-
-#if ZENGINE_PROFILING
-            Profiling::MemoryProfiler::TrackArena(config.Name, result);
-#endif
-        }
-
-        void Shutdown()
+        void               Shutdown()
         {
             MainArena.Shutdown();
         }

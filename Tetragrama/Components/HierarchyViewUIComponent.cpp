@@ -34,12 +34,13 @@ namespace Tetragrama::Components
         if (!keyboard)
             return;
 
+        auto* app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
         if (keyboard->IsKeyPressed(ZENGINE_KEY_T, window))
-            m_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
+            app->Configuration->GizmoOperation = ImGuizmo::OPERATION::TRANSLATE;
         if (keyboard->IsKeyPressed(ZENGINE_KEY_R, window))
-            m_gizmo_operation = ImGuizmo::OPERATION::ROTATE;
+            app->Configuration->GizmoOperation = ImGuizmo::OPERATION::ROTATE;
         if (keyboard->IsKeyPressed(ZENGINE_KEY_S, window))
-            m_gizmo_operation = ImGuizmo::OPERATION::SCALE;
+            app->Configuration->GizmoOperation = ImGuizmo::OPERATION::SCALE;
     }
 
     void HierarchyViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const /*renderer*/, ZEngine::Hardwares::CommandBuffer* const /*command_buffer*/)
@@ -136,15 +137,16 @@ namespace Tetragrama::Components
 
         auto  transform       = target->Transform;
 
+        int   gizmo_op        = app->Configuration->GizmoOperation;
         float snap_value      = 0.5f;
         bool  snapping        = IDevice::As<Keyboard>() && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, app->CurrentWindow);
-        if (snapping && static_cast<ImGuizmo::OPERATION>(m_gizmo_operation) == ImGuizmo::ROTATE)
+        if (snapping && static_cast<ImGuizmo::OPERATION>(gizmo_op) == ImGuizmo::ROTATE)
             snap_value = 45.0f;
         float snap_arr[3] = {snap_value, snap_value, snap_value};
 
-        if (m_gizmo_operation > 0)
+        if (gizmo_op > 0)
         {
-            ImGuizmo::Manipulate(value_ptr(view), value_ptr(projection), static_cast<ImGuizmo::OPERATION>(m_gizmo_operation), ImGuizmo::MODE::WORLD, value_ptr(transform), nullptr, snapping ? snap_arr : nullptr);
+            ImGuizmo::Manipulate(value_ptr(view), value_ptr(projection), static_cast<ImGuizmo::OPERATION>(gizmo_op), ImGuizmo::MODE::WORLD, value_ptr(transform), nullptr, snapping ? snap_arr : nullptr);
         }
 
         if (ImGuizmo::IsUsing())
