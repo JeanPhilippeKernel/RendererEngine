@@ -786,8 +786,7 @@ namespace Tetragrama::Components
         ImGui::Separator();
         ImGui::Spacing();
 
-        auto select = [&](ThemeId id, cstring label, cstring desc) {
-            bool active = (m_active_theme == id);
+        auto render_theme_card = [](bool active, cstring label, cstring desc) {
             if (active)
                 ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
             ImGui::BeginChild(label, ImVec2(160, 70), true);
@@ -797,16 +796,27 @@ namespace Tetragrama::Components
             ImGui::TextUnformatted(label);
             ImGui::TextDisabled("%s", desc);
             ImGui::EndChild();
-            if (ImGui::IsItemClicked() && !active)
-            {
-                m_active_theme = id;
-                ApplyTheme(id);
-            }
         };
 
-        select(ThemeId::Dark, "Dark", "Dark background");
+        {
+            bool active = (m_active_theme == ThemeId::Dark);
+            render_theme_card(active, "Dark", "Dark background");
+            if (ImGui::IsItemClicked() && !active)
+            {
+                m_active_theme = ThemeId::Dark;
+                ApplyTheme(ThemeId::Dark);
+            }
+        }
         ImGui::SameLine();
-        select(ThemeId::Light, "Light", "Light background");
+        {
+            bool active = (m_active_theme == ThemeId::Light);
+            render_theme_card(active, "Light", "Light background");
+            if (ImGui::IsItemClicked() && !active)
+            {
+                m_active_theme = ThemeId::Light;
+                ApplyTheme(ThemeId::Light);
+            }
+        }
     }
 
     void DockspaceUIComponent::ResetSaveAsBuffers()
