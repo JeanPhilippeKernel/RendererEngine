@@ -121,6 +121,7 @@ namespace Tetragrama::Components
 
         RenderImporter();
         RenderEnvironmentMapImporter();
+        RenderGridSettingsPanel();
 
         RenderExitPopup();
 
@@ -509,6 +510,53 @@ namespace Tetragrama::Components
         ZEngine::Helpers::secure_memset(s_env_map_importer_input_buffer, 0, IM_ARRAYSIZE(s_env_map_importer_input_buffer), IM_ARRAYSIZE(s_env_map_importer_input_buffer));
     }
 
+    void DockspaceUIComponent::RenderGridSettingsPanel()
+    {
+        if (!m_open_grid_settings)
+            return;
+
+        if (!ParentLayer || !ParentLayer->CurrentApp)
+            return;
+
+        auto  app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto* current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+        if (!current_scene)
+            return;
+
+        ImGui::SetNextWindowSize({400, 0}, ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin("Grid Settings", &m_open_grid_settings))
+        {
+            ImGui::End();
+            return;
+        }
+
+        auto& cfg      = current_scene->Grid;
+        bool  changed  = false;
+
+        changed       |= ImGui::Checkbox("Show Grid", &cfg.Enabled);
+        ImGui::Separator();
+        changed |= ImGui::SliderFloat("Cell Size", &cfg.CellSize, 0.001f, 1.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
+        changed |= ImGui::SliderFloat("Fade Radius", &cfg.FadeRadius, 10.0f, 2000.0f, "%.1f");
+        changed |= ImGui::SliderFloat("Fade Strength", &cfg.FadeStrength, 0.1f, 2.0f, "%.2f");
+        changed |= ImGui::SliderFloat("Line Width", &cfg.LineWidth, 0.5f, 4.0f, "%.2f");
+        changed |= ImGui::SliderInt("Max LOD", &cfg.MaxLOD, 1, 6);
+        changed |= ImGui::SliderFloat("Ground Y", &cfg.GroundY, -100.0f, 100.0f, "%.2f");
+        ImGui::Separator();
+        changed |= ImGui::ColorEdit4("Thin Lines", cfg.ColorThin);
+        changed |= ImGui::ColorEdit4("Thick Lines", cfg.ColorThick);
+        changed |= ImGui::ColorEdit4("X Axis", cfg.ColorXAxis);
+        changed |= ImGui::ColorEdit4("Z Axis", cfg.ColorZAxis);
+
+        if (changed)
+        {
+            current_scene->GridDirty[0].value.store(true, std::memory_order_release);
+            current_scene->GridDirty[1].value.store(true, std::memory_order_release);
+            current_scene->GridDirty[2].value.store(true, std::memory_order_release);
+        }
+
+        ImGui::End();
+    }
+
     std::future<void> DockspaceUIComponent::OnImportEnvironmentMapAsync(const char* filename)
     {
         if (ZEngine::Helpers::secure_strlen(filename) == 0)
@@ -663,6 +711,7 @@ namespace Tetragrama::Components
                 {
                 }
 
+                ImGui::MenuItem("Grid Settings", NULL, &m_open_grid_settings);
                 ImGui::MenuItem("Import Environment Map", NULL, &m_open_env_map_importer);
                 ImGui::EndMenu();
             }

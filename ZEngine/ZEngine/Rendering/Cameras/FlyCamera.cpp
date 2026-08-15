@@ -33,7 +33,7 @@ namespace ZEngine::Rendering::Cameras
     {
         AspectRatio    = aspectRatio;
         Settings       = settings;
-        Position       = {0.0f, 20.0f, 10.0f};
+        Position       = {0.0f, 5.0f, 8.0f};
         Pitch          = radians(30.0f);
         m_targetPitch  = Pitch;
         m_targetPos    = Position;
@@ -135,8 +135,8 @@ namespace ZEngine::Rendering::Cameras
             State             = FlyCameraState::Orbit;
         }
 
-        // Orbit exit (Alt released with no held buttons).
-        if (!Input.AltDown && State == FlyCameraState::Orbit && !Input.LeftDown && !Input.RightDown)
+        // Orbit exit (Alt released, or no buttons held).
+        if (!Input.AltDown && State == FlyCameraState::Orbit && !Input.LeftDown)
         {
             m_targetPos   = Position;
             m_targetPitch = Pitch;
@@ -212,7 +212,7 @@ namespace ZEngine::Rendering::Cameras
         if (Input.ScrollDelta != 0.0f)
         {
             Ray   ray    = GetRayFromViewport(Input.MouseViewportX, Input.MouseViewportY);
-            float speed  = AdaptiveSpeed();
+            float speed  = std::min(AdaptiveSpeed(), 3.0f);
             m_targetPos += ray.Direction * Input.ScrollDelta * Settings.ScrollSpeed * speed;
         }
 
@@ -319,8 +319,8 @@ namespace ZEngine::Rendering::Cameras
         Vec3f endPos      = center + dir * distance;
 
         Vec3f lookDir     = -dir;
-        float endPitch    = asinf(clamp(lookDir.y, -1.0f, 1.0f));
-        float endYaw      = WrapAngle(atan2f(-lookDir.x, lookDir.z));
+        float endPitch    = -asinf(clamp(lookDir.y, -1.0f, 1.0f));
+        float endYaw      = WrapAngle(atan2f(lookDir.x, -lookDir.z));
 
         m_orbitPivot      = center;
         m_orbitDist       = distance;
@@ -334,7 +334,7 @@ namespace ZEngine::Rendering::Cameras
         m_animEndYaw      = endYaw;
         m_animTimer       = 0.0f;
         m_animDuration    = Settings.FocusDuration;
-        m_stateBeforeAnim = State;
+        m_stateBeforeAnim = FlyCameraState::Free;
         State             = FlyCameraState::Animating;
     }
 

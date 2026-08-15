@@ -39,6 +39,7 @@ namespace Tetragrama::Components
         /*
          * Environment Map Importer Funcs
          */
+        void                                  RenderGridSettingsPanel();
         void                                  RenderEnvironmentMapImporter();
         void                                  ResetEnvironmentMapImporterBuffers();
         std::future<void>                     OnImportEnvironmentMapAsync(const char* filename);
@@ -79,6 +80,7 @@ namespace Tetragrama::Components
 
     private:
         bool                                                m_open_asset_importer{false};
+        bool                                                m_open_grid_settings{false};
         bool                                                m_open_env_map_importer{false};
         bool                                                m_open_exit{false};
         bool                                                m_pending_shutdown{false};

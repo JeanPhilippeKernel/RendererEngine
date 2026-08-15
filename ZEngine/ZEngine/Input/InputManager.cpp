@@ -1,6 +1,7 @@
 #include <GLFW/glfw3.h>
 #include <ZEngine/Input/InputManager.h>
 #include <ZEngine/ZEngineDef.h>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -117,8 +118,8 @@ namespace ZEngine::Input
         m_last_mouse_pos = new_pos;
         m_mouse_pos      = new_pos;
 
-        // Drain scroll accumulator.
-        m_scroll_delta   = (float) m_scroll_accum;
+        // Drain scroll accumulator, clamped to ±1 to prevent trackpad momentum spikes.
+        m_scroll_delta   = (float) std::clamp(m_scroll_accum, -1.0, 1.0);
         m_scroll_accum   = 0.0;
 
         // Evaluate each action.

@@ -129,12 +129,15 @@ namespace Tetragrama::Components
         }
 
         const auto view       = camera->GetView();
-        const auto projection = camera->GetProjection();
+        auto       projection = camera->GetProjection();
+        // ImGuizmo expects OpenGL-style Y-up projection. The engine uses Vulkan's Y-flipped
+        // projection (negative Y scale). Un-flip it so the gizmo axes and position are correct.
+        projection[1][1]      = -projection[1][1];
 
-        auto       transform  = target->Transform;
+        auto  transform       = target->Transform;
 
-        float      snap_value = 0.5f;
-        bool       snapping   = IDevice::As<Keyboard>() && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, app->CurrentWindow);
+        float snap_value      = 0.5f;
+        bool  snapping        = IDevice::As<Keyboard>() && IDevice::As<Keyboard>()->IsKeyPressed(ZENGINE_KEY_LEFT_CONTROL, app->CurrentWindow);
         if (snapping && static_cast<ImGuizmo::OPERATION>(m_gizmo_operation) == ImGuizmo::ROTATE)
             snap_value = 45.0f;
         float snap_arr[3] = {snap_value, snap_value, snap_value};
