@@ -65,9 +65,10 @@ namespace Tetragrama::Components
 
     void DockspaceUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        static constexpr float kStatusBarHeight = 22.0f;
+        const ImGuiViewport*   viewport         = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->Pos);
-        ImGui::SetNextWindowSize(viewport->Size);
+        ImGui::SetNextWindowSize({viewport->Size.x, viewport->Size.y - kStatusBarHeight});
         ImGui::SetNextWindowViewport(viewport->ID);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -93,14 +94,12 @@ namespace Tetragrama::Components
                 ImGuiID dock_main_id       = window_id;
                 ImGuiID dock_left_id       = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Left, 0.2f, nullptr, &dock_main_id);
                 ImGuiID dock_right_id      = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.2f, nullptr, &dock_main_id);
-                ImGuiID dock_right_down_id = ImGui::DockBuilderSplitNode(dock_right_id, ImGuiDir_Down, 0.3f, nullptr, &dock_right_id);
                 ImGuiID dock_down_id       = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.25f, nullptr, &dock_main_id);
                 ImGuiID dock_down_right_id = ImGui::DockBuilderSplitNode(dock_down_id, ImGuiDir_Right, 0.6f, nullptr, &dock_down_id);
 
                 // Dock windows
                 ImGui::DockBuilderDockWindow("Hierarchy", dock_left_id);
                 ImGui::DockBuilderDockWindow("Inspector", dock_right_id);
-                ImGui::DockBuilderDockWindow("Console", dock_right_down_id);
                 ImGui::DockBuilderDockWindow("Project", dock_down_right_id);
                 ImGui::DockBuilderDockWindow("Scene", dock_main_id);
 
