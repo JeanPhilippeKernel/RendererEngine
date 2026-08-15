@@ -16,19 +16,15 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    ImVec4        DockspaceUIComponent::s_asset_importer_report_msg_color     = {1, 1, 1, 1};
-    char          DockspaceUIComponent::s_asset_importer_input_buffer[1024]   = {0};
-    char          DockspaceUIComponent::s_save_as_input_buffer[1024]          = {0};
-    std::string   DockspaceUIComponent::s_asset_importer_report_msg           = "";
-    float         DockspaceUIComponent::s_editor_scene_serializer_progress    = 0.0f;
+    ImVec4        DockspaceUIComponent::s_asset_importer_report_msg_color   = {1, 1, 1, 1};
+    char          DockspaceUIComponent::s_asset_importer_input_buffer[1024] = {0};
+    char          DockspaceUIComponent::s_save_as_input_buffer[1024]        = {0};
+    std::string   DockspaceUIComponent::s_asset_importer_report_msg         = "";
+    float         DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
 
-    ImVec4        DockspaceUIComponent::s_env_map_importer_report_msg_color   = {1, 1, 1, 1};
-    char          DockspaceUIComponent::s_env_map_importer_input_buffer[1024] = {0};
-    std::string   DockspaceUIComponent::s_env_map_importer_report_msg         = "";
-
-    static bool   s_is_scene_loading                                          = false;
-    static char   s_scene_serializer_log[DEFAULT_STR_BUFFER]                  = {0};
-    static ImVec4 s_scene_serializer_log_color                                = {1, 1, 1, 1};
+    static bool   s_is_scene_loading                                        = false;
+    static char   s_scene_serializer_log[DEFAULT_STR_BUFFER]                = {0};
+    static ImVec4 s_scene_serializer_log_color                              = {1, 1, 1, 1};
 
     DockspaceUIComponent::DockspaceUIComponent() {}
 
@@ -120,8 +116,7 @@ namespace Tetragrama::Components
         RenderSaveSceneAs();
 
         RenderImporter();
-        RenderEnvironmentMapImporter();
-        RenderGridSettingsPanel();
+        RenderEngineSettingsWindow();
 
         RenderExitPopup();
 
@@ -418,103 +413,86 @@ namespace Tetragrama::Components
         ZEngine::Helpers::secure_memset(s_asset_importer_input_buffer, 0, IM_ARRAYSIZE(s_asset_importer_input_buffer), IM_ARRAYSIZE(s_asset_importer_input_buffer));
     }
 
-    void DockspaceUIComponent::RenderEnvironmentMapImporter()
+    void DockspaceUIComponent::DrawSettingsIcon(ImDrawList* dl, ImVec2 pos, SettingsPageId id, bool selected)
     {
-        if (!m_open_env_map_importer)
+        const ImU32 col = selected ? IM_COL32(220, 220, 220, 255) : IM_COL32(140, 140, 140, 255);
+        const float sz  = 14.0f;
+        switch (id)
         {
-            std::string_view buffer_view = s_env_map_importer_input_buffer;
-            if (!buffer_view.empty())
-            {
-                ResetEnvironmentMapImporterBuffers();
-            }
-            return;
-        }
-
-        const char* str_id = "Environment Map Importer";
-        ImGui::OpenPopup(str_id);
-        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-        ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-        ImGui::SetNextWindowSize(ImVec2(700, 100), ImGuiCond_Always);
-
-        if (ImGui::BeginPopupModal(str_id, NULL, ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            ImGui::PushItemWidth(620);
-            ImGui::InputText("##EnvMapImporterUI", s_env_map_importer_input_buffer, IM_ARRAYSIZE(s_env_map_importer_input_buffer), ImGuiInputTextFlags_ReadOnly);
-            ImGui::PopItemWidth();
-
-            ImGui::SameLine();
-
-            if (ImGui::Button("...", ImVec2(50, 0)))
-            {
-                Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
-                    if (ParentLayer && ParentLayer->CurrentApp)
-                    {
-                        auto                          window = ParentLayer->CurrentApp->CurrentWindow;
-                        std::vector<std::string_view> filters{".hdr", ".exr"};
-                        std::string                   filename = co_await window->OpenFileDialogAsync(filters);
-
-                        if (!filename.empty())
-                        {
-                            ZEngine::Helpers::secure_memset(s_env_map_importer_input_buffer, 0, IM_ARRAYSIZE(s_env_map_importer_input_buffer), IM_ARRAYSIZE(s_env_map_importer_input_buffer));
-                            ZEngine::Helpers::secure_memcpy(s_env_map_importer_input_buffer, IM_ARRAYSIZE(s_env_map_importer_input_buffer), filename.c_str(), filename.size());
-                        }
-                    }
-                });
-            }
-
-            ImGui::Separator();
-
-            ImGui::SetCursorPosX(ImGui::GetWindowSize().x - 180);
-            ImGui::SetCursorPosY(ImGui::GetWindowSize().y - ImGui::GetFrameHeightWithSpacing() - 5);
-
-            bool is_import_button_enabled = !std::string_view(s_env_map_importer_input_buffer).empty();
-
-            if (!is_import_button_enabled)
-            {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-            }
-
-            if (ImGui::Button("Import", ImVec2(80, 0)) && is_import_button_enabled)
-            {
-                Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> { co_await OnImportEnvironmentMapAsync(s_env_map_importer_input_buffer); });
-            }
-
-            if (!is_import_button_enabled)
-            {
-                ImGui::PopStyleColor(3);
-            }
-
-            ImGui::SameLine();
-            if (ImGui::Button("Close", ImVec2(80, 0)))
-            {
-                m_open_env_map_importer = false;
-                ResetEnvironmentMapImporterBuffers();
-                ImGui::CloseCurrentPopup();
-            }
-
-            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-            ImGui::SetCursorPos(ImVec2(10, ImGui::GetWindowSize().y - 30));
-            ImGui::TextColored(s_env_map_importer_report_msg_color, "%s", s_env_map_importer_report_msg.c_str());
-            ImGui::PopFont();
-
-            ImGui::EndPopup();
+            case SettingsPageId::Grid:
+                for (int i = 1; i <= 3; ++i)
+                {
+                    float tx = pos.x + sz * i / 4.0f;
+                    float ty = pos.y + sz * i / 4.0f;
+                    dl->AddLine({tx, pos.y}, {tx, pos.y + sz}, col, 1.0f);
+                    dl->AddLine({pos.x, ty}, {pos.x + sz, ty}, col, 1.0f);
+                }
+                break;
+            case SettingsPageId::Renderer:
+                dl->AddRect(pos, {pos.x + sz, pos.y + sz}, col, 2.0f, 0, 1.5f);
+                dl->AddCircleFilled({pos.x + sz * 0.5f, pos.y + sz * 0.5f}, sz * 0.22f, col, 8);
+                break;
+            default:
+                break;
         }
     }
 
-    void DockspaceUIComponent::ResetEnvironmentMapImporterBuffers()
+    void DockspaceUIComponent::RenderEngineSettingsWindow()
     {
-        s_env_map_importer_report_msg       = "";
-        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
-        ZEngine::Helpers::secure_memset(s_env_map_importer_input_buffer, 0, IM_ARRAYSIZE(s_env_map_importer_input_buffer), IM_ARRAYSIZE(s_env_map_importer_input_buffer));
-    }
-
-    void DockspaceUIComponent::RenderGridSettingsPanel()
-    {
-        if (!m_open_grid_settings)
+        if (!m_open_engine_settings)
             return;
 
+        static constexpr struct
+        {
+            cstring        Label;
+            SettingsPageId Id;
+        } kPages[] = {
+            {    "Grid",     SettingsPageId::Grid},
+            {"Renderer", SettingsPageId::Renderer},
+        };
+        static constexpr int kPageCount = static_cast<int>(SettingsPageId::COUNT);
+
+        ImGui::SetNextWindowSize({700, 500}, ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin("Engine Settings", &m_open_engine_settings))
+        {
+            ImGui::End();
+            return;
+        }
+
+        ImGui::BeginChild("##settings_sidebar", ImVec2(170, 0), true);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        for (int i = 0; i < kPageCount; ++i)
+        {
+            bool   active   = (m_active_settings_page == kPages[i].Id);
+            ImVec2 icon_pos = ImGui::GetCursorScreenPos() + ImVec2(4.0f, 4.0f);
+            DrawSettingsIcon(dl, icon_pos, kPages[i].Id, active);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 22.0f);
+            if (ImGui::Selectable(kPages[i].Label, active, ImGuiSelectableFlags_SpanAllColumns, ImVec2(0, 22)))
+                m_active_settings_page = kPages[i].Id;
+        }
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        ImGui::BeginChild("##settings_content", ImVec2(0, 0), false);
+        switch (m_active_settings_page)
+        {
+            case SettingsPageId::Grid:
+                RenderSettingsContentGrid();
+                break;
+            case SettingsPageId::Renderer:
+                RenderSettingsContentRenderer();
+                break;
+            default:
+                break;
+        }
+        ImGui::EndChild();
+
+        ImGui::End();
+    }
+
+    void DockspaceUIComponent::RenderSettingsContentGrid()
+    {
         if (!ParentLayer || !ParentLayer->CurrentApp)
             return;
 
@@ -523,25 +501,24 @@ namespace Tetragrama::Components
         if (!current_scene)
             return;
 
-        ImGui::SetNextWindowSize({400, 0}, ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin("Grid Settings", &m_open_grid_settings))
-        {
-            ImGui::End();
-            return;
-        }
+        ImGui::TextUnformatted("Grid");
+        ImGui::Separator();
+        ImGui::Spacing();
 
         auto& cfg      = current_scene->Grid;
         bool  changed  = false;
 
         changed       |= ImGui::Checkbox("Show Grid", &cfg.Enabled);
-        ImGui::Separator();
+        ImGui::Spacing();
         changed |= ImGui::SliderFloat("Cell Size", &cfg.CellSize, 0.001f, 1.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
         changed |= ImGui::SliderFloat("Fade Radius", &cfg.FadeRadius, 10.0f, 2000.0f, "%.1f");
         changed |= ImGui::SliderFloat("Fade Strength", &cfg.FadeStrength, 0.1f, 2.0f, "%.2f");
         changed |= ImGui::SliderFloat("Line Width", &cfg.LineWidth, 0.5f, 4.0f, "%.2f");
         changed |= ImGui::SliderInt("Max LOD", &cfg.MaxLOD, 1, 6);
         changed |= ImGui::SliderFloat("Ground Y", &cfg.GroundY, -100.0f, 100.0f, "%.2f");
+        ImGui::Spacing();
         ImGui::Separator();
+        ImGui::Spacing();
         changed |= ImGui::ColorEdit4("Thin Lines", cfg.ColorThin);
         changed |= ImGui::ColorEdit4("Thick Lines", cfg.ColorThick);
         changed |= ImGui::ColorEdit4("X Axis", cfg.ColorXAxis);
@@ -553,68 +530,14 @@ namespace Tetragrama::Components
             current_scene->GridDirty[1].value.store(true, std::memory_order_release);
             current_scene->GridDirty[2].value.store(true, std::memory_order_release);
         }
-
-        ImGui::End();
     }
 
-    std::future<void> DockspaceUIComponent::OnImportEnvironmentMapAsync(const char* filename)
+    void DockspaceUIComponent::RenderSettingsContentRenderer()
     {
-        if (ZEngine::Helpers::secure_strlen(filename) == 0)
-        {
-            co_return;
-        }
-
-        auto* ctx = ZEngine::Engine::GetContext();
-        if (!ctx || !ctx->ImportCoordinator || !ctx->VFS)
-        {
-            co_return;
-        }
-
-        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
-        s_env_map_importer_report_msg       = "Importing...";
-
-        // Convert native path to VFS path and enqueue at Immediate priority.
-        auto vfs_path_result                = ZEngine::Core::VFS::VFSPath::FromNative(filename);
-        if (!vfs_path_result.Succeeded())
-        {
-            s_env_map_importer_report_msg_color = {1.0f, 0.0f, 0.0f, 1.0f};
-            s_env_map_importer_report_msg       = "Invalid path";
-            co_return;
-        }
-
-        ctx->ImportCoordinator->Enqueue(vfs_path_result.Value(), ZEngine::Importers::ImportPriority::Immediate, {&s_env_map_importer_report_msg, [](void* ctx, bool success) {
-                                                                                                                     auto* msg = static_cast<std::string*>(ctx);
-                                                                                                                     *msg      = success ? "Completed" : "Failed";
-                                                                                                                 }});
-
-        co_return;
-    }
-
-    void DockspaceUIComponent::OnEnvMapImporterComplete(void* const, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> result)
-    {
-        if (result.size() > 0)
-        {
-            s_env_map_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
-            s_env_map_importer_report_msg       = fmt::format("Saved");
-        }
-    }
-
-    void DockspaceUIComponent::OnEnvMapImporterProgress(void* const, float value)
-    {
-        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
-        s_env_map_importer_report_msg       = fmt::format("Progress: {:.0f}%%", value * 100.f);
-    }
-
-    void DockspaceUIComponent::OnEnvMapImporterError(void* const, std::string_view msg)
-    {
-        s_env_map_importer_report_msg_color = {1.0f, 0.0f, 0.0f, 1.0f};
-        s_env_map_importer_report_msg       = msg;
-    }
-
-    void DockspaceUIComponent::OnEnvMapImporterLog(void* const, std::string_view msg)
-    {
-        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
-        s_env_map_importer_report_msg       = msg;
+        ImGui::TextUnformatted("Renderer");
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextDisabled("No renderer settings yet.");
     }
 
     void DockspaceUIComponent::ResetSaveAsBuffers()
@@ -707,12 +630,7 @@ namespace Tetragrama::Components
 
             if (ImGui::BeginMenu("Settings"))
             {
-                if (ImGui::MenuItem("Renderer"))
-                {
-                }
-
-                ImGui::MenuItem("Grid Settings", NULL, &m_open_grid_settings);
-                ImGui::MenuItem("Import Environment Map", NULL, &m_open_env_map_importer);
+                ImGui::MenuItem("Engine", NULL, &m_open_engine_settings);
                 ImGui::EndMenu();
             }
 

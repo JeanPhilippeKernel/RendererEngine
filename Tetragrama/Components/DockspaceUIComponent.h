@@ -4,11 +4,17 @@
 #include <Tetragrama/Serializers/EditorSceneSerializer.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssimpImporter.h>
-#include <ZEngine/Importers/EnvironmentMapImporter.h>
 #include <imgui.h>
 
 namespace Tetragrama::Components
 {
+    enum class SettingsPageId
+    {
+        Grid     = 0,
+        Renderer = 1,
+        COUNT
+    };
+
     class DockspaceUIComponent : public UIComponent
     {
     public:
@@ -37,16 +43,12 @@ namespace Tetragrama::Components
         static void                           OnAssetImporterLog(void* const, std::string_view);
 
         /*
-         * Environment Map Importer Funcs
+         * Engine Settings Window
          */
-        void                                  RenderGridSettingsPanel();
-        void                                  RenderEnvironmentMapImporter();
-        void                                  ResetEnvironmentMapImporterBuffers();
-        std::future<void>                     OnImportEnvironmentMapAsync(const char* filename);
-        static void                           OnEnvMapImporterComplete(void* const context, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> result);
-        static void                           OnEnvMapImporterProgress(void* const, float value);
-        static void                           OnEnvMapImporterError(void* const, std::string_view);
-        static void                           OnEnvMapImporterLog(void* const, std::string_view);
+        void                                  RenderEngineSettingsWindow();
+        void                                  RenderSettingsContentGrid();
+        void                                  RenderSettingsContentRenderer();
+        static void                           DrawSettingsIcon(ImDrawList* dl, ImVec2 pos, SettingsPageId id, bool selected);
 
         /*
          * Editor Scene Funcs
@@ -74,19 +76,15 @@ namespace Tetragrama::Components
         static char        s_save_as_input_buffer[1024];
         static float       s_editor_scene_serializer_progress;
 
-        static ImVec4      s_env_map_importer_report_msg_color;
-        static std::string s_env_map_importer_report_msg;
-        static char        s_env_map_importer_input_buffer[1024];
-
     private:
         bool                                                m_open_asset_importer{false};
-        bool                                                m_open_grid_settings{false};
-        bool                                                m_open_env_map_importer{false};
+        bool                                                m_open_engine_settings{false};
         bool                                                m_open_exit{false};
         bool                                                m_pending_shutdown{false};
         bool                                                m_open_save_scene{false};
         bool                                                m_open_save_scene_as{false};
         bool                                                m_request_save_scene_ui_close{false};
+        SettingsPageId                                      m_active_settings_page{SettingsPageId::Grid};
         ImGuiDockNodeFlags                                  m_dockspace_node_flag;
         ImGuiWindowFlags                                    m_window_flags;
         ZEngine::Importers::AssetCodec::ImportConfiguration m_default_import_configuration;
