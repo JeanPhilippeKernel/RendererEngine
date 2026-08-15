@@ -59,29 +59,62 @@ namespace Tetragrama::Components
 
     void ProjectViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
+        auto* app = reinterpret_cast<Tetragrama::EditorPtr>(ParentLayer->CurrentApp);
+        if (!app || !app->Configuration->ShowContentBrowser)
+            return;
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
-        ImVec2 current_win_size = ImGui::GetContentRegionAvail();
-        if (ImGui::BeginTable("#AssetBrowserArea", 2, ImGuiTableFlags_Resizable, current_win_size))
+        if (app->Configuration->FocusContentBrowser)
         {
-            /*Left Pane*/
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            RenderTreeBrowser();
+            ImGui::SetNextWindowFocus();
+            app->Configuration->FocusContentBrowser = false;
+        }
 
-            /*Right Pane*/
-            ImGui::TableSetColumnIndex(1);
+        if (!ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse))
+        {
+            ImGui::End();
+            return;
+        }
+
+        // Bail out if the content area is degenerate (first docking frame, zero-size, etc.)
+        ImVec2 avail = ImGui::GetContentRegionAvail();
+        if (avail.x < 10.0f || avail.y < 10.0f)
+        {
+            ImGui::End();
+            return;
+        }
+
+        // Top bar — breadcrumb, rendered inline (fixed height reserved via cursor advance)
+        float top_h = ImGui::GetFrameHeight() + 4.0f;
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 0.0f));
+        RenderTopBar(renderer);
+        ImGui::PopStyleVar();
+        float used = ImGui::GetCursorPosY();
+        if (used < top_h)
+            ImGui::SetCursorPosY(top_h);
+
+        ImGui::Separator();
+
+        // Main split — left sidecar (fixed width) + right content (fills rest)
+        float remaining_h = ImGui::GetContentRegionAvail().y;
+        float sidecar_w   = 180.0f;
+        float content_w   = ImGui::GetContentRegionAvail().x - sidecar_w - ImGui::GetStyle().ItemSpacing.x;
+
+        ImGui::BeginChild("##cb_sidecar", ImVec2(sidecar_w, remaining_h), false);
+        RenderTreeBrowser();
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        if (content_w > 10.0f)
+        {
+            ImGui::BeginChild("##cb_content", ImVec2(content_w, remaining_h), false);
             {
-                ImVec2 col_min       = ImGui::GetCursorScreenPos();
-                ImVec2 avail         = ImGui::GetContentRegionAvail();
-                ImVec2 col_max       = {col_min.x + avail.x, col_min.y + avail.y};
-                m_right_pane_hovered = ImGui::IsMouseHoveringRect(col_min, col_max, false);
+                ImVec2 mn            = ImGui::GetCursorScreenPos();
+                ImVec2 av            = ImGui::GetContentRegionAvail();
+                m_right_pane_hovered = ImGui::IsMouseHoveringRect(mn, {mn.x + av.x, mn.y + av.y}, false);
             }
             if (m_right_pane_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
-            {
                 ImGui::OpenPopup("ContextMenu");
-            }
             if (ImGui::BeginPopup("ContextMenu"))
             {
                 char native[MAX_FILE_PATH_COUNT];
@@ -89,38 +122,90 @@ namespace Tetragrama::Components
                 RenderContextMenu(ContextMenuType::RightPane, native);
                 ImGui::EndPopup();
             }
-
-            RenderBackButton();
-
-            ImGui::SameLine();
-            if (ImGui::Button("Refresh"))
-            {
-                TriggerScan();
-            }
-
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(300);
-            ImGui::InputTextWithHint("##Search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
-
-            ImGui::SameLine();
-            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-            ImGui::Text("%s", m_current_vfs_dir.CStr());
-            ImGui::PopFont();
-
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputTextWithHint("##cb_search", "Search ...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
             ImGui::Separator();
-
             RenderContentBrowser(renderer);
-
-            ImGui::EndTable();
+            ImGui::EndChild();
         }
 
-        // Modals must be opened in the root window context, not inside a table cell,
-        // so that the backdrop covers the full window and clipping is correct.
+        // Modals must be in the root window context (not inside a child or table cell)
         RenderPopUpMenu();
 
-        ImGui::PopStyleVar();
-
         ImGui::End();
+    }
+
+    void ProjectViewUIComponent::RenderTopBar(ZEngine::Rendering::Renderers::GraphicRenderer* const /*renderer*/)
+    {
+        using namespace ZEngine::Core::VFS;
+
+        bool can_go_back = (m_current_vfs_dir != m_assets_vfs_root);
+        if (!can_go_back)
+            ImGui::BeginDisabled();
+        if (ImGui::ArrowButton("##cb_back", ImGuiDir_Left))
+        {
+            m_current_vfs_dir  = m_current_vfs_dir.Parent();
+            m_search_buffer[0] = '\0';
+        }
+        if (!can_go_back)
+            ImGui::EndDisabled();
+
+        ImGui::SameLine(0.0f, 6.0f);
+
+        uint32_t depth   = m_current_vfs_dir.ComponentCount();
+        bool     at_root = (depth == 0);
+
+        // Root segment
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, 1.0f));
+        if (at_root)
+        {
+            ImGui::TextUnformatted(m_root_label);
+        }
+        else
+        {
+            if (ImGui::SmallButton(m_root_label))
+            {
+                m_current_vfs_dir  = m_assets_vfs_root;
+                m_search_buffer[0] = '\0';
+            }
+        }
+
+        // Sub-path segments
+        // VFSPathComponent::Data is a pointer into the path buffer and is NOT
+        // null-terminated at the component boundary — copy to a local buffer first.
+        VFSPath accum = m_assets_vfs_root;
+        for (uint32_t i = 0; i < depth; ++i)
+        {
+            VFSPathComponent comp = m_current_vfs_dir.ComponentAt(i);
+            char             label[256];
+            snprintf(label, sizeof(label), "%.*s", static_cast<int>(comp.Length), comp.Data);
+
+            auto next = accum.Append(label);
+            if (!next.Succeeded())
+                break;
+            accum = next.Value();
+
+            ImGui::SameLine(0.0f, 3.0f);
+            ImGui::TextDisabled("›");
+            ImGui::SameLine(0.0f, 3.0f);
+
+            bool is_last = (i == depth - 1);
+            if (is_last)
+            {
+                ImGui::TextUnformatted(label);
+            }
+            else
+            {
+                ImGui::PushID(static_cast<int>(i));
+                if (ImGui::SmallButton(label))
+                {
+                    m_current_vfs_dir  = accum;
+                    m_search_buffer[0] = '\0';
+                }
+                ImGui::PopID();
+            }
+        }
+        ImGui::PopStyleVar();
     }
 
     void ProjectViewUIComponent::RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer)
@@ -824,15 +909,6 @@ namespace Tetragrama::Components
 
             ImGui::EndPopup();
         }
-    }
-
-    void ProjectViewUIComponent::RenderBackButton()
-    {
-        bool canGoBack = !(m_current_vfs_dir == m_assets_vfs_root);
-        ImGui::BeginDisabled(!canGoBack);
-        if (ImGui::ArrowButton("##left", ImGuiDir_Left) && canGoBack)
-            m_current_vfs_dir = m_current_vfs_dir.Parent();
-        ImGui::EndDisabled();
     }
 
     void ProjectViewUIComponent::RenderContextMenu(ContextMenuType type, const char* targetPath)

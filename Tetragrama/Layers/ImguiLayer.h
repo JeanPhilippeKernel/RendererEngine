@@ -28,6 +28,8 @@ namespace Tetragrama::Layers
 
         ZEngine::Core::VFS::VFSScanner                                                          Scanner          = {};
         ZEngine::Core::VFS::VFSDirectoryCache                                                   Cache            = {};
+        unsigned int                                                                            DockspaceId      = 0;
+        unsigned int                                                                            ConsoleDockId    = 0;
 
         virtual void                                                                            Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Applications::GameApplicationPtr app) override;
         virtual void                                                                            Deinitialize() override;

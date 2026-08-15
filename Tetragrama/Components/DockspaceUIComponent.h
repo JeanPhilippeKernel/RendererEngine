@@ -22,6 +22,12 @@ namespace Tetragrama::Components
         COUNT
     };
 
+    enum class EditorLayout
+    {
+        Default = 0,
+        COUNT
+    };
+
     class DockspaceUIComponent : public UIComponent
     {
     public:
@@ -63,6 +69,17 @@ namespace Tetragrama::Components
         void                                  RenderSettingsContentTheme();
         static void                           DrawSettingsIcon(ImDrawList* dl, ImVec2 pos, SettingsPageId id, bool selected);
         void                                  ApplyTheme(ThemeId theme);
+
+        /*
+         * Layout Management
+         */
+        void                                  ScanCustomLayouts();
+        void                                  SaveCurrentLayout(cstring name);
+        void                                  DeleteCustomLayout(int index);
+        ImGuiID                               ApplyBuiltinLayout(ImGuiID root, EditorLayout layout);
+        void                                  RenderLayoutMenu();
+        void                                  RenderSaveLayoutModal();
+        void                                  RenderManageLayoutsModal();
 
         /*
          * Editor Scene Funcs
@@ -117,5 +134,31 @@ namespace Tetragrama::Components
         ZEngine::Importers::AssetCodec::ImportConfiguration m_default_import_configuration;
         ZRawPtr(ZEngine::Importers::AssimpImporter) m_asset_importer;
         ZRawPtr(Serializers::EditorSceneSerializer) m_editor_serializer;
+
+        struct BuiltinLayoutDef
+        {
+            cstring      Name;
+            EditorLayout Id;
+        };
+        static constexpr BuiltinLayoutDef kBuiltinLayouts[] = {
+            {"Default", EditorLayout::Default},
+        };
+
+        struct CustomLayoutEntry
+        {
+            char Name[128] = {};
+            char Path[512] = {};
+        };
+        static constexpr int kMaxCustomLayouts                   = 16;
+        CustomLayoutEntry    m_custom_layouts[kMaxCustomLayouts] = {};
+        int                  m_custom_layout_count               = 0;
+
+        EditorLayout         m_active_layout                     = EditorLayout::Default;
+        EditorLayout         m_pending_layout                    = EditorLayout::Default;
+        bool                 m_layout_dirty                      = false;
+        char                 m_pending_layout_path[512]          = {}; // .zlayout to apply before next DockSpace
+        bool                 m_open_save_layout                  = false;
+        bool                 m_open_manage_layouts               = false;
+        char                 m_save_layout_buf[128]              = {};
     };
 } // namespace Tetragrama::Components

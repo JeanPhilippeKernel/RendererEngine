@@ -25,11 +25,6 @@ namespace ZEngine::Core::Memory
         page_size = sysconf(_SC_PAGESIZE);
 #endif
         MainArena.Initialize(buffer_size, page_size);
-
-#if ZENGINE_PROFILING
-        Profiling::MemoryProfiler::Initialize(&MainArena);
-        Profiling::MemoryProfiler::TrackArena("MainArena", &MainArena);
-#endif
     }
 
     void MemoryManager::CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result)
@@ -42,5 +37,10 @@ namespace ZEngine::Core::Memory
 #if ZENGINE_PROFILING
         Profiling::MemoryProfiler::TrackArena(config.Name, result);
 #endif
+    }
+
+    void MemoryManager::Shutdown()
+    {
+        MainArena.Shutdown();
     }
 } // namespace ZEngine::Core::Memory

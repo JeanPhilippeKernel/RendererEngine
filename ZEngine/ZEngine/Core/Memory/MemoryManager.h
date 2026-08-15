@@ -104,10 +104,6 @@ namespace ZEngine::Core::Memory
 
         void               Initialize(uint64_t buffer_size, const MemoryBudgetConfig& config);
         void               CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result);
-
-        void               Shutdown()
-        {
-            MainArena.Shutdown();
-        }
+        void               Shutdown();
     };
 } // namespace ZEngine::Core::Memory

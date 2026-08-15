@@ -1,186 +1,147 @@
 #include <Tetragrama/Components/LogUIComponent.h>
-#include <Tetragrama/Helpers/SearchPatternAlgorithm.h>
-#include <ZEngine/Core/Containers/Array.h>
+#include <Tetragrama/Editor.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <imgui.h>
-
-using namespace ZEngine::Logging;
-using namespace ZEngine::Helpers;
-using namespace ZEngine::Core::Containers;
+#include <cstdio>
 
 namespace Tetragrama::Components
 {
-    LogUIComponent::LogUIComponent() {}
-
     LogUIComponent::~LogUIComponent()
     {
-        Logger::RemoveEventHandler(m_handler_cookie);
+        if (m_cookie)
+            ZEngine::Logging::Logger::RemoveEventHandler(m_cookie);
     }
 
-    void LogUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
+    void LogUIComponent::Initialize(Layers::ImguiLayer* parent, cstring name, bool visibility, bool closed)
     {
         UIComponent::Initialize(parent, name, visibility, closed);
-        UILogQueue.init(parent->Arena, m_maxCount, m_maxCount);
-
-        parent->Arena->CreateSubArena(ZMega(2), &LocalArena);
-        for (unsigned i = 0; i < m_maxCount; ++i)
-        {
-            UILogQueue[i].Color.init(&LocalArena, 4, 4);
-            UILogQueue[i].Type.init(&LocalArena, 16);
-            UILogQueue[i].Content.init(&LocalArena, 256);
-        }
-
-        m_handler_cookie = Logger::AddEventHandler({OnLogMessage, this});
+        m_filter_level = 5;
+        m_cookie       = ZEngine::Logging::Logger::AddEventHandler({OnLogEntry, this});
     }
 
-    void LogUIComponent::Update(ZEngine::Core::TimeStep dt)
+    void LogUIComponent::Update(ZEngine::Core::TimeStep /*dt*/) {}
+
+    void LogUIComponent::OnLogEntry(void* ctx, const ZEngine::Logging::LogMessage& msg)
     {
-        ZEngine::Logging::LogMessage engine_log_msg = {};
-        if (EngineLogQueue.Pop(engine_log_msg))
+        auto*    self = static_cast<LogUIComponent*>(ctx);
+        LogEntry e;
+        ZEngine::Helpers::secure_strncpy(e.Text, sizeof(e.Text), msg.Message ? msg.Message : "", sizeof(e.Text) - 1);
+        e.Color[0] = msg.Color[0];
+        e.Color[1] = msg.Color[1];
+        e.Color[2] = msg.Color[2];
+        e.Color[3] = msg.Color[3];
+        e.Level    = static_cast<uint8_t>(msg.Level);
+        self->PushEntry(e);
+    }
+
+    void LogUIComponent::PushEntry(const LogEntry& e)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_ring[m_head] = e;
+        m_head         = (m_head + 1) % kMaxEntries;
+        if (m_count < kMaxEntries)
+            ++m_count;
+        m_scroll_to_bottom = true;
+    }
+
+    void LogUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const, ZEngine::Hardwares::CommandBuffer* const)
+    {
+        if (!ParentLayer || !ParentLayer->CurrentApp)
+            return;
+
+        auto* app = reinterpret_cast<Tetragrama::EditorPtr>(ParentLayer->CurrentApp);
+        if (!app || !app->Configuration->ShowConsole)
+            return;
+
+        if (app->Configuration->FocusConsole)
         {
-            if (m_currentCount >= UILogQueue.size())
+            ImGui::SetNextWindowFocus();
+            app->Configuration->FocusConsole = false;
+        }
+
+        const bool dark = ImGui::GetStyle().Colors[ImGuiCol_WindowBg].x < 0.5f;
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, dark ? ImVec4{0.10f, 0.10f, 0.11f, 1.0f} : ImVec4{0.96f, 0.96f, 0.96f, 1.0f});
+        bool open = ImGui::Begin(Name, &app->Configuration->ShowConsole, ImGuiWindowFlags_NoCollapse);
+        ImGui::PopStyleColor();
+
+        if (open)
+        {
+            static constexpr cstring kLevelItems[] = {"Trace", "Info", "Warn", "Error", "Critical", "All"};
+            ImGui::SetNextItemWidth(180.0f);
+            ImGui::InputTextWithHint("##search", "Search logs...", m_search_buf, sizeof(m_search_buf));
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(80.0f);
+            ImGui::Combo("##level", &m_filter_level, kLevelItems, 6);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Copy"))
+                m_copy_requested = true;
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear"))
             {
-                m_currentCount = 0;
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_count = 0;
+                m_head  = 0;
             }
+            ImGui::Separator();
 
-            auto& lm    = UILogQueue[m_currentCount];
-
-            lm.Color[0] = engine_log_msg.Color[0];
-            lm.Color[1] = engine_log_msg.Color[1];
-            lm.Color[2] = engine_log_msg.Color[2];
-            lm.Color[3] = engine_log_msg.Color[3];
-
-            lm.Content.clear();
-            lm.Content.append(engine_log_msg.Message);
-
-            lm.Type.clear();
-            lm.Type.append(ZEngine::Logging::Logger::LevelToString(engine_log_msg.Level));
-
-            ++m_currentCount;
-        }
-    }
-
-    void LogUIComponent::ClearLog()
-    {
-        m_currentCount.store(0, std::memory_order_release);
-    }
-
-    void LogUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
-    {
-        static const char* items[] = {
-            "info",
-            "error",
-            "warn",
-            "critical",
-            "trace",
-            "All",
-        };
-        static int current_item               = 0;
-
-        char       search_buffer_tolower[256] = {0};
-        if (auto len = secure_strlen(m_search_buffer))
-        {
-            for (unsigned i = 0; i < len; ++i)
+            ImGui::BeginChild("##log_scroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
             {
-                search_buffer_tolower[i] = ::tolower(m_search_buffer[i]);
-            }
-        }
+                std::lock_guard<std::mutex> lock(m_mutex);
+                int                         count = m_count < kMaxEntries ? m_count : kMaxEntries;
+                int                         start = (m_count >= kMaxEntries) ? m_head : 0;
 
-        ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
+                static char                 clip_buf[kMaxEntries * 260];
+                int                         clip_pos = 0;
+                if (m_copy_requested)
+                    clip_buf[0] = '\0';
 
-        ImGui::SetNextItemWidth(150);
-        ImGui::InputTextWithHint("##Search", "Search logs...", m_search_buffer, IM_ARRAYSIZE(m_search_buffer));
-
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(70);
-        if (ImGui::BeginCombo("##Dropdown", items[current_item]))
-        {
-            for (int n = 0; n < IM_ARRAYSIZE(items); n++)
-            {
-                if (ImGui::Selectable(items[n], current_item == n))
+                for (int i = 0; i < count; ++i)
                 {
-                    current_item = n;
-                    ImGui::SetItemDefaultFocus();
-                }
-            }
-            ImGui::EndCombo();
-        }
+                    const auto& e = m_ring[(start + i) % kMaxEntries];
 
-        ImGui::SameLine();
-        if (m_is_copy_button_pressed = ImGui::Button("Copy"))
-        {
-            ImGui::LogToClipboard();
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button("Clear"))
-        {
-            ClearLog();
-            m_search_buffer[0] = '\0';
-        }
-
-        ImGui::Separator();
-
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-        if (ImGui::BeginTable("#log_table", 1, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY))
-        {
-            auto count = m_currentCount.load(std::memory_order_acquire);
-            for (unsigned i = 0; i < count; ++i)
-            {
-                auto& message = UILogQueue[i];
-
-                if (current_item != (IM_ARRAYSIZE(items) - 1) /*Last item : All*/)
-                {
-                    if (0 != secure_strcmp(message.Type.c_str(), items[current_item]))
-                    {
+                    if (m_filter_level < 5 && e.Level != static_cast<uint8_t>(m_filter_level))
                         continue;
+
+                    if (m_search_buf[0] != '\0')
+                    {
+                        bool found = false;
+                        for (int si = 0; e.Text[si] && !found; ++si)
+                        {
+                            int j = 0;
+                            for (; m_search_buf[j] && e.Text[si + j]; ++j)
+                                if (::tolower(e.Text[si + j]) != ::tolower(m_search_buf[j]))
+                                    break;
+                            if (!m_search_buf[j])
+                                found = true;
+                        }
+                        if (!found)
+                            continue;
+                    }
+
+                    ImGui::TextColored({e.Color[0], e.Color[1], e.Color[2], e.Color[3]}, "%s", e.Text);
+
+                    if (m_copy_requested && clip_pos < (int) sizeof(clip_buf) - 2)
+                    {
+                        int n = snprintf(clip_buf + clip_pos, sizeof(clip_buf) - clip_pos, "%s\n", e.Text);
+                        if (n > 0)
+                            clip_pos += n;
                     }
                 }
 
-                bool      search_succeeded = false;
-                ArenaTemp scratch          = {};
-                if (secure_strlen(search_buffer_tolower) > 0)
+                if (m_copy_requested)
                 {
-                    scratch = ZGetScratch(&LocalArena);
-
-                    if (!Helpers::KMPSearch(scratch.Arena, message.Content.c_str(), search_buffer_tolower))
-                    {
-                        ZReleaseScratch(scratch);
-                        continue;
-                    }
-                    search_succeeded = true;
+                    ImGui::SetClipboardText(clip_buf);
+                    m_copy_requested = false;
                 }
 
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                ImGui::TextColored({message.Color[0], message.Color[1], message.Color[2], message.Color[3]}, message.Content.data());
-
-                if (search_succeeded && scratch.Arena)
+                if (m_scroll_to_bottom)
                 {
-                    ZReleaseScratch(scratch);
+                    ImGui::SetScrollHereY(1.0f);
+                    m_scroll_to_bottom = false;
                 }
             }
-            ImGui::EndTable();
+            ImGui::EndChild();
         }
-
-        if (m_is_copy_button_pressed)
-        {
-            ImGui::LogFinish();
-        }
-
-        // if (m_auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
-        // {
-        //     ImGui::SetScrollHereY(1.0f);
-        // }
-
-        ImGui::PopStyleVar();
-
         ImGui::End();
-    }
-
-    void LogUIComponent::OnLogMessage(void* ctx, const ZEngine::Logging::LogMessage& msg)
-    {
-        auto cmp = reinterpret_cast<LogUIComponent*>(ctx);
-        cmp->EngineLogQueue.Emplace(ZEngine::Logging::LogMessage{msg});
     }
 } // namespace Tetragrama::Components

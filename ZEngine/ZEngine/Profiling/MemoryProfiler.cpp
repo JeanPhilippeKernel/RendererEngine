@@ -20,6 +20,8 @@ namespace ZEngine::Profiling
     {
         ZENGINE_VALIDATE_ASSERT(name != nullptr, "MemoryProfiler::TrackArena: name must not be null")
         ZENGINE_VALIDATE_ASSERT(arena != nullptr, "MemoryProfiler::TrackArena: arena must not be null")
+        if (s_arenas.capacity() == 0)
+            return; // Initialize() not yet called — skip (e.g. unit-test arenas)
         s_arenas.push({name, arena});
     }
 

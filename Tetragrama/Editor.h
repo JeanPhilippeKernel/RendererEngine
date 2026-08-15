@@ -30,6 +30,10 @@ namespace Tetragrama
         ZEngine::Core::Containers::String ActiveSceneName          = {};
         bool                              DarkTheme                = false;
         int                               GizmoOperation           = -1;
+        bool                              ShowContentBrowser       = true;
+        bool                              FocusContentBrowser      = false;
+        bool                              ShowConsole              = false;
+        bool                              FocusConsole             = false;
 
         void                              ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };

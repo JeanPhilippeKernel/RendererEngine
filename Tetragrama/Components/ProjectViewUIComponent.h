@@ -37,11 +37,11 @@ namespace Tetragrama::Components
         virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
         // Render Panes
+        void         RenderTopBar(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
         void         RenderContentBrowser(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer);
         void         RenderFilteredContent(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const char* searchTerm);
         void         RenderDirectoryNode(const ZEngine::Core::VFS::VFSPath& directory);
         void         RenderContentTile(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, const ZEngine::Core::VFS::VFSDirEntry& entry);
-        void         RenderBackButton();
         void         RenderTreeBrowser();
 
         // Popup helpers — all paths are native absolute C strings
