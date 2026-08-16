@@ -20,10 +20,12 @@ namespace Tetragrama::Components
     class AssetImporterUIComponent : public UIComponent
     {
     public:
-        AssetImporterUIComponent()                       = default;
-        ~AssetImporterUIComponent() override             = default;
+        AssetImporterUIComponent()                                = default;
+        ~AssetImporterUIComponent() override                      = default;
 
-        ZEngine::Core::Memory::ArenaAllocator LocalArena = {};
+        ZEngine::Core::Memory::ArenaAllocator LocalArena          = {};
+        ZEngine::Core::Memory::ArenaAllocator GltfImporterArena   = {}; // 64 MB scratch for GltfImporter
+        ZEngine::Core::Memory::ArenaAllocator AssimpImporterArena = {}; // 350 MB scratch for AssimpImporter
 
         void                                  Initialize(Layers::ImguiLayer* parent = nullptr, cstring name = "Asset Importer", bool visibility = true, bool closed = false) override;
         void                                  Update(ZEngine::Core::TimeStep dt) override;

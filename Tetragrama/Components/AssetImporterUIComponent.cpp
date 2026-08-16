@@ -27,10 +27,14 @@ namespace Tetragrama::Components
 
         parent->LocalArena.CreateSubArena(ZMega(2), &LocalArena);
 
+        // Each importer gets its own dedicated scratch arena sized to its budget.
+        parent->Arena->CreateSubArena(ZMega(64), &GltfImporterArena);
+        parent->Arena->CreateSubArena(ZMega(350), &AssimpImporterArena);
+
         m_gltf_importer   = ZPushStructCtor(parent->Arena, ZEngine::Importers::GltfImporter);
         m_assimp_importer = ZPushStructCtor(parent->Arena, ZEngine::Importers::AssimpImporter);
-        m_gltf_importer->Initialize(&LocalArena);
-        m_assimp_importer->Initialize(&LocalArena);
+        m_gltf_importer->Initialize(&GltfImporterArena);
+        m_assimp_importer->Initialize(&AssimpImporterArena);
     }
 
     void AssetImporterUIComponent::Update(ZEngine::Core::TimeStep /*dt*/) {}
