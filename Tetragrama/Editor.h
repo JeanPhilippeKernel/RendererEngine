@@ -36,6 +36,8 @@ namespace Tetragrama
         bool                              FocusConsole             = false;
         bool                              ShowImporter             = false;
         bool                              FocusImporter            = false;
+        char                              PendingImportPath[1024]  = {};
+        char                              PendingImportName[256]   = {};
 
         void                              ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };

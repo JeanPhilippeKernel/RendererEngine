@@ -204,12 +204,32 @@ namespace Tetragrama::Components
                 }
             }
 
+            // If triggered by viewport drag-drop, add the mesh instance to the scene
+            if (self->m_add_to_scene && mesh_path)
+            {
+                ZEngine::Importers::AssetCodec::AssetMeshFileHeader header{};
+                if (ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(mesh_path, header))
+                {
+                    auto* app   = reinterpret_cast<Tetragrama::EditorPtr>(self->ParentLayer->CurrentApp);
+                    auto* scene = app ? reinterpret_cast<Tetragrama::EditorScenePtr>(app->CurrentScene) : nullptr;
+                    if (scene)
+                    {
+                        cstring iname = self->m_instance_name[0] ? self->m_instance_name : fs::path(self->m_path_buf).filename().replace_extension().string().c_str();
+                        scene->AddMeshInstance(header.Id, iname);
+                    }
+                }
+                self->m_add_to_scene     = false;
+                self->m_instance_name[0] = '\0';
+            }
+
             self->PushLog("Completed", kGreen);
             cstring filename = fs::path(self->m_path_buf).filename().string().c_str();
             self->PushHistory(filename, true, "Completed");
         }
         else
         {
+            self->m_add_to_scene     = false;
+            self->m_instance_name[0] = '\0';
             self->PushLog("Import failed — no mesh output", kRed);
             cstring filename = fs::path(self->m_path_buf).filename().string().c_str();
             self->PushHistory(filename, false, "No mesh output");
@@ -409,6 +429,17 @@ namespace Tetragrama::Components
 
         if (m_pending_scan.value.exchange(false))
             TriggerScan();
+
+        // Consume viewport drag-drop: auto-import and add mesh to scene when done
+        if (app->Configuration->PendingImportPath[0] != '\0' && m_state.value.load() == ImporterState::Idle)
+        {
+            secure_strncpy(m_path_buf, sizeof(m_path_buf), app->Configuration->PendingImportPath, sizeof(m_path_buf) - 1);
+            secure_strncpy(m_instance_name, sizeof(m_instance_name), app->Configuration->PendingImportName, sizeof(m_instance_name) - 1);
+            app->Configuration->PendingImportPath[0] = '\0';
+            app->Configuration->PendingImportName[0] = '\0';
+            m_add_to_scene                           = true;
+            StartImport();
+        }
 
         switch (m_state.value.load())
         {

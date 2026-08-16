@@ -148,55 +148,23 @@ namespace Tetragrama::Components
                     }
                     else if (file_ext == ".glb" || file_ext == ".gltf" || file_ext == ".fbx" || file_ext == ".obj")
                     {
-                        ZENGINE_CORE_INFO("SceneViewport: dropped native='{}'", buf)
-                        auto* ctx = ZEngine::Engine::GetContext();
-                        if (!ctx || !ctx->ImportCoordinator || !ctx->VFS)
+                        // Route through AssetImporterUIComponent so the import produces
+                        // cooked artifacts (.zemesh / .zetextures / .zematerial) on disk.
+                        // The importer will call AddMeshInstance after cooking completes.
+                        auto* app = reinterpret_cast<Tetragrama::EditorPtr>(ParentLayer->CurrentApp);
+                        if (app && app->Configuration)
                         {
-                            ZENGINE_CORE_ERROR("SceneViewport: missing engine context, coordinator, or VFS")
-                        }
-                        else
-                        {
-                            // buf is a native absolute path. Strip WorkingSpacePath prefix to get
-                            // the VFS-relative path that the VFS backend is mounted on.
-                            auto                        app = reinterpret_cast<Tetragrama::EditorPtr>(ParentLayer->CurrentApp);
-                            const char*                 ws  = app ? app->WorkingSpacePath : "";
+                            ZEngine::Helpers::secure_strncpy(app->Configuration->PendingImportPath, sizeof(app->Configuration->PendingImportPath), buf, sizeof(app->Configuration->PendingImportPath) - 1);
 
-                            ZEngine::Core::VFS::VFSPath vfs_path;
-                            size_t                      ws_len = ZEngine::Helpers::secure_strlen(ws);
-                            if (ws_len > 0 && std::strncmp(buf, ws, ws_len) == 0)
-                            {
-                                auto relative = ZEngine::Core::VFS::VFSPath::Parse(buf + ws_len);
-                                if (relative.Succeeded())
-                                {
-                                    vfs_path = relative.Value();
-                                    ZENGINE_CORE_INFO("SceneViewport: VFS path='{}'", vfs_path.CStr())
+                            const char* p    = buf;
+                            const char* name = strrchr(p, '/');
+                            name             = name ? name + 1 : p;
+                            ZEngine::Helpers::secure_strncpy(app->Configuration->PendingImportName, sizeof(app->Configuration->PendingImportName), name, sizeof(app->Configuration->PendingImportName) - 1);
 
-                                    // Enqueue returns the asset UUID from the meta file — valid
-                                    // regardless of whether the import runs now (first drop) or
-                                    // was already cached (re-drop). Create the scene instance
-                                    // immediately; the render system shows it once the mesh uploads.
-                                    auto uuid = ctx->ImportCoordinator->Enqueue(vfs_path, ZEngine::Importers::ImportPriority::Immediate);
-                                    if (uuid != uuids::uuid{})
-                                    {
-                                        auto* scene = reinterpret_cast<Tetragrama::EditorScenePtr>(app->CurrentScene);
-                                        if (scene)
-                                        {
-                                            const char* p    = vfs_path.CStr();
-                                            const char* name = strrchr(p, '/');
-                                            name             = name ? name + 1 : p;
-                                            scene->AddMeshInstance(uuid, name);
-                                        }
-                                    }
-                                }
-                                else
-                                {
-                                    ZENGINE_CORE_ERROR("SceneViewport: failed to parse VFS path from '{}'", buf + ws_len)
-                                }
-                            }
-                            else
-                            {
-                                ZENGINE_CORE_WARN("SceneViewport: native path '{}' is outside working space '{}'", buf, ws)
-                            }
+                            app->Configuration->ShowImporter  = true;
+                            app->Configuration->FocusImporter = true;
+
+                            ZENGINE_CORE_INFO("SceneViewport: queued '{}' for import via panel", buf)
                         }
                     }
                 }
