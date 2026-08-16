@@ -1,3 +1,4 @@
+#include <Tetragrama/Components/AssetImporterUIComponent.h>
 #include <Tetragrama/Components/DockspaceUIComponent.h>
 #include <Tetragrama/Components/HierarchyViewUIComponent.h>
 #include <Tetragrama/Components/InspectorViewUIComponent.h>
@@ -57,6 +58,7 @@ namespace Tetragrama::Layers
         auto inspector_view_cmp              = ZPushStructCtor(arena, Components::InspectorViewUIComponent);
         auto hierarchy_view_cmp              = ZPushStructCtor(arena, Components::HierarchyViewUIComponent);
         auto log_cmp                         = ZPushStructCtor(arena, Components::LogUIComponent);
+        auto importer_cmp                    = ZPushStructCtor(arena, Components::AssetImporterUIComponent);
         auto status_bar_cmp                  = ZPushStructCtor(arena, Components::StatusBarUIComponent);
 
         dockspace_cmp->Initialize(this);
@@ -65,14 +67,16 @@ namespace Tetragrama::Layers
         inspector_view_cmp->Initialize(this);
         hierarchy_view_cmp->Initialize(this);
         log_cmp->Initialize(this);
+        importer_cmp->Initialize(this);
         status_bar_cmp->Initialize(this);
 
-        dockspace_cmp->Children.init(arena, 6);
+        dockspace_cmp->Children.init(arena, 7);
         dockspace_cmp->Children.push(scene_cmp);
         dockspace_cmp->Children.push(project_view_cmp);
         dockspace_cmp->Children.push(inspector_view_cmp);
         dockspace_cmp->Children.push(hierarchy_view_cmp);
         dockspace_cmp->Children.push(log_cmp);
+        dockspace_cmp->Children.push(importer_cmp);
         dockspace_cmp->Children.push(status_bar_cmp);
 
         dockspace_cmp->ChildrenCount = dockspace_cmp->Children.size();

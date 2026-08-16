@@ -95,6 +95,9 @@ namespace ZEngine::Core::VFS
         if (j.contains("importer") && j["importer"].is_string())
             CopyStr(j["importer"].get<std::string>(), out.ImporterName, sizeof(out.ImporterName));
 
+        if (j.contains("source_path") && j["source_path"].is_string())
+            CopyStr(j["source_path"].get<std::string>(), out.SourcePath, sizeof(out.SourcePath));
+
         if (j.contains("source_hash") && j["source_hash"].is_number_unsigned())
             out.SourceHash = j["source_hash"].get<uint64_t>();
 
@@ -127,6 +130,7 @@ namespace ZEngine::Core::VFS
         nlohmann::json j;
         j["uuid"]           = uuids::to_string(data.AssetUUID);
         j["importer"]       = data.ImporterName;
+        j["source_path"]    = data.SourcePath;
         j["source_hash"]    = data.SourceHash;
         j["import_time_ns"] = data.LastImportTimeNs;
         j["artifact_path"]  = data.ArtifactPath;

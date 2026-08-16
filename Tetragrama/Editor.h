@@ -34,6 +34,8 @@ namespace Tetragrama
         bool                              FocusContentBrowser      = false;
         bool                              ShowConsole              = false;
         bool                              FocusConsole             = false;
+        bool                              ShowImporter             = false;
+        bool                              FocusImporter            = false;
 
         void                              ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };

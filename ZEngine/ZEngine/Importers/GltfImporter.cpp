@@ -1,5 +1,6 @@
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/GltfImporter.h>
 #include <ZEngine/Importers/IAssetImporter.h>
@@ -466,5 +467,91 @@ namespace ZEngine::Importers
 
         Arena.Clear();
         return Core::VFS::VFSResult<void>::Ok();
+    }
+
+    void GltfImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, void (*on_complete)(void*, Core::Containers::ArrayView<AssetImporterOutput>), void (*on_progress)(void*, float), void (*on_error)(void*, std::string_view), void (*on_log)(void*, std::string_view))
+    {
+        // Build arena-allocated config copy (same pattern as AssimpImporter::ImportFile)
+        AssetCodec::ImportConfiguration config = {};
+        config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
+        config.OutputTextureFilesPath.init(arena, cfg.OutputTextureFilesPath.c_str());
+        config.OutputAssetsPath.init(arena, cfg.OutputAssetsPath.c_str());
+        config.AssetName.init(arena, cfg.AssetName.c_str());
+        config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
+        config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
+
+        auto fs_path = std::filesystem::path(filename);
+        auto buf     = fastgltf::GltfDataBuffer::FromPath(fs_path);
+        if (buf.error() != fastgltf::Error::None)
+        {
+            if (on_error)
+                on_error(context, fastgltf::getErrorMessage(buf.error()));
+            return;
+        }
+
+        if (on_progress)
+            on_progress(context, 0.1f);
+
+        fastgltf::Parser parser;
+        auto             result = parser.loadGltf(buf.get(), fs_path.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages | fastgltf::Options::GenerateMeshIndices);
+
+        if (result.error() != fastgltf::Error::None)
+        {
+            if (on_error)
+                on_error(context, fastgltf::getErrorMessage(result.error()));
+            return;
+        }
+
+        if (on_progress)
+            on_progress(context, 0.3f);
+
+        fastgltf::Asset&             asset = result.get();
+
+        Core::Memory::ArenaAllocator scratch{};
+        Arena.CreateSubArena(ZMega(32), &scratch);
+
+        std::random_device    rd;
+        std::mt19937          gen_mt(rd());
+        uuid_random_generator gen(&gen_mt);
+
+        AssetMesh             mesh      = {};
+        AssetNodeHierarchy    hierarchy = {};
+        Array<AssetMaterial>  materials = {};
+        Array<AssetTexture>   textures  = {};
+
+        ExtractMeshes(&scratch, asset, mesh);
+        mesh.MeshUUID = gen();
+        ExtractMaterials(&scratch, asset, gen, materials);
+        ExtractTextures(&scratch, asset, gen, textures, materials);
+        BuildHierarchy(&scratch, asset, gen, hierarchy, mesh, materials);
+
+        if (on_progress)
+            on_progress(context, 0.7f);
+
+        // Serialize to disk first — before any std::move into AssetManager
+        Array<AssetImporterOutput> outputs = {};
+        outputs.init(arena, 16);
+        outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchy, config));
+        outputs.push(AssetCodec::SerializeTextureAssetFiles(arena, ArrayView{textures}, config));
+        for (size_t i = 0; i < materials.size(); ++i)
+            outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
+
+        // Also ingest into AssetManager so the asset is usable this session without a reload
+        auto* mgr = Managers::AssetManager::Instance();
+        if (mgr)
+        {
+            Managers::AssetManager::IngestTextures(std::move(textures));
+            for (size_t i = 0; i < materials.size(); ++i)
+                Managers::AssetManager::IngestMaterial(std::move(materials[i]));
+            Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchy));
+        }
+
+        if (on_progress)
+            on_progress(context, 1.0f);
+
+        if (on_complete)
+            on_complete(context, ArrayView{outputs});
+
+        Arena.Clear();
     }
 } // namespace ZEngine::Importers
