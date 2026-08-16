@@ -39,8 +39,6 @@ namespace Tetragrama::Components
 
     void AssetImporterUIComponent::Update(ZEngine::Core::TimeStep /*dt*/) {}
 
-    // ─── Utilities ───────────────────────────────────────────────────────────
-
     void AssetImporterUIComponent::PushLog(cstring text, const float color[4])
     {
         std::lock_guard<std::mutex> lock(m_log_mutex);
@@ -99,8 +97,6 @@ namespace Tetragrama::Components
         });
     }
 
-    // ─── Import ──────────────────────────────────────────────────────────────
-
     void AssetImporterUIComponent::StartImport()
     {
         if (!m_gltf_importer || !m_assimp_importer)
@@ -156,8 +152,6 @@ namespace Tetragrama::Components
             ZEngine::Helpers::ThreadPoolHelper::Submit([this, src = src_path, cfg_copy, arena = &LocalArena, app]() mutable { m_assimp_importer->ImportFile(src.c_str(), cfg_copy, arena, this, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog); });
         }
     }
-
-    // ─── Callbacks (background thread) ───────────────────────────────────────
 
     void AssetImporterUIComponent::OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs)
     {
@@ -275,8 +269,6 @@ namespace Tetragrama::Components
         snprintf(buf, sizeof(buf), "%.*s", static_cast<int>(msg.size()), msg.data());
         self->PushLog(buf, kWhite);
     }
-
-    // ─── Sub-renders ─────────────────────────────────────────────────────────
 
     void AssetImporterUIComponent::RenderIdle()
     {
@@ -407,8 +399,6 @@ namespace Tetragrama::Components
         }
         ImGui::EndChild();
     }
-
-    // ─── Main render ─────────────────────────────────────────────────────────
 
     void AssetImporterUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const, ZEngine::Hardwares::CommandBuffer* const)
     {
