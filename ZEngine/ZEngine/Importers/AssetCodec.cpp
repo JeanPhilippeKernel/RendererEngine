@@ -84,6 +84,12 @@ namespace ZEngine::Importers::AssetCodec
         WriteBinary(out, material.NormalTexUUID);
         WriteBinary(out, material.OpacityTexUUID);
         WriteBinary(out, material.SpecularTexUUID);
+        // Texture paths — project-relative VFS paths to extracted image files
+        WriteBinaryString(out, material.AlbedoTexPath);
+        WriteBinaryString(out, material.EmissiveTexPath);
+        WriteBinaryString(out, material.NormalTexPath);
+        WriteBinaryString(out, material.OpacityTexPath);
+        WriteBinaryString(out, material.SpecularTexPath);
         out.write(reinterpret_cast<const char*>(material.AmbientColor), sizeof(material.AmbientColor));
         out.write(reinterpret_cast<const char*>(material.AlbedoColor), sizeof(material.AlbedoColor));
         out.write(reinterpret_cast<const char*>(material.EmissiveColor), sizeof(material.EmissiveColor));
@@ -201,6 +207,11 @@ namespace ZEngine::Importers::AssetCodec
         ReadBinary(in, material.NormalTexUUID);
         ReadBinary(in, material.OpacityTexUUID);
         ReadBinary(in, material.SpecularTexUUID);
+        ReadBinaryString(arena, in, material.AlbedoTexPath);
+        ReadBinaryString(arena, in, material.EmissiveTexPath);
+        ReadBinaryString(arena, in, material.NormalTexPath);
+        ReadBinaryString(arena, in, material.OpacityTexPath);
+        ReadBinaryString(arena, in, material.SpecularTexPath);
         in.read(reinterpret_cast<char*>(material.AmbientColor), sizeof(material.AmbientColor));
         in.read(reinterpret_cast<char*>(material.AlbedoColor), sizeof(material.AlbedoColor));
         in.read(reinterpret_cast<char*>(material.EmissiveColor), sizeof(material.EmissiveColor));

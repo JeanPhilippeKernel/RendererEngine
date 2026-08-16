@@ -89,7 +89,41 @@ namespace Tetragrama
             f.RootPath.init(&LocalArena, file.RootPath.c_str());
         }
 
-        // Re-ingest cooked mesh assets on scene load.
+        // Re-ingest cooked assets on scene load.
+        // Materials are processed before meshes so their texture handles are available
+        // when the mesh submeshes reference them.
+        for (const auto& file : AssetFiles)
+        {
+            if (file.Type == ZEngine::Importers::AssetFileType::MATERIAL)
+            {
+                ZEngine::Importers::AssetMaterial mat{};
+                auto                              path = ZEngine::Core::Containers::String{};
+                path.init(&LocalArena, fmt::format("{0}{1}{2}", file.RootPath.c_str(), PLATFORM_OS_BACKSLASH, file.Path.c_str()).c_str());
+                ZEngine::Importers::AssetCodec::DeserializeMaterialAssetFile(&LocalArena, path.c_str(), mat);
+
+                // Reconstruct AssetTexture entries from the inline path fields so
+                // IngestTextures can upload them to the GPU.
+                ZEngine::Core::Containers::Array<ZEngine::Importers::AssetTexture> textures{};
+                textures.init(&LocalArena, 5);
+                auto add_tex = [&](const uuids::uuid& uuid, const ZEngine::Core::Containers::String& tex_path) {
+                    if (!uuid.is_nil() && !tex_path.empty())
+                    {
+                        auto& t       = textures.push_use({});
+                        t.TextureUUID = uuid;
+                        t.Path.init(&LocalArena, tex_path.c_str());
+                    }
+                };
+                add_tex(mat.AlbedoTexUUID, mat.AlbedoTexPath);
+                add_tex(mat.EmissiveTexUUID, mat.EmissiveTexPath);
+                add_tex(mat.NormalTexUUID, mat.NormalTexPath);
+                add_tex(mat.OpacityTexUUID, mat.OpacityTexPath);
+                add_tex(mat.SpecularTexUUID, mat.SpecularTexPath);
+
+                AssetManager::IngestTextures(std::move(textures));
+                AssetManager::IngestMaterial(std::move(mat));
+            }
+        }
+
         for (const auto& file : AssetFiles)
         {
             if (file.Type == ZEngine::Importers::AssetFileType::MESH)

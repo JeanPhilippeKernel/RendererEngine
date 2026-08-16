@@ -135,10 +135,30 @@ namespace ZEngine::Importers
             CreateHierachy(arena, scene, gen, hierarchies, mesh, materials);
             CopyTextureFiles(arena, textures, config);
 
+            // Propagate tex.Path (set by CopyTextureFiles) → material.*TexPath
+            for (size_t m = 0; m < materials.size(); ++m)
+            {
+                auto set_path = [&](const uuids::uuid& uuid, Core::Containers::String& path_out) {
+                    for (size_t t = 0; t < textures.size(); ++t)
+                    {
+                        if (textures[t].TextureUUID == uuid && !textures[t].Path.empty())
+                        {
+                            path_out.init(arena, textures[t].Path.c_str());
+                            return;
+                        }
+                    }
+                };
+                set_path(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
+                set_path(materials[m].EmissiveTexUUID, materials[m].EmissiveTexPath);
+                set_path(materials[m].NormalTexUUID, materials[m].NormalTexPath);
+                set_path(materials[m].OpacityTexUUID, materials[m].OpacityTexPath);
+                set_path(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
+            }
+
+            // Serialize .zemesh + .zematerial — no .zetextures (paths are inline in material)
             Array<AssetImporterOutput> outputs = {};
             outputs.init(arena, 100);
             outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchies, config));
-            outputs.push(AssetCodec::SerializeTextureAssetFiles(arena, ArrayView{textures}, config));
             for (size_t i = 0; i < materials.size(); ++i)
                 outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
 
