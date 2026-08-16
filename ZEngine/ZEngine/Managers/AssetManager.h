@@ -32,6 +32,9 @@ namespace ZEngine::Managers
         // GPU texture handle map — needed to resolve material → texture handles at upload time.
         Core::Containers::UnorderedHashMap<uuids::uuid, Rendering::Textures::TextureHandle> UUIDToTextureHandle     = {};
 
+        // (255, 20, 147) fallback handle used when a texture file cannot be resolved.
+        Rendering::Textures::TextureHandle                                                  FallbackTextureHandle   = {};
+
         // Mutex guards direct-ingest methods called from import threads.
         mutable std::mutex                                                                  IngestMutex;
 
@@ -47,6 +50,7 @@ namespace ZEngine::Managers
 
         static AssetManager*                                                                Instance();
         static AssetHandle                                                                  CreateHandle(uint32_t index, AssetType type);
+        static void                                                                         InitFallbackTexture(); // call after RRM is assigned to Device
         static uint32_t                                                                     ReadAssetHandleIndex(AssetHandle h);
         static AssetType                                                                    ReadAssetHandleType(AssetHandle h);
 

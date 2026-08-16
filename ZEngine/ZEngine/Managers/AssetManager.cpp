@@ -54,6 +54,15 @@ namespace ZEngine::Managers
         s_Instance->Registry = &s_registry;
     }
 
+    void AssetManager::InitFallbackTexture()
+    {
+        if (!s_Instance || !s_Instance->Device || !s_Instance->Device->RRM)
+            return;
+        auto* rrm                         = static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM);
+        s_Instance->FallbackTextureHandle = rrm->GetOrCreateFallbackTexture();
+        ZENGINE_LOG_ASSET_INFO("Fallback texture ready")
+    }
+
     void        AssetManager::Shutdown() {}
 
     AssetHandle AssetManager::RegisterAsset(AssetType type, const uuids::uuid& uuid, uint32_t slot_index, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
@@ -151,13 +160,23 @@ namespace ZEngine::Managers
             // Store the path in the arena first so the pointer is stable
             // for the async GPU upload that outlives this stack frame.
             new_tex.Path.init(&s_Instance->Arena, tex.Path.c_str());
-            if (!new_tex.Path.empty())
+            if (!new_tex.Path.empty() && s_Instance->Device->RRM)
             {
                 const auto               path = fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, new_tex.Path.c_str());
-                // Copy path into arena-backed storage for the async job.
                 Core::Containers::String stable_path;
                 stable_path.init(&s_Instance->Arena, path.c_str());
-                new_tex.Handle = s_Instance->Device->RRM ? static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM)->SubmitTextureFile(0, 0, stable_path.c_str()) : Rendering::Textures::TextureHandle{};
+                auto* rrm      = static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM);
+                new_tex.Handle = rrm->SubmitTextureFile(0, 0, stable_path.c_str());
+                if (!new_tex.Handle.Valid())
+                {
+                    ZENGINE_LOG_ASSET_WARN("Texture not found: '{}' — using fallback", stable_path.c_str())
+                    new_tex.Handle = s_Instance->FallbackTextureHandle;
+                }
+            }
+            else if (new_tex.Path.empty())
+            {
+                // No path at all — use fallback so the slot is never null
+                new_tex.Handle = s_Instance->FallbackTextureHandle;
             }
 
             RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, slot);
@@ -253,7 +272,16 @@ namespace ZEngine::Managers
             const auto               tex_path_str = absolute ? std::string(file) : fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, file);
             Core::Containers::String stable_path;
             stable_path.init(&s_Instance->Arena, tex_path_str.c_str());
-            new_tex.Handle = s_Instance->Device->RRM ? static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM)->SubmitTextureFile(0, 0, stable_path.c_str()) : Rendering::Textures::TextureHandle{};
+            if (s_Instance->Device->RRM)
+            {
+                auto* rrm      = static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM);
+                new_tex.Handle = rrm->SubmitTextureFile(0, 0, stable_path.c_str());
+                if (!new_tex.Handle.Valid())
+                {
+                    ZENGINE_LOG_ASSET_WARN("Texture not found: '{}' — using fallback", stable_path.c_str())
+                    new_tex.Handle = s_Instance->FallbackTextureHandle;
+                }
+            }
         }
 
         RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, asset_id);

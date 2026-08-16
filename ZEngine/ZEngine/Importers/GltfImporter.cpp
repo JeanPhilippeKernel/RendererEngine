@@ -581,7 +581,7 @@ namespace ZEngine::Importers
 
                 if (!bytes || nbytes == 0)
                 {
-                    ZENGINE_CORE_WARN("[GltfImporter] tex {} image data not accessible (unsupported source variant)", tex_idx)
+                    ZENGINE_LOG_ASSET_WARN("GltfImporter: tex {} image data not accessible (unsupported source variant)", tex_idx)
                     continue;
                 }
 
@@ -592,7 +592,7 @@ namespace ZEngine::Importers
                 {
                     fout.write(reinterpret_cast<const char*>(bytes), static_cast<std::streamsize>(nbytes));
                     fout.close();
-                    ZENGINE_CORE_INFO("[GltfImporter] extracted texture '{}' ({} bytes)", out_file.string(), nbytes)
+                    ZENGINE_LOG_ASSET_INFO("GltfImporter: extracted texture '{}' ({} bytes)", out_file.string(), nbytes)
 
                     // Project-relative path (forward-slash for VFS)
                     auto rel = std::filesystem::path(config.OutputTextureFilesPath.c_str()) / config.AssetName.c_str() / (filename_stem + ext);

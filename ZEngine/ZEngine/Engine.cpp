@@ -112,6 +112,9 @@ namespace ZEngine
         g_engine_ctx->RenderResourceManager->Initialize(g_engine_ctx->Device, Managers::AssetManager::Instance()->Registry);
         g_engine_ctx->Device->RRM = g_engine_ctx->RenderResourceManager;
 
+        // Now that RRM is live, create the hot-pink fallback texture for missing assets
+        Managers::AssetManager::InitFallbackTexture();
+
         // Wire FileWatcher: Modified → AssetRegistry + ImportCoordinator::Enqueue(Immediate)
         if (app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0')
         {
