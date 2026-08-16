@@ -26,6 +26,7 @@ namespace ZEngine::Rendering::Renderers
         // Rebinds VertexSB/IndexSB to the RMM-owned device-local buffers when handles become valid.
         void                    UpdateRMMBindings(Scenes::SceneDataPtr scene);
         void                    ApplySkyConfig(const Scenes::SkyConfig& sky);
+        void                    ApplyGridConfig(const Scenes::GridConfig& cfg);
         Textures::TextureHandle GetFrameOutput();
 
     private:

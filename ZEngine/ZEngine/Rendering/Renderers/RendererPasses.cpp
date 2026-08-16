@@ -229,7 +229,8 @@ namespace ZEngine::Rendering::Renderers
 
     void GridPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        static constexpr float    verts[] = {-1000.0f, 0.01f, -1000.0f, 1000.0f, 0.01f, -1000.0f, 1000.0f, 0.01f, 1000.0f, -1000.0f, 0.01f, 1000.0f};
+        // Y=0 — the vertex shader adds groundY + 0.001 epsilon for z-fighting prevention
+        static constexpr float    verts[] = {-1000.0f, 0.0f, -1000.0f, 1000.0f, 0.0f, -1000.0f, 1000.0f, 0.0f, 1000.0f, -1000.0f, 0.0f, 1000.0f};
         static constexpr uint16_t idxs[]  = {0, 1, 2, 2, 3, 0};
 
         VBHandle                          = device->GpuMem.AllocateBuffer(sizeof(verts), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "GridVb");

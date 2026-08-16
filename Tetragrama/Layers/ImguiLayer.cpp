@@ -1,10 +1,10 @@
-#include <Tetragrama/Components/DemoUIComponent.h>
 #include <Tetragrama/Components/DockspaceUIComponent.h>
 #include <Tetragrama/Components/HierarchyViewUIComponent.h>
 #include <Tetragrama/Components/InspectorViewUIComponent.h>
 #include <Tetragrama/Components/LogUIComponent.h>
 #include <Tetragrama/Components/ProjectViewUIComponent.h>
 #include <Tetragrama/Components/SceneViewportUIComponent.h>
+#include <Tetragrama/Components/StatusBarUIComponent.h>
 #include <Tetragrama/Layers/ImguiLayer.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
@@ -53,28 +53,27 @@ namespace Tetragrama::Layers
 
         auto dockspace_cmp                   = ZPushStructCtor(arena, Components::DockspaceUIComponent);
         auto scene_cmp                       = ZPushStructCtor(arena, Components::SceneViewportUIComponent);
-        auto editor_log_cmp                  = ZPushStructCtor(arena, Components::LogUIComponent);
         auto project_view_cmp                = ZPushStructCtor(arena, Components::ProjectViewUIComponent);
         auto inspector_view_cmp              = ZPushStructCtor(arena, Components::InspectorViewUIComponent);
         auto hierarchy_view_cmp              = ZPushStructCtor(arena, Components::HierarchyViewUIComponent);
-
-        auto demo_cmp                        = ZPushStructCtor(arena, Components::DemoUIComponent);
+        auto log_cmp                         = ZPushStructCtor(arena, Components::LogUIComponent);
+        auto status_bar_cmp                  = ZPushStructCtor(arena, Components::StatusBarUIComponent);
 
         dockspace_cmp->Initialize(this);
         scene_cmp->Initialize(this);
-        editor_log_cmp->Initialize(this);
         project_view_cmp->Initialize(this);
         inspector_view_cmp->Initialize(this);
         hierarchy_view_cmp->Initialize(this);
-        demo_cmp->Initialize(this);
+        log_cmp->Initialize(this);
+        status_bar_cmp->Initialize(this);
 
-        dockspace_cmp->Children.init(arena, 8);
+        dockspace_cmp->Children.init(arena, 6);
         dockspace_cmp->Children.push(scene_cmp);
-        dockspace_cmp->Children.push(editor_log_cmp);
-        dockspace_cmp->Children.push(demo_cmp);
         dockspace_cmp->Children.push(project_view_cmp);
         dockspace_cmp->Children.push(inspector_view_cmp);
         dockspace_cmp->Children.push(hierarchy_view_cmp);
+        dockspace_cmp->Children.push(log_cmp);
+        dockspace_cmp->Children.push(status_bar_cmp);
 
         dockspace_cmp->ChildrenCount = dockspace_cmp->Children.size();
 

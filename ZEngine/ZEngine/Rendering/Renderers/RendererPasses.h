@@ -48,6 +48,11 @@ namespace ZEngine::Rendering::Renderers
         float ColorZAxis[4] = {0.2f, 0.4f, 1.0f, 1.0f};
         float CellSize      = 0.025f;
         float FadeStrength  = 0.5f;
+        float FadeRadius    = 500.0f;
+        float LineWidth     = 1.5f;
+        int   MaxLOD        = 5;
+        float GroundY       = 0.0f;
+        float _pad[2]       = {};
     };
 
     struct GridPass : public IRenderGraphCallbackPass

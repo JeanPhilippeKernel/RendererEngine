@@ -1,43 +1,41 @@
 #pragma once
 #include <Tetragrama/Components/UIComponent.h>
-#include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Logging/Logger.h>
-#include <atomic>
+#include <mutex>
 
 namespace Tetragrama::Components
 {
-
-    struct UILogMessage
-    {
-        ZEngine::Core::Containers::Array<float> Color   = {};
-        ZEngine::Core::Containers::String       Type    = {};
-        ZEngine::Core::Containers::String       Content = {};
-    };
-
     class LogUIComponent : public UIComponent
     {
     public:
-        LogUIComponent();
-        virtual ~LogUIComponent();
+        LogUIComponent() = default;
+        ~LogUIComponent() override;
 
-        ZEngine::Core::Memory::ArenaAllocator                           LocalArena     = {};
-        ZEngine::Helpers::ThreadSafeQueue<ZEngine::Logging::LogMessage> EngineLogQueue = {};
-        ZEngine::Core::Containers::Array<UILogMessage>                  UILogQueue     = {};
-
-        void                                                            Initialize(Layers::ImguiLayer* parent = nullptr, const char* name = "Console", bool visibility = true, bool closed = false) override;
-
-        virtual void                                                    Update(ZEngine::Core::TimeStep dt) override;
-        virtual void                                                    Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
-
-        static void                                                     OnLogMessage(void* ctx, const ZEngine::Logging::LogMessage& msg);
-        void                                                            ClearLog();
+        void         Initialize(Layers::ImguiLayer* parent = nullptr, cstring name = "Console", bool visibility = true, bool closed = false) override;
+        void         Update(ZEngine::Core::TimeStep dt) override;
+        virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
     private:
-        bool             m_auto_scroll            = true;
-        bool             m_is_copy_button_pressed = false;
-        char             m_search_buffer[256]     = "";
-        uint32_t         m_maxCount               = 1024;
-        uint32_t         m_handler_cookie         = 0;
-        std::atomic_uint m_currentCount           = 0;
+        struct LogEntry
+        {
+            char    Text[256] = {};
+            float   Color[4]  = {0.8f, 0.8f, 0.8f, 1.0f};
+            uint8_t Level     = 0;
+        };
+
+        static constexpr int kMaxEntries         = 512;
+        LogEntry             m_ring[kMaxEntries] = {};
+        int                  m_head              = 0;
+        int                  m_count             = 0;
+        std::mutex           m_mutex;
+        uint32_t             m_cookie           = 0;
+
+        bool                 m_scroll_to_bottom = false;
+        char                 m_search_buf[256]  = {};
+        bool                 m_copy_requested   = false;
+        int                  m_filter_level     = 5;
+
+        void                 PushEntry(const LogEntry& e);
+        static void          OnLogEntry(void* ctx, const ZEngine::Logging::LogMessage& msg);
     };
 } // namespace Tetragrama::Components

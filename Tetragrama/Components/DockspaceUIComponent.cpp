@@ -6,8 +6,10 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Importers/ImportJob.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Profiling/MemoryProfiler.h>
 #include <fmt/format.h>
 #include <imgui/imgui_internal.h>
+#include <cstdio>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -16,19 +18,277 @@ using namespace ZEngine::Helpers;
 
 namespace Tetragrama::Components
 {
-    ImVec4        DockspaceUIComponent::s_asset_importer_report_msg_color     = {1, 1, 1, 1};
-    char          DockspaceUIComponent::s_asset_importer_input_buffer[1024]   = {0};
-    char          DockspaceUIComponent::s_save_as_input_buffer[1024]          = {0};
-    std::string   DockspaceUIComponent::s_asset_importer_report_msg           = "";
-    float         DockspaceUIComponent::s_editor_scene_serializer_progress    = 0.0f;
+    ImVec4                   DockspaceUIComponent::s_asset_importer_report_msg_color   = {1, 1, 1, 1};
+    char                     DockspaceUIComponent::s_asset_importer_input_buffer[1024] = {0};
+    char                     DockspaceUIComponent::s_save_as_input_buffer[1024]        = {0};
+    std::string              DockspaceUIComponent::s_asset_importer_report_msg         = "";
+    float                    DockspaceUIComponent::s_editor_scene_serializer_progress  = 0.0f;
 
-    ImVec4        DockspaceUIComponent::s_env_map_importer_report_msg_color   = {1, 1, 1, 1};
-    char          DockspaceUIComponent::s_env_map_importer_input_buffer[1024] = {0};
-    std::string   DockspaceUIComponent::s_env_map_importer_report_msg         = "";
+    static bool              s_is_scene_loading                                        = false;
+    static char              s_scene_serializer_log[DEFAULT_STR_BUFFER]                = {0};
+    static ImVec4            s_scene_serializer_log_color                              = {1, 1, 1, 1};
 
-    static bool   s_is_scene_loading                                          = false;
-    static char   s_scene_serializer_log[DEFAULT_STR_BUFFER]                  = {0};
-    static ImVec4 s_scene_serializer_log_color                                = {1, 1, 1, 1};
+    static constexpr cstring kLayoutsDir                                               = "ZodiacEngine/Settings/Layouts";
+
+    // Serialize the live dock tree as a pre-order sequence of SPLIT/LEAF lines.
+    // Format: SPLIT <X|Y> <ratio>  or  LEAF <window_name> [window_name ...]
+    static void              WriteNodeToFile(FILE* f, ImGuiDockNode* node)
+    {
+        if (!node)
+            return;
+        if (node->IsSplitNode())
+        {
+            float ratio = 0.5f;
+            if (node->SplitAxis == ImGuiAxis_X && node->Size.x > 0.0f)
+                ratio = node->ChildNodes[0]->Size.x / node->Size.x;
+            else if (node->SplitAxis == ImGuiAxis_Y && node->Size.y > 0.0f)
+                ratio = node->ChildNodes[0]->Size.y / node->Size.y;
+            fprintf(f, "SPLIT %c %f\n", node->SplitAxis == ImGuiAxis_X ? 'X' : 'Y', ratio);
+            WriteNodeToFile(f, node->ChildNodes[0]);
+            WriteNodeToFile(f, node->ChildNodes[1]);
+        }
+        else
+        {
+            fprintf(f, "LEAF");
+            for (int i = 0; i < node->Windows.Size; ++i)
+            {
+                cstring name = node->Windows[i]->Name;
+                if (name[0] != '#') // skip internal/popup windows
+                    fprintf(f, " %s", name);
+            }
+            fprintf(f, "\n");
+        }
+    }
+
+    // Replay one node from the file into the given dock node ID.
+    // Returns true if a record was consumed.
+    static bool LoadNodeFromFile(FILE* f, ImGuiID node_id)
+    {
+        char line[512];
+        while (fgets(line, sizeof(line), f))
+        {
+            if (line[0] == '\n' || line[0] == '\0')
+                continue;
+
+            if (strncmp(line, "SPLIT", 5) == 0)
+            {
+                char  axis  = 'X';
+                float ratio = 0.5f;
+                sscanf(line, "SPLIT %c %f", &axis, &ratio);
+                ImGuiID  child0 = 0, child1 = 0;
+                ImGuiDir dir = (axis == 'X') ? ImGuiDir_Left : ImGuiDir_Up;
+                ImGui::DockBuilderSplitNode(node_id, dir, ratio, &child0, &child1);
+                LoadNodeFromFile(f, child0);
+                LoadNodeFromFile(f, child1);
+                return true;
+            }
+            if (strncmp(line, "LEAF", 4) == 0)
+            {
+                char* nl = strchr(line, '\n');
+                if (nl)
+                    *nl = '\0';
+                char* tok = strtok(line + 4, " ");
+                while (tok)
+                {
+                    if (tok[0] != '\0')
+                        ImGui::DockBuilderDockWindow(tok, node_id);
+                    tok = strtok(nullptr, " ");
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static ImGuiID BuildLayout_Default(ImGuiID root)
+    {
+        ImGuiID main       = root;
+        ImGuiID left       = ImGui::DockBuilderSplitNode(main, ImGuiDir_Left, 0.18f, nullptr, &main);
+        ImGuiID right      = ImGui::DockBuilderSplitNode(main, ImGuiDir_Right, 0.22f, nullptr, &main);
+        ImGuiID down       = ImGui::DockBuilderSplitNode(main, ImGuiDir_Down, 0.25f, nullptr, &main);
+        ImGuiID down_right = ImGui::DockBuilderSplitNode(down, ImGuiDir_Right, 0.60f, nullptr, &down);
+        ImGui::DockBuilderDockWindow("Hierarchy", left);
+        ImGui::DockBuilderDockWindow("Inspector", right);
+        ImGui::DockBuilderDockWindow("Scene", main);
+        ImGui::DockBuilderDockWindow("Project", down_right);
+        ImGui::DockBuilderDockWindow("Console", down);
+        return down;
+    }
+
+    ImGuiID DockspaceUIComponent::ApplyBuiltinLayout(ImGuiID root, EditorLayout /*layout*/)
+    {
+        ImGui::DockBuilderRemoveNode(root);
+        ImGui::DockBuilderAddNode(root, ImGuiDockNodeFlags_None);
+        ImGui::DockBuilderSetNodeSize(root, ImGui::GetMainViewport()->Size);
+        ImGuiID console_dock = BuildLayout_Default(root);
+        ImGui::DockBuilderFinish(root);
+        return console_dock;
+    }
+
+    void DockspaceUIComponent::ScanCustomLayouts()
+    {
+        m_custom_layout_count = 0;
+        std::error_code ec;
+        if (!fs::exists(kLayoutsDir, ec))
+            return;
+        for (auto& entry : fs::directory_iterator(kLayoutsDir, ec))
+        {
+            if (m_custom_layout_count >= kMaxCustomLayouts)
+                break;
+            if (entry.path().extension() != ".zlayout")
+                continue;
+            auto& slot = m_custom_layouts[m_custom_layout_count++];
+            auto  stem = entry.path().stem().string();
+            auto  path = entry.path().string();
+            ZEngine::Helpers::secure_strncpy(slot.Name, sizeof(slot.Name), stem.c_str(), stem.size());
+            ZEngine::Helpers::secure_strncpy(slot.Path, sizeof(slot.Path), path.c_str(), path.size());
+        }
+    }
+
+    void DockspaceUIComponent::SaveCurrentLayout(cstring name)
+    {
+        if (!ParentLayer->DockspaceId)
+            return;
+        ImGuiDockNode* root = ImGui::DockBuilderGetNode(ParentLayer->DockspaceId);
+        if (!root)
+            return;
+
+        std::error_code ec;
+        fs::create_directories(kLayoutsDir, ec);
+
+        auto path = fmt::format("{}/{}.zlayout", kLayoutsDir, name);
+        if (FILE* f = fopen(path.c_str(), "w"))
+        {
+            WriteNodeToFile(f, root);
+            fclose(f);
+        }
+        ScanCustomLayouts();
+    }
+
+    void DockspaceUIComponent::DeleteCustomLayout(int index)
+    {
+        if (index < 0 || index >= m_custom_layout_count)
+            return;
+        std::error_code ec;
+        fs::remove(m_custom_layouts[index].Path, ec);
+        ScanCustomLayouts();
+    }
+
+    void DockspaceUIComponent::RenderLayoutMenu()
+    {
+        if (!ImGui::BeginMenu("Layout"))
+            return;
+
+        for (auto& bl : kBuiltinLayouts)
+        {
+            bool active = (m_active_layout == bl.Id && m_custom_layout_count == 0);
+            if (ImGui::MenuItem(bl.Name, nullptr, active))
+            {
+                m_pending_layout = bl.Id;
+                m_layout_dirty   = true;
+            }
+        }
+
+        if (m_custom_layout_count > 0)
+        {
+            ImGui::Separator();
+            for (int i = 0; i < m_custom_layout_count; ++i)
+            {
+                if (ImGui::MenuItem(m_custom_layouts[i].Name))
+                {
+                    // Defer to next frame — DockBuilder must run before DockSpace, not inside a menu
+                    ZEngine::Helpers::secure_strncpy(m_pending_layout_path, sizeof(m_pending_layout_path), m_custom_layouts[i].Path, sizeof(m_pending_layout_path) - 1);
+                }
+            }
+        }
+
+        ImGui::Separator();
+        if (ImGui::MenuItem("Save Current Layout..."))
+        {
+            m_save_layout_buf[0] = '\0';
+            m_open_save_layout   = true;
+        }
+        if (m_custom_layout_count > 0 && ImGui::MenuItem("Manage Layouts..."))
+            m_open_manage_layouts = true;
+
+        ImGui::EndMenu();
+    }
+
+    void DockspaceUIComponent::RenderSaveLayoutModal()
+    {
+        if (m_open_save_layout)
+        {
+            ImGui::OpenPopup("Save Layout##modal");
+            m_open_save_layout = false;
+        }
+
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Always, {0.5f, 0.5f});
+        ImGui::SetNextWindowSize({340.0f, 0.0f}, ImGuiCond_Always);
+        if (ImGui::BeginPopupModal("Save Layout##modal", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove))
+        {
+            ImGui::TextUnformatted("Layout name:");
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputText("##layout_name", m_save_layout_buf, sizeof(m_save_layout_buf));
+
+            bool empty = (m_save_layout_buf[0] == '\0');
+            if (empty)
+                ImGui::BeginDisabled();
+            if (ImGui::Button("Save", {100.0f, 0.0f}))
+            {
+                SaveCurrentLayout(m_save_layout_buf);
+                ImGui::CloseCurrentPopup();
+            }
+            if (empty)
+                ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", {100.0f, 0.0f}))
+                ImGui::CloseCurrentPopup();
+
+            ImGui::EndPopup();
+        }
+    }
+
+    void DockspaceUIComponent::RenderManageLayoutsModal()
+    {
+        if (m_open_manage_layouts)
+        {
+            ImGui::OpenPopup("Manage Layouts##modal");
+            m_open_manage_layouts = false;
+        }
+
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Always, {0.5f, 0.5f});
+        ImGui::SetNextWindowSize({360.0f, 0.0f}, ImGuiCond_Always);
+        if (ImGui::BeginPopupModal("Manage Layouts##modal", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove))
+        {
+            if (m_custom_layout_count == 0)
+            {
+                ImGui::TextDisabled("No custom layouts saved yet.");
+            }
+            else
+            {
+                int to_delete = -1;
+                for (int i = 0; i < m_custom_layout_count; ++i)
+                {
+                    ImGui::TextUnformatted(m_custom_layouts[i].Name);
+                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 56.0f);
+                    ImGui::PushID(i);
+                    if (ImGui::SmallButton("Delete"))
+                        to_delete = i;
+                    ImGui::PopID();
+                }
+                if (to_delete >= 0)
+                    DeleteCustomLayout(to_delete);
+            }
+
+            ImGui::Separator();
+            if (ImGui::Button("Close", {100.0f, 0.0f}))
+                ImGui::CloseCurrentPopup();
+
+            ImGui::EndPopup();
+        }
+    }
 
     DockspaceUIComponent::DockspaceUIComponent() {}
 
@@ -60,15 +320,19 @@ namespace Tetragrama::Components
         m_editor_serializer->SetOnDeserializeCompleteCallback(OnEditorSceneSerializerDeserializeComplete);
         m_editor_serializer->SetOnLogCallback(OnEditorSceneSerializerLog);
         m_editor_serializer->SetOnErrorCallback(OnEditorSceneSerializerError);
+
+        ApplyTheme(m_active_theme);
+        ScanCustomLayouts();
     }
 
     void DockspaceUIComponent::Update(ZEngine::Core::TimeStep dt) {}
 
     void DockspaceUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
     {
-        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        static constexpr float kStatusBarHeight = 28.0f;
+        const ImGuiViewport*   viewport         = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->Pos);
-        ImGui::SetNextWindowSize(viewport->Size);
+        ImGui::SetNextWindowSize({viewport->Size.x, viewport->Size.y - kStatusBarHeight});
         ImGui::SetNextWindowViewport(viewport->ID);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -83,29 +347,48 @@ namespace Tetragrama::Components
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable)
         {
             // Dock space
-            const auto window_id = ImGui::GetID(Name);
-            if (!ImGui::DockBuilderGetNode(window_id))
+            const auto     window_id         = ImGui::GetID(Name);
+            static ImGuiID s_console_dock_id = 0;
+            ParentLayer->DockspaceId         = window_id;
+            ParentLayer->ConsoleDockId       = s_console_dock_id;
+
+            if (m_pending_layout_path[0] != '\0')
             {
-                // Reset current docking state
-                ImGui::DockBuilderRemoveNode(window_id);
-                ImGui::DockBuilderAddNode(window_id, ImGuiDockNodeFlags_None);
-                ImGui::DockBuilderSetNodeSize(window_id, ImGui::GetMainViewport()->Size);
+                // Apply a saved .zlayout — runs before DockSpace so DockBuilder is in a clean state
+                if (FILE* lf = fopen(m_pending_layout_path, "r"))
+                {
+                    ImGui::DockBuilderRemoveNode(window_id);
+                    ImGui::DockBuilderAddNode(window_id, ImGuiDockNodeFlags_None);
+                    ImGui::DockBuilderSetNodeSize(window_id, ImGui::GetMainViewport()->Size);
 
-                ImGuiID dock_main_id       = window_id;
-                ImGuiID dock_left_id       = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Left, 0.2f, nullptr, &dock_main_id);
-                ImGuiID dock_right_id      = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.2f, nullptr, &dock_main_id);
-                ImGuiID dock_right_down_id = ImGui::DockBuilderSplitNode(dock_right_id, ImGuiDir_Down, 0.3f, nullptr, &dock_right_id);
-                ImGuiID dock_down_id       = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.25f, nullptr, &dock_main_id);
-                ImGuiID dock_down_right_id = ImGui::DockBuilderSplitNode(dock_down_id, ImGuiDir_Right, 0.6f, nullptr, &dock_down_id);
+                    // DockBuilderRemoveNode clears DockId for currently-active windows but
+                    // NOT for inactive ones (e.g. Console/Project when their toggle is off).
+                    // Those windows still hold the old stale DockId pointing to removed nodes.
+                    // When they next appear via the status bar button, ImGui tries to attach
+                    // them to those dead nodes and crashes in its internal table code.
+                    // Fix: clear DockId for all managed windows — both live and persisted settings.
+                    static constexpr cstring kManaged[] = {"Hierarchy", "Inspector", "Scene", "Project", "Console"};
+                    for (cstring wname : kManaged)
+                    {
+                        if (ImGuiWindow* w = ImGui::FindWindowByName(wname))
+                            w->DockId = 0;
+                        if (ImGuiWindowSettings* ws = ImGui::FindWindowSettingsByID(ImHashStr(wname)))
+                            ws->DockId = 0;
+                    }
 
-                // Dock windows
-                ImGui::DockBuilderDockWindow("Hierarchy", dock_left_id);
-                ImGui::DockBuilderDockWindow("Inspector", dock_right_id);
-                ImGui::DockBuilderDockWindow("Console", dock_right_down_id);
-                ImGui::DockBuilderDockWindow("Project", dock_down_right_id);
-                ImGui::DockBuilderDockWindow("Scene", dock_main_id);
-
-                ImGui::DockBuilderFinish(dock_main_id);
+                    LoadNodeFromFile(lf, window_id); // re-assigns via DockBuilderDockWindow for windows in layout
+                    ImGui::DockBuilderFinish(window_id);
+                    fclose(lf);
+                }
+                m_pending_layout_path[0] = '\0';
+            }
+            else if (m_layout_dirty || !ImGui::DockBuilderGetNode(window_id))
+            {
+                EditorLayout target        = m_layout_dirty ? m_pending_layout : EditorLayout::Default;
+                s_console_dock_id          = ApplyBuiltinLayout(window_id, target);
+                ParentLayer->ConsoleDockId = s_console_dock_id;
+                m_active_layout            = target;
+                m_layout_dirty             = false;
             }
 
             ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
@@ -118,9 +401,12 @@ namespace Tetragrama::Components
         RenderLoadScene();
         RenderSaveScene();
         RenderSaveSceneAs();
+        RenderSaveLayoutModal();
+        RenderManageLayoutsModal();
 
         RenderImporter();
-        RenderEnvironmentMapImporter();
+        RenderEngineSettingsWindow();
+        RenderMemoryProfilerWindow();
 
         RenderExitPopup();
 
@@ -417,156 +703,425 @@ namespace Tetragrama::Components
         ZEngine::Helpers::secure_memset(s_asset_importer_input_buffer, 0, IM_ARRAYSIZE(s_asset_importer_input_buffer), IM_ARRAYSIZE(s_asset_importer_input_buffer));
     }
 
-    void DockspaceUIComponent::RenderEnvironmentMapImporter()
+    void DockspaceUIComponent::DrawSettingsIcon(ImDrawList* dl, ImVec2 pos, SettingsPageId id, bool selected)
     {
-        if (!m_open_env_map_importer)
+        const float sz = 14.0f;
+        ImU32       col;
+        switch (id)
         {
-            std::string_view buffer_view = s_env_map_importer_input_buffer;
-            if (!buffer_view.empty())
+            case SettingsPageId::Theme:
+                col = selected ? IM_COL32(170, 110, 255, 255) : IM_COL32(120, 70, 180, 160);
+                break;
+            case SettingsPageId::Grid:
+                col = selected ? IM_COL32(55, 210, 200, 255) : IM_COL32(35, 130, 125, 160);
+                break;
+            case SettingsPageId::Renderer:
+                col = selected ? IM_COL32(255, 165, 50, 255) : IM_COL32(170, 100, 30, 160);
+                break;
+            default:
+                col = selected ? IM_COL32(220, 220, 220, 255) : IM_COL32(140, 140, 140, 180);
+                break;
+        }
+
+        switch (id)
+        {
+            case SettingsPageId::Grid:
+                for (int i = 1; i <= 3; ++i)
+                {
+                    float tx = pos.x + sz * i / 4.0f;
+                    float ty = pos.y + sz * i / 4.0f;
+                    dl->AddLine({tx, pos.y}, {tx, pos.y + sz}, col, 1.2f);
+                    dl->AddLine({pos.x, ty}, {pos.x + sz, ty}, col, 1.2f);
+                }
+                break;
+            case SettingsPageId::Renderer:
+                dl->AddRect(pos, {pos.x + sz, pos.y + sz}, col, 2.0f, 0, 1.5f);
+                dl->AddCircleFilled({pos.x + sz * 0.5f, pos.y + sz * 0.5f}, sz * 0.22f, col, 8);
+                break;
+            case SettingsPageId::Theme:
             {
-                ResetEnvironmentMapImporterBuffers();
+                const float cx = pos.x + sz * 0.5f, cy = pos.y + sz * 0.5f;
+                dl->AddCircleFilled({cx, cy}, sz * 0.28f, col, 12);
+                for (int r = 0; r < 8; ++r)
+                {
+                    float a  = r * 3.14159f / 4.0f;
+                    float r0 = sz * 0.38f, r1 = sz * 0.50f;
+                    dl->AddLine({cx + cosf(a) * r0, cy + sinf(a) * r0}, {cx + cosf(a) * r1, cy + sinf(a) * r1}, col, 1.2f);
+                }
+                break;
             }
+            default:
+                break;
+        }
+    }
+
+    void DockspaceUIComponent::RenderEngineSettingsWindow()
+    {
+        if (!m_open_engine_settings)
+            return;
+
+        static constexpr struct
+        {
+            cstring        Label;
+            SettingsPageId Id;
+        } kPages[] = {
+            {   "Theme",    SettingsPageId::Theme},
+            {    "Grid",     SettingsPageId::Grid},
+            {"Renderer", SettingsPageId::Renderer},
+        };
+        static constexpr int kPageCount = static_cast<int>(SettingsPageId::COUNT);
+
+        ImGui::SetNextWindowSize({700, 500}, ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin("Engine Settings", &m_open_engine_settings))
+        {
+            ImGui::End();
             return;
         }
 
-        const char* str_id = "Environment Map Importer";
-        ImGui::OpenPopup(str_id);
-        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-        ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-        ImGui::SetNextWindowSize(ImVec2(700, 100), ImGuiCond_Always);
-
-        if (ImGui::BeginPopupModal(str_id, NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        ImGui::BeginChild("##settings_sidebar", ImVec2(170, 0), true);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        for (int i = 0; i < kPageCount; ++i)
         {
-            ImGui::PushItemWidth(620);
-            ImGui::InputText("##EnvMapImporterUI", s_env_map_importer_input_buffer, IM_ARRAYSIZE(s_env_map_importer_input_buffer), ImGuiInputTextFlags_ReadOnly);
-            ImGui::PopItemWidth();
+            bool active = (m_active_settings_page == kPages[i].Id);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 22.0f);
+            if (ImGui::Selectable(kPages[i].Label, active, ImGuiSelectableFlags_SpanAllColumns, ImVec2(0, 22)))
+                m_active_settings_page = kPages[i].Id;
+            // Draw icon after Selectable so it renders on top of the selection highlight
+            ImVec2 icon_pos = ImGui::GetItemRectMin() + ImVec2{4.0f, 4.0f};
+            DrawSettingsIcon(dl, icon_pos, kPages[i].Id, active);
+        }
+        ImGui::EndChild();
 
+        ImGui::SameLine();
+
+        ImGui::BeginChild("##settings_content", ImVec2(0, 0), false);
+        switch (m_active_settings_page)
+        {
+            case SettingsPageId::Theme:
+                RenderSettingsContentTheme();
+                break;
+            case SettingsPageId::Grid:
+                RenderSettingsContentGrid();
+                break;
+            case SettingsPageId::Renderer:
+                RenderSettingsContentRenderer();
+                break;
+            default:
+                break;
+        }
+        ImGui::EndChild();
+
+        ImGui::End();
+    }
+
+    void DockspaceUIComponent::RenderSettingsContentGrid()
+    {
+        if (!ParentLayer || !ParentLayer->CurrentApp)
+            return;
+
+        auto  app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto* current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+        if (!current_scene)
+            return;
+
+        ImGui::TextUnformatted("Grid");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        auto& cfg      = current_scene->Grid;
+        bool  changed  = false;
+
+        changed       |= ImGui::Checkbox("Show Grid", &cfg.Enabled);
+        ImGui::Spacing();
+        changed |= ImGui::SliderFloat("Cell Size", &cfg.CellSize, 0.001f, 1.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
+        changed |= ImGui::SliderFloat("Fade Radius", &cfg.FadeRadius, 10.0f, 2000.0f, "%.1f");
+        changed |= ImGui::SliderFloat("Fade Strength", &cfg.FadeStrength, 0.1f, 2.0f, "%.2f");
+        changed |= ImGui::SliderFloat("Line Width", &cfg.LineWidth, 0.5f, 4.0f, "%.2f");
+        changed |= ImGui::SliderInt("Max LOD", &cfg.MaxLOD, 1, 6);
+        changed |= ImGui::SliderFloat("Ground Y", &cfg.GroundY, -100.0f, 100.0f, "%.2f");
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        changed |= ImGui::ColorEdit4("Thin Lines", cfg.ColorThin);
+        changed |= ImGui::ColorEdit4("Thick Lines", cfg.ColorThick);
+        changed |= ImGui::ColorEdit4("X Axis", cfg.ColorXAxis);
+        changed |= ImGui::ColorEdit4("Z Axis", cfg.ColorZAxis);
+
+        if (changed)
+        {
+            current_scene->GridDirty[0].value.store(true, std::memory_order_release);
+            current_scene->GridDirty[1].value.store(true, std::memory_order_release);
+            current_scene->GridDirty[2].value.store(true, std::memory_order_release);
+        }
+    }
+
+    void DockspaceUIComponent::RenderSettingsContentRenderer()
+    {
+        ImGui::TextUnformatted("Renderer");
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextDisabled("No renderer settings yet.");
+    }
+
+    void DockspaceUIComponent::RenderMemoryProfilerWindow()
+    {
+        if (!m_open_memory_profiler)
+            return;
+
+        ZEngine::Profiling::MemoryProfiler::Update();
+
+        ImGui::SetNextWindowSize({520, 500}, ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin("Memory Profiler", &m_open_memory_profiler))
+        {
+            ImGui::End();
+            return;
+        }
+
+        auto                                                             scratch = ZGetScratch(&LocalArena);
+        ZEngine::Core::Containers::Array<ZEngine::Profiling::ArenaStats> stats;
+        stats.init(scratch.Arena, 32);
+        ZEngine::Profiling::MemoryProfiler::GetStats(stats);
+
+        if (stats.size() == 0)
+        {
+            ImGui::TextDisabled("No arenas tracked — ensure ZENGINE_PROFILING=1.");
+            ZReleaseScratch(scratch);
+            ImGui::End();
+            return;
+        }
+
+        auto fmt_bytes = [](uint64_t b, char* buf, size_t n) {
+            if (b >= 1024u * 1024u)
+                snprintf(buf, n, "%.1f MB", b / (1024.0 * 1024.0));
+            else if (b >= 1024u)
+                snprintf(buf, n, "%.1f KB", b / 1024.0);
+            else
+                snprintf(buf, n, "%u B", static_cast<uint32_t>(b));
+        };
+
+        // Resize history array if arena count changed
+        uint32_t n = static_cast<uint32_t>(stats.size());
+        if (n > kMaxArenas)
+            n = kMaxArenas;
+        if (m_arena_history_count != n)
+        {
+            for (uint32_t i = m_arena_history_count; i < n; ++i)
+                m_arena_history[i] = {};
+            m_arena_history_count = n;
+        }
+
+        // Append this frame's samples
+        for (uint32_t i = 0; i < n; ++i)
+        {
+            auto& h           = m_arena_history[i];
+            float val_mb      = static_cast<float>(stats[i].CurrentOffset) / (1024.0f * 1024.0f);
+            h.samples[h.head] = val_mb;
+            h.head            = (h.head + 1) % kMemHistorySize;
+            if (h.count < kMemHistorySize)
+                ++h.count;
+        }
+
+        // Header
+        uint64_t total_used = 0, total_cap = 0;
+        for (uint32_t i = 0; i < n; ++i)
+        {
+            total_used += stats[i].CurrentOffset;
+            total_cap  += stats[i].Capacity;
+        }
+        char t_used[32], t_cap[32];
+        fmt_bytes(total_used, t_used, sizeof(t_used));
+        fmt_bytes(total_cap, t_cap, sizeof(t_cap));
+        ImGui::Text("Total  %s / %s", t_used, t_cap);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Reset Peaks"))
+            ZEngine::Profiling::MemoryProfiler::ResetPeaks();
+        ImGui::Separator();
+
+        const float graph_h = 45.0f;
+        const float avail_w = ImGui::GetContentRegionAvail().x;
+
+        for (uint32_t i = 0; i < n; ++i)
+        {
+            const auto& s        = stats[i];
+            auto&       h        = m_arena_history[i];
+            float       frac     = s.Capacity > 0 ? static_cast<float>(s.CurrentOffset) / s.Capacity : 0.0f;
+            float       cap_mb   = static_cast<float>(s.Capacity) / (1024.0f * 1024.0f);
+
+            // Color by usage level
+            ImVec4      line_col = frac > 0.85f ? ImVec4{0.90f, 0.25f, 0.25f, 1.0f} : frac > 0.60f ? ImVec4{0.90f, 0.70f, 0.10f, 1.0f} : ImVec4{0.30f, 0.75f, 0.45f, 1.0f};
+
+            // Label row: name + numbers
+            char        used_s[32], peak_s[32], cap_s[32];
+            fmt_bytes(s.CurrentOffset, used_s, sizeof(used_s));
+            fmt_bytes(s.PeakOffset, peak_s, sizeof(peak_s));
+            fmt_bytes(s.Capacity, cap_s, sizeof(cap_s));
+
+            ImGui::PushStyleColor(ImGuiCol_Text, line_col);
+            ImGui::TextUnformatted(s.Name ? s.Name : "?");
+            ImGui::PopStyleColor();
             ImGui::SameLine();
+            ImGui::TextDisabled("%s / %s  (peak %s)", used_s, cap_s, peak_s);
 
-            if (ImGui::Button("...", ImVec2(50, 0)))
-            {
-                Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
-                    if (ParentLayer && ParentLayer->CurrentApp)
-                    {
-                        auto                          window = ParentLayer->CurrentApp->CurrentWindow;
-                        std::vector<std::string_view> filters{".hdr", ".exr"};
-                        std::string                   filename = co_await window->OpenFileDialogAsync(filters);
+            // Graph
+            char graph_id[64];
+            snprintf(graph_id, sizeof(graph_id), "##graph_%u", i);
+            char overlay[32];
+            snprintf(overlay, sizeof(overlay), "%.1f%%", frac * 100.0f);
+            ImGui::PushStyleColor(ImGuiCol_PlotLines, line_col);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4{line_col.x, line_col.y, line_col.z, 0.08f});
+            ImGui::PlotLines(graph_id, h.samples, kMemHistorySize, h.head, overlay, 0.0f, cap_mb > 0.0f ? cap_mb : 1.0f, ImVec2(avail_w, graph_h));
+            ImGui::PopStyleColor(2);
 
-                        if (!filename.empty())
-                        {
-                            ZEngine::Helpers::secure_memset(s_env_map_importer_input_buffer, 0, IM_ARRAYSIZE(s_env_map_importer_input_buffer), IM_ARRAYSIZE(s_env_map_importer_input_buffer));
-                            ZEngine::Helpers::secure_memcpy(s_env_map_importer_input_buffer, IM_ARRAYSIZE(s_env_map_importer_input_buffer), filename.c_str(), filename.size());
-                        }
-                    }
-                });
-            }
-
-            ImGui::Separator();
-
-            ImGui::SetCursorPosX(ImGui::GetWindowSize().x - 180);
-            ImGui::SetCursorPosY(ImGui::GetWindowSize().y - ImGui::GetFrameHeightWithSpacing() - 5);
-
-            bool is_import_button_enabled = !std::string_view(s_env_map_importer_input_buffer).empty();
-
-            if (!is_import_button_enabled)
-            {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-            }
-
-            if (ImGui::Button("Import", ImVec2(80, 0)) && is_import_button_enabled)
-            {
-                Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> { co_await OnImportEnvironmentMapAsync(s_env_map_importer_input_buffer); });
-            }
-
-            if (!is_import_button_enabled)
-            {
-                ImGui::PopStyleColor(3);
-            }
-
-            ImGui::SameLine();
-            if (ImGui::Button("Close", ImVec2(80, 0)))
-            {
-                m_open_env_map_importer = false;
-                ResetEnvironmentMapImporterBuffers();
-                ImGui::CloseCurrentPopup();
-            }
-
-            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-            ImGui::SetCursorPos(ImVec2(10, ImGui::GetWindowSize().y - 30));
-            ImGui::TextColored(s_env_map_importer_report_msg_color, "%s", s_env_map_importer_report_msg.c_str());
-            ImGui::PopFont();
-
-            ImGui::EndPopup();
+            ImGui::Spacing();
         }
+
+        ZReleaseScratch(scratch);
+        ImGui::End();
     }
 
-    void DockspaceUIComponent::ResetEnvironmentMapImporterBuffers()
+    void DockspaceUIComponent::ApplyTheme(ThemeId theme)
     {
-        s_env_map_importer_report_msg       = "";
-        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
-        ZEngine::Helpers::secure_memset(s_env_map_importer_input_buffer, 0, IM_ARRAYSIZE(s_env_map_importer_input_buffer), IM_ARRAYSIZE(s_env_map_importer_input_buffer));
-    }
-
-    std::future<void> DockspaceUIComponent::OnImportEnvironmentMapAsync(const char* filename)
-    {
-        if (ZEngine::Helpers::secure_strlen(filename) == 0)
+        // Propagate to EditorConfiguration so other components can read it.
+        if (ParentLayer && ParentLayer->CurrentApp)
         {
-            co_return;
+            auto app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+            if (app->Configuration)
+                app->Configuration->DarkTheme = (theme == ThemeId::Dark);
         }
 
-        auto* ctx = ZEngine::Engine::GetContext();
-        if (!ctx || !ctx->ImportCoordinator || !ctx->VFS)
+        auto& colors = ImGui::GetStyle().Colors;
+        if (theme == ThemeId::Dark)
         {
-            co_return;
+            ImGui::StyleColorsDark();
+            colors[ImGuiCol_WindowBg]           = {0.10f, 0.105f, 0.11f, 1.0f};
+            colors[ImGuiCol_Header]             = {0.20f, 0.205f, 0.21f, 1.0f};
+            colors[ImGuiCol_HeaderHovered]      = {0.30f, 0.305f, 0.31f, 1.0f};
+            colors[ImGuiCol_HeaderActive]       = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_Button]             = {0.20f, 0.205f, 0.21f, 1.0f};
+            colors[ImGuiCol_ButtonHovered]      = {0.30f, 0.305f, 0.31f, 1.0f};
+            colors[ImGuiCol_ButtonActive]       = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_FrameBg]            = {0.20f, 0.205f, 0.21f, 1.0f};
+            colors[ImGuiCol_FrameBgHovered]     = {0.30f, 0.305f, 0.31f, 1.0f};
+            colors[ImGuiCol_FrameBgActive]      = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_Tab]                = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_TabHovered]         = {0.38f, 0.380f, 0.38f, 1.0f};
+            colors[ImGuiCol_TabActive]          = {0.28f, 0.280f, 0.28f, 1.0f};
+            colors[ImGuiCol_TabUnfocused]       = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_TabUnfocusedActive] = {0.20f, 0.205f, 0.21f, 1.0f};
+            colors[ImGuiCol_TitleBg]            = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_TitleBgActive]      = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_TitleBgCollapsed]   = {0.15f, 0.150f, 0.15f, 1.0f};
+            colors[ImGuiCol_DockingPreview]     = {0.20f, 0.205f, 0.21f, 0.5f};
+            colors[ImGuiCol_SeparatorHovered]   = {1.00f, 1.000f, 1.00f, 0.5f};
+            colors[ImGuiCol_SeparatorActive]    = {1.00f, 1.000f, 1.00f, 0.5f};
+            colors[ImGuiCol_CheckMark]          = {1.00f, 1.000f, 1.00f, 1.0f};
+            colors[ImGuiCol_PlotHistogram]      = {1.00f, 1.000f, 1.00f, 1.0f};
         }
-
-        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
-        s_env_map_importer_report_msg       = "Importing...";
-
-        // Convert native path to VFS path and enqueue at Immediate priority.
-        auto vfs_path_result                = ZEngine::Core::VFS::VFSPath::FromNative(filename);
-        if (!vfs_path_result.Succeeded())
+        else
         {
-            s_env_map_importer_report_msg_color = {1.0f, 0.0f, 0.0f, 1.0f};
-            s_env_map_importer_report_msg       = "Invalid path";
-            co_return;
+            // Option C: pure neutral charcoal — all grays have R=G=B so zero colour cast.
+            ImGui::StyleColorsLight();
+
+            // -- palette (all R=G=B) --
+            static constexpr ImVec4 kText          = {0.110f, 0.110f, 0.110f, 1.0f}; // #1C1C1C
+            static constexpr ImVec4 kInk           = {0.110f, 0.110f, 0.110f, 1.0f}; // #1C1C1C  title active
+            static constexpr ImVec4 kDark          = {0.235f, 0.235f, 0.235f, 1.0f}; // #3C3C3C  pressed / marks
+            static constexpr ImVec4 kMid           = {0.361f, 0.361f, 0.361f, 1.0f}; // #5C5C5C  hover grabs
+            static constexpr ImVec4 kBorder        = {0.878f, 0.878f, 0.878f, 1.0f}; // #E0E0E0
+            static constexpr ImVec4 kBgAlt         = {0.941f, 0.941f, 0.941f, 1.0f}; // #F0F0F0
+            static constexpr ImVec4 kBg            = {0.973f, 0.973f, 0.973f, 1.0f}; // #F8F8F8
+            static constexpr ImVec4 kSel           = {0.863f, 0.863f, 0.863f, 1.0f}; // #DCDCDC  selection fill
+            static constexpr ImVec4 kWhite         = {1.000f, 1.000f, 1.000f, 1.0f};
+
+            // -- all colors that StyleColorsLight leaves blue-tinted --
+            colors[ImGuiCol_Text]                  = kText;
+            colors[ImGuiCol_WindowBg]              = kBg;
+            colors[ImGuiCol_ChildBg]               = kWhite;
+            colors[ImGuiCol_PopupBg]               = kWhite;
+            colors[ImGuiCol_Border]                = kBorder;
+            colors[ImGuiCol_FrameBg]               = {0.910f, 0.910f, 0.910f, 1.0f}; // #E8E8E8 visible trough
+            colors[ImGuiCol_FrameBgHovered]        = {0.863f, 0.863f, 0.863f, 1.0f}; // slightly darker on hover
+            colors[ImGuiCol_FrameBgActive]         = {0.780f, 0.780f, 0.780f, 1.0f};
+            colors[ImGuiCol_TitleBg]               = kBgAlt;
+            colors[ImGuiCol_TitleBgActive]         = {0.780f, 0.780f, 0.780f, 1.0f}; // #C7C7C7 — medium gray
+            colors[ImGuiCol_TitleBgCollapsed]      = kBgAlt;
+            colors[ImGuiCol_MenuBarBg]             = kBg;
+            colors[ImGuiCol_ScrollbarBg]           = kBg;
+            colors[ImGuiCol_ScrollbarGrab]         = kBorder;
+            colors[ImGuiCol_ScrollbarGrabHovered]  = kMid;
+            colors[ImGuiCol_ScrollbarGrabActive]   = kDark;
+            colors[ImGuiCol_CheckMark]             = kDark;
+            colors[ImGuiCol_SliderGrab]            = kMid;
+            colors[ImGuiCol_SliderGrabActive]      = kDark;
+            colors[ImGuiCol_Button]                = kBorder;
+            colors[ImGuiCol_ButtonHovered]         = kBgAlt;
+            colors[ImGuiCol_ButtonActive]          = kDark;
+            colors[ImGuiCol_Header]                = kSel;
+            colors[ImGuiCol_HeaderHovered]         = kBgAlt;
+            colors[ImGuiCol_HeaderActive]          = kBorder;
+            colors[ImGuiCol_ResizeGrip]            = {kBorder.x, kBorder.y, kBorder.z, 0.5f};
+            colors[ImGuiCol_ResizeGripHovered]     = kMid;
+            colors[ImGuiCol_ResizeGripActive]      = kDark;
+            colors[ImGuiCol_Separator]             = kBorder;
+            colors[ImGuiCol_SeparatorHovered]      = kMid;
+            colors[ImGuiCol_SeparatorActive]       = kDark;
+            colors[ImGuiCol_Tab]                   = kBgAlt;
+            colors[ImGuiCol_TabHovered]            = kSel;
+            colors[ImGuiCol_TabActive]             = kWhite;
+            colors[ImGuiCol_TabUnfocused]          = kBgAlt;
+            colors[ImGuiCol_TabUnfocusedActive]    = kBg;
+            colors[ImGuiCol_NavHighlight]          = {kDark.x, kDark.y, kDark.z, 0.7f};
+            colors[ImGuiCol_NavWindowingHighlight] = {kDark.x, kDark.y, kDark.z, 0.7f};
+            colors[ImGuiCol_NavWindowingDimBg]     = {kDark.x, kDark.y, kDark.z, 0.2f};
+            colors[ImGuiCol_DockingPreview]        = {kDark.x, kDark.y, kDark.z, 0.4f};
+            colors[ImGuiCol_TextSelectedBg]        = {kSel.x, kSel.y, kSel.z, 0.6f};
+            colors[ImGuiCol_PlotLines]             = kMid;
+            colors[ImGuiCol_PlotLinesHovered]      = kDark;
+            colors[ImGuiCol_PlotHistogram]         = kMid;
+            colors[ImGuiCol_PlotHistogramHovered]  = kDark;
         }
-
-        ctx->ImportCoordinator->Enqueue(vfs_path_result.Value(), ZEngine::Importers::ImportPriority::Immediate, {&s_env_map_importer_report_msg, [](void* ctx, bool success) {
-                                                                                                                     auto* msg = static_cast<std::string*>(ctx);
-                                                                                                                     *msg      = success ? "Completed" : "Failed";
-                                                                                                                 }});
-
-        co_return;
     }
 
-    void DockspaceUIComponent::OnEnvMapImporterComplete(void* const, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> result)
+    void DockspaceUIComponent::RenderSettingsContentTheme()
     {
-        if (result.size() > 0)
+        ImGui::TextUnformatted("Theme");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        auto render_theme_card = [](bool active, cstring label, cstring desc, ImVec4 preview_bg, ImVec4 preview_text) {
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, preview_bg);
+            ImGui::PushStyleColor(ImGuiCol_Border, active ? ImVec4{0.30f, 0.55f, 1.0f, 1.0f} : ImVec4{0.50f, 0.50f, 0.50f, 0.40f});
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, active ? 2.0f : 1.0f);
+            ImGui::BeginChild(label, ImVec2(160, 70), true);
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar();
+            ImGui::Spacing();
+            ImGui::PushStyleColor(ImGuiCol_Text, preview_text);
+            ImGui::TextUnformatted(label);
+            ImGui::PopStyleColor();
+            ImGui::TextDisabled("%s", desc);
+            ImGui::EndChild();
+        };
+
         {
-            s_env_map_importer_report_msg_color = {0.0f, 1.0f, 0.0f, 1.0f};
-            s_env_map_importer_report_msg       = fmt::format("Saved");
+            bool active = (m_active_theme == ThemeId::Dark);
+            render_theme_card(active, "Dark", "Dark background", ImVec4{0.15f, 0.15f, 0.17f, 1.0f}, ImVec4{0.90f, 0.90f, 0.90f, 1.0f});
+            if (ImGui::IsItemClicked() && !active)
+            {
+                m_active_theme = ThemeId::Dark;
+                ApplyTheme(ThemeId::Dark);
+            }
         }
-    }
-
-    void DockspaceUIComponent::OnEnvMapImporterProgress(void* const, float value)
-    {
-        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
-        s_env_map_importer_report_msg       = fmt::format("Progress: {:.0f}%%", value * 100.f);
-    }
-
-    void DockspaceUIComponent::OnEnvMapImporterError(void* const, std::string_view msg)
-    {
-        s_env_map_importer_report_msg_color = {1.0f, 0.0f, 0.0f, 1.0f};
-        s_env_map_importer_report_msg       = msg;
-    }
-
-    void DockspaceUIComponent::OnEnvMapImporterLog(void* const, std::string_view msg)
-    {
-        s_env_map_importer_report_msg_color = {1.0f, 1.0f, 1.0f, 1.0f};
-        s_env_map_importer_report_msg       = msg;
+        ImGui::SameLine();
+        {
+            bool active = (m_active_theme == ThemeId::Light);
+            render_theme_card(active, "Light", "Light background", ImVec4{0.94f, 0.94f, 0.94f, 1.0f}, ImVec4{0.12f, 0.12f, 0.12f, 1.0f});
+            if (ImGui::IsItemClicked() && !active)
+            {
+                m_active_theme = ThemeId::Light;
+                ApplyTheme(ThemeId::Light);
+            }
+        }
     }
 
     void DockspaceUIComponent::ResetSaveAsBuffers()
@@ -659,13 +1214,17 @@ namespace Tetragrama::Components
 
             if (ImGui::BeginMenu("Settings"))
             {
-                if (ImGui::MenuItem("Renderer"))
-                {
-                }
-
-                ImGui::MenuItem("Import Environment Map", NULL, &m_open_env_map_importer);
+                ImGui::MenuItem("Engine", NULL, &m_open_engine_settings);
                 ImGui::EndMenu();
             }
+
+            if (ImGui::BeginMenu("Performances"))
+            {
+                ImGui::MenuItem("Memory Profiler", NULL, &m_open_memory_profiler);
+                ImGui::EndMenu();
+            }
+
+            RenderLayoutMenu();
 
             ImGui::EndMenuBar();
         }

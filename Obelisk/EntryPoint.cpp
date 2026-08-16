@@ -6,6 +6,7 @@
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/Logger.h>
+#include <ZEngine/Profiling/MemoryProfiler.h>
 
 #ifdef ZENGINE_PLATFORM
 
@@ -30,6 +31,10 @@ int applicationEntryPoint(int argc, char* argv[])
 
     MemoryManager manager = {};
     manager.Initialize(ZGiga(3u), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
+#if ZENGINE_PROFILING
+    ZEngine::Profiling::MemoryProfiler::Initialize(&manager.MainArena);
+    ZEngine::Profiling::MemoryProfiler::TrackArena("MainArena", &manager.MainArena);
+#endif
 
     Helpers::ThreadPoolHelper::Initialize();
 

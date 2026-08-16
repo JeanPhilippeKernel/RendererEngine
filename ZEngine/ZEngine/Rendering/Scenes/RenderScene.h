@@ -10,6 +10,21 @@
 
 namespace ZEngine::Rendering::Scenes
 {
+    struct GridConfig
+    {
+        bool  Enabled       = true;
+        float CellSize      = 0.025f;
+        float FadeRadius    = 500.0f;
+        float FadeStrength  = 0.5f;
+        float LineWidth     = 1.5f;
+        int   MaxLOD        = 5;
+        float GroundY       = 0.0f;
+        float ColorThin[4]  = {0.6f, 0.6f, 0.6f, 1.0f};
+        float ColorThick[4] = {0.3f, 0.3f, 0.3f, 1.0f};
+        float ColorXAxis[4] = {0.9f, 0.2f, 0.2f, 1.0f};
+        float ColorZAxis[4] = {0.2f, 0.4f, 1.0f, 1.0f};
+    };
+
     // Sky rendering configuration — stored per scene, serialized in .zescene.
     // Supported modes: "atmosphere" (default), "hdri", "skySphere".
     struct SkyConfig
@@ -89,6 +104,9 @@ namespace ZEngine::Rendering::Scenes
 
         PaddedAtomic<bool>                    SkyDirty[3]        = {};
         SkyConfig                             Sky                = {};
+
+        PaddedAtomic<bool>                    GridDirty[3]       = {};
+        GridConfig                            Grid               = {};
 
         // --- Main-thread-only write operations ---
         uint32_t                              AddMeshInstance(const uuids::uuid& uuid, const char* name);

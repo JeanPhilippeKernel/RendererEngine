@@ -195,4 +195,24 @@ namespace ZEngine::Rendering::Renderers
         skybox_pass->EnvMapPath = env_path;
         node.Enabled            = true;
     }
+
+    void GraphicRenderer::ApplyGridConfig(const Scenes::GridConfig& cfg)
+    {
+        auto& node   = RenderGraph->NodeMap["Grid Pass"];
+        node.Enabled = cfg.Enabled;
+        if (!cfg.Enabled)
+            return;
+
+        auto& p        = static_cast<GridPass*>(node.CallbackPass)->PushData;
+        p.CellSize     = cfg.CellSize;
+        p.FadeRadius   = cfg.FadeRadius;
+        p.FadeStrength = cfg.FadeStrength;
+        p.LineWidth    = cfg.LineWidth;
+        p.MaxLOD       = cfg.MaxLOD;
+        p.GroundY      = cfg.GroundY;
+        secure_memcpy(p.ColorThin, sizeof(p.ColorThin), cfg.ColorThin, sizeof(cfg.ColorThin));
+        secure_memcpy(p.ColorThick, sizeof(p.ColorThick), cfg.ColorThick, sizeof(cfg.ColorThick));
+        secure_memcpy(p.ColorXAxis, sizeof(p.ColorXAxis), cfg.ColorXAxis, sizeof(cfg.ColorXAxis));
+        secure_memcpy(p.ColorZAxis, sizeof(p.ColorZAxis), cfg.ColorZAxis, sizeof(cfg.ColorZAxis));
+    }
 } // namespace ZEngine::Rendering::Renderers

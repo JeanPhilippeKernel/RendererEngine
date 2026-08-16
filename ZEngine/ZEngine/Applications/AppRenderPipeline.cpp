@@ -95,6 +95,11 @@ namespace ZEngine::Applications
             SceneRenderer->ApplySkyConfig(scene->Sky);
         }
 
+        if (scene->GridDirty[frame_index].value.exchange(false, std::memory_order_acquire))
+        {
+            SceneRenderer->ApplyGridConfig(scene->Grid);
+        }
+
         auto* gpu = SceneRenderer->RenderSceneData;
 
         if (scene->InstancesDirty[frame_index].value.exchange(false, std::memory_order_acquire))

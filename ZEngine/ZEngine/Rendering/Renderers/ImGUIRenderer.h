@@ -26,8 +26,6 @@ namespace ZEngine::Rendering::Renderers
         void                               Initialize(Hardwares::VulkanDevicePtr device) override;
         void                               Deinitialize() override;
 
-        void                               StyleDarkTheme();
-
         void                               NewFrame();
         void                               EndFrame();
         void                               PreparePayload(RenderOverlayPayload& payload);

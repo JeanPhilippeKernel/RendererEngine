@@ -4,11 +4,30 @@
 #include <Tetragrama/Serializers/EditorSceneSerializer.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssimpImporter.h>
-#include <ZEngine/Importers/EnvironmentMapImporter.h>
 #include <imgui.h>
 
 namespace Tetragrama::Components
 {
+    enum class ThemeId
+    {
+        Dark  = 0,
+        Light = 1,
+    };
+
+    enum class SettingsPageId
+    {
+        Grid     = 0,
+        Renderer = 1,
+        Theme    = 2,
+        COUNT
+    };
+
+    enum class EditorLayout
+    {
+        Default = 0,
+        COUNT
+    };
+
     class DockspaceUIComponent : public UIComponent
     {
     public:
@@ -37,15 +56,30 @@ namespace Tetragrama::Components
         static void                           OnAssetImporterLog(void* const, std::string_view);
 
         /*
-         * Environment Map Importer Funcs
+         * Performances Menu Windows
          */
-        void                                  RenderEnvironmentMapImporter();
-        void                                  ResetEnvironmentMapImporterBuffers();
-        std::future<void>                     OnImportEnvironmentMapAsync(const char* filename);
-        static void                           OnEnvMapImporterComplete(void* const context, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> result);
-        static void                           OnEnvMapImporterProgress(void* const, float value);
-        static void                           OnEnvMapImporterError(void* const, std::string_view);
-        static void                           OnEnvMapImporterLog(void* const, std::string_view);
+        void                                  RenderMemoryProfilerWindow();
+
+        /*
+         * Engine Settings Window
+         */
+        void                                  RenderEngineSettingsWindow();
+        void                                  RenderSettingsContentGrid();
+        void                                  RenderSettingsContentRenderer();
+        void                                  RenderSettingsContentTheme();
+        static void                           DrawSettingsIcon(ImDrawList* dl, ImVec2 pos, SettingsPageId id, bool selected);
+        void                                  ApplyTheme(ThemeId theme);
+
+        /*
+         * Layout Management
+         */
+        void                                  ScanCustomLayouts();
+        void                                  SaveCurrentLayout(cstring name);
+        void                                  DeleteCustomLayout(int index);
+        ImGuiID                               ApplyBuiltinLayout(ImGuiID root, EditorLayout layout);
+        void                                  RenderLayoutMenu();
+        void                                  RenderSaveLayoutModal();
+        void                                  RenderManageLayoutsModal();
 
         /*
          * Editor Scene Funcs
@@ -73,22 +107,58 @@ namespace Tetragrama::Components
         static char        s_save_as_input_buffer[1024];
         static float       s_editor_scene_serializer_progress;
 
-        static ImVec4      s_env_map_importer_report_msg_color;
-        static std::string s_env_map_importer_report_msg;
-        static char        s_env_map_importer_input_buffer[1024];
-
     private:
-        bool                                                m_open_asset_importer{false};
-        bool                                                m_open_env_map_importer{false};
+        bool                 m_open_asset_importer{false};
+        bool                 m_open_engine_settings{false};
+        bool                 m_open_memory_profiler{false};
+
+        static constexpr int kMemHistorySize = 128;
+        static constexpr int kMaxArenas      = 32;
+        struct ArenaHistory
+        {
+            float    samples[kMemHistorySize] = {};
+            int      head                     = 0;
+            uint32_t count                    = 0;
+        };
+        ArenaHistory                                        m_arena_history[kMaxArenas] = {};
+        uint32_t                                            m_arena_history_count       = 0;
         bool                                                m_open_exit{false};
+        ThemeId                                             m_active_theme{ThemeId::Light};
         bool                                                m_pending_shutdown{false};
         bool                                                m_open_save_scene{false};
         bool                                                m_open_save_scene_as{false};
         bool                                                m_request_save_scene_ui_close{false};
+        SettingsPageId                                      m_active_settings_page{SettingsPageId::Theme};
         ImGuiDockNodeFlags                                  m_dockspace_node_flag;
         ImGuiWindowFlags                                    m_window_flags;
         ZEngine::Importers::AssetCodec::ImportConfiguration m_default_import_configuration;
         ZRawPtr(ZEngine::Importers::AssimpImporter) m_asset_importer;
         ZRawPtr(Serializers::EditorSceneSerializer) m_editor_serializer;
+
+        struct BuiltinLayoutDef
+        {
+            cstring      Name;
+            EditorLayout Id;
+        };
+        static constexpr BuiltinLayoutDef kBuiltinLayouts[] = {
+            {"Default", EditorLayout::Default},
+        };
+
+        struct CustomLayoutEntry
+        {
+            char Name[128] = {};
+            char Path[512] = {};
+        };
+        static constexpr int kMaxCustomLayouts                   = 16;
+        CustomLayoutEntry    m_custom_layouts[kMaxCustomLayouts] = {};
+        int                  m_custom_layout_count               = 0;
+
+        EditorLayout         m_active_layout                     = EditorLayout::Default;
+        EditorLayout         m_pending_layout                    = EditorLayout::Default;
+        bool                 m_layout_dirty                      = false;
+        char                 m_pending_layout_path[512]          = {}; // .zlayout to apply before next DockSpace
+        bool                 m_open_save_layout                  = false;
+        bool                 m_open_manage_layouts               = false;
+        char                 m_save_layout_buf[128]              = {};
     };
 } // namespace Tetragrama::Components

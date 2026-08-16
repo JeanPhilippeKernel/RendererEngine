@@ -19,7 +19,7 @@ namespace ZEngine::Rendering::Cameras
         float RotationSpeed       = 0.25f;
         float OrbitSpeed          = 0.25f;
         float FastSpeedMultiplier = 4.0f;
-        float ScrollSpeed         = 3.0f;
+        float ScrollSpeed         = 0.5f;
         float FocusDuration       = 0.25f; // seconds
         float MinOrbitDistance    = 0.5f;
         float MaxOrbitDistance    = 10000.0f;
