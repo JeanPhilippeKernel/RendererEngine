@@ -536,19 +536,28 @@ namespace ZEngine::Importers
                 const auto& fgltf_tex = asset.textures[tex_idx];
                 if (!fgltf_tex.imageIndex.has_value())
                     continue;
-                const auto&    img    = asset.images[fgltf_tex.imageIndex.value()];
+                const auto&    img      = asset.images[fgltf_tex.imageIndex.value()];
 
-                std::string    ext    = ".png";
-                const uint8_t* bytes  = nullptr;
-                size_t         nbytes = 0;
+                std::string    ext      = ".png";
+                const uint8_t* bytes    = nullptr;
+                size_t         nbytes   = 0;
+
+                auto           set_mime = [&](fastgltf::MimeType mt) {
+                    if (mt == fastgltf::MimeType::JPEG)
+                        ext = ".jpg";
+                };
 
                 std::visit(
                     fastgltf::visitor{
                     [&](const fastgltf::sources::Array& arr) {
                         bytes  = reinterpret_cast<const uint8_t*>(arr.bytes.data());
                         nbytes = arr.bytes.size();
-                        if (arr.mimeType == fastgltf::MimeType::JPEG)
-                            ext = ".jpg";
+                        set_mime(arr.mimeType);
+                    },
+                    [&](const fastgltf::sources::ByteView& bv_data) {
+                        bytes  = reinterpret_cast<const uint8_t*>(bv_data.bytes.data());
+                        nbytes = bv_data.bytes.size();
+                        set_mime(bv_data.mimeType);
                     },
                     [&](const fastgltf::sources::BufferView& bv_src) {
                         const auto& bv = asset.bufferViews[bv_src.bufferViewIndex];
@@ -557,8 +566,12 @@ namespace ZEngine::Importers
                             [&](const fastgltf::sources::Array& arr) {
                                 bytes  = reinterpret_cast<const uint8_t*>(arr.bytes.data()) + bv.byteOffset;
                                 nbytes = bv.byteLength;
-                                if (bv_src.mimeType == fastgltf::MimeType::JPEG)
-                                    ext = ".jpg";
+                                set_mime(bv_src.mimeType);
+                            },
+                            [&](const fastgltf::sources::ByteView& bvd) {
+                                bytes  = reinterpret_cast<const uint8_t*>(bvd.bytes.data()) + bv.byteOffset;
+                                nbytes = bv.byteLength;
+                                set_mime(bv_src.mimeType);
                             },
                             [](auto&&) {}},
                             asset.buffers[bv.bufferIndex].data);
@@ -567,7 +580,10 @@ namespace ZEngine::Importers
                     img.data);
 
                 if (!bytes || nbytes == 0)
+                {
+                    ZENGINE_CORE_WARN("[GltfImporter] tex {} image data not accessible (unsupported source variant)", tex_idx)
                     continue;
+                }
 
                 auto          filename_stem = !img.name.empty() ? std::string(img.name) : ("tex_" + std::to_string(tex_idx));
                 auto          out_file      = dest_dir / (filename_stem + ext);
@@ -576,6 +592,7 @@ namespace ZEngine::Importers
                 {
                     fout.write(reinterpret_cast<const char*>(bytes), static_cast<std::streamsize>(nbytes));
                     fout.close();
+                    ZENGINE_CORE_INFO("[GltfImporter] extracted texture '{}' ({} bytes)", out_file.string(), nbytes)
 
                     // Project-relative path (forward-slash for VFS)
                     auto rel = std::filesystem::path(config.OutputTextureFilesPath.c_str()) / config.AssetName.c_str() / (filename_stem + ext);
