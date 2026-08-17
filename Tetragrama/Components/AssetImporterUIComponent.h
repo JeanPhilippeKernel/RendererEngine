@@ -86,7 +86,6 @@ namespace Tetragrama::Components
         void                                RenderOptions();
         void                                RenderImporting();
 
-        // Callback for ImportFile — receives cooked output paths
         static void                         OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
         static void                         OnImportProgress(void* ctx, float pct);
         static void                         OnImportError(void* ctx, std::string_view msg);

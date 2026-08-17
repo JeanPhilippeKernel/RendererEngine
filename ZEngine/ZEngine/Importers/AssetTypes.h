@@ -7,6 +7,7 @@
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <uuid.h>
 #include <string>
+#include <string_view>
 
 namespace ZEngine::Importers
 {
@@ -114,4 +115,10 @@ namespace ZEngine::Importers
         std::string   Path     = "";
         std::string   RootPath = "";
     };
+
+    using ImportCompleteCallback = void (*)(void* ctx, Core::Containers::ArrayView<AssetImporterOutput> outputs);
+    using ImportProgressCallback = void (*)(void* ctx, float progress);
+    using ImportErrorCallback    = void (*)(void* ctx, std::string_view message);
+    using ImportLogCallback      = void (*)(void* ctx, std::string_view message);
+
 } // namespace ZEngine::Importers

@@ -22,7 +22,7 @@ namespace ZEngine::Importers
 
         // Importer-panel path — writes .zemesh / .zetextures / .zematerial to disk
         // and ingests into AssetManager so the asset is immediately usable this session.
-        void                         ImportFile(const char* filename, const AssetCodec::ImportConfiguration& config, Core::Memory::ArenaAllocator* arena, void* context, void (*on_complete)(void*, Core::Containers::ArrayView<AssetImporterOutput>), void (*on_progress)(void*, float), void (*on_error)(void*, std::string_view), void (*on_log)(void*, std::string_view));
+        void                         ImportFile(const char* filename, const AssetCodec::ImportConfiguration& config, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log);
 
         Core::Memory::ArenaAllocator Arena = {};
     };
