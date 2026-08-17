@@ -35,7 +35,7 @@ read the UUID from it. If not, generate once, write it, never regenerate.
 #pragma once
 #include <cstdint>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     enum class ImportStatus : uint8_t
     {
@@ -56,7 +56,7 @@ namespace ZEngine::VFS
 #include <uuid.h>
 #include <VFS/Meta/ImportStatus.h>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     constexpr uint32_t META_MAX_SETTINGS = 32;
 
@@ -70,7 +70,8 @@ namespace ZEngine::VFS
     {
         uuids::uuid      AssetUUID                           = {};
         char             ImporterName[64]                    = {};
-        char             LastSourceSha256[65]                = {};  // hex + null
+        uint64_t         SourceHash                          = 0;
+        char             SourcePath[256]                     = {};
         int64_t          LastImportTimeNs                    = 0;
         char             ArtifactPath[MAX_FILE_PATH_COUNT]   = {};
         MetaKeyValuePair Settings[META_MAX_SETTINGS]         = {};
@@ -91,7 +92,7 @@ namespace ZEngine::VFS
 #include <VFS/Meta/MetaFileData.h>
 #include <VFS/VFSResult.h>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     class MetaFileIO
     {
@@ -122,12 +123,9 @@ namespace ZEngine::VFS
         static VFSResult<MetaFileData> GetOrCreate(IVFSContext& ctx,
                                                    const VFSPath& asset_path,
                                                    const char*    importer_name,
-                                                   const char*    current_sha256);
+                                                   uint64_t       current_hash);
 
-        // Compute SHA-256 of the asset file content (for change detection)
-        static VFSResult<void> ComputeSHA256(IVFSContext& ctx,
-                                             const VFSPath& asset_path,
-                                             char out_hex[65]);
+        static VFSResult<uint64_t> ComputeHash(IVFSContext& ctx, const VFSPath& path);
     };
 }
 ```
@@ -142,7 +140,8 @@ A `.meta` file is a UTF-8 JSON object. Example for `mesh.glb.meta`:
 {
     "uuid":              "550e8400-e29b-41d4-a716-446655440000",
     "importer":          "AssimpImporter",
-    "source_sha256":     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source_hash":       12345678901234567890,
+    "source_path":       "/project/mesh.glb",
     "import_time_ns":    1748000000000000000,
     "artifact_path":     "/.cache/mesh_550e8400.zasset",
     "settings": [
@@ -200,8 +199,10 @@ VFSResult<MetaFileData> MetaFileIO::Read(IVFSContext& ctx, const VFSPath& asset_
 
     if (j.contains("importer")        && j["importer"].is_string())
         copy_str(j["importer"].get<std::string>(),     out.ImporterName,    sizeof(out.ImporterName));
-    if (j.contains("source_sha256")   && j["source_sha256"].is_string())
-        copy_str(j["source_sha256"].get<std::string>(), out.LastSourceSha256, sizeof(out.LastSourceSha256));
+    if (j.contains("source_hash")     && j["source_hash"].is_number_unsigned())
+        out.SourceHash = j["source_hash"].get<uint64_t>();
+    if (j.contains("source_path")     && j["source_path"].is_string())
+        copy_str(j["source_path"].get<std::string>(), out.SourcePath, sizeof(out.SourcePath));
     if (j.contains("import_time_ns")  && j["import_time_ns"].is_number_integer())
         out.LastImportTimeNs = j["import_time_ns"].get<int64_t>();
     if (j.contains("artifact_path")   && j["artifact_path"].is_string())
@@ -233,22 +234,21 @@ VFSResult<MetaFileData> MetaFileIO::GetOrCreate(
     IVFSContext& ctx,
     const VFSPath& asset_path,
     const char*    importer_name,
-    const char*    current_sha256)
+    uint64_t       current_hash)
 {
     auto read_result = Read(ctx, asset_path);
 
     if (read_result.IsOk())
     {
         MetaFileData& existing = read_result.Value();
-        if (std::strcmp(existing.LastSourceSha256, current_sha256) == 0)
+        if (existing.SourceHash == current_hash)
         {
             existing.Status = ImportStatus::UpToDate;
             return VFSResult<MetaFileData>::Ok(existing);
         }
 
-        // SHA changed → update and rewrite
-        std::strncpy(existing.LastSourceSha256, current_sha256,
-                     sizeof(existing.LastSourceSha256) - 1);
+        // Hash changed → update and rewrite
+        existing.SourceHash = current_hash;
         existing.LastImportTimeNs = NowNs();
         existing.Status           = ImportStatus::Stale;
         Write(ctx, asset_path, existing);   // best-effort; ignore error
@@ -261,8 +261,8 @@ VFSResult<MetaFileData> MetaFileIO::GetOrCreate(
     // first-import: generate a new UUID and write a clean .meta file.
     MetaFileData fresh{};
     fresh.AssetUUID = uuids::uuid_random_generator{}();
-    std::strncpy(fresh.ImporterName,     importer_name,   sizeof(fresh.ImporterName) - 1);
-    std::strncpy(fresh.LastSourceSha256, current_sha256,  sizeof(fresh.LastSourceSha256) - 1);
+    std::strncpy(fresh.ImporterName, importer_name, sizeof(fresh.ImporterName) - 1);
+    fresh.SourceHash = current_hash;
     fresh.LastImportTimeNs = NowNs();
     fresh.Status           = ImportStatus::New;
     Write(ctx, asset_path, fresh);
@@ -312,9 +312,9 @@ asset.MeshUUID = uuids::uuid_random_generator{}();
 After:
 ```cpp
 // AssimpImporter.cpp — REPLACE with
-char sha256[65] = {};
-VFS::MetaFileIO::ComputeSHA256(ctx, vfs_path, sha256);
-auto meta = VFS::MetaFileIO::GetOrCreate(ctx, vfs_path, "AssimpImporter", sha256);
+auto hash_result = VFS::MetaFileIO::ComputeHash(ctx, vfs_path);
+uint64_t hash = hash_result.IsOk() ? hash_result.Value() : 0;
+auto meta = VFS::MetaFileIO::GetOrCreate(ctx, vfs_path, "AssimpImporter", hash);
 asset.MeshUUID = meta.IsOk() ? meta.Value().AssetUUID : uuids::uuid_random_generator{}();
 ```
 
@@ -344,10 +344,10 @@ In `ScanDirectory`, after pushing a file entry to the cache:
 ```cpp
 if (IsAssetExtension(entry.Name))
 {
-    char sha256[65] = {};
-    MetaFileIO::ComputeSHA256(*m_ctx, entry.VFSPath, sha256);
+    auto hash_result = MetaFileIO::ComputeHash(*m_ctx, entry.VFSPath);
+    uint64_t hash = hash_result.IsOk() ? hash_result.Value() : 0;
     auto meta = MetaFileIO::GetOrCreate(*m_ctx, entry.VFSPath,
-                                        "VFSScanner", sha256);
+                                        "VFSScanner", hash);
     if (meta.IsOk())
     {
         switch (meta.Value().Status)
@@ -388,8 +388,8 @@ TEST(MetaFileIO, RoundTrip)
     MetaFileData in{};
     in.AssetUUID = uuids::uuid_random_generator{}();
     snprintf(in.ImporterName,     sizeof(in.ImporterName),     "AssimpImporter");
-    snprintf(in.LastSourceSha256, sizeof(in.LastSourceSha256),
-             "abc123def456abc123def456abc123def456abc123def456abc123def456abcd");
+    in.SourceHash = 0xabc123def456abc1ULL;
+    snprintf(in.SourcePath, sizeof(in.SourcePath), "/project/mesh.glb");
     in.LastImportTimeNs = 1748000000000000000LL;
     in.SettingsCount = 1;
     snprintf(in.Settings[0].Key,   sizeof(in.Settings[0].Key),   "FlipUVs");
@@ -403,7 +403,8 @@ TEST(MetaFileIO, RoundTrip)
 
     EXPECT_EQ(in.AssetUUID, out.AssetUUID);
     EXPECT_STREQ(in.ImporterName,     out.ImporterName);
-    EXPECT_STREQ(in.LastSourceSha256, out.LastSourceSha256);
+    EXPECT_EQ(in.SourceHash, out.SourceHash);
+    EXPECT_STREQ(in.SourcePath, out.SourcePath);
     EXPECT_EQ(in.LastImportTimeNs,    out.LastImportTimeNs);
     ASSERT_EQ(out.SettingsCount, 1u);
     EXPECT_STREQ(out.Settings[0].Key,   "FlipUVs");
@@ -430,7 +431,7 @@ TEST(MetaFileIO, GetOrCreateNewFile)
     ctx.WriteFile("/project/mesh.glb", "dummy_binary_content");
 
     VFSPath path = VFSPath::Parse("/project/mesh.glb").Value();
-    auto result = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", "sha_first");
+    auto result = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", 1ULL);
 
     ASSERT_TRUE(result.IsOk());
     EXPECT_EQ(result.Value().Status, ImportStatus::New);
@@ -449,11 +450,11 @@ TEST(MetaFileIO, GetOrCreateMatchingSHAReturnsUpToDate)
     VFSPath path = VFSPath::Parse("/project/mesh.glb").Value();
 
     // First call creates it
-    auto first = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", "sha_abc");
+    auto first = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", 1ULL);
     ASSERT_TRUE(first.IsOk());
 
     // Second call with same SHA
-    auto second = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", "sha_abc");
+    auto second = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", 1ULL);
     ASSERT_TRUE(second.IsOk());
     EXPECT_EQ(second.Value().Status, ImportStatus::UpToDate);
     EXPECT_EQ(first.Value().AssetUUID, second.Value().AssetUUID);  // UUID must not change
@@ -467,11 +468,11 @@ TEST(MetaFileIO, GetOrCreateChangedSHAReturnsStale)
     MemoryVFSContext ctx;
     VFSPath path = VFSPath::Parse("/project/mesh.glb").Value();
 
-    auto first = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", "sha_old");
+    auto first = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", 1ULL);
     ASSERT_TRUE(first.IsOk());
     uuids::uuid original_uuid = first.Value().AssetUUID;
 
-    auto second = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", "sha_new");
+    auto second = MetaFileIO::GetOrCreate(ctx, path, "AssimpImporter", 2ULL);
     ASSERT_TRUE(second.IsOk());
     EXPECT_EQ(second.Value().Status, ImportStatus::Stale);
     EXPECT_EQ(second.Value().AssetUUID, original_uuid);  // UUID preserved across reimport
@@ -498,7 +499,7 @@ TEST(MetaFileIO, OverlongSettingsAreTruncated)
     // Build a JSON .meta with a key that is 200 chars long
     std::string long_key(200, 'k');
     std::string json = R"({"uuid":"550e8400-e29b-41d4-a716-446655440000",)"
-                       R"("importer":"Test","source_sha256":"aaa","import_time_ns":0,)"
+                       R"("importer":"Test","source_hash":0,"source_path":"/project/x.glb","import_time_ns":0,)"
                        R"("artifact_path":"","settings":[{"key":")" + long_key + R"(","value":"v"}]})";
     ctx.WriteFile("/project/x.glb.meta", json);
 
@@ -551,7 +552,8 @@ TEST(MetaFileIO, SettingsCountCappedAtMax)
     nlohmann::json j;
     j["uuid"]           = uuids::to_string(uuids::uuid_random_generator{}());
     j["importer"]       = "Test";
-    j["source_sha256"]  = "aaa";
+    j["source_hash"]    = 0;
+    j["source_path"]    = "";
     j["import_time_ns"] = 0;
     j["artifact_path"]  = "";
     j["settings"]       = nlohmann::json::array();

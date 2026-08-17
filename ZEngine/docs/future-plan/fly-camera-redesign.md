@@ -344,7 +344,7 @@ void FlyCameraController::Update(Core::TimeStep dt)
         inp.MouseViewportY = pos.y - m_viewportOriginY;
     }
 
-    m_camera->OnUpdate(dt.GetSeconds());
+    m_camera->OnUpdate(dt.GetSecond());
 }
 ```
 
@@ -376,9 +376,10 @@ namespace Tetragrama::Controllers
         EditorCameraController()          = default;
         virtual ~EditorCameraController() = default;
 
-        void Initialize(ZEngine::Core::Memory::ArenaAllocator* arena,
-                        ZEngine::Windows::CoreWindow*          window,
-                        ZEngine::Input::InputManager*          input_manager);
+        void Initialize(ZEngine::Core::Memory::ArenaAllocator*  arena,
+                        ZEngine::Windows::CoreWindow*           window,
+                        ZEngine::Input::InputManager*           input_manager,
+                        ZEngine::Applications::GameApplication* app);
     };
     ZDEFINE_PTR(EditorCameraController);
 }

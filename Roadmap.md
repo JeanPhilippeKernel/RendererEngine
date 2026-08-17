@@ -29,7 +29,7 @@ Implementation follows the phased plan in `ZEngine/docs/migration-plan.md`.
 | [x] | Thread pool (`ThreadPoolHelper`) |
 | [x] | Logging system (`ZENGINE_CORE_INFO/WARN/ERROR/CRITICAL`) |
 | [ ] | Memory budget system — per-subsystem watermarks and limits |
-| [ ] | Profiling and instrumentation (`ZENGINE_PROFILE_SCOPE`, Tracy integration) |
+| [x] | Profiling and instrumentation (`ZENGINE_PROFILE_SCOPE`, Tracy integration) |
 | [ ] | Crash handler — minidump, stack trace, user dialog, optional telemetry upload |
 
 ---
@@ -84,7 +84,7 @@ Implementation follows the phased plan in `ZEngine/docs/migration-plan.md`.
 | [x] | Vertex/index/transform/material storage buffers |
 | [x] | Gizmo rendering (ImGuizmo) |
 | [x] | ImGui integration |
-| [ ] | Render resource manager — GPU lifetime, deferred deletion, hot-reload swaps |
+| [x] | Render resource manager — GPU lifetime, deferred deletion, hot-reload swaps |
 | [ ] | Cascaded shadow maps — 4 cascades, directional light |
 | [ ] | Spot and point light shadow maps |
 | [ ] | Post-processing pipeline — bloom, ACES tone mapping, SSAO, FXAA, LUT color grading, vignette |

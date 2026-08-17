@@ -20,7 +20,7 @@ into the engine's existing callback system, driving `VFSDirectoryCache::Invalida
 #pragma once
 #include <Core/ZEngineDef.h>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     enum class WatchEventKind : uint8_t
     {
@@ -48,7 +48,7 @@ namespace ZEngine::VFS
 #pragma once
 #include <cstdint>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     using WatchHandle = uint32_t;
     constexpr WatchHandle INVALID_WATCH_HANDLE = 0xFFFF'FFFFu;
@@ -62,9 +62,9 @@ namespace ZEngine::VFS
 #include <functional>
 #include <VFS/VFSWatchEvent.h>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
-    using RawEventCallback = std::function<void(const VFSWatchEvent&)>;
+    using RawEventCallback = void (*)(void* ctx, const VFSWatchEvent&);
 
     class IVFSPlatformWatcher
     {
@@ -77,7 +77,7 @@ namespace ZEngine::VFS
 
         // Called once per frame (or from a dedicated watcher thread) to drain
         // pending OS events and fire cb for each one.
-        virtual void Poll(const RawEventCallback& cb) = 0;
+        virtual void Poll(void* ctx, RawEventCallback cb) = 0;
 
         // Start/stop a background thread that calls Poll internally
         virtual void StartThread() = 0;
@@ -100,7 +100,7 @@ namespace ZEngine::VFS
 #include <VFS/IVFSPlatformWatcher.h>
 #include <VFS/VFSWatchEvent.h>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     using WatchCallback = std::function<void(const VFSWatchEvent&)>;
 
@@ -108,6 +108,7 @@ namespace ZEngine::VFS
     {
         VFSWatchEvent                           Event;
         std::chrono::steady_clock::time_point   LastSeen;
+        VFSPath                                 Owner;
     };
 
     class VFSFileWatcher
@@ -119,11 +120,15 @@ namespace ZEngine::VFS
 
         ~VFSFileWatcher();
 
+        void        Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity);
+
         WatchHandle Watch(const char* native_path, bool recursive, WatchCallback cb);
         void        Unwatch(WatchHandle handle);
 
         // Called once per frame from the main/editor thread
-        void Tick();
+        void        Tick();
+
+        uint32_t    PendingCount() const;
 
     private:
         void OnRawEvent(const VFSWatchEvent& ev);
@@ -183,7 +188,7 @@ changed files (similar to how Xcode's source editor works).
 #include <unordered_map>
 #include <atomic>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     class VFSFSEventsWatcher final : public IVFSPlatformWatcher
     {
@@ -193,7 +198,7 @@ namespace ZEngine::VFS
 
         WatchHandle AddWatch(const char* native_path, bool recursive) override;
         void        RemoveWatch(WatchHandle handle)                    override;
-        void        Poll(const RawEventCallback& cb)                   override;
+        void        Poll(void* ctx, RawEventCallback cb)               override;
         void        StartThread()                                      override;
         void        StopThread()                                       override;
 
@@ -241,7 +246,7 @@ namespace ZEngine::VFS
 #include <unordered_map>
 #include <atomic>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     class VFSInotifyWatcher final : public IVFSPlatformWatcher
     {
@@ -251,7 +256,7 @@ namespace ZEngine::VFS
 
         WatchHandle AddWatch(const char* native_path, bool recursive) override;
         void        RemoveWatch(WatchHandle handle)                    override;
-        void        Poll(const RawEventCallback& cb)                   override;
+        void        Poll(void* ctx, RawEventCallback cb)               override;
         void        StartThread()                                      override;
         void        StopThread()                                       override;
 
@@ -298,7 +303,7 @@ namespace ZEngine::VFS
 #include <unordered_map>
 #include <atomic>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     class VFSRDCWatcher final : public IVFSPlatformWatcher
     {
@@ -308,7 +313,7 @@ namespace ZEngine::VFS
 
         WatchHandle AddWatch(const char* native_path, bool recursive) override;
         void        RemoveWatch(WatchHandle handle)                    override;
-        void        Poll(const RawEventCallback& cb)                   override;
+        void        Poll(void* ctx, RawEventCallback cb)               override;
         void        StartThread()                                      override;
         void        StopThread()                                       override;
 

@@ -1,7 +1,7 @@
 # ZEngine — System Scheduler
 
 **Priority:** P1 — Implement alongside ECS core (Phase 1 of migration-plan.md)  
-**Status:** Design  
+**Status:** Implemented  
 **Depends on:** `actor-ecs-architecture.md`  
 **Blocks:** `animation-system.md`
 
@@ -491,21 +491,21 @@ No new files beyond what `actor-ecs-architecture.md` already lists.
 
 ## 12. Deliverables Checklist
 
-- [ ] `SystemDeps` struct in `WorldTick.h`
-- [ ] `WorldTick::RegisterSystem(fn, deps)` — returns `SystemID`
-- [ ] `WorldTick::OrderBefore(SystemID a, SystemID b)`
-- [ ] `RegisterSystem` returns distinct IDs per system (monotonically increasing)
-- [ ] `WorldTick::Commit()` — edge insertion, cycle detection, topological sort into waves
-- [ ] `WorldTick::Tick()` — wave-by-wave dispatch via `ThreadPoolHelper`, barrier between waves
-- [ ] Assert on conflict with no ordering edge (debug builds)
-- [ ] Assert on cycle detected
-- [ ] Assert on `Tick()` called before `Commit()`
-- [ ] `tests/ECS/SchedulerTest.cpp`:
-  - [ ] Two independent systems run in the same wave
-  - [ ] Two conflicting systems with `OrderBefore` run in separate waves
-  - [ ] Two conflicting systems with no `OrderBefore` assert in debug
-  - [ ] Cycle detection asserts
-  - [ ] Systems execute in correct order (write before read verified via component state)
+- [x] `SystemDeps` struct in `WorldTick.h`
+- [x] `WorldTick::RegisterSystem(fn, deps)` — returns `SystemID`
+- [x] `WorldTick::OrderBefore(SystemID a, SystemID b)`
+- [x] `RegisterSystem` returns distinct IDs per system (monotonically increasing)
+- [x] `WorldTick::Commit()` — edge insertion, cycle detection, topological sort into waves
+- [x] `WorldTick::Tick()` — wave-by-wave dispatch via `ThreadPoolHelper`, barrier between waves
+- [x] Assert on conflict with no ordering edge (debug builds)
+- [x] Assert on cycle detected
+- [x] Assert on `Tick()` called before `Commit()`
+- [x] `tests/ECS/SchedulerTest.cpp`:
+  - [x] Two independent systems run in the same wave
+  - [x] Two conflicting systems with `OrderBefore` run in separate waves
+  - [x] Two conflicting systems with no `OrderBefore` assert in debug
+  - [x] Cycle detection asserts
+  - [x] Systems execute in correct order (write before read verified via component state)
 
 ---
 

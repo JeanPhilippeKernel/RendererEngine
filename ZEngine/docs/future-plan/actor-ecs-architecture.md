@@ -80,9 +80,9 @@ An Actor is a C++ object that:
 - Holds a non-owning reference to the `ECS::Scene` it lives in
 - Exposes component access as thin wrappers over `Scene`
 - Has virtual lifecycle hooks (`OnCreate`, `OnDestroy`, `OnTick`)
-- Is accessed externally via `Helpers::Handle<Actor>` — a generational index into `ActorManager`'s arena-backed slot array
+- Is accessed externally via `Helpers::Handle<Actor*>` — a generational index into `ActorManager`'s arena-backed slot array
 
-**`Ref<Actor>` (intrusive ref-counting) is NOT used.** Ref-counting is incompatible with the arena allocator model: the destructor would fire at an unpredictable time driven by the last pointer going out of scope, rather than at an explicit engine-controlled point. `Handle<Actor>` provides the same stale-handle safety via generation checks with zero atomic overhead and no heap allocation.
+**`Ref<Actor>` (intrusive ref-counting) is NOT used.** Ref-counting is incompatible with the arena allocator model: the destructor would fire at an unpredictable time driven by the last pointer going out of scope, rather than at an explicit engine-controlled point. `Handle<Actor*>` provides the same stale-handle safety via generation checks with zero atomic overhead and no heap allocation.
 
 ### 3.1 `Actor` base class
 
@@ -134,8 +134,8 @@ namespace ZEngine::ECS {
 }  // namespace ZEngine::ECS
 ```
 
-Actors are allocated inside `ActorManager`'s `HandleManager<Actor>` slot array (arena-backed).
-External code holds `Helpers::Handle<Actor>` — 16 bytes (`{Index, Generation}`), no vtable, no count.
+Actors are allocated inside `ActorManager`'s `HandleManager<Actor*>` slot array (arena-backed).
+External code holds `Helpers::Handle<Actor*>` — 16 bytes (`{Index, Generation}`), no vtable, no count.
 Destruction is explicit: `ActorManager::Destroy(handle)` calls `OnDestroy()` then `scene.DestroyEntity(id)`.
 No `Detach()` method needed — `ActorManager::Shutdown()` runs before `Scene::Shutdown()`, guaranteed by engine lifecycle order.
 
@@ -158,8 +158,8 @@ public:
     }
 };
 
-// Creation — returns a Handle<Actor>, not a pointer or Ref
-Helpers::Handle<Actor> player = actor_manager.Create<PlayerActor>();
+// Creation — returns a Handle<Actor*>, not a pointer or Ref
+Helpers::Handle<Actor*> player = actor_manager.Create<PlayerActor>();
 
 // Access
 if (Actor* a = actor_manager.Access(player))
@@ -172,7 +172,7 @@ actor_manager.Destroy(player);
 
 ### 3.3 `ActorManager`
 
-`ActorManager` owns all Actor objects in a `HandleManager<Actor>` backed by the ECS sub-arena.
+`ActorManager` owns all Actor objects in a `HandleManager<Actor*>` backed by the ECS sub-arena.
 
 ```cpp
 // ZEngine/ECS/ActorManager.h
@@ -185,17 +185,17 @@ public:
     // Allocates an Actor slot, creates an EntityID, calls OnCreate().
     // Returns a generational handle — 16 bytes, no heap, no ref count.
     template<typename T = Actor>
-    Helpers::Handle<Actor> Create();
+    Helpers::Handle<Actor*> Create();
 
     // Calls OnDestroy(), destroys the EntityID, frees the slot.
     // Stale handles (already destroyed) are silently ignored.
-    void Destroy(Helpers::Handle<Actor> handle);
+    void Destroy(Helpers::Handle<Actor*> handle);
 
     // Returns nullptr if handle is stale.
-    Actor*       Access(Helpers::Handle<Actor> handle);
-    const Actor* Access(Helpers::Handle<Actor> handle) const;
+    Actor*       Access(Helpers::Handle<Actor*> handle);
+    const Actor* Access(Helpers::Handle<Actor*> handle) const;
 
-    bool IsLive(Helpers::Handle<Actor> handle) const;
+    bool IsLive(Helpers::Handle<Actor*> handle) const;
 
     // Calls OnTick(dt) on all live Actors.
     void Tick(float dt);
@@ -205,7 +205,7 @@ public:
     void Shutdown();
 
 private:
-    Helpers::HandleManager<Actor> m_handles;
+    Helpers::HandleManager<Actor*> m_handles;
     Scene*                        m_scene = nullptr;
 };
 ```
@@ -214,7 +214,7 @@ private:
 
 - `ActorManager::Create<T>()` allocates a slot in the arena, creates an `EntityID` in the
   scene, sets `Actor::m_scene` and `Actor::m_entity_id`, then calls `OnCreate()`.
-  Returns a `Handle<Actor>` — the only way to reference an Actor externally.
+  Returns a `Handle<Actor*>` — the only way to reference an Actor externally.
 - `ActorManager::Destroy(handle)` calls `OnDestroy()`, calls `m_scene->DestroyEntity(id)`,
   then frees the slot (increments generation). All existing handles to this Actor become stale.
 - `ActorManager::Shutdown()` is called by the engine before `Scene::Shutdown()`, guaranteed
@@ -471,7 +471,7 @@ private:
     EntityRegistry m_registry;
     Core::Containers::UnorderedHashMap<
         ComponentTypeID,
-        std::unique_ptr<IComponentStorage>> m_storages;
+        IComponentStorage*> m_storages;  // arena-owned; destructor must not fire at scope exit
 };
 ```
 
@@ -589,7 +589,6 @@ that is applied atomically after all waves in `WorldTick::Tick` have completed.
 #include <ECS/EntityID.h>
 #include <ECS/ComponentTypeID.h>
 #include <Core/Containers/Array.h>
-#include <functional>
 
 namespace ZEngine::ECS {
 
@@ -598,8 +597,12 @@ namespace ZEngine::ECS {
     class WorldCommands {
     public:
         // Queue entity creation. The new EntityID is not available until Flush().
-        // Use a callback to receive it: SpawnEntity([](EntityID id){ ... })
-        void SpawnEntity(std::function<void(EntityID)> on_spawned = {});
+        // Use a callback to receive it: SpawnEntity({.Fn = &MyFn, .Context = this})
+        struct SpawnCallback {
+            void* Context = nullptr;
+            void (*Fn)(void*, EntityID) = nullptr;
+        };
+        void SpawnEntity(SpawnCallback on_spawned = {});
 
         // Queue entity destruction. Safe to call on an entity that is already
         // queued for destruction — duplicate destroys are silently ignored.
@@ -632,8 +635,8 @@ namespace ZEngine::ECS {
             CommandKind Kind;
             EntityID    Target;           // INVALID_ENTITY for SpawnEntity
             ComponentTypeID TypeID;       // 0 for entity-only commands
-            Core::Containers::Array<uint8_t> Data;  // serialized component bytes
-            std::function<void(EntityID)>    OnSpawned;
+            uint8_t Data[256] = {};  // Components are serialized into this fixed buffer; static_assert rejects T > 256 bytes
+            SpawnCallback                    OnSpawned;
         };
         Core::Containers::Array<Command> m_commands;
     };
@@ -644,15 +647,22 @@ namespace ZEngine::ECS {
 ### 7.2 Usage pattern inside a system
 
 ```cpp
+// Plain callback function — no capture, no heap allocation
+struct ProjectileSpawnCtx { Core::Maths::Vec3f SpawnPos; };
+
+static void OnProjectileSpawned(void* ctx, EntityID proj_id) {
+    // This runs in Flush() on the main thread — safe to call scene methods here
+    auto* data = static_cast<ProjectileSpawnCtx*>(ctx);
+    (void)data; // add components in a separate queued AddComponent call
+}
+
 // Systems receive WorldCommands& as a third parameter
 void SpawnProjectileSystem(Scene& scene, float dt, WorldCommands& commands) {
     scene.ForEach<WeaponComponent, TransformComponent>(
         [&](EntityID id, WeaponComponent& w, TransformComponent& t) {
             if (w.ShouldFire) {
-                commands.SpawnEntity([pos = t.Position](EntityID proj_id) {
-                    // This callback runs in Flush() on the main thread —
-                    // safe to call scene methods here
-                });
+                ProjectileSpawnCtx ctx{ t.Position };
+                commands.SpawnEntity({ &ctx, &OnProjectileSpawned });
                 w.ShouldFire = false;
             }
         });
@@ -701,7 +711,7 @@ MemoryManager::MainArena  (3 GB)
     ├── EntityRegistry::m_free_list      [up to 65536 × 4 B = ~256 KB]
     │     recycled slot indices
     │
-    ├── ActorManager::m_handles          [HandleManager<Actor>]
+    ├── ActorManager::m_handles          [HandleManager<Actor*>]
     │     Slot array: 1024 × sizeof(Actor) ≈ 1024 × 24 B = ~25 KB
     │     Generation array: 1024 × 8 B = ~8 KB
     │     Free-list next: 1024 × 4 B = ~4 KB
@@ -737,10 +747,10 @@ MemoryManager::MainArena  (3 GB)
     └── Query scratch / system temporaries
 ```
 
-### How a Handle<Actor> resolves to component data
+### How a Handle<Actor*> resolves to component data
 
 ```
-Handle<Actor> player = { Index=0, Generation=1 }
+Handle<Actor*> player = { Index=0, Generation=1 }
     │
     ▼
 ActorManager::m_handles[0]
@@ -849,7 +859,7 @@ tests/
 - [x] `ZEngine/ECS/Query.h`
 - [x] `ZEngine/ECS/WorldTick.h` + `.cpp` — DAG scheduler, wave dispatch, conflict detection
 - [x] `ZEngine/ECS/Actor.h` + `.cpp` — no `Ref<Actor>`, no `RefCounted`; lifetime owned by `ActorManager`
-- [x] `ZEngine/ECS/ActorManager.h` + `.cpp` — `HandleManager<Actor>` with `MAX_ACTORS = 1024`; `Create<T>()`, `Destroy(handle)`, `Access(handle)`, `Tick(dt)`, `Shutdown()`
+- [x] `ZEngine/ECS/ActorManager.h` + `.cpp` — `HandleManager<Actor*>` with `MAX_ACTORS = 1024`; `Create<T>()`, `Destroy(handle)`, `Access(handle)`, `Tick(dt)`, `Shutdown()`
 - [x] `ZEngine/ECS/Components/TransformComponent.h` — plain data, separate from old type
 - [x] `tests/ECS/ECSTest.cpp` — entity/component/query/generational handle tests
 - [x] `tests/ECS/ActorTest.cpp` — covered in ECSTest.cpp — Actor create/destroy, component access via Actor, ECS system sees Actor entity

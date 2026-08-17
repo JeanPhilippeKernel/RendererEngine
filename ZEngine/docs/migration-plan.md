@@ -127,81 +127,81 @@ ZEngine/tests/ECS/
 ### Tasks
 
 **`EntityID.h`**
-- [ ] `struct EntityID { uint32_t Index; uint32_t Generation; bool IsValid(); operator==; }`
-- [ ] `constexpr EntityID INVALID_ENTITY = {0, 0}`
+- [x] `struct EntityID { uint32_t Index; uint32_t Generation; bool IsValid(); operator==; }`
+- [x] `constexpr EntityID INVALID_ENTITY = {0, 0}`
 
 **`ComponentTypeID.h`**
-- [ ] `using ComponentTypeID = uint32_t`
-- [ ] `NextTypeID()` — `static std::atomic<uint32_t>` counter, `fetch_add` relaxed
-- [ ] `ComponentTypeOf<T>()` — static local, calls `NextTypeID()` once per type
+- [x] `using ComponentTypeID = uint32_t`
+- [x] `NextTypeID()` — `static std::atomic<uint32_t>` counter, `fetch_add` relaxed
+- [x] `ComponentTypeOf<T>()` — static local, calls `NextTypeID()` once per type
 
 **`ArchetypeMask.h`**
-- [ ] `using ArchetypeMask = uint64_t`
-- [ ] `MaskBit(id)` — `ZENGINE_VALIDATE_ASSERT(id < 64, ...)` then `uint64_t(1) << id`
-- [ ] `MaskHas`, `MaskMatches`
+- [x] `using ArchetypeMask = uint64_t`
+- [x] `MaskBit(id)` — `ZENGINE_VALIDATE_ASSERT(id < 64, ...)` then `uint64_t(1) << id`
+- [x] `MaskHas`, `MaskMatches`
 
 **`IComponentStorage.h`**
-- [ ] `struct IComponentStorage { virtual void RemoveRaw(EntityID) = 0; }`
+- [x] `struct IComponentStorage { virtual void RemoveRaw(EntityID) = 0; }`
 
 **`ComponentStorage<T>` (header-only)**
-- [ ] `m_dense`, `m_dense_ids`, `m_sparse` (UINT32_MAX = absent)
-- [ ] `Add` — grow sparse, assert no double-add, append to dense
-- [ ] `Remove` — swap-and-pop, update moved entity's sparse entry
-- [ ] `Get` — bounds check, UINT32_MAX check, **generation check** (`m_dense_ids[dense_idx] != id → nullptr`)
-- [ ] `Has` — same generation check
-- [ ] `ForEach` — iterates dense arrays in tandem
+- [x] `m_dense`, `m_dense_ids`, `m_sparse` (UINT32_MAX = absent)
+- [x] `Add` — grow sparse, assert no double-add, append to dense
+- [x] `Remove` — swap-and-pop, update moved entity's sparse entry
+- [x] `Get` — bounds check, UINT32_MAX check, **generation check** (`m_dense_ids[dense_idx] != id → nullptr`)
+- [x] `Has` — same generation check
+- [x] `ForEach` — iterates dense arrays in tandem
 
 **`EntityRegistry`**
-- [ ] `struct EntitySlot { uint32_t Generation; ArchetypeMask Mask; }`
-- [ ] `Create()` — pop free-list or append; increment generation, skip 0
-- [ ] `Destroy(id)` — assert alive, increment generation (skip 0), push to free-list
-- [ ] `IsAlive(id)` — index bounds + generation match
-- [ ] `SetMask`, `GetMask`, `ForEachAlive`
+- [x] `struct EntitySlot { uint32_t Generation; ArchetypeMask Mask; }`
+- [x] `Create()` — pop free-list or append; increment generation, skip 0
+- [x] `Destroy(id)` — assert alive, increment generation (skip 0), push to free-list
+- [x] `IsAlive(id)` — index bounds + generation match
+- [x] `SetMask`, `GetMask`, `ForEachAlive`
 
 **`ECS::Scene`**
-- [ ] `CreateEntity`, `DestroyEntity` (calls `RemoveRaw` on all storages first)
-- [ ] `AddComponent<T>` — `GetOrCreateStorage`, `storage.Add`, update mask
-- [ ] `GetComponent<T>`, `RemoveComponent<T>`, `HasComponent<T>`
-- [ ] `GetMask(EntityID)`
-- [ ] `ForEach<Ts...>` — compute required mask, call `ForEachAlive`, skip non-matching
-- [ ] `m_storages` — `UnorderedHashMap<ComponentTypeID, std::unique_ptr<IComponentStorage>>`
+- [x] `CreateEntity`, `DestroyEntity` (calls `RemoveRaw` on all storages first)
+- [x] `AddComponent<T>` — `GetOrCreateStorage`, `storage.Add`, update mask
+- [x] `GetComponent<T>`, `RemoveComponent<T>`, `HasComponent<T>`
+- [x] `GetMask(EntityID)`
+- [x] `ForEach<Ts...>` — compute required mask, call `ForEachAlive`, skip non-matching
+- [x] `m_storages` — `UnorderedHashMap<ComponentTypeID, std::unique_ptr<IComponentStorage>>`
 
 **`Query<Ts...>` (header-only)**
-- [ ] Constructor pre-computes `ArchetypeMask`
-- [ ] `ForEach` delegates to `Scene::ForEach` with cached mask
+- [x] Constructor pre-computes `ArchetypeMask`
+- [x] `ForEach` delegates to `Scene::ForEach` with cached mask
 
 **`WorldTick`**
-- [ ] `using SystemID = uint32_t`
-- [ ] `struct SystemDeps { ArchetypeMask ReadMask; ArchetypeMask WriteMask; }`
-- [ ] `RegisterSystem(SystemFn, SystemDeps)` — returns `SystemID` (index into `m_nodes`)
-- [ ] `OrderBefore(SystemID a, SystemID b)` — records edge a→b
-- [ ] `Commit()`:
+- [x] `using SystemID = uint32_t`
+- [x] `struct SystemDeps { ArchetypeMask ReadMask; ArchetypeMask WriteMask; }`
+- [x] `RegisterSystem(SystemFn, SystemDeps)` — returns `SystemID` (index into `m_nodes`)
+- [x] `OrderBefore(SystemID a, SystemID b)` — records edge a→b
+- [x] `Commit()`:
   - Build adjacency list from `OrderBefore` calls
   - For every pair (A, B): check conflict rules; if conflict and no ordering edge → `ZENGINE_VALIDATE_ASSERT`
   - DFS cycle detection → `ZENGINE_VALIDATE_ASSERT` on back edge
   - Kahn's algorithm → `m_waves` (Array of Array of SystemID)
-- [ ] `Tick(scene, dt)`:
+- [x] `Tick(scene, dt)`:
   - Assert `m_committed`
   - For each wave: submit all systems to `ThreadPoolHelper`, wait with `condition_variable` + atomic counter
   - Comment explaining why predicate-wait is race-free
 
 **`ECSTest.cpp`** (8 tests)
-- [ ] `CreateEntity` returns valid ID
-- [ ] `DestroyEntity` makes ID invalid
-- [ ] `AddComponent` / `GetComponent` non-null
-- [ ] `RemoveComponent` → `GetComponent` null
-- [ ] `ForEach` only matches entities with all components
-- [ ] Generational handle rejected after destroy + recycle
-- [ ] `Query<A,B>` matches only entities with both
-- [ ] `DestroyEntity` cleans up all components
+- [x] `CreateEntity` returns valid ID
+- [x] `DestroyEntity` makes ID invalid
+- [x] `AddComponent` / `GetComponent` non-null
+- [x] `RemoveComponent` → `GetComponent` null
+- [x] `ForEach` only matches entities with all components
+- [x] Generational handle rejected after destroy + recycle
+- [x] `Query<A,B>` matches only entities with both
+- [x] `DestroyEntity` cleans up all components
 
 **`SchedulerTest.cpp`** (5 tests)
-- [ ] Two independent systems assigned to same wave
-- [ ] Conflicting systems with `OrderBefore` assigned to separate waves
-- [ ] Conflicting systems without `OrderBefore` asserts in debug
-- [ ] Cycle asserts
-- [ ] `Tick` before `Commit` asserts
-- [ ] `RegisterSystem` returns distinct IDs
+- [x] Two independent systems assigned to same wave
+- [x] Conflicting systems with `OrderBefore` assigned to separate waves
+- [x] Conflicting systems without `OrderBefore` asserts in debug
+- [x] Cycle asserts
+- [x] `Tick` before `Commit` asserts
+- [x] `RegisterSystem` returns distinct IDs
 
 ### Acceptance Criteria
 
@@ -259,27 +259,27 @@ ZEngine/ZEngine/Engine.h/.cpp   — add ECS::Scene + WorldTick + ActorManager to
 
 **`Actor`**
 
-- [ ] `class Actor : public Helpers::RefCounted`
-- [ ] `static Ref<Actor> Create(Scene& scene)` — `CreateEntity`, store ID, call `OnCreate`
-- [ ] `static Ref<Actor> Wrap(Scene& scene, EntityID id)` — does NOT call `OnCreate`
-- [ ] `~Actor()` — call `OnDestroy`, then `m_scene->DestroyEntity(m_entity_id)` (guard against null scene)
-- [ ] `GetEntityID()`, `IsAlive()`
-- [ ] `AddComponent<T>`, `GetComponent<T>`, `HasComponent<T>`, `RemoveComponent<T>` — all delegate to `m_scene`
-- [ ] `virtual void OnCreate() {}`, `virtual void OnDestroy() {}`, `virtual void OnTick(float dt) {}`
-- [ ] `EntityID m_entity_id`; `Scene* m_scene` (non-owning)
+- [x] `class Actor : public Helpers::RefCounted`
+- [x] `static Ref<Actor> Create(Scene& scene)` — `CreateEntity`, store ID, call `OnCreate`
+- [x] `static Ref<Actor> Wrap(Scene& scene, EntityID id)` — does NOT call `OnCreate`
+- [x] `~Actor()` — call `OnDestroy`, then `m_scene->DestroyEntity(m_entity_id)` (guard against null scene)
+- [x] `GetEntityID()`, `IsAlive()`
+- [x] `AddComponent<T>`, `GetComponent<T>`, `HasComponent<T>`, `RemoveComponent<T>` — all delegate to `m_scene`
+- [x] `virtual void OnCreate() {}`, `virtual void OnDestroy() {}`, `virtual void OnTick(float dt) {}`
+- [x] `EntityID m_entity_id`; `Scene* m_scene` (non-owning)
 
 **`ActorManager`**
 
-- [ ] Owns `Array<Ref<Actor>>` of live Actors
-- [ ] `Register(Ref<Actor>)`, `Unregister(EntityID)`
-- [ ] `Tick(float dt)` — call `OnTick` on each live Actor
+- [x] Owns `Array<Ref<Actor>>` of live Actors
+- [x] `Register(Ref<Actor>)`, `Unregister(EntityID)`
+- [x] `Tick(float dt)` — call `OnTick` on each live Actor
 
 **`Engine` integration**
 
-- [ ] Add `ECS::Scene Scene` to `EngineContext`
-- [ ] Add `ECS::WorldTick WorldTick` to `EngineContext`
-- [ ] Add `ECS::ActorManager ActorManager` to `EngineContext`
-- [ ] In `Engine::MainThreadRun`: call `WorldTick.Tick(Scene, dt)` then `ActorManager.Tick(dt)` each frame
+- [x] Add `ECS::Scene Scene` to `EngineContext`
+- [x] Add `ECS::WorldTick WorldTick` to `EngineContext`
+- [x] Add `ECS::ActorManager ActorManager` to `EngineContext`
+- [x] In `Engine::MainThreadRun`: call `WorldTick.Tick(Scene, dt)` then `ActorManager.Tick(dt)` each frame
 
 **`ActorTest.cpp`**
 
@@ -442,9 +442,9 @@ ZEngine/ZEngine/Rendering/Components/ValidComponent.h       — dead, no call si
 ZEngine/ZEngine/Rendering/Components/CameraComponent.h      — dead (only in #if 0 / comments)
 ```
 
-- [ ] `grep -rn "GeometryComponent\|ValidComponent\|CameraComponent"` outside `#if 0` → must be zero
-- [ ] Delete the three files
-- [ ] Remove from CMakeLists if listed
+- [x] `grep -rn "GeometryComponent\|ValidComponent\|CameraComponent"` outside `#if 0` → must be zero
+- [x] Delete the three files
+- [x] Remove from CMakeLists if listed
 
 ### Step 5.2 — Delete old `Rendering::Components` headers (after Phase 3)
 
@@ -464,9 +464,9 @@ ZEngine/ZEngine/Rendering/Components/MaterialComponent.h
 
 `GraphicSceneEntity` is used only by `GraphicScene3DSerializer` (already migrated in Phase 3).
 
-- [ ] `grep -rn "GraphicSceneEntity"` outside `#if 0` → must be zero after Phase 3
-- [ ] Delete `Rendering/Entities/GraphicSceneEntity.h`
-- [ ] Delete `Rendering/Entities/GraphicSceneEntity.cpp`
+- [x] `grep -rn "GraphicSceneEntity"` outside `#if 0` → must be zero after Phase 3
+- [x] Delete `Rendering/Entities/GraphicSceneEntity.h`
+- [x] Delete `Rendering/Entities/GraphicSceneEntity.cpp`
 
 ### Step 5.4 — Delete `#if 0` block in `GraphicScene.h/.cpp`
 

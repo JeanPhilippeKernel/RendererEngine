@@ -93,7 +93,7 @@ Remaining: VFS T5 (.meta sidecars) and CMake build-integration doc not yet done 
 | `SchedulerTest.cpp` — 6 tests including conflict/cycle asserts | 1 | WorldTick | Done |
 | `Actor` base class — `Create`, `Wrap`, `Detach`, component delegation | 2 | ECS Scene | Done |
 | `ActorManager` — register, tick, shutdown | 1 | Actor | Done |
-| `ActorTest.cpp` — create/destroy/ForEach visibility | 0.5 | Actor | Done |
+| `ActorTest.cpp` — create/destroy/ForEach visibility | 0.5 | Actor | Pending — file not yet created |
 | `WorldCommands` deferred queue — `DeferCreateEntity`, `DeferDestroyEntity`, `Flush` | 1.5 | WorldTick | Done |
 
 **Engineer B — VFS scanner + file watcher**
@@ -528,7 +528,7 @@ Everything else is parallel to this path.
 | ECS Scene compiles + tests pass | WorldTick, Actor, all systems gate on this | Sprint 2 | Done |
 | Tetragrama migrated off `Rendering::Components::*` | Sprint 5 deletes those headers | **Before Sprint 5** | Pending — InspectorView + HierarchyView still reference old model |
 | VFS T1–T6 done | Import pipeline, audio, animation, scene serialization all block on it | Sprint 4 | Done — all 6 tickets merged |
-| WorldCommands deferred queue | Systems cannot spawn entities without it | Sprint 3 | Pending |
+| WorldCommands deferred queue | Systems cannot spawn entities without it | Sprint 3 | Done — WorldCommands.h/.cpp implemented |
 | `UploadBuffer` added to RRM | Animation skinning upload blocked | Sprint 5 | Pending |
 | Networking spec gaps filled (5d) | Implementation cannot start until spec is clean | Sprint 11 | Pending |
 
