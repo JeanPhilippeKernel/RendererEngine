@@ -84,6 +84,7 @@ if(APPLE)
     )
     list(APPEND ZENGINE_SOURCES_WINDOWS
         ${CMAKE_CURRENT_SOURCE_DIR}/Windows/Platform/MacOSFileDialog.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/Windows/Platform/MacOSAppIcon.mm
     )
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     list(APPEND ZENGINE_SOURCES_CRASH_HANDLERS
