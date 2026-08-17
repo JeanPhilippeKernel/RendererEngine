@@ -22,7 +22,10 @@ target_sources(${TARGET_NAME} PUBLIC EntryPoint.cpp
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     enable_language(RC)
-    target_sources(${TARGET_NAME} PRIVATE Obelisk.rc)
+    set(OBELISK_ICO_PATH
+        "${CMAKE_SOURCE_DIR}/Resources/Editor/Settings/Icons/AppIconBadge.ico")
+    configure_file(Obelisk.rc.in "${CMAKE_CURRENT_BINARY_DIR}/Obelisk.rc" @ONLY)
+    target_sources(${TARGET_NAME} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/Obelisk.rc")
 endif()
 
 # We set this debugger directory to find assets and resources file
