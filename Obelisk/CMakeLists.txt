@@ -20,6 +20,11 @@ endif()
 target_sources(${TARGET_NAME} PUBLIC EntryPoint.cpp
   PUBLIC FILE_SET HEADERS BASE_DIRS ${PROJECT_DIR})
 
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+    enable_language(RC)
+    target_sources(${TARGET_NAME} PRIVATE Obelisk.rc)
+endif()
+
 # We set this debugger directory to find assets and resources file
 # after being copied to Debug and Release output directories 
 #
