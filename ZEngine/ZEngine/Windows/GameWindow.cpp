@@ -1,12 +1,16 @@
 #include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Engine.h>
+#include <stb/stb_image.h>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <vector>
 
 #if defined(__APPLE__)
 // Implemented in Windows/Platform/MacOSFileDialog.mm
 extern "C" std::string ZEngineOpenFileDialog(const char** extensions, int count);
+// Implemented in Windows/Platform/MacOSAppIcon.mm
+extern "C" void        ZEngineSetDockIcon(const char* path);
 #endif
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -123,6 +127,21 @@ namespace ZEngine::Windows
         {
             ZENGINE_CORE_CRITICAL("Failed to create GLFW Window")
             ZENGINE_EXIT_FAILURE()
+        }
+
+        {
+            auto           icon_path = (std::filesystem::current_path() / "ZodiacEngine/Settings/Icons/AppIconBadge.png").string();
+            int            w = 0, h = 0, channels = 0;
+            unsigned char* pixels = stbi_load(icon_path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
+            if (pixels)
+            {
+                GLFWimage icon{w, h, pixels};
+                glfwSetWindowIcon(m_native_window, 1, &icon);
+                stbi_image_free(pixels);
+            }
+#if defined(__APPLE__)
+            ZEngineSetDockIcon(icon_path.c_str());
+#endif
         }
 
         int window_width = 0, window_height = 0;
