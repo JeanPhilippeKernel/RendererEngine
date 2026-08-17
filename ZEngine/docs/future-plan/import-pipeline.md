@@ -1,9 +1,28 @@
 # Import Pipeline — Asset Import Coordination
 
-**Priority:** P3 — Implement after VFS Ticket 6 and ECS core are live  
-**Status:** Design  
+**Priority:** P3  
+**Status:** Partially Implemented — editor ImportFile path live; ImportCoordinator / ImportQueue still design  
 **Depends on:** `vfs-ticket6-asset-registry.md`, `actor-ecs-architecture.md`  
 **Blocks:** `animation-system.md` (AssimpImporter end-to-end), `render-resource-manager.md`
+
+### What is already implemented (as of PR #597)
+
+- `IAssetImporter` interface — `CanImport(ext)` + `Import(ctx, path, meta)` — live in `ZEngine/Importers/IAssetImporter.h`
+- `AssimpImporter::ImportFile()` — editor path; cooks .fbx/.obj to `.zemesh` + `.zematerial` on disk, reports progress via `ImportCompleteCallback` / `ImportProgressCallback` / `ImportErrorCallback` / `ImportLogCallback` type aliases
+- `GltfImporter::ImportFile()` — same editor path for .glb/.gltf via fastgltf; extracts embedded textures to `Assets/Textures/`
+- `.zematerial` serialized as JSON (nlohmann/json); `.zetextures` eliminated — texture VFS paths inline in `.zematerial`
+- `MetaFileData::SourcePath` written after every successful import for future reimport
+- Lazy cook on save — `EditorSceneSerializer` detects in-memory meshes with no artifact and cooks before writing `.zescene`
+- Named callback aliases: `ImportCompleteCallback`, `ImportProgressCallback`, `ImportErrorCallback`, `ImportLogCallback` in `AssetTypes.h`
+
+### What is still design (this document)
+
+- `ImportQueue` — max-heap priority queue with deduplication
+- `ImportCoordinator` — central dispatch, `Tick()`, `EnqueueBatch`, `DependenciesSatisfied`
+- `DependencyGraph` — texture → material → mesh ordering
+- `ImportPriority` enum and `ImportJob` struct
+- VFSScanner → `EnqueueBatch` wiring
+- FileWatcher → `Enqueue(Immediate)` wiring
 
 **Goal**: Implement a priority-driven, thread-safe asset import pipeline inside
 `ZEngine::Importers` that routes any source file to the correct importer, tracks progress

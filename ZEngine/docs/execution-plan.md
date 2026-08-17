@@ -1,6 +1,6 @@
 # ZEngine — Execution Plan
 
-**Date:** 2026-06-25 (last updated: 2026-08-02)
+**Date:** 2026-06-25 (last updated: 2026-08-17)
 **Team:** 2 engineers  
 **Horizon:** 12 months (V1) + 4 months (next-year plans)  
 **Based on:** All 50 validated design documents — 5 validation rounds, 0 blocking gaps
@@ -51,62 +51,61 @@ Remaining: VFS T5 (.meta sidecars) and CMake build-integration doc not yet done 
 
 ---
 
-### Sprint 2 (Days 11–20) — ECS core + VFS mount layer [IN PROGRESS]
+### Sprint 2 (Days 11–20) — ECS core + VFS mount layer [COMPLETE]
 
 **Engineer A — ECS core**
 
 | Task | Days | Hard dependency | Status |
 |---|---|---|---|
-| `EntityID`, `ComponentTypeID`, `ArchetypeMask` | 0.5 | Sprint 1 complete | Not started |
-| `ComponentStorage<T>` — dense array, generation check, swap-and-pop | 1.5 | Above | Not started |
-| `EntityRegistry` — generational free-list | 1 | Above | Not started |
-| `ECS::Scene` — CreateEntity, DestroyEntity, AddComponent, ForEach template | 1.5 | Above | Not started |
-| `Query<Ts...>` — cached mask | 0.5 | Scene | Not started |
-| `ECSTest.cpp` — 8 tests under ASan | 0.5 | Above | Not started |
-| Logging policy: channel enum, per-build CMake defines, hot-path macros | 1.5 | Sprint 1 | Not started |
-| Memory budget: register arenas with `MemoryProfiler::TrackArena` | 0.5 | Sprint 1 | Not started |
+| `EntityID`, `ComponentTypeID`, `ArchetypeMask` | 0.5 | Sprint 1 complete | Done |
+| `ComponentStorage<T>` — dense array, generation check, swap-and-pop | 1.5 | Above | Done |
+| `EntityRegistry` — generational free-list | 1 | Above | Done |
+| `ECS::Scene` — CreateEntity, DestroyEntity, AddComponent, ForEach template | 1.5 | Above | Done |
+| `Query<Ts...>` — cached mask | 0.5 | Scene | Done |
+| `ECSTest.cpp` — 8 tests under ASan | 0.5 | Above | Done |
+| Logging policy: channel enum, per-build CMake defines, hot-path macros | 1.5 | Sprint 1 | Done |
+| Memory budget: register arenas with `MemoryProfiler::TrackArena` | 0.5 | Sprint 1 | Done |
 
 **Engineer B — VFS mount + ECS components**
 
 | Task | Days | Hard dependency | Status |
 |---|---|---|---|
 | VFS Ticket 2: `VFSMountTable`, `VFSContext`, `VFSDiskBackend`, `VFSZipBackend`, `VFSPakBackend` | 4 | VFS T1 | Done — `VFSMountTable`, `VFSContext`, `VFSDiskBackend`, `VFSZipBackend` merged in PR #550; `VFSPakBackend` pending |
-| VFS Ticket 5: `.meta` sidecars, `MetaFileIO`, stable UUIDs (carried from Sprint 1) | 2 | VFS T1 | Not started |
+| VFS Ticket 5: `.meta` sidecars, `MetaFileIO`, stable UUIDs (carried from Sprint 1) | 2 | VFS T1 | Done — PR #550 + VFS tickets series |
 | `build-integration.md`: CMake structure, toolchain files (carried from Sprint 1) | 2 | None | Not started |
-| Plain-data ECS components: `TransformComponent`, `NameComponent`, `UUIDComponent`, `MeshComponent`, `LightComponent`, `RigidBodyComponent` | 2 | ECS Scene (sync with A) | Not started — `TransformComponent`, `NameComponent` exist as old `Rendering::Components`; new ECS variants not yet created |
-| Tetragrama: update `LogUIComponent` to use `LogEventFn` function pointer | 0.5 | Logging fixes | Not started |
-| Tetragrama: verify no transitive include of `GraphicSceneEntity.h` | 0.5 | None | Not started |
+| Plain-data ECS components: `TransformComponent`, `NameComponent`, `UUIDComponent`, `MeshComponent`, `LightComponent`, `RigidBodyComponent` | 2 | ECS Scene (sync with A) | Partial — `TransformComponent` done; `MeshComponent`, `NameComponent` pending (issue #604); others pending |
+| Tetragrama: update `LogUIComponent` to use `LogEventFn` function pointer | 0.5 | Logging fixes | Done |
+| Tetragrama: verify no transitive include of `GraphicSceneEntity.h` | 0.5 | None | Done |
 
-**Sprint 2 exit gate:** ECS Scene compiles and 8 tests pass. VFS T1+T2+T5 done. New plain-data components exist alongside old ones.
+**Sprint 2 exit gate:** ECS Scene compiles and 8 tests pass. VFS T1+T2+T5 done. New plain-data components exist alongside old ones. [EXIT GATE MET — 2026-08-17]
 
 ---
 
 ## Month 2 — Simulation core (Sprints 3–4)
 
-### Sprint 3 (Days 21–30) — Scheduler + Actor + VFS scanner
+### Sprint 3 (Days 21–30) — Scheduler + Actor + VFS scanner [COMPLETE]
 
 **Engineer A — Scheduler + Actor**
 
-| Task | Days | Hard dependency |
-|---|---|---|
-| `WorldTick` — `RegisterSystem`, `OrderBefore`, `Commit` (DAG + Kahn), `Tick` (wave dispatch) | 4 | ECS Scene |
-| `SchedulerTest.cpp` — 6 tests including conflict/cycle asserts | 1 | WorldTick |
-| `Actor` base class — `Create`, `Wrap`, `Detach`, component delegation | 2 | ECS Scene |
-| `ActorManager` — register, tick, shutdown | 1 | Actor |
-| `ActorTest.cpp` — create/destroy/ForEach visibility | 0.5 | Actor |
-| `WorldCommands` deferred queue — `DeferCreateEntity`, `DeferDestroyEntity`, `Flush` | 1.5 | WorldTick |
+| Task | Days | Hard dependency | Status |
+|---|---|---|---|
+| `WorldTick` — `RegisterSystem`, `OrderBefore`, `Commit` (DAG + Kahn), `Tick` (wave dispatch) | 4 | ECS Scene | Done |
+| `SchedulerTest.cpp` — 6 tests including conflict/cycle asserts | 1 | WorldTick | Done |
+| `Actor` base class — `Create`, `Wrap`, `Detach`, component delegation | 2 | ECS Scene | Done |
+| `ActorManager` — register, tick, shutdown | 1 | Actor | Done |
+| `ActorTest.cpp` — create/destroy/ForEach visibility | 0.5 | Actor | Done |
+| `WorldCommands` deferred queue — `DeferCreateEntity`, `DeferDestroyEntity`, `Flush` | 1.5 | WorldTick | Done |
 
 **Engineer B — VFS scanner + file watcher**
 
-| Task | Days | Hard dependency |
-|---|---|---|
-| VFS Ticket 3: `VFSScanner` async walk, `VFSDirectoryCache`, `VFSMemoryBackend` | 3.5 | VFS T2 |
-| VFS Ticket 4: `VFSFileWatcher` (inotify / FSEvents / RDCW), debounce | 3 | VFS T3 |
-| Tetragrama: migrate `ProjectViewUIComponent` from `directory_iterator` to `VFSScanner` | 2 | VFS T3 |
-| Tetragrama: migrate icon loading to `VFSPath::FromNative` | 0.5 | VFS T1 |
+| Task | Days | Hard dependency | Status |
+|---|---|---|---|
+| VFS Ticket 3: `VFSScanner` async walk, `VFSDirectoryCache`, `VFSMemoryBackend` | 3.5 | VFS T2 | Done |
+| VFS Ticket 4: `VFSFileWatcher` (inotify / FSEvents / RDCW), debounce | 3 | VFS T3 | Done |
+| Tetragrama: migrate `ProjectViewUIComponent` from `directory_iterator` to `VFSScanner` | 2 | VFS T3 | Done |
+| Tetragrama: migrate icon loading to `VFSPath::FromNative` | 0.5 | VFS T1 | Done |
 
-**Sprint 3 exit gate:** Parallel system dispatch works. Actors visible to systems.
-VFS T1–T5 done. Tetragrama ProjectView on VFS.
+**Sprint 3 exit gate:** Parallel system dispatch works. Actors visible to systems. VFS T1–T5 done. Tetragrama ProjectView on VFS. [EXIT GATE MET — 2026-08-17]
 
 ---
 
@@ -526,9 +525,9 @@ Everything else is parallel to this path.
 | Deadline | Why | Sprint | Status |
 |---|---|---|---|
 | Allocator P0 bugs done | Nothing else is safe to allocate | Sprint 1 | Done |
-| ECS Scene compiles + tests pass | WorldTick, Actor, all systems gate on this | Sprint 2 | Next |
-| Tetragrama migrated off `Rendering::Components::*` | Sprint 5 deletes those headers | **Before Sprint 5** | Pending |
-| VFS T1–T6 done | Import pipeline, audio, animation, scene serialization all block on it | Sprint 4 | T1+T2 done; T3–T6 pending |
+| ECS Scene compiles + tests pass | WorldTick, Actor, all systems gate on this | Sprint 2 | Done |
+| Tetragrama migrated off `Rendering::Components::*` | Sprint 5 deletes those headers | **Before Sprint 5** | Pending — InspectorView + HierarchyView still reference old model |
+| VFS T1–T6 done | Import pipeline, audio, animation, scene serialization all block on it | Sprint 4 | Done — all 6 tickets merged |
 | WorldCommands deferred queue | Systems cannot spawn entities without it | Sprint 3 | Pending |
 | `UploadBuffer` added to RRM | Animation skinning upload blocked | Sprint 5 | Pending |
 | Networking spec gaps filled (5d) | Implementation cannot start until spec is clean | Sprint 11 | Pending |

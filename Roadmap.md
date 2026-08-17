@@ -38,14 +38,14 @@ Implementation follows the phased plan in `ZEngine/docs/migration-plan.md`.
 
 | Status | Feature |
 |---|---|
-| [ ] | Entity-Component System — sparse-set + archetype mask hybrid |
-| [ ] | Generational entity handles — stale handle detection |
-| [ ] | `ComponentStorage<T>` — dense arrays, O(1) add/remove/get |
-| [ ] | `ECS::Scene` — top-level context, ForEach template query |
-| [ ] | `Query<Ts...>` — cached mask, zero virtual dispatch |
-| [ ] | Actor layer — Tier 1 objects (player, camera, lights) over ECS |
-| [ ] | `ActorManager` — lifetime management, `OnTick` dispatch |
-| [ ] | `WorldCommands` — deferred structural mutations from systems |
+| [x] | Entity-Component System — sparse-set + archetype mask hybrid |
+| [x] | Generational entity handles — stale handle detection |
+| [x] | `ComponentStorage<T>` — dense arrays, O(1) add/remove/get |
+| [x] | `ECS::Scene` — top-level context, ForEach template query |
+| [x] | `Query<Ts...>` — cached mask, zero virtual dispatch |
+| [x] | Actor layer — Tier 1 objects (player, camera, lights) over ECS |
+| [x] | `ActorManager` — lifetime management, `OnTick` dispatch |
+| [x] | `WorldCommands` — deferred structural mutations from systems |
 | [ ] | ECS component reflection — type names, field metadata for editor |
 
 
@@ -53,12 +53,12 @@ Implementation follows the phased plan in `ZEngine/docs/migration-plan.md`.
 
 | Status | Feature |
 |---|---|
-| [ ] | DAG-based parallel system scheduler |
-| [ ] | Conflict detection via read/write component masks |
-| [ ] | `OrderBefore(SystemID, SystemID)` — explicit ordering edges |
-| [ ] | Wave-based parallel dispatch on `ThreadPoolHelper` |
-| [ ] | Cycle detection — asserts on invalid dependency graphs |
-| [ ] | Runtime system enable/disable |
+| [x] | DAG-based parallel system scheduler |
+| [x] | Conflict detection via read/write component masks |
+| [x] | `OrderBefore(SystemID, SystemID)` — explicit ordering edges |
+| [x] | Wave-based parallel dispatch on `ThreadPoolHelper` |
+| [x] | Cycle detection — asserts on invalid dependency graphs |
+| [x] | Runtime system enable/disable |
 
 
 ## Game Loop
@@ -180,16 +180,16 @@ Implementation follows the phased plan in `ZEngine/docs/migration-plan.md`.
 
 | Status | Feature |
 |---|---|
-| [ ] | `VFSPath` — normalized, immutable, no-alloc path value type |
-| [ ] | `IVFSFile`, `IVFSBackend`, `IVFSContext` — clean I/O interfaces |
-| [ ] | `VFSDiskContext` — passthrough to `std::filesystem` |
-| [ ] | Mount table — priority-ordered backend resolution |
-| [ ] | `VFSDiskBackend` and `VFSZipBackend` |
-| [ ] | Async directory scanner — replaces `directory_iterator` on render thread |
-| [ ] | `VFSMemoryBackend` — scratch and test store |
-| [ ] | File watcher — inotify / FSEvents / RDCW, debounced events |
-| [ ] | `.meta` sidecar files — stable UUIDs, SHA256 reimport detection |
-| [ ] | Asset registry — multi-index store, dependency graph, hot-reload cascade |
+| [x] | `VFSPath` — normalized, immutable, no-alloc path value type |
+| [x] | `IVFSFile`, `IVFSBackend`, `IVFSContext` — clean I/O interfaces |
+| [x] | `VFSDiskContext` — passthrough to `std::filesystem` |
+| [x] | Mount table — priority-ordered backend resolution |
+| [x] | `VFSDiskBackend` and `VFSZipBackend` |
+| [x] | Async directory scanner — replaces `directory_iterator` on render thread |
+| [x] | `VFSMemoryBackend` — scratch and test store |
+| [x] | File watcher — inotify / FSEvents / RDCW, debounced events |
+| [x] | `.meta` sidecar files — stable UUIDs, SHA256 reimport detection |
+| [x] | Asset registry — multi-index store, dependency graph, hot-reload cascade |
 
 ---
 
@@ -199,13 +199,14 @@ Implementation follows the phased plan in `ZEngine/docs/migration-plan.md`.
 |---|---|
 | [x] | Assimp mesh, material, texture import |
 | [x] | Asset manager — UUID-to-handle map, pending queue |
+| [x] | Editor import panel — three-state dockable panel, permanent cook to .zemesh / .zematerial |
 | [ ] | Priority-driven async import coordinator |
 | [ ] | Shader asset pipeline — GLSL to SPIR-V at import, UUID-keyed cache |
 | [ ] | Cook pipeline — SHA256-incremental, parallel, headless CI |
 | [ ] | `VFSPakBackend` — runtime mounting of cooked `.pak` archives |
 | [ ] | `AssimpImporter` skeletal animation extraction |
 | [ ] | SDF font atlas generation (msdf-atlas-gen) |
-| [-] | GLTF 2.0 import |
+| [x] | GLTF 2.0 / GLB import (GltfImporter via fastgltf, permanent cook to disk) |
 | [-] | Asset streaming — incremental load at runtime |
 
 
@@ -306,6 +307,7 @@ It scaffolds project structure, writes projectConfig.json, and launches Obelisk.
 |---|---|
 | [x] | Scene hierarchy view |
 | [x] | Asset browser |
+| [x] | Asset importer panel — three-state (Idle/Options/Importing), permanent cook, lazy cook on save |
 | [x] | Transform gizmos |
 | [x] | Shader editor with hot-reload |
 | [ ] | Asset thumbnail generation |

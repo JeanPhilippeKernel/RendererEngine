@@ -1,7 +1,7 @@
 # ZEngine — Hybrid Actor-ECS Architecture
 
-**Priority:** P1 — Implement first; all other systems depend on this  
-**Status:** Design — doc updated with final capacity and lifetime decisions  
+**Priority:** P1  
+**Status:** Core Implemented — ECS, Actor, WorldTick, WorldCommands all live; missing: MeshComponent, NameComponent, ECS↔RenderScene bridge, Outliner UI (tracked in issue #604)  
 **Blocks:** `system-scheduler.md`, `animation-system.md`, `scene-serialization.md`
 
 ## Capacity constants
@@ -847,10 +847,14 @@ tests/
 - [x] `ZEngine/ECS/Scene.h` + `.cpp` — includes `GetMask(EntityID)`, `SnapshotTransforms()`, `FillRenderableTransforms(alpha, out)`
 - [x] `ZEngine/ECS/WorldCommands.h` + `.cpp` — deferred mutations, `Flush(Scene&)`, `Clear()`
 - [x] `ZEngine/ECS/Query.h`
-- [ ] `ZEngine/ECS/WorldTick.h` — deferred to system-scheduler.md + `.cpp`
+- [x] `ZEngine/ECS/WorldTick.h` + `.cpp` — DAG scheduler, wave dispatch, conflict detection
 - [x] `ZEngine/ECS/Actor.h` + `.cpp` — no `Ref<Actor>`, no `RefCounted`; lifetime owned by `ActorManager`
 - [x] `ZEngine/ECS/ActorManager.h` + `.cpp` — `HandleManager<Actor>` with `MAX_ACTORS = 1024`; `Create<T>()`, `Destroy(handle)`, `Access(handle)`, `Tick(dt)`, `Shutdown()`
 - [x] `ZEngine/ECS/Components/TransformComponent.h` — plain data, separate from old type
 - [x] `tests/ECS/ECSTest.cpp` — entity/component/query/generational handle tests
 - [x] `tests/ECS/ActorTest.cpp` — covered in ECSTest.cpp — Actor create/destroy, component access via Actor, ECS system sees Actor entity
 - [x] `tests/ECS/WorldCommandsTest.cpp` — covered in ECSTest.cpp — deferred spawn, deferred destroy, duplicate destroy guard, flush ordering
+- [ ] `ZEngine/ECS/Components/MeshComponent.h` — `{ uuids::uuid MeshUUID; }` linking Actor to cooked mesh
+- [ ] `ZEngine/ECS/Components/NameComponent.h` — `{ char Value[128]; }` display name for Outliner
+- [ ] ECS → RenderScene bridge system — syncs `MeshComponent` add/remove to `RenderScene::MeshInstance` lifecycle; propagates `TransformComponent` changes to GPU buffer (tracked in issue #604)
+- [ ] `Tetragrama/Components/HierarchyViewUIComponent` — rebuild around `ActorManager`; rows from `NameComponent`, selection via `ActorHandle` (tracked in issue #604)
