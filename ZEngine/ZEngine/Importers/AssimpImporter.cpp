@@ -13,6 +13,7 @@
 #include <fstream>
 
 using namespace ZEngine::Helpers;
+using ZEngine::Core::VFS::VFSPath;
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
@@ -98,7 +99,7 @@ namespace ZEngine::Importers
         return Core::VFS::VFSResult<void>::Ok();
     }
 
-    void AssimpImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, void (*on_complete)(void*, Core::Containers::ArrayView<AssetImporterOutput>), void (*on_progress)(void*, float), void (*on_error)(void*, std::string_view), void (*on_log)(void*, std::string_view))
+    void AssimpImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log)
     {
         AssetCodec::ImportConfiguration config = {};
         config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
@@ -135,10 +136,30 @@ namespace ZEngine::Importers
             CreateHierachy(arena, scene, gen, hierarchies, mesh, materials);
             CopyTextureFiles(arena, textures, config);
 
+            // Propagate tex.Path (set by CopyTextureFiles) → material.*TexPath
+            for (size_t m = 0; m < materials.size(); ++m)
+            {
+                auto set_path = [&](const uuids::uuid& uuid, Core::Containers::String& path_out) {
+                    for (size_t t = 0; t < textures.size(); ++t)
+                    {
+                        if (textures[t].TextureUUID == uuid && !textures[t].Path.empty())
+                        {
+                            path_out.init(arena, textures[t].Path.c_str());
+                            return;
+                        }
+                    }
+                };
+                set_path(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
+                set_path(materials[m].EmissiveTexUUID, materials[m].EmissiveTexPath);
+                set_path(materials[m].NormalTexUUID, materials[m].NormalTexPath);
+                set_path(materials[m].OpacityTexUUID, materials[m].OpacityTexPath);
+                set_path(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
+            }
+
+            // Serialize .zemesh + .zematerial — no .zetextures (paths are inline in material)
             Array<AssetImporterOutput> outputs = {};
             outputs.init(arena, 100);
             outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchies, config));
-            outputs.push(AssetCodec::SerializeTextureAssetFiles(arena, ArrayView{textures}, config));
             for (size_t i = 0; i < materials.size(); ++i)
                 outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
 
@@ -472,9 +493,11 @@ namespace ZEngine::Importers
         /*
          * Normalize file naming
          */
-        auto dst_dir               = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetName.c_str());
+        char dst_dir_buf[MAX_FILE_PATH_COUNT] = {};
+        (VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dst_dir_buf, sizeof(dst_dir_buf));
+        std::string dst_dir               = dst_dir_buf;
 
-        auto CreateBaseDirectoryFn = [](std::string_view filename) -> void {
+        auto        CreateBaseDirectoryFn = [](std::string_view filename) -> void {
             auto            base_dir = fs::absolute(filename).parent_path();
 
             std::error_code err      = {};
@@ -497,8 +520,8 @@ namespace ZEngine::Importers
                 continue;
             }
 
-            auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, tex.Path.c_str());
-            auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+            auto src_file = (fs::path(config.InputBaseAssetFilePath.c_str()) / tex.Path.c_str()).string();
+            auto dst_file = (fs::path(dst_dir) / tex.Path.c_str()).string();
 
             CreateBaseDirectoryFn(dst_file);
 
@@ -543,7 +566,7 @@ namespace ZEngine::Importers
          */
         for (auto& tex : textures)
         {
-            auto new_path = fmt::format("{0}{1}{2}{3}{4}", config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetName.c_str(), PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+            auto new_path = std::string((VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str() / tex.Path.c_str()).CStr());
             tex.Path.clear();
             tex.Path.append(new_path.c_str());
         }

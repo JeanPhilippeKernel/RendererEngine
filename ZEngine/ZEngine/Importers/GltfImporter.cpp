@@ -1,5 +1,6 @@
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/GltfImporter.h>
 #include <ZEngine/Importers/IAssetImporter.h>
@@ -466,5 +467,186 @@ namespace ZEngine::Importers
 
         Arena.Clear();
         return Core::VFS::VFSResult<void>::Ok();
+    }
+
+    void GltfImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log)
+    {
+        // Build arena-allocated config copy (same pattern as AssimpImporter::ImportFile)
+        AssetCodec::ImportConfiguration config = {};
+        config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
+        config.OutputTextureFilesPath.init(arena, cfg.OutputTextureFilesPath.c_str());
+        config.OutputAssetsPath.init(arena, cfg.OutputAssetsPath.c_str());
+        config.AssetName.init(arena, cfg.AssetName.c_str());
+        config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
+        config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
+
+        auto fs_path = std::filesystem::path(filename);
+        auto buf     = fastgltf::GltfDataBuffer::FromPath(fs_path);
+        if (buf.error() != fastgltf::Error::None)
+        {
+            if (on_error)
+                on_error(context, fastgltf::getErrorMessage(buf.error()));
+            return;
+        }
+
+        if (on_progress)
+            on_progress(context, 0.1f);
+
+        fastgltf::Parser parser;
+        auto             result = parser.loadGltf(buf.get(), fs_path.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages | fastgltf::Options::GenerateMeshIndices);
+
+        if (result.error() != fastgltf::Error::None)
+        {
+            if (on_error)
+                on_error(context, fastgltf::getErrorMessage(result.error()));
+            return;
+        }
+
+        if (on_progress)
+            on_progress(context, 0.3f);
+
+        fastgltf::Asset&             asset = result.get();
+
+        Core::Memory::ArenaAllocator scratch{};
+        Arena.CreateSubArena(ZMega(32), &scratch);
+
+        std::random_device    rd;
+        std::mt19937          gen_mt(rd());
+        uuid_random_generator gen(&gen_mt);
+
+        AssetMesh             mesh      = {};
+        AssetNodeHierarchy    hierarchy = {};
+        Array<AssetMaterial>  materials = {};
+        Array<AssetTexture>   textures  = {};
+
+        ExtractMeshes(&scratch, asset, mesh);
+        mesh.MeshUUID = gen();
+        ExtractMaterials(&scratch, asset, gen, materials);
+        ExtractTextures(&scratch, asset, gen, textures, materials);
+        BuildHierarchy(&scratch, asset, gen, hierarchy, mesh, materials);
+
+        // Extract texture image bytes to disk and record project-relative paths
+        {
+            auto            dest_dir = std::filesystem::path(config.OutputWorkingSpacePath.c_str()) / config.OutputTextureFilesPath.c_str() / config.AssetName.c_str();
+            std::error_code ec;
+            std::filesystem::create_directories(dest_dir, ec);
+
+            for (size_t tex_idx = 0; tex_idx < textures.size() && tex_idx < asset.textures.size(); ++tex_idx)
+            {
+                const auto& fgltf_tex = asset.textures[tex_idx];
+                if (!fgltf_tex.imageIndex.has_value())
+                    continue;
+                const auto&    img      = asset.images[fgltf_tex.imageIndex.value()];
+
+                std::string    ext      = ".png";
+                const uint8_t* bytes    = nullptr;
+                size_t         nbytes   = 0;
+
+                auto           set_mime = [&](fastgltf::MimeType mt) {
+                    if (mt == fastgltf::MimeType::JPEG)
+                        ext = ".jpg";
+                };
+
+                std::visit(
+                    fastgltf::visitor{
+                    [&](const fastgltf::sources::Array& arr) {
+                        bytes  = reinterpret_cast<const uint8_t*>(arr.bytes.data());
+                        nbytes = arr.bytes.size();
+                        set_mime(arr.mimeType);
+                    },
+                    [&](const fastgltf::sources::ByteView& bv_data) {
+                        bytes  = reinterpret_cast<const uint8_t*>(bv_data.bytes.data());
+                        nbytes = bv_data.bytes.size();
+                        set_mime(bv_data.mimeType);
+                    },
+                    [&](const fastgltf::sources::BufferView& bv_src) {
+                        const auto& bv = asset.bufferViews[bv_src.bufferViewIndex];
+                        std::visit(
+                            fastgltf::visitor{
+                            [&](const fastgltf::sources::Array& arr) {
+                                bytes  = reinterpret_cast<const uint8_t*>(arr.bytes.data()) + bv.byteOffset;
+                                nbytes = bv.byteLength;
+                                set_mime(bv_src.mimeType);
+                            },
+                            [&](const fastgltf::sources::ByteView& bvd) {
+                                bytes  = reinterpret_cast<const uint8_t*>(bvd.bytes.data()) + bv.byteOffset;
+                                nbytes = bv.byteLength;
+                                set_mime(bv_src.mimeType);
+                            },
+                            [](auto&&) {}},
+                            asset.buffers[bv.bufferIndex].data);
+                    },
+                    [](auto&&) {}},
+                    img.data);
+
+                if (!bytes || nbytes == 0)
+                {
+                    ZENGINE_LOG_ASSET_WARN("GltfImporter: tex {} image data not accessible (unsupported source variant)", tex_idx)
+                    continue;
+                }
+
+                auto          filename_stem = !img.name.empty() ? std::string(img.name) : ("tex_" + std::to_string(tex_idx));
+                auto          out_file      = dest_dir / (filename_stem + ext);
+                std::ofstream fout(out_file, std::ios::binary | std::ios::trunc);
+                if (fout.is_open())
+                {
+                    fout.write(reinterpret_cast<const char*>(bytes), static_cast<std::streamsize>(nbytes));
+                    fout.close();
+                    ZENGINE_LOG_ASSET_INFO("GltfImporter: extracted texture '{}' ({} bytes)", out_file.string(), nbytes)
+
+                    // Project-relative path (forward-slash for VFS)
+                    auto rel = std::filesystem::path(config.OutputTextureFilesPath.c_str()) / config.AssetName.c_str() / (filename_stem + ext);
+                    textures[tex_idx].Path.init(&scratch, rel.generic_string().c_str());
+                }
+            }
+
+            // Propagate tex.Path → material.*TexPath by UUID match
+            for (size_t m = 0; m < materials.size(); ++m)
+            {
+                auto set_path = [&](const uuids::uuid& uuid, Core::Containers::String& path_out) {
+                    for (size_t t = 0; t < textures.size(); ++t)
+                    {
+                        if (textures[t].TextureUUID == uuid && !textures[t].Path.empty())
+                        {
+                            path_out.init(&scratch, textures[t].Path.c_str());
+                            return;
+                        }
+                    }
+                };
+                set_path(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
+                set_path(materials[m].EmissiveTexUUID, materials[m].EmissiveTexPath);
+                set_path(materials[m].NormalTexUUID, materials[m].NormalTexPath);
+                set_path(materials[m].OpacityTexUUID, materials[m].OpacityTexPath);
+                set_path(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
+            }
+        }
+
+        if (on_progress)
+            on_progress(context, 0.7f);
+
+        // Serialize to disk — .zemesh + .zematerial (no .zetextures: paths are inline in material)
+        Array<AssetImporterOutput> outputs = {};
+        outputs.init(arena, 16);
+        outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchy, config));
+        for (size_t i = 0; i < materials.size(); ++i)
+            outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
+
+        // Also ingest into AssetManager so the asset is usable this session without a reload
+        auto* mgr = Managers::AssetManager::Instance();
+        if (mgr)
+        {
+            Managers::AssetManager::IngestTextures(std::move(textures));
+            for (size_t i = 0; i < materials.size(); ++i)
+                Managers::AssetManager::IngestMaterial(std::move(materials[i]));
+            Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchy));
+        }
+
+        if (on_progress)
+            on_progress(context, 1.0f);
+
+        if (on_complete)
+            on_complete(context, ArrayView{outputs});
+
+        Arena.Clear();
     }
 } // namespace ZEngine::Importers

@@ -7,6 +7,7 @@
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <uuid.h>
 #include <string>
+#include <string_view>
 
 namespace ZEngine::Importers
 {
@@ -45,11 +46,19 @@ namespace ZEngine::Importers
     {
         Core::Containers::String Name              = {};
         uuids::uuid              MaterialUUID      = {};
+        // Texture UUIDs — runtime lookup key into AssetManager
         uuids::uuid              AlbedoTexUUID     = {};
         uuids::uuid              EmissiveTexUUID   = {};
         uuids::uuid              NormalTexUUID     = {};
         uuids::uuid              OpacityTexUUID    = {};
         uuids::uuid              SpecularTexUUID   = {};
+        // Texture paths — project-relative VFS path to the extracted image file
+        // Stored in .zematerial so no separate .zetextures file is needed
+        Core::Containers::String AlbedoTexPath     = {};
+        Core::Containers::String EmissiveTexPath   = {};
+        Core::Containers::String NormalTexPath     = {};
+        Core::Containers::String OpacityTexPath    = {};
+        Core::Containers::String SpecularTexPath   = {};
         float                    AmbientColor[4]   = {0};
         float                    AlbedoColor[4]    = {0};
         float                    EmissiveColor[4]  = {0};
@@ -106,4 +115,10 @@ namespace ZEngine::Importers
         std::string   Path     = "";
         std::string   RootPath = "";
     };
+
+    using ImportCompleteCallback = void (*)(void* ctx, Core::Containers::ArrayView<AssetImporterOutput> outputs);
+    using ImportProgressCallback = void (*)(void* ctx, float progress);
+    using ImportErrorCallback    = void (*)(void* ctx, std::string_view message);
+    using ImportLogCallback      = void (*)(void* ctx, std::string_view message);
+
 } // namespace ZEngine::Importers

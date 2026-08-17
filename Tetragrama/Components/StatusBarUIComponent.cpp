@@ -106,6 +106,36 @@ namespace Tetragrama::Components
             dl->AddRectFilled({ip.x, ip.y + th - 1.5f}, {ip.x + tw, ip.y + th + 1.5f}, ic);
         }
 
+        ImGui::SameLine(0.0f, 6.0f);
+
+        // Importer button — indigo import-arrow icon
+        {
+            static constexpr ImU32 kImporterOn  = IM_COL32(170, 130, 255, 255);
+            static constexpr ImU32 kImporterOff = IM_COL32(95, 70, 150, 180);
+            bool                   on           = app->Configuration->ShowImporter;
+            ImGui::PushStyleColor(ImGuiCol_Button, on ? btn_on : btn_off);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+            if (ImGui::SmallButton("     Importer "))
+            {
+                app->Configuration->ShowImporter  = !on;
+                app->Configuration->FocusImporter = !on;
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor();
+            ImVec2      bmin = ImGui::GetItemRectMin();
+            ImVec2      bmax = ImGui::GetItemRectMax();
+            float       cy   = (bmin.y + bmax.y) * 0.5f;
+            const float isz2 = 10.0f;
+            ImVec2      ip2  = {bmin.x + 4.0f, cy - isz2 * 0.5f};
+            ImDrawList* dl2  = ImGui::GetWindowDrawList();
+            ImU32       ic2  = on ? kImporterOn : kImporterOff;
+            // Import arrow icon: box at bottom + down-arrow above
+            dl2->AddRect({ip2.x, ip2.y + isz2 * 0.45f}, {ip2.x + isz2, ip2.y + isz2}, ic2, 1.0f, 0, 1.0f);
+            float ax = ip2.x + isz2 * 0.5f, ay = ip2.y + isz2 * 0.4f;
+            dl2->AddLine({ax, ip2.y}, {ax, ay}, ic2, 1.5f);
+            dl2->AddTriangleFilled({ax, ay + isz2 * 0.18f}, {ax - isz2 * 0.22f, ay}, {ax + isz2 * 0.22f, ay}, ic2);
+        }
+
         ImGui::SameLine(0.0f, 10.0f);
         ImGui::TextDisabled("|");
         ImGui::SameLine(0.0f, 10.0f);

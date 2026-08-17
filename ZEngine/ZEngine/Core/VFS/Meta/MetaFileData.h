@@ -18,7 +18,8 @@ namespace ZEngine::Core::VFS
     {
         uuids::uuid      AssetUUID                         = {};
         char             ImporterName[64]                  = {};
-        uint64_t         SourceHash                        = 0; // rapidhash of source bytes at last import
+        char             SourcePath[MAX_FILE_PATH_COUNT]   = {}; // absolute native path to the original source file
+        uint64_t         SourceHash                        = 0;  // rapidhash of source bytes at last import
         int64_t          LastImportTimeNs                  = 0;
         char             ArtifactPath[MAX_FILE_PATH_COUNT] = {};
         MetaKeyValuePair Settings[META_MAX_SETTINGS]       = {};

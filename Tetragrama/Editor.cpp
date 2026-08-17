@@ -120,7 +120,6 @@ namespace Tetragrama
         if (working_space_path == ".")
         {
             expand(config, "sceneDir");
-            expand(config, "sceneDataDir");
             // Expand all fields inside assetDirs (new format)
             if (config.contains("assetDirs"))
             {
@@ -140,7 +139,6 @@ namespace Tetragrama
         ProjectName.init(arena, config["projectName"].get<std::string>().c_str());
         WorkingSpacePath.init(arena, ws.c_str());
         ScenePath.init(arena, config["sceneDir"].get<std::string>().c_str());
-        SceneDataPath.init(arena, config["sceneDataDir"].get<std::string>().c_str());
 
         // Asset directories — new assetDirs format, fall back to defaultImportDir
         auto asset_path = [&](const char* asset_key, const char* legacy_section, const char* legacy_key, const char* default_suffix) -> std::string {

@@ -1,5 +1,13 @@
 #include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Engine.h>
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+
+#if defined(__APPLE__)
+// Implemented in Windows/Platform/MacOSFileDialog.mm
+extern "C" std::string ZEngineOpenFileDialog(const char** extensions, int count);
+#endif
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Windows/GameWindow.h>
@@ -342,34 +350,87 @@ namespace ZEngine::Windows
 
     std::future<std::string> GameWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters)
     {
-        std::string path{""};
-#ifdef _WIN32
+        std::string path{};
 
-        auto           native_hwnd = glfwGetWin32Window(m_native_window);
-
-        FileOpenPicker file_picker;
-        file_picker.ViewMode(PickerViewMode::Thumbnail);
-        file_picker.SuggestedStartLocation(PickerLocationId::ComputerFolder);
-        file_picker.as<::IInitializeWithWindow>()->Initialize(native_hwnd);
-
-        if (!type_filters.empty())
+#if defined(_WIN32)
         {
-            auto filters = file_picker.FileTypeFilter();
-            filters.Clear();
+            auto           native_hwnd = glfwGetWin32Window(m_native_window);
+            FileOpenPicker file_picker;
+            file_picker.ViewMode(PickerViewMode::Thumbnail);
+            file_picker.SuggestedStartLocation(PickerLocationId::ComputerFolder);
+            file_picker.as<::IInitializeWithWindow>()->Initialize(native_hwnd);
 
-            for (std::string_view type : type_filters)
+            if (!type_filters.empty())
             {
-                filters.Append(winrt::to_hstring(type));
+                auto filters = file_picker.FileTypeFilter();
+                filters.Clear();
+                for (std::string_view type : type_filters)
+                    filters.Append(winrt::to_hstring(type));
+            }
+
+            IStorageFile file = co_await file_picker.PickSingleFileAsync();
+            if (file)
+                path = winrt::to_string(file.Path());
+        }
+
+#elif defined(__APPLE__)
+        {
+            std::vector<const char*> exts;
+            exts.reserve(type_filters.size());
+            for (auto& f : type_filters)
+                exts.push_back(f.data());
+
+            path = ZEngineOpenFileDialog(exts.data(), static_cast<int>(exts.size()));
+        }
+
+#elif defined(__linux__)
+        {
+            // Try zenity first, then kdialog.
+            // Build the --file-filter argument (e.g. "*.glb *.gltf *.fbx *.obj").
+            std::string filter;
+            for (auto& f : type_filters)
+            {
+                if (!filter.empty())
+                    filter += ' ';
+                filter += '*';
+                filter += std::string(f);
+            }
+
+            std::string cmd;
+            if (system("which zenity > /dev/null 2>&1") == 0)
+            {
+                cmd = "zenity --file-selection --title='Import Asset'";
+                if (!filter.empty())
+                    cmd += " --file-filter='" + filter + "'";
+            }
+            else if (system("which kdialog > /dev/null 2>&1") == 0)
+            {
+                cmd = "kdialog --getopenfilename . '";
+                for (auto& f : type_filters)
+                    cmd += '*' + std::string(f) + ' ';
+                if (!cmd.empty() && cmd.back() == ' ')
+                    cmd.pop_back();
+                cmd += "'";
+            }
+
+            if (!cmd.empty())
+            {
+                FILE* pipe = popen(cmd.c_str(), "r");
+                if (pipe)
+                {
+                    char buf[4096] = {};
+                    if (fgets(buf, sizeof(buf), pipe))
+                    {
+                        path = buf;
+                        if (!path.empty() && path.back() == '\n')
+                            path.pop_back();
+                    }
+                    pclose(pipe);
+                }
             }
         }
-
-        IStorageFile file = co_await file_picker.PickSingleFileAsync();
-
-        if (file)
-        {
-            path = winrt::to_string(file.Path());
-        }
 #endif
+
         co_return path;
     }
 

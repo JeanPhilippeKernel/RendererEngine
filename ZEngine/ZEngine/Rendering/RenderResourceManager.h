@@ -105,6 +105,9 @@ namespace ZEngine::Rendering
         /// @return A valid TextureHandle that will become readable once the upload drains.
         Rendering::Textures::TextureHandle SubmitTextureFile(uint8_t frame_index, uint8_t thread_index, const char* filename);
 
+        /// @brief Return the (255, 20, 147) fallback TextureHandle for missing textures, creating it on first call.
+        Rendering::Textures::TextureHandle GetOrCreateFallbackTexture();
+
         /// @brief Payload for a deferred texture upload.
         /// @details IsLarge = true stores an owned copy of the pixel data (std::vector<uint8_t>).
         ///          IsLarge = false stores a raw pointer valid until CompleteDeferrals runs.

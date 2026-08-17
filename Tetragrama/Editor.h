@@ -18,7 +18,6 @@ namespace Tetragrama
     {
         ZEngine::Core::Containers::String WorkingSpacePath         = {};
         ZEngine::Core::Containers::String ScenePath                = {};
-        ZEngine::Core::Containers::String SceneDataPath            = {};
         // Asset import directories (all under Assets/)
         ZEngine::Core::Containers::String TexturePath              = {};
         ZEngine::Core::Containers::String SoundPath                = {};
@@ -28,12 +27,16 @@ namespace Tetragrama
         ZEngine::Core::Containers::String EnvironmentMapImportPath = {};
         ZEngine::Core::Containers::String ProjectName              = {};
         ZEngine::Core::Containers::String ActiveSceneName          = {};
-        bool                              DarkTheme                = false;
+        bool                              DarkTheme                = true;
         int                               GizmoOperation           = -1;
         bool                              ShowContentBrowser       = true;
         bool                              FocusContentBrowser      = false;
         bool                              ShowConsole              = false;
         bool                              FocusConsole             = false;
+        bool                              ShowImporter             = false;
+        bool                              FocusImporter            = false;
+        char                              PendingImportPath[1024]  = {};
+        char                              PendingImportName[256]   = {};
 
         void                              ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };

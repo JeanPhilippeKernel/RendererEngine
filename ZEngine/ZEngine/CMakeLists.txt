@@ -82,6 +82,9 @@ if(APPLE)
     list(APPEND ZENGINE_SOURCES_CORE
         ${CMAKE_CURRENT_SOURCE_DIR}/Core/VFS/Platform/VFSFSEventsWatcher.mm
     )
+    list(APPEND ZENGINE_SOURCES_WINDOWS
+        ${CMAKE_CURRENT_SOURCE_DIR}/Windows/Platform/MacOSFileDialog.mm
+    )
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     list(APPEND ZENGINE_SOURCES_CRASH_HANDLERS
         ${CMAKE_CURRENT_SOURCE_DIR}/CrashHandlers/CrashHandlerWindows.cpp

@@ -1,13 +1,18 @@
+#include <Tetragrama/Editor.h>
 #include <Tetragrama/Serializers/EditorSceneSerializer.h>
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Helpers/SerializerCommonHelper.h>
 #include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <fmt/format.h>
+#include <filesystem>
 #include <fstream>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Core::Containers;
+using ZEngine::Core::VFS::VFSPath;
 
 namespace Tetragrama::Serializers
 {
@@ -29,7 +34,9 @@ namespace Tetragrama::Serializers
                 return;
             }
 
-            auto          full_scenename = fmt::format("{0}{1}{2}.zescene", m_default_output, PLATFORM_OS_BACKSLASH, scene->Name);
+            std::string scene_filename                      = std::string(scene->Name) + ".zescene";
+            char        full_scenename[MAX_FILE_PATH_COUNT] = {};
+            VFSPath::Parse(scene_filename.c_str()).Value().ResolveNative(m_default_output.c_str(), full_scenename, sizeof(full_scenename));
             std::ofstream out(full_scenename, std::ios::binary | std::ios::trunc | std::ios::out);
             if (!out.is_open())
             {
@@ -42,6 +49,57 @@ namespace Tetragrama::Serializers
             }
 
             out.seekp(std::ios::beg);
+
+            // Lazy cook: find mesh instances that are in RAM (from drag-drop)
+            // but have no cooked .zemesh artifact on disk. Cook them now so
+            // the saved scene can be reloaded on the next session.
+            {
+                auto                                                                       scratch = ZGetScratch(&Arena);
+                ZEngine::Core::Containers::Array<ZEngine::Rendering::Scenes::MeshInstance> instances;
+                scene->GetInstancesSnapshot(scratch.Arena, instances);
+
+                auto*       mgr = ZEngine::Managers::AssetManager::Instance();
+                auto*       app = reinterpret_cast<EditorPtr>(Context);
+                const auto& cfg = app ? *app->Configuration : EditorConfiguration{};
+
+                for (uint32_t i = 0; i < instances.size(); ++i)
+                {
+                    if (!mgr || !mgr->Registry)
+                        break;
+                    const uuids::uuid& uid = instances[i].MeshUUID;
+                    const auto*        rec = mgr->Registry->FindByUUID(uid);
+                    if (!rec || rec->Meta.ArtifactPath[0] != '\0')
+                        continue; // already cooked or not found
+
+                    // In-memory mesh with no .zemesh — cook it now
+                    auto* mesh      = mgr->GetMeshAsset(uid);
+                    auto* hierarchy = mgr->GetMeshNodeHierarchy(uid);
+                    if (!mesh || !hierarchy)
+                        continue;
+
+                    std::string                                         asset_name  = instances[i].Name[0] ? instances[i].Name : "UnknownMesh";
+                    std::string                                         output_file = asset_name + ".zemesh";
+
+                    ZEngine::Importers::AssetCodec::ImportConfiguration cook_cfg    = {};
+                    cook_cfg.OutputWorkingSpacePath.init(scratch.Arena, cfg.WorkingSpacePath.c_str());
+                    cook_cfg.OutputTextureFilesPath.init(scratch.Arena, cfg.TexturePath.c_str());
+                    cook_cfg.OutputAssetsPath.init(scratch.Arena, cfg.MeshPath.c_str());
+                    cook_cfg.OutputMaterialPath.init(scratch.Arena, cfg.MaterialPath.c_str());
+                    cook_cfg.AssetName.init(scratch.Arena, asset_name.c_str());
+                    cook_cfg.OutputAssetFile.init(scratch.Arena, output_file.c_str());
+                    cook_cfg.InputBaseAssetFilePath.init(scratch.Arena, cfg.WorkingSpacePath.c_str());
+
+                    auto output = ZEngine::Importers::AssetCodec::SerializeMeshAssetFile(scratch.Arena, *mesh, *hierarchy, cook_cfg);
+                    if (!output.Path.empty())
+                    {
+                        // Register the artifact path so future saves don't re-cook
+                        ZEngine::Helpers::secure_strncpy(const_cast<ZEngine::Core::VFS::AssetRecord*>(rec)->Meta.ArtifactPath, MAX_FILE_PATH_COUNT, output.Path.c_str(), output.Path.size());
+
+                        scene->PushAssetFile(output);
+                    }
+                }
+                ZReleaseScratch(scratch);
+            }
 
             WriteBinary(out, ZESCENE_MAGIC);
             WriteBinary(out, SCENE_FILE_VERSION);

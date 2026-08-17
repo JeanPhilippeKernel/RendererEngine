@@ -1245,4 +1245,27 @@ namespace ZEngine::Rendering
         return tex_handle;
     }
 
+    Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackTexture()
+    {
+        static constexpr const char* kFallbackPath = "ZodiacEngine/Settings/FallbackTexture.png";
+
+        if (!std::filesystem::exists(kFallbackPath))
+        {
+            // 4×4 (255, 20, 147, 255) fallback color for missing textures
+            static constexpr int     W = 4, H = 4;
+            static constexpr uint8_t R = 255, G = 20, B = 147, A = 255;
+            uint8_t                  pixels[W * H * 4];
+            for (int i = 0; i < W * H; ++i)
+            {
+                pixels[i * 4 + 0] = R;
+                pixels[i * 4 + 1] = G;
+                pixels[i * 4 + 2] = B;
+                pixels[i * 4 + 3] = A;
+            }
+            stbi_write_png(kFallbackPath, W, H, 4, pixels, W * 4);
+        }
+
+        return SubmitTextureFile(0, 0, kFallbackPath);
+    }
+
 } // namespace ZEngine::Rendering
