@@ -12,6 +12,7 @@
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Core::Containers;
+using ZEngine::Core::VFS::VFSPath;
 
 namespace Tetragrama::Serializers
 {
@@ -33,7 +34,9 @@ namespace Tetragrama::Serializers
                 return;
             }
 
-            auto          full_scenename = fmt::format("{0}{1}{2}.zescene", m_default_output, PLATFORM_OS_BACKSLASH, scene->Name);
+            std::string scene_filename                      = std::string(scene->Name) + ".zescene";
+            char        full_scenename[MAX_FILE_PATH_COUNT] = {};
+            VFSPath::Parse(scene_filename.c_str()).Value().ResolveNative(m_default_output.c_str(), full_scenename, sizeof(full_scenename));
             std::ofstream out(full_scenename, std::ios::binary | std::ios::trunc | std::ios::out);
             if (!out.is_open())
             {

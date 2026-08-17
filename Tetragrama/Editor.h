@@ -27,7 +27,7 @@ namespace Tetragrama
         ZEngine::Core::Containers::String EnvironmentMapImportPath = {};
         ZEngine::Core::Containers::String ProjectName              = {};
         ZEngine::Core::Containers::String ActiveSceneName          = {};
-        bool                              DarkTheme                = false;
+        bool                              DarkTheme                = true;
         int                               GizmoOperation           = -1;
         bool                              ShowContentBrowser       = true;
         bool                              FocusContentBrowser      = false;

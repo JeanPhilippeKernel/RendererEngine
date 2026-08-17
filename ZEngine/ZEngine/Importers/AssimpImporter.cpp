@@ -13,6 +13,7 @@
 #include <fstream>
 
 using namespace ZEngine::Helpers;
+using ZEngine::Core::VFS::VFSPath;
 using namespace ZEngine::Rendering::Meshes;
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
@@ -492,9 +493,11 @@ namespace ZEngine::Importers
         /*
          * Normalize file naming
          */
-        auto dst_dir               = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetName.c_str());
+        char dst_dir_buf[MAX_FILE_PATH_COUNT] = {};
+        (VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dst_dir_buf, sizeof(dst_dir_buf));
+        std::string dst_dir               = dst_dir_buf;
 
-        auto CreateBaseDirectoryFn = [](std::string_view filename) -> void {
+        auto        CreateBaseDirectoryFn = [](std::string_view filename) -> void {
             auto            base_dir = fs::absolute(filename).parent_path();
 
             std::error_code err      = {};
@@ -517,8 +520,8 @@ namespace ZEngine::Importers
                 continue;
             }
 
-            auto src_file = fmt::format("{0}{1}{2}", config.InputBaseAssetFilePath.c_str(), PLATFORM_OS_BACKSLASH, tex.Path.c_str());
-            auto dst_file = fmt::format("{0}{1}{2}", dst_dir, PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+            auto src_file = (fs::path(config.InputBaseAssetFilePath.c_str()) / tex.Path.c_str()).string();
+            auto dst_file = (fs::path(dst_dir) / tex.Path.c_str()).string();
 
             CreateBaseDirectoryFn(dst_file);
 
@@ -563,7 +566,7 @@ namespace ZEngine::Importers
          */
         for (auto& tex : textures)
         {
-            auto new_path = fmt::format("{0}{1}{2}{3}{4}", config.OutputTextureFilesPath.c_str(), PLATFORM_OS_BACKSLASH, config.AssetName.c_str(), PLATFORM_OS_BACKSLASH, tex.Path.c_str());
+            auto new_path = std::string((VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str() / tex.Path.c_str()).CStr());
             tex.Path.clear();
             tex.Path.append(new_path.c_str());
         }

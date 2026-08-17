@@ -76,7 +76,7 @@ namespace Tetragrama::Components
 
     void AssetImporterUIComponent::TriggerScan()
     {
-        auto* vfs = static_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
+        auto* vfs = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
         if (vfs && ParentLayer)
             ParentLayer->Scanner.Scan(vfs, ZEngine::Core::VFS::VFSPath::Root(), &ParentLayer->Cache);
     }
@@ -106,7 +106,6 @@ namespace Tetragrama::Components
         if (!app || !app->Configuration)
             return;
 
-        static constexpr float kRed[]     = {1.0f, 0.3f, 0.3f, 1.0f};
         static constexpr float kWhite[]   = {0.8f, 0.8f, 0.8f, 1.0f};
 
         // Build ImportConfiguration from project settings
@@ -156,7 +155,7 @@ namespace Tetragrama::Components
 
     void AssetImporterUIComponent::OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs)
     {
-        auto*                  self      = static_cast<AssetImporterUIComponent*>(ctx);
+        auto*                  self      = reinterpret_cast<AssetImporterUIComponent*>(ctx);
 
         static constexpr float kGreen[]  = {0.3f, 1.0f, 0.4f, 1.0f};
         static constexpr float kRed[]    = {1.0f, 0.3f, 0.3f, 1.0f};
@@ -178,7 +177,7 @@ namespace Tetragrama::Components
             auto* ctx_engine = ZEngine::Engine::GetContext();
             if (ctx_engine && ctx_engine->VFS && mesh_path)
             {
-                auto*   vfs    = static_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
+                auto*   vfs    = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
                 auto*   app    = reinterpret_cast<Tetragrama::EditorPtr>(self->ParentLayer->CurrentApp);
                 cstring ws     = app ? app->WorkingSpacePath : "";
                 size_t  ws_len = secure_strlen(ws);
@@ -241,7 +240,7 @@ namespace Tetragrama::Components
 
     void AssetImporterUIComponent::OnImportProgress(void* ctx, float pct)
     {
-        auto*                  self     = static_cast<AssetImporterUIComponent*>(ctx);
+        auto*                  self     = reinterpret_cast<AssetImporterUIComponent*>(ctx);
         static constexpr float kWhite[] = {0.8f, 0.8f, 0.8f, 1.0f};
         char                   msg[128];
         snprintf(msg, sizeof(msg), "Processing… %.0f%%", pct * 100.0f);
@@ -251,7 +250,7 @@ namespace Tetragrama::Components
 
     void AssetImporterUIComponent::OnImportError(void* ctx, std::string_view err)
     {
-        auto*                  self   = static_cast<AssetImporterUIComponent*>(ctx);
+        auto*                  self   = reinterpret_cast<AssetImporterUIComponent*>(ctx);
         static constexpr float kRed[] = {1.0f, 0.3f, 0.3f, 1.0f};
         char                   msg[512];
         snprintf(msg, sizeof(msg), "Error: %.*s", static_cast<int>(err.size()), err.data());
@@ -264,7 +263,7 @@ namespace Tetragrama::Components
 
     void AssetImporterUIComponent::OnImportLog(void* ctx, std::string_view msg)
     {
-        auto*                  self     = static_cast<AssetImporterUIComponent*>(ctx);
+        auto*                  self     = reinterpret_cast<AssetImporterUIComponent*>(ctx);
         static constexpr float kWhite[] = {0.8f, 0.8f, 0.8f, 1.0f};
         char                   buf[256];
         snprintf(buf, sizeof(buf), "%.*s", static_cast<int>(msg.size()), msg.data());

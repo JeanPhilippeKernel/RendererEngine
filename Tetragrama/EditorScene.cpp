@@ -1,9 +1,9 @@
 #include <Tetragrama/EditorScene.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
-
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Managers;
+using ZEngine::Core::VFS::VFSPath;
 
 namespace Tetragrama
 {
@@ -97,8 +97,10 @@ namespace Tetragrama
             if (file.Type == ZEngine::Importers::AssetFileType::MATERIAL)
             {
                 ZEngine::Importers::AssetMaterial mat{};
-                auto                              path = ZEngine::Core::Containers::String{};
-                path.init(&LocalArena, fmt::format("{0}{1}{2}", file.RootPath.c_str(), PLATFORM_OS_BACKSLASH, file.Path.c_str()).c_str());
+                auto                              path                            = ZEngine::Core::Containers::String{};
+                char                              native_buf[MAX_FILE_PATH_COUNT] = {};
+                VFSPath::Parse(file.Path.c_str()).Value().ResolveNative(file.RootPath.c_str(), native_buf, sizeof(native_buf));
+                path.init(&LocalArena, native_buf);
                 ZEngine::Importers::AssetCodec::DeserializeMaterialAssetFile(&LocalArena, path.c_str(), mat);
 
                 // Reconstruct AssetTexture entries from the inline path fields so
@@ -130,8 +132,10 @@ namespace Tetragrama
             {
                 ZEngine::Importers::AssetMesh          mesh{};
                 ZEngine::Importers::AssetNodeHierarchy hier{};
-                auto                                   path = ZEngine::Core::Containers::String{};
-                path.init(&LocalArena, fmt::format("{0}{1}{2}", file.RootPath.c_str(), PLATFORM_OS_BACKSLASH, file.Path.c_str()).c_str());
+                auto                                   path                            = ZEngine::Core::Containers::String{};
+                char                                   native_buf[MAX_FILE_PATH_COUNT] = {};
+                VFSPath::Parse(file.Path.c_str()).Value().ResolveNative(file.RootPath.c_str(), native_buf, sizeof(native_buf));
+                path.init(&LocalArena, native_buf);
                 ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(&LocalArena, path.c_str(), mesh, hier);
                 AssetManager::IngestMesh(std::move(mesh), std::move(hier));
             }

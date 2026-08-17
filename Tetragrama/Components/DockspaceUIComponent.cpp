@@ -14,6 +14,7 @@
 #include <filesystem>
 
 namespace fs = std::filesystem;
+using ZEngine::Core::VFS::VFSPath;
 
 using namespace ZEngine::Helpers;
 
@@ -303,13 +304,15 @@ namespace Tetragrama::Components
 
         m_editor_serializer->Initialize(parent->Arena);
 
-        m_dockspace_node_flag                 = ImGuiDockNodeFlags_NoWindowMenuButton | static_cast<decltype(ImGuiDockNodeFlags_NoWindowMenuButton)>(ImGuiDockNodeFlags_PassthruCentralNode);
-        m_window_flags                        = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+        m_dockspace_node_flag                                  = ImGuiDockNodeFlags_NoWindowMenuButton | static_cast<decltype(ImGuiDockNodeFlags_NoWindowMenuButton)>(ImGuiDockNodeFlags_PassthruCentralNode);
+        m_window_flags                                         = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
-        auto app                              = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-        m_editor_serializer->Context          = app;
+        auto app                                               = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        m_editor_serializer->Context                           = app;
 
-        auto editor_serializer_default_output = fmt::format("{0}{1}{2}", app->Configuration->WorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, app->Configuration->ScenePath.c_str());
+        char editor_serializer_output_buf[MAX_FILE_PATH_COUNT] = {};
+        VFSPath::Parse(app->Configuration->ScenePath.c_str()).Value().ResolveNative(app->Configuration->WorkingSpacePath.c_str(), editor_serializer_output_buf, sizeof(editor_serializer_output_buf));
+        std::string editor_serializer_default_output = editor_serializer_output_buf;
 
         m_editor_serializer->SetDefaultOutput(editor_serializer_default_output);
         m_editor_serializer->SetOnProgressCallback(OnEditorSceneSerializerProgress);

@@ -106,7 +106,7 @@ namespace Tetragrama::Components
         ArenaHistory       m_arena_history[kMaxArenas] = {};
         uint32_t           m_arena_history_count       = 0;
         bool               m_open_exit{false};
-        ThemeId            m_active_theme{ThemeId::Light};
+        ThemeId            m_active_theme{ThemeId::Dark};
         bool               m_pending_shutdown{false};
         bool               m_open_save_scene{false};
         bool               m_open_save_scene_as{false};
