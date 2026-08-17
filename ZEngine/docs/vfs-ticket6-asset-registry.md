@@ -105,7 +105,7 @@ for `.cpp` files — no manual source list additions needed for the new `.cpp` f
 #pragma once
 #include <cstdint>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     // Lifecycle state machine for a registered asset.
     //
@@ -140,7 +140,7 @@ namespace ZEngine::VFS
 #include <uuid.h>
 #include <cstdint>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     // MAX_ASSET_NAME_LEN: name stored inline to avoid arena fragmentation on lookup.
     // Derived from VFSPath::Filename() on Register; updated on Rename.
@@ -159,14 +159,14 @@ namespace ZEngine::VFS
         // ── Meta snapshot ────────────────────────────────────────────────────
         // Copied from MetaFileData at registration time; updated on reimport.
         // The registry does NOT re-read the .meta file except during hot-reload.
-        MetaFileData                Meta        = {};
+        AssetMetaSnapshot           Meta        = {};  // Reduced snapshot — see MetaFileData.h for full import settings
 
         // ── Runtime handle ───────────────────────────────────────────────────
         // Generational handle into HandleManager<AssetRecord>.
         // Replaces the old AssetHandle (uint32_t) for registry purposes.
-        // The old uint32_t handle is kept in LegacyHandle for backward compat
+        // The old uint32_t handle is kept in SlotHandle for backward compat
         // during the migration period (see §11).
-        Managers::AssetManager::AssetHandle LegacyHandle = 0;
+        Managers::AssetHandle SlotHandle = 0;
 
         // ── State ─────────────────────────────────────────────────────────────
         AssetState                  State       = AssetState::Unregistered;
@@ -186,10 +186,10 @@ namespace ZEngine::VFS
 - `Name[]` stores only the filename component (e.g. `"tank.glb"`), not the full path.
   This is populated by `VFSPath::Filename()` at registration and enables efficient
   substring search without touching the `Path` buffer on every comparison.
-- `MetaFileData Meta` is a snapshot. It captures the `AssetUUID`, `ImporterName`,
-  `LastSourceSha256`, and `ArtifactPath` from the last successful `.meta` read.
+- `AssetMetaSnapshot Meta` is a snapshot. It captures the `AssetUUID`, `ImporterName`,
+  and `ArtifactPath` from the last successful `.meta` read.
   The `Status` field in the snapshot is always `Unknown` — runtime state is in `AssetState`.
-- `LegacyHandle` exists only during the migration period (§11). Once all `AssetManager`
+- `SlotHandle` exists only during the migration period (§11). Once all `AssetManager`
   call sites use `AssetRegistry`, this field is removed.
 
 ---
@@ -227,7 +227,7 @@ because it is an editor-only, infrequent operation and the record count is bound
 #include <shared_mutex>
 #include <span>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     // -------------------------------------------------------------------------
     // UUIDHasher — adapts uuids::uuid for UnorderedHashMap
@@ -286,7 +286,7 @@ namespace ZEngine::VFS
     public:
         // Maximum registered assets. Sized for a mid-size game project.
         // Increase if needed; the slot array is arena-allocated at init time.
-        static constexpr uint32_t MAX_ASSETS = 65536;
+        static constexpr uint32_t MAX_ASSETS = 8192;
 
         AssetIndex()  = default;
         ~AssetIndex() = default;
@@ -305,7 +305,7 @@ namespace ZEngine::VFS
                                 const MetaFileData&      meta);
 
         // Update an existing record (e.g. after reimport). Record must exist.
-        // Only Meta, LegacyHandle, State may be updated; UUID and Type are immutable.
+        // Only Meta, SlotHandle, State may be updated; UUID and Type are immutable.
         bool Update(Helpers::Handle<AssetRecord> handle,
                     const MetaFileData&          new_meta,
                     AssetState                   new_state);
@@ -349,7 +349,7 @@ namespace ZEngine::VFS
 
         // Visit all live records. ForEach acquires shared_lock for the duration.
         // Do NOT call Register/Remove from within the visitor — deadlock.
-        void ForEach(std::function<void(const AssetRecord&)> visitor) const;
+        void ForEach(void* ctx, void (*visitor)(void*, Helpers::Handle<AssetRecord>, const AssetRecord&));
 
         // ── Stats ─────────────────────────────────────────────────────────────
         uint32_t Count()    const;   // total live records
@@ -382,7 +382,7 @@ namespace ZEngine::VFS
         Core::Memory::ArenaAllocator*            m_arena     = nullptr;
     };
 
-} // namespace ZEngine::VFS
+} // namespace ZEngine::Core::VFS
 ```
 
 ### 5.3 Implementation Notes
@@ -414,7 +414,7 @@ void AssetIndex::Initialize(Core::Memory::ArenaAllocator* arena)
 9. record.Path         = path
 10. copy basename into record.Name (VFSPath::Filename → strncpy)
 11. record.Meta         = meta
-12. record.LegacyHandle = 0          ← caller sets this separately
+12. record.SlotHandle = 0          ← caller sets this separately
 13. record.State        = AssetState::Registered
 14. m_by_uuid[uuid]     = handle
 15. m_by_path[path]     = handle
@@ -482,7 +482,7 @@ Both directions are needed:
 #include <shared_mutex>
 #include <span>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
     // -------------------------------------------------------------------------
     // AdjacencyList — arena-backed list of UUIDs.
@@ -594,7 +594,7 @@ namespace ZEngine::VFS
         uint32_t                                       m_edges   = 0;
     };
 
-} // namespace ZEngine::VFS
+} // namespace ZEngine::Core::VFS
 ```
 
 ### 6.3 Implementation Notes
@@ -685,12 +685,8 @@ caller (typically `AssetRegistry`'s internal scratch sub-arena).
 #include <functional>
 #include <span>
 
-namespace ZEngine::VFS
+namespace ZEngine::Core::VFS
 {
-    // Called after the cascade BFS identifies all assets to reload.
-    // `cascade` spans all UUIDs to invalidate, in BFS order (root first).
-    // Fired on the main/editor thread (after VFSFileWatcher::Tick()).
-    using HotReloadCallback = std::function<void(std::span<const uuids::uuid> cascade)>;
 ```
 
 ### 7.2 `AssetRegistry.h`
@@ -724,7 +720,7 @@ namespace ZEngine::VFS
                                       Managers::AssetType                  type,
                                       const VFSPath&                       path,
                                       const MetaFileData&                  meta,
-                                      Managers::AssetManager::AssetHandle  legacy_handle);
+                                      Managers::AssetHandle  legacy_handle);
 
         // Remove the record and purge its dependency edges.
         bool Remove(const uuids::uuid& uuid);
@@ -786,8 +782,7 @@ namespace ZEngine::VFS
 
         // ── Hot-reload ────────────────────────────────────────────────────────
 
-        // Register the callback invoked when a cascade is computed.
-        void SetHotReloadCallback(HotReloadCallback cb);
+        void SetHotReloadCallback(void* ctx, void (*cb)(void*, std::span<const uuids::uuid>));
 
         // Called by VFSFileWatcher integration (§10) when a source asset changes.
         // Computes BFS cascade and fires the HotReloadCallback.
@@ -822,7 +817,8 @@ namespace ZEngine::VFS
     private:
         AssetIndex                   m_index         = {};
         DependencyGraph              m_graph         = {};
-        HotReloadCallback            m_reload_cb     = nullptr;
+        void*                        m_reload_ctx    = nullptr;
+        void                       (*m_reload_cb)(void*, std::span<const uuids::uuid>) = nullptr;
 
         // Scratch sub-arena: used for BFS queue/visited in CollectCascade.
         // Created from the persistent arena passed to Initialize.
@@ -834,7 +830,7 @@ namespace ZEngine::VFS
                                                        const char* ext);
     };
 
-} // namespace ZEngine::VFS
+} // namespace ZEngine::Core::VFS
 ```
 
 ### 7.3 Implementation Notes
@@ -856,14 +852,14 @@ void AssetRegistry::Initialize(Core::Memory::ArenaAllocator* arena, uint64_t scr
 RegisterResult AssetRegistry::RegisterLoaded(
     const uuids::uuid& uuid, Managers::AssetType type,
     const VFSPath& path, const MetaFileData& meta,
-    Managers::AssetManager::AssetHandle legacy_handle)
+    Managers::AssetHandle legacy_handle)
 {
     RegisterResult result = m_index.Register(uuid, type, path, meta);
     if (!result.IsOk()) return result;
 
     AssetRecord* rec = m_index.Access(result.Handle);
     ZENGINE_VALIDATE_ASSERT(rec != nullptr, "Register succeeded but Access returned null")
-    rec->LegacyHandle = legacy_handle;
+    rec->SlotHandle = legacy_handle;
     rec->State        = AssetState::Loaded;
     return result;
 }
@@ -1234,8 +1230,7 @@ void AssetRegistry::OnScanFileDiscovered(
     if (existing.Valid())
     {
         AssetRecord* rec = m_index.Access(existing);
-        if (rec &&
-            std::strcmp(rec->Meta.LastSourceSha256, meta.LastSourceSha256) != 0)
+        if (rec && rec->Meta.SourceHash != meta.SourceHash)
         {
             // SHA changed → mark Stale
             m_index.SetState(existing, AssetState::Stale);
@@ -1359,7 +1354,7 @@ Nothing else changes. All existing `UUIDToHandle` / `HandleToUUID` paths continu
 
 ```cpp
 // AssetManager.cpp — RegisterAsset (MODIFIED):
-AssetManager::AssetHandle AssetManager::RegisterAsset(
+Managers::AssetHandle AssetManager::RegisterAsset(
     AssetType type, const uuids::uuid& uuid, uint32_t asset_id)
 {
     AssetHandle h = CreateHandle(asset_id, type);
@@ -1423,8 +1418,8 @@ Core::Containers::UnorderedHashMap<AssetHandle, uuids::uuid>  HandleToUUID;
 
 | Old pattern | New pattern |
 |---|---|
-| `AssetManager::Instance()->UUIDToHandle.at(id)` | `Registry->FindByUUID(id)->LegacyHandle` |
-| `AssetManager::Instance()->HandleToUUID.at(h)` | `Registry->FindByUUID(uuid)->LegacyHandle == h` check |
+| `AssetManager::Instance()->UUIDToHandle.at(id)` | `Registry->FindByUUID(id)->SlotHandle` |
+| `AssetManager::Instance()->HandleToUUID.at(h)` | `Registry->FindByUUID(uuid)->SlotHandle == h` check |
 | `UUIDToHandle.contains(id)` | `Registry->FindByUUID(id) != nullptr` |
 | `GetAsset<T, uuids::uuid>(id)` template | unchanged (uses `UUIDToHandle` internally; redirect in Phase 4) |
 
@@ -1849,14 +1844,14 @@ TEST(AssetRegistry, StateTransitionAndCascadeMarksStale)
 ```
 [ ] ZEngine/VFS/Registry/AssetRecord.h
       AssetState enum (6 values)
-      AssetRecord struct (UUID, Type, Path, Name[128], Meta, LegacyHandle, State)
+      AssetRecord struct (UUID, Type, Path, Name[128], Meta, SlotHandle, State)
 
 [ ] ZEngine/VFS/Registry/AssetIndex.h
       UUIDHasher struct (FNV-1a over uuid bytes)
       VFSPathHasher struct (delegates to VFSPath::Hash())
       RegisterError enum (4 values)
       RegisterResult struct
-      AssetIndex class (MAX_ASSETS = 65536)
+      AssetIndex class (MAX_ASSETS = 8192)
         Initialize(arena)
         Register(uuid, type, path, meta) → RegisterResult
         Update(handle, meta, state) → bool
@@ -1899,7 +1894,6 @@ TEST(AssetRegistry, StateTransitionAndCascadeMarksStale)
       CollectCascade: shared_lock; BFS with inline visited table; populate out
 
 [ ] ZEngine/VFS/Registry/AssetRegistry.h
-      HotReloadCallback typedef
       QueryFilter struct (Type, NameLike, Ext, State)
       QueryResult struct (Handles array, Count)
       AssetRegistry class
@@ -1909,7 +1903,7 @@ TEST(AssetRegistry, StateTransitionAndCascadeMarksStale)
         SetState(uuid, state) / UpdateMeta
         FindByUUID / FindByPath (2 overloads each)
         Query(filter, arena) → QueryResult
-        SetHotReloadCallback(cb)
+        SetHotReloadCallback(ctx, cb)
         OnAssetModified / OnAssetDeleted / OnAssetRenamed
         OnScanFileDiscovered
         RecordCount / EdgeCount
@@ -1917,7 +1911,7 @@ TEST(AssetRegistry, StateTransitionAndCascadeMarksStale)
 
 [ ] ZEngine/VFS/Registry/AssetRegistry.cpp
       Initialize: m_scratch = arena->CreateSubArena; m_index.Initialize; m_graph.Initialize
-      Register / RegisterLoaded: delegate to m_index; set LegacyHandle if provided
+      Register / RegisterLoaded: delegate to m_index; set SlotHandle if provided
       Remove(uuid): m_graph.RemoveAsset → m_index.Remove
       OnAssetModified: FindByPath; SetState(Stale); CollectCascade; mark all Stale; fire cb
       OnAssetDeleted: cascade fire; Remove

@@ -1,7 +1,7 @@
 # ZEngine — Game Loop
 
 **Priority:** P1 — Required for deterministic simulation and correct frame pacing
-**Status:** Design
+**Status:** In Progress
 **Depends on:** `actor-ecs-architecture.md` (WorldTick), `physics-system.md` (fixed step)
 **Modifies:** `Engine.cpp` (MainThreadRun), `CoreWindow.h/.cpp`
 
@@ -662,14 +662,14 @@ resolution down to 1 ms. This is already standard practice in game engines.
 
 | # | Item | File | Status |
 |---|------|------|--------|
-| 1 | `FixedTimestepAccumulator` struct | `ZEngine/Engine/FixedTimestepAccumulator.h` | Todo |
-| 2 | `FrameTimer` struct | `ZEngine/Engine/FrameTimer.h` | Todo |
-| 3 | `FrameRateCap` struct | `ZEngine/Engine/FrameRateCap.h` | Todo |
+| 1 | `FixedTimestepAccumulator` struct | `ZEngine/Engine/FixedTimestepAccumulator.h` | Done |
+| 2 | `FrameTimer` struct | `ZEngine/Engine/FrameTimer.h` | Done |
+| 3 | `FrameRateCap` struct | `ZEngine/Engine/FrameRateCap.h` | Done |
 | 4 | Enhanced `Core::TimeStep` | `ZEngine/Core/TimeStep.h` | Todo (modify existing) |
-| 5 | `FramePacket` struct | `ZEngine/Engine/FramePacket.h` | Todo |
-| 6 | `Engine::MainThreadRun` rewrite | `ZEngine/Engine/Engine.cpp` | Todo (modify existing) |
-| 7 | `Scene::SnapshotTransforms()` | `ZEngine/ECS/Scene.cpp` | Todo |
-| 8 | `Scene::FillRenderableTransforms(alpha, …)` | `ZEngine/ECS/Scene.cpp` | Todo |
+| 5 | `FramePacket` struct | `ZEngine/Engine/FramePacket.h` | Done |
+| 6 | `Engine::MainThreadRun` rewrite | `ZEngine/Engine/Engine.cpp` | Done |
+| 7 | `Scene::SnapshotTransforms()` | `ZEngine/ECS/Scene.cpp` | Done |
+| 8 | `Scene::FillRenderableTransforms(alpha, …)` | `ZEngine/ECS/Scene.cpp` | Done |
 | 9 | `GameApplication::Update` signature update | `ZEngine/Application/GameApplication.h` | Todo (modify existing) |
 | 10 | CVDisplayLink integration (macOS) | `ZEngine/Platform/macOS/CoreWindow.mm` | Todo (optional, P2) |
 | 11 | `timeBeginPeriod(1)` (Windows) | `ZEngine/Platform/Windows/CoreWindow.cpp` | Todo (optional, P2) |

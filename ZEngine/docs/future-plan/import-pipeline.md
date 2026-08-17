@@ -1,9 +1,29 @@
 # Import Pipeline — Asset Import Coordination
 
-**Priority:** P3 — Implement after VFS Ticket 6 and ECS core are live  
-**Status:** Design  
+**Priority:** P3  
+**Status:** Mostly Implemented — ImportCoordinator, ImportQueue, ImportJob, ImportPriority all live; DependencyGraph and VFSScanner/FileWatcher wiring remain design  
 **Depends on:** `vfs-ticket6-asset-registry.md`, `actor-ecs-architecture.md`  
 **Blocks:** `animation-system.md` (AssimpImporter end-to-end), `render-resource-manager.md`
+
+### What is already implemented (as of PR #597)
+
+- `IAssetImporter` interface — `CanImport(ext)` + `Import(ctx, path, meta)` — live in `ZEngine/Importers/IAssetImporter.h`
+- `AssimpImporter::ImportFile()` — editor path; cooks .fbx/.obj to `.zemesh` + `.zematerial` on disk, reports progress via `ImportCompleteCallback` / `ImportProgressCallback` / `ImportErrorCallback` / `ImportLogCallback` type aliases
+- `GltfImporter::ImportFile()` — same editor path for .glb/.gltf via fastgltf; extracts embedded textures to `Assets/Textures/`
+- `.zematerial` serialized as JSON (nlohmann/json); `.zetextures` eliminated — texture VFS paths inline in `.zematerial`
+- `MetaFileData::SourcePath` written after every successful import for future reimport
+- Lazy cook on save — `EditorSceneSerializer` detects in-memory meshes with no artifact and cooks before writing `.zescene`
+- Named callback aliases: `ImportCompleteCallback`, `ImportProgressCallback`, `ImportErrorCallback`, `ImportLogCallback` in `AssetTypes.h`
+- `ImportCoordinator` + `ImportQueue` — priority-driven queue with deduplication; `Tick()`, `Enqueue()`, `EnqueueBatch()`, `GetProgress()`
+- `ImportJob` + `ImportPriority` — job struct with `DiagnosticMessage[256]`, `RequeueCount`, priority enum
+- `EnvironmentMapImporter` — implements `IAssetImporter` for .hdr/.exr environment map files
+
+### What is still design (this document)
+
+- VFSScanner → `EnqueueBatch` wiring
+- FileWatcher → `Enqueue(Immediate)` wiring
+
+Note: ImportCoordinator, ImportQueue, ImportJob, and ImportPriority are implemented in `ZEngine/ZEngine/Importers/`. The DependencyGraph and VFSScanner/FileWatcher integration remain design.
 
 **Goal**: Implement a priority-driven, thread-safe asset import pipeline inside
 `ZEngine::Importers` that routes any source file to the correct importer, tracks progress
@@ -87,7 +107,10 @@ namespace ZEngine::Importers {
         Immediate  = 2    // user-initiated or dependency-resolved retry; runs next Tick
     };
 
-    using ImportCallback = std::function<void(const VFS::VFSPath&, bool success)>;
+    struct ImportCallback {
+        void* Context = nullptr;
+        void (*Fn)(void*, bool success) = nullptr;
+    };
 
     struct ImportJob {
         VFS::VFSPath      Path;
@@ -263,9 +286,10 @@ namespace ZEngine::Importers {
 
         // Enqueues a single asset for import. Reads meta from disk via MetaFileIO.
         // No-op if a job for the same path is already queued at equal or higher priority.
-        void Enqueue(VFS::VFSPath    path,
-                     ImportPriority  priority = ImportPriority::Normal,
-                     ImportCallback  cb       = {});
+        // Returns the asset UUID resolved at enqueue time.
+        uuids::uuid Enqueue(VFS::VFSPath    path,
+                            ImportPriority  priority = ImportPriority::Normal,
+                            ImportCallback  cb       = {});
 
         // Enqueues multiple paths at Normal priority. Suitable for VFSScanner batch.
         void EnqueueBatch(const Core::Containers::Array<VFS::VFSPath>& paths);

@@ -1,7 +1,8 @@
 # Render Resource Manager — GPU Lifetime & Hot-Reload
 
 **Priority:** P3 — Implement alongside import-pipeline.md  
-**Status:** Design  
+**Status:** Implemented  
+**Implemented in:** `ZEngine/ZEngine/Rendering/RenderResourceManager.h/.cpp`  
 **Depends on:** `import-pipeline.md`, `vfs-ticket6-asset-registry.md`, `gpu-allocator-rearchitecture.md`  
 **Blocks:** `animation-system.md` (SkinningUploadSystem), `shader-asset-pipeline.md`
 

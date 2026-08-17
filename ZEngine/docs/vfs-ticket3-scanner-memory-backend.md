@@ -445,7 +445,7 @@ namespace ZEngine::Core::VFS
         // Called from UI thread every frame.
         // Returns empty span if directory not yet cached.
         // O(1) hash lookup + shared_lock acquire.
-        std::span<const VFSDirEntry> GetListing(const VFSPath& dir) const;
+        Core::Containers::ArrayView<const VFSDirEntry> GetListing(const VFSPath& dir) const;
 
         // Called by VFSScanner from a worker thread.
         // Moves the Array into the cache and marks the entry non-stale.
@@ -470,7 +470,7 @@ namespace ZEngine::Core::VFS
         // visitor(dir_path, entries_span)
         void ForEachDir(
             std::function<void(const VFSPath&,
-                               std::span<const VFSDirEntry>)> visitor) const;
+                               Core::Containers::ArrayView<const VFSDirEntry>)> visitor) const;
 
     private:
         struct CacheEntry
@@ -529,8 +529,8 @@ namespace ZEngine::Core::VFS
     // VFSScanner
     //
     // Usage:
-    //   scanner.SetOnScanComplete([](ScanStats s){ /* marshal to UI if needed */ });
-    //   scanner.Scan(ctx, rootPath, &arena, &cache);
+    //   scanner.SetOnScanComplete(ctx, [](void* ctx, ScanStats s){ /* marshal to UI if needed */ });
+    //   scanner.Scan(ctx, rootPath, &cache);
     //
     // Thread model:
     //   Scan()          → called from UI/engine thread; returns immediately.
@@ -547,7 +547,6 @@ namespace ZEngine::Core::VFS
         // Starts async scan. If already scanning, cancels the current scan first.
         void Scan(IVFSContext*            context,
                   VFSPath                 root,
-                  Core::Memory::ArenaAllocator* arena,
                   VFSDirectoryCache*      cache);
 
         // Cancels in-flight scan. Completion callback will NOT fire.
@@ -558,7 +557,7 @@ namespace ZEngine::Core::VFS
 
         // Called before Scan(). Fires on last scanner worker thread.
         // Caller marshals to UI thread if needed.
-        void SetOnScanComplete(std::function<void(ScanStats)> callback);
+        void SetOnScanComplete(void* context, void (*callback)(void*, ScanStats));
 
     private:
         struct ScanContext
@@ -572,7 +571,8 @@ namespace ZEngine::Core::VFS
         void ScanDirectory(ScanContext ctx, VFSPath dir);
         void OnTaskComplete(bool cancelled);
 
-        std::function<void(ScanStats)>        m_complete_callback;
+        void*                                 m_complete_ctx      = nullptr;
+        void                                (*m_complete_callback)(void*, ScanStats) = nullptr;
 
         std::atomic<bool>                     m_is_scanning{false};
         std::atomic<bool>                     m_cancel_requested{false};
@@ -591,7 +591,7 @@ namespace ZEngine::Core::VFS
 ### 7.2 Async Walk Algorithm
 
 ```
-VFSScanner::Scan(context, root, arena, cache):
+VFSScanner::Scan(context, root, cache):
     if IsScanning():
         m_cancel_requested.store(true, release)
         while m_pending_tasks.load(acquire) > 0:
@@ -604,7 +604,7 @@ VFSScanner::Scan(context, root, arena, cache):
     m_is_scanning.store(true, release)
     m_scan_start = steady_clock::now()
 
-    ScanContext ctx = { context, root, arena, cache }
+    ScanContext ctx = { context, root, cache }
 
     ThreadPoolHelper::Submit([this, ctx, root]() {
         ScanDirectory(ctx, root)
@@ -651,7 +651,7 @@ VFSScanner::OnTaskComplete(cancelled):
         stats.DirsFound  = m_dirs_found.load()
         stats.DurationMs = duration_cast<milliseconds>(
                                steady_clock::now() - m_scan_start).count()
-        m_complete_callback(stats)
+        m_complete_callback(m_complete_ctx, stats)
 ```
 
 ### 7.3 Critical Concurrency Invariants
@@ -741,14 +741,15 @@ ZENGINE_VALIDATE_ASSERT(parse_result.Succeeded(), "WorkingSpacePath is not a val
 m_assets_vfs_root = parse_result.Value();
 m_current_vfs_dir = m_assets_vfs_root;
 
-m_scanner->SetOnScanComplete([this](ZEngine::Core::VFS::ScanStats stats) {
+m_scanner->SetOnScanComplete(this, [](void* ctx, ZEngine::Core::VFS::ScanStats stats) {
+    auto* self = static_cast<ProjectViewUIComponent*>(ctx);
     ZENGINE_CORE_INFO("VFS scan complete: {} files, {} dirs, {}ms",
         stats.FilesFound, stats.DirsFound, stats.DurationMs)
-    m_scan_refresh_ready.store(true, std::memory_order_release);
+    self->m_scan_refresh_ready.store(true, std::memory_order_release);
 });
 
 auto* vfs_context = ParentLayer->CurrentApp->GetVFSContext();  // IVFSContext*
-m_scanner->Scan(vfs_context, m_assets_vfs_root, &m_local_arena, m_directory_cache);
+m_scanner->Scan(vfs_context, m_assets_vfs_root, m_directory_cache);
 ```
 
 ### 9.3 `RenderContentBrowser()` — Before / After
@@ -843,7 +844,7 @@ char name_lower[MAX_FILE_PATH_COUNT] = {};
 
 m_directory_cache->ForEachDir(
     [&](const ZEngine::Core::VFS::VFSPath& /*dir*/,
-        std::span<const ZEngine::Core::VFS::VFSDirEntry> entries)
+        Core::Containers::ArrayView<const ZEngine::Core::VFS::VFSDirEntry> entries)
     {
         for (const auto& entry : entries)
         {
@@ -939,7 +940,7 @@ Add to `Render()` alongside the back button:
 if (ImGui::Button("  Refresh  "))
 {
     auto* vfs_context = ParentLayer->CurrentApp->GetVFSContext();
-    m_scanner->Scan(vfs_context, m_assets_vfs_root, &m_local_arena, m_directory_cache);
+    m_scanner->Scan(vfs_context, m_assets_vfs_root, m_directory_cache);
 }
 ```
 
@@ -961,7 +962,7 @@ if (m_scan_refresh_ready.exchange(false, std::memory_order_acquire))
 // Add at the end of each successful mutation handler:
 {
     auto* vfs_context = ParentLayer->CurrentApp->GetVFSContext();
-    m_scanner->Scan(vfs_context, m_assets_vfs_root, &m_local_arena, m_directory_cache);
+    m_scanner->Scan(vfs_context, m_assets_vfs_root, m_directory_cache);
 }
 ```
 
@@ -1066,7 +1067,7 @@ These tests use a `MockVFSContext` that implements `IVFSContext::List()` with co
 Scan_EmptyRoot_FiresComplete
   MockContext: List("/") → empty Array
   scanner.SetOnScanComplete(capture stats)
-  scanner.Scan(&mock, "/", &arena, &cache)
+  scanner.Scan(&mock, "/", &cache)
   Wait 100ms for callback
   stats.FilesFound == 0, stats.DirsFound == 0
 

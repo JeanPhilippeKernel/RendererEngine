@@ -127,31 +127,30 @@ That is the **only** change Obelisk needs. Everything else is already correct.
 ### Phase 2 — ECS Components + Actor layer (old Rendering::Components removed)
 
 **Obelisk:** No impact.  
-**Tetragrama:** Moderate impact.
+**Tetragrama:** Done — `Rendering/Components/` has been deleted.
 
-The editor's `InspectorViewUIComponent` and `HierarchyViewUIComponent` reference old
-`Rendering::Components::TransformComponent`, `LightComponent`, `NameComponent`,
-`UUIComponent`, `MaterialComponent`. These are removed in Phase 2/3.
+`Rendering/Components/` no longer exists. `InspectorViewUIComponent` and
+`HierarchyViewUIComponent` had their component display code commented out rather than
+replaced inline. The old references to `Rendering::Components::TransformComponent`,
+`LightComponent`, `NameComponent`, `UUIComponent`, and `MaterialComponent` are gone.
 
-**Required changes:**
-- `HierarchyViewUIComponent.cpp` — replace `Rendering::Components::*` with `ECS::Components::*`
-- `InspectorViewUIComponent.cpp` — replace component type references
-- `EditorSceneSerializer.cpp` — binary format uses component type names; update to new names
+**Remaining work:**
+- `HierarchyViewUIComponent.cpp` — write new component display panels against
+  `ECS::Components::NameComponent` (pending that header landing)
+- `InspectorViewUIComponent.cpp` — write new inspector panels against
+  `ECS::Components::MeshComponent`, `TransformComponent`, etc. (pending those headers)
+- `EditorSceneSerializer.cpp` — binary format must be updated to new ECS component type names
 
-The new `ECS::Components::TransformComponent` is plain data (`Vec3f Position/Rotation/Scale`)
-vs. the old one which had methods. The inspector must adapt to display fields differently.
-
-**Estimate:** 2 days
+**Estimate:** 2 days (new panel writing, not search-and-replace)
 
 ---
 
 ### Phase 3 — Migrate Rendering::Components call sites
 
 **Obelisk:** No impact.  
-**Tetragrama:** Same as Phase 2 — this is when the old headers are deleted. Tetragrama
-must already have been migrated in Phase 2 or it will fail to compile here.
-
-**Required:** Tetragrama migration must be done **before** Phase 3 deletes the old headers.
+**Tetragrama:** Done — old headers are already deleted. Tetragrama has no remaining
+references to `Rendering::Components::*`; the component display code has been
+commented out and will be rewritten against the ECS component headers.
 
 ---
 
@@ -173,18 +172,16 @@ feature gap to fill after the animation system is implemented.
 ### Phase 5 — Dead code removal (entt, #if 0, GraphicSceneEntity)
 
 **Obelisk:** No impact.  
-**Tetragrama:** `GraphicSceneEntity` is referenced in `GraphicScene3DSerializer.h`
-(already included in Tetragrama's serializers). When `GraphicSceneEntity` is deleted
-in Phase 5.3, this file's include breaks.
+**Tetragrama:** Done — `GraphicSceneEntity.h/.cpp` have been deleted.
+
+`GraphicSceneEntity.h` and `GraphicSceneEntity.cpp` no longer exist.
+`GraphicScene3DSerializer.h` had its include of `GraphicSceneEntity.h` removed as
+part of the deletion.
 
 `EditorSceneSerializer` is separate from `GraphicScene3DSerializer` and does not
 depend on `GraphicSceneEntity` directly — it uses `EditorScene` which uses `RenderScene`.
 
-**Required changes:**
-- `GraphicScene3DSerializer.h/.cpp` (in ZEngine, not Tetragrama) — already targeted for migration
-- Verify `EditorSceneSerializer.cpp` does not transitively include `GraphicSceneEntity.h`
-
-**Estimate:** 1 day verification + potential fix
+**Verified:** `EditorSceneSerializer.cpp` has no transitive include of `GraphicSceneEntity.h`.
 
 ---
 
@@ -328,15 +325,18 @@ These constraints are imposed by the editor and must not be violated by migratio
 
 ### Tetragrama (phased)
 
-**Before Phase 2 completes (component migration):**
-- [ ] `Components/HierarchyViewUIComponent.cpp` — replace `Rendering::Components::*` with `ECS::Components::*`
-- [ ] `Components/InspectorViewUIComponent.cpp` — same
+**Phase 2 (component migration) — Rendering/Components/ deleted:**
+- [x] `Rendering/Components/` directory deleted; `GraphicSceneEntity.h/.cpp` deleted
+- [x] `Components/HierarchyViewUIComponent.cpp` — old `Rendering::Components::*` references removed (code commented out)
+- [x] `Components/InspectorViewUIComponent.cpp` — old component type references removed (code commented out)
+- [ ] `Components/HierarchyViewUIComponent.cpp` — write new panels against `ECS::Components::NameComponent` (pending header)
+- [ ] `Components/InspectorViewUIComponent.cpp` — write new panels against `ECS::Components::MeshComponent`, `TransformComponent`, etc. (pending headers)
 - [ ] `Serializers/EditorSceneSerializer.cpp` — update component type names in binary format
 - [ ] Add `ParentComponent` + `TransformHierarchySystem` (N-2 above) to enable hierarchy
 
-**Before Phase 3 completes (header deletion):**
-- [ ] Verify no transitive include of `GraphicSceneEntity.h` in Tetragrama
-- [ ] Verify no transitive include of `Rendering/Components/TransformComponent.h` (old)
+**Phase 3 (header deletion) — already complete:**
+- [x] No transitive include of `GraphicSceneEntity.h` in Tetragrama — verified
+- [x] No transitive include of `Rendering/Components/TransformComponent.h` (old) — verified
 
 **Before Phase 4 completes (VFS Ticket 3):**
 - [ ] `Components/ProjectViewUIComponent.cpp` — migrate `directory_iterator` to `VFSScanner`
@@ -374,6 +374,8 @@ They represent the cost of keeping the editor functional throughout the migratio
 new feature work. They should be distributed across the relevant phases — not treated
 as a separate block of work.
 
-**The single most important constraint:** Tetragrama must be migrated off
-`Rendering::Components::*` before Phase 3 deletes those headers, or the editor will
-not compile. This is a hard dependency on the migration timeline.
+**Previously the single most important constraint — now resolved:** Tetragrama has been
+migrated off `Rendering::Components::*`. The old headers are deleted. Component display
+code in `InspectorViewUIComponent` and `HierarchyViewUIComponent` is in commented-out
+blocks; the remaining work is writing new panels against the ECS component headers
+(pending `MeshComponent`, `NameComponent`, etc.).

@@ -94,7 +94,7 @@ Frame index `fi` = `SwapchainPtr->CurrentFrame->Index` (0, 1, or 2 in a triple-b
         GpuMem.SampleBudgets()              <- per-heap pressure check
         FrameHeaps[fi].Reset()              <- bump pointer = 0, O(1)
     CommandBufferMgr->ResetPool(fi, thread)
-    AsyncResLoader->CompleteDeferrals()
+    RRM->CompleteDeferrals()
     GetCommandBuffer(GRAPHIC, fi, thread)
     CurrentCmdBuf->Begin()
 
@@ -111,7 +111,7 @@ Frame index `fi` = `SwapchainPtr->CurrentFrame->Index` (0, 1, or 2 in a triple-b
 
     [MESH DIRTY]  if MeshAllocationDirty[fi]:
       vtx_buffer_set->At(fi).Write(fi, 0, scene->Vertices)
-        AsyncResLoader->UploadBuffer()
+        RRM->UploadBuffer()
           vmaGetAllocationMemoryProperties -> HOST_VISIBLE?
           YES: vmaCopyMemoryToAllocation + vmaFlushAllocation (if !coherent)
           NO:  GpuMem.Ring.Allocate() -> vkCmdCopyBuffer -> Ring.Submit(signal_val)
@@ -181,7 +181,7 @@ Frame index `fi` = `SwapchainPtr->CurrentFrame->Index` (0, 1, or 2 in a triple-b
     EndRenderPass
 
 [4] EndFrame()
-    AsyncResLoader->SubmitAsyncJobs()       <- flush timeline semaphore job queue
+    RRM->SubmitTextureJobs()       <- flush timeline semaphore job queue
     CommandBufferMgr->EndEnqueuedBuffers()
     SwapchainPtr->Present()
       3-submit timeline pattern (acquire bridge -> render -> present bridge)
@@ -281,10 +281,10 @@ AppRenderPipeline::BeginFrame()
   swapchain->AcquireNextImage()       <- frame_index valid after this
   RRM::BeginFrame(fi)                 <- flush pending asset uploads
   CommandBufferMgr::ResetPool(fi)
-  AsyncResLoader::CompleteDeferrals()
+  RRM::CompleteDeferrals()
 
 AppRenderPipeline::EndFrame()
-  AsyncResLoader::SubmitAsyncJobs()   <- texture uploads only
+  RRM::SubmitTextureJobs()   <- texture uploads only
   Present()
   RRM::EndFrame(fi)                   <- drain aged swap entries
 

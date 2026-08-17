@@ -38,7 +38,7 @@ All sizes are at process startup, allocated once, and never grown. The 2 GB tota
 |---|---|---|
 | VulkanDevice | 512 MB | VMA metadata, descriptor pool backing, command pool objects, synchronization primitives |
 | AssetManager | 100 MB | UUID maps, mesh/material/texture handle arrays (matches existing) |
-| ImporterArena | 350 MB | Assimp import scratch; cleared on `AssetManager::ImportComplete()` (matches existing) |
+| Importer | 350 MB | Assimp import scratch; cleared on `AssetManager::ImportComplete()` (matches existing) |
 | ECS::Scene | 128 MB | ComponentStorage dense arrays, EntityRegistry free-list, archetype metadata |
 | Animation::AnimationManager | 64 MB | SkeletonData, AnimationClip arrays, per-frame pose pools (double-buffered) |
 | Physics::PhysicsWorld | 64 MB | Jolt body data, broad-phase cell grid, constraint cache, contact manifold pool |
@@ -51,7 +51,7 @@ All sizes are at process startup, allocated once, and never grown. The 2 GB tota
 | Swapchain | 3 MB | Swapchain-specific allocations (matches existing) |
 | Logging | 4 MB | Logger ring buffer, event handler list, category filter table |
 | Scratch / general | 48 MB | Engine-internal scratch arenas, temporary string processing, debug overlay |
-| **Total** | **~1,643 MB** | **~357 MB headroom within the 2 GB block** |
+| **Total** | **~1,496 MB** | **~552 MB headroom within the 2 GB block** |
 
 ### Sizing rationale
 
@@ -59,7 +59,7 @@ All sizes are at process startup, allocated once, and never grown. The 2 GB tota
 
 **ECS::Scene (128 MB).** A ComponentStorage dense array for a 16-byte component with 65,536 entities costs 1 MB. With 30–40 component types and sparse archetypes, 128 MB provides comfortable room. The entity registry free-list and archetype metadata add another few MB.
 
-**ImporterArena (350 MB).** Assimp inflates mesh data to approximately 4–8x the on-disk size during processing (vertex deduplication, tangent generation, normal smoothing). A 30 MB mesh file can consume up to 240 MB mid-import. The scratch is cleared after each job completes, so this budget covers the single largest in-flight import, not the cumulative total.
+**Importer (350 MB).** Assimp inflates mesh data to approximately 4–8x the on-disk size during processing (vertex deduplication, tangent generation, normal smoothing). A 30 MB mesh file can consume up to 240 MB mid-import. The scratch is cleared after each job completes, so this budget covers the single largest in-flight import, not the cumulative total.
 
 **AnimationManager (64 MB).** A 256-bone skeleton with 60 fps at 10 minutes of animation data (float keyframes) costs roughly 12 MB. With 5 simultaneous skeletons and double-buffered pose pools for interpolation, 64 MB is adequate.
 
@@ -128,18 +128,18 @@ struct MemoryBudgetConfig
     SubArenaConfig VulkanDevice;
     SubArenaConfig ECSScene;
     SubArenaConfig AssetManager;
-    SubArenaConfig ImporterArena;
+    SubArenaConfig Importer;
     SubArenaConfig AnimationManager;
     SubArenaConfig PhysicsWorld;
     SubArenaConfig AudioEngine;
-    SubArenaConfig VFS;
+    SubArenaConfig VirtualFS;
     SubArenaConfig ShaderCache;
     SubArenaConfig UIContext;
     SubArenaConfig Network;
-    SubArenaConfig SerializerScratch;
+    SubArenaConfig Serializer;
     SubArenaConfig Swapchain;
     SubArenaConfig Logging;
-    SubArenaConfig Scratch;
+    SubArenaConfig Input;
 
     // Returns the budget matching Section 2 of memory-budget.md.
     static MemoryBudgetConfig Default();
@@ -172,21 +172,21 @@ inline MemoryBudgetConfig MemoryBudgetConfig::Default()
     MemoryBudgetConfig cfg = {};
     cfg.VulkanDevice       = { "VulkanDevice",       512ULL * 1024 * 1024 };
     cfg.AssetManager       = { "AssetManager",       100ULL * 1024 * 1024 };
-    cfg.ImporterArena      = { "ImporterArena",      350ULL * 1024 * 1024 };
+    cfg.Importer           = { "Importer",           350ULL * 1024 * 1024 };
     cfg.ECSScene           = { "ECSScene",           128ULL * 1024 * 1024 };
     cfg.AnimationManager   = { "AnimationManager",    64ULL * 1024 * 1024 };
     cfg.PhysicsWorld       = { "PhysicsWorld",        64ULL * 1024 * 1024 };
     cfg.AudioEngine        = { "AudioEngine",         32ULL * 1024 * 1024 };
-    cfg.VFS                = { "VFS",                 32ULL * 1024 * 1024 };
+    cfg.VirtualFS          = { "VirtualFS",           32ULL * 1024 * 1024 };
     cfg.ShaderCache        = { "ShaderCache",         16ULL * 1024 * 1024 };
     cfg.UIContext          = { "UIContext",             8ULL * 1024 * 1024 };
     cfg.Network            = { "Network",             32ULL * 1024 * 1024 };
-    cfg.SerializerScratch  = { "SerializerScratch",  150ULL * 1024 * 1024 };
+    cfg.Serializer         = { "Serializer",         150ULL * 1024 * 1024 };
     cfg.Swapchain          = { "Swapchain",            3ULL * 1024 * 1024 };
     cfg.Logging            = { "Logging",              4ULL * 1024 * 1024 };
-    cfg.Scratch            = { "Scratch",             48ULL * 1024 * 1024 };
+    cfg.Input              = { "Input",                1ULL * 1024 * 1024 };
     return cfg;
-    // Total: ~1,643 MB out of 2,048 MB; ~357 MB headroom
+    // Total: ~1,496 MB out of 2,048 MB; ~552 MB headroom
 }
 
 } // namespace ZEngine::Memory
