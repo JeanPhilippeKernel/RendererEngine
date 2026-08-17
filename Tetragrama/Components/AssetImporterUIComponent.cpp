@@ -120,7 +120,8 @@ namespace Tetragrama::Components
         auto* config = ZPushStruct(&LocalArena, AssetCodec::ImportConfiguration);
         config->OutputWorkingSpacePath.init(&LocalArena, cfg.WorkingSpacePath.c_str());
         config->OutputTextureFilesPath.init(&LocalArena, cfg.TexturePath.c_str());
-        config->OutputAssetsPath.init(&LocalArena, cfg.SceneDataPath.c_str());
+        config->OutputAssetsPath.init(&LocalArena, cfg.MeshPath.c_str());
+        config->OutputMaterialPath.init(&LocalArena, cfg.MaterialPath.c_str());
         config->AssetName.init(&LocalArena, asset_name.c_str());
         config->OutputAssetFile.init(&LocalArena, asset_file.c_str());
         config->InputBaseAssetFilePath.init(&LocalArena, parent_dir.c_str());

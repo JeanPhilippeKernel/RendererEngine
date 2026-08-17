@@ -18,7 +18,6 @@ namespace Tetragrama
     {
         ZEngine::Core::Containers::String WorkingSpacePath         = {};
         ZEngine::Core::Containers::String ScenePath                = {};
-        ZEngine::Core::Containers::String SceneDataPath            = {};
         // Asset import directories (all under Assets/)
         ZEngine::Core::Containers::String TexturePath              = {};
         ZEngine::Core::Containers::String SoundPath                = {};

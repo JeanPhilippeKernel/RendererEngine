@@ -68,7 +68,9 @@ namespace ZEngine::Importers::AssetCodec
     {
         AssetImporterOutput output             = {};
         std::string         asset_mat_filename = fmt::format("{0}{1}", material.Name.c_str(), ".zematerial");
-        std::string         fullname_path      = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, asset_mat_filename.c_str());
+        // Use dedicated material output dir if set, otherwise fall back to mesh output dir
+        const char*         mat_dir            = !config.OutputMaterialPath.empty() ? config.OutputMaterialPath.c_str() : config.OutputAssetsPath.c_str();
+        std::string         fullname_path      = fmt::format("{0}{1}{2}{3}{4}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, mat_dir, PLATFORM_OS_BACKSLASH, asset_mat_filename.c_str());
 
         auto                tex_obj            = [](const uuids::uuid& uuid, const Core::Containers::String& path) {
             nlohmann::json t;
@@ -98,7 +100,7 @@ namespace ZEngine::Importers::AssetCodec
         out << j.dump(4);
         out.close();
 
-        output = {.Type = AssetFileType::MATERIAL, .Path = fmt::format("{0}{1}{2}", config.OutputAssetsPath.c_str(), PLATFORM_OS_BACKSLASH, asset_mat_filename.c_str()), .RootPath = config.OutputWorkingSpacePath.c_str()};
+        output = {.Type = AssetFileType::MATERIAL, .Path = fmt::format("{0}{1}{2}", mat_dir, PLATFORM_OS_BACKSLASH, asset_mat_filename.c_str()), .RootPath = config.OutputWorkingSpacePath.c_str()};
         return output;
     }
 

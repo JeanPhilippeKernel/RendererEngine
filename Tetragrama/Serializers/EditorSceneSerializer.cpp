@@ -80,7 +80,8 @@ namespace Tetragrama::Serializers
                     ZEngine::Importers::AssetCodec::ImportConfiguration cook_cfg    = {};
                     cook_cfg.OutputWorkingSpacePath.init(scratch.Arena, cfg.WorkingSpacePath.c_str());
                     cook_cfg.OutputTextureFilesPath.init(scratch.Arena, cfg.TexturePath.c_str());
-                    cook_cfg.OutputAssetsPath.init(scratch.Arena, cfg.SceneDataPath.c_str());
+                    cook_cfg.OutputAssetsPath.init(scratch.Arena, cfg.MeshPath.c_str());
+                    cook_cfg.OutputMaterialPath.init(scratch.Arena, cfg.MaterialPath.c_str());
                     cook_cfg.AssetName.init(scratch.Arena, asset_name.c_str());
                     cook_cfg.OutputAssetFile.init(scratch.Arena, output_file.c_str());
                     cook_cfg.InputBaseAssetFilePath.init(scratch.Arena, cfg.WorkingSpacePath.c_str());

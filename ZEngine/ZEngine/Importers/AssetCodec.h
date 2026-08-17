@@ -17,7 +17,8 @@ namespace ZEngine::Importers::AssetCodec
     {
         Core::Containers::String AssetName;
         Core::Containers::String OutputAssetFile;
-        Core::Containers::String OutputAssetsPath;
+        Core::Containers::String OutputAssetsPath;   // mesh output dir (Assets/Meshes)
+        Core::Containers::String OutputMaterialPath; // material output dir (Assets/Materials); falls back to OutputAssetsPath if empty
         Core::Containers::String InputBaseAssetFilePath;
         Core::Containers::String OutputWorkingSpacePath;
         Core::Containers::String OutputTextureFilesPath;
