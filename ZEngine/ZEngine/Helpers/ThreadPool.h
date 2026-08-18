@@ -1,21 +1,52 @@
 #pragma once
+#include <ZEngine/Core/Containers/SPSCQueue.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
-#include <ZEngine/Helpers/ThreadSafeQueue.h>
-#include <atomic>
+#include <ZEngine/ZEngineDef.h>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 
 namespace ZEngine::Helpers
 {
+    using TaskFn = void (*)(void* ctx);
+
+    // C-style callable — 16 bytes, zero allocation on the hot path.
+    struct Task
+    {
+        void*    Context = nullptr;
+        TaskFn   Fn      = nullptr;
+
+        explicit operator bool() const
+        {
+            return Fn != nullptr;
+        }
+        void operator()() const
+        {
+            if (Fn)
+                Fn(Context);
+        }
+    };
 
     struct ThreadPool
     {
-        size_t MaxThreadCount      = 0;
-        size_t CurrentThreadCount  = 0;
-        size_t ReservedThreadCount = 1;
+        static constexpr uint32_t MAX_WORKERS          = 16;
+        static constexpr uint32_t MAX_TASKS_PER_WORKER = 256;
 
-        ThreadPool(size_t maxThreadCount = std::thread::hardware_concurrency()) : MaxThreadCount(maxThreadCount), m_taskQueue(CreateRef<ThreadSafeQueue<std::function<void()>>>())
+        size_t                    WorkerCount          = 0;
+        size_t                    MaxThreadCount       = 0;
+
+        ThreadPool(size_t max_workers = std::thread::hardware_concurrency())
         {
-            MaxThreadCount -= ReservedThreadCount;
+            max_workers    = (max_workers > 1) ? max_workers - 1 : 1;
+            max_workers    = (max_workers < MAX_WORKERS) ? max_workers : MAX_WORKERS;
+            MaxThreadCount = max_workers;
+            WorkerCount    = max_workers;
+
+            m_cancellation.value.store(false, std::memory_order_relaxed);
+            m_active_workers.value.store(static_cast<uint32_t>(WorkerCount), std::memory_order_relaxed);
+
+            for (size_t i = 0; i < WorkerCount; ++i)
+                std::thread(&ThreadPool::WorkerRun, this, i).detach();
         }
 
         ~ThreadPool()
@@ -23,58 +54,67 @@ namespace ZEngine::Helpers
             Shutdown();
         }
 
-        void Enqueue(std::function<void()>&& f)
+        // Zero-alloc hot path — C-style fn-ptr + context.
+        void Submit(void* ctx, TaskFn fn)
         {
-            m_taskQueue->Emplace(std::forward<std::function<void()>>(f));
-            if (!m_taskQueue->Empty())
+            if (m_cancellation.value.load(std::memory_order_relaxed))
+                return;
+
+            Task     task{ctx, fn};
+            uint32_t start = m_cursor.value.fetch_add(1, std::memory_order_relaxed) % static_cast<uint32_t>(WorkerCount);
+            for (uint32_t i = 0; i < static_cast<uint32_t>(WorkerCount); ++i)
             {
-                StartWorkerThread();
+                uint32_t idx = (start + i) % static_cast<uint32_t>(WorkerCount);
+                if (m_workers[idx].queue.push(task))
+                {
+                    m_workers[idx].cv.notify_one();
+                    return;
+                }
             }
+            // All queues full — execute inline as last resort.
+            task();
         }
 
         void Shutdown()
         {
-            m_cancellationToken.exchange(true);
-            m_taskQueue->Clear();
+            m_cancellation.value.store(true, std::memory_order_release);
+            for (size_t i = 0; i < WorkerCount; ++i)
+                m_workers[i].cv.notify_one();
+            // Yield until all workers have exited — ensures Worker::mutex and
+            // Worker::cv are not destroyed while a thread is still using them.
+            // yield() lets the OS schedule worker threads so they can see the
+            // cancellation token and decrement the counter; a pure spin-wait
+            // would starve workers on a loaded CI runner.
+            while (m_active_workers.value.load(std::memory_order_acquire) > 0)
+                std::this_thread::yield();
         }
 
     private:
-        std::atomic_bool                            m_cancellationToken{false};
-        std::mutex                                  m_mutex;
-        Ref<ThreadSafeQueue<std::function<void()>>> m_taskQueue;
-
-        static void                                 WorkerThread(WeakRef<ThreadSafeQueue<std::function<void()>>> weakQueue, const std::atomic_bool& cancellationToken)
+        struct Worker
         {
-            while (auto queue = weakQueue.lock())
-            {
-                queue->Wait(cancellationToken);
+            Core::Containers::SPSCQueue<Task, MAX_TASKS_PER_WORKER> queue;
+            std::mutex                                              mutex;
+            std::condition_variable                                 cv;
+        };
 
-                auto op_canceled = cancellationToken.load(std::memory_order_relaxed);
-                if (op_canceled == true)
-                {
-                    break;
-                }
+        Worker                 m_workers[MAX_WORKERS];
+        PaddedAtomic<uint32_t> m_cursor{};
+        PaddedAtomic<bool>     m_cancellation{};
+        PaddedAtomic<uint32_t> m_active_workers{}; // decremented by each worker on exit
 
-                std::function<void()> task;
-                if (!queue->Pop(task))
-                {
-                    continue;
-                }
-
-                task();
-            }
-        }
-
-        void StartWorkerThread()
+        void                   WorkerRun(size_t idx)
         {
+            Worker& w = m_workers[idx];
+            while (!m_cancellation.value.load(std::memory_order_acquire))
             {
-                std::unique_lock<std::mutex> lock(m_mutex);
-                if (CurrentThreadCount < MaxThreadCount)
-                {
-                    std::thread(ThreadPool::WorkerThread, m_taskQueue.Weak(), std::cref(m_cancellationToken)).detach();
-                    CurrentThreadCount++;
-                }
+                Task task;
+                while (w.queue.pop(task))
+                    task();
+
+                std::unique_lock<std::mutex> lock(w.mutex);
+                w.cv.wait(lock, [&] { return !w.queue.empty() || m_cancellation.value.load(std::memory_order_relaxed); });
             }
+            m_active_workers.value.fetch_sub(1, std::memory_order_release);
         }
     };
 
@@ -85,9 +125,7 @@ namespace ZEngine::Helpers
         static void              Initialize()
         {
             if (!Pool)
-            {
                 Pool = CreateScope<ThreadPool>();
-            }
         }
 
         static bool IsInitialized()
@@ -104,14 +142,29 @@ namespace ZEngine::Helpers
             }
         }
 
+        // Zero-alloc — C-style direct.
+        static void Submit(void* ctx, TaskFn fn)
+        {
+            Pool->Submit(ctx, fn);
+        }
+
+        // Lambda shim — one heap allocation per lambda call (for captures).
+        // Use the C-style overload directly to stay on the zero-alloc path.
         template <typename T>
         static void Submit(T&& f)
         {
-            Pool->Enqueue(std::move(f));
+            using Fn = std::decay_t<T>;
+            auto* p  = new Fn(std::forward<T>(f));
+            Pool->Submit(p, [](void* ctx) {
+                auto* fn = static_cast<Fn*>(ctx);
+                (*fn)();
+                delete fn;
+            });
         }
 
     private:
         ThreadPoolHelper()  = delete;
         ~ThreadPoolHelper() = delete;
     };
+
 } // namespace ZEngine::Helpers

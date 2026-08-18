@@ -1,39 +1,46 @@
 #pragma once
-#include <ZEngine/Helpers/IntrusivePtr.h>
-#include <ZEngine/Helpers/ThreadSafeQueue.h>
+#include <ZEngine/Core/Containers/MPSCQueue.h>
 #include <ZEngine/ZEngineDef.h>
 #include <atomic>
-#include <functional>
 
 namespace ZEngine::Core
 {
-    struct CoroutineAction : public Helpers::RefCounted
-    {
-        using ReadyCallback    = std::function<bool(void)>;
-        using ExecuteCallback  = std::function<void(void)>;
+    using ReadyCallback  = bool (*)(void* ctx);
+    using ActionCallback = void (*)(void* ctx);
 
-        ReadyCallback   Ready  = nullptr;
-        ExecuteCallback Action = nullptr;
-        // clang-format off
-        operator bool() noexcept
+    // C-style coroutine action — zero allocation, fits in a queue slot.
+    // ReadyCallback: optional predicate; nullptr means always ready.
+    // ActionCallback: continuation dispatched to the thread pool when ready.
+    struct CoroutineAction
+    {
+        void*          ReadyCtx  = nullptr;
+        ReadyCallback  Ready     = nullptr;
+        void*          ActionCtx = nullptr;
+        ActionCallback Action    = nullptr;
+
+        bool           IsValid() const
         {
-            return (Ready && Action);
+            return Action != nullptr;
         }
-        // clang-format on
+        bool IsReady() const
+        {
+            return !Ready || Ready(ReadyCtx);
+        }
     };
 
     struct CoroutineScheduler
     {
-        using SchedulerQueue = Helpers::ThreadSafeQueue<CoroutineAction>;
+        static constexpr uint32_t MAX_ACTIONS = 256;
 
-        static void Schedule(CoroutineAction&& action);
+        // Thread-safe — post from any thread.
+        static void               Schedule(const CoroutineAction& action);
 
     private:
-        static std::atomic_bool                                        s_running;
-        static Helpers::Ref<Helpers::ThreadSafeQueue<CoroutineAction>> s_action_queue;
+        static std::atomic_bool                                          s_running;
+        static Core::Containers::MPSCQueue<CoroutineAction, MAX_ACTIONS> s_queue;
 
-        static void                                                    Start();
-        static void                                                    Run(Helpers::WeakRef<SchedulerQueue> queue);
+        static void                                                      Start();
+        static void                                                      Run();
     };
 
 } // namespace ZEngine::Core

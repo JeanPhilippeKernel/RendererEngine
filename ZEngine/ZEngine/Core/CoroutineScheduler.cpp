@@ -2,50 +2,67 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <thread>
 
-using namespace ZEngine::Helpers;
-
 namespace ZEngine::Core
 {
-    std::atomic_bool                                 CoroutineScheduler::s_running      = false;
-    Helpers::Ref<CoroutineScheduler::SchedulerQueue> CoroutineScheduler::s_action_queue = Helpers::CreateRef<CoroutineScheduler::SchedulerQueue>();
+    std::atomic_bool                                                              CoroutineScheduler::s_running = false;
+    Core::Containers::MPSCQueue<CoroutineAction, CoroutineScheduler::MAX_ACTIONS> CoroutineScheduler::s_queue;
 
-    void                                             CoroutineScheduler::Schedule(CoroutineAction&& action)
+    void                                                                          CoroutineScheduler::Schedule(const CoroutineAction& action)
     {
-        if (!action)
-        {
+        if (!action.IsValid())
             return;
-        }
 
-        s_action_queue->Emplace(std::move(action));
-        if (!s_running.exchange(true))
-        {
-            CoroutineScheduler::Start();
-        }
+        s_queue.push(action);
+
+        if (!s_running.exchange(true, std::memory_order_acq_rel))
+            Start();
     }
 
     void CoroutineScheduler::Start()
     {
-        std::thread(Run, s_action_queue.Weak()).detach();
+        std::thread(Run).detach();
     }
 
-    void CoroutineScheduler::Run(Helpers::WeakRef<SchedulerQueue> queue_ref)
+    void CoroutineScheduler::Run()
     {
-        while (auto queue = queue_ref.lock())
+        // Local staging buffer for not-yet-ready actions.
+        // Avoids re-pushing back into the MPSC while consuming, which
+        // would race on the same slot indices.
+        CoroutineAction deferred[MAX_ACTIONS];
+        uint32_t        deferred_count = 0;
+
+        while (true)
         {
-            CoroutineAction co_action;
+            deferred_count = 0;
 
-            if (!queue->Pop(co_action))
+            // Drain all pending items.
+            CoroutineAction action;
+            while (s_queue.pop(action))
             {
-                continue;
+                if (!action.IsValid())
+                    continue;
+                if (action.IsReady())
+                    Helpers::ThreadPoolHelper::Submit(action.ActionCtx, action.Action);
+                else
+                    deferred[deferred_count++] = action;
             }
 
-            if (co_action && !co_action.Ready())
-            {
-                queue->Emplace(std::move(co_action));
-                continue;
-            }
+            // Re-push deferred (not-yet-ready) actions — queue is fully
+            // drained at this point so there are no aliased slots.
+            for (uint32_t i = 0; i < deferred_count; ++i)
+                s_queue.push(deferred[i]);
 
-            ThreadPoolHelper::Submit(co_action.Action);
+            // Exit when nothing left to process.
+            if (s_queue.empty() && deferred_count == 0)
+            {
+                s_running.store(false, std::memory_order_release);
+                // Re-check: a Schedule() may have raced with the store above.
+                if (s_queue.empty())
+                    break;
+                // Something arrived — keep running.
+                s_running.store(true, std::memory_order_relaxed);
+            }
         }
     }
+
 } // namespace ZEngine::Core
