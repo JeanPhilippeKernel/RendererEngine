@@ -221,6 +221,17 @@ namespace ZEngine::Rendering
         /// @return true if the handle is valid and the offsets were written; false otherwise.
         bool         GetMeshOffsets(BufferHandle handle, uint32_t& vtx_offset, uint32_t& idx_offset) const;
 
+        /// @brief Upload builtin geometry (skybox, grid, etc.) into the global vertex/index
+        ///        buffers and return the element-count offsets.  Vertices must already be
+        ///        laid out as DrawVertex (8 floats: xyz nxnynz uv). Indices must be uint32_t.
+        /// @param vtx_data   Pointer to tightly-packed DrawVertex float data.
+        /// @param vtx_bytes  Total byte size of the vertex data.
+        /// @param idx_data   Pointer to uint32_t index array.
+        /// @param idx_count  Number of indices.
+        /// @param out_vtx_offset  Out: first DrawVertex element index in the global VB.
+        /// @param out_idx_offset  Out: first uint32 element index in the global IB.
+        void         RegisterBuiltinGeometry(const void* vtx_data, size_t vtx_bytes, const uint32_t* idx_data, uint32_t idx_count, uint32_t& out_vtx_offset, uint32_t& out_idx_offset);
+
         /// @brief Find the BufferHandle registered for a mesh asset by UUID.
         /// @details Returns an invalid handle if the mesh has not been uploaded yet or
         ///          the UUID is not in the uuid-to-buffer map.

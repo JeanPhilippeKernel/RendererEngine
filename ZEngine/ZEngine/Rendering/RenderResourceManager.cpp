@@ -259,15 +259,30 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::InitGlobalBuffers()
     {
-        m_global_vertex_buf = m_device->GpuMem.AllocateBuffer(GLOBAL_VTX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalVertexBuffer");
+        m_global_vertex_buf = m_device->GpuMem.AllocateBuffer(GLOBAL_VTX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalVertexBuffer");
 
-        m_global_index_buf  = m_device->GpuMem.AllocateBuffer(GLOBAL_IDX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalIndexBuffer");
+        m_global_index_buf  = m_device->GpuMem.AllocateBuffer(GLOBAL_IDX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalIndexBuffer");
 
         m_vtx_cursor        = 0;
         m_idx_cursor        = 0;
 
         ZENGINE_VALIDATE_ASSERT(m_global_vertex_buf, "RRM: global vertex buffer allocation failed")
         ZENGINE_VALIDATE_ASSERT(m_global_index_buf, "RRM: global index buffer allocation failed")
+    }
+
+    void RenderResourceManager::RegisterBuiltinGeometry(const void* vtx_data, size_t vtx_bytes, const uint32_t* idx_data, uint32_t idx_count, uint32_t& out_vtx_offset, uint32_t& out_idx_offset)
+    {
+        const size_t idx_bytes = idx_count * sizeof(uint32_t);
+        ZENGINE_VALIDATE_ASSERT(m_vtx_cursor + vtx_bytes <= GLOBAL_VTX_CAPACITY, "RRM::RegisterBuiltinGeometry: global vertex buffer out of space")
+        ZENGINE_VALIDATE_ASSERT(m_idx_cursor + idx_bytes <= GLOBAL_IDX_CAPACITY, "RRM::RegisterBuiltinGeometry: global index buffer out of space")
+
+        AppendToGlobalBuffer(m_global_vertex_buf, vtx_data, vtx_bytes, m_vtx_cursor, 0);
+        AppendToGlobalBuffer(m_global_index_buf, idx_data, idx_bytes, m_idx_cursor, 0);
+
+        out_vtx_offset  = static_cast<uint32_t>(m_vtx_cursor / (8 * sizeof(float)));
+        out_idx_offset  = static_cast<uint32_t>(m_idx_cursor / sizeof(uint32_t));
+        m_vtx_cursor   += vtx_bytes;
+        m_idx_cursor   += idx_bytes;
     }
 
     void RenderResourceManager::AppendToGlobalBuffer(BufferView& global_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index)

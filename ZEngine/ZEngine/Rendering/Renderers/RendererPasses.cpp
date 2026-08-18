@@ -116,15 +116,16 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
+        // DrawVertex layout: x y z nx ny nz u v (8 floats = 32 bytes)
+        // Normals and UVs zeroed — skybox shader only reads position (location 0, offset 0).
         static constexpr float verts[] = {
-            -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
+            -1.f, -1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f, -1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, -1.f, 1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f, 1.f, -1.f, 0.f, 0.f, 0.f, 0.f, 0.f, -1.f, 1.f, -1.f, 0.f, 0.f, 0.f, 0.f, 0.f,
         };
-        static constexpr uint16_t idxs[] = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 5, 4, 7, 7, 6, 5, 4, 0, 3, 3, 7, 4, 3, 2, 6, 6, 7, 3, 4, 5, 1, 1, 0, 4};
+        static constexpr uint32_t idxs[] = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 5, 4, 7, 7, 6, 5, 4, 0, 3, 3, 7, 4, 3, 2, 6, 6, 7, 3, 4, 5, 1, 1, 0, 4};
 
-        VBHandle                         = device->GpuMem.AllocateBuffer(sizeof(verts), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "SkyboxVb");
-        IBHandle                         = device->GpuMem.AllocateBuffer(sizeof(idxs), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "SkyboxIb");
-        vmaCopyMemoryToAllocation(device->GpuMem.Allocator, verts, VBHandle.Allocation, 0, sizeof(verts));
-        vmaCopyMemoryToAllocation(device->GpuMem.Allocator, idxs, IBHandle.Allocation, 0, sizeof(idxs));
+        auto*                     rrm    = ZEngine::Engine::GetContext()->RenderResourceManager;
+        ZENGINE_VALIDATE_ASSERT(rrm, "SkyboxPass::Setup: RenderResourceManager not available")
+        rrm->RegisterBuiltinGeometry(verts, sizeof(verts), idxs, 36, m_vtx_offset, m_idx_offset);
 
         bool env_map_available = false;
         if (EnvMapPath && EnvMapPath[0] != '\0')
@@ -167,7 +168,7 @@ namespace ZEngine::Rendering::Renderers
         {
             auto pass_spec = pass_builder->SetPipelineName("Skybox-Pipeline")
                                  .SetInputBindingCount(1)
-                                 .SetStride(0, sizeof(float) * 3)
+                                 .SetStride(0, sizeof(float) * 8)
                                  .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
                                  .SetInputAttributeCount(1)
                                  .SetLocation(0, 0)
@@ -211,32 +212,28 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetViewport(w, h);
             command_buffer->SetScissor(w, h);
         }
+        auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindVertexBuffer(VBHandle);
-        command_buffer->BindIndexBuffer(IBHandle, VK_INDEX_TYPE_UINT16);
+        command_buffer->BindVertexBuffer(*rrm->GetGlobalVertexBuffer());
+        command_buffer->BindIndexBuffer(*rrm->GetGlobalIndexBuffer(), VK_INDEX_TYPE_UINT32);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
-        command_buffer->DrawIndexed(36, 1, 0, 0, 0);
+        command_buffer->DrawIndexed(36, 1, m_idx_offset, static_cast<int32_t>(m_vtx_offset), 0);
         command_buffer->EndRenderPass();
-    }
-
-    void SkyboxPass::Deinitialize(Hardwares::VulkanDevicePtr const device)
-    {
-        if (VBHandle)
-            device->GpuMem.FreeBuffer(VBHandle);
-        if (IBHandle)
-            device->GpuMem.FreeBuffer(IBHandle);
     }
 
     void GridPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        // Y=0 — the vertex shader adds groundY + 0.001 epsilon for z-fighting prevention
-        static constexpr float    verts[] = {-1000.0f, 0.0f, -1000.0f, 1000.0f, 0.0f, -1000.0f, 1000.0f, 0.0f, 1000.0f, -1000.0f, 0.0f, 1000.0f};
-        static constexpr uint16_t idxs[]  = {0, 1, 2, 2, 3, 0};
+        // Y=0 — the vertex shader adds groundY + 0.001 epsilon for z-fighting prevention.
+        // DrawVertex layout: x y z nx ny nz u v (8 floats = 32 bytes)
+        // Normal points up (0,1,0); UVs mapped to world XZ position.
+        static constexpr float verts[] = {
+            -1000.f, 0.f, -1000.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1000.f, 0.f, -1000.f, 0.f, 1.f, 0.f, 1.f, 0.f, 1000.f, 0.f, 1000.f, 0.f, 1.f, 0.f, 1.f, 1.f, -1000.f, 0.f, 1000.f, 0.f, 1.f, 0.f, 0.f, 1.f,
+        };
+        static constexpr uint32_t idxs[] = {0, 1, 2, 2, 3, 0};
 
-        VBHandle                          = device->GpuMem.AllocateBuffer(sizeof(verts), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "GridVb");
-        IBHandle                          = device->GpuMem.AllocateBuffer(sizeof(idxs), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "GridIb");
-        vmaCopyMemoryToAllocation(device->GpuMem.Allocator, verts, VBHandle.Allocation, 0, sizeof(verts));
-        vmaCopyMemoryToAllocation(device->GpuMem.Allocator, idxs, IBHandle.Allocation, 0, sizeof(idxs));
+        auto*                     rrm    = ZEngine::Engine::GetContext()->RenderResourceManager;
+        ZENGINE_VALIDATE_ASSERT(rrm, "GridPass::Setup: RenderResourceManager not available")
+        rrm->RegisterBuiltinGeometry(verts, sizeof(verts), idxs, 6, m_vtx_offset, m_idx_offset);
 
         RenderGraphRenderPassCreation pass_node = {.Name = name};
         pass_node.Inputs.init(device->Arena, 2);
@@ -254,7 +251,7 @@ namespace ZEngine::Rendering::Renderers
         {
             auto pass_spec = pass_builder->SetPipelineName("Infinite-Grid-Pipeline")
                                  .SetInputBindingCount(1)
-                                 .SetStride(0, sizeof(float) * 3)
+                                 .SetStride(0, sizeof(float) * 8)
                                  .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
                                  .SetInputAttributeCount(1)
                                  .SetLocation(0, 0)
@@ -294,21 +291,14 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetViewport(w, h);
             command_buffer->SetScissor(w, h);
         }
+        auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindVertexBuffer(VBHandle);
-        command_buffer->BindIndexBuffer(IBHandle, VK_INDEX_TYPE_UINT16);
+        command_buffer->BindVertexBuffer(*rrm->GetGlobalVertexBuffer());
+        command_buffer->BindIndexBuffer(*rrm->GetGlobalIndexBuffer(), VK_INDEX_TYPE_UINT32);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
         command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GridPushConstantData), &PushData);
-        command_buffer->DrawIndexed(6, 1, 0, 0, 0);
+        command_buffer->DrawIndexed(6, 1, m_idx_offset, static_cast<int32_t>(m_vtx_offset), 0);
         command_buffer->EndRenderPass();
-    }
-
-    void GridPass::Deinitialize(Hardwares::VulkanDevicePtr const device)
-    {
-        if (VBHandle)
-            device->GpuMem.FreeBuffer(VBHandle);
-        if (IBHandle)
-            device->GpuMem.FreeBuffer(IBHandle);
     }
 
     void GbufferPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
