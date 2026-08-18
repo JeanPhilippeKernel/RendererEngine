@@ -150,6 +150,7 @@ namespace ZEngine::Rendering::Renderers
 
     void ImGUIRenderer::Deinitialize()
     {
+        RenderGraph->Dispose();
         UIPass->Dispose();
 
         if (FontTexture.Valid())

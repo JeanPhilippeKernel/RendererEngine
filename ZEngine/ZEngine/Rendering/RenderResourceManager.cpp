@@ -152,6 +152,29 @@ namespace ZEngine::Rendering
         m_device->QueueWaitAll();
         ShutdownTextureTimelines();
 
+        // Free command buffers before destroying their parent pools, then destroy pools.
+        // Arena-allocated objects have no automatic destructor — explicit calls are required.
+        if (m_upload_cmd)
+        {
+            m_upload_cmd->Free();
+            m_upload_cmd = nullptr;
+        }
+        if (m_upload_pool)
+        {
+            m_upload_pool->~CommandPool();
+            m_upload_pool = nullptr;
+        }
+        if (m_transfer_cmd)
+        {
+            m_transfer_cmd->Free();
+            m_transfer_cmd = nullptr;
+        }
+        if (m_transfer_pool)
+        {
+            m_transfer_pool->~CommandPool();
+            m_transfer_pool = nullptr;
+        }
+
         auto destroy_fence = [&](VkFence& fence) {
             if (fence != VK_NULL_HANDLE)
             {
@@ -161,7 +184,6 @@ namespace ZEngine::Rendering
         };
         destroy_fence(m_upload_fence);
         destroy_fence(m_transfer_fence);
-        // m_upload_pool/cmd and m_transfer_pool/cmd are arena-allocated — destroyed with the arena.
 
         // Free all live buffer slots
         if (m_global_vertex_buf)
@@ -758,6 +780,14 @@ namespace ZEngine::Rendering
                         m_device->GpuMem.FreeBuffer(tsb);
                 }
             }
+
+            // Explicitly destroy arena-allocated Semaphore objects — VkSemaphore handles
+            // are never freed by the arena page release.
+            if (p < m_tex_timelines.size() && m_tex_timelines[p])
+                m_tex_timelines[p]->~Semaphore();
+
+            if (m_device->HasSeperateTransfertQueueFamily && p < m_tex_transfer_timelines.size() && m_tex_transfer_timelines[p])
+                m_tex_transfer_timelines[p]->~Semaphore();
         }
     }
 

@@ -382,6 +382,8 @@ namespace ZEngine::Rendering::Renderers
                 .RenderTargets = node.Handle->RenderTargets,
                 .Attachment    = node.Handle->Attachment,
             };
+            if (node.Framebuffer)
+                node.Framebuffer->Dispose();
             node.Framebuffer = ZPushStructCtorArgs(Device->Arena, Buffers::FramebufferVNext, Device, framebuffer_spec);
         }
     }
