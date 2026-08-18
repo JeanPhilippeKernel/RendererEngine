@@ -37,7 +37,9 @@ namespace ZEngine::Applications
 
         void                                     ResizeRenderTarget(uint32_t w, uint32_t h);
 
-        void                                     BeginFrame();
+        // Returns false when the frame was aborted (OUT_OF_DATE at acquire or
+        // zero-size surface). The caller must skip all rendering work for that frame.
+        bool                                     BeginFrame();
         void                                     EndFrame();
 
         void                                     RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene);

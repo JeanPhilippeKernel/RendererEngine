@@ -12,6 +12,28 @@ namespace ZEngine::Hardwares
 {
     struct VulkanDevice;
 
+    // Lifecycle of swapchain recreation.
+    //
+    //   None         — normal rendering, no action needed
+    //   Pending      — recreate at the START of the next AcquireNextImage before
+    //                  acquiring a new image; triggered by SUBOPTIMAL/OUT_OF_DATE
+    //                  at present time, or by a zero-size surface guard
+    //   FrameAborted — VK_ERROR_OUT_OF_DATE_KHR was returned at acquire;
+    //                  the frame.Acquired semaphore was NOT signalled (spec), so
+    //                  no GPU work was submitted; the render loop must skip this
+    //                  frame entirely (BeginFrame returns false)
+    //
+    enum class RecreationState : uint8_t
+    {
+        None         = 0,
+        Pending      = 1,
+        FrameAborted = 2,
+    };
+
+    // Invoked synchronously after swapchain recreation so RenderGraph and all
+    // render targets resize to the new swapchain extent in the same frame.
+    using SwapchainResizedFn = void (*)(uint32_t width, uint32_t height, void* ctx);
+
     struct FrameContext
     {
         uint32_t                          Index      = std::numeric_limits<uint32_t>::max();
@@ -25,7 +47,9 @@ namespace ZEngine::Hardwares
     {
         Core::Memory::ArenaAllocator                               Arena                          = {};
         VulkanDevice*                                              Device                         = nullptr;
-        bool                                                       HasRecreationPending           = false;
+        RecreationState                                            Recreation                     = RecreationState::None;
+        SwapchainResizedFn                                         OnSwapchainResized             = nullptr;
+        void*                                                      OnSwapchainResizedCtx          = nullptr;
         uint32_t                                                   BufferredFrameCount            = 0;
         uint32_t                                                   SwapchainImageCount            = 3;
         uint32_t                                                   PreviousSwapchainImageCount    = 3;
@@ -50,13 +74,20 @@ namespace ZEngine::Hardwares
         Core::Containers::Array<Rendering::Primitives::Fence*>     PresentCompletes               = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes                = {};
 
-        void                                                       Initialize(VulkanDevice* const device, uint32_t buffered_frame_size);
-        void                                                       Create();
-        void                                                       Clear();
-        void                                                       Dispose();
+        // Returns false when the frame was aborted (OUT_OF_DATE at acquire or
+        // zero-size surface). Callers must skip all rendering work for that frame.
+        bool                                                       IsFrameValid() const
+        {
+            return Recreation != RecreationState::FrameAborted && CurrentFrame != nullptr && CurrentFrame->ImageIndex != std::numeric_limits<uint32_t>::max();
+        }
 
-        void                                                       AcquireNextImage(uint32_t frame_context_idx);
-        void                                                       Present();
+        void Initialize(VulkanDevice* const device, uint32_t buffered_frame_size);
+        void Create();
+        void Clear();
+        void Dispose();
+
+        void AcquireNextImage(uint32_t frame_context_idx);
+        void Present();
     };
     ZDEFINE_PTR(DeviceSwapchain);
 } // namespace ZEngine::Hardwares
