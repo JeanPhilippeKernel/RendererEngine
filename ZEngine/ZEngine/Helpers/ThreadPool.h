@@ -80,11 +80,13 @@ namespace ZEngine::Helpers
             m_cancellation.value.store(true, std::memory_order_release);
             for (size_t i = 0; i < WorkerCount; ++i)
                 m_workers[i].cv.notify_one();
-            // Spin until all workers have exited — ensures Worker::mutex and
+            // Yield until all workers have exited — ensures Worker::mutex and
             // Worker::cv are not destroyed while a thread is still using them.
-            // Workers exit almost immediately after seeing the cancellation token.
+            // yield() lets the OS schedule worker threads so they can see the
+            // cancellation token and decrement the counter; a pure spin-wait
+            // would starve workers on a loaded CI runner.
             while (m_active_workers.value.load(std::memory_order_acquire) > 0)
-                ;
+                std::this_thread::yield();
         }
 
     private:
