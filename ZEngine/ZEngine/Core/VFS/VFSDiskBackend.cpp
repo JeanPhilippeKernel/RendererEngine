@@ -279,7 +279,7 @@ namespace ZEngine::Core::VFS
             return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);
         }
 
-        const bool wants_write = HasFlag(flags, VFSOpenFlags::Write) || HasFlag(flags, VFSOpenFlags::Append);
+        const bool wants_write = HasFlag(flags, VFSOpenFlags::Write) || HasFlag(flags, VFSOpenFlags::Append) || HasFlag(flags, VFSOpenFlags::Create) || HasFlag(flags, VFSOpenFlags::Truncate);
         if (wants_write && !HasCap(m_caps, VFSBackendCaps::Write))
         {
             return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);
@@ -296,9 +296,17 @@ namespace ZEngine::Core::VFS
         file->m_writable  = wants_write;
 
 #if defined(_WIN32)
-        const DWORD access   = GENERIC_READ | (wants_write ? GENERIC_WRITE : 0);
-        const DWORD creation = wants_write ? OPEN_ALWAYS : OPEN_EXISTING;
-        file->m_handle       = CreateFileA(native, access, FILE_SHARE_READ, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const DWORD access = GENERIC_READ | (wants_write ? GENERIC_WRITE : 0);
+        DWORD       creation;
+        if (HasFlag(flags, VFSOpenFlags::Create) && HasFlag(flags, VFSOpenFlags::Truncate))
+            creation = CREATE_ALWAYS; // create or truncate
+        else if (HasFlag(flags, VFSOpenFlags::Truncate))
+            creation = TRUNCATE_EXISTING; // truncate must-exist file
+        else if (wants_write || HasFlag(flags, VFSOpenFlags::Create))
+            creation = OPEN_ALWAYS; // create if absent, open if present
+        else
+            creation = OPEN_EXISTING;
+        file->m_handle = CreateFileA(native, access, FILE_SHARE_READ, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file->m_handle == INVALID_HANDLE_VALUE)
         {
             file->~VFSDiskFile();
@@ -312,14 +320,12 @@ namespace ZEngine::Core::VFS
         }
 #else
         int oflags = wants_write ? O_RDWR : O_RDONLY;
-        if (HasFlag(flags, VFSOpenFlags::Write))
-        {
+        if (HasFlag(flags, VFSOpenFlags::Write) || HasFlag(flags, VFSOpenFlags::Create))
             oflags |= O_CREAT;
-        }
+        if (HasFlag(flags, VFSOpenFlags::Truncate))
+            oflags |= O_TRUNC;
         if (HasFlag(flags, VFSOpenFlags::Append))
-        {
             oflags |= O_CREAT | O_APPEND;
-        }
         file->m_fd = ::open(native, oflags, 0644);
         if (file->m_fd < 0)
         {
