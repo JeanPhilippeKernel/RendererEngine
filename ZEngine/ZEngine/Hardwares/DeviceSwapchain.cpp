@@ -176,6 +176,32 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::Dispose()
     {
+        // Destroy frame-context and swapchain-image Vulkan objects.
+        // All destructors use Device->DeferFree — the second PendingFree.Drain()
+        // at the end of VulkanDevice::Deinitialize() drains them before vkDestroyDevice.
+        for (uint32_t i = 0; i < FrameContexts.size(); ++i)
+        {
+            if (FrameContexts[i].Acquired)
+                FrameContexts[i].Acquired->~Semaphore();
+            if (FrameContexts[i].Fence)
+                FrameContexts[i].Fence->~Fence();
+        }
+        for (uint32_t i = 0; i < RenderCompletes.size(); ++i)
+        {
+            if (RenderCompletes[i])
+                RenderCompletes[i]->~Semaphore();
+        }
+        for (uint32_t i = 0; i < PresentCompletes.size(); ++i)
+        {
+            if (PresentCompletes[i])
+                PresentCompletes[i]->~Fence();
+        }
+        if (RenderTimeline)
+        {
+            RenderTimeline->~Semaphore();
+            RenderTimeline = nullptr;
+        }
+
         Clear();
         ZENGINE_DESTROY_VULKAN_HANDLE(Device->LogicalDevice, vkDestroySwapchainKHR, SwapchainHandle, nullptr)
         SwapchainAttachment->Dispose();

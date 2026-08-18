@@ -723,6 +723,10 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::Dispose()
     {
+        // Final drain: catches deferred VkHandle frees (framebuffers, render passes,
+        // pipelines, etc.) queued between the last Deinitialize drain and here.
+        PendingFree.Drain(&GpuMem, LogicalDevice, UINT64_MAX);
+
         GpuMem.Shutdown();
 
         if (__destroyDebugMessengerPtr)
@@ -1618,16 +1622,27 @@ namespace ZEngine::Hardwares
 
     void CommandBufferManager::Deinitialize()
     {
+        // Explicitly destroy each CommandPool — vkDestroyCommandPool implicitly frees
+        // all VkCommandBuffers allocated from it.  The Array::clear() that follows only
+        // zeroes the pointer list; it never invokes C++ destructors, so skipping this
+        // step leaks every VkCommandPool and VkCommandBuffer past vkDestroyDevice.
+        for (uint32_t i = 0; i < InstantGraphicsPools.size(); ++i)
+            InstantGraphicsPools[i]->~CommandPool();
+        for (uint32_t i = 0; i < CommandPools.size(); ++i)
+            CommandPools[i]->~CommandPool();
+        for (uint32_t i = 0; i < TransferCommandPools.size(); ++i)
+            TransferCommandPools[i]->~CommandPool();
+        for (uint32_t i = 0; i < InstantTransferPools.size(); ++i)
+            InstantTransferPools[i]->~CommandPool();
+
         InstantGraphicsPools.clear();
         InstantGraphicsCommandBuffers.clear();
         CommandBuffers.clear();
         TransferCommandBuffers.clear();
         InstantTransferCommandBuffers.clear();
-
         CommandPools.clear();
         TransferCommandPools.clear();
         InstantTransferPools.clear();
-
         EnqueuedCommandBuffers.clear();
     }
 

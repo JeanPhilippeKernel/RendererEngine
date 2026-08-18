@@ -211,15 +211,16 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         Shader->Dispose();
 
-        Hardwares::DeferredFreeEntry pl = {};
-        pl.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
-        pl.Data.Vk                      = {Layout, Rendering::DeviceResourceType::PIPELINE_LAYOUT, nullptr};
-        Device->DeferFree(pl);
-        Hardwares::DeferredFreeEntry pp = {};
-        pp.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
-        pp.Data.Vk                      = {Handle, Rendering::DeviceResourceType::PIPELINE, nullptr};
-        Device->DeferFree(pp);
-        Layout = VK_NULL_HANDLE;
-        Handle = VK_NULL_HANDLE;
+        // Direct destroy: Dispose() is always called at GPU-idle points.
+        if (Layout != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(Device->LogicalDevice, Layout, nullptr);
+            Layout = VK_NULL_HANDLE;
+        }
+        if (Handle != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(Device->LogicalDevice, Handle, nullptr);
+            Handle = VK_NULL_HANDLE;
+        }
     }
 } // namespace ZEngine::Rendering::Renderers::Pipelines
