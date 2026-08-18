@@ -59,10 +59,10 @@ namespace ZEngine::Hardwares
 #ifdef __APPLE__
         instance_create_info.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 #endif
-        auto                 scratch = ZGetScratch(Arena);
+        auto                  scratch = ZGetScratch(Arena);
 
-        Array<const char*>   enabled_layer_name_collection;
-        Array<LayerProperty> selected_layer_property_collection;
+        Array<const char*>    enabled_layer_name_collection;
+        Array<LayerProperty*> selected_layer_property_collection;
         enabled_layer_name_collection.init(scratch.Arena, 10);
         selected_layer_property_collection.init(scratch.Arena, 4);
 
@@ -87,7 +87,7 @@ namespace ZEngine::Hardwares
             }
 
             enabled_layer_name_collection.push(find_it->Properties.layerName);
-            selected_layer_property_collection.push(*find_it);
+            selected_layer_property_collection.push(find_it);
         }
 #endif
 
@@ -105,16 +105,16 @@ namespace ZEngine::Hardwares
             }
 
             enabled_layer_name_collection.push(find_it->Properties.layerName);
-            selected_layer_property_collection.push(*find_it);
+            selected_layer_property_collection.push(find_it);
         }
 #endif
 
         Array<const char*> enabled_extension_layer_name_collection;
         enabled_extension_layer_name_collection.init(scratch.Arena, 5);
 
-        for (const LayerProperty& layer : selected_layer_property_collection)
+        for (LayerProperty* const layer : selected_layer_property_collection)
         {
-            for (const auto& extension : layer.ExtensionCollection)
+            for (const auto& extension : layer->ExtensionCollection)
             {
                 if (std::string_view(extension.extensionName) == "VK_EXT_validation_features" || std::string_view(extension.extensionName) == "VK_EXT_layer_settings")
                     continue;
@@ -262,14 +262,14 @@ namespace ZEngine::Hardwares
         requested_device_extension_layer_name_collection.push("VK_KHR_portability_subset");
 #endif
 
-        for (LayerProperty& layer : selected_layer_property_collection)
+        for (LayerProperty* const layer : selected_layer_property_collection)
         {
-            m_layer.GetExtensionProperties(scratch.Arena, layer, &PhysicalDevice);
+            m_layer.GetExtensionProperties(scratch.Arena, *layer, &PhysicalDevice);
 
-            if (!layer.DeviceExtensionCollection.empty())
+            if (!layer->DeviceExtensionCollection.empty())
             {
-                requested_device_enabled_layer_name_collection.push(layer.Properties.layerName);
-                for (const auto& extension_property : layer.DeviceExtensionCollection)
+                requested_device_enabled_layer_name_collection.push(layer->Properties.layerName);
+                for (const auto& extension_property : layer->DeviceExtensionCollection)
                 {
                     requested_device_extension_layer_name_collection.push(extension_property.extensionName);
                 }
@@ -1997,10 +1997,10 @@ namespace ZEngine::Hardwares
         return staging_view;
     }
 
-    Rendering::Renderers::RenderPasses::RenderPass* VulkanDevice::CreateRenderPass(const Rendering::Specifications::RenderPassSpecification& spec)
+    Rendering::Renderers::RenderPasses::RenderPass* VulkanDevice::CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec)
     {
         auto pass = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::RenderPass);
-        pass->Initialize(this, spec);
+        pass->Initialize(this, std::move(spec));
         return pass;
     }
 

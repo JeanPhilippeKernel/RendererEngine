@@ -10,9 +10,9 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
-    Attachment::Attachment(Hardwares::VulkanDevice* device, const Specifications::AttachmentSpecification& spec) : m_device(device), m_specification(spec)
+    Attachment::Attachment(Hardwares::VulkanDevice* device, Specifications::AttachmentSpecification spec) : m_device(device), m_specification(std::move(spec))
     {
-        ZENGINE_VALIDATE_ASSERT(!spec.ColorsMap.empty(), "Color attachments can't be empty")
+        ZENGINE_VALIDATE_ASSERT(!m_specification.ColorsMap.empty(), "Color attachments can't be empty")
 
         auto                           scratch                               = ZGetScratch(device->Arena);
 

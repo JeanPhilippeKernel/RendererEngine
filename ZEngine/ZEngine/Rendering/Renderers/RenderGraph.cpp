@@ -200,7 +200,7 @@ namespace ZEngine::Rendering::Renderers
                 .RenderTargets = node.Handle->RenderTargets,
                 .Attachment    = node.Handle->Attachment,
             };
-            node.Framebuffer = ZPushStructCtorArgs(Device->Arena, Buffers::FramebufferVNext, Device, framebuffer_spec);
+            node.Framebuffer = ZPushStructCtorArgs(Device->Arena, Buffers::FramebufferVNext, Device, std::move(framebuffer_spec));
         }
     }
 
@@ -384,7 +384,7 @@ namespace ZEngine::Rendering::Renderers
             };
             if (node.Framebuffer)
                 node.Framebuffer->Dispose();
-            node.Framebuffer = ZPushStructCtorArgs(Device->Arena, Buffers::FramebufferVNext, Device, framebuffer_spec);
+            node.Framebuffer = ZPushStructCtorArgs(Device->Arena, Buffers::FramebufferVNext, Device, std::move(framebuffer_spec));
         }
     }
 
@@ -468,17 +468,18 @@ namespace ZEngine::Rendering::Renderers
         return Graph->ResourceMap[name];
     }
 
-    void RenderGraphResourceBuilder::CreateRenderPassNode(const RenderGraphRenderPassCreation& creation)
+    void RenderGraphResourceBuilder::CreateRenderPassNode(RenderGraphRenderPassCreation creation)
     {
-        Graph->NodeMap[creation.Name].Creation = creation;
+        cstring name = creation.Name;
         for (const auto& output : creation.Outputs)
         {
             if (output.Type == RenderGraphResourceType::ATTACHMENT)
             {
                 RenderGraphResource& resource = Graph->ResourceMap[output.Name];
-                resource.ProducerNodeName     = creation.Name;
+                resource.ProducerNodeName     = name;
             }
         }
+        Graph->NodeMap[name].Creation = std::move(creation);
     }
 
     void RenderGraphResourceInspector::Initialize(RenderGraphPtr graph)

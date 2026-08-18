@@ -34,7 +34,7 @@ namespace ZEngine::Hardwares
         attachment_specification.ColorsMap[0].Initial         = ImageLayout::UNDEFINED;
         attachment_specification.ColorsMap[0].Final           = ImageLayout::PRESENT_SRC;
         attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-        SwapchainAttachment                                   = ZPushStructCtorArgs(&Arena, RenderPasses::Attachment, Device, attachment_specification);
+        SwapchainAttachment                                   = ZPushStructCtorArgs(&Arena, RenderPasses::Attachment, Device, std::move(attachment_specification));
 
         IdleFrameThreshold                                    = (BufferredFrameCount * 3 * 3 * 3);
         FrameContexts.init(&Arena, FrameContextPoolSize, FrameContextPoolSize);

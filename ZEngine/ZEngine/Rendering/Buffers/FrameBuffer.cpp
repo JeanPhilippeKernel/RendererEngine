@@ -6,11 +6,6 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Buffers
 {
-    FramebufferVNext::FramebufferVNext(Hardwares::VulkanDevice* device, const Specifications::FrameBufferSpecificationVNext& specification) : m_device(device), m_specification(specification)
-    {
-        Create();
-    }
-
     FramebufferVNext::FramebufferVNext(Hardwares::VulkanDevice* device, Specifications::FrameBufferSpecificationVNext&& specification) : m_device(device), m_specification(std::move(specification))
     {
         Create();

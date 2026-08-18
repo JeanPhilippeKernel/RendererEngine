@@ -141,7 +141,7 @@ namespace ZEngine::Core::VFS
         {
             Containers::Array<VFSDirEntry> fresh;
             fresh.init(m_arena, 8);
-            m_dir_cache.insert(parent_hash, fresh);
+            m_dir_cache.insert(parent_hash, std::move(fresh));
             list = m_dir_cache.find(parent_hash);
         }
         for (size_t i = 0; i < list->size(); ++i)
