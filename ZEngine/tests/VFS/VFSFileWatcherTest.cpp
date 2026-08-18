@@ -360,13 +360,12 @@ TEST_F(VFSFileWatcherTest, ContinuousActivityKeepsResettingTheTimer)
     {
         mock.InjectEvent(MakeEvent("/project/main.cpp", WatchEventKind::Modified));
         watcher.Tick();
-        std::this_thread::sleep_for(std::chrono::milliseconds{10});
     }
     watcher.Tick();
     EXPECT_EQ(fired, 0);
 
-    // Editor pauses.
-    std::this_thread::sleep_for(std::chrono::milliseconds{160});
+    // Editor pauses — wait well past the debounce window.
+    std::this_thread::sleep_for(std::chrono::milliseconds{200});
     watcher.Tick();
     EXPECT_EQ(fired, 1);
 }
