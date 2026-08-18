@@ -94,9 +94,15 @@ namespace ZEngine::Core::Containers
         }
 
     private:
-        alignas(64) Slot m_slots[N];
+        // Slot already carries a PaddedAtomic seq, so alignof(Slot) == CACHE_LINE_SIZE.
+        // The array is correctly aligned without an explicit alignas.
+        Slot                   m_slots[N];
+
+        // m_write and m_read are on separate cache lines:
+        // PaddedAtomic<uint32_t> occupies exactly one cache line, so m_read
+        // starts at the next cache-line boundary — no explicit alignas needed.
         PaddedAtomic<uint32_t> m_write{};
-        alignas(64) uint32_t m_read{0}; // consumer-private, no false sharing
+        uint32_t               m_read{0}; // consumer-private
     };
 
 } // namespace ZEngine::Core::Containers
