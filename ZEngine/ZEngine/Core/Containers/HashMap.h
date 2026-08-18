@@ -36,7 +36,7 @@ namespace ZEngine::Core::Containers
     public:
         using Entry             = OrderedHashEntry<K, V>;
         using EntryPointer      = std::conditional_t<IsConst, const Entry*, Entry*>;
-        using value_type        = std::conditional_t<IsConst, std::pair<const K, const V>, std::pair<const K, V>>;
+        using value_type        = std::conditional_t<IsConst, std::pair<const K&, const V&>, std::pair<const K&, V&>>;
         using reference         = value_type;
         using pointer           = value_type*;
         using iterator_category = std::forward_iterator_tag;
