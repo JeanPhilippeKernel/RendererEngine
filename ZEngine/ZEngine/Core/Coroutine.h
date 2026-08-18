@@ -108,10 +108,12 @@ namespace ZENGINE_COROUTINE_NAMESPACE
         void await_suspend(coroutine_handle<> callback)
         {
             ZEngine::Core::CoroutineAction coroutine_action = {};
-            coroutine_action.Ready                          = [&m_internal_future = m_internal_future]() -> bool { return future_status::ready == m_internal_future.wait_for(chrono::milliseconds::zero()); };
-            coroutine_action.Action                         = callback;
+            coroutine_action.ReadyCtx                       = &m_internal_future;
+            coroutine_action.Ready                          = [](void* ctx) -> bool { return future_status::ready == static_cast<std::future<T>*>(ctx)->wait_for(chrono::milliseconds::zero()); };
+            coroutine_action.ActionCtx                      = callback.address();
+            coroutine_action.Action                         = [](void* ctx) { coroutine_handle<>::from_address(ctx).resume(); };
 
-            ZEngine::Core::CoroutineScheduler::Schedule(std::move(coroutine_action));
+            ZEngine::Core::CoroutineScheduler::Schedule(coroutine_action);
         }
 
         decltype(auto) await_resume()
