@@ -566,12 +566,7 @@ void DrawCommandBuffer::Flush(
         frame_index, thread_index,
         Core::Containers::ArrayView<VkDrawIndirectCommand>{gpu_cmds, total});
 
-    render_data_buf->Write(
-        frame_index, thread_index,
-        gpu_cmds,     // re-used pointer; actual write is draw_data below
-        0);           // placeholder; real call below
-
-    // Correct call:
+    // see RRM::UpdateBuffer for the actual implementation
     render_data_buf->Write(frame_index, thread_index, draw_data, total * sizeof(DrawData));
 
     ZReleaseScratch(scratch);

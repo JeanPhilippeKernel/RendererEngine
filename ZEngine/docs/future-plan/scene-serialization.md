@@ -117,6 +117,8 @@ namespace ZEngine::Scene
 }
 ```
 
+**Callback convention note**: The `std::function` fields in `ComponentSerializeFns` and the `ForEach` parameter allocate on capture. The engine's callback convention is a C-style fn-ptr + context — `{ void* Context; void (*Fn)(...); }` — consistent with `ImportCompleteCallback`, `MainThreadScheduler::Post`, and other engine APIs. In the final implementation, `ComponentSerializeFns` fields and `ForEach` should follow this pattern rather than `std::function`.
+
 **Registration example** (in a component's `.cpp`):
 ```cpp
 // TransformComponent.cpp

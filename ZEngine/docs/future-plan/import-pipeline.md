@@ -137,10 +137,7 @@ namespace ZEngine::Importers {
 - `DiagnosticMessage[256]` is a fixed-size char array. No `std::string`, no allocation.
   The importer or coordinator writes the null-terminated message via `snprintf`. The
   editor reads it when displaying failure details.
-- `ImportCallback` is a `std::function` — the one allocation in the struct. Callbacks are
-  optional; the coordinator checks `if (job.Callback)` before invoking. For batch imports
-  from `VFSScanner`, callbacks are typically null and progress is tracked via atomics
-  (Section 5).
+- `ImportCallback` is a C-style struct `{ void* Context; void (*Fn)(void*, bool); }` — zero allocation, consistent with `ImportCompleteCallback` and other engine callback conventions. Callbacks are optional; the coordinator checks `if (job.Callback.Fn)` before invoking. For batch imports from `VFSScanner`, callbacks are typically null and progress is tracked via atomics (Section 5).
 - `VFS::MetaFileData` is stored by value because jobs live in the queue between frames and
   the on-disk meta file may be rewritten while the job waits. The copy is made at enqueue
   time.
@@ -842,10 +839,10 @@ TEST(ImportCoordinator, DependenciesSatisfiedBlocksMeshUntilTextureReady)
 ## 12. Deliverables Checklist
 
 - [ ] `ZEngine/Importers/IAssetImporter.h` — `CanImport(ext)` + `Import(ctx, path, meta)` interface; no UUID generation inside importers
-- [ ] `ZEngine/Importers/ImportJob.h` — `ImportPriority` enum, `ImportCallback` typedef, `ImportJob` struct with `DiagnosticMessage[256]` and `RequeueCount`
-- [ ] `ZEngine/Importers/ImportQueue.h` + `.cpp` — max-heap by priority, `m_index` deduplication map, `Enqueue` upgrades priority on duplicate, `TryPop` maintains heap invariant, all operations under `m_mtx`
-- [ ] `ZEngine/Importers/ImportCoordinator.h` + `.cpp` — `RegisterImporter`, `Enqueue`, `EnqueueBatch`, `Tick`, `GetProgress`, `Route`, `DependenciesSatisfied`
-- [ ] `Tick()` pops up to `m_jobs_per_tick` jobs per call and dispatches each to `ThreadPool`; never blocks the main thread
+- [x] `ZEngine/Importers/ImportJob.h` — `ImportPriority` enum, `ImportCallback` typedef, `ImportJob` struct with `DiagnosticMessage[256]` and `RequeueCount`
+- [x] `ZEngine/Importers/ImportQueue.h` + `.cpp` — max-heap by priority, `m_index` deduplication map, `Enqueue` upgrades priority on duplicate, `TryPop` maintains heap invariant, all operations under `m_mtx`
+- [x] `ZEngine/Importers/ImportCoordinator.h` + `.cpp` — `RegisterImporter`, `Enqueue`, `EnqueueBatch`, `Tick`, `GetProgress`, `Route`, `DependenciesSatisfied`
+- [x] `Tick()` pops up to `m_jobs_per_tick` jobs per call and dispatches each to `ThreadPool`; never blocks the main thread
 - [ ] `DependenciesSatisfied` queries `DependencyGraph`; stalled jobs requeued with `RequeueCount++`; at `RequeueCount == 3` asset is marked `Failed` with diagnostic
 - [ ] `AssimpImporter` (and all other importers) remove internal `UUID::Generate()` calls and read `meta.UUID` instead
 - [ ] `AssetRegistry::SetStatus(uuid, AssetStatus::Failed)` called on import failure; `DiagnosticMessage` stored and retrievable via `AssetRegistry::GetDiagnosticMessage(uuid)`

@@ -221,8 +221,10 @@ namespace ZEngine::Rendering {
         // Enqueue a Vulkan object for safe deferred deletion.
         // The object is destroyed after N frames (default 3 = max frames in flight)
         // to ensure it is not in use by any in-flight GPU command buffer.
-        // Called from: shader hot-reload (VkShaderModule), pipeline rebuild (VkPipeline),
+        // Called from: shader hot-reload (VkShaderModule),
         // buffer resize (VkBuffer/VmaAllocation), texture eviction (VkImage).
+        // Note: pipeline rebuild is NOT a use case — GraphicPipeline::Dispose() calls
+        // vkDestroyPipeline directly and does not go through EnqueueDeletion.
         void EnqueueDeletion(VkShaderModule module);
         void EnqueueDeletion(VkPipeline pipeline);
         void EnqueueDeletion(VkBuffer buffer, VmaAllocation allocation);
@@ -878,6 +880,8 @@ TEST(RRM, GetBufferOnReleasedHandleReturnsNullptr)
 - [ ] `ZEngine/Rendering/RenderHandle.h` — `RenderHandle<Tag>` generational handle template + four `using` aliases (`BufferHandle`, `ImageHandle`, `SamplerHandle`, `PipelineHandle`)
 - [ ] `ZEngine/Rendering/GPUResource.h` — `GPUBuffer` and `GPUImage` plain aggregates; zero-initialised sentinel values; no RAII
 - [ ] `ZEngine/Rendering/RenderResourceManager.h` — public API (`UploadMesh`, `UploadTexture`, `ScheduleSwap`, `Release`, `BeginFrame`, `EndFrame`, `GetBuffer`, `GetImage` (const), `GetImageMutable`); `FRAMES_IN_FLIGHT = 3` constant
+- [x] `RRM::GetGlobalVertexBuffer()` — returns the shared `GPUBuffer*` holding all builtin geometry vertices registered via `RegisterBuiltinGeometry`; implemented as a live public method on RRM
+- [x] `RRM::GetGlobalIndexBuffer()` — returns the shared `GPUBuffer*` holding all builtin geometry indices registered via `RegisterBuiltinGeometry`; implemented as a live public method on RRM
 - [ ] `ZEngine/Rendering/RenderResourceManager.cpp` — `Init`, `FlushPendingUploads`, upload path with staging buffer, barrier structs, queue-family ownership transfer for transfer-to-graphics handoff
 - [ ] Staging buffer path: `GpuAllocator::Ring.Allocate()` → `memcpy` → `Ring.Submit(signal_val)` → `vkCmdCopyBuffer` → release barrier on transfer queue → acquire barrier on graphics queue
 - [ ] Texture path: `VK_IMAGE_LAYOUT_UNDEFINED` → `VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL` → `vkCmdCopyBufferToImage` → `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`; barrier covers all mip levels

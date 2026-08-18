@@ -7,6 +7,11 @@
 
 ---
 
+> **NOTE: NameComponent and MeshComponent do not yet exist — they are tracked in issue #609.
+> EditorSelectionSystemTick cannot be implemented until those components land.**
+
+---
+
 ## 1. Overview
 
 Entity selection is the mechanism by which the editor user picks which entity to inspect and
