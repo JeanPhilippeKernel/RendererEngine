@@ -2,6 +2,7 @@
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/Helpers/UIDispatcher.h>
 #include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileData.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
@@ -235,7 +236,7 @@ namespace Tetragrama::Components
 
         self->m_progress.value.store(1.0f);
         self->m_state.value.store(ImporterState::Idle);
-        self->m_pending_scan.value.store(true);
+        ZEngine::Core::MainThreadScheduler::Post(self, [](void* ctx) { reinterpret_cast<AssetImporterUIComponent*>(ctx)->TriggerScan(); });
     }
 
     void AssetImporterUIComponent::OnImportProgress(void* ctx, float pct)
@@ -258,7 +259,7 @@ namespace Tetragrama::Components
         cstring filename = fs::path(self->m_path_buf).filename().string().c_str();
         self->PushHistory(filename, false, msg);
         self->m_state.value.store(ImporterState::Idle);
-        self->m_pending_scan.value.store(true);
+        ZEngine::Core::MainThreadScheduler::Post(self, [](void* ctx) { reinterpret_cast<AssetImporterUIComponent*>(ctx)->TriggerScan(); });
     }
 
     void AssetImporterUIComponent::OnImportLog(void* ctx, std::string_view msg)
@@ -420,9 +421,6 @@ namespace Tetragrama::Components
             ImGui::End();
             return;
         }
-
-        if (m_pending_scan.value.exchange(false))
-            TriggerScan();
 
         // Consume viewport drag-drop: auto-import and add mesh to scene when done
         if (app->Configuration->PendingImportPath[0] != '\0' && m_state.value.load() == ImporterState::Idle)

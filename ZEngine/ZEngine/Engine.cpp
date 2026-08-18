@@ -1,5 +1,6 @@
 #include <GLFW/glfw3.h>
 #include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
@@ -126,6 +127,8 @@ namespace ZEngine
                 g_engine_ctx->InputManager->AccumulateScroll(yoffset);
         });
 
+        Core::MainThreadScheduler::Initialize(&arena);
+
         app->CurrentWindow = g_engine_ctx->Window;
         g_app              = app;
 
@@ -142,6 +145,8 @@ namespace ZEngine
         {
             g_render_thread.join();
         }
+
+        Core::MainThreadScheduler::Shutdown();
 
         // Step 3 — ECS shutdown: ActorManager before Scene (lifecycle order)
         if (g_engine_ctx->ActorManager)
@@ -210,12 +215,12 @@ namespace ZEngine
 
             auto window = g_engine_ctx->Window;
 
-            // ── Frame bookkeeping ───────────────────────────────────────────
+            //  Frame bookkeeping
             frame_timer.Begin();
             frame_cap.MarkFrameStart();
             ++frame_index;
 
-            // ── Platform events ─────────────────────────────────────────────
+            //  Platform events
             window->PollEvent();
 
             // Pump VFS FileWatcher — drains debounce window, fires Modified/Deleted/Renamed callbacks
@@ -224,11 +229,11 @@ namespace ZEngine
             if (window->IsMinimized())
                 continue;
 
-            // ── Measure raw delta ───────────────────────────────────────────
+            //  Measure raw delta
             float raw_dt = frame_timer.End();
             accumulator.Accumulate(raw_dt);
 
-            // ── Fixed simulation steps ──────────────────────────────────────
+            //  Fixed simulation steps
             // ECS systems, Actor OnTick, and WorldCommands flush run inside each
             // fixed step so simulation is frame-rate independent.
             if (g_engine_ctx->WorldTick && g_engine_ctx->WorldTick->SystemCount() > 0)
@@ -248,14 +253,16 @@ namespace ZEngine
 
             float alpha = accumulator.Alpha();
 
-            // ── Import coordinator (up to JOBS_PER_TICK jobs per frame) ─────
+            // Import coordinator (up to JOBS_PER_TICK jobs per frame)
             if (g_engine_ctx->ImportCoordinator)
                 g_engine_ctx->ImportCoordinator->Tick();
 
-            // ── Application update (non-ECS game logic) ─────────────────────
+            Core::MainThreadScheduler::Drain();
+
+            // Application update (non-ECS game logic)
             g_app->Update(raw_dt);
 
-            // ── Render payload ──────────────────────────────────────────────
+            // Render payload
             auto     pipeline = g_app->RenderPipeline;
             uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
             uint32_t next     = (head + 1) % pipeline->MaxMailBoxBufferCount;
@@ -281,7 +288,7 @@ namespace ZEngine
 
             pipeline->MailBoxBufferHead.value.store(next, std::memory_order_release);
 
-            // ── Frame rate cap (vsync-off only) ─────────────────────────────
+            //  Frame rate cap (vsync-off only)
             if (!window->IsVSyncEnable())
                 frame_cap.WaitForFrameBudget();
         }
