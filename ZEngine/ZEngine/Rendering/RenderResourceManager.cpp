@@ -285,40 +285,86 @@ namespace ZEngine::Rendering
         m_idx_cursor   += idx_bytes;
     }
 
+    void RenderResourceManager::ResetGeometryBuffers()
+    {
+        m_pending_reset.store(true, std::memory_order_release);
+    }
+
+    void RenderResourceManager::ResetGeometryBuffersInternal()
+    {
+        m_vtx_cursor = 0;
+        m_idx_cursor = 0;
+        for (uint32_t i = 0; i < m_mesh_slot_count; ++i)
+            m_mesh_slots[i] = {};
+        m_mesh_slot_count = 0;
+
+        std::lock_guard lock(m_uuid_map_mutex);
+        for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
+            m_uuid_to_buffer[i] = {};
+        m_uuid_to_buffer_count = 0;
+    }
+
+    void RenderResourceManager::BeginBatchUpload()
+    {
+        vkWaitForFences(m_device->LogicalDevice, 1, &m_upload_fence, VK_TRUE, UINT64_MAX);
+        vkResetFences(m_device->LogicalDevice, 1, &m_upload_fence);
+        m_upload_cmd->ResetState();
+        vkResetCommandBuffer(m_upload_cmd->GetHandle(), 0);
+        m_upload_cmd->Begin();
+        m_batch_mode          = true;
+        m_batch_staging_count = 0;
+    }
+
+    void RenderResourceManager::EndBatchUpload()
+    {
+        m_upload_cmd->End();
+        VkCommandBuffer cmd_handle = m_upload_cmd->GetHandle();
+        VkQueue         gfx_queue  = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
+        VkSubmitInfo    submit{VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 0, nullptr, nullptr, 1, &cmd_handle, 0, nullptr};
+        vkQueueSubmit(gfx_queue, 1, &submit, m_upload_fence);
+        vkWaitForFences(m_device->LogicalDevice, 1, &m_upload_fence, VK_TRUE, UINT64_MAX);
+        m_upload_cmd->ResetState();
+        for (uint32_t i = 0; i < m_batch_staging_count; ++i)
+            m_device->GpuMem.FreeBuffer(m_batch_stagings[i]);
+        m_batch_staging_count = 0;
+        m_batch_mode          = false;
+    }
+
     void RenderResourceManager::AppendToGlobalBuffer(BufferView& global_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index)
     {
         BufferView staging = m_device->GpuMem.AllocateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging, "RRM::Staging");
         ZENGINE_VALIDATE_ASSERT(staging, "RRM::AppendToGlobalBuffer: staging alloc failed")
-
         ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, staging.Allocation, 0, byte_size) == VK_SUCCESS, "RRM::AppendToGlobalBuffer: staging copy failed")
 
-        VkSemaphore render_timeline = m_device->SwapchainPtr ? m_device->SwapchainPtr->RenderTimeline->GetHandle() : VK_NULL_HANDLE;
-        uint64_t    render_value    = m_device->SwapchainPtr ? m_device->SwapchainPtr->RenderTimelineNextValue : 0;
-        VkQueue     gfx_queue       = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
+        auto record = [&](VkCommandBuffer cmd) {
+            VkBufferCopy region{.srcOffset = 0, .dstOffset = byte_offset, .size = byte_size};
+            vkCmdCopyBuffer(cmd, staging.Handle, global_buf.Handle, 1, &region);
 
-        RecordAndSubmit(
-            m_device->LogicalDevice,
-            m_upload_cmd,
-            m_upload_fence,
-            gfx_queue,
-            [&](VkCommandBuffer cmd) {
-                VkBufferCopy region{.srcOffset = 0, .dstOffset = byte_offset, .size = byte_size};
-                vkCmdCopyBuffer(cmd, staging.Handle, global_buf.Handle, 1, &region);
+            VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.buffer              = global_buf.Handle;
+            barrier.offset              = byte_offset;
+            barrier.size                = byte_size;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+        };
 
-                VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-                barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                barrier.buffer              = global_buf.Handle;
-                barrier.offset              = byte_offset;
-                barrier.size                = byte_size;
-                vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
-            },
-            render_timeline,
-            render_value);
-
-        m_device->GpuMem.FreeBuffer(staging);
+        if (m_batch_mode)
+        {
+            record(m_upload_cmd->GetHandle());
+            ZENGINE_VALIDATE_ASSERT(m_batch_staging_count < MAX_PENDING * 2, "RRM::AppendToGlobalBuffer: batch staging overflow")
+            m_batch_stagings[m_batch_staging_count++] = staging;
+        }
+        else
+        {
+            VkSemaphore render_timeline = m_device->SwapchainPtr ? m_device->SwapchainPtr->RenderTimeline->GetHandle() : VK_NULL_HANDLE;
+            uint64_t    render_value    = m_device->SwapchainPtr ? m_device->SwapchainPtr->RenderTimelineNextValue : 0;
+            VkQueue     gfx_queue       = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
+            RecordAndSubmit(m_device->LogicalDevice, m_upload_cmd, m_upload_fence, gfx_queue, record, render_timeline, render_value);
+            m_device->GpuMem.FreeBuffer(staging);
+        }
     }
 
     BufferHandle RenderResourceManager::DoUploadMesh(AssetHandle asset, uint32_t frame_index)
@@ -377,6 +423,10 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::FlushPendingUploads(uint32_t frame_index)
     {
+        // Compact geometry buffers if a scene reload was requested
+        if (m_pending_reset.exchange(false, std::memory_order_acq_rel))
+            ResetGeometryBuffersInternal();
+
         uint32_t      count = 0;
         PendingUpload local[MAX_PENDING];
         {
@@ -385,33 +435,51 @@ namespace ZEngine::Rendering
             secure_memcpy(local, sizeof(local), m_pending, count * sizeof(PendingUpload));
             m_pending_count = 0;
         }
+        if (count == 0)
+            return;
 
+        // Partition into mesh and texture uploads
+        PendingUpload mesh_local[MAX_PENDING];
+        PendingUpload tex_local[MAX_PENDING];
+        uint32_t      mesh_count = 0, tex_count = 0;
         for (uint32_t i = 0; i < count; ++i)
         {
-            const PendingUpload& p = local[i];
-            if (p.Kind == UploadKind::Mesh)
+            if (local[i].Kind == UploadKind::Mesh)
+                mesh_local[mesh_count++] = local[i];
+            else
+                tex_local[tex_count++] = local[i];
+        }
+
+        // Batch all mesh uploads into one GPU command buffer submission
+        if (mesh_count > 0)
+        {
+            BeginBatchUpload();
+            for (uint32_t i = 0; i < mesh_count; ++i)
             {
-                BufferHandle h = DoUploadMesh(p.Asset, frame_index);
+                BufferHandle h = DoUploadMesh(mesh_local[i].Asset, frame_index);
                 if (h.IsValid())
                 {
                     std::lock_guard lock(m_uuid_map_mutex);
                     if (m_uuid_to_buffer_count < MAX_UUID_MAP)
-                        m_uuid_to_buffer[m_uuid_to_buffer_count++] = {p.UUID, h};
+                        m_uuid_to_buffer[m_uuid_to_buffer_count++] = {mesh_local[i].UUID, h};
                 }
                 else
                 {
-                    ZENGINE_CORE_ERROR("[RRM] Mesh upload failed for asset handle {}", p.Asset)
+                    ZENGINE_CORE_ERROR("[RRM] Mesh upload failed for asset handle {}", mesh_local[i].Asset)
                 }
             }
-            else
+            EndBatchUpload();
+        }
+
+        // Texture uploads: per-texture path (independent submission chain)
+        for (uint32_t i = 0; i < tex_count; ++i)
+        {
+            ImageHandle h = DoUploadTexture(tex_local[i].Asset);
+            if (h.IsValid())
             {
-                ImageHandle h = DoUploadTexture(p.Asset);
-                if (h.IsValid())
-                {
-                    std::lock_guard lock(m_uuid_map_mutex);
-                    if (m_uuid_to_image_count < MAX_UUID_MAP)
-                        m_uuid_to_image[m_uuid_to_image_count++] = {p.UUID, h};
-                }
+                std::lock_guard lock(m_uuid_map_mutex);
+                if (m_uuid_to_image_count < MAX_UUID_MAP)
+                    m_uuid_to_image[m_uuid_to_image_count++] = {tex_local[i].UUID, h};
             }
         }
     }

@@ -232,6 +232,13 @@ namespace ZEngine::Rendering
         /// @param out_idx_offset  Out: first uint32 element index in the global IB.
         void         RegisterBuiltinGeometry(const void* vtx_data, size_t vtx_bytes, const uint32_t* idx_data, uint32_t idx_count, uint32_t& out_vtx_offset, uint32_t& out_idx_offset);
 
+        /// @brief Request a geometry compaction on the next BeginFrame.
+        ///        Resets the global vertex/index buffer cursors and slot map so the
+        ///        next batch of mesh uploads starts at byte offset 0, reclaiming all
+        ///        space occupied by the previous scene's geometry.
+        ///        Thread-safe — may be called from the import/asset thread.
+        void         ResetGeometryBuffers();
+
         /// @brief Find the BufferHandle registered for a mesh asset by UUID.
         /// @details Returns an invalid handle if the mesh has not been uploaded yet or
         ///          the UUID is not in the uuid-to-buffer map.
@@ -363,6 +370,11 @@ namespace ZEngine::Rendering
 
         void                            FlushPendingUploads(uint32_t frame_index);
 
+        // Batch upload helpers — render-thread only
+        void                            BeginBatchUpload();
+        void                            EndBatchUpload();
+        void                            ResetGeometryBuffersInternal();
+
         Core::Memory::BufferImage*      GetImageMutable(ImageHandle handle);
 
         void                            InitUploadPool();
@@ -407,37 +419,45 @@ namespace ZEngine::Rendering
             uuids::uuid UUID;
             ImageHandle Handle;
         };
-        static constexpr uint32_t      MAX_UUID_MAP                   = 4096;
-        UUIDBufferPair                 m_uuid_to_buffer[MAX_UUID_MAP] = {};
-        uint32_t                       m_uuid_to_buffer_count         = 0;
-        UUIDImagePair                  m_uuid_to_image[MAX_UUID_MAP]  = {};
-        uint32_t                       m_uuid_to_image_count          = 0;
+        static constexpr uint32_t      MAX_UUID_MAP                      = 4096;
+        UUIDBufferPair                 m_uuid_to_buffer[MAX_UUID_MAP]    = {};
+        uint32_t                       m_uuid_to_buffer_count            = 0;
+        UUIDImagePair                  m_uuid_to_image[MAX_UUID_MAP]     = {};
+        uint32_t                       m_uuid_to_image_count             = 0;
 
         // Swap list — written from asset thread, drained in EndFrame
-        static constexpr uint32_t      MAX_SWAPS                      = 256;
-        SwapEntry                      m_swaps[MAX_SWAPS]             = {};
-        uint32_t                       m_swap_count                   = 0;
+        static constexpr uint32_t      MAX_SWAPS                         = 256;
+        SwapEntry                      m_swaps[MAX_SWAPS]                = {};
+        uint32_t                       m_swap_count                      = 0;
 
         // Pending uploads — written from asset thread, flushed in BeginFrame
-        static constexpr uint32_t      MAX_PENDING                    = 256;
-        PendingUpload                  m_pending[MAX_PENDING]         = {};
-        uint32_t                       m_pending_count                = 0;
+        static constexpr uint32_t      MAX_PENDING                       = 256;
+        PendingUpload                  m_pending[MAX_PENDING]            = {};
+        uint32_t                       m_pending_count                   = 0;
 
-        uint32_t                       m_current_frame                = 0;
+        // Geometry compaction request — set by asset thread, executed on render thread
+        std::atomic<bool>              m_pending_reset                   = false;
+
+        // Batch upload state — render-thread only, no locking needed
+        bool                           m_batch_mode                      = false;
+        Core::Memory::BufferView       m_batch_stagings[MAX_PENDING * 2] = {};
+        uint32_t                       m_batch_staging_count             = 0;
+
+        uint32_t                       m_current_frame                   = 0;
 
         // Dedicated command pools for geometry uploads — isolated from the swapchain
         // timeline semaphore chain. Geometry uploads must not share the graphics queue
         // submission path with Present; a private pool + fence ensures safe isolation.
-        Rendering::Pools::CommandPool* m_upload_pool                  = nullptr;
-        Hardwares::CommandBuffer*      m_upload_cmd                   = nullptr;
-        VkFence                        m_upload_fence                 = VK_NULL_HANDLE;
-        Rendering::Pools::CommandPool* m_transfer_pool                = nullptr;
-        Hardwares::CommandBuffer*      m_transfer_cmd                 = nullptr;
-        VkFence                        m_transfer_fence               = VK_NULL_HANDLE;
+        Rendering::Pools::CommandPool* m_upload_pool                     = nullptr;
+        Hardwares::CommandBuffer*      m_upload_cmd                      = nullptr;
+        VkFence                        m_upload_fence                    = VK_NULL_HANDLE;
+        Rendering::Pools::CommandPool* m_transfer_pool                   = nullptr;
+        Hardwares::CommandBuffer*      m_transfer_cmd                    = nullptr;
+        VkFence                        m_transfer_fence                  = VK_NULL_HANDLE;
 
         // Upper bound for texture timeline slot search — keeps textures out of the
         // geometry slots and caps the retire loop to the same range.
-        static constexpr uint32_t      GEOMETRY_UPLOAD_SLOT           = 15;
+        static constexpr uint32_t      GEOMETRY_UPLOAD_SLOT              = 15;
 
         struct TextureTimelineJob
         {
