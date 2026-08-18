@@ -28,21 +28,27 @@ namespace ZEngine::ECS
 
             ZENGINE_VALIDATE_ASSERT(m_arena != nullptr, "ActorManager::Create: not initialized")
 
-            // Allocate T from arena
             T* actor           = ZPushStructCtor(m_arena, T);
-
-            // Wire entity
             actor->m_entity_id = m_scene->CreateEntity();
             actor->m_scene     = m_scene;
 
-            // Store pointer in handle array
-            Actor**     slot   = nullptr;
+#if !defined(NDEBUG)
+            AssertUniqueEntityID(actor->m_entity_id);
+#endif
+
             ActorHandle handle = m_handles.Add(static_cast<Actor*>(actor));
             ZENGINE_VALIDATE_ASSERT(handle.Valid(), "ActorManager::Create: MAX_ACTORS capacity reached")
 
             actor->OnCreate();
             return handle;
         }
+
+#if !defined(NDEBUG)
+        // Test-only: creates an Actor wrapping an existing EntityID without calling
+        // Scene::CreateEntity(). Immediately triggers the duplicate-EntityID guard
+        // if `id` is already owned by a live Actor — useful for EXPECT_DEATH tests.
+        ActorHandle CreateWithExistingEntityID(EntityID id);
+#endif
 
         // Calls OnDestroy(), destroys the EntityID, frees the handle slot.
         // Stale handles are silently ignored.
@@ -66,6 +72,8 @@ namespace ZEngine::ECS
         }
 
     private:
+        void                           AssertUniqueEntityID(EntityID id) const;
+
         Helpers::HandleManager<Actor*> m_handles;
         Core::Memory::ArenaAllocator*  m_arena = nullptr;
         Scene*                         m_scene = nullptr;
