@@ -92,7 +92,7 @@ world.RegisterSystem(AnimationSampleSystem, {
 
 world.RegisterSystem(RenderCullSystem, {
     .ReadMask  = MaskBit(ComponentTypeOf<TransformComponent>())
-               | MaskBit(ComponentTypeOf<MeshComponent>()),
+               | MaskBit(ComponentTypeOf<MeshComponent>()), // MeshComponent — pending issue #609
     .WriteMask = 0,  // read-only
 });
 ```
@@ -206,7 +206,7 @@ Example:
 Registered:
   AnimationSampleSystem  writes: AnimatorComponent
   PhysicsSystem          writes: TransformComponent, reads: RigidBodyComponent
-  RenderCullSystem       reads:  TransformComponent, MeshComponent
+  RenderCullSystem       reads:  TransformComponent, MeshComponent  // MeshComponent — pending issue #609
   AudioSystem            reads:  TransformComponent
 
 OrderBefore(PhysicsSystem, RenderCullSystem)
@@ -439,7 +439,7 @@ SystemID physics_id = world.RegisterSystem(PhysicsSystem, {
 
 SystemID cull_id = world.RegisterSystem(RenderCullSystem, {
     .ReadMask  = MaskBit(ComponentTypeOf<TransformComponent>())
-               | MaskBit(ComponentTypeOf<MeshComponent>()),
+               | MaskBit(ComponentTypeOf<MeshComponent>()), // MeshComponent — pending issue #609
     .WriteMask = 0,
 });
 

@@ -129,9 +129,9 @@ Frame index `fi` = `SwapchainPtr->CurrentFrame->Index` (0, 1, or 2 in a triple-b
       material_buf->Write(fi, thread, GPUMeshMaterials)  <- full material array
       RenderGraph->Execute(cmd)
 
-        [UploadPass]
-          skybox VB/IB write (write-once per frame-in-flight)
-          grid VB/IB write
+        // UploadPass has been removed. SkyboxPass and GridPass now bind the
+        // global vertex/index buffers registered via RRM::RegisterBuiltinGeometry;
+        // no per-pass VB/IB writes are needed.
 
         // Passes below reflect the current live implementation.
         // Shadow, post-process, and gizmo passes are added by their
@@ -154,12 +154,12 @@ Frame index `fi` = `SwapchainPtr->CurrentFrame->Index` (0, 1, or 2 in a triple-b
           EndRenderPass
 
         [SkyboxPass]
-          BindVertexBuffer / BindIndexBuffer (cube, 36 indices)
+          BindVertexBuffer / BindIndexBuffer (global VB/IB via RRM::RegisterBuiltinGeometry; cube geometry, 36 indices)
           BindDescriptorSets(fi)
           DrawIndexed(36, 1, 0, 0, 0)
 
         [GridPass]
-          BindVertexBuffer / BindIndexBuffer (quad, 6 indices)
+          BindVertexBuffer / BindIndexBuffer (global VB/IB via RRM::RegisterBuiltinGeometry; quad geometry, 6 indices)
           PushConstants(grid_params)
           DrawIndexed(6, 1, 0, 0, 0)
 
@@ -242,7 +242,7 @@ recorded when they were enqueued in `DeferFree`).
 
 ## 5. RRM Upload Path (Current Implementation)
 
-`RenderResourceManager` now owns all buffer uploads. `AsyncResourceLoader` retains only texture uploads.
+`RenderResourceManager (RRM)` now owns all uploads — buffer and texture alike. `AsyncResourceLoader` has been fully replaced by RRM.
 
 ### Buffer domains
 

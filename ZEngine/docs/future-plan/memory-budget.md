@@ -10,9 +10,9 @@
 
 ### What MemoryManager.h provides today
 
-`MemoryManager` is a singleton that wraps a single `ArenaAllocator` and exposes it as the engine's global backing store. The entire 2 GB block is allocated in one `malloc` call inside `ArenaAllocator::Initialize(2 * 1024 * 1024 * 1024ULL)`. There is no sub-arena concept at the manager level: callers obtain a region by calling `arena->CreateSubArena(size, &out)` directly on the global allocator, passing whatever size they choose. The manager records neither the names of sub-arenas nor their high-water marks, making it impossible to detect which subsystem is consuming unexpected memory.
+`MemoryManager` is a singleton that wraps a single `ArenaAllocator` and exposes it as the engine's global backing store. The entire 3 GB block is allocated in one `malloc` call inside `ArenaAllocator::Initialize(3 * 1024 * 1024 * 1024ULL)`. There is no sub-arena concept at the manager level: callers obtain a region by calling `arena->CreateSubArena(size, &out)` directly on the global allocator, passing whatever size they choose. The manager records neither the names of sub-arenas nor their high-water marks, making it impossible to detect which subsystem is consuming unexpected memory.
 
-The method name `MemoryManager::Shutdowm` contains a typo — it is spelled `Shutdowm` not `Shutdown`. This means any call site that writes the correct spelling (`Shutdown()`) fails to compile, and the wrong spelling is never called at all. The backing 2 GB `malloc` block leaks at process exit unless the `ArenaAllocator` destructor has been fixed per Bug 4 of the memory-allocator-audit.
+The method name `MemoryManager::Shutdowm` contains a typo — it is spelled `Shutdowm` not `Shutdown`. This means any call site that writes the correct spelling (`Shutdown()`) fails to compile, and the wrong spelling is never called at all. The backing 3 GB `malloc` block leaks at process exit unless the `ArenaAllocator` destructor has been fixed per Bug 4 of the memory-allocator-audit.
 
 ### What existing call sites already allocate
 
@@ -26,13 +26,13 @@ The following sub-arenas are already carved from the global arena in the current
 | Shader cache | 5 MB | Current; increased to 16 MB in budget below |
 | Scene serializer scratch | 150 MB | Scene save/load temporary buffers |
 
-These five allocations total approximately 608 MB. The remaining ~1,416 MB of the 2 GB block is currently unbudgeted and available to any caller that reaches in with `CreateSubArena`. The budget table below assigns this headroom to concrete subsystems and reserves a safety margin.
+These five allocations total approximately 608 MB. The remaining ~2,440 MB of the 3 GB block is currently unbudgeted and available to any caller that reaches in with `CreateSubArena`. The budget table below assigns this headroom to concrete subsystems and reserves a safety margin.
 
 ---
 
 ## 2. Global Arena Budget Table
 
-All sizes are at process startup, allocated once, and never grown. The 2 GB total is a hard ceiling that must not be exceeded. Sub-arenas for optional systems (Network) are only carved when that system is initialized.
+All sizes are at process startup, allocated once, and never grown. The 3 GB total is a hard ceiling that must not be exceeded. Sub-arenas for optional systems (Network) are only carved when that system is initialized.
 
 | Subsystem | Sub-arena size | Notes |
 |---|---|---|
@@ -41,18 +41,17 @@ All sizes are at process startup, allocated once, and never grown. The 2 GB tota
 | Importer | 350 MB | Assimp import scratch; cleared on `AssetManager::ImportComplete()` (matches existing) |
 | ECS::Scene | 128 MB | ComponentStorage dense arrays, EntityRegistry free-list, archetype metadata |
 | Animation::AnimationManager | 64 MB | SkeletonData, AnimationClip arrays, per-frame pose pools (double-buffered) |
-| Physics::PhysicsWorld | 64 MB | Jolt body data, broad-phase cell grid, constraint cache, contact manifold pool |
 | Audio::AudioEngine | 32 MB | miniaudio state, decoded clip pool, stream decode ring buffers |
 | VFS (context + registry) | 32 MB | Path cache, mount table, asset UUID-to-path registry, watcher event queue |
 | Shader cache | 16 MB | SPIR-V bytecode cache; increased from current 5 MB to accommodate compute shaders |
 | UI::UIContext (per-frame) | 8 MB | Widget tree, draw list, retained-mode diff buffers; cleared each frame |
-| MainThreadScheduler | < 1 MB | 512 lock-free MPSC slots (128 B each with cache-line-padded ready flag) = 64 KB |
+| MainThreadScheduler | < 1 MB | 512 MPSC slots (Slot = data + PaddedAtomic seq) = ~64 KB |
 | Network (session + rollback) | 32 MB | Peer state, snapshot ring buffers for rollback; only allocated in multiplayer builds |
 | Serializer scratch | 150 MB | Scene save/load temporary buffers (matches existing) |
 | Swapchain | 3 MB | Swapchain-specific allocations (matches existing) |
 | Logging | 4 MB | Logger ring buffer, event handler list, category filter table |
 | Scratch / general | 48 MB | Engine-internal scratch arenas, temporary string processing, debug overlay |
-| **Total** | **~1,496 MB** | **~552 MB headroom within the 2 GB block** |
+| **Total** | **~1,496 MB** | **~1,576 MB headroom within the 3 GB block** |
 
 ### Sizing rationale
 
@@ -96,15 +95,9 @@ VMA does not enforce per-category budgets automatically. The engine should call 
 `GameApplication::Initialize()` and BEFORE `Engine::Initialize()`. The typical
 call site is in `main()` or the platform entry point:
 
-```cpp
-    Core::Memory::MemoryManager memory_manager;
-    memory_manager.Initialize(Core::Memory::MemoryBudgetConfig::Default());
-    
-    MyGame app;
-    app.Initialize(&memory_manager.Allocator);
-```
+See `Engine::Initialize` for the actual API.
 
-This ensures the 2GB block is allocated and the budget is validated before any
+This ensures the 3 GB block is allocated and the budget is validated before any
 subsystem attempts to carve a sub-arena. If total committed bytes exceed the
 arena size, `Initialize()` asserts and exits before any GPU or window work starts.
 
@@ -152,7 +145,7 @@ struct MemoryBudgetConfig
     //   MemoryManager::Initialize(cfg);
     //
     // All modifications must happen before passing to Initialize().
-    // cfg.Validate() asserts if total committed exceeds 2GB.
+    // cfg.Validate() asserts if total committed exceeds 3GB.
 
     // Returns a reduced budget for dedicated server builds (no GPU, no audio, no UI).
     static MemoryBudgetConfig Server();
@@ -187,7 +180,7 @@ inline MemoryBudgetConfig MemoryBudgetConfig::Default()
     cfg.Logging            = { "Logging",              4ULL * 1024 * 1024 };
     cfg.Input              = { "Input",                1ULL * 1024 * 1024 };
     return cfg;
-    // Total: ~1,496 MB out of 2,048 MB; ~552 MB headroom
+    // Total: ~1,496 MB out of 3,072 MB; ~1,576 MB headroom
 }
 
 } // namespace ZEngine::Memory

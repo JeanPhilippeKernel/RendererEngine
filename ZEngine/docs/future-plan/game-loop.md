@@ -579,6 +579,10 @@ void Engine::MainThreadRun() {
             m_ecs_scene.SnapshotTransforms();  // ← must be AFTER Tick, not before
         }
 
+        // ── 5b. Per-frame background work ───────────────────────────────────
+        ImportCoordinator::Tick();       // dispatches up to N import jobs per frame
+        MainThreadScheduler::Drain();    // executes callbacks posted by background threads
+
         // ── 6. Interpolation alpha ──────────────────────────────────────────
         timestep.Alpha = accumulator.Alpha();
 

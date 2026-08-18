@@ -48,7 +48,7 @@ outputs changed size.
 4. Execute loop is array-indexed, not hash-keyed — zero string hashing on the hot path.
 5. Barrier batching — collect all barriers needed before a pass into one `vkCmdPipelineBarrier` call.
 6. Keep the existing `IRenderGraphCallbackPass` interface intact. Existing pass implementations
-   (`UploadPass`, `BasePass`, `DepthPrePass`, `SkyboxPass`, `GridPass`) require no changes.
+   (~~UploadPass~~ — removed; SkyboxPass and GridPass now use global VB/IB via RRM::RegisterBuiltinGeometry, `BasePass`, `DepthPrePass`, `SkyboxPass`, `GridPass`) require no changes.
 
 ---
 
@@ -708,7 +708,7 @@ emitted automatically in `Execute()` — the pass implementation never calls
 
 ## 11. Migration from the Current Design
 
-The current pass implementations (`UploadPass`, `BasePass`, `DepthPrePass`, `SkyboxPass`,
+The current pass implementations (~~UploadPass~~ — removed; SkyboxPass and GridPass now use global VB/IB via RRM::RegisterBuiltinGeometry, `BasePass`, `DepthPrePass`, `SkyboxPass`,
 `GridPass`) call `res_builder->CreateBufferSet`, `CreateRenderTarget`, `CreateRenderPassNode`,
 and `res_inspector->GetVertexBufferSet` etc. These APIs are preserved with identical
 signatures on `RGBuilder` and `RGInspector`. Migration is mechanical:
@@ -792,7 +792,7 @@ to query device headroom dynamically at runtime.
 
 ### Migration
 
-- [ ] `UploadPass`, `BasePass`, `DepthPrePass`, `SkyboxPass`, `GridPass` updated to use new `RGBuilder`/`RGInspector` API — builder call sites only; `Execute()` bodies unchanged
+- [ ] ~~UploadPass~~ — removed; SkyboxPass and GridPass now use global VB/IB via RRM::RegisterBuiltinGeometry; `BasePass`, `DepthPrePass`, `SkyboxPass`, `GridPass` updated to use new `RGBuilder`/`RGInspector` API — builder call sites only; `Execute()` bodies unchanged
 - [ ] `GraphicRenderer::Initialize` updated — `RGBuilder::ImportRenderTarget` for `FrameColorRenderTarget` and `FrameDepthRenderTarget`; remove `ResourceBuilder->AttachRenderTarget` calls
 - [ ] `GbufferPass::Setup` and `LightingPass::Setup` updated to use `WriteColorAttachment` and `ReadTexture` — these are currently commented out; enable them as part of this migration
 
