@@ -70,9 +70,14 @@ namespace ZEngine::Rendering::Buffers
     {
         if (Handle)
         {
-            // Direct destroy: Dispose() is always called at GPU-idle points
-            // (after QueueWaitAll at shutdown, after vkDeviceWaitIdle at resize).
-            vkDestroyFramebuffer(m_device->LogicalDevice, Handle, nullptr);
+            // Deferred: Dispose() is called during resize while the render thread
+            // may still be recording commands that reference this framebuffer.
+            // DeferFree queues the handle for destruction at the next safe drain
+            // in RRM::EndFrame or the final VulkanDevice::Dispose drain.
+            Hardwares::DeferredFreeEntry e = {};
+            e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+            e.Data.Vk                      = {Handle, Rendering::DeviceResourceType::FRAMEBUFFER, nullptr};
+            m_device->DeferFree(e);
             Handle = VK_NULL_HANDLE;
         }
     }
