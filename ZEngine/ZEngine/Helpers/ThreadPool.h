@@ -43,6 +43,7 @@ namespace ZEngine::Helpers
             WorkerCount    = max_workers;
 
             m_cancellation.value.store(false, std::memory_order_relaxed);
+            m_active_workers.value.store(static_cast<uint32_t>(WorkerCount), std::memory_order_relaxed);
 
             for (size_t i = 0; i < WorkerCount; ++i)
                 std::thread(&ThreadPool::WorkerRun, this, i).detach();
@@ -79,6 +80,11 @@ namespace ZEngine::Helpers
             m_cancellation.value.store(true, std::memory_order_release);
             for (size_t i = 0; i < WorkerCount; ++i)
                 m_workers[i].cv.notify_one();
+            // Spin until all workers have exited — ensures Worker::mutex and
+            // Worker::cv are not destroyed while a thread is still using them.
+            // Workers exit almost immediately after seeing the cancellation token.
+            while (m_active_workers.value.load(std::memory_order_acquire) > 0)
+                ;
         }
 
     private:
@@ -92,6 +98,7 @@ namespace ZEngine::Helpers
         Worker                 m_workers[MAX_WORKERS];
         PaddedAtomic<uint32_t> m_cursor{};
         PaddedAtomic<bool>     m_cancellation{};
+        PaddedAtomic<uint32_t> m_active_workers{}; // decremented by each worker on exit
 
         void                   WorkerRun(size_t idx)
         {
@@ -105,6 +112,7 @@ namespace ZEngine::Helpers
                 std::unique_lock<std::mutex> lock(w.mutex);
                 w.cv.wait(lock, [&] { return !w.queue.empty() || m_cancellation.value.load(std::memory_order_relaxed); });
             }
+            m_active_workers.value.fetch_sub(1, std::memory_order_release);
         }
     };
 
