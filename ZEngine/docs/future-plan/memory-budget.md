@@ -46,6 +46,7 @@ All sizes are at process startup, allocated once, and never grown. The 2 GB tota
 | VFS (context + registry) | 32 MB | Path cache, mount table, asset UUID-to-path registry, watcher event queue |
 | Shader cache | 16 MB | SPIR-V bytecode cache; increased from current 5 MB to accommodate compute shaders |
 | UI::UIContext (per-frame) | 8 MB | Widget tree, draw list, retained-mode diff buffers; cleared each frame |
+| MainThreadScheduler | < 1 MB | 512 lock-free MPSC slots (128 B each with cache-line-padded ready flag) = 64 KB |
 | Network (session + rollback) | 32 MB | Peer state, snapshot ring buffers for rollback; only allocated in multiplayer builds |
 | Serializer scratch | 150 MB | Scene save/load temporary buffers (matches existing) |
 | Swapchain | 3 MB | Swapchain-specific allocations (matches existing) |

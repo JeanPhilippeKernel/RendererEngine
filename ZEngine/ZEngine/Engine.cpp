@@ -1,5 +1,6 @@
 #include <GLFW/glfw3.h>
 #include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
@@ -126,6 +127,8 @@ namespace ZEngine
                 g_engine_ctx->InputManager->AccumulateScroll(yoffset);
         });
 
+        Core::MainThreadScheduler::Initialize(&arena);
+
         app->CurrentWindow = g_engine_ctx->Window;
         g_app              = app;
 
@@ -142,6 +145,8 @@ namespace ZEngine
         {
             g_render_thread.join();
         }
+
+        Core::MainThreadScheduler::Shutdown();
 
         // Step 3 — ECS shutdown: ActorManager before Scene (lifecycle order)
         if (g_engine_ctx->ActorManager)
@@ -251,6 +256,8 @@ namespace ZEngine
             // ── Import coordinator (up to JOBS_PER_TICK jobs per frame) ─────
             if (g_engine_ctx->ImportCoordinator)
                 g_engine_ctx->ImportCoordinator->Tick();
+
+            Core::MainThreadScheduler::Drain();
 
             // ── Application update (non-ECS game logic) ─────────────────────
             g_app->Update(raw_dt);

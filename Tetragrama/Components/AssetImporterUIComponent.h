@@ -34,7 +34,6 @@ namespace Tetragrama::Components
     private:
         PaddedAtomic<ImporterState> m_state{}; // default = Idle (0)
         PaddedAtomic<float>         m_progress{};
-        PaddedAtomic<bool>          m_pending_scan{}; // drained on main thread after background import
 
         // Selected file
         char                        m_path_buf[1024]     = {};
