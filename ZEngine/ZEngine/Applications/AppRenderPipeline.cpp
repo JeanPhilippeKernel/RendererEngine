@@ -21,10 +21,6 @@ namespace ZEngine::Applications
         SceneRenderer->Initialize(Device);
         ImguiRenderer->Initialize(Device);
 
-        // When the swapchain is recreated (VK_SUBOPTIMAL_KHR / VK_ERROR_OUT_OF_DATE_KHR)
-        // resize the RenderGraph synchronously so render targets match the new extent in
-        // the same frame. Without this, there is a multi-frame distortion window between
-        // swapchain recreation and the next ImGui viewport size-change event.
         Device->SwapchainPtr->OnSwapchainResized    = [](uint32_t w, uint32_t h, void* ctx) { static_cast<AppRenderPipeline*>(ctx)->ResizeRenderTarget(w, h); };
         Device->SwapchainPtr->OnSwapchainResizedCtx = this;
 
@@ -57,9 +53,6 @@ namespace ZEngine::Applications
 
         swapchain->AcquireNextImage(CurrentMailBoxBufferHead);
 
-        // CurrentFrame->Index is the ring index (0..BufferedFrameCount-1) and is
-        // always valid, even when the frame was aborted. All per-frame bookkeeping
-        // below is safe to run so counters stay in sync.
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
 
@@ -78,9 +71,6 @@ namespace ZEngine::Applications
         CurrentCmdBuf->ResetState();
         CurrentCmdBuf->Begin();
 
-        // Return false when the swapchain image is not valid for rendering.
-        // The caller must skip RenderScene / RenderOverlay; EndFrame must still
-        // be called so Present() can discard the empty command buffer.
         return swapchain->IsFrameValid();
     }
 

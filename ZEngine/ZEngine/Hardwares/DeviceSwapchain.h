@@ -12,17 +12,9 @@ namespace ZEngine::Hardwares
 {
     struct VulkanDevice;
 
-    // Lifecycle of swapchain recreation.
-    //
-    //   None         — normal rendering, no action needed
-    //   Pending      — recreate at the START of the next AcquireNextImage before
-    //                  acquiring a new image; triggered by SUBOPTIMAL/OUT_OF_DATE
-    //                  at present time, or by a zero-size surface guard
-    //   FrameAborted — VK_ERROR_OUT_OF_DATE_KHR was returned at acquire;
-    //                  the frame.Acquired semaphore was NOT signalled (spec), so
-    //                  no GPU work was submitted; the render loop must skip this
-    //                  frame entirely (BeginFrame returns false)
-    //
+    // None: normal. Pending: recreate at start of next AcquireNextImage (set by
+    // SUBOPTIMAL/OOD at present or zero-size surface). FrameAborted: OOD at acquire —
+    // semaphore not signalled, no GPU work submitted, BeginFrame returns false.
     enum class RecreationState : uint8_t
     {
         None         = 0,
@@ -30,8 +22,7 @@ namespace ZEngine::Hardwares
         FrameAborted = 2,
     };
 
-    // Invoked synchronously after swapchain recreation so RenderGraph and all
-    // render targets resize to the new swapchain extent in the same frame.
+    // Called synchronously after recreation so render targets resize in the same frame.
     using SwapchainResizedFn = void (*)(uint32_t width, uint32_t height, void* ctx);
 
     struct FrameContext
