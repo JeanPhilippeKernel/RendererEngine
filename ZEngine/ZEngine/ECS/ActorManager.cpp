@@ -65,6 +65,35 @@ namespace ZEngine::ECS
         }
     }
 
+    void ActorManager::AssertUniqueEntityID(EntityID id) const
+    {
+        uint32_t head = m_handles.Head();
+        for (uint32_t i = 0; i < head; ++i)
+        {
+            ActorHandle slot = const_cast<Helpers::HandleManager<Actor*>&>(m_handles).ToHandle(i);
+            if (!m_handles.IsLive(slot))
+                continue;
+            Actor** ptr = const_cast<Helpers::HandleManager<Actor*>&>(m_handles).Access(slot);
+            if (ptr && *ptr && (*ptr)->m_entity_id == id)
+            {
+                ZENGINE_VALIDATE_ASSERT(false, "ActorManager: EntityID already wrapped by another Actor")
+            }
+        }
+    }
+
+#if !defined(NDEBUG)
+    ActorHandle ActorManager::CreateWithExistingEntityID(EntityID id)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_arena != nullptr, "ActorManager::CreateWithExistingEntityID: not initialized")
+        Actor* actor       = ZPushStructCtor(m_arena, Actor);
+        actor->m_entity_id = id;
+        actor->m_scene     = m_scene;
+        AssertUniqueEntityID(actor->m_entity_id);
+        ActorHandle handle = m_handles.Add(static_cast<Actor*>(actor));
+        return handle;
+    }
+#endif
+
     void ActorManager::Shutdown()
     {
         // Destroy all live Actors in reverse creation order (head-1 down to 0)

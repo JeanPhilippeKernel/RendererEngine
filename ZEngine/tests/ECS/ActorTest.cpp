@@ -143,8 +143,16 @@ TEST_F(ActorFixture, TickDispatchesOnTick)
     EXPECT_FLOAT_EQ(a->Accumulated, 2.f);
 }
 
-// 8. Duplicate EntityID wrapping should trigger a debug assert.
-// DISABLED: ActorManager::Create<T>() has no duplicate-EntityID guard yet.
-// When the guard is added, re-enable this test and supply a path that
-// injects the same EntityID into two Actors.
+// 8. Wrapping an EntityID already owned by a live Actor fires the debug guard.
+// Only meaningful in debug builds where NDEBUG is not defined.
+#if !defined(NDEBUG)
+TEST_F(ActorFixture, DuplicateEntityIDAsserts)
+{
+    ActorHandle h  = m_actors.Create();
+    EntityID    id = m_actors.Access(h)->GetEntityID();
+
+    EXPECT_DEATH({ m_actors.CreateWithExistingEntityID(id); }, ".*");
+}
+#else
 TEST_F(ActorFixture, DISABLED_DuplicateEntityIDAsserts) {}
+#endif
