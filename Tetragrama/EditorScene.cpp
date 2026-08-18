@@ -1,4 +1,5 @@
 #include <Tetragrama/EditorScene.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
 using namespace ZEngine::Core::Containers;
@@ -80,6 +81,12 @@ namespace Tetragrama
 
     void EditorScene::ExtractAsync(const EditorScene& scene)
     {
+        // Compact the global geometry buffers before ingesting a new scene so
+        // orphaned data from the previous scene is reclaimed starting from offset 0.
+        auto* ctx = ZEngine::Engine::GetContext();
+        if (ctx && ctx->RenderResourceManager)
+            ctx->RenderResourceManager->ResetGeometryBuffers();
+
         for (const auto& file : scene.AssetFiles)
         {
             auto& f = AssetFiles.push_use({});
