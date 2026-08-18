@@ -10,7 +10,6 @@ namespace ZEngine::Rendering::Buffers
 {
     struct FramebufferVNext
     {
-        FramebufferVNext(Hardwares::VulkanDevice* device, const Specifications::FrameBufferSpecificationVNext&);
         FramebufferVNext(Hardwares::VulkanDevice* device, Specifications::FrameBufferSpecificationVNext&&);
         ~FramebufferVNext();
 

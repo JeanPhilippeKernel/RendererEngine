@@ -20,7 +20,7 @@ namespace ZEngine::Rendering::Renderers
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
         pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
 
-        res_builder->CreateRenderPassNode(pass_node);
+        res_builder->CreateRenderPassNode(std::move(pass_node));
     }
 
     void BasePass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -36,7 +36,7 @@ namespace ZEngine::Rendering::Renderers
                                  .UseShader("base")
                                  .Detach();
             // clang-format off
-            *output_pass = device->CreateRenderPass(pass_spec);
+            *output_pass = device->CreateRenderPass(std::move(pass_spec));
             // clang-format on
             (*output_pass)->Bake();
         }
@@ -66,7 +66,7 @@ namespace ZEngine::Rendering::Renderers
         pass_node.Outputs.init(device->Arena, 1);
         pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
 
-        res_builder->CreateRenderPassNode(pass_node);
+        res_builder->CreateRenderPassNode(std::move(pass_node));
     }
 
     void DepthPrePass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -81,7 +81,7 @@ namespace ZEngine::Rendering::Renderers
                                  .UseShader("depth_prepass_scene")
                                  .Detach();
             // clang-format off
-            *output_pass = device->CreateRenderPass(pass_spec);
+            *output_pass = device->CreateRenderPass(std::move(pass_spec));
             // clang-format on
             (*output_pass)->Bake();
         }
@@ -157,7 +157,7 @@ namespace ZEngine::Rendering::Renderers
         pass_node.Outputs.init(device->Arena, 1);
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-        res_builder->CreateRenderPassNode(pass_node);
+        res_builder->CreateRenderPassNode(std::move(pass_node));
     }
 
     void SkyboxPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -186,7 +186,7 @@ namespace ZEngine::Rendering::Renderers
                                  .UseShader("skybox")
                                  .Detach();
             // clang-format off
-            *output_pass = device->CreateRenderPass(pass_spec);
+            *output_pass = device->CreateRenderPass(std::move(pass_spec));
             // clang-format on
             (*output_pass)->Bake();
         }
@@ -240,7 +240,7 @@ namespace ZEngine::Rendering::Renderers
         pass_node.Outputs.init(device->Arena, 1);
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
         pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-        res_builder->CreateRenderPassNode(pass_node);
+        res_builder->CreateRenderPassNode(std::move(pass_node));
     }
 
     void GridPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -270,7 +270,7 @@ namespace ZEngine::Rendering::Renderers
                                  .UseShader("infinite_grid")
                                  .Detach();
             // clang-format off
-            *output_pass = device->CreateRenderPass(pass_spec);
+            *output_pass = device->CreateRenderPass(std::move(pass_spec));
             // clang-format on
             (*output_pass)->Bake();
         }
@@ -326,7 +326,7 @@ namespace ZEngine::Rendering::Renderers
         pass_node.Outputs.push({.Name = gbuffer_specular.Name});
         pass_node.Outputs.push({.Name = gbuffer_normals.Name});
         pass_node.Outputs.push({.Name = gbuffer_position.Name});
-        res_builder->CreateRenderPassNode(pass_node);
+        res_builder->CreateRenderPassNode(std::move(pass_node));
     }
 
     void GbufferPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -336,7 +336,7 @@ namespace ZEngine::Rendering::Renderers
         if (output_pass && !(*output_pass))
         {
             auto pass_spec = pass_builder->SetPipelineName("GBuffer-Pipeline").EnablePipelineDepthTest(true).UseShader("g_buffer").Detach();
-            *output_pass   = device->CreateRenderPass(pass_spec);
+            *output_pass   = device->CreateRenderPass(std::move(pass_spec));
             (*output_pass)->Bake();
         }
 

@@ -14,10 +14,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Dispose();
     }
 
-    void RenderPass::Initialize(Hardwares::VulkanDevice* device, const Specifications::RenderPassSpecification& specification)
+    void RenderPass::Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification)
     {
         m_device      = device;
-        Specification = specification;
+        Specification = std::move(specification);
 
         if ((specification.Type != Specifications::RenderPassType::GRAPHIC) && (specification.Type != Specifications::RenderPassType::COMPUTE))
         {
@@ -83,7 +83,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            Attachment                                     = ZPushStructCtorArgs(m_device->Arena, RenderPasses::Attachment, m_device, attachment_specification);
+            Attachment                                     = ZPushStructCtorArgs(m_device->Arena, RenderPasses::Attachment, m_device, std::move(attachment_specification));
 
             Specification.PipelineSpecification.Attachment = Attachment; // Todo : Can potential Dispose() issue
             Pipeline                                       = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);

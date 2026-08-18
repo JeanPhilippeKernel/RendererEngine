@@ -31,7 +31,7 @@ namespace ZEngine::ECS
         node.Index    = id;
         node.InDegree = 0;
         node.Successors.init(m_arena, 8);
-        m_nodes.push(node);
+        m_nodes.push(std::move(node));
 
         return id;
     }
@@ -154,7 +154,7 @@ namespace ZEngine::ECS
             wave.init(m_arena, static_cast<uint32_t>(current_wave.size()));
             for (size_t i = 0; i < current_wave.size(); ++i)
                 wave.push(current_wave[i]);
-            m_waves.push(wave);
+            m_waves.push(std::move(wave));
 
             processed += static_cast<uint32_t>(current_wave.size());
 

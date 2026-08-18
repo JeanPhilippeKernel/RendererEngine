@@ -342,7 +342,7 @@ namespace ZEngine::Hardwares
         Rendering::Textures::TextureHandle              CreateTexture(const Rendering::Specifications::TextureSpecification& spec);
         BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data);
 
-        Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(const Rendering::Specifications::RenderPassSpecification& spec);
+        Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec);
 
     private:
         VulkanLayer                                                       m_layer     = {};

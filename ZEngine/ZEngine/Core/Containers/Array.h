@@ -21,8 +21,8 @@ namespace ZEngine::Core::Containers
 
         Array() : m_allocator(nullptr), m_size(0), m_capacity(0), m_data(nullptr) {}
 
-        Array(const Array&)            = default;
-        Array& operator=(const Array&) = default;
+        Array(const Array&)            = delete;
+        Array& operator=(const Array&) = delete;
 
         Array(Array&& other) noexcept : m_allocator(other.m_allocator), m_size(other.m_size), m_capacity(other.m_capacity), m_data(other.m_data)
         {
@@ -193,6 +193,18 @@ namespace ZEngine::Core::Containers
             return back();
         }
 
+        reference push_use(T&& value)
+        {
+            if (m_size == m_capacity)
+            {
+                size_type new_capacity = m_capacity == 0 ? 4 : m_capacity * 2;
+                reserve(new_capacity);
+            }
+            m_data[m_size] = std::move(value);
+            ++m_size;
+            return back();
+        }
+
         void insert(size_type index, const T& value)
         {
             ZENGINE_VALIDATE_ASSERT(index <= m_size, "Index out of range")
@@ -255,6 +267,7 @@ namespace ZEngine::Core::Containers
     template <typename T>
     struct ArrayView
     {
+        ArrayView() : m_data(nullptr), m_size(0) {}
         ArrayView(T* data, size_t size) : m_data(data), m_size(size) {}
         ArrayView(Array<T>& arr) : m_data(arr.data()), m_size(arr.size()) {}
 

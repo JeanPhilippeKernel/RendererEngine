@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 {
     struct Attachment
     {
-        Attachment(Hardwares::VulkanDevice* device, const Specifications::AttachmentSpecification& spec);
+        Attachment(Hardwares::VulkanDevice* device, Specifications::AttachmentSpecification spec);
         ~Attachment();
         void                                           Dispose();
 

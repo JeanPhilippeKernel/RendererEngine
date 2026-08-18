@@ -31,7 +31,7 @@ namespace ZEngine::Core::Containers
     public:
         using Entry             = HashEntry<K, V>;
         using EntryPointer      = std::conditional_t<IsConst, const Entry*, Entry*>;
-        using value_type        = std::conditional_t<IsConst, std::pair<const K, const V>, std::pair<const K, V>>;
+        using value_type        = std::conditional_t<IsConst, std::pair<const K&, const V&>, std::pair<const K&, V&>>;
         using reference         = value_type;
         using pointer           = value_type*;
         using iterator_category = std::input_iterator_tag;
@@ -144,6 +144,7 @@ namespace ZEngine::Core::Containers
         // @param value The value to associate with the key.
         // @throws std::runtime_error if the table is full and cannot be resized.
         void insert(const K& key, const V& value)
+            requires std::is_copy_assignable_v<V>
         {
             maybe_grow();
 
@@ -160,6 +161,26 @@ namespace ZEngine::Core::Containers
             else
             {
                 entry.value = value;
+            }
+        }
+
+        void insert(const K& key, V&& value)
+        {
+            maybe_grow();
+
+            size_type index = probe_for_insert(key);
+            auto&     entry = m_entries[index];
+
+            if (entry.state == EntryState::Empty || entry.state == EntryState::Deleted)
+            {
+                entry.key   = key;
+                entry.value = std::move(value);
+                entry.state = EntryState::Occupied;
+                ++m_size;
+            }
+            else
+            {
+                entry.value = std::move(value);
             }
         }
 
@@ -357,7 +378,7 @@ namespace ZEngine::Core::Containers
         // @note Moves the old entries to avoid copying and skips Deleted entries.
         void rehash(size_type new_capacity)
         {
-            Array<Entry> old_entries = m_entries; // Move to avoid copying
+            Array<Entry> old_entries = std::move(m_entries);
             m_entries                = Array<Entry>{};
             m_entries.init(m_allocator, new_capacity);
             for (size_type i = 0; i < new_capacity; ++i)
@@ -371,7 +392,7 @@ namespace ZEngine::Core::Containers
                 if (old_entries[i].state == EntryState::Occupied)
                 {
                     size_type index  = probe_for_insert(old_entries[i].key);
-                    m_entries[index] = old_entries[i]; // Direct assignment
+                    m_entries[index] = std::move(old_entries[i]);
                     ++m_size;
                 }
             }

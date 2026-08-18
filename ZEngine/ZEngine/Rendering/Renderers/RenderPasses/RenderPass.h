@@ -36,7 +36,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Renderers::RenderPasses::Attachment*    Attachment       = {nullptr};
         Pipelines::GraphicPipeline*             Pipeline         = {nullptr};
 
-        void                                    Initialize(Hardwares::VulkanDevice* device, const Specifications::RenderPassSpecification& specification);
+        void                                    Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification);
         void                                    Dispose();
         void                                    Bake();
         bool                                    Verify();

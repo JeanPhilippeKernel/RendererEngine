@@ -132,6 +132,6 @@ namespace ZEngine::Rendering::Renderers
         RenderGraphResource& CreateRenderTarget(cstring name, const Specifications::TextureSpecification& spec);
         RenderGraphResource& AttachTexture(cstring name, const Textures::TextureHandle& texture);
         RenderGraphResource& AttachRenderTarget(cstring name, const Textures::TextureHandle& texture);
-        void                 CreateRenderPassNode(const RenderGraphRenderPassCreation&);
+        void                 CreateRenderPassNode(RenderGraphRenderPassCreation creation);
     };
 } // namespace ZEngine::Rendering::Renderers

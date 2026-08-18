@@ -36,7 +36,7 @@ namespace ZEngine::Core::Containers
     public:
         using Entry             = OrderedHashEntry<K, V>;
         using EntryPointer      = std::conditional_t<IsConst, const Entry*, Entry*>;
-        using value_type        = std::conditional_t<IsConst, std::pair<const K, const V>, std::pair<const K, V>>;
+        using value_type        = std::conditional_t<IsConst, std::pair<const K&, const V&>, std::pair<const K&, V&>>;
         using reference         = value_type;
         using pointer           = value_type*;
         using iterator_category = std::forward_iterator_tag;
@@ -134,6 +134,7 @@ namespace ZEngine::Core::Containers
         // @param value The value to associate with the key.
         // @throws std::runtime_error if the table is full and cannot be resized.
         void insert(const K& key, const V& value)
+            requires std::is_copy_assignable_v<V>
         {
             maybe_grow();
 
@@ -151,6 +152,27 @@ namespace ZEngine::Core::Containers
             else
             {
                 entry.value = value;
+            }
+        }
+
+        void insert(const K& key, V&& value)
+        {
+            maybe_grow();
+
+            size_type index = probe_for_insert(key);
+            auto&     entry = m_entries[index];
+
+            if (entry.state == EntryState::Empty || entry.state == EntryState::Deleted)
+            {
+                entry.key   = key;
+                entry.value = std::move(value);
+                entry.state = EntryState::Occupied;
+                link_tail(index);
+                ++m_size;
+            }
+            else
+            {
+                entry.value = std::move(value);
             }
         }
 
@@ -438,7 +460,7 @@ namespace ZEngine::Core::Containers
         // @note Moves the old entries to avoid copying and skips Deleted entries.
         void rehash(size_type new_capacity)
         {
-            Array<Entry> old_entries = m_entries;
+            Array<Entry> old_entries = std::move(m_entries);
             size_type    old_head    = m_head;
 
             m_entries                = Array<Entry>{};
@@ -458,8 +480,8 @@ namespace ZEngine::Core::Containers
                 size_type old_next = old_entries[cur].next;
                 size_type index    = probe_for_insert(old_entries[cur].key);
                 auto&     entry    = m_entries[index];
-                entry.key          = old_entries[cur].key;
-                entry.value        = old_entries[cur].value;
+                entry.key          = std::move(old_entries[cur].key);
+                entry.value        = std::move(old_entries[cur].value);
                 entry.state        = EntryState::Occupied;
                 link_tail(index);
                 ++m_size;
