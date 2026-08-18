@@ -377,7 +377,7 @@ namespace ZEngine::Importers::AssetCodec
         secure_memcpy(tmp_buf + copy, MAX_FILE_PATH_COUNT - copy, tmp_suffix, sizeof(tmp_suffix));
         Core::VFS::VFSPath tmp_path    = Core::VFS::VFSPath::Parse(tmp_buf).Value();
 
-        auto               open_result = ctx.Open(tmp_path, Core::VFS::VFSOpenFlags::Write);
+        auto               open_result = ctx.Open(tmp_path, Core::VFS::VFSOpenFlags::Write | Core::VFS::VFSOpenFlags::Create | Core::VFS::VFSOpenFlags::Truncate);
         if (open_result.Failed())
             return Core::VFS::VFSResult<void>::Fail(open_result.Error());
 

@@ -11,10 +11,12 @@ namespace ZEngine::Core::VFS
 
     enum class VFSOpenFlags : uint32_t
     {
-        None   = 0,
-        Read   = BIT(0),
-        Write  = BIT(1),
-        Append = BIT(2),
+        None     = 0,
+        Read     = BIT(0),
+        Write    = BIT(1),
+        Append   = BIT(2),
+        Create   = BIT(3), // create file if it does not exist (requires Write)
+        Truncate = BIT(4), // truncate to zero length on open  (requires Write)
     };
 
     inline VFSOpenFlags operator|(VFSOpenFlags a, VFSOpenFlags b)

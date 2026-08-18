@@ -287,6 +287,48 @@ TEST_F(VFSDiskBackendTest, CapabilitiesAndType)
     EXPECT_STREQ(m_backend.BackendType(), "disk");
 }
 
+TEST_F(VFSDiskBackendTest, OpenWithCreateAndTruncate)
+{
+    const VFSPath path = VFSPath::Parse("/atomic.tmp").Value();
+    ASSERT_FALSE(m_backend.Exists(path));
+
+    // Write | Create — creates a non-existent file and writes content.
+    {
+        VFSResult<IVFSFile*> r = m_backend.Open(path, VFSOpenFlags::Write | VFSOpenFlags::Create);
+        ASSERT_TRUE(r.Succeeded());
+        IVFSFile*         file    = r.Value();
+        cstring           payload = "hello create";
+        const size_t      n       = secure_strlen(payload);
+        VFSResult<size_t> wrote   = file->Write(ArrayView<const uint8_t>(reinterpret_cast<const uint8_t*>(payload), n), 0);
+        EXPECT_TRUE(wrote.Succeeded());
+        EXPECT_EQ(wrote.Value(), n);
+        m_backend.Close(file);
+    }
+
+    // Read back and verify content.
+    {
+        VFSResult<IVFSFile*> r = m_backend.Open(path, VFSOpenFlags::Read);
+        ASSERT_TRUE(r.Succeeded());
+        IVFSFile*         file   = r.Value();
+        Array<uint8_t>    buffer = ReadBuffer(64);
+        VFSResult<size_t> read   = file->Read(ArrayView<uint8_t>(buffer.data(), buffer.size()), 0);
+        ASSERT_TRUE(read.Succeeded());
+        EXPECT_TRUE(BytesEqual(buffer.data(), read.Value(), "hello create"));
+        m_backend.Close(file);
+    }
+
+    // Write | Create | Truncate — reopens and clears the existing file.
+    {
+        VFSResult<IVFSFile*> r = m_backend.Open(path, VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Truncate);
+        ASSERT_TRUE(r.Succeeded());
+        IVFSFile*           file = r.Value();
+        VFSResult<uint64_t> sz   = file->Size();
+        ASSERT_TRUE(sz.Succeeded());
+        EXPECT_EQ(sz.Value(), 0u);
+        m_backend.Close(file);
+    }
+}
+
 TEST_F(VFSDiskBackendTest, ReadOnlyBackendRejectsWrite)
 {
     VFSDiskBackend read_only;

@@ -160,7 +160,7 @@ namespace ZEngine::Core::VFS
             Helpers::secure_memcpy(tmp_buf + copy, MAX_FILE_PATH_COUNT - copy, tmp_suffix, suf_len + 1);
         VFSPath tmp_path    = VFSPath::Parse(tmp_buf).Value();
 
-        auto    open_result = ctx.Open(tmp_path, VFSOpenFlags::Write);
+        auto    open_result = ctx.Open(tmp_path, VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Truncate);
         if (open_result.Failed())
             return VFSResult<void>::Fail(open_result.Error());
 

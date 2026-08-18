@@ -549,7 +549,7 @@ namespace Tetragrama::Components
                         auto exists = m_vfs_context->Exists(vfs_res.Value());
                         if (!exists.Succeeded() || !exists.Value())
                         {
-                            auto file_res = m_vfs_context->Open(vfs_res.Value(), VFSOpenFlags::Write);
+                            auto file_res = m_vfs_context->Open(vfs_res.Value(), VFSOpenFlags::Write | VFSOpenFlags::Create);
                             if (file_res.Succeeded())
                             {
                                 m_vfs_context->Close(file_res.Value());
