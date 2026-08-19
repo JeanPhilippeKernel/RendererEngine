@@ -40,13 +40,23 @@ namespace Tetragrama::Components
         bool                        m_add_to_scene       = false; // import was triggered by viewport drag-drop
         char                        m_instance_name[256] = {};
 
+        // Pending Actor creation — set by OnImportFileComplete (background thread),
+        // consumed by TriggerScan (main thread). Avoids calling ECS from a worker.
+        struct PendingActor
+        {
+            uuids::uuid uuid      = {};
+            uint32_t    render_id = UINT32_MAX;
+            char        name[128] = {};
+            bool        valid     = false;
+        } m_pending_actor        = {};
+
         // Import settings (shown in Options state)
-        float                       m_scale              = 1.0f;
-        int                         m_axis_index         = 0; // 0 = Y-Up, 1 = Z-Up
-        bool                        m_gen_normals        = true;
-        bool                        m_merge_vertices     = true;
-        bool                        m_import_materials   = true;
-        bool                        m_import_textures    = true;
+        float m_scale            = 1.0f;
+        int   m_axis_index       = 0; // 0 = Y-Up, 1 = Z-Up
+        bool  m_gen_normals      = true;
+        bool  m_merge_vertices   = true;
+        bool  m_import_materials = true;
+        bool  m_import_textures  = true;
 
         // Compact import log (Importing state — ring buffer)
         struct LogEntry

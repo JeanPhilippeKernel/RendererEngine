@@ -6,6 +6,9 @@
 #include <ZEngine/Core/VFS/Meta/MetaFileData.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
@@ -77,6 +80,33 @@ namespace Tetragrama::Components
 
     void AssetImporterUIComponent::TriggerScan()
     {
+        // Consume any pending Actor creation from the importer background thread.
+        // This runs on the main thread, so ECS operations are safe here.
+        if (m_pending_actor.valid)
+        {
+            auto* app   = ParentLayer ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
+            auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+            auto* ctx   = ZEngine::Engine::GetContext();
+            if (scene && ctx && ctx->ActorManager)
+            {
+                ZEngine::ECS::ActorHandle handle = ctx->ActorManager->Create();
+                ZEngine::ECS::Actor*      actor  = ctx->ActorManager->Access(handle);
+                if (actor)
+                {
+                    using namespace ZEngine::ECS::Components;
+                    NameComponent nc = {};
+                    ZEngine::Helpers::secure_strncpy(nc.Value, sizeof(nc.Value), m_pending_actor.name, ZEngine::Helpers::secure_strlen(m_pending_actor.name));
+                    actor->AddComponent<NameComponent>(nc);
+                    actor->AddComponent<TransformComponent>({});
+                    MeshComponent mc    = {};
+                    mc.MeshUUID         = m_pending_actor.uuid;
+                    mc.RenderInstanceId = m_pending_actor.render_id;
+                    actor->AddComponent<MeshComponent>(mc);
+                }
+            }
+            m_pending_actor = {};
+        }
+
         auto* vfs = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
         if (vfs && ParentLayer)
             ParentLayer->Scanner.Scan(vfs, ZEngine::Core::VFS::VFSPath::Root(), &ParentLayer->Cache);
@@ -213,8 +243,14 @@ namespace Tetragrama::Components
                     auto* scene = app ? reinterpret_cast<Tetragrama::EditorScenePtr>(app->CurrentScene) : nullptr;
                     if (scene)
                     {
-                        cstring iname = self->m_instance_name[0] ? self->m_instance_name : fs::path(self->m_path_buf).filename().replace_extension().string().c_str();
-                        scene->SpawnMeshActor(header.Id, iname);
+                        cstring  iname                  = self->m_instance_name[0] ? self->m_instance_name : fs::path(self->m_path_buf).filename().replace_extension().string().c_str();
+                        // AddMeshInstance is seqlock-protected — safe from this background thread.
+                        // Actor creation (ECS, not thread-safe) is deferred to TriggerScan on the main thread.
+                        uint32_t render_id              = scene->AddMeshInstance(header.Id, iname);
+                        self->m_pending_actor.uuid      = header.Id;
+                        self->m_pending_actor.render_id = render_id;
+                        self->m_pending_actor.valid     = true;
+                        ZEngine::Helpers::secure_strncpy(self->m_pending_actor.name, sizeof(self->m_pending_actor.name), iname, ZEngine::Helpers::secure_strlen(iname));
                     }
                 }
                 self->m_add_to_scene     = false;
