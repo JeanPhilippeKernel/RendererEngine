@@ -15,8 +15,9 @@ namespace ZEngine::ECS
 
     struct SystemDeps
     {
-        ArchetypeMask ReadMask  = 0;
-        ArchetypeMask WriteMask = 0;
+        ArchetypeMask ReadMask     = 0;
+        ArchetypeMask WriteMask    = 0;
+        bool          UsesCommands = false; // true if this system calls any WorldCommands method
     };
 
     class WorldTick
@@ -67,6 +68,10 @@ namespace ZEngine::ECS
         Core::Containers::Array<Core::Containers::Array<uint32_t>> m_waves;
         Core::Containers::Array<uint32_t>                          m_order_edges_from;
         Core::Containers::Array<uint32_t>                          m_order_edges_to;
+        // Per-system staging WorldCommands for parallel waves.
+        // Allocated at Commit() for every system; cleared before each wave,
+        // merged into the caller's buffer after the wave barrier.
+        Core::Containers::Array<WorldCommands>                     m_staging;
         Core::Memory::ArenaAllocator*                              m_arena     = nullptr;
         bool                                                       m_committed = false;
 

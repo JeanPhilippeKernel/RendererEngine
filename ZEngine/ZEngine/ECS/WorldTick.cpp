@@ -184,6 +184,14 @@ namespace ZEngine::ECS
         BuildEdges();
         TopologicalSort();
 
+        // Pre-allocate one staging WorldCommands per system. These are reused
+        // every frame: Clear() resets size to 0 without releasing arena memory,
+        // so pushes stay allocation-free after the first exercised frame.
+        uint32_t n = static_cast<uint32_t>(m_nodes.size());
+        m_staging.init(m_arena, n, n);
+        for (uint32_t i = 0; i < n; ++i)
+            m_staging[i].Initialize(m_arena);
+
         m_committed = true;
     }
 
@@ -195,23 +203,32 @@ namespace ZEngine::ECS
         {
             const Core::Containers::Array<uint32_t>& wave = m_waves[w];
 
-            // Single-system wave: run inline on the calling thread — zero overhead.
+            // Single-system wave: run inline on the calling thread.
+            // Uses the caller's commands buffer directly — zero overhead.
             if (wave.size() == 1)
             {
-                SystemFn fn = m_nodes[wave[0]].Fn;
-                fn(scene, dt, commands);
+                m_nodes[wave[0]].Fn(scene, dt, commands);
                 continue;
             }
 
-            // Multi-system wave: dispatch to thread pool with spin-yield + cv barrier.
+            // Multi-system wave: each system writes to its own staging buffer
+            // so concurrent calls to WorldCommands never touch shared state.
+            // After the wave barrier the main thread merges staging buffers into
+            // the authoritative commands buffer in wave-submission order.
+            for (size_t i = 0; i < wave.size(); ++i)
+                m_staging[wave[i]].Clear();
+
             std::atomic<uint32_t>   remaining{static_cast<uint32_t>(wave.size())};
             std::mutex              mtx;
             std::condition_variable cv;
 
             for (size_t i = 0; i < wave.size(); ++i)
             {
-                SystemFn fn = m_nodes[wave[i]].Fn;
-                ZEngine::Helpers::ThreadPoolHelper::Submit([&scene, dt, &commands, fn, &remaining, &cv]() {
+                uint32_t       node_idx = wave[i];
+                SystemFn       fn       = m_nodes[node_idx].Fn;
+                WorldCommands* staging  = &m_staging[node_idx];
+
+                ZEngine::Helpers::ThreadPoolHelper::Submit([&scene, dt, fn, staging, &remaining, &cv]() {
                     struct Guard
                     {
                         std::atomic<uint32_t>&   r;
@@ -222,11 +239,11 @@ namespace ZEngine::ECS
                                 cv.notify_one();
                         }
                     } guard{remaining, cv};
-                    fn(scene, dt, commands);
+                    fn(scene, dt, *staging);
                 });
             }
 
-            // Phase 1: spin-yield — stays in user space for fast waves
+            // Phase 1: spin-yield — stays in user space for fast waves.
             for (int spin = 0; spin < 100; ++spin)
             {
                 if (remaining.load(std::memory_order_acquire) == 0)
@@ -234,7 +251,7 @@ namespace ZEngine::ECS
                 std::this_thread::yield();
             }
 
-            // Phase 2: cv.wait fallback for slow waves (physics, skinning, etc.)
+            // Phase 2: cv.wait fallback for slow waves.
             if (remaining.load(std::memory_order_acquire) != 0)
             {
                 std::unique_lock<std::mutex> lock(mtx);
@@ -242,6 +259,10 @@ namespace ZEngine::ECS
                 bool                         completed           = cv.wait_for(lock, std::chrono::seconds(kWaveTimeoutSeconds), [&remaining] { return remaining.load(std::memory_order_relaxed) == 0; });
                 ZENGINE_VALIDATE_ASSERT(completed, "WorldTick::Tick: wave timed out — a system has hung or crashed")
             }
+
+            // Merge staging buffers into the authoritative buffer in submission order.
+            for (size_t i = 0; i < wave.size(); ++i)
+                commands.Merge(m_staging[wave[i]]);
         }
     }
 } // namespace ZEngine::ECS

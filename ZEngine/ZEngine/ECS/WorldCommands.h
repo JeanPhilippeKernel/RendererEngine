@@ -71,6 +71,13 @@ namespace ZEngine::ECS
         void Flush(Scene& scene);
         void Clear();
 
+        // Append all commands from src into this buffer.
+        // SpawnCallbackIndex values in src are offset so they remain valid
+        // after the two m_spawn_callbacks arrays are concatenated.
+        // Called by WorldTick after a parallel wave to merge per-system
+        // staging buffers into the authoritative command buffer in order.
+        void Merge(const WorldCommands& src);
+
         bool IsEmpty() const
         {
             return m_commands.empty() && m_spawn_callbacks.empty();
