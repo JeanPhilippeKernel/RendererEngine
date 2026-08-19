@@ -326,12 +326,13 @@ namespace ZEngine::CrashHandlers
         bool        BacktraceFromSignal                 = false;
     };
 
-    static constexpr size_t   kAltStackSize = 32 * 1024;
-    static struct sigaction   s_previous_actions[NSIG] = {};
-    static char               s_alt_stack_mem[kAltStackSize];
-    static int                s_crash_pipe[2] = {-1, -1};
-    static WorkerThreadParams s_crash_params  = {};
-    static pthread_t          s_worker_thread;
+    static constexpr size_t        kAltStackSize       = 32 * 1024;
+    static struct sigaction        s_previous_actions[NSIG] = {};
+    static char                    s_alt_stack_mem[kAltStackSize];
+    static int                     s_crash_pipe[2]     = {-1, -1};
+    static WorkerThreadParams      s_crash_params      = {};
+    static pthread_t               s_worker_thread;
+    static std::atomic<bool>       s_in_crash_handler  = {false};
 
     static const char* SignalToString(int sig)
     {
@@ -603,22 +604,31 @@ namespace ZEngine::CrashHandlers
 
     static void SignalHandler(int sig, siginfo_t* /*info*/, void* ctx)
     {
-        s_crash_params.SignalNumber      = sig;
-        snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", SignalToString(sig));
-
-        s_crash_params.BacktraceSize       = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
-        s_crash_params.BacktraceFromSignal = true;
-
-        if (ctx)
+        s_crash_params.SignalNumber = sig;
+        // Only overwrite SignalOrException when OnCrash is NOT already running.
+        // If OnCrash set s_in_crash_handler=true first (and already set the message),
+        // a secondary signal (e.g. SIGSEGV from backtrace()) must not clobber it.
+        // If OnCrash() is already running (s_in_crash_handler=true), a secondary signal
+        // (e.g. SIGSEGV from backtrace()) must not overwrite the crash params OnCrash
+        // already set. Still write to the pipe so the worker wakes up.
+        if (!s_in_crash_handler.load(std::memory_order_acquire))
         {
-            auto* uc = static_cast<ucontext_t*>(ctx);
+            snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", SignalToString(sig));
+
+            s_crash_params.BacktraceSize       = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
+            s_crash_params.BacktraceFromSignal = true;
+
+            if (ctx)
+            {
+                auto* uc = static_cast<ucontext_t*>(ctx);
 #if defined(__x86_64__)
-            if (s_crash_params.BacktraceSize > 0)
-                s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext->__ss.__rip);
+                if (s_crash_params.BacktraceSize > 0)
+                    s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext->__ss.__rip);
 #elif defined(__aarch64__)
-            if (s_crash_params.BacktraceSize > 0)
-                s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext->__ss.__pc);
+                if (s_crash_params.BacktraceSize > 0)
+                    s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext->__ss.__pc);
 #endif
+            }
         }
 
         uint8_t byte = 1;
@@ -704,19 +714,18 @@ namespace ZEngine::CrashHandlers
 
     [[noreturn]] void CrashHandler::OnCrash(cstring signal_or_exception, void* /*ctx*/)
     {
-        static std::atomic<bool> s_in_crash_handler{false};
         if (s_in_crash_handler.exchange(true, std::memory_order_acq_rel))
         {
             fputs("[CrashHandler] FATAL: crash handler reentered. Aborting.\n", stderr);
             _exit(EXIT_FAILURE);
         }
 
-        // Capture the call-site stack here, on the calling thread, before waking
-        // the worker.  BacktraceFromSignal stays false so the worker skips its own
-        // (meaningless) backtrace and uses these addresses instead.
-        s_crash_params.BacktraceSize = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
-
+        // Set the message BEFORE backtrace(): in Release builds backtrace() can trigger
+        // SIGSEGV (missing frame pointers). If it does, the signal handler guard above
+        // ensures SignalOrException is not overwritten, so the original message survives.
         snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", signal_or_exception ? signal_or_exception : "");
+
+        s_crash_params.BacktraceSize = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
         uint8_t byte = 1;
         write(s_crash_pipe[1], &byte, 1);
         // Pump the main run loop so the dispatch_sync block posted by the
