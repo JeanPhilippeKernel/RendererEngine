@@ -1,6 +1,7 @@
 #pragma once
 #include <Tetragrama/Components/UIComponent.h>
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/String.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/AssimpImporter.h>
@@ -24,6 +25,7 @@ namespace Tetragrama::Components
         ~AssetImporterUIComponent() override                      = default;
 
         ZEngine::Core::Memory::ArenaAllocator LocalArena          = {};
+        ZEngine::Core::Memory::ArenaAllocator LocalStringArena    = {};
         ZEngine::Core::Memory::ArenaAllocator GltfImporterArena   = {}; // 64 MB scratch for GltfImporter
         ZEngine::Core::Memory::ArenaAllocator AssimpImporterArena = {}; // 350 MB scratch for AssimpImporter
 
@@ -32,13 +34,13 @@ namespace Tetragrama::Components
         virtual void                          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
     private:
-        PaddedAtomic<ImporterState> m_state{}; // default = Idle (0)
-        PaddedAtomic<float>         m_progress{};
+        PaddedAtomic<ImporterState>       m_state{}; // default = Idle (0)
+        PaddedAtomic<float>               m_progress{};
 
         // Selected file
-        char                        m_path_buf[1024]     = {};
-        bool                        m_add_to_scene       = false; // import was triggered by viewport drag-drop
-        char                        m_instance_name[256] = {};
+        ZEngine::Core::Containers::String m_path_buf           = {};
+        bool                              m_add_to_scene       = false; // import was triggered by viewport drag-drop
+        char                              m_instance_name[256] = {};
 
         // Pending Actor creation — set by OnImportFileComplete (background thread),
         // consumed by TriggerScan (main thread). Avoids calling ECS from a worker.

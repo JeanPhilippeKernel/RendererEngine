@@ -30,6 +30,7 @@ namespace Tetragrama::Components
         UIComponent::Initialize(parent, name, visibility, closed);
 
         parent->LocalArena.CreateSubArena(ZMega(2), &LocalArena);
+        parent->LocalArena.CreateSubArena(ZMega(2), &LocalStringArena);
 
         // Each importer gets its own dedicated scratch arena sized to its budget.
         parent->Arena->CreateSubArena(ZMega(64), &GltfImporterArena);
@@ -39,6 +40,8 @@ namespace Tetragrama::Components
         m_assimp_importer = ZPushStructCtor(parent->Arena, ZEngine::Importers::AssimpImporter);
         m_gltf_importer->Initialize(&GltfImporterArena);
         m_assimp_importer->Initialize(&AssimpImporterArena);
+
+        m_path_buf.init(&LocalStringArena, 1024);
     }
 
     void AssetImporterUIComponent::Update(ZEngine::Core::TimeStep /*dt*/) {}
@@ -122,7 +125,8 @@ namespace Tetragrama::Components
             std::string                   picked  = co_await window->OpenFileDialogAsync(filters);
             if (!picked.empty())
             {
-                secure_strncpy(m_path_buf, sizeof(m_path_buf), picked.c_str(), picked.size());
+                m_path_buf.clear();
+                m_path_buf.append(picked.c_str());
                 m_state.value.store(ImporterState::Options);
             }
         });
@@ -141,9 +145,15 @@ namespace Tetragrama::Components
 
         // Build ImportConfiguration from project settings
         const auto&            cfg        = *app->Configuration;
-        auto                   asset_name = fs::path(m_path_buf).filename().replace_extension().string();
-        auto                   asset_file = asset_name + ".zemesh";
-        auto                   parent_dir = fs::path(m_path_buf).parent_path().string();
+        auto                   vfs_result = VFSPath::Parse(m_path_buf.c_str());
+        if (vfs_result.Failed())
+        {
+            return;
+        }
+        auto& vfs_value  = vfs_result.Value();
+        auto  asset_name = vfs_value.Stem();
+        auto  asset_file = asset_name + ".zemesh";
+        auto  parent_dir = vfs_value.Parent();
 
         // Use the arena-local config (arena will be cleared after import)
         LocalArena.Clear();
@@ -152,35 +162,28 @@ namespace Tetragrama::Components
         config->OutputTextureFilesPath.init(&LocalArena, cfg.TexturePath.c_str());
         config->OutputAssetsPath.init(&LocalArena, cfg.MeshPath.c_str());
         config->OutputMaterialPath.init(&LocalArena, cfg.MaterialPath.c_str());
-        config->AssetName.init(&LocalArena, asset_name.c_str());
+        config->AssetName.init(&LocalArena, asset_name.Data);
         config->OutputAssetFile.init(&LocalArena, asset_file.c_str());
-        config->InputBaseAssetFilePath.init(&LocalArena, parent_dir.c_str());
+        config->InputBaseAssetFilePath.init(&LocalArena, parent_dir.CStr());
 
         char msg[512];
-        snprintf(msg, sizeof(msg), "Importing %s", fs::path(m_path_buf).filename().string().c_str());
+        snprintf(msg, sizeof(msg), "Importing %s", vfs_value.Filename().Data);
         PushLog(msg, kWhite);
 
         m_state.value.store(ImporterState::Importing);
         m_progress.value.store(0.0f);
 
         // Route by extension to the appropriate importer
-        auto ext = fs::path(m_path_buf).extension().string();
-        // Normalize: remove leading dot, lowercase
-        if (!ext.empty() && ext[0] == '.')
-            ext = ext.substr(1);
-        for (auto& c : ext)
-            c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+        auto ext      = vfs_value.Extension();
+        auto cfg_copy = *config;
 
-        std::string src_path = m_path_buf;
-        auto        cfg_copy = *config;
-
-        if (ext == "glb" || ext == "gltf")
+        if (secure_strcmp(ext.Data, ".glb") || secure_strcmp(ext.Data, ".gltf"))
         {
-            ZEngine::Helpers::ThreadPoolHelper::Submit([this, src = src_path, cfg_copy, arena = &LocalArena, app]() mutable { m_gltf_importer->ImportFile(src.c_str(), cfg_copy, arena, this, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog); });
+            ZEngine::Helpers::ThreadPoolHelper::Submit([this, src = m_path_buf, cfg_copy, arena = &LocalArena, app]() mutable { m_gltf_importer->ImportFile(src.c_str(), cfg_copy, arena, this, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog); });
         }
         else
         {
-            ZEngine::Helpers::ThreadPoolHelper::Submit([this, src = src_path, cfg_copy, arena = &LocalArena, app]() mutable { m_assimp_importer->ImportFile(src.c_str(), cfg_copy, arena, this, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog); });
+            ZEngine::Helpers::ThreadPoolHelper::Submit([this, src = m_path_buf, cfg_copy, arena = &LocalArena, app]() mutable { m_assimp_importer->ImportFile(src.c_str(), cfg_copy, arena, this, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog); });
         }
     }
 
@@ -224,7 +227,7 @@ namespace Tetragrama::Components
                         ZEngine::Core::VFS::MetaFileData meta        = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
 
                         // Store source path, artifact path, importer
-                        ZEngine::Helpers::secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
+                        ZEngine::Helpers::secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf.c_str(), sizeof(meta.SourcePath) - 1);
                         ZEngine::Helpers::secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mesh_path, sizeof(meta.ArtifactPath) - 1);
                         ZEngine::Helpers::secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
 
