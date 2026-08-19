@@ -126,48 +126,46 @@ namespace Tetragrama::Components
         };
 
         // ── XYZ property row helper ────────────────────────────────────────────
+        // UE-style: three equal drag fields with a colored 3px left border per axis.
+        // No separate axis text — the border color IS the axis indicator.
         auto XYZRow = [](const char* label, Vec3f& v, Vec3f reset_vals, float speed, auto onChange) {
-            // Label cell — use TextDisabled so it reads well in any theme
             ImGui::TableSetColumnIndex(0);
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             ImGui::TextUnformatted(label);
             ImGui::PopStyleColor();
 
-            // Value cell: X Y Z + reset
             ImGui::TableSetColumnIndex(1);
             ImGui::PushID(label);
 
-            float avail   = ImGui::GetContentRegionAvail().x - 22.f; // 22 = reset btn
-            float fw      = (avail - 6.f * 2.f) / 3.f;               // 6 = gap between fields
+            const float kGap      = 4.f;
+            const float kReset    = 18.f;
+            float       avail     = ImGui::GetContentRegionAvail().x - kReset - kGap;
+            float       fw        = (avail - kGap * 2.f) / 3.f;
 
-            bool  changed = false;
-            struct Axis
-            {
-                const char* lbl;
-                const char* id;
-                ImU32       col;
-                float*      val;
+            ImU32       border[3] = {
+                IM_COL32(215, 90, 80, 255),   // X red
+                IM_COL32(100, 200, 110, 255), // Y green
+                IM_COL32(90, 140, 230, 255),  // Z blue
             };
-            Axis axes[3] = {
-                {"X", "##ax0", IM_COL32(215,  90,  80, 255), &v.x},
-                {"Y", "##ax1", IM_COL32(100, 200, 110, 255), &v.y},
-                {"Z", "##ax2",  IM_COL32(90, 140, 230, 255), &v.z},
-            };
+            const char* ids[3]  = {"##ax0", "##ax1", "##ax2"};
+            float*      vals[3] = {&v.x, &v.y, &v.z};
+            ImDrawList* dl      = ImGui::GetWindowDrawList();
 
+            bool        changed = false;
             for (int i = 0; i < 3; ++i)
             {
                 if (i > 0)
-                    ImGui::SameLine(0.f, 6.f);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(((axes[i].col >> 0) & 0xFF) / 255.f, ((axes[i].col >> 8) & 0xFF) / 255.f, ((axes[i].col >> 16) & 0xFF) / 255.f, 1.f));
-                ImGui::TextUnformatted(axes[i].lbl);
-                ImGui::PopStyleColor();
-                ImGui::SameLine(0.f, 2.f);
-                ImGui::SetNextItemWidth(fw - ImGui::CalcTextSize(axes[i].lbl).x - 2.f);
-                changed |= ImGui::DragFloat(axes[i].id, axes[i].val, speed, 0.f, 0.f, "%.3f");
+                    ImGui::SameLine(0.f, kGap);
+                ImGui::SetNextItemWidth(fw);
+                changed   |= ImGui::DragFloat(ids[i], vals[i], speed, 0.f, 0.f, "%.3f");
+                // Colored left-border stripe overlay (drawn on top of the field)
+                ImVec2 p0  = ImGui::GetItemRectMin();
+                ImVec2 p1  = {p0.x + 3.f, ImGui::GetItemRectMax().y};
+                dl->AddRectFilled(p0, p1, border[i]);
             }
 
-            // Reset button — transparent, uses theme text/hover colors
-            ImGui::SameLine(0.f, 6.f);
+            // Reset button
+            ImGui::SameLine(0.f, kGap);
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 0.f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
@@ -191,7 +189,7 @@ namespace Tetragrama::Components
         if (tc)
         {
             static bool s_transform_open = true;
-            if (SectionHeader("transform_hdr", "TRANSFORM", &s_transform_open))
+            if (SectionHeader("transform_hdr", "Transform", &s_transform_open))
             {
                 if (ImGui::BeginTable("##transform_tbl", 2, kTableFlags))
                 {
@@ -224,7 +222,7 @@ namespace Tetragrama::Components
         if (mc)
         {
             static bool s_mesh_open = true;
-            if (SectionHeader("mesh_hdr", "MESH", &s_mesh_open))
+            if (SectionHeader("mesh_hdr", "Mesh", &s_mesh_open))
             {
                 if (ImGui::BeginTable("##mesh_tbl", 2, kTableFlags))
                 {
