@@ -80,6 +80,27 @@ namespace ZEngine::ECS
         Clear();
     }
 
+    void WorldCommands::Merge(const WorldCommands& src)
+    {
+        if (src.IsEmpty())
+            return;
+
+        // Callbacks from src are appended after our existing ones, so indices
+        // in src's SpawnEntity commands must be shifted by the current count.
+        int32_t callback_offset = static_cast<int32_t>(m_spawn_callbacks.size());
+
+        for (size_t i = 0; i < src.m_spawn_callbacks.size(); ++i)
+            m_spawn_callbacks.push(src.m_spawn_callbacks[i]);
+
+        for (size_t i = 0; i < src.m_commands.size(); ++i)
+        {
+            Command cmd = src.m_commands[i];
+            if (cmd.Kind == CommandKind::SpawnEntity && cmd.SpawnCallbackIndex >= 0)
+                cmd.SpawnCallbackIndex += callback_offset;
+            m_commands.push(cmd);
+        }
+    }
+
     void WorldCommands::Clear()
     {
         // Reset size to 0; arena memory is not reclaimed (reused next frame)

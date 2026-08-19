@@ -155,3 +155,57 @@ TEST_F(SchedulerFixture, ThreeSystemChainProducesThreeWaves)
     EXPECT_EQ(m_tick.WaveCount(), 3u);
     m_tick.Tick(m_scene, 0.016f, m_commands);
 }
+
+// Test 6 — Two parallel systems both calling SpawnEntity produce two valid
+// entities with no corruption. This is the core regression test for the
+// staging-buffer fix: without it, concurrent push() calls on the shared
+// WorldCommands would race and lose one or both spawns.
+TEST_F(SchedulerFixture, ParallelSystemsBothSpawn_BothEntitiesCreated)
+{
+    static std::atomic<int> s_spawn_count{0};
+
+    auto                    SpawnerA = [](Scene&, float, WorldCommands& cmds) { cmds.SpawnEntity({nullptr, [](void*, EntityID) { s_spawn_count.fetch_add(1, std::memory_order_relaxed); }}); };
+    auto                    SpawnerB = [](Scene&, float, WorldCommands& cmds) { cmds.SpawnEntity({nullptr, [](void*, EntityID) { s_spawn_count.fetch_add(1, std::memory_order_relaxed); }}); };
+
+    // Disjoint masks → same wave (no conflict, no OrderBefore required).
+    m_tick.RegisterSystem(SpawnerA, {.UsesCommands = true});
+    m_tick.RegisterSystem(SpawnerB, {.UsesCommands = true});
+    m_tick.Commit();
+
+    EXPECT_EQ(m_tick.WaveCount(), 1u);
+
+    s_spawn_count.store(0);
+    m_tick.Tick(m_scene, 0.016f, m_commands);
+    m_commands.Flush(m_scene);
+
+    EXPECT_EQ(s_spawn_count.load(), 2) << "both spawn callbacks must fire";
+    EXPECT_EQ(m_scene.AliveCount(), 2u) << "both entities must be created";
+}
+
+// Test 7 — SpawnCallbackIndex is correctly remapped when staging buffers are
+// merged. Each spawner attaches a distinct callback; verify the correct callback
+// fires for the correct entity (index fixup correctness).
+TEST_F(SchedulerFixture, ParallelSpawnCallbacks_IndicesRemappedCorrectly)
+{
+    static EntityID s_from_a = INVALID_ENTITY;
+    static EntityID s_from_b = INVALID_ENTITY;
+
+    auto            SpawnerA = [](Scene&, float, WorldCommands& cmds) { cmds.SpawnEntity({&s_from_a, [](void* ctx, EntityID id) { *static_cast<EntityID*>(ctx) = id; }}); };
+    auto            SpawnerB = [](Scene&, float, WorldCommands& cmds) { cmds.SpawnEntity({&s_from_b, [](void* ctx, EntityID id) { *static_cast<EntityID*>(ctx) = id; }}); };
+
+    m_tick.RegisterSystem(SpawnerA, {.UsesCommands = true});
+    m_tick.RegisterSystem(SpawnerB, {.UsesCommands = true});
+    m_tick.Commit();
+
+    s_from_a = INVALID_ENTITY;
+    s_from_b = INVALID_ENTITY;
+
+    m_tick.Tick(m_scene, 0.016f, m_commands);
+    m_commands.Flush(m_scene);
+
+    EXPECT_TRUE(s_from_a.IsValid()) << "SpawnerA callback must have fired";
+    EXPECT_TRUE(s_from_b.IsValid()) << "SpawnerB callback must have fired";
+    EXPECT_NE(s_from_a, s_from_b) << "each spawn must produce a distinct entity";
+    EXPECT_TRUE(m_scene.IsAlive(s_from_a));
+    EXPECT_TRUE(m_scene.IsAlive(s_from_b));
+}
