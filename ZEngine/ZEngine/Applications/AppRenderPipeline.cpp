@@ -21,6 +21,9 @@ namespace ZEngine::Applications
         SceneRenderer->Initialize(Device);
         ImguiRenderer->Initialize(Device);
 
+        Device->SwapchainPtr->OnSwapchainResized    = [](uint32_t w, uint32_t h, void* ctx) { static_cast<AppRenderPipeline*>(ctx)->ResizeRenderTarget(w, h); };
+        Device->SwapchainPtr->OnSwapchainResizedCtx = this;
+
         for (size_t i = 0; i < MaxMailBoxBufferCount; ++i)
         {
             RenderPayloads[i].UIOverlay.IndexedCmds.resize(100);
@@ -44,13 +47,12 @@ namespace ZEngine::Applications
         }
     }
 
-    void AppRenderPipeline::BeginFrame()
+    bool AppRenderPipeline::BeginFrame()
     {
         auto swapchain = Device->SwapchainPtr;
 
         swapchain->AcquireNextImage(CurrentMailBoxBufferHead);
 
-        // RRM::BeginFrame AFTER AcquireNextImage so CurrentFrame->Index is valid.
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
 
@@ -68,6 +70,8 @@ namespace ZEngine::Applications
         vkResetCommandBuffer(CurrentCmdBuf->GetHandle(), 0);
         CurrentCmdBuf->ResetState();
         CurrentCmdBuf->Begin();
+
+        return swapchain->IsFrameValid();
     }
 
     void AppRenderPipeline::EndFrame()

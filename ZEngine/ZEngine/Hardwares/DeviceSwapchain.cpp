@@ -1,4 +1,4 @@
-#include <GLFW/glfw3.h>
+
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
@@ -72,11 +72,20 @@ namespace ZEngine::Hardwares
         }
         else
         {
-            // Wayland does not provide a concrete extent — query the framebuffer size directly.
-            int w = 0, h = 0;
-            glfwGetFramebufferSize(reinterpret_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow()), &w, &h);
-            SwapchainImageWidth  = static_cast<uint32_t>(w);
-            SwapchainImageHeight = static_cast<uint32_t>(h);
+            // Surface does not report a concrete extent (Wayland, headless) — ask the window.
+            SwapchainImageWidth  = Device->CurrentWindow->GetWidth();
+            SwapchainImageHeight = Device->CurrentWindow->GetHeight();
+        }
+
+        // {0,0} extent is a spec violation; destroy stale swapchain and retry next frame.
+        if (SwapchainImageWidth == 0 || SwapchainImageHeight == 0)
+        {
+            if (SwapchainHandle != VK_NULL_HANDLE)
+            {
+                vkDestroySwapchainKHR(Device->LogicalDevice, SwapchainHandle, nullptr);
+                SwapchainHandle = VK_NULL_HANDLE;
+            }
+            return;
         }
 
         VkSwapchainKHR           old_swapchain         = (SwapchainHandle != VK_NULL_HANDLE) ? SwapchainHandle : VK_NULL_HANDLE;
@@ -209,28 +218,14 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::AcquireNextImage(uint32_t frame_context_idx)
     {
-        if (HasRecreationPending)
+        if (Recreation != RecreationState::None)
         {
-            /*
-             * On macOS:
-             * Because of ASYNCHRONOUS communication between MoltenVK and Metal:
-             * 1. vkDeviceWaitIdle() only guarantees Vulkan sees GPU idle
-             * 2. Metal's CAMetalLayer may still have pending present operations
-             * 3. Semaphores can appear "stuck" in Submitted state due to Metal async completion
-             *
-             * Pool of BufferredFrameCount * 4 = 12 contexts rotates every resize.
-             * Skipping 3 ensures we land on fully Idle semaphores/fences even under Metal async.
-             *
-             */
-#ifdef __APPLE__
-            vkDeviceWaitIdle(Device->LogicalDevice);
-#endif
+            // ImageInFlights covers submit_1 (render), PresentCompletes covers submit_2
+            // (present bridge). Together they drain the full in-flight GPU pipeline.
             for (uint32_t i = 0; i < ImageInFlights.size(); ++i)
             {
                 if (ImageInFlights[i] != nullptr)
-                {
                     ImageInFlights[i]->Wait(UINT64_MAX);
-                }
             }
 
             for (uint32_t i = 0; i < PresentCompletes.size(); ++i)
@@ -244,8 +239,7 @@ namespace ZEngine::Hardwares
 
             for (int i = 0; i < FrameContextPoolSizeFactor; ++i)
             {
-                FrameContext& frame = FrameContexts[i + FrameContextOffset];
-                frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
+                FrameContexts[i + FrameContextOffset].Acquired->SetState(Primitives::SemaphoreState::Idle);
             }
 
             if (Device->RRM)
@@ -257,39 +251,52 @@ namespace ZEngine::Hardwares
 
             uint64_t timeline_value = 0;
             vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &timeline_value);
-
-            // After vkDeviceWaitIdle the GPU timeline may be behind RenderTimelineNextValue
-            // if a submit was cancelled (e.g. slot-exhaustion return). Clamp forward so
-            // the swapchain reset starts from the GPU's actual position.
             ZENGINE_VALIDATE_ASSERT(timeline_value < UINT64_MAX, "Render Timeline value is corrupted, this should never happen.")
             if (timeline_value < RenderTimelineNextValue)
-            {
-                ZENGINE_CORE_WARN("DeviceSwapchain: timeline_value ({}) < RenderTimelineNextValue ({}), clamping", timeline_value, RenderTimelineNextValue)
-            }
+                ZENGINE_CORE_WARN("DeviceSwapchain: timeline clamped {} -> {}", RenderTimelineNextValue, timeline_value)
             RenderTimelineNextValue = timeline_value;
 
             FrameContextOffset      = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
-            // CurrentFrame            = nullptr;
 
             Clear();
-            Create();
+            Create(); // may leave SwapchainHandle == VK_NULL_HANDLE on zero-size surface
 
-            HasRecreationPending = false;
-            ZENGINE_CORE_WARN("Swapchain has been re-created")
+            if (SwapchainHandle == VK_NULL_HANDLE)
+            {
+                // Zero-size surface — retry next frame.
+                Recreation            = RecreationState::Pending;
+                FrameContext& aborted = FrameContexts[frame_context_idx + FrameContextOffset];
+                aborted.ImageIndex    = std::numeric_limits<uint32_t>::max();
+                CurrentFrame          = &aborted;
+                return;
+            }
+
+            Recreation = RecreationState::None;
+            ZENGINE_CORE_WARN("Swapchain recreated: {}x{}", SwapchainImageWidth, SwapchainImageHeight)
+
+            if (OnSwapchainResized)
+                OnSwapchainResized(SwapchainImageWidth, SwapchainImageHeight, OnSwapchainResizedCtx);
         }
 
         FrameContext& frame = FrameContexts[frame_context_idx + FrameContextOffset];
         if (frame.Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
-        {
             frame.Fence->Wait(UINT64_MAX);
-        }
         frame.Fence->Reset();
-        frame.Acquired->SetState(Rendering::Primitives::SemaphoreState::Idle);
+        frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
 
         uint32_t image_idx            = 0;
-        VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, UINT64_MAX, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &(image_idx));
+        VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, UINT64_MAX, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &image_idx);
         frame.Acquired->SetState(Primitives::SemaphoreState::Submitted);
         Device->TickMemory();
+
+        if (acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            // Semaphore not signalled (spec) — image_idx invalid, skip all GPU work.
+            frame.ImageIndex = std::numeric_limits<uint32_t>::max();
+            CurrentFrame     = &frame;
+            Recreation       = RecreationState::FrameAborted;
+            return;
+        }
 
         if (PresentCompletes[image_idx]->GetState() == Rendering::Primitives::FenceState::Submitted)
         {
@@ -297,30 +304,22 @@ namespace ZEngine::Hardwares
             PresentCompletes[image_idx]->Reset();
         }
 
-        if (ImageInFlights[image_idx] != nullptr)
-        {
-            if (!(ImageInFlights[image_idx])->IsSignaled())
-            {
-                ImageInFlights[image_idx]->Wait(UINT64_MAX);
-            }
-        }
+        if (ImageInFlights[image_idx] != nullptr && !ImageInFlights[image_idx]->IsSignaled())
+            ImageInFlights[image_idx]->Wait(UINT64_MAX);
+
         RenderCompletes[image_idx]->SetState(Rendering::Primitives::SemaphoreState::Idle);
 
         ImageInFlights[image_idx] = frame.Fence;
         frame.ImageIndex          = image_idx;
         CurrentFrame              = &frame;
-
-        if (acquire_image_result == VK_SUBOPTIMAL_KHR || acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            ImageInFlights[frame.ImageIndex] = nullptr;
-            HasRecreationPending             = true;
-        }
+        // SUBOPTIMAL: image is valid; Present() schedules recreation after vkQueuePresentKHR.
     }
 
     void DeviceSwapchain::Present()
     {
-        if (HasRecreationPending)
+        if (Recreation == RecreationState::FrameAborted)
         {
+            // OOD at acquire: semaphore not signalled, no GPU work submitted.
             IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
             Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
             return;
@@ -397,9 +396,6 @@ namespace ZEngine::Hardwares
         auto render_complete  = RenderCompletes[CurrentFrame->ImageIndex];
         auto present_complete = PresentCompletes[CurrentFrame->ImageIndex];
 
-        // On MoltenVK/macOS, Metal's async completion model can leave binary semaphores
-        // in Submitted state longer than strict Vulkan semantics; vkDeviceWaitIdle at
-        // swapchain recreation ensures GPU work is retired, so we tolerate this here.
         if (render_complete->GetState() == Rendering::Primitives::SemaphoreState::Submitted)
             render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);
         if (CurrentFrame->Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
@@ -560,15 +556,29 @@ namespace ZEngine::Hardwares
 
         IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
 
-        if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
+        if (present_result == VK_ERROR_OUT_OF_DATE_KHR)
         {
-            HasRecreationPending = true;
-            if (present_result == VK_ERROR_OUT_OF_DATE_KHR)
-            {
-                return;
-            }
+            // render_complete was not consumed by present (spec). Drain it before reuse.
+            VkPipelineStageFlags drain_stage  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+            VkSemaphore          drain_wait[] = {render_complete->GetHandle()};
+            VkSubmitInfo         drain        = {
+                .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .waitSemaphoreCount   = 1,
+                .pWaitSemaphores      = drain_wait,
+                .pWaitDstStageMask    = &drain_stage,
+                .commandBufferCount   = 0,
+                .signalSemaphoreCount = 0,
+            };
+            vkQueueSubmit(queue.Handle, 1, &drain, VK_NULL_HANDLE);
+            render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);
+
+            Recreation = RecreationState::Pending;
+            return;
         }
 
-        ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS || present_result == VK_SUBOPTIMAL_KHR, "Failed to present current frame on Window")
+        if (present_result == VK_SUBOPTIMAL_KHR)
+        {
+            Recreation = RecreationState::Pending;
+        }
     }
 } // namespace ZEngine::Hardwares

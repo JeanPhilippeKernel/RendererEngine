@@ -337,11 +337,12 @@ namespace ZEngine
                 r_payload.ResizeRenderTarget.value.store(false, std::memory_order_release);
             }
 
-            pipeline->BeginFrame();
-            pipeline->RenderScene(r_payload.Camera, r_payload.Scene);
-            if (r_payload.RenderUIOverlay.value.load(std::memory_order_acquire))
+            const bool frame_valid = pipeline->BeginFrame();
+            if (frame_valid)
             {
-                pipeline->RenderOverlay(r_payload.UIOverlay);
+                pipeline->RenderScene(r_payload.Camera, r_payload.Scene);
+                if (r_payload.RenderUIOverlay.value.load(std::memory_order_acquire))
+                    pipeline->RenderOverlay(r_payload.UIOverlay);
             }
             pipeline->EndFrame();
 

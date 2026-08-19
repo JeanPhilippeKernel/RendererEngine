@@ -12,6 +12,19 @@ namespace ZEngine::Hardwares
 {
     struct VulkanDevice;
 
+    // None: normal. Pending: recreate at start of next AcquireNextImage (set by
+    // SUBOPTIMAL/OOD at present or zero-size surface). FrameAborted: OOD at acquire —
+    // semaphore not signalled, no GPU work submitted, BeginFrame returns false.
+    enum class RecreationState : uint8_t
+    {
+        None         = 0,
+        Pending      = 1,
+        FrameAborted = 2,
+    };
+
+    // Called synchronously after recreation so render targets resize in the same frame.
+    using SwapchainResizedFn = void (*)(uint32_t width, uint32_t height, void* ctx);
+
     struct FrameContext
     {
         uint32_t                          Index      = std::numeric_limits<uint32_t>::max();
@@ -25,7 +38,9 @@ namespace ZEngine::Hardwares
     {
         Core::Memory::ArenaAllocator                               Arena                          = {};
         VulkanDevice*                                              Device                         = nullptr;
-        bool                                                       HasRecreationPending           = false;
+        RecreationState                                            Recreation                     = RecreationState::None;
+        SwapchainResizedFn                                         OnSwapchainResized             = nullptr;
+        void*                                                      OnSwapchainResizedCtx          = nullptr;
         uint32_t                                                   BufferredFrameCount            = 0;
         uint32_t                                                   SwapchainImageCount            = 3;
         uint32_t                                                   PreviousSwapchainImageCount    = 3;
@@ -50,13 +65,30 @@ namespace ZEngine::Hardwares
         Core::Containers::Array<Rendering::Primitives::Fence*>     PresentCompletes               = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes                = {};
 
-        void                                                       Initialize(VulkanDevice* const device, uint32_t buffered_frame_size);
-        void                                                       Create();
-        void                                                       Clear();
-        void                                                       Dispose();
+        // Returns false when the frame was aborted (OUT_OF_DATE at acquire or
+        // zero-size surface). Callers must skip all rendering work for that frame.
+        bool                                                       IsFrameValid() const
+        {
+            return Recreation != RecreationState::FrameAborted && CurrentFrame != nullptr && CurrentFrame->ImageIndex != std::numeric_limits<uint32_t>::max();
+        }
 
-        void                                                       AcquireNextImage(uint32_t frame_context_idx);
-        void                                                       Present();
+        void Initialize(VulkanDevice* const device, uint32_t buffered_frame_size);
+        void Create();
+        void Clear();
+        void Dispose();
+
+        void AcquireNextImage(uint32_t frame_context_idx);
+        void Present();
+
+#if !defined(NDEBUG)
+        // Test-only: inject a recreation state without going through the Vulkan
+        // SUBOPTIMAL/OOD detection path. Used by SwapchainResizeTest to exercise
+        // the recreation state machine in isolation.
+        void ForceRecreation(RecreationState state)
+        {
+            Recreation = state;
+        }
+#endif
     };
     ZDEFINE_PTR(DeviceSwapchain);
 } // namespace ZEngine::Hardwares
