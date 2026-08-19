@@ -169,12 +169,13 @@ TEST_F(CrashHandlerDeathTest, OnCrashLogContainsAppMetadata)
         "");
 
     std::string log = FindLatestLog();
-    ASSERT_FALSE(log.empty());
+    ASSERT_FALSE(log.empty()) << "No log file found in " << kTestLogDir;
     std::string body = ReadFile(log);
+    ASSERT_FALSE(body.empty()) << "Log file is empty: " << log;
 
-    EXPECT_NE(body.find("ZEngineTest"), std::string::npos) << "App name missing from log";
-    EXPECT_NE(body.find("0.0.1-test"), std::string::npos) << "Version missing from log";
-    EXPECT_NE(body.find("metadata check"), std::string::npos) << "Reason missing from log";
+    EXPECT_NE(body.find("ZEngineTest"), std::string::npos) << "App name missing\n--- log ---\n" << body.substr(0, 1024) << "\n---";
+    EXPECT_NE(body.find("0.0.1-test"), std::string::npos) << "Version missing\n--- log ---\n" << body.substr(0, 1024) << "\n---";
+    EXPECT_NE(body.find("metadata check"), std::string::npos) << "Reason missing\n--- log ---\n" << body.substr(0, 1024) << "\n---";
 }
 
 TEST_F(CrashHandlerDeathTest, OnCrashLogContainsStackTrace)
@@ -213,10 +214,13 @@ TEST_F(CrashHandlerDeathTest, OnAssertionFailureWritesFileAndLine)
         },
         "");
 
-    std::string body = ReadFile(FindLatestLog());
-    EXPECT_NE(body.find("assertion_test.cpp"), std::string::npos) << "File name missing";
-    EXPECT_NE(body.find("42"), std::string::npos) << "Line number missing";
-    EXPECT_NE(body.find("x > 0"), std::string::npos) << "Condition missing";
+    std::string log  = FindLatestLog();
+    std::string body = ReadFile(log);
+    ASSERT_FALSE(body.empty()) << "Log file is empty: " << log;
+
+    EXPECT_NE(body.find("assertion_test.cpp"), std::string::npos) << "File name missing\n--- log ---\n" << body.substr(0, 1024) << "\n---";
+    EXPECT_NE(body.find("42"), std::string::npos) << "Line number missing\n--- log ---\n" << body.substr(0, 1024) << "\n---";
+    EXPECT_NE(body.find("x > 0"), std::string::npos) << "Condition missing\n--- log ---\n" << body.substr(0, 1024) << "\n---";
 }
 
 TEST_F(CrashHandlerDeathTest, OnAssertionFailureHandlesNullArgs)
