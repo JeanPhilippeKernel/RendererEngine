@@ -339,16 +339,19 @@ void WorldTick::Tick(Scene& scene, float dt, WorldCommands& commands) {
             continue;
         }
 
-        // Multi-system wave: dispatch all systems to the thread pool.
+        // Multi-system wave: each system gets its own staging WorldCommands so
+        // concurrent calls to SpawnEntity/AddComponent never touch shared state.
+        // Staging buffers are pre-allocated at Commit() and reused each frame.
+        for (uint32_t idx : wave) m_staging[idx].Clear();
+
         std::atomic<uint32_t>   remaining{static_cast<uint32_t>(wave.size())};
         std::mutex              mtx;
         std::condition_variable cv;
 
         for (uint32_t idx : wave) {
-            SystemFn fn = m_nodes[idx].Fn;
-            ZENGINE_VALIDATE_ASSERT(fn != nullptr,
-                "WorldTick: null system function pointer")
-            ThreadPoolHelper::Submit([&scene, dt, &commands, fn, &remaining, &cv]() {
+            SystemFn       fn      = m_nodes[idx].Fn;
+            WorldCommands* staging = &m_staging[idx];
+            ThreadPoolHelper::Submit([&scene, dt, fn, staging, &remaining, &cv]() {
                 struct Guard {
                     std::atomic<uint32_t>&   r;
                     std::condition_variable& cv;
@@ -357,20 +360,17 @@ void WorldTick::Tick(Scene& scene, float dt, WorldCommands& commands) {
                             cv.notify_one();
                     }
                 } guard{remaining, cv};
-                fn(scene, dt, commands);
+                fn(scene, dt, *staging);   // ← private staging buffer, no contention
             });
         }
 
         // Phase 1: spin-yield — stays in user space for fast waves (< ~100 μs).
-        // Avoids the syscall cost of mutex lock when workers finish quickly.
         for (int spin = 0; spin < 100; ++spin) {
             if (remaining.load(std::memory_order_acquire) == 0) break;
             std::this_thread::yield();
         }
 
         // Phase 2: fall back to cv.wait for slow waves (physics, skinning, etc.).
-        // LIFETIME GUARANTEE: Tick() blocks here until all worker tasks complete.
-        // Stack-local variables remain valid for the entire duration of the wait.
         if (remaining.load(std::memory_order_acquire) != 0) {
             std::unique_lock<std::mutex> lock(mtx);
             static constexpr int kWaveTimeoutSeconds = 30;
@@ -380,6 +380,9 @@ void WorldTick::Tick(Scene& scene, float dt, WorldCommands& commands) {
             ZENGINE_VALIDATE_ASSERT(completed,
                 "WorldTick::Tick: wave timed out — a system has hung or crashed")
         }
+
+        // Merge staging buffers into the authoritative commands in submission order.
+        for (uint32_t idx : wave) commands.Merge(m_staging[idx]);
     }
 }
 ```
@@ -389,6 +392,13 @@ void WorldTick::Tick(Scene& scene, float dt, WorldCommands& commands) {
 are partitioned by type and workers never share a storage. `EntityRegistry::ForEachAlive`
 is read-only during `Tick`; mutations must go through `WorldCommands`, not called
 directly from within a system.
+
+**`WorldCommands` in parallel waves**: `WorldCommands` itself is not thread-safe.
+In multi-system waves, each worker receives a private staging `WorldCommands` instead
+of the shared one. After the wave barrier, the main thread merges all staging buffers
+into the authoritative buffer in submission order. `SpawnCallbackIndex` values are
+offset-corrected during merge. Single-system waves use the caller's buffer directly
+with no staging overhead. See `actor-ecs-architecture.md` §7.5 for the full design.
 
 ---
 

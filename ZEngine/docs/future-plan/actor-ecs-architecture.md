@@ -689,6 +689,40 @@ programmer error and asserts in debug.
 - Actor creation — `Actor::Create(scene)` is safe to call from `Actor::OnTick` since
   that runs after `WorldTick::Tick` completes
 
+### 7.5 Thread safety — per-system staging buffers
+
+`WorldCommands` itself is **not thread-safe**. The original design passed the same
+`WorldCommands&` to every system in a parallel wave, which caused a data race if two
+systems in the same wave both called `SpawnEntity()` or `AddComponent()`.
+
+**Implemented fix (Option A — staging buffers):** `WorldTick` pre-allocates one staging
+`WorldCommands` per registered system at `Commit()` time. In a multi-system wave each
+worker receives its own staging buffer rather than the shared one. After the wave barrier,
+the main thread merges all staging buffers into the authoritative `WorldCommands` in
+submission order via `WorldCommands::Merge()`.
+
+```
+Wave with N systems (parallel):
+  worker 0 → staging[0].SpawnEntity(...)   ← private, no contention
+  worker 1 → staging[1].AddComponent(...)  ← private, no contention
+  ...
+  barrier
+  main thread: commands.Merge(staging[0])
+               commands.Merge(staging[1])
+               ...
+  → commands.Flush(scene)
+```
+
+`SpawnCallbackIndex` values are offset-corrected during merge so callbacks remain
+correctly associated with their spawned entities regardless of merge order.
+
+Single-system waves are unaffected — the system runs inline with the caller's
+`WorldCommands` directly, no staging involved.
+
+To declare that a system uses WorldCommands, set `SystemDeps::UsesCommands = true`
+when registering. This is documentation only — the staging buffer is always assigned
+in parallel waves regardless of the flag.
+
 ---
 
 ## 8. Memory Layout
