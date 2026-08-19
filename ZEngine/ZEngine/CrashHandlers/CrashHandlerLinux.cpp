@@ -44,6 +44,7 @@ namespace ZEngine::CrashHandlers
     static int                s_crash_pipe[2] = {-1, -1};
     static WorkerThreadParams s_crash_params  = {};
     static pthread_t          s_worker_thread;
+    static std::atomic<bool>  s_in_crash_handler = {false};
 
     static const char*        SignalToString(int sig)
     {
@@ -737,27 +738,27 @@ namespace ZEngine::CrashHandlers
     static void SignalHandler(int sig, siginfo_t* /*info*/, void* ctx)
     {
         s_crash_params.SignalNumber = sig;
-        snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", SignalToString(sig));
-
-        // Capture the crashing thread's backtrace here, in the signal handler,
-        // where the crashing thread's stack is live.  The worker thread's stack
-        // would be meaningless in a crash log.
-        s_crash_params.BacktraceSize       = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
-        s_crash_params.BacktraceFromSignal = true;
-
-        // If the ucontext is available, overwrite frame 0 with the actual fault
-        // address so the log points at the instruction that faulted, not at the
-        // signal trampoline.
-        if (ctx)
+        // Don't overwrite params already set by OnCrash() — a secondary signal
+        // (e.g. SIGSEGV from backtrace()) must not clobber the original message.
+        // Always write to the pipe so the worker wakes up.
+        if (!s_in_crash_handler.load(std::memory_order_acquire))
         {
-            auto* uc = static_cast<ucontext_t*>(ctx);
+            snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", SignalToString(sig));
+
+            s_crash_params.BacktraceSize       = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
+            s_crash_params.BacktraceFromSignal = true;
+
+            if (ctx)
+            {
+                auto* uc = static_cast<ucontext_t*>(ctx);
 #if defined(__x86_64__)
-            if (s_crash_params.BacktraceSize > 0)
-                s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext.gregs[REG_RIP]);
+                if (s_crash_params.BacktraceSize > 0)
+                    s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext.gregs[REG_RIP]);
 #elif defined(__aarch64__)
-            if (s_crash_params.BacktraceSize > 0)
-                s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext.pc);
+                if (s_crash_params.BacktraceSize > 0)
+                    s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext.pc);
 #endif
+            }
         }
 
         uint8_t byte = 1;
@@ -842,20 +843,18 @@ namespace ZEngine::CrashHandlers
 
     [[noreturn]] void CrashHandler::OnCrash(const char* signal_or_exception, void* /*ctx*/)
     {
-        static std::atomic<bool> s_in_crash_handler{false};
         if (s_in_crash_handler.exchange(true, std::memory_order_acq_rel))
         {
             fputs("[CrashHandler] FATAL: crash handler reentered. Aborting.\n", stderr);
             _exit(EXIT_FAILURE);
         }
 
-        // Capture the call-site stack here, on the calling thread, before waking
-        // the worker.  BacktraceFromSignal stays false so the worker skips its own
-        // (meaningless) backtrace and uses these addresses instead.
-        s_crash_params.BacktraceSize = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
-
+        // Set message BEFORE backtrace: backtrace() can trigger SIGSEGV in Release builds
+        // (no frame pointers). The signal handler guard ensures the message is preserved.
         snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", signal_or_exception ? signal_or_exception : "");
-        uint8_t byte = 1;
+
+        s_crash_params.BacktraceSize = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
+        uint8_t byte                 = 1;
         write(s_crash_pipe[1], &byte, 1);
         pthread_join(s_worker_thread, nullptr);
         _exit(EXIT_FAILURE);

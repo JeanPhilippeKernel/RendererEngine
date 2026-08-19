@@ -169,8 +169,9 @@ TEST_F(CrashHandlerDeathTest, OnCrashLogContainsAppMetadata)
         "");
 
     std::string log = FindLatestLog();
-    ASSERT_FALSE(log.empty());
+    ASSERT_FALSE(log.empty()) << "No log file found in " << kTestLogDir;
     std::string body = ReadFile(log);
+    ASSERT_FALSE(body.empty()) << "Log file is empty: " << log;
 
     EXPECT_NE(body.find("ZEngineTest"), std::string::npos) << "App name missing from log";
     EXPECT_NE(body.find("0.0.1-test"), std::string::npos) << "Version missing from log";
@@ -213,7 +214,10 @@ TEST_F(CrashHandlerDeathTest, OnAssertionFailureWritesFileAndLine)
         },
         "");
 
-    std::string body = ReadFile(FindLatestLog());
+    std::string log  = FindLatestLog();
+    std::string body = ReadFile(log);
+    ASSERT_FALSE(body.empty()) << "Log file is empty: " << log;
+
     EXPECT_NE(body.find("assertion_test.cpp"), std::string::npos) << "File name missing";
     EXPECT_NE(body.find("42"), std::string::npos) << "Line number missing";
     EXPECT_NE(body.find("x > 0"), std::string::npos) << "Condition missing";
