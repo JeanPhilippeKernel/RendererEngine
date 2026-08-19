@@ -19,5 +19,6 @@ namespace Tetragrama::Components
         void RenderGuizmo(EditorPtr app, EditorScenePtr scene);
 
         int  m_gizmo_operation{-1};
+        char m_filter_buf[128] = {};
     };
 } // namespace Tetragrama::Components

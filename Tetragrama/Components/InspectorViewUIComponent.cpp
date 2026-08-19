@@ -1,369 +1,253 @@
+// clang-format off
 #include <Tetragrama/Components/InspectorViewUIComponent.h>
 #include <Tetragrama/Editor.h>
-#include <Tetragrama/Helpers/UIComponentDrawerHelper.h>
-#include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Core/Maths/Matrix.h>
-#include <ZEngine/Helpers/MeshHelper.h>
-#include <ZEngine/Rendering/Textures/Texture.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/Engine.h>
+// clang-format on
 
-using namespace ZEngine::Rendering::Textures;
-using namespace ZEngine::Helpers;
+using namespace ZEngine::ECS;
+using namespace ZEngine::ECS::Components;
 using namespace ZEngine::Core::Maths;
 
 namespace Tetragrama::Components
 {
-    InspectorViewUIComponent::InspectorViewUIComponent() {}
-
-    InspectorViewUIComponent::~InspectorViewUIComponent() {}
+    InspectorViewUIComponent::InspectorViewUIComponent()  = default;
+    InspectorViewUIComponent::~InspectorViewUIComponent() = default;
 
     void InspectorViewUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
     {
         UIComponent::Initialize(parent, name, visibility, closed);
-        m_node_flag = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding;
     }
 
-    void InspectorViewUIComponent::Update(ZEngine::Core::TimeStep dt) {}
+    void InspectorViewUIComponent::Update(ZEngine::Core::TimeStep /*dt*/) {}
 
-    void InspectorViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer)
+    void InspectorViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const /*renderer*/, ZEngine::Hardwares::CommandBuffer* const /*command_buffer*/)
     {
-        ImGui::Begin(Name, (CanBeClosed ? &CanBeClosed : NULL), ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin(Name, CanBeClosed ? &CanBeClosed : nullptr, ImGuiWindowFlags_NoCollapse);
 
-        if (ParentLayer && ParentLayer->CurrentApp)
+        auto* ctx = ZEngine::Engine::GetContext();
+        if (!ctx || !ctx->ActorManager || !ParentLayer || !ParentLayer->CurrentApp)
         {
-            auto    app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+            ImGui::End();
+            return;
+        }
 
-            auto    current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
-            int32_t selected_id   = current_scene->SelectedInstanceId.value.load(std::memory_order_acquire);
-            if (selected_id != -1)
+        auto* app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto* current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+        if (!current_scene)
+        {
+            ImGui::End();
+            return;
+        }
+
+        {
+            static char s_filter[128] = {};
+            ImGui::SetNextItemWidth(-1.f);
+            ImGui::InputTextWithHint("##details_search", "Search Details...", s_filter, sizeof(s_filter));
+        }
+
+        ImGui::Spacing();
+
+        ActorHandle h     = current_scene->SelectedActorHandle;
+        Actor*      actor = ctx->ActorManager->Access(h);
+        if (!actor)
+        {
+            ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("No actor selected").x) * 0.5f);
+            ImGui::TextDisabled("No actor selected");
+            ImGui::End();
+            return;
+        }
+
+        auto* nc = actor->GetComponent<NameComponent>();
+        {
+            constexpr float kBtnW   = 112.f;
+            constexpr float kMargin = 10.f;
+
+            ImVec4          hdr     = ImGui::GetStyleColorVec4(ImGuiCol_Header);
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(hdr.x, hdr.y, hdr.z, 0.4f));
+            ImGui::BeginChild("##actor_header", {-1.f, 42.f}, false, ImGuiWindowFlags_NoScrollbar);
+
+            float card_w = ImGui::GetContentRegionAvail().x;
+
+            ImGui::SetCursorPos({kMargin, 6.f});
+            if (nc)
             {
-                auto                                                                       scratch = ZGetScratch(&ParentLayer->LocalArena);
-                ZEngine::Core::Containers::Array<ZEngine::Rendering::Scenes::MeshInstance> instances;
-                current_scene->GetInstancesSnapshot(scratch.Arena, instances);
+                ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.f, 0.f, 0.f, 0.f));
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.f, 2.f));
+                char buf[128] = {};
+                snprintf(buf, sizeof(buf), "%s", nc->Value);
+                ImGui::SetNextItemWidth(card_w - kMargin - kBtnW - 8.f);
+                if (ImGui::InputText("##actor_name", buf, sizeof(buf)))
+                    snprintf(nc->Value, sizeof(nc->Value), "%s", buf);
+                ImGui::PopStyleVar();
+                ImGui::PopStyleColor();
+            }
 
-                for (uint32_t i = 0; i < instances.size(); ++i)
+            ImGui::SetCursorPos({kMargin, 24.f});
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextUnformatted("Actor");
+            ImGui::PopStyleColor();
+
+            constexpr float kBtnH = 22.f;
+            ImGui::SetCursorPos({card_w - kBtnW - 4.f, (42.f - kBtnH) * 0.5f});
+            bool        add_clicked = ImGui::InvisibleButton("##add_comp", {kBtnW, kBtnH});
+            ImVec2      btn_scr     = ImGui::GetItemRectMin();
+            ImDrawList* cdl         = ImGui::GetWindowDrawList();
+            ImVec4      add_bg      = ImGui::IsItemHovered() ? ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) : ImGui::GetStyleColorVec4(ImGuiCol_Header);
+            cdl->AddRectFilled(btn_scr, {btn_scr.x + kBtnW, btn_scr.y + kBtnH}, ImGui::ColorConvertFloat4ToU32(add_bg), 3.f);
+            float th = ImGui::GetTextLineHeight();
+            float ty = btn_scr.y + (kBtnH - th) * 0.5f;
+            float tx = btn_scr.x + 8.f;
+            cdl->AddText({tx, ty}, IM_COL32(90, 210, 120, 255), "+");
+            cdl->AddText({tx + ImGui::CalcTextSize("+").x + 5.f, ty}, ImGui::GetColorU32(ImGuiCol_Text), "Add");
+            (void) add_clicked;
+
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::Spacing();
+
+        auto SectionHeader = [](const char* id, const char* label, bool* open) -> bool {
+            ImGui::PushID(id);
+            ImVec2      pos = ImGui::GetCursorScreenPos();
+            float       w   = ImGui::GetContentRegionAvail().x;
+            float       h   = 22.f;
+            ImDrawList* dl  = ImGui::GetWindowDrawList();
+            bool        hov = ImGui::IsMouseHoveringRect(pos, {pos.x + w, pos.y + h});
+            dl->AddRectFilled(pos, {pos.x + w, pos.y + h}, ImGui::GetColorU32(hov ? ImGuiCol_HeaderHovered : ImGuiCol_Header));
+            ImU32 tri = ImGui::GetColorU32(ImGuiCol_Text);
+            float tx = pos.x + 8.f, ty = pos.y + h * 0.5f;
+            if (*open)
+                dl->AddTriangleFilled({tx, ty - 4.f}, {tx + 7.f, ty - 4.f}, {tx + 3.5f, ty + 4.f}, tri);
+            else
+                dl->AddTriangleFilled({tx, ty - 4.f}, {tx, ty + 4.f}, {tx + 7.f, ty}, tri);
+            dl->AddText({tx + 14.f, pos.y + (h - ImGui::GetTextLineHeight()) * 0.5f}, ImGui::GetColorU32(ImGuiCol_Text), label);
+            ImGui::InvisibleButton("##hdr", {w, h});
+            if (ImGui::IsItemClicked())
+                *open = !*open;
+            ImGui::PopID();
+            return *open;
+        };
+
+        auto XYZRow = [](const char* label, Vec3f& v, Vec3f reset_vals, float speed, auto onChange) {
+            ImGui::TableSetColumnIndex(0);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextUnformatted(label);
+            ImGui::PopStyleColor();
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::PushID(label);
+
+            const float kGap      = 4.f;
+            const float kReset    = 18.f;
+            float       avail     = ImGui::GetContentRegionAvail().x - kReset - kGap;
+            float       fw        = (avail - kGap * 2.f) / 3.f;
+
+            ImU32       border[3] = {
+                IM_COL32(215, 90, 80, 255),
+                IM_COL32(100, 200, 110, 255),
+                IM_COL32(90, 140, 230, 255),
+            };
+            const char* ids[3]  = {"##ax0", "##ax1", "##ax2"};
+            float*      vals[3] = {&v.x, &v.y, &v.z};
+            ImDrawList* dl      = ImGui::GetWindowDrawList();
+
+            bool        changed = false;
+            for (int i = 0; i < 3; ++i)
+            {
+                if (i > 0)
+                    ImGui::SameLine(0.f, kGap);
+                ImGui::SetNextItemWidth(fw);
+                changed   |= ImGui::DragFloat(ids[i], vals[i], speed, 0.f, 0.f, "%.3f");
+                ImVec2 p0  = ImGui::GetItemRectMin();
+                dl->AddRectFilled(p0, {p0.x + 3.f, ImGui::GetItemRectMax().y}, border[i]);
+            }
+
+            ImGui::SameLine(0.f, kGap);
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 0.f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            if (ImGui::SmallButton("↺"))
+            {
+                v       = reset_vals;
+                changed = true;
+            }
+            ImGui::PopStyleColor(4);
+
+            ImGui::PopID();
+            if (changed)
+                onChange(v);
+        };
+
+        static ImGuiTableFlags kTableFlags = ImGuiTableFlags_NoPadInnerX | ImGuiTableFlags_NoPadOuterX;
+
+        auto*                  tc          = actor->GetComponent<TransformComponent>();
+        if (tc)
+        {
+            static bool s_transform_open = true;
+            if (SectionHeader("transform_hdr", "Transform", &s_transform_open))
+            {
+                if (ImGui::BeginTable("##transform_tbl", 2, kTableFlags))
                 {
-                    if ((int32_t) instances[i].Id == selected_id)
-                    {
-                        ImGui::Dummy(ImVec2(0, 3));
-                        ImGui::Text("Mesh: %s", instances[i].Name[0] ? instances[i].Name : "Unnamed");
-                        break;
-                    }
+                    ImGui::TableSetupColumn("##lbl", ImGuiTableColumnFlags_WidthFixed, 72.f);
+                    ImGui::TableSetupColumn("##val", ImGuiTableColumnFlags_WidthStretch);
+
+                    constexpr float kDeg = 180.f / 3.14159265f;
+                    constexpr float kRad = 3.14159265f / 180.f;
+
+                    ImGui::TableNextRow();
+                    ImGui::TableNextRow();
+                    XYZRow("Location", tc->Position, {0.f, 0.f, 0.f}, 0.05f, [tc](Vec3f& v) { tc->Position = v; });
+
+                    ImGui::TableNextRow();
+                    Vec3f rot_deg = {tc->Rotation.x * kDeg, tc->Rotation.y * kDeg, tc->Rotation.z * kDeg};
+                    XYZRow("Rotation", rot_deg, {0.f, 0.f, 0.f}, 0.5f, [tc, kRad](Vec3f& v) { tc->Rotation = {v.x * kRad, v.y * kRad, v.z * kRad}; });
+
+                    ImGui::TableNextRow();
+                    XYZRow("Scale", tc->Scale, {1.f, 1.f, 1.f}, 0.01f, [tc](Vec3f& v) { tc->Scale = v; });
+
+                    ImGui::TableNextRow();
+                    ImGui::EndTable();
                 }
-                ZReleaseScratch(scratch);
+                ImGui::Spacing();
             }
         }
 
-        // Helpers::DrawEntityControl("Name", m_scene_entity, m_node_flag, [this] {
-        //     ImGui::Dummy(ImVec2(0, 3));
-        //     Helpers::DrawInputTextControl("Entity name", m_scene_entity.GetName(), [this](std::string_view value) { m_scene_entity.SetName(value); });
-        // });
-
-        // Helpers::DrawEntityControl("Transform", m_scene_entity, m_node_flag, [this] {
-        //     auto            transform = m_scene_entity.GetTransform();
-
-        //    Vec3f       translation, scale, skew;
-        //    Quaternion<float> rot_quat;
-        //    Vec4f       perspective;
-        //    decompose(transform, scale, rot_quat, translation, skew, perspective);
-
-        //    ImGui::Dummy(ImVec2(0, 3));
-        //    Helpers::DrawVec3Control("Position", translation, [&translation](Vec3f& value) { translation = value; });
-
-        //    Vec3f rotation = eulerAngles(rot_quat);
-        //    ImGui::Dummy(ImVec2(0, 0.5));
-        //    Helpers::DrawVec3Control("Rotation", rotation, [&rotation](Vec3f& value) { rotation = value; });
-
-        //    ImGui::Dummy(ImVec2(0, 0.5));
-        //    Helpers::DrawVec3Control("Scale", scale, [&scale](Vec3f& value) { scale = value; }, 1.0f);
-        //});
-
-        // Mesh Renderer
-        // Helpers::DrawEntityComponentControl<MeshComponent>("Mesh Geometry", m_scene_entity, m_node_flag, true,
-        // [this](MeshComponent& component) {
-        //    std::string type_name;
-        //    if (auto active_scene = m_active_scene.lock())
-        //    {
-        //        // const auto& mesh                  = active_scene->GetMesh(component.GetMeshID());
-        //        // const char* geometry_type_value[] = {"Custom", "Cube", "Quad", "Square"};
-        //        // type_name                         = geometry_type_value[(int) mesh.Type];
-        //    }
-
-        //    ImGui::Dummy(ImVec2(0, 3));
-        //    Helpers::DrawInputTextControl("Mesh", type_name, nullptr, true);
-        //});
-
-        // Helpers::DrawEntityComponentControl<MaterialComponent>("Materials", m_scene_entity, m_node_flag, true,
-        // [](MaterialComponent& component) {
-        //     auto        material               = component.GetMaterials()[0]; // Todo : need to be refactor to
-        //     consider the collection of materials auto        material_shader_type   =
-        //     material->GetShaderBuiltInType();
-
-        //    const char* built_in_shader_type[] = {"Basic", "BASIC_2", "Standard"};
-
-        //    auto        material_name          = fmt::format("{0} Material", built_in_shader_type[(int)
-        //    material_shader_type]); ImGui::Dummy(ImVec2(0, 3)); Helpers::DrawInputTextControl("Name", material_name,
-        //    nullptr, true);
-
-        //    if (material_shader_type == ZEngine::Rendering::Shaders::ShaderBuiltInType::STANDARD)
-        //    {
-        //        auto standard_material =
-        //        reinterpret_cast<ZEngine::Rendering::Materials::StandardMaterial*>(material.get());
-
-        //        ImGui::Dummy(ImVec2(0, 0.5f));
-
-        //        float tile_factor = standard_material->GetTileFactor();
-        //        Helpers::DrawDragFloatControl("Tile Factor", tile_factor, 0.2f, 0.0f, 0.0f, "%.2f",
-        //        [standard_material](float value) { standard_material->SetTileFactor(value); }); ImGui::Dummy(ImVec2(0,
-        //        0.5f));
-
-        //        float shininess = standard_material->GetShininess();
-        //        Helpers::DrawDragFloatControl("Shininess", shininess, 0.2f, 0.0f, 0.0f, "%.2f",
-        //        [standard_material](float value) { standard_material->SetShininess(value); }); ImGui::Dummy(ImVec2(0,
-        //        0.5f));
-
-        //        // auto diffuse_tint_color = standard_material->GetDiffuseTintColor();
-        //        // auto diffuse_texture    = standard_material->GetDiffuseMap();
-        //        // Helpers::DrawTextureColorControl("Diffuse Map",
-        //        reinterpret_cast<ImTextureID>(diffuse_texture->GetIdentifier()), diffuse_tint_color, true, nullptr,
-        //        //     [standard_material](auto& value) { standard_material->SetDiffuseTintColor(value); });
-        //        // ImGui::Dummy(ImVec2(0, 0.5f));
-
-        //        // auto specular_tint_color = standard_material->GetSpecularTintColor();
-        //        // auto specular_texture    = standard_material->GetSpecularMap();
-        //        // Helpers::DrawTextureColorControl("Specular Map",
-        //        reinterpret_cast<ImTextureID>(specular_texture->GetIdentifier()), specular_tint_color, true, nullptr,
-        //        //     [standard_material](auto& value) { standard_material->SetSpecularTintColor(value); });
-        //        // ImGui::Dummy(ImVec2(0, 0.5f));
-        //    }
-        //});
-
-        /*Helpers::DrawEntityComponentControl<LightComponent>("Lighting", m_scene_entity, m_node_flag, true,
-        [this](LightComponent& component) { auto                            light           = component.GetLight(); auto
-        light_type      = light->GetLightType(); std::array<std::string_view, 3> light_type_name = {"Directional",
-        "Point", "Spot"};
-
-            ImGui::Dummy(ImVec2(0, 3));
-            Helpers::DrawInputTextControl("Type", light_type_name[static_cast<int>(light_type)], nullptr, true);
-
-            if (light_type == LightType::DIRECTIONAL)
-            {
-                auto light_ptr = reinterpret_cast<DirectionalLight*>(light.get());
-                auto direction = light_ptr->Direction.As<Vec3f>();
-                auto ambient   = light_ptr->Ambient.As<Vec3f>();
-                auto diffuse   = light_ptr->Diffuse.As<Vec3f>();
-                auto specular  = light_ptr->Specular.As<Vec3f>();
-
-                ImGui::Dummy(ImVec2(0, 0.5f));
-                {
-                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](Vec3f& value) {
-        light_ptr->Direction = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](Vec3f& value) {
-        light_ptr->Ambient = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](Vec3f& value) {
-        light_ptr->Diffuse = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](Vec3f& value) {
-        light_ptr->Specular = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-                }
-            }
-
-            else if (light_type == LightType::POINT)
-            {
-                auto transform = m_scene_entity.GetTransform();
-                auto light_ptr = reinterpret_cast<PointLight*>(light.get());
-
-                auto position  = Vec3f(transform[3]);
-                auto ambient   = light_ptr->Ambient.As<Vec3f>();
-                auto diffuse   = light_ptr->Diffuse.As<Vec3f>();
-                auto specular  = light_ptr->Specular.As<Vec3f>();
-
-                ImGui::Dummy(ImVec2(0, 0.5f));
-                {
-                    Helpers::DrawVec3Control("Position", position, [light_ptr](Vec3f& value) { light_ptr->Position =
-        Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](Vec3f& value) {
-        light_ptr->Ambient = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](Vec3f& value) {
-        light_ptr->Diffuse = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](Vec3f& value) {
-        light_ptr->Specular = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f",
-        [light_ptr](float value) { light_ptr->Constant = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f",
-        [light_ptr](float value) { light_ptr->Linear = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f",
-        [light_ptr](float value) { light_ptr->Quadratic = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
-                }
-            }
-
-            else if (light_type == LightType::SPOT)
-            {
-                auto         transform = m_scene_entity.GetTransform();
-                auto         light_ptr = reinterpret_cast<Spotlight*>(light.get());
-
-                auto         direction = light_ptr->Direction.As<Vec3f>();
-                auto         position  = Vec3f(transform[3]);
-                auto         ambient   = light_ptr->Ambient.As<Vec3f>();
-                auto         diffuse   = light_ptr->Diffuse.As<Vec3f>();
-                auto         specular  = light_ptr->Specular.As<Vec3f>();
-                static float phi_angle = 12.5f;
-
-                ImGui::Dummy(ImVec2(0, 0.5f));
-                {
-                    Helpers::DrawVec3Control("Position", position, [light_ptr](Vec3f& value) { light_ptr->Position =
-        Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawVec3Control("Direction", direction, [light_ptr](Vec3f& value) {
-        light_ptr->Direction = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawColorEdit3Control("Ambient", ambient, [light_ptr](Vec3f& value) {
-        light_ptr->Ambient = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawColorEdit3Control("Diffuse", diffuse, [light_ptr](Vec3f& value) {
-        light_ptr->Diffuse = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawColorEdit3Control("Specular", specular, [light_ptr](Vec3f& value) {
-        light_ptr->Specular = Vec4f(value, 1.0f); }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawDragFloatControl("CutOff", phi_angle, 0.1f, 0.0f, 360.0f, "%.2f", [light_ptr](float
-        value) { phi_angle         = value; light_ptr->CutOff = cos(radians(value));
-                    });
-                    ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawDragFloatControl("Constant", light_ptr->Constant, 0.2f, 0.0f, 0.0f, "%.2f",
-        [light_ptr](float value) { light_ptr->Constant = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawDragFloatControl("Linear", light_ptr->Linear, 0.01f, 0.0f, 1.0f, "%.2f",
-        [light_ptr](float value) { light_ptr->Linear = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
-
-                    Helpers::DrawDragFloatControl("Quadratic", light_ptr->Quadratic, 0.0001f, 0.0f, 2.0f, "%.2f",
-        [light_ptr](float value) { light_ptr->Quadratic = value; }); ImGui::Dummy(ImVec2(0, 0.5f));
-                }
-            }
-        });*/
-
-        // Camera
-        // Helpers::DrawEntityComponentControl<CameraComponent>("Camera", m_scene_entity, m_node_flag, true,
-        // [this](CameraComponent& component) {
-        //    // auto const camera_controller = component.GetCameraController();
-        //    // auto       camera_type       = camera_controller->GetCamera()->GetCameraType();
-
-        //    // ImGui::Dummy(ImVec2(0, 3));
-
-        //    // bool is_primary_camera = component.IsPrimaryCamera;
-        //    // if (ImGui::Checkbox("Main Camera", &is_primary_camera))
-        //    //{
-        //    //     component.IsPrimaryCamera = is_primary_camera;
-        //    // }
-
-        //    // if (camera_type == ZEngine::Rendering::Cameras::CameraType::PERSPECTIVE)
-        //    //{
-        //    //     auto  perspective_controller =
-        //    reinterpret_cast<ZEngine::Controllers::PerspectiveCameraController*>(camera_controller);
-        //    //     float camera_fov             = ZEngine::Maths::degrees(perspective_controller->GetFieldOfView());
-
-        //    //    Helpers::DrawDragFloatControl(
-        //    //        "Field Of View", camera_fov, 0.2f, -180.0f, 180.f, "%.2f",
-        //    //        [&perspective_controller](float value) {
-        //    perspective_controller->SetFieldOfView(ZEngine::Maths::radians(value)); }, 120.f);
-
-        //    //    ImGui::Dummy(ImVec2(0, 3));
-
-        //    //    // Clipping space
-        //    //    if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(CameraComponent).hash_code() + 0x000000FF),
-        //    m_node_flag, "%s", "Clipping Space"))
-        //    //    {
-        //    //        float camera_near = perspective_controller->GetNear();
-        //    //        float camera_far  = perspective_controller->GetFar();
-
-        //    //        Helpers::DrawDragFloatControl(
-        //    //            "Near", camera_near, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) {
-        //    perspective_controller->SetNear(value); });
-        //    //        ImGui::Dummy(ImVec2(0, 0.5f));
-
-        //    //        Helpers::DrawDragFloatControl(
-        //    //            "Far", camera_far, 0.2f, 0.0f, 0.0f, "%.2f", [&perspective_controller](float value) {
-        //    perspective_controller->SetFar(value); });
-
-        //    //        ImGui::TreePop();
-        //    //    }
-
-        //    //    ImGui::Dummy(ImVec2(0, 3));
-
-        //    //    // Camera Controller Type
-        //    //    if (camera_controller->GetControllerType() ==
-        //    ZEngine::Controllers::CameraControllerType::PERSPECTIVE_ORBIT_CONTROLLER)
-        //    //    {
-        //    //        auto orbit_controller =
-        //    reinterpret_cast<ZEngine::Controllers::OrbitCameraController*>(camera_controller);
-        //    //        if (ImGui::TreeNodeEx(reinterpret_cast<void*>(typeid(orbit_controller).hash_code()),
-        //    m_node_flag, "%s", "Controller (Orbit)"))
-        //    //        {
-        //    //            auto       camera       = orbit_controller->GetCamera();
-        //    //            auto const orbit_camera =
-        //    reinterpret_cast<ZEngine::Rendering::Cameras::OrbitCamera*>(camera.get());
-        //    //            float      radius       = orbit_camera->GetRadius();
-        //    //            float      yaw_angle    = orbit_camera->GetYawAngle();
-        //    //            float      pitch_angle  = orbit_camera->GetPitchAngle();
-
-        //    //            Helpers::DrawDragFloatControl("Radius", radius);
-        //    //            ImGui::Dummy(ImVec2(0, 0.5f));
-
-        //    //            Helpers::DrawDragFloatControl("X-axis angle", pitch_angle);
-        //    //            ImGui::Dummy(ImVec2(0, 0.5f));
-
-        //    //            Helpers::DrawDragFloatControl("Y-axis angle", yaw_angle);
-        //    //            ImGui::TreePop();
-        //    //        }
-        //    //    }
-        //    //}
-        //});
-
-        // Add Components
-        ImGui::Dummy(ImVec2(0, 5));
-
-        bool should_open_popup = false;
-        Helpers::DrawCenteredButtonControl("Add Components", [&should_open_popup]() { should_open_popup = true; });
-
-        if (should_open_popup)
+        auto* mc = actor->GetComponent<MeshComponent>();
+        if (mc)
         {
-            ImGui::OpenPopup("PopupAddComponent");
+            static bool s_mesh_open = true;
+            if (SectionHeader("mesh_hdr", "Mesh", &s_mesh_open))
+            {
+                if (ImGui::BeginTable("##mesh_tbl", 2, kTableFlags))
+                {
+                    ImGui::TableSetupColumn("##lbl", ImGuiTableColumnFlags_WidthFixed, 72.f);
+                    ImGui::TableSetupColumn("##val", ImGuiTableColumnFlags_WidthStretch);
+
+                    ImGui::TableNextRow();
+                    ImGui::TableNextRow();
+
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                    ImGui::TextUnformatted("UUID");
+                    ImGui::PopStyleColor();
+
+                    ImGui::TableSetColumnIndex(1);
+                    std::string uuid_str = uuids::to_string(mc->MeshUUID);
+                    ImGui::SetNextItemWidth(-1.f);
+                    ImGui::InputText("##uuid", const_cast<char*>(uuid_str.c_str()), uuid_str.size() + 1, ImGuiInputTextFlags_ReadOnly);
+
+                    ImGui::TableNextRow();
+                    ImGui::EndTable();
+                }
+                ImGui::Spacing();
+            }
         }
-
-        /*if (ImGui::BeginPopup("PopupAddComponent"))
-        {
-            if (ImGui::BeginMenu("Lights"))
-            {
-                if (ImGui::MenuItem("Directional Light"))
-                {
-                    m_scene_entity.AddComponent<LightComponent>(CreateRef<DirectionalLight>());
-                    ImGui::CloseCurrentPopup();
-                }
-
-                if (ImGui::MenuItem("Point Light"))
-                {
-                    m_scene_entity.AddComponent<LightComponent>(CreateRef<PointLight>());
-                    ImGui::CloseCurrentPopup();
-                }
-
-                if (ImGui::MenuItem("Spot Light"))
-                {
-                    m_scene_entity.AddComponent<LightComponent>(CreateRef<Spotlight>());
-                    ImGui::CloseCurrentPopup();
-                }
-
-                ImGui::EndMenu();
-            }
-            ImGui::EndPopup();
-        }*/
 
         ImGui::End();
     }

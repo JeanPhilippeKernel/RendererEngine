@@ -1198,19 +1198,27 @@ namespace Tetragrama::Components
     std::future<void> DockspaceUIComponent::OnOpenMeshRequestAsync(const char* filename)
     {
         ZEngine::Importers::AssetCodec::AssetMeshFileHeader header;
-        if (ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(filename, header))
-        {
-            auto asset_mesh = ZEngine::Managers::AssetManager::GetAsset<ZEngine::Importers::AssetMesh>(header.Id);
-            if (asset_mesh)
-            {
-                auto        app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-                auto        current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+        if (!ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(filename, header))
+            co_return;
 
-                const char* name          = strrchr(filename, '/');
-                name                      = name ? name + 1 : filename;
-                current_scene->AddMeshInstance(asset_mesh->MeshUUID, name);
-            }
+        // If the mesh isn't in memory (fresh session), ingest it from disk first
+        // so both the CPU asset registry and the RRM GPU buffers are populated.
+        if (!ZEngine::Managers::AssetManager::GetAsset<ZEngine::Importers::AssetMesh>(header.Id))
+        {
+            auto                                   scratch = ZGetScratch(&LocalArena);
+            ZEngine::Importers::AssetMesh          mesh{};
+            ZEngine::Importers::AssetNodeHierarchy hier{};
+            ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(scratch.Arena, filename, mesh, hier);
+            ZEngine::Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hier));
+            ZReleaseScratch(scratch);
         }
+
+        auto        app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto        current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+        const char* name          = strrchr(filename, '/');
+        name                      = name ? name + 1 : filename;
+        current_scene->SpawnMeshActor(header.Id, name);
+
         co_return;
     }
 

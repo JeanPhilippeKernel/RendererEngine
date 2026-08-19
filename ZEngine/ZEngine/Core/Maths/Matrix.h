@@ -525,6 +525,35 @@ namespace ZEngine::Core::Maths
         return true;
     }
 
+    // Inverse of DecomposeTransformComponent: builds a column-major TRS matrix
+    // from position, Euler angles (radians, YXZ order), and scale.
+    inline Mat4f ComposeTransformMatrix(const Vec3f& position, const Vec3f& rotation, const Vec3f& scale)
+    {
+        float sx = sinf(rotation.x), cx = cosf(rotation.x);
+        float sy = sinf(rotation.y), cy = cosf(rotation.y);
+        float sz = sinf(rotation.z), cz = cosf(rotation.z);
+
+        Mat4f m = {};
+        // Row 0
+        m(0, 0) = scale.x * (cy * cz);
+        m(0, 1) = scale.y * (cy * sz);
+        m(0, 2) = scale.z * (-sy);
+        m(0, 3) = position.x;
+        // Row 1
+        m(1, 0) = scale.x * (sx * sy * cz - cx * sz);
+        m(1, 1) = scale.y * (sx * sy * sz + cx * cz);
+        m(1, 2) = scale.z * (sx * cy);
+        m(1, 3) = position.y;
+        // Row 2
+        m(2, 0) = scale.x * (cx * sy * cz + sx * sz);
+        m(2, 1) = scale.y * (cx * sy * sz - sx * cz);
+        m(2, 2) = scale.z * (cx * cy);
+        m(2, 3) = position.z;
+        // Row 3
+        m(3, 3) = 1.0f;
+        return m;
+    }
+
     template <typename T>
     inline Mat4<T> translate(const Mat4<T>& matrix, const Vec3<T>& translation)
     {

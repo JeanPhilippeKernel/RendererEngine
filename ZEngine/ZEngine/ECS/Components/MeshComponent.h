@@ -9,9 +9,10 @@ namespace ZEngine::ECS::Components
     // in the .meta sidecar — it never changes across reimports.
     struct MeshComponent
     {
-        uuids::uuid MeshUUID = {};
+        uuids::uuid MeshUUID         = {};
+        uint32_t    RenderInstanceId = UINT32_MAX; // index into RenderScene::Instances; UINT32_MAX = not registered
     };
 
-    static_assert(sizeof(MeshComponent) <= 16, "MeshComponent exceeds expected size");
+    static_assert(sizeof(MeshComponent) <= 32, "MeshComponent exceeds expected size");
     static_assert(alignof(MeshComponent) <= 16, "MeshComponent misaligned");
 } // namespace ZEngine::ECS::Components

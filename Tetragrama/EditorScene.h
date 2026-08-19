@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 
@@ -19,14 +20,15 @@ namespace Tetragrama
 
     struct EditorScene : public ZEngine::Rendering::Scenes::RenderScene
     {
-        cstring                                                         Name              = "";
-        PaddedAtomic<bool>                                              Dirty             = {};
-        PaddedAtomic<bool>                                              HasPendingChanges = {};
+        cstring                                                         Name                = "";
+        PaddedAtomic<bool>                                              Dirty               = {};
+        PaddedAtomic<bool>                                              HasPendingChanges   = {};
+        ZEngine::ECS::ActorHandle                                       SelectedActorHandle = {}; // invalid = nothing selected
 
-        ZEngine::Core::Containers::UnorderedHashMap<uint64_t, uint32_t> HashToAssetFile   = {};
-        ZEngine::Core::Containers::Array<EditorAssetSceneFiles>         AssetFiles        = {};
+        ZEngine::Core::Containers::UnorderedHashMap<uint64_t, uint32_t> HashToAssetFile     = {};
+        ZEngine::Core::Containers::Array<EditorAssetSceneFiles>         AssetFiles          = {};
 
-        ZEngine::Core::Memory::ArenaAllocator                           LocalArena        = {};
+        ZEngine::Core::Memory::ArenaAllocator                           LocalArena          = {};
 
         void                                                            Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring scene_name = "");
 
@@ -36,6 +38,11 @@ namespace Tetragrama
         bool                                                            IsDirty();
         void                                                            Reset();
         void                                                            ExtractAsync(const EditorScene& scene);
+
+        // Create a fully wired Actor: registers with RenderScene and adds
+        // NameComponent + TransformComponent + MeshComponent in one call.
+        // Returns the ActorHandle (invalid if ActorManager is not live).
+        ZEngine::ECS::ActorHandle                                       SpawnMeshActor(const uuids::uuid& mesh_uuid, const char* name);
     };
     ZDEFINE_PTR(EditorScene);
 
