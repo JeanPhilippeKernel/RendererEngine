@@ -65,30 +65,53 @@ namespace Tetragrama::Components
         // ── Actor header card ──────────────────────────────────────────────────
         auto* nc = actor->GetComponent<NameComponent>();
         {
-            // Tint the child background slightly from the current Header color
-            ImVec4 hdr = ImGui::GetStyleColorVec4(ImGuiCol_Header);
+            constexpr float kBtnW   = 112.f;
+            constexpr float kMargin = 10.f;
+
+            ImVec4          hdr     = ImGui::GetStyleColorVec4(ImGuiCol_Header);
             ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(hdr.x, hdr.y, hdr.z, 0.4f));
             ImGui::BeginChild("##actor_header", {-1.f, 42.f}, false, ImGuiWindowFlags_NoScrollbar);
 
-            ImGui::SetCursorPos({10.f, 6.f});
+            float card_w = ImGui::GetContentRegionAvail().x;
 
+            // Name field — leaves room for the Add button on the right
+            ImGui::SetCursorPos({kMargin, 6.f});
             if (nc)
             {
                 ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.f, 0.f, 0.f, 0.f));
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.f, 2.f));
                 char buf[128] = {};
                 snprintf(buf, sizeof(buf), "%s", nc->Value);
-                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 10.f);
+                ImGui::SetNextItemWidth(card_w - kMargin - kBtnW - 8.f);
                 if (ImGui::InputText("##actor_name", buf, sizeof(buf)))
                     snprintf(nc->Value, sizeof(nc->Value), "%s", buf);
                 ImGui::PopStyleVar();
                 ImGui::PopStyleColor();
             }
 
-            ImGui::SetCursorPos({10.f, 24.f});
+            // "Actor" type badge bottom-left
+            ImGui::SetCursorPos({kMargin, 24.f});
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             ImGui::TextUnformatted("Actor");
             ImGui::PopStyleColor();
+
+            // "+ Add" button — green "+" + "Add" text, drawn with ImDrawList for color control.
+            constexpr float kBtnH = 22.f;
+            ImGui::SetCursorPos({card_w - kBtnW - 4.f, (42.f - kBtnH) * 0.5f});
+            bool        add_clicked = ImGui::InvisibleButton("##add_comp", {kBtnW, kBtnH});
+
+            ImVec2      btn_scr     = ImGui::GetItemRectMin();
+            ImDrawList* cdl         = ImGui::GetWindowDrawList();
+            ImVec4      add_bg      = ImGui::IsItemHovered() ? ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) : ImGui::GetStyleColorVec4(ImGuiCol_Header);
+            cdl->AddRectFilled(btn_scr, {btn_scr.x + kBtnW, btn_scr.y + kBtnH}, ImGui::ColorConvertFloat4ToU32(add_bg), 3.f);
+
+            float th = ImGui::GetTextLineHeight();
+            float ty = btn_scr.y + (kBtnH - th) * 0.5f;
+            float tx = btn_scr.x + 8.f;
+            cdl->AddText({tx, ty}, IM_COL32(90, 210, 120, 255), "+");                                            // green "+"
+            cdl->AddText({tx + ImGui::CalcTextSize("+").x + 5.f, ty}, ImGui::GetColorU32(ImGuiCol_Text), "Add"); // normal "Add"
+
+            (void) add_clicked;
 
             ImGui::EndChild();
             ImGui::PopStyleColor();
@@ -248,19 +271,6 @@ namespace Tetragrama::Components
                 ImGui::Spacing();
             }
         }
-
-        // ── Add Component ──────────────────────────────────────────────────────
-        float remaining = ImGui::GetContentRegionAvail().y;
-        if (remaining > 30.f)
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + remaining - 30.f);
-
-        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_Header));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
-        ImGui::Button("+ Add Component", {-1.f, 24.f});
-        ImGui::PopStyleVar();
-        ImGui::PopStyleColor(3);
 
         ImGui::End();
     }
