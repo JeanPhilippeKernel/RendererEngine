@@ -79,6 +79,16 @@ namespace ZEngine::Hardwares
 
         void AcquireNextImage(uint32_t frame_context_idx);
         void Present();
+
+#if !defined(NDEBUG)
+        // Test-only: inject a recreation state without going through the Vulkan
+        // SUBOPTIMAL/OOD detection path. Used by SwapchainResizeTest to exercise
+        // the recreation state machine in isolation.
+        void ForceRecreation(RecreationState state)
+        {
+            Recreation = state;
+        }
+#endif
     };
     ZDEFINE_PTR(DeviceSwapchain);
 } // namespace ZEngine::Hardwares

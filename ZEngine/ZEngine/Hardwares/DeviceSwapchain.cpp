@@ -1,4 +1,4 @@
-#include <GLFW/glfw3.h>
+
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
@@ -72,11 +72,9 @@ namespace ZEngine::Hardwares
         }
         else
         {
-            // Wayland does not provide a concrete extent — query the framebuffer size directly.
-            int w = 0, h = 0;
-            glfwGetFramebufferSize(reinterpret_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow()), &w, &h);
-            SwapchainImageWidth  = static_cast<uint32_t>(w);
-            SwapchainImageHeight = static_cast<uint32_t>(h);
+            // Surface does not report a concrete extent (Wayland, headless) — ask the window.
+            SwapchainImageWidth  = Device->CurrentWindow->GetWidth();
+            SwapchainImageHeight = Device->CurrentWindow->GetHeight();
         }
 
         // {0,0} extent is a spec violation; destroy stale swapchain and retry next frame.
