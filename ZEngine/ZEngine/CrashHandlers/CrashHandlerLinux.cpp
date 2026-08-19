@@ -30,12 +30,12 @@ namespace ZEngine::CrashHandlers
 
     struct WorkerThreadParams
     {
-        int     SignalNumber                        = 0;
-        cstring SignalOrException                   = nullptr;
-        void*   BacktraceAddrs[kMaxBacktraceFrames] = {};
-        int     BacktraceSize                       = 0;
-        char    LogPath[kMaxPathLen]                = {};
-        bool    BacktraceFromSignal                 = false;
+        int   SignalNumber                        = 0;
+        char  SignalOrException[512]              = {};
+        void* BacktraceAddrs[kMaxBacktraceFrames] = {};
+        int   BacktraceSize                       = 0;
+        char  LogPath[kMaxPathLen]                = {};
+        bool  BacktraceFromSignal                 = false;
     };
 
     static constexpr size_t   kAltStackSize            = 32 * 1024;
@@ -736,8 +736,8 @@ namespace ZEngine::CrashHandlers
 
     static void SignalHandler(int sig, siginfo_t* /*info*/, void* ctx)
     {
-        s_crash_params.SignalNumber        = sig;
-        s_crash_params.SignalOrException   = SignalToString(sig);
+        s_crash_params.SignalNumber = sig;
+        snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", SignalToString(sig));
 
         // Capture the crashing thread's backtrace here, in the signal handler,
         // where the crashing thread's stack is live.  The worker thread's stack
@@ -852,10 +852,10 @@ namespace ZEngine::CrashHandlers
         // Capture the call-site stack here, on the calling thread, before waking
         // the worker.  BacktraceFromSignal stays false so the worker skips its own
         // (meaningless) backtrace and uses these addresses instead.
-        s_crash_params.BacktraceSize     = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
+        s_crash_params.BacktraceSize = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
 
-        s_crash_params.SignalOrException = signal_or_exception;
-        uint8_t byte                     = 1;
+        snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", signal_or_exception ? signal_or_exception : "");
+        uint8_t byte = 1;
         write(s_crash_pipe[1], &byte, 1);
         pthread_join(s_worker_thread, nullptr);
         _exit(EXIT_FAILURE);
