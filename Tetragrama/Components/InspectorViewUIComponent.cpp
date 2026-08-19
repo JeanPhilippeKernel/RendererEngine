@@ -43,7 +43,6 @@ namespace Tetragrama::Components
             return;
         }
 
-        // ── Search bar ─────────────────────────────────────────────────────────
         {
             static char s_filter[128] = {};
             ImGui::SetNextItemWidth(-1.f);
@@ -62,7 +61,6 @@ namespace Tetragrama::Components
             return;
         }
 
-        // ── Actor header card ──────────────────────────────────────────────────
         auto* nc = actor->GetComponent<NameComponent>();
         {
             constexpr float kBtnW   = 112.f;
@@ -74,7 +72,6 @@ namespace Tetragrama::Components
 
             float card_w = ImGui::GetContentRegionAvail().x;
 
-            // Name field — leaves room for the Add button on the right
             ImGui::SetCursorPos({kMargin, 6.f});
             if (nc)
             {
@@ -89,28 +86,23 @@ namespace Tetragrama::Components
                 ImGui::PopStyleColor();
             }
 
-            // "Actor" type badge bottom-left
             ImGui::SetCursorPos({kMargin, 24.f});
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             ImGui::TextUnformatted("Actor");
             ImGui::PopStyleColor();
 
-            // "+ Add" button — green "+" + "Add" text, drawn with ImDrawList for color control.
             constexpr float kBtnH = 22.f;
             ImGui::SetCursorPos({card_w - kBtnW - 4.f, (42.f - kBtnH) * 0.5f});
             bool        add_clicked = ImGui::InvisibleButton("##add_comp", {kBtnW, kBtnH});
-
             ImVec2      btn_scr     = ImGui::GetItemRectMin();
             ImDrawList* cdl         = ImGui::GetWindowDrawList();
             ImVec4      add_bg      = ImGui::IsItemHovered() ? ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) : ImGui::GetStyleColorVec4(ImGuiCol_Header);
             cdl->AddRectFilled(btn_scr, {btn_scr.x + kBtnW, btn_scr.y + kBtnH}, ImGui::ColorConvertFloat4ToU32(add_bg), 3.f);
-
             float th = ImGui::GetTextLineHeight();
             float ty = btn_scr.y + (kBtnH - th) * 0.5f;
             float tx = btn_scr.x + 8.f;
-            cdl->AddText({tx, ty}, IM_COL32(90, 210, 120, 255), "+");                                            // green "+"
-            cdl->AddText({tx + ImGui::CalcTextSize("+").x + 5.f, ty}, ImGui::GetColorU32(ImGuiCol_Text), "Add"); // normal "Add"
-
+            cdl->AddText({tx, ty}, IM_COL32(90, 210, 120, 255), "+");
+            cdl->AddText({tx + ImGui::CalcTextSize("+").x + 5.f, ty}, ImGui::GetColorU32(ImGuiCol_Text), "Add");
             (void) add_clicked;
 
             ImGui::EndChild();
@@ -119,38 +111,28 @@ namespace Tetragrama::Components
 
         ImGui::Spacing();
 
-        // ── Section header helper ──────────────────────────────────────────────
         auto SectionHeader = [](const char* id, const char* label, bool* open) -> bool {
             ImGui::PushID(id);
-
             ImVec2      pos = ImGui::GetCursorScreenPos();
             float       w   = ImGui::GetContentRegionAvail().x;
             float       h   = 22.f;
             ImDrawList* dl  = ImGui::GetWindowDrawList();
             bool        hov = ImGui::IsMouseHoveringRect(pos, {pos.x + w, pos.y + h});
-            ImU32       bg  = ImGui::GetColorU32(hov ? ImGuiCol_HeaderHovered : ImGuiCol_Header);
-            dl->AddRectFilled(pos, {pos.x + w, pos.y + h}, bg);
-
+            dl->AddRectFilled(pos, {pos.x + w, pos.y + h}, ImGui::GetColorU32(hov ? ImGuiCol_HeaderHovered : ImGuiCol_Header));
             ImU32 tri = ImGui::GetColorU32(ImGuiCol_Text);
             float tx = pos.x + 8.f, ty = pos.y + h * 0.5f;
             if (*open)
                 dl->AddTriangleFilled({tx, ty - 4.f}, {tx + 7.f, ty - 4.f}, {tx + 3.5f, ty + 4.f}, tri);
             else
                 dl->AddTriangleFilled({tx, ty - 4.f}, {tx, ty + 4.f}, {tx + 7.f, ty}, tri);
-
             dl->AddText({tx + 14.f, pos.y + (h - ImGui::GetTextLineHeight()) * 0.5f}, ImGui::GetColorU32(ImGuiCol_Text), label);
-
             ImGui::InvisibleButton("##hdr", {w, h});
             if (ImGui::IsItemClicked())
                 *open = !*open;
-
             ImGui::PopID();
             return *open;
         };
 
-        // ── XYZ property row helper ────────────────────────────────────────────
-        // UE-style: three equal drag fields with a colored 3px left border per axis.
-        // No separate axis text — the border color IS the axis indicator.
         auto XYZRow = [](const char* label, Vec3f& v, Vec3f reset_vals, float speed, auto onChange) {
             ImGui::TableSetColumnIndex(0);
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -166,9 +148,9 @@ namespace Tetragrama::Components
             float       fw        = (avail - kGap * 2.f) / 3.f;
 
             ImU32       border[3] = {
-                IM_COL32(215, 90, 80, 255),   // X red
-                IM_COL32(100, 200, 110, 255), // Y green
-                IM_COL32(90, 140, 230, 255),  // Z blue
+                IM_COL32(215, 90, 80, 255),
+                IM_COL32(100, 200, 110, 255),
+                IM_COL32(90, 140, 230, 255),
             };
             const char* ids[3]  = {"##ax0", "##ax1", "##ax2"};
             float*      vals[3] = {&v.x, &v.y, &v.z};
@@ -181,13 +163,10 @@ namespace Tetragrama::Components
                     ImGui::SameLine(0.f, kGap);
                 ImGui::SetNextItemWidth(fw);
                 changed   |= ImGui::DragFloat(ids[i], vals[i], speed, 0.f, 0.f, "%.3f");
-                // Colored left-border stripe overlay (drawn on top of the field)
                 ImVec2 p0  = ImGui::GetItemRectMin();
-                ImVec2 p1  = {p0.x + 3.f, ImGui::GetItemRectMax().y};
-                dl->AddRectFilled(p0, p1, border[i]);
+                dl->AddRectFilled(p0, {p0.x + 3.f, ImGui::GetItemRectMax().y}, border[i]);
             }
 
-            // Reset button
             ImGui::SameLine(0.f, kGap);
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 0.f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
@@ -207,7 +186,6 @@ namespace Tetragrama::Components
 
         static ImGuiTableFlags kTableFlags = ImGuiTableFlags_NoPadInnerX | ImGuiTableFlags_NoPadOuterX;
 
-        // ── Transform section ──────────────────────────────────────────────────
         auto*                  tc          = actor->GetComponent<TransformComponent>();
         if (tc)
         {
@@ -240,7 +218,6 @@ namespace Tetragrama::Components
             }
         }
 
-        // ── Mesh section ───────────────────────────────────────────────────────
         auto* mc = actor->GetComponent<MeshComponent>();
         if (mc)
         {

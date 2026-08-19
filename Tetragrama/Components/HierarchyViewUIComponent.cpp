@@ -62,11 +62,9 @@ namespace Tetragrama::Components
 
         ImGui::Begin(Name, CanBeClosed ? &CanBeClosed : nullptr, ImGuiWindowFlags_NoCollapse);
 
-        // Deselect on background click.
         if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
             current_scene->SelectedActorHandle = {};
 
-        // ── Toolbar: search box + create-collection icon ──────────────────────
         {
             const float btn_sz  = 22.f;
             const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -77,7 +75,6 @@ namespace Tetragrama::Components
             ImGui::InputText("##filter", m_filter_buf, sizeof(m_filter_buf));
             ImGui::SameLine();
 
-            // Collection button — folder + plus icon drawn with ImDrawList.
             ImVec2 btn_pos = ImGui::GetCursorScreenPos();
             bool   clicked = ImGui::InvisibleButton("##new_collection", {btn_sz, btn_sz});
             bool   hovered = ImGui::IsItemHovered();
@@ -89,21 +86,17 @@ namespace Tetragrama::Components
                 ImU32       col = ImGui::ColorConvertFloat4ToU32(hovered ? ImVec4(0.85f, 0.85f, 0.90f, 1.f) : ImVec4(0.55f, 0.58f, 0.65f, 1.f));
 
                 float       x = btn_pos.x, y = btn_pos.y, s = btn_sz;
-                float       m   = s * 0.12f; // margin
-
-                // Folder body — rounded rect occupying lower 70% of the button
+                float       m   = s * 0.12f;
                 float       bx0 = x + m, by0 = y + s * 0.32f;
                 float       bx1 = x + s - m, by1 = y + s - m;
                 dl->AddRectFilled({bx0, by0}, {bx1, by1}, col, 2.f);
 
-                // Folder tab — small rectangle top-left of the body
                 float tx0 = bx0, ty0 = by0 - s * 0.14f;
                 float tx1 = bx0 + (bx1 - bx0) * 0.45f, ty1 = by0 + 1.f;
                 dl->AddRectFilled({tx0, ty0}, {tx1, ty1}, col, 2.f, ImDrawFlags_RoundCornersTopLeft | ImDrawFlags_RoundCornersTopRight);
 
-                // "+" sign — centered in the folder body, slightly smaller
                 float cx = (bx0 + bx1) * 0.5f, cy = (by0 + by1) * 0.5f;
-                float hl  = s * 0.18f; // half-length of each arm
+                float hl  = s * 0.18f;
                 float thk = 1.5f;
                 ImU32 bg  = ImGui::ColorConvertFloat4ToU32(ImVec4(0.14f, 0.15f, 0.18f, 1.f));
                 dl->AddLine({cx - hl, cy}, {cx + hl, cy}, bg, thk + 1.5f);
@@ -126,7 +119,6 @@ namespace Tetragrama::Components
             ImGui::TableSetupColumn("##type", ImGuiTableColumnFlags_WidthStretch, 0.25f);
             ImGui::TableSetupColumn("##level", ImGuiTableColumnFlags_WidthStretch, 0.20f);
 
-            // Custom header row — plain text, no separator lines.
             ImGui::TableNextRow();
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.f));
             ImGui::TableSetColumnIndex(0);
@@ -144,11 +136,9 @@ namespace Tetragrama::Components
                 if (nc && nc->Value[0])
                     label = nc->Value;
 
-                // Skip if name doesn't match the search filter.
                 if (m_filter_buf[0] != '\0' && !strstr(label, m_filter_buf))
                     return;
 
-                // Derive type string from attached components.
                 const char* type = "Actor";
                 if (actor->HasComponent<MeshComponent>())
                     type = "Static Mesh";
@@ -248,7 +238,7 @@ namespace Tetragrama::Components
                 tc->Rotation         = new_rot;
                 tc->Scale            = new_scale;
 
-                // Sync to RenderScene so the mesh moves in the viewport.
+                // Keep RenderScene in sync — TransformComponent and Instances are not auto-bridged yet.
                 auto* mc             = actor->GetComponent<MeshComponent>();
                 if (mc && mc->RenderInstanceId != UINT32_MAX)
                     scene->SetInstanceTransform(mc->RenderInstanceId, transform);
