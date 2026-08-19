@@ -47,9 +47,7 @@ namespace Tetragrama::Components
         {
             static char s_filter[128] = {};
             ImGui::SetNextItemWidth(-1.f);
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.14f, 0.15f, 0.18f, 1.f));
             ImGui::InputTextWithHint("##details_search", "Search Details...", s_filter, sizeof(s_filter));
-            ImGui::PopStyleColor();
         }
 
         ImGui::Spacing();
@@ -67,31 +65,28 @@ namespace Tetragrama::Components
         // ── Actor header card ──────────────────────────────────────────────────
         auto* nc = actor->GetComponent<NameComponent>();
         {
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.16f, 0.18f, 0.22f, 1.f));
+            // Tint the child background slightly from the current Header color
+            ImVec4 hdr = ImGui::GetStyleColorVec4(ImGuiCol_Header);
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(hdr.x, hdr.y, hdr.z, 0.4f));
             ImGui::BeginChild("##actor_header", {-1.f, 42.f}, false, ImGuiWindowFlags_NoScrollbar);
 
             ImGui::SetCursorPos({10.f, 6.f});
 
             if (nc)
             {
-                // Editable name — borderless inside the card
                 ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.f, 0.f, 0.f, 0.f));
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.f, 2.f));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.95f, 0.97f, 1.f));
-
                 char buf[128] = {};
                 snprintf(buf, sizeof(buf), "%s", nc->Value);
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 10.f);
                 if (ImGui::InputText("##actor_name", buf, sizeof(buf)))
                     snprintf(nc->Value, sizeof(nc->Value), "%s", buf);
-
-                ImGui::PopStyleColor();
                 ImGui::PopStyleVar();
                 ImGui::PopStyleColor();
             }
 
             ImGui::SetCursorPos({10.f, 24.f});
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.50f, 0.60f, 1.f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             ImGui::TextUnformatted("Actor");
             ImGui::PopStyleColor();
 
@@ -102,28 +97,25 @@ namespace Tetragrama::Components
         ImGui::Spacing();
 
         // ── Section header helper ──────────────────────────────────────────────
-        // Draws a collapsible UE-style section bar and returns whether it's open.
         auto SectionHeader = [](const char* id, const char* label, bool* open) -> bool {
             ImGui::PushID(id);
 
-            // Background
             ImVec2      pos = ImGui::GetCursorScreenPos();
             float       w   = ImGui::GetContentRegionAvail().x;
             float       h   = 22.f;
             ImDrawList* dl  = ImGui::GetWindowDrawList();
             bool        hov = ImGui::IsMouseHoveringRect(pos, {pos.x + w, pos.y + h});
-            ImU32       bg  = hov ? IM_COL32(44, 48, 58, 255) : IM_COL32(36, 39, 48, 255);
+            ImU32       bg  = ImGui::GetColorU32(hov ? ImGuiCol_HeaderHovered : ImGuiCol_Header);
             dl->AddRectFilled(pos, {pos.x + w, pos.y + h}, bg);
 
-            // Triangle
+            ImU32 tri = ImGui::GetColorU32(ImGuiCol_Text);
             float tx = pos.x + 8.f, ty = pos.y + h * 0.5f;
             if (*open)
-                dl->AddTriangleFilled({tx, ty - 4.f}, {tx + 7.f, ty - 4.f}, {tx + 3.5f, ty + 4.f}, IM_COL32(170, 175, 190, 255));
+                dl->AddTriangleFilled({tx, ty - 4.f}, {tx + 7.f, ty - 4.f}, {tx + 3.5f, ty + 4.f}, tri);
             else
-                dl->AddTriangleFilled({tx, ty - 4.f}, {tx, ty + 4.f}, {tx + 7.f, ty}, IM_COL32(130, 135, 150, 255));
+                dl->AddTriangleFilled({tx, ty - 4.f}, {tx, ty + 4.f}, {tx + 7.f, ty}, tri);
 
-            // Label
-            dl->AddText({tx + 14.f, pos.y + (h - ImGui::GetTextLineHeight()) * 0.5f}, IM_COL32(200, 205, 215, 255), label);
+            dl->AddText({tx + 14.f, pos.y + (h - ImGui::GetTextLineHeight()) * 0.5f}, ImGui::GetColorU32(ImGuiCol_Text), label);
 
             ImGui::InvisibleButton("##hdr", {w, h});
             if (ImGui::IsItemClicked())
@@ -134,16 +126,10 @@ namespace Tetragrama::Components
         };
 
         // ── XYZ property row helper ────────────────────────────────────────────
-        // Draws:  [label]  X[___] Y[___] Z[___]  [↺]
-        // inside a two-cell table row (caller manages BeginTable / EndTable).
-        static constexpr float kXCol  = IM_COL32(215, 90, 80, 255);
-        static constexpr float kYCol  = IM_COL32(100, 200, 110, 255);
-        static constexpr float kZCol  = IM_COL32(90, 140, 230, 255);
-
-        auto                   XYZRow = [](const char* label, Vec3f& v, Vec3f reset_vals, float speed, auto onChange) {
-            // Label cell
+        auto XYZRow = [](const char* label, Vec3f& v, Vec3f reset_vals, float speed, auto onChange) {
+            // Label cell — use TextDisabled so it reads well in any theme
             ImGui::TableSetColumnIndex(0);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.62f, 0.65f, 0.72f, 1.f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             ImGui::TextUnformatted(label);
             ImGui::PopStyleColor();
 
@@ -155,38 +141,37 @@ namespace Tetragrama::Components
             float fw      = (avail - 6.f * 2.f) / 3.f;               // 6 = gap between fields
 
             bool  changed = false;
-            struct
+            struct Axis
             {
                 const char* lbl;
-                float*      val;
+                const char* id;
                 ImU32       col;
-            } axes[3] = {
-                {"X", &v.x, IM_COL32(215,  90,  80, 255)},
-                {"Y", &v.y, IM_COL32(100, 200, 110, 255)},
-                {"Z", &v.z,  IM_COL32(90, 140, 230, 255)},
+                float*      val;
+            };
+            Axis axes[3] = {
+                {"X", "##ax0", IM_COL32(215,  90,  80, 255), &v.x},
+                {"Y", "##ax1", IM_COL32(100, 200, 110, 255), &v.y},
+                {"Z", "##ax2",  IM_COL32(90, 140, 230, 255), &v.z},
             };
 
             for (int i = 0; i < 3; ++i)
             {
                 if (i > 0)
                     ImGui::SameLine(0.f, 6.f);
-                // Colored axis label
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(((axes[i].col >> 0) & 0xFF) / 255.f, ((axes[i].col >> 8) & 0xFF) / 255.f, ((axes[i].col >> 16) & 0xFF) / 255.f, 1.f));
                 ImGui::TextUnformatted(axes[i].lbl);
                 ImGui::PopStyleColor();
                 ImGui::SameLine(0.f, 2.f);
-                ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.13f, 0.16f, 1.f));
                 ImGui::SetNextItemWidth(fw - ImGui::CalcTextSize(axes[i].lbl).x - 2.f);
-                changed |= ImGui::DragFloat(axes[i].lbl, axes[i].val, speed, 0.f, 0.f, "%.3f");
-                ImGui::PopStyleColor();
+                changed |= ImGui::DragFloat(axes[i].id, axes[i].val, speed, 0.f, 0.f, "%.3f");
             }
 
-            // Reset button
+            // Reset button — transparent, uses theme text/hover colors
             ImGui::SameLine(0.f, 6.f);
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 0.f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.f, 1.f, 1.f, 0.08f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.f, 1.f, 1.f, 0.15f));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.48f, 0.55f, 1.f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             if (ImGui::SmallButton("↺"))
             {
                 v       = reset_vals;
@@ -250,16 +235,14 @@ namespace Tetragrama::Components
                     ImGui::TableNextRow();
 
                     ImGui::TableSetColumnIndex(0);
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.62f, 0.65f, 0.72f, 1.f));
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
                     ImGui::TextUnformatted("UUID");
                     ImGui::PopStyleColor();
 
                     ImGui::TableSetColumnIndex(1);
                     std::string uuid_str = uuids::to_string(mc->MeshUUID);
-                    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.13f, 0.16f, 1.f));
                     ImGui::SetNextItemWidth(-1.f);
                     ImGui::InputText("##uuid", const_cast<char*>(uuid_str.c_str()), uuid_str.size() + 1, ImGuiInputTextFlags_ReadOnly);
-                    ImGui::PopStyleColor();
 
                     ImGui::TableNextRow();
                     ImGui::EndTable();
@@ -273,9 +256,9 @@ namespace Tetragrama::Components
         if (remaining > 30.f)
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + remaining - 30.f);
 
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.18f, 0.24f, 1.f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.26f, 0.36f, 1.f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.26f, 0.30f, 0.44f, 1.f));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_Header));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
         ImGui::Button("+ Add Component", {-1.f, 24.f});
         ImGui::PopStyleVar();
