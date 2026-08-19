@@ -22,10 +22,18 @@ jobs:
         with:
           name: Build-linux-${{ inputs.configuration }}
 
+      - name: Install Mesa software Vulkan (lavapipe)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y mesa-vulkan-drivers
+
       - name: Update access permission of ZEngineTests
         run: chmod +x ${{github.workspace}}/tests/ZEngineTests
 
       - name: Run Tests
         env:
           LD_LIBRARY_PATH: ${{github.workspace}}/lib
+          # Direct the Vulkan loader at Mesa's lavapipe ICD so the headless
+          # swapchain tests can run without a physical GPU.
+          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
         run: ${{github.workspace}}/tests/ZEngineTests
