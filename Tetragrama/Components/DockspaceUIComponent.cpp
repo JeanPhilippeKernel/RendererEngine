@@ -1208,7 +1208,7 @@ namespace Tetragrama::Components
 
                 const char* name          = strrchr(filename, '/');
                 name                      = name ? name + 1 : filename;
-                current_scene->AddMeshInstance(asset_mesh->MeshUUID, name);
+                current_scene->SpawnMeshActor(asset_mesh->MeshUUID, name);
             }
         }
         co_return;

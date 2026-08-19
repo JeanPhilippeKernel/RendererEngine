@@ -1,8 +1,12 @@
 #include <Tetragrama/EditorScene.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
 using namespace ZEngine::Core::Containers;
+using namespace ZEngine::ECS::Components;
 using namespace ZEngine::Managers;
 using ZEngine::Core::VFS::VFSPath;
 
@@ -147,6 +151,34 @@ namespace Tetragrama
                 AssetManager::IngestMesh(std::move(mesh), std::move(hier));
             }
         }
+    }
+
+    ZEngine::ECS::ActorHandle EditorScene::SpawnMeshActor(const uuids::uuid& mesh_uuid, const char* name)
+    {
+        auto* ctx = ZEngine::Engine::GetContext();
+        if (!ctx || !ctx->ActorManager)
+            return {};
+
+        // Register with the render scene first to get a stable instance ID.
+        uint32_t                  render_id = AddMeshInstance(mesh_uuid, name);
+
+        // Create the Actor and wire up components.
+        ZEngine::ECS::ActorHandle handle    = ctx->ActorManager->Create();
+        ZEngine::ECS::Actor*      actor     = ctx->ActorManager->Access(handle);
+        if (!actor)
+            return {};
+
+        NameComponent nc = {};
+        ZEngine::Helpers::secure_strncpy(nc.Value, sizeof(nc.Value), name, ZEngine::Helpers::secure_strlen(name));
+        actor->AddComponent<NameComponent>(nc);
+        actor->AddComponent<TransformComponent>({});
+
+        MeshComponent mc    = {};
+        mc.MeshUUID         = mesh_uuid;
+        mc.RenderInstanceId = render_id;
+        actor->AddComponent<MeshComponent>(mc);
+
+        return handle;
     }
 
 } // namespace Tetragrama

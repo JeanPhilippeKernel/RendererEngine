@@ -71,6 +71,20 @@ namespace ZEngine::ECS
             return static_cast<uint32_t>(m_handles.Size());
         }
 
+        // Visit every live Actor. Fn signature: void(ActorHandle, Actor*).
+        template <typename Fn>
+        void ForEach(Fn&& fn)
+        {
+            uint32_t head = m_handles.Head();
+            for (uint32_t i = 0; i < head; ++i)
+            {
+                ActorHandle h   = m_handles.ToHandle(i);
+                Actor**     ptr = m_handles.Access(h);
+                if (ptr && *ptr)
+                    fn(h, *ptr);
+            }
+        }
+
     private:
         void                           AssertUniqueEntityID(EntityID id) const;
 

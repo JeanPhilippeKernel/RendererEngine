@@ -214,7 +214,7 @@ namespace Tetragrama::Components
                     if (scene)
                     {
                         cstring iname = self->m_instance_name[0] ? self->m_instance_name : fs::path(self->m_path_buf).filename().replace_extension().string().c_str();
-                        scene->AddMeshInstance(header.Id, iname);
+                        scene->SpawnMeshActor(header.Id, iname);
                     }
                 }
                 self->m_add_to_scene     = false;
