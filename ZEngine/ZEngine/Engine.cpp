@@ -85,25 +85,25 @@ namespace ZEngine
         g_engine_ctx->WorldTick = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldTick);
         g_engine_ctx->WorldTick->Initialize(&g_engine_ctx->ECSArena);
 
+        // ImportPipeline arena: covers engine importers (414 MB) + editor importers (414 MB) + coordinator overhead.
+        // Editor's AssetImporterUIComponent carves its own importer arenas from this same budget
+        // via Engine::GetContext()->ImportPipelineArena so all import memory is budget-tracked.
+        memory->CreateBudgetedArena(memory->Budget.ImportPipeline, &g_engine_ctx->ImportPipelineArena);
         g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);
         g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
 
-        // Register format importers
-        // All importers get their own arenas carved from MainArena (3 GB).
-        // AssetArena is only 78 MB — not enough for intermediate geometry data.
         static Importers::GltfImporter           s_gltf_importer;
         static Importers::AssimpImporter         s_assimp_importer;
         static Importers::EnvironmentMapImporter s_env_map_importer;
         static Core::Memory::ArenaAllocator      s_gltf_arena;
         static Core::Memory::ArenaAllocator      s_assimp_arena;
         static Core::Memory::ArenaAllocator      s_envmap_arena;
-        arena.CreateSubArena(ZMega(64), &s_gltf_arena);
-        arena.CreateSubArena(ZMega(350), &s_assimp_arena);
-        arena.CreateSubArena(ZMega(32), &s_envmap_arena);
+        g_engine_ctx->ImportPipelineArena.CreateSubArena(ZMega(64), &s_gltf_arena);
+        g_engine_ctx->ImportPipelineArena.CreateSubArena(ZMega(350), &s_assimp_arena);
+        g_engine_ctx->ImportPipelineArena.CreateSubArena(ZMega(32), &s_envmap_arena);
         s_gltf_importer.Initialize(&s_gltf_arena);
         s_assimp_importer.Initialize(&s_assimp_arena);
         s_env_map_importer.Initialize(&s_envmap_arena);
-        // GLB/GLTF handled by GltfImporter; FBX/OBJ by AssimpImporter.
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_gltf_importer);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_assimp_importer);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_env_map_importer);
