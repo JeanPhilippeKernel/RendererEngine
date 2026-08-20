@@ -554,6 +554,12 @@ namespace ZEngine::Importers
                         nbytes = arr.bytes.size();
                         set_mime(arr.mimeType);
                     },
+                    [&](const fastgltf::sources::Vector& vec) {
+                        // GLB binary chunk is loaded as sources::Vector by fastgltf
+                        bytes  = reinterpret_cast<const uint8_t*>(vec.bytes.data());
+                        nbytes = vec.bytes.size();
+                        set_mime(vec.mimeType);
+                    },
                     [&](const fastgltf::sources::ByteView& bv_data) {
                         bytes  = reinterpret_cast<const uint8_t*>(bv_data.bytes.data());
                         nbytes = bv_data.bytes.size();
@@ -565,6 +571,11 @@ namespace ZEngine::Importers
                             fastgltf::visitor{
                             [&](const fastgltf::sources::Array& arr) {
                                 bytes  = reinterpret_cast<const uint8_t*>(arr.bytes.data()) + bv.byteOffset;
+                                nbytes = bv.byteLength;
+                                set_mime(bv_src.mimeType);
+                            },
+                            [&](const fastgltf::sources::Vector& vec) {
+                                bytes  = reinterpret_cast<const uint8_t*>(vec.bytes.data()) + bv.byteOffset;
                                 nbytes = bv.byteLength;
                                 set_mime(bv_src.mimeType);
                             },
