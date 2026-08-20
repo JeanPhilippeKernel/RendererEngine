@@ -164,6 +164,7 @@ namespace Tetragrama::Components
         config->AssetName.init(&LocalArena, asset_name.Data);
         config->OutputAssetFile.init(&LocalArena, asset_file_buf);
         config->InputBaseAssetFilePath.init(&LocalArena, parent_dir.CStr());
+        config->VFS = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
 
         char msg[512];
         snprintf(msg, sizeof(msg), "Importing %s", vfs_value.Filename().Data);

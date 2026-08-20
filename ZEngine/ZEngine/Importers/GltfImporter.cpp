@@ -480,6 +480,7 @@ namespace ZEngine::Importers
         config.AssetName.init(arena, cfg.AssetName.c_str());
         config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
         config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
+        config.VFS   = cfg.VFS;
 
         auto fs_path = std::filesystem::path(filename);
         auto buf     = fastgltf::GltfDataBuffer::FromPath(fs_path);

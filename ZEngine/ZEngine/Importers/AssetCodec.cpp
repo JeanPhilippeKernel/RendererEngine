@@ -7,7 +7,6 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <uuid.h>
-#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -25,8 +24,11 @@ namespace ZEngine::Importers::AssetCodec
         if (config.OutputAssetFile.empty())
             return output;
 
+        auto mesh_dir = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+        config.VFS->CreateDir(mesh_dir);
+
         char fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / config.OutputAssetFile.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
+        (mesh_dir / config.OutputAssetFile.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
         std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
         if (!out.is_open())
         {
@@ -68,12 +70,13 @@ namespace ZEngine::Importers::AssetCodec
 
     AssetImporterOutput SerializeMaterialAssetFile(Core::Memory::ArenaAllocator* /*arena*/, AssetMaterial& material, const ImportConfiguration& config)
     {
-        AssetImporterOutput output                             = {};
-        std::string         asset_mat_filename                 = fmt::format("{0}{1}", material.Name.c_str(), ".zematerial");
-        // Use dedicated material output dir if set, otherwise fall back to mesh output dir
-        const char*         mat_dir                            = !config.OutputMaterialPath.empty() ? config.OutputMaterialPath.c_str() : config.OutputAssetsPath.c_str();
-        char                fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(mat_dir).Value() / asset_mat_filename.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
+        AssetImporterOutput output             = {};
+        std::string         asset_mat_filename = fmt::format("{}{}", material.Name.c_str(), ".zematerial");
+        auto                mat_dir            = VFSPath::Parse(config.OutputMaterialPath.c_str()).Value();
+        config.VFS->CreateDir(mat_dir);
+
+        char fullname_path[MAX_FILE_PATH_COUNT] = {};
+        (mat_dir / asset_mat_filename.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
 
         auto tex_obj = [](const uuids::uuid& uuid, const Core::Containers::String& path) {
             nlohmann::json t;
@@ -103,16 +106,19 @@ namespace ZEngine::Importers::AssetCodec
         out << j.dump(4);
         out.close();
 
-        output = {.Type = AssetFileType::MATERIAL, .Path = (VFSPath::Parse(mat_dir).Value() / asset_mat_filename.c_str()).CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
+        output = {.Type = AssetFileType::MATERIAL, .Path = (mat_dir / asset_mat_filename.c_str()).CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
         return output;
     }
 
     AssetImporterOutput SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* arena, ArrayView<AssetTexture> textures, const ImportConfiguration& config)
     {
-        AssetImporterOutput output                             = {};
-        std::string         asset_tex_filename                 = fmt::format("{0}{1}", config.AssetName.c_str(), ".zetextures");
-        char                fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / asset_tex_filename.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
+        AssetImporterOutput output             = {};
+        std::string         asset_tex_filename = fmt::format("{}{}", config.AssetName.c_str(), ".zetextures");
+        auto                tex_dir            = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+        config.VFS->CreateDir(tex_dir);
+
+        char fullname_path[MAX_FILE_PATH_COUNT] = {};
+        (tex_dir / asset_tex_filename.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
         std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
         if (!out.is_open())
         {
@@ -311,13 +317,11 @@ namespace ZEngine::Importers::AssetCodec
         if (config.OutputAssetFile.empty())
             return output;
 
-        char dir_path[MAX_FILE_PATH_COUNT] = {};
-        VFSPath::Parse(config.OutputAssetsPath.c_str()).Value().ResolveNative(config.OutputWorkingSpacePath.c_str(), dir_path, sizeof(dir_path));
-        char fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / config.OutputAssetFile.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
+        auto env_dir = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+        config.VFS->CreateDir(env_dir);
 
-        std::error_code ec;
-        std::filesystem::create_directories(dir_path, ec);
+        char fullname_path[MAX_FILE_PATH_COUNT] = {};
+        (env_dir / config.OutputAssetFile.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
         std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
         if (!out.is_open())
             return output;
