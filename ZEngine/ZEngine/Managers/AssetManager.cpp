@@ -48,6 +48,7 @@ namespace ZEngine::Managers
         s_Instance->GPUMeshMaterials.init(&s_Instance->Arena, 5000);
         s_Instance->Textures.init(&s_Instance->Arena, 5000);
         s_Instance->UUIDToTextureHandle.init(&s_Instance->Arena, 5000);
+        s_Instance->MeshToHierarchySlot.init(&s_Instance->Arena, 5000);
 
         static Core::VFS::AssetRegistry s_registry;
         s_registry.Initialize(&s_Instance->Arena);
@@ -79,16 +80,23 @@ namespace ZEngine::Managers
 
     // ── Direct ingest methods — called from ImportCoordinator thread ─────────────
 
+    bool AssetManager::IsRegistered(const uuids::uuid& id)
+    {
+        return s_Instance && s_Instance->Registry && s_Instance->Registry->FindByUUID(id) != nullptr;
+    }
+
     void AssetManager::IngestMesh(AssetMesh&& mesh, AssetNodeHierarchy&& hierarchy)
     {
         if (!s_Instance)
             return;
         std::lock_guard lock(s_Instance->IngestMutex);
+        if (IsRegistered(mesh.MeshUUID))
+            return;
 
         // Mesh
-        auto            mesh_slot = static_cast<uint32_t>(s_Instance->Meshes.size());
-        auto&           m         = s_Instance->Meshes.push_use({});
-        m.MeshUUID                = mesh.MeshUUID;
+        auto  mesh_slot = static_cast<uint32_t>(s_Instance->Meshes.size());
+        auto& m         = s_Instance->Meshes.push_use({});
+        m.MeshUUID      = mesh.MeshUUID;
         m.SubMeshes.init(&s_Instance->Arena, mesh.SubMeshes.size());
         m.Vertices.init(&s_Instance->Arena, mesh.Vertices.size(), mesh.Vertices.size());
         m.Indices.init(&s_Instance->Arena, mesh.Indices.size(), mesh.Indices.size());
@@ -135,6 +143,7 @@ namespace ZEngine::Managers
             h.NodeMaterials.insert(k, v);
 
         RegisterAsset(AssetType::MESH_HIERARCHY, h.NodeHierarchyUUID, hier_slot);
+        s_Instance->MeshToHierarchySlot.insert(h.MeshUUID, hier_slot);
 
         // Notify the registry that both assets are now loaded so hot-reload callbacks fire.
         if (s_Instance->Registry)
@@ -144,44 +153,55 @@ namespace ZEngine::Managers
         }
     }
 
+    Rendering::Textures::TextureHandle AssetManager::IngestTexture(const uuids::uuid& uuid, const Core::Containers::String& path)
+    {
+        if (!s_Instance)
+            return {};
+        std::lock_guard lock(s_Instance->IngestMutex);
+
+        // Dedup — return existing handle if already registered.
+        if (IsRegistered(uuid))
+        {
+            auto* h = s_Instance->UUIDToTextureHandle.find(uuid);
+            return h ? *h : s_Instance->FallbackTextureHandle;
+        }
+
+        auto  slot          = static_cast<uint32_t>(s_Instance->Textures.size());
+        auto& new_tex       = s_Instance->Textures.push_use({});
+        new_tex.TextureUUID = uuid;
+        new_tex.Path.init(&s_Instance->Arena, path.c_str());
+
+        if (!new_tex.Path.empty() && s_Instance->Device && s_Instance->Device->RRM)
+        {
+            char full_path[MAX_FILE_PATH_COUNT] = {};
+            snprintf(full_path, sizeof(full_path), "%s%c%s", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, new_tex.Path.c_str());
+            auto* rrm      = static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM);
+            new_tex.Handle = rrm->SubmitTextureFile(0, 0, full_path);
+            if (!new_tex.Handle.Valid())
+            {
+                ZENGINE_VALIDATE_ASSERT(s_Instance->FallbackTextureHandle.Valid(), "FallbackTextureHandle not initialized — InitFallbackTexture must be called before ingesting assets")
+                ZENGINE_LOG_ASSET_WARN("Texture not found: '{}' — using fallback", full_path)
+                new_tex.Handle = s_Instance->FallbackTextureHandle;
+            }
+        }
+        else
+        {
+            ZENGINE_VALIDATE_ASSERT(s_Instance->FallbackTextureHandle.Valid(), "FallbackTextureHandle not initialized — InitFallbackTexture must be called before ingesting assets")
+            ZENGINE_LOG_ASSET_WARN("Texture {} has no path — extraction may have failed, using fallback", uuids::to_string(uuid))
+            new_tex.Handle = s_Instance->FallbackTextureHandle;
+        }
+
+        RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, slot);
+        s_Instance->UUIDToTextureHandle.insert(new_tex.TextureUUID, new_tex.Handle);
+        return new_tex.Handle;
+    }
+
     void AssetManager::IngestTextures(Core::Containers::Array<AssetTexture>&& textures)
     {
         if (!s_Instance)
             return;
-        std::lock_guard lock(s_Instance->IngestMutex);
-
         for (size_t i = 0; i < textures.size(); ++i)
-        {
-            auto& tex           = textures[i];
-            auto  slot          = static_cast<uint32_t>(s_Instance->Textures.size());
-            auto& new_tex       = s_Instance->Textures.push_use({});
-            new_tex.TextureUUID = tex.TextureUUID;
-
-            // Store the path in the arena first so the pointer is stable
-            // for the async GPU upload that outlives this stack frame.
-            new_tex.Path.init(&s_Instance->Arena, tex.Path.c_str());
-            if (!new_tex.Path.empty() && s_Instance->Device->RRM)
-            {
-                const auto               path = fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, new_tex.Path.c_str());
-                Core::Containers::String stable_path;
-                stable_path.init(&s_Instance->Arena, path.c_str());
-                auto* rrm      = static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM);
-                new_tex.Handle = rrm->SubmitTextureFile(0, 0, stable_path.c_str());
-                if (!new_tex.Handle.Valid())
-                {
-                    ZENGINE_LOG_ASSET_WARN("Texture not found: '{}' — using fallback", stable_path.c_str())
-                    new_tex.Handle = s_Instance->FallbackTextureHandle;
-                }
-            }
-            else if (new_tex.Path.empty())
-            {
-                // No path at all — use fallback so the slot is never null
-                new_tex.Handle = s_Instance->FallbackTextureHandle;
-            }
-
-            RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, slot);
-            s_Instance->UUIDToTextureHandle.insert(new_tex.TextureUUID, new_tex.Handle);
-        }
+            IngestTexture(textures[i].TextureUUID, textures[i].Path);
     }
 
     void AssetManager::IngestMaterial(AssetMaterial&& mat)
@@ -189,8 +209,10 @@ namespace ZEngine::Managers
         if (!s_Instance)
             return;
         std::lock_guard lock(s_Instance->IngestMutex);
+        if (IsRegistered(mat.MaterialUUID))
+            return;
 
-        auto            slot = static_cast<uint32_t>(s_Instance->Materials.size());
+        auto slot = static_cast<uint32_t>(s_Instance->Materials.size());
         s_Instance->Materials.push(mat);
         RegisterAsset(AssetType::MATERIAL, mat.MaterialUUID, slot);
 
@@ -202,17 +224,24 @@ namespace ZEngine::Managers
         gpu_mat.AmbientColor                     = mat.AmbientColor;
         gpu_mat.Factors                          = mat.Factors;
 
-        auto tex_handle                          = [&](const uuids::uuid& id) -> uint32_t {
+        // Resolve handle for a texture slot: UUID lookup first, then fall back to uploading
+        // from the stored path — handles scene-reload and dragged-.zmesh cases where
+        // IngestTextures may not have run yet for this material's textures.
+        auto tex_handle                          = [&](const uuids::uuid& id, const Core::Containers::String& path) -> uint32_t {
             if (id.is_nil())
-                return 0;
+                return INVALID_MAP_HANDLE;
             auto* h = s_Instance->UUIDToTextureHandle.find(id);
-            return h ? h->Index : 0;
+            if (h)
+                return h->Index;
+            if (!path.empty())
+                return IngestTexture(id, path).Index;
+            return INVALID_MAP_HANDLE;
         };
-        gpu_mat.AlbedoMap   = tex_handle(mat.AlbedoTexUUID);
-        gpu_mat.EmissiveMap = tex_handle(mat.EmissiveTexUUID);
-        gpu_mat.NormalMap   = tex_handle(mat.NormalTexUUID);
-        gpu_mat.OpacityMap  = tex_handle(mat.OpacityTexUUID);
-        gpu_mat.SpecularMap = tex_handle(mat.SpecularTexUUID);
+        gpu_mat.AlbedoMap   = tex_handle(mat.AlbedoTexUUID, mat.AlbedoTexPath);
+        gpu_mat.EmissiveMap = tex_handle(mat.EmissiveTexUUID, mat.EmissiveTexPath);
+        gpu_mat.NormalMap   = tex_handle(mat.NormalTexUUID, mat.NormalTexPath);
+        gpu_mat.OpacityMap  = tex_handle(mat.OpacityTexUUID, mat.OpacityTexPath);
+        gpu_mat.SpecularMap = tex_handle(mat.SpecularTexUUID, mat.SpecularTexPath);
     }
 
     // ── CPU buffer accessors ──────────────────────────────────────────────────────
@@ -228,14 +257,12 @@ namespace ZEngine::Managers
         return index < Meshes.size() ? &Meshes[index] : nullptr;
     }
 
-    Importers::AssetNodeHierarchy* AssetManager::GetMeshNodeHierarchy(const uuids::uuid& id)
+    Importers::AssetNodeHierarchy* AssetManager::GetMeshNodeHierarchy(const uuids::uuid& mesh_id)
     {
-        if (!Registry)
+        if (!s_Instance)
             return nullptr;
-        for (size_t i = 0; i < NodeHierarchies.size(); ++i)
-            if (NodeHierarchies[i].MeshUUID == id)
-                return &NodeHierarchies[i];
-        return nullptr;
+        const uint32_t* slot = s_Instance->MeshToHierarchySlot.find(mesh_id);
+        return (slot && *slot < s_Instance->NodeHierarchies.size()) ? &s_Instance->NodeHierarchies[*slot] : nullptr;
     }
 
     AssetHandle AssetManager::GetMeshNodeHierarchyHandle(const uuids::uuid& id)
@@ -244,49 +271,6 @@ namespace ZEngine::Managers
             return 0;
         const Core::VFS::AssetRecord* rec = Registry->FindByUUID(id);
         return rec ? rec->SlotHandle : 0;
-    }
-
-    AssetHandle AssetManager::GetMaterialHandleFromUUID(const uuids::uuid& material_uuid)
-    {
-        if (!Registry)
-            return 0;
-        const Core::VFS::AssetRecord* rec = Registry->FindByUUID(material_uuid);
-        return rec ? rec->SlotHandle : 0;
-    }
-
-    Importers::AssetTexture* AssetManager::LoadTextureFileAsAsset(cstring file, bool absolute)
-    {
-        if (!Helpers::secure_strlen(file))
-            return nullptr;
-
-        auto                         asset_id = static_cast<uint32_t>(Textures.size());
-        auto&                        new_tex  = Textures.push_use({});
-
-        std::random_device           rd;
-        std::mt19937                 generator(rd());
-        uuids::uuid_random_generator gen{generator};
-        new_tex.TextureUUID = gen();
-
-        new_tex.Path.init(&s_Instance->Arena, file);
-        {
-            const auto               tex_path_str = absolute ? std::string(file) : fmt::format("{0}{1}{2}", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, file);
-            Core::Containers::String stable_path;
-            stable_path.init(&s_Instance->Arena, tex_path_str.c_str());
-            if (s_Instance->Device->RRM)
-            {
-                auto* rrm      = static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM);
-                new_tex.Handle = rrm->SubmitTextureFile(0, 0, stable_path.c_str());
-                if (!new_tex.Handle.Valid())
-                {
-                    ZENGINE_LOG_ASSET_WARN("Texture not found: '{}' — using fallback", stable_path.c_str())
-                    new_tex.Handle = s_Instance->FallbackTextureHandle;
-                }
-            }
-        }
-
-        RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, asset_id);
-        UUIDToTextureHandle.insert(new_tex.TextureUUID, new_tex.Handle);
-        return &new_tex;
     }
 
     uuids::uuid AssetManager::GetOrCreateUUID(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& asset_path, const char* importer_name)

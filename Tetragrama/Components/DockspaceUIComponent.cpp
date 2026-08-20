@@ -1205,12 +1205,44 @@ namespace Tetragrama::Components
         // so both the CPU asset registry and the RRM GPU buffers are populated.
         if (!ZEngine::Managers::AssetManager::GetAsset<ZEngine::Importers::AssetMesh>(header.Id))
         {
-            auto                                   scratch = ZGetScratch(&LocalArena);
-            ZEngine::Importers::AssetMesh          mesh{};
-            ZEngine::Importers::AssetNodeHierarchy hier{};
-            ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(scratch.Arena, filename, mesh, hier);
-            ZEngine::Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hier));
-            ZReleaseScratch(scratch);
+            // Phase 1: deserialize mesh. Copy material names to stack before releasing
+            // the scratch — material names live in scratch.Arena and are invalidated on release.
+            static constexpr size_t kMaxMaterials                 = 64;
+            char                    mat_names[kMaxMaterials][256] = {};
+            size_t                  mat_count                     = 0;
+
+            {
+                auto                                   scratch = ZGetScratch(&LocalArena);
+                ZEngine::Importers::AssetMesh          mesh{};
+                ZEngine::Importers::AssetNodeHierarchy hier{};
+                ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(scratch.Arena, filename, mesh, hier);
+
+                mat_count = hier.MaterialNames.size() < kMaxMaterials ? hier.MaterialNames.size() : kMaxMaterials;
+                for (size_t i = 0; i < mat_count; ++i)
+                    ZEngine::Helpers::secure_strncpy(mat_names[i], sizeof(mat_names[i]), hier.MaterialNames[i].c_str(), sizeof(mat_names[i]) - 1);
+
+                ZEngine::Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hier));
+                ZReleaseScratch(scratch);
+            }
+
+            // Phase 2: load associated .zematerial files in a fresh scratch so mesh and
+            // material deserializations never compete for the same 1 MB LocalArena.
+            auto* app_cfg = ParentLayer && ParentLayer->CurrentApp ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp)->Configuration : nullptr;
+            if (app_cfg)
+            {
+                for (size_t i = 0; i < mat_count; ++i)
+                {
+                    char mat_path[MAX_FILE_PATH_COUNT] = {};
+                    snprintf(mat_path, sizeof(mat_path), "%s/%s/%s.zematerial", app_cfg->WorkingSpacePath.c_str(), app_cfg->MaterialPath.c_str(), mat_names[i]);
+
+                    auto                              scratch = ZGetScratch(&LocalArena);
+                    ZEngine::Importers::AssetMaterial mat{};
+                    ZEngine::Importers::AssetCodec::DeserializeMaterialAssetFile(scratch.Arena, mat_path, mat);
+                    if (!mat.MaterialUUID.is_nil())
+                        ZEngine::Managers::AssetManager::IngestMaterial(std::move(mat));
+                    ZReleaseScratch(scratch);
+                }
+            }
         }
 
         auto        app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
