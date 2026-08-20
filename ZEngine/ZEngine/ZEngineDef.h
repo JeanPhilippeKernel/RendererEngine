@@ -86,9 +86,9 @@
 #define DEFAULT_ALIGNMENT (2 * sizeof(void*))
 #endif // !DEFAULT_ALIGNMENT
 
-#define ZKilo(size)                    (size * 1024)
-#define ZMega(size)                    (ZKilo(size) * 1024)
-#define ZGiga(size)                    (ZMega(size) * 1024)
+#define ZKilo(size)                    (static_cast<uint64_t>(size) * 1024ULL)
+#define ZMega(size)                    (static_cast<uint64_t>(size) * 1024ULL * 1024ULL)
+#define ZGiga(size)                    (static_cast<uint64_t>(size) * 1024ULL * 1024ULL * 1024ULL)
 
 #define ZPush(allocator, type, size)   ((type*) (allocator)->Allocate(size, DEFAULT_ALIGNMENT, __FILE__, __LINE__))
 

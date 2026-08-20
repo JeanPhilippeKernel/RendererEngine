@@ -30,7 +30,7 @@ int applicationEntryPoint(int argc, char* argv[])
     CLI11_PARSE(cli, argc, argv);
 
     MemoryManager manager = {};
-    manager.Initialize(ZGiga(8u), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
+    manager.Initialize(ZGiga(8ULL), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
 #if ZENGINE_PROFILING
     ZEngine::Profiling::MemoryProfiler::Initialize(&manager.MainArena);
     ZEngine::Profiling::MemoryProfiler::TrackArena("MainArena", &manager.MainArena);
