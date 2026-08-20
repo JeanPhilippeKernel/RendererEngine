@@ -90,7 +90,9 @@ namespace ZEngine::Managers
         if (!s_Instance)
             return;
         std::lock_guard lock(s_Instance->IngestMutex);
-        if (IsRegistered(mesh.MeshUUID))
+        // Use GetAsset (not IsRegistered) — VFSScanner pre-registers UUIDs in the registry
+        // without populating the Meshes array, so IsRegistered gives a false positive.
+        if (GetAsset<AssetMesh>(mesh.MeshUUID) != nullptr)
             return;
 
         // Mesh
@@ -159,12 +161,11 @@ namespace ZEngine::Managers
             return {};
         std::lock_guard lock(s_Instance->IngestMutex);
 
-        // Dedup — return existing handle if already registered.
-        if (IsRegistered(uuid))
-        {
-            auto* h = s_Instance->UUIDToTextureHandle.find(uuid);
-            return h ? *h : s_Instance->FallbackTextureHandle;
-        }
+        // Dedup — return existing handle if already uploaded.
+        // Use UUIDToTextureHandle (not IsRegistered): VFSScanner pre-registers texture
+        // UUIDs without uploading them, so IsRegistered gives a false positive.
+        if (auto* h = s_Instance->UUIDToTextureHandle.find(uuid))
+            return *h;
 
         auto  slot          = static_cast<uint32_t>(s_Instance->Textures.size());
         auto& new_tex       = s_Instance->Textures.push_use({});
@@ -209,7 +210,7 @@ namespace ZEngine::Managers
         if (!s_Instance)
             return;
         std::lock_guard lock(s_Instance->IngestMutex);
-        if (IsRegistered(mat.MaterialUUID))
+        if (GetAsset<AssetMaterial>(mat.MaterialUUID) != nullptr)
             return;
 
         auto slot = static_cast<uint32_t>(s_Instance->Materials.size());

@@ -23,7 +23,22 @@ namespace ZEngine::Core::VFS
     {
         RegisterResult result = m_index.Register(uuid, type, path, meta);
         if (!result.IsOk())
+        {
+            // DuplicateUUID means VFSScanner pre-registered this file. Update the
+            // existing record's SlotHandle so the RRM callback receives the correct slot.
+            if (result.Error == RegisterError::DuplicateUUID)
+            {
+                Helpers::Handle<AssetRecord> h   = m_index.FindByUUID(uuid);
+                AssetRecord*                 rec = m_index.Access(h);
+                if (rec)
+                {
+                    rec->SlotHandle = slot_handle;
+                    rec->State      = AssetState::Loaded;
+                    return RegisterResult{h};
+                }
+            }
             return result;
+        }
 
         AssetRecord* rec = m_index.Access(result.Handle);
         ZENGINE_VALIDATE_ASSERT(rec != nullptr, "Register succeeded but Access returned null")
