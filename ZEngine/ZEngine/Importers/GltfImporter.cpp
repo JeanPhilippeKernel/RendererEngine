@@ -476,6 +476,7 @@ namespace ZEngine::Importers
         config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
         config.OutputTextureFilesPath.init(arena, cfg.OutputTextureFilesPath.c_str());
         config.OutputAssetsPath.init(arena, cfg.OutputAssetsPath.c_str());
+        config.OutputMaterialPath.init(arena, cfg.OutputMaterialPath.c_str());
         config.AssetName.init(arena, cfg.AssetName.c_str());
         config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
         config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
@@ -527,7 +528,9 @@ namespace ZEngine::Importers
 
         // Extract texture image bytes to disk and record project-relative paths
         {
-            auto            dest_dir = std::filesystem::path(config.OutputWorkingSpacePath.c_str()) / config.OutputTextureFilesPath.c_str() / config.AssetName.c_str();
+            char dest_dir_buf[MAX_FILE_PATH_COUNT] = {};
+            (ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dest_dir_buf, sizeof(dest_dir_buf));
+            auto            dest_dir = std::filesystem::path(dest_dir_buf);
             std::error_code ec;
             std::filesystem::create_directories(dest_dir, ec);
 
