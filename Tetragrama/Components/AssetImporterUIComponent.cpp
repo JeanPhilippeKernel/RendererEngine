@@ -29,12 +29,14 @@ namespace Tetragrama::Components
         parent->LocalArena.CreateSubArena(ZMega(8), &LocalArena);
         parent->LocalArena.CreateSubArena(ZMega(4), &LocalStringArena);
 
-        // Each importer gets its own dedicated scratch arena sized to its budget.
-        parent->Arena->CreateSubArena(ZMega(64), &GltfImporterArena);
-        parent->Arena->CreateSubArena(ZMega(350), &AssimpImporterArena);
+        // Importer arenas carved from the engine's ImportPipeline budget so all
+        // import memory — engine importers and editor importers — is budget-tracked.
+        auto* import_arena = &ZEngine::Engine::GetContext()->ImportPipelineArena;
+        import_arena->CreateSubArena(ZMega(64), &GltfImporterArena);
+        import_arena->CreateSubArena(ZMega(350), &AssimpImporterArena);
 
-        m_gltf_importer   = ZPushStructCtor(parent->Arena, ZEngine::Importers::GltfImporter);
-        m_assimp_importer = ZPushStructCtor(parent->Arena, ZEngine::Importers::AssimpImporter);
+        m_gltf_importer   = ZPushStructCtor(import_arena, ZEngine::Importers::GltfImporter);
+        m_assimp_importer = ZPushStructCtor(import_arena, ZEngine::Importers::AssimpImporter);
         m_gltf_importer->Initialize(&GltfImporterArena);
         m_assimp_importer->Initialize(&AssimpImporterArena);
 
