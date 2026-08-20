@@ -12,8 +12,10 @@
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 #include <uuid.h>
+#include <cstdio>
 #include <filesystem>
 #include <random>
+#include <vector>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
@@ -531,68 +533,56 @@ namespace ZEngine::Importers
         {
             char dest_dir_buf[MAX_FILE_PATH_COUNT] = {};
             (ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dest_dir_buf, sizeof(dest_dir_buf));
-            auto            dest_dir = std::filesystem::path(dest_dir_buf);
-            std::error_code ec;
-            std::filesystem::create_directories(dest_dir, ec);
+            config.VFS->CreateDir(ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str());
+
+            // Pre-resolve base pointers for every buffer — for a GLB all images share
+            // buffer 0 (the binary chunk). Resolving once avoids repeated get_if per texture.
+            std::vector<const uint8_t*> buf_ptrs(asset.buffers.size(), nullptr);
+            for (size_t i = 0; i < asset.buffers.size(); ++i)
+            {
+                const auto& bd = asset.buffers[i].data;
+                if (const auto* arr = std::get_if<fastgltf::sources::Array>(&bd))
+                    buf_ptrs[i] = reinterpret_cast<const uint8_t*>(arr->bytes.data());
+                else if (const auto* bvd = std::get_if<fastgltf::sources::ByteView>(&bd))
+                    buf_ptrs[i] = reinterpret_cast<const uint8_t*>(bvd->bytes.data());
+            }
 
             for (size_t tex_idx = 0; tex_idx < textures.size() && tex_idx < asset.textures.size(); ++tex_idx)
             {
                 const auto& fgltf_tex = asset.textures[tex_idx];
                 if (!fgltf_tex.imageIndex.has_value())
                     continue;
-                const auto&    img      = asset.images[fgltf_tex.imageIndex.value()];
+                const auto&    img    = asset.images[fgltf_tex.imageIndex.value()];
+                const uint8_t* bytes  = nullptr;
+                size_t         nbytes = 0;
+                const char*    ext    = ".png";
 
-                std::string    ext      = ".png";
-                const uint8_t* bytes    = nullptr;
-                size_t         nbytes   = 0;
-
-                auto           set_mime = [&](fastgltf::MimeType mt) {
-                    if (mt == fastgltf::MimeType::JPEG)
+                if (const auto* arr = std::get_if<fastgltf::sources::Array>(&img.data))
+                {
+                    bytes  = reinterpret_cast<const uint8_t*>(arr->bytes.data());
+                    nbytes = arr->bytes.size();
+                    if (arr->mimeType == fastgltf::MimeType::JPEG)
                         ext = ".jpg";
-                };
-
-                std::visit(
-                    fastgltf::visitor{
-                    [&](const fastgltf::sources::Array& arr) {
-                        bytes  = reinterpret_cast<const uint8_t*>(arr.bytes.data());
-                        nbytes = arr.bytes.size();
-                        set_mime(arr.mimeType);
-                    },
-                    [&](const fastgltf::sources::Vector& vec) {
-                        // GLB binary chunk is loaded as sources::Vector by fastgltf
-                        bytes  = reinterpret_cast<const uint8_t*>(vec.bytes.data());
-                        nbytes = vec.bytes.size();
-                        set_mime(vec.mimeType);
-                    },
-                    [&](const fastgltf::sources::ByteView& bv_data) {
-                        bytes  = reinterpret_cast<const uint8_t*>(bv_data.bytes.data());
-                        nbytes = bv_data.bytes.size();
-                        set_mime(bv_data.mimeType);
-                    },
-                    [&](const fastgltf::sources::BufferView& bv_src) {
-                        const auto& bv = asset.bufferViews[bv_src.bufferViewIndex];
-                        std::visit(
-                            fastgltf::visitor{
-                            [&](const fastgltf::sources::Array& arr) {
-                                bytes  = reinterpret_cast<const uint8_t*>(arr.bytes.data()) + bv.byteOffset;
-                                nbytes = bv.byteLength;
-                                set_mime(bv_src.mimeType);
-                            },
-                            [&](const fastgltf::sources::Vector& vec) {
-                                bytes  = reinterpret_cast<const uint8_t*>(vec.bytes.data()) + bv.byteOffset;
-                                nbytes = bv.byteLength;
-                                set_mime(bv_src.mimeType);
-                            },
-                            [&](const fastgltf::sources::ByteView& bvd) {
-                                bytes  = reinterpret_cast<const uint8_t*>(bvd.bytes.data()) + bv.byteOffset;
-                                nbytes = bv.byteLength;
-                                set_mime(bv_src.mimeType);
-                            },
-                            [](auto&&) {}},
-                            asset.buffers[bv.bufferIndex].data);
-                    },
-                    [](auto&&) {}},
-                    img.data);
+                }
+                else if (const auto* bv_data = std::get_if<fastgltf::sources::ByteView>(&img.data))
+                {
+                    bytes  = reinterpret_cast<const uint8_t*>(bv_data->bytes.data());
+                    nbytes = bv_data->bytes.size();
+                    if (bv_data->mimeType == fastgltf::MimeType::JPEG)
+                        ext = ".jpg";
+                }
+                else if (const auto* bv_src = std::get_if<fastgltf::sources::BufferView>(&img.data))
+                {
+                    const auto&    bv   = asset.bufferViews[bv_src->bufferViewIndex];
+                    const uint8_t* base = bv.bufferIndex < buf_ptrs.size() ? buf_ptrs[bv.bufferIndex] : nullptr;
+                    if (base)
+                    {
+                        bytes  = base + bv.byteOffset;
+                        nbytes = bv.byteLength;
+                        if (bv_src->mimeType == fastgltf::MimeType::JPEG)
+                            ext = ".jpg";
+                    }
+                }
 
                 if (!bytes || nbytes == 0)
                 {
@@ -600,18 +590,26 @@ namespace ZEngine::Importers
                     continue;
                 }
 
-                auto          filename_stem = !img.name.empty() ? std::string(img.name) : ("tex_" + std::to_string(tex_idx));
-                auto          out_file      = dest_dir / (filename_stem + ext);
-                std::ofstream fout(out_file, std::ios::binary | std::ios::trunc);
-                if (fout.is_open())
-                {
-                    fout.write(reinterpret_cast<const char*>(bytes), static_cast<std::streamsize>(nbytes));
-                    fout.close();
-                    ZENGINE_LOG_ASSET_INFO("GltfImporter: extracted texture '{}' ({} bytes)", out_file.string(), nbytes)
+                // Build output filename without heap allocation
+                char stem_buf[256] = {};
+                if (!img.name.empty())
+                    Helpers::secure_strncpy(stem_buf, sizeof(stem_buf), img.name.data(), img.name.size());
+                else
+                    snprintf(stem_buf, sizeof(stem_buf), "tex_%zu", tex_idx);
 
-                    // Project-relative path (forward-slash for VFS)
-                    auto rel = std::filesystem::path(config.OutputTextureFilesPath.c_str()) / config.AssetName.c_str() / (filename_stem + ext);
-                    textures[tex_idx].Path.init(&scratch, rel.generic_string().c_str());
+                char out_path_buf[MAX_FILE_PATH_COUNT] = {};
+                snprintf(out_path_buf, sizeof(out_path_buf), "%s/%s%s", dest_dir_buf, stem_buf, ext);
+
+                // fwrite is faster than std::ofstream for plain binary blobs
+                if (FILE* f = fopen(out_path_buf, "wb"))
+                {
+                    fwrite(bytes, 1, nbytes, f);
+                    fclose(f);
+                    ZENGINE_LOG_ASSET_INFO("GltfImporter: extracted texture '{}' ({} bytes)", out_path_buf, nbytes)
+
+                    char rel_buf[MAX_FILE_PATH_COUNT] = {};
+                    snprintf(rel_buf, sizeof(rel_buf), "%s/%s/%s%s", config.OutputTextureFilesPath.c_str(), config.AssetName.c_str(), stem_buf, ext);
+                    textures[tex_idx].Path.init(&scratch, rel_buf);
                 }
             }
 
