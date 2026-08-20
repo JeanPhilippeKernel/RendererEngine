@@ -21,7 +21,7 @@ namespace Tetragrama::Components
     void ProjectViewUIComponent::Initialize(Layers::ImguiLayer* parent, const char* name, bool visibility, bool closed)
     {
         UIComponent::Initialize(parent, name, visibility, closed);
-        parent->LocalArena.CreateSubArena(ZMega(1), &m_local_arena);
+        parent->LocalArena.CreateSubArena(ZMega(4), &m_local_arena);
 
         m_vfs_context     = ZEngine::Engine::GetContext()->VFS;
         m_directory_cache = &ParentLayer->Cache;

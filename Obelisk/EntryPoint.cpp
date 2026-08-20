@@ -30,7 +30,7 @@ int applicationEntryPoint(int argc, char* argv[])
     CLI11_PARSE(cli, argc, argv);
 
     MemoryManager manager = {};
-    manager.Initialize(ZGiga(3u), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
+    manager.Initialize(ZGiga(8ULL), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
 #if ZENGINE_PROFILING
     ZEngine::Profiling::MemoryProfiler::Initialize(&manager.MainArena);
     ZEngine::Profiling::MemoryProfiler::TrackArena("MainArena", &manager.MainArena);
@@ -73,7 +73,7 @@ int applicationEntryPoint(int argc, char* argv[])
     Logger::Flush();
     Logger::Dispose();
 
-    // Step 17 — free the 3 GB arena block
+    // Step 17 — free the 8 GB arena block
     manager.Shutdown();
 
     // OnClosed fires after memory is freed — may only use stack/OS resources

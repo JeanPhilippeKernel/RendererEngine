@@ -32,21 +32,22 @@ namespace ZEngine::Managers
         // GPU texture handle map — needed to resolve material → texture handles at upload time.
         Core::Containers::UnorderedHashMap<uuids::uuid, Rendering::Textures::TextureHandle> UUIDToTextureHandle     = {};
 
+        // Mesh UUID → NodeHierarchy slot — O(1) lookup replacing the old linear scan.
+        Core::Containers::UnorderedHashMap<uuids::uuid, uint32_t>                           MeshToHierarchySlot     = {};
+
         // (255, 20, 147) fallback handle used when a texture file cannot be resolved.
         Rendering::Textures::TextureHandle                                                  FallbackTextureHandle   = {};
 
-        // Mutex guards direct-ingest methods called from import threads.
-        mutable std::mutex                                                                  IngestMutex;
+        // Recursive so IngestMaterial can call IngestTexture while holding the lock.
+        mutable std::recursive_mutex                                                        IngestMutex;
 
         Hardwares::VulkanDevice*                                                            Device   = nullptr;
         ::ZEngine::Core::VFS::AssetRegistry*                                                Registry = nullptr;
 
         // CPU buffer accessors
         Importers::AssetMesh*                                                               GetMeshAsset(const uuids::uuid& id);
-        Importers::AssetNodeHierarchy*                                                      GetMeshNodeHierarchy(const uuids::uuid& id);
+        Importers::AssetNodeHierarchy*                                                      GetMeshNodeHierarchy(const uuids::uuid& mesh_id);
         AssetHandle                                                                         GetMeshNodeHierarchyHandle(const uuids::uuid& id);
-        AssetHandle                                                                         GetMaterialHandleFromUUID(const uuids::uuid& material_uuid);
-        Importers::AssetTexture*                                                            LoadTextureFileAsAsset(cstring file, bool absolute);
 
         static AssetManager*                                                                Instance();
         static AssetHandle                                                                  CreateHandle(uint32_t index, AssetType type);
@@ -59,10 +60,14 @@ namespace ZEngine::Managers
 
         static AssetHandle                                                                  RegisterAsset(AssetType type, const uuids::uuid& uuid, uint32_t slot_index, const Core::VFS::VFSPath& path = {}, const Core::VFS::MetaFileData& meta = {});
 
+        // Returns true if uuid is already registered — used by Ingest* for deduplication.
+        static bool                                                                         IsRegistered(const uuids::uuid& id);
+
         // Direct ingest — called from ImportCoordinator thread after AssetCodec cooks the file.
-        // Each method copies the data into the arena-backed flat buffers and calls RegisterAsset.
-        // Thread-safe via IngestMutex.
+        // Each method deduplicates (no-ops if uuid is already registered), copies data into
+        // arena-backed flat buffers, and calls RegisterAsset. Thread-safe via IngestMutex.
         static void                                                                         IngestMesh(Importers::AssetMesh&& mesh, Importers::AssetNodeHierarchy&& hierarchy);
+        static Rendering::Textures::TextureHandle                                           IngestTexture(const uuids::uuid& uuid, const Core::Containers::String& path);
         static void                                                                         IngestTextures(Core::Containers::Array<Importers::AssetTexture>&& textures);
         static void                                                                         IngestMaterial(Importers::AssetMaterial&& material);
 
