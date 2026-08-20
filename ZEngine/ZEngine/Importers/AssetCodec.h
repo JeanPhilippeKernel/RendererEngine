@@ -49,8 +49,6 @@ namespace ZEngine::Importers::AssetCodec
 
     AssetImporterOutput        SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::ArrayView<AssetTexture> textures, const ImportConfiguration& config);
 
-    AssetImporterOutput        SerializeEnvironmentMapFile(const Rendering::Buffers::Bitmap& cubemap, const ImportConfiguration& config);
-
     // VFS-based — writes through IVFSContext using atomic .tmp → rename protocol.
     // out_path: the VFS path to write (e.g. project://_cache/envmaps/<uuid>.zenvmap)
     Core::VFS::VFSResult<void> SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap);
