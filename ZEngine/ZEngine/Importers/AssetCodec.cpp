@@ -74,11 +74,9 @@ namespace ZEngine::Importers::AssetCodec
         std::string         asset_mat_filename = fmt::format("{}{}", material.Name.c_str(), ".zematerial");
         auto                mat_dir            = VFSPath::Parse(config.OutputMaterialPath.c_str()).Value();
         config.VFS->CreateDir(mat_dir);
+        auto mat_path = mat_dir / asset_mat_filename.c_str();
 
-        char fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (mat_dir / asset_mat_filename.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
-
-        auto tex_obj = [](const uuids::uuid& uuid, const Core::Containers::String& path) {
+        auto tex_obj  = [](const uuids::uuid& uuid, const Core::Containers::String& path) {
             nlohmann::json t;
             t["uuid"] = uuids::to_string(uuid);
             t["path"] = path.empty() ? "" : path.c_str();
@@ -86,27 +84,50 @@ namespace ZEngine::Importers::AssetCodec
         };
 
         nlohmann::json j;
-        j["name"]                 = material.Name.empty() ? "" : material.Name.c_str();
-        j["uuid"]                 = uuids::to_string(material.MaterialUUID);
-        j["textures"]["albedo"]   = tex_obj(material.AlbedoTexUUID, material.AlbedoTexPath);
-        j["textures"]["emissive"] = tex_obj(material.EmissiveTexUUID, material.EmissiveTexPath);
-        j["textures"]["normal"]   = tex_obj(material.NormalTexUUID, material.NormalTexPath);
-        j["textures"]["opacity"]  = tex_obj(material.OpacityTexUUID, material.OpacityTexPath);
-        j["textures"]["specular"] = tex_obj(material.SpecularTexUUID, material.SpecularTexPath);
-        j["ambient_color"]        = nlohmann::json::array({material.AmbientColor[0], material.AmbientColor[1], material.AmbientColor[2], material.AmbientColor[3]});
-        j["albedo_color"]         = nlohmann::json::array({material.AlbedoColor[0], material.AlbedoColor[1], material.AlbedoColor[2], material.AlbedoColor[3]});
-        j["emissive_color"]       = nlohmann::json::array({material.EmissiveColor[0], material.EmissiveColor[1], material.EmissiveColor[2], material.EmissiveColor[3]});
-        j["roughness_color"]      = nlohmann::json::array({material.RoughnessColor[0], material.RoughnessColor[1], material.RoughnessColor[2], material.RoughnessColor[3]});
-        j["specular_color"]       = nlohmann::json::array({material.SpecularColor[0], material.SpecularColor[1], material.SpecularColor[2], material.SpecularColor[3]});
-        j["factors"]              = nlohmann::json::array({material.Factors[0], material.Factors[1], material.Factors[2], material.Factors[3]});
+        j["name"]                                = material.Name.empty() ? "" : material.Name.c_str();
+        j["uuid"]                                = uuids::to_string(material.MaterialUUID);
+        j["textures"]["albedo"]                  = tex_obj(material.AlbedoTexUUID, material.AlbedoTexPath);
+        j["textures"]["emissive"]                = tex_obj(material.EmissiveTexUUID, material.EmissiveTexPath);
+        j["textures"]["normal"]                  = tex_obj(material.NormalTexUUID, material.NormalTexPath);
+        j["textures"]["opacity"]                 = tex_obj(material.OpacityTexUUID, material.OpacityTexPath);
+        j["textures"]["specular"]                = tex_obj(material.SpecularTexUUID, material.SpecularTexPath);
+        j["ambient_color"]                       = nlohmann::json::array({material.AmbientColor[0], material.AmbientColor[1], material.AmbientColor[2], material.AmbientColor[3]});
+        j["albedo_color"]                        = nlohmann::json::array({material.AlbedoColor[0], material.AlbedoColor[1], material.AlbedoColor[2], material.AlbedoColor[3]});
+        j["emissive_color"]                      = nlohmann::json::array({material.EmissiveColor[0], material.EmissiveColor[1], material.EmissiveColor[2], material.EmissiveColor[3]});
+        j["roughness_color"]                     = nlohmann::json::array({material.RoughnessColor[0], material.RoughnessColor[1], material.RoughnessColor[2], material.RoughnessColor[3]});
+        j["specular_color"]                      = nlohmann::json::array({material.SpecularColor[0], material.SpecularColor[1], material.SpecularColor[2], material.SpecularColor[3]});
+        j["factors"]                             = nlohmann::json::array({material.Factors[0], material.Factors[1], material.Factors[2], material.Factors[3]});
 
-        std::ofstream out(fullname_path, std::ios::trunc);
-        if (!out.is_open())
+        std::string json_str                     = j.dump(4);
+
+        // Write atomically: open .tmp, write, flush, rename to final path
+        char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
+        const char* raw                          = mat_path.CStr();
+        size_t      raw_len                      = secure_strlen(raw);
+        size_t      copy_len                     = raw_len < MAX_FILE_PATH_COUNT - 5 ? raw_len : MAX_FILE_PATH_COUNT - 5;
+        secure_memcpy(tmp_buf, MAX_FILE_PATH_COUNT, raw, copy_len);
+        const char tmp_suffix[] = ".tmp";
+        secure_memcpy(tmp_buf + copy_len, MAX_FILE_PATH_COUNT - copy_len, tmp_suffix, sizeof(tmp_suffix));
+        auto tmp_path    = VFSPath::Parse(tmp_buf).Value();
+
+        auto open_result = config.VFS->Open(tmp_path, Core::VFS::VFSOpenFlags::Write | Core::VFS::VFSOpenFlags::Create | Core::VFS::VFSOpenFlags::Truncate);
+        if (open_result.Failed())
             return output;
-        out << j.dump(4);
-        out.close();
 
-        output = {.Type = AssetFileType::MATERIAL, .Path = (mat_dir / asset_mat_filename.c_str()).CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
+        Core::VFS::IVFSFile* file       = open_result.Value();
+        const auto*          json_bytes = reinterpret_cast<const uint8_t*>(json_str.data());
+        auto                 w          = file->Write({json_bytes, json_str.size()}, 0);
+        auto                 flush      = file->Flush();
+        file->Close();
+        config.VFS->Close(file);
+
+        if (w.Failed() || flush.Failed())
+            return output;
+
+        if (config.VFS->Rename(tmp_path, mat_path).Failed())
+            return output;
+
+        output = {.Type = AssetFileType::MATERIAL, .Path = mat_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
         return output;
     }
 
