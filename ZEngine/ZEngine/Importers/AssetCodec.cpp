@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <uuid.h>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 using namespace uuids;
@@ -18,53 +19,76 @@ using ZEngine::Core::VFS::VFSPath;
 
 namespace ZEngine::Importers::AssetCodec
 {
+    // Write data atomically via VFS: open .tmp, write, flush, close, rename to out_path.
+    static bool WriteVFS(Core::VFS::IVFSContext* vfs, const VFSPath& out_path, const std::string& data)
+    {
+        char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
+        const char* raw                          = out_path.CStr();
+        size_t      raw_len                      = secure_strlen(raw);
+        size_t      copy_len                     = raw_len < MAX_FILE_PATH_COUNT - 5 ? raw_len : MAX_FILE_PATH_COUNT - 5;
+        secure_memcpy(tmp_buf, MAX_FILE_PATH_COUNT, raw, copy_len);
+        const char tmp_suffix[] = ".tmp";
+        secure_memcpy(tmp_buf + copy_len, MAX_FILE_PATH_COUNT - copy_len, tmp_suffix, sizeof(tmp_suffix));
+        auto tmp_path    = VFSPath::Parse(tmp_buf).Value();
+
+        auto open_result = vfs->Open(tmp_path, Core::VFS::VFSOpenFlags::Write | Core::VFS::VFSOpenFlags::Create | Core::VFS::VFSOpenFlags::Truncate);
+        if (open_result.Failed())
+            return false;
+
+        Core::VFS::IVFSFile* file  = open_result.Value();
+        const auto*          bytes = reinterpret_cast<const uint8_t*>(data.data());
+        auto                 w     = file->Write({bytes, data.size()}, 0);
+        auto                 flush = file->Flush();
+        file->Close();
+        vfs->Close(file);
+
+        if (w.Failed() || flush.Failed())
+            return false;
+
+        return !vfs->Rename(tmp_path, out_path).Failed();
+    }
+
     AssetImporterOutput SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config)
     {
         AssetImporterOutput output = {};
         if (config.OutputAssetFile.empty())
             return output;
 
-        auto mesh_dir = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+        auto mesh_dir  = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+        auto mesh_path = mesh_dir / config.OutputAssetFile.c_str();
         config.VFS->CreateDir(mesh_dir);
 
-        char fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (mesh_dir / config.OutputAssetFile.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
-        std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
-        if (!out.is_open())
-        {
-            out.close();
-            return output;
-        }
-
-        out.seekp(std::ios::beg);
-        WriteBinary(out, ZEMESH_MAGIC);
-        WriteBinary(out, ASSET_FILE_VERSION);
-        WriteBinary(out, mesh.MeshUUID);
-        WriteBinaryArray(out, ArrayView{mesh.Vertices});
-        WriteBinaryArray(out, ArrayView{mesh.Indices});
-        WriteBinaryArray(out, ArrayView{mesh.SubMeshes});
-        WriteBinary(out, hierarchies.NodeHierarchyUUID);
-        WriteBinary(out, hierarchies.MeshUUID);
-        WriteBinaryArray(out, ArrayView{hierarchies.Hierarchies});
-        WriteBinaryArray(out, ArrayView{hierarchies.LocalTransforms});
-        WriteBinaryArray(out, ArrayView{hierarchies.GlobalTransforms});
+        std::ostringstream buf(std::ios::binary);
+        WriteBinary(buf, ZEMESH_MAGIC);
+        WriteBinary(buf, ASSET_FILE_VERSION);
+        WriteBinary(buf, mesh.MeshUUID);
+        WriteBinaryArray(buf, ArrayView{mesh.Vertices});
+        WriteBinaryArray(buf, ArrayView{mesh.Indices});
+        WriteBinaryArray(buf, ArrayView{mesh.SubMeshes});
+        WriteBinary(buf, hierarchies.NodeHierarchyUUID);
+        WriteBinary(buf, hierarchies.MeshUUID);
+        WriteBinaryArray(buf, ArrayView{hierarchies.Hierarchies});
+        WriteBinaryArray(buf, ArrayView{hierarchies.LocalTransforms});
+        WriteBinaryArray(buf, ArrayView{hierarchies.GlobalTransforms});
 
         uint32_t name_count = static_cast<uint32_t>(hierarchies.Names.size());
-        WriteBinary(out, name_count);
+        WriteBinary(buf, name_count);
         for (const auto& name : hierarchies.Names)
-            WriteBinaryString(out, name);
+            WriteBinaryString(buf, name);
 
         uint32_t mat_name_count = static_cast<uint32_t>(hierarchies.MaterialNames.size());
-        WriteBinary(out, mat_name_count);
+        WriteBinary(buf, mat_name_count);
         for (const auto& name : hierarchies.MaterialNames)
-            WriteBinaryString(out, name);
+            WriteBinaryString(buf, name);
 
-        WriteBinaryHashMap(out, hierarchies.NodeNames);
-        WriteBinaryHashMap(out, hierarchies.NodeMeshes);
-        WriteBinaryHashMap(out, hierarchies.NodeMaterials);
-        out.close();
+        WriteBinaryHashMap(buf, hierarchies.NodeNames);
+        WriteBinaryHashMap(buf, hierarchies.NodeMeshes);
+        WriteBinaryHashMap(buf, hierarchies.NodeMaterials);
 
-        output = {.Type = AssetFileType::MESH, .Path = (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / config.OutputAssetFile.c_str()).CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
+        if (!WriteVFS(config.VFS, mesh_path, buf.str()))
+            return output;
+
+        output = {.Type = AssetFileType::MESH, .Path = mesh_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
         return output;
     }
 
@@ -84,47 +108,21 @@ namespace ZEngine::Importers::AssetCodec
         };
 
         nlohmann::json j;
-        j["name"]                                = material.Name.empty() ? "" : material.Name.c_str();
-        j["uuid"]                                = uuids::to_string(material.MaterialUUID);
-        j["textures"]["albedo"]                  = tex_obj(material.AlbedoTexUUID, material.AlbedoTexPath);
-        j["textures"]["emissive"]                = tex_obj(material.EmissiveTexUUID, material.EmissiveTexPath);
-        j["textures"]["normal"]                  = tex_obj(material.NormalTexUUID, material.NormalTexPath);
-        j["textures"]["opacity"]                 = tex_obj(material.OpacityTexUUID, material.OpacityTexPath);
-        j["textures"]["specular"]                = tex_obj(material.SpecularTexUUID, material.SpecularTexPath);
-        j["ambient_color"]                       = nlohmann::json::array({material.AmbientColor[0], material.AmbientColor[1], material.AmbientColor[2], material.AmbientColor[3]});
-        j["albedo_color"]                        = nlohmann::json::array({material.AlbedoColor[0], material.AlbedoColor[1], material.AlbedoColor[2], material.AlbedoColor[3]});
-        j["emissive_color"]                      = nlohmann::json::array({material.EmissiveColor[0], material.EmissiveColor[1], material.EmissiveColor[2], material.EmissiveColor[3]});
-        j["roughness_color"]                     = nlohmann::json::array({material.RoughnessColor[0], material.RoughnessColor[1], material.RoughnessColor[2], material.RoughnessColor[3]});
-        j["specular_color"]                      = nlohmann::json::array({material.SpecularColor[0], material.SpecularColor[1], material.SpecularColor[2], material.SpecularColor[3]});
-        j["factors"]                             = nlohmann::json::array({material.Factors[0], material.Factors[1], material.Factors[2], material.Factors[3]});
+        j["name"]                 = material.Name.empty() ? "" : material.Name.c_str();
+        j["uuid"]                 = uuids::to_string(material.MaterialUUID);
+        j["textures"]["albedo"]   = tex_obj(material.AlbedoTexUUID, material.AlbedoTexPath);
+        j["textures"]["emissive"] = tex_obj(material.EmissiveTexUUID, material.EmissiveTexPath);
+        j["textures"]["normal"]   = tex_obj(material.NormalTexUUID, material.NormalTexPath);
+        j["textures"]["opacity"]  = tex_obj(material.OpacityTexUUID, material.OpacityTexPath);
+        j["textures"]["specular"] = tex_obj(material.SpecularTexUUID, material.SpecularTexPath);
+        j["ambient_color"]        = nlohmann::json::array({material.AmbientColor[0], material.AmbientColor[1], material.AmbientColor[2], material.AmbientColor[3]});
+        j["albedo_color"]         = nlohmann::json::array({material.AlbedoColor[0], material.AlbedoColor[1], material.AlbedoColor[2], material.AlbedoColor[3]});
+        j["emissive_color"]       = nlohmann::json::array({material.EmissiveColor[0], material.EmissiveColor[1], material.EmissiveColor[2], material.EmissiveColor[3]});
+        j["roughness_color"]      = nlohmann::json::array({material.RoughnessColor[0], material.RoughnessColor[1], material.RoughnessColor[2], material.RoughnessColor[3]});
+        j["specular_color"]       = nlohmann::json::array({material.SpecularColor[0], material.SpecularColor[1], material.SpecularColor[2], material.SpecularColor[3]});
+        j["factors"]              = nlohmann::json::array({material.Factors[0], material.Factors[1], material.Factors[2], material.Factors[3]});
 
-        std::string json_str                     = j.dump(4);
-
-        // Write atomically: open .tmp, write, flush, rename to final path
-        char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
-        const char* raw                          = mat_path.CStr();
-        size_t      raw_len                      = secure_strlen(raw);
-        size_t      copy_len                     = raw_len < MAX_FILE_PATH_COUNT - 5 ? raw_len : MAX_FILE_PATH_COUNT - 5;
-        secure_memcpy(tmp_buf, MAX_FILE_PATH_COUNT, raw, copy_len);
-        const char tmp_suffix[] = ".tmp";
-        secure_memcpy(tmp_buf + copy_len, MAX_FILE_PATH_COUNT - copy_len, tmp_suffix, sizeof(tmp_suffix));
-        auto tmp_path    = VFSPath::Parse(tmp_buf).Value();
-
-        auto open_result = config.VFS->Open(tmp_path, Core::VFS::VFSOpenFlags::Write | Core::VFS::VFSOpenFlags::Create | Core::VFS::VFSOpenFlags::Truncate);
-        if (open_result.Failed())
-            return output;
-
-        Core::VFS::IVFSFile* file       = open_result.Value();
-        const auto*          json_bytes = reinterpret_cast<const uint8_t*>(json_str.data());
-        auto                 w          = file->Write({json_bytes, json_str.size()}, 0);
-        auto                 flush      = file->Flush();
-        file->Close();
-        config.VFS->Close(file);
-
-        if (w.Failed() || flush.Failed())
-            return output;
-
-        if (config.VFS->Rename(tmp_path, mat_path).Failed())
+        if (!WriteVFS(config.VFS, mat_path, j.dump(4)))
             return output;
 
         output = {.Type = AssetFileType::MATERIAL, .Path = mat_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
@@ -136,30 +134,24 @@ namespace ZEngine::Importers::AssetCodec
         AssetImporterOutput output             = {};
         std::string         asset_tex_filename = fmt::format("{}{}", config.AssetName.c_str(), ".zetextures");
         auto                tex_dir            = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+        auto                tex_path           = tex_dir / asset_tex_filename.c_str();
         config.VFS->CreateDir(tex_dir);
 
-        char fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (tex_dir / asset_tex_filename.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
-        std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
-        if (!out.is_open())
-        {
-            out.close();
-            return output;
-        }
-
-        out.seekp(std::ios::beg);
-        WriteBinary(out, ZETEXTURES_MAGIC);
-        WriteBinary(out, ASSET_FILE_VERSION);
+        std::ostringstream buf(std::ios::binary);
+        WriteBinary(buf, ZETEXTURES_MAGIC);
+        WriteBinary(buf, ASSET_FILE_VERSION);
         uint32_t texture_count = static_cast<uint32_t>(textures.size());
-        WriteBinary(out, texture_count);
+        WriteBinary(buf, texture_count);
         for (uint32_t i = 0; i < texture_count; ++i)
         {
-            WriteBinary(out, textures[i].TextureUUID);
-            WriteBinaryString(out, textures[i].Path);
+            WriteBinary(buf, textures[i].TextureUUID);
+            WriteBinaryString(buf, textures[i].Path);
         }
-        out.close();
 
-        output = {.Type = AssetFileType::TEXTURES, .Path = (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / asset_tex_filename.c_str()).CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
+        if (!WriteVFS(config.VFS, tex_path, buf.str()))
+            return output;
+
+        output = {.Type = AssetFileType::TEXTURES, .Path = tex_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
         return output;
     }
 
