@@ -7,6 +7,7 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/ZEngineDef.h>
+#include <fastgltf/base64.hpp>
 #include <fastgltf/core.hpp>
 #include <fastgltf/math.hpp>
 #include <fastgltf/tools.hpp>
@@ -73,8 +74,6 @@ namespace ZEngine::Importers
             },
             node.transform);
     }
-
-    // ----- mesh extraction -----
 
     static void ExtractMeshes(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, AssetMesh& out)
     {
@@ -189,8 +188,6 @@ namespace ZEngine::Importers
         }
     }
 
-    // ----- material extraction -----
-
     static void ExtractMaterials(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, uuid_random_generator& gen, Array<AssetMaterial>& out)
     {
         uint32_t n = (uint32_t) asset.materials.size();
@@ -222,8 +219,6 @@ namespace ZEngine::Importers
                 dst.Factors[2] = 0.5f;
         }
     }
-
-    // ----- texture extraction -----
 
     static void ExtractTextures(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, uuid_random_generator& gen, Array<AssetTexture>& out_tex, Array<AssetMaterial>& mats)
     {
@@ -287,8 +282,6 @@ namespace ZEngine::Importers
             dst.OpacityTexUUID  = occ_uuid(src.occlusionTexture);
         }
     }
-
-    // ----- hierarchy extraction -----
 
     static void TraverseNode(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, std::size_t node_index, AssetNodeHierarchy& hier, const Array<AssetMaterial>& mats, int parent_id, int depth)
     {
@@ -383,8 +376,6 @@ namespace ZEngine::Importers
             }
         }
     }
-
-    // ----- importer interface -----
 
     void GltfImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
@@ -552,10 +543,13 @@ namespace ZEngine::Importers
                 const auto& fgltf_tex = asset.textures[tex_idx];
                 if (!fgltf_tex.imageIndex.has_value())
                     continue;
-                const auto&    img    = asset.images[fgltf_tex.imageIndex.value()];
-                const uint8_t* bytes  = nullptr;
-                size_t         nbytes = 0;
-                const char*    ext    = ".png";
+                const auto&          img    = asset.images[fgltf_tex.imageIndex.value()];
+                const uint8_t*       bytes  = nullptr;
+                size_t               nbytes = 0;
+                const char*          ext    = ".png";
+
+                // Lifetime holder for URI cases — must outlive fwrite below.
+                std::vector<uint8_t> uri_file_buf;
 
                 if (const auto* arr = std::get_if<fastgltf::sources::Array>(&img.data))
                 {
@@ -583,6 +577,67 @@ namespace ZEngine::Importers
                             ext = ".jpg";
                     }
                 }
+                else if (const auto* uri_src = std::get_if<fastgltf::sources::URI>(&img.data))
+                {
+                    if (uri_src->uri.isLocalPath())
+                    {
+                        // External texture file — resolve relative to the source GLTF directory.
+                        char resolved[MAX_FILE_PATH_COUNT] = {};
+                        auto path_sv                       = uri_src->uri.path();
+                        snprintf(resolved, sizeof(resolved), "%s/%.*s", config.InputBaseAssetFilePath.c_str(), static_cast<int>(path_sv.size()), path_sv.data());
+
+                        if (FILE* src_file = fopen(resolved, "rb"))
+                        {
+                            fseek(src_file, 0, SEEK_END);
+                            long file_sz = ftell(src_file);
+                            fseek(src_file, 0, SEEK_SET);
+                            if (file_sz > 0)
+                            {
+                                uri_file_buf.resize(static_cast<size_t>(file_sz));
+                                fread(uri_file_buf.data(), 1, uri_file_buf.size(), src_file);
+                                bytes  = uri_file_buf.data();
+                                nbytes = uri_file_buf.size();
+                                // Derive extension from URI path
+                                if (path_sv.size() >= 4)
+                                {
+                                    auto tail = path_sv.substr(path_sv.size() - 4);
+                                    if (tail == ".jpg" || tail == ".JPG")
+                                        ext = ".jpg";
+                                }
+                                if (uri_src->mimeType == fastgltf::MimeType::JPEG)
+                                    ext = ".jpg";
+                            }
+                            fclose(src_file);
+                        }
+                    }
+                    else if (uri_src->uri.isDataUri())
+                    {
+                        // data:image/<type>;base64,<data>
+                        // LoadExternalImages should have decoded this to sources::Array already;
+                        // handle defensively for completeness.
+                        auto sv    = uri_src->uri.string();
+                        auto comma = sv.find(',');
+                        if (comma != std::string_view::npos)
+                        {
+                            auto mime = sv.substr(0, comma);
+                            if (mime.find("jpeg") != std::string_view::npos || mime.find("jpg") != std::string_view::npos)
+                                ext = ".jpg";
+
+                            auto b64 = sv.substr(comma + 1);
+                            if (b64.size() >= 4 && b64.size() % 4 == 0)
+                            {
+                                auto decoded = fastgltf::base64::decode(b64);
+                                uri_file_buf.assign(decoded.begin(), decoded.end());
+                                bytes  = uri_file_buf.data();
+                                nbytes = uri_file_buf.size();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        ZENGINE_LOG_ASSET_WARN("GltfImporter: tex {} URI scheme not supported (only local paths and data URIs)", tex_idx)
+                    }
+                }
 
                 if (!bytes || nbytes == 0)
                 {
@@ -590,12 +645,25 @@ namespace ZEngine::Importers
                     continue;
                 }
 
-                // Build output filename without heap allocation
+                // Build output filename — prefer image name, then URI filename, then tex_N
                 char stem_buf[256] = {};
                 if (!img.name.empty())
+                {
                     Helpers::secure_strncpy(stem_buf, sizeof(stem_buf), img.name.data(), img.name.size());
+                }
+                else if (const auto* uri_src = std::get_if<fastgltf::sources::URI>(&img.data); uri_src && uri_src->uri.isLocalPath())
+                {
+                    auto path_sv = uri_src->uri.path();
+                    auto slash   = path_sv.rfind('/');
+                    auto fname   = (slash != std::string_view::npos) ? path_sv.substr(slash + 1) : path_sv;
+                    auto dot     = fname.rfind('.');
+                    auto name    = (dot != std::string_view::npos) ? fname.substr(0, dot) : fname;
+                    Helpers::secure_strncpy(stem_buf, sizeof(stem_buf), name.data(), name.size());
+                }
                 else
+                {
                     snprintf(stem_buf, sizeof(stem_buf), "tex_%zu", tex_idx);
+                }
 
                 char out_path_buf[MAX_FILE_PATH_COUNT] = {};
                 snprintf(out_path_buf, sizeof(out_path_buf), "%s/%s%s", dest_dir_buf, stem_buf, ext);
