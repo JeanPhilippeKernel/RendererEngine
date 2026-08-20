@@ -26,8 +26,8 @@ namespace Tetragrama::Components
     {
         UIComponent::Initialize(parent, name, visibility, closed);
 
-        parent->LocalArena.CreateSubArena(ZMega(2), &LocalArena);
-        parent->LocalArena.CreateSubArena(ZMega(2), &LocalStringArena);
+        parent->LocalArena.CreateSubArena(ZMega(8), &LocalArena);
+        parent->LocalArena.CreateSubArena(ZMega(4), &LocalStringArena);
 
         // Each importer gets its own dedicated scratch arena sized to its budget.
         parent->Arena->CreateSubArena(ZMega(64), &GltfImporterArena);

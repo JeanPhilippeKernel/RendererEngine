@@ -298,7 +298,7 @@ namespace Tetragrama::Components
     {
         UIComponent::Initialize(parent, name, visibility, closed);
 
-        parent->LocalArena.CreateSubArena(ZMega(1), &LocalArena);
+        parent->LocalArena.CreateSubArena(ZMega(32), &LocalArena);
 
         m_editor_serializer = ZPushStructCtor(parent->Arena, Serializers::EditorSceneSerializer);
 

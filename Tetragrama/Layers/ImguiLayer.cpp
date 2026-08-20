@@ -30,7 +30,7 @@ namespace Tetragrama::Layers
     {
         Arena      = arena;
         CurrentApp = app;
-        arena->CreateSubArena(ZMega(10), &LocalArena);
+        arena->CreateSubArena(ZMega(64), &LocalArena);
 
         Scanner.Initialize(arena);
         Cache.Initialize(arena);

@@ -55,20 +55,20 @@ namespace ZEngine::Core::Memory
         inline static MemoryBudgetConfig Default()
         {
             MemoryBudgetConfig cfg = {};
-            cfg.AudioEngine        = {"AudioEngine", ZMega(32ULL)};
-            cfg.AnimationManager   = {"AnimationManager", ZMega(64ULL)};
-            cfg.AssetManager       = {"AssetManager", ZMega(100ULL)};
-            cfg.ECSScene           = {"ECSScene", ZMega(128ULL)};
-            cfg.Logging            = {"Logging", ZMega(4ULL)};
-            cfg.VirtualFS          = {"VirtualFS", ZMega(32ULL)};
-            cfg.VulkanDevice       = {"VulkanDevice", ZMega(512ULL)};
-            cfg.Importer           = {"Importer", ZMega(350ULL)};
-            cfg.UIContext          = {"UIContext", ZMega(8ULL)};
-            cfg.Swapchain          = {"Swapchain", ZMega(3ULL)};
-            cfg.ShaderCache        = {"ShaderCache", ZMega(16ULL)};
-            cfg.Serializer         = {"Serializer", ZMega(150ULL)};
-            cfg.Network            = {"Network", ZMega(32ULL)};
-            cfg.Input              = {"Input", ZMega(1ULL)};
+            cfg.AudioEngine        = {"AudioEngine", ZMega(128ULL)};
+            cfg.AnimationManager   = {"AnimationManager", ZMega(256ULL)};
+            cfg.AssetManager       = {"AssetManager", ZMega(512ULL)};
+            cfg.ECSScene           = {"ECSScene", ZMega(512ULL)};
+            cfg.Logging            = {"Logging", ZMega(8ULL)};
+            cfg.VirtualFS          = {"VirtualFS", ZMega(64ULL)};
+            cfg.VulkanDevice       = {"VulkanDevice", ZGiga(1ULL)};
+            cfg.Importer           = {"Importer", ZMega(512ULL)};
+            cfg.UIContext          = {"UIContext", ZMega(64ULL)};
+            cfg.Swapchain          = {"Swapchain", ZMega(8ULL)};
+            cfg.ShaderCache        = {"ShaderCache", ZMega(64ULL)};
+            cfg.Serializer         = {"Serializer", ZMega(256ULL)};
+            cfg.Network            = {"Network", ZMega(64ULL)};
+            cfg.Input              = {"Input", ZMega(4ULL)};
 
             return cfg;
         }
@@ -91,7 +91,7 @@ namespace ZEngine::Core::Memory
             auto cfg                  = Default();
             cfg.AudioEngine.SizeBytes = 0ull;
             cfg.Network.SizeBytes     = 0ull;
-            cfg.UIContext.SizeBytes   = ZMega(32ULL);
+            cfg.UIContext.SizeBytes   = ZMega(128ULL);
 
             return cfg;
         }
