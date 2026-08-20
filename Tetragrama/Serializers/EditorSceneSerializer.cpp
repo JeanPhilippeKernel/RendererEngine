@@ -1,6 +1,8 @@
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/Serializers/EditorSceneSerializer.h>
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/VFS/IVFSContext.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/SerializerCommonHelper.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
@@ -88,8 +90,9 @@ namespace Tetragrama::Serializers
                     cook_cfg.AssetName.init(scratch.Arena, asset_name.c_str());
                     cook_cfg.OutputAssetFile.init(scratch.Arena, output_file.c_str());
                     cook_cfg.InputBaseAssetFilePath.init(scratch.Arena, cfg.WorkingSpacePath.c_str());
+                    cook_cfg.VFS = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
 
-                    auto output = ZEngine::Importers::AssetCodec::SerializeMeshAssetFile(scratch.Arena, *mesh, *hierarchy, cook_cfg);
+                    auto output  = ZEngine::Importers::AssetCodec::SerializeMeshAssetFile(scratch.Arena, *mesh, *hierarchy, cook_cfg);
                     if (!output.Path.empty())
                     {
                         // Register the artifact path so future saves don't re-cook

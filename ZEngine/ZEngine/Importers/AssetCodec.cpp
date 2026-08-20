@@ -7,8 +7,8 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <uuid.h>
-#include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 using namespace uuids;
@@ -19,63 +19,88 @@ using ZEngine::Core::VFS::VFSPath;
 
 namespace ZEngine::Importers::AssetCodec
 {
+    // Write data atomically via VFS: open .tmp, write, flush, close, rename to out_path.
+    static bool WriteVFS(Core::VFS::IVFSContext* vfs, const VFSPath& out_path, const std::string& data)
+    {
+        char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
+        const char* raw                          = out_path.CStr();
+        size_t      raw_len                      = secure_strlen(raw);
+        size_t      copy_len                     = raw_len < MAX_FILE_PATH_COUNT - 5 ? raw_len : MAX_FILE_PATH_COUNT - 5;
+        secure_memcpy(tmp_buf, MAX_FILE_PATH_COUNT, raw, copy_len);
+        const char tmp_suffix[] = ".tmp";
+        secure_memcpy(tmp_buf + copy_len, MAX_FILE_PATH_COUNT - copy_len, tmp_suffix, sizeof(tmp_suffix));
+        auto tmp_path    = VFSPath::Parse(tmp_buf).Value();
+
+        auto open_result = vfs->Open(tmp_path, Core::VFS::VFSOpenFlags::Write | Core::VFS::VFSOpenFlags::Create | Core::VFS::VFSOpenFlags::Truncate);
+        if (open_result.Failed())
+            return false;
+
+        Core::VFS::IVFSFile* file  = open_result.Value();
+        const auto*          bytes = reinterpret_cast<const uint8_t*>(data.data());
+        auto                 w     = file->Write({bytes, data.size()}, 0);
+        auto                 flush = file->Flush();
+        file->Close();
+        vfs->Close(file);
+
+        if (w.Failed() || flush.Failed())
+            return false;
+
+        return !vfs->Rename(tmp_path, out_path).Failed();
+    }
+
     AssetImporterOutput SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config)
     {
         AssetImporterOutput output = {};
         if (config.OutputAssetFile.empty())
             return output;
 
-        char fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / config.OutputAssetFile.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
-        std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
-        if (!out.is_open())
-        {
-            out.close();
-            return output;
-        }
+        auto mesh_dir  = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+        auto mesh_path = mesh_dir / config.OutputAssetFile.c_str();
+        config.VFS->CreateDir(mesh_dir);
 
-        out.seekp(std::ios::beg);
-        WriteBinary(out, ZEMESH_MAGIC);
-        WriteBinary(out, ASSET_FILE_VERSION);
-        WriteBinary(out, mesh.MeshUUID);
-        WriteBinaryArray(out, ArrayView{mesh.Vertices});
-        WriteBinaryArray(out, ArrayView{mesh.Indices});
-        WriteBinaryArray(out, ArrayView{mesh.SubMeshes});
-        WriteBinary(out, hierarchies.NodeHierarchyUUID);
-        WriteBinary(out, hierarchies.MeshUUID);
-        WriteBinaryArray(out, ArrayView{hierarchies.Hierarchies});
-        WriteBinaryArray(out, ArrayView{hierarchies.LocalTransforms});
-        WriteBinaryArray(out, ArrayView{hierarchies.GlobalTransforms});
+        std::ostringstream buf(std::ios::binary);
+        WriteBinary(buf, ZEMESH_MAGIC);
+        WriteBinary(buf, ASSET_FILE_VERSION);
+        WriteBinary(buf, mesh.MeshUUID);
+        WriteBinaryArray(buf, ArrayView{mesh.Vertices});
+        WriteBinaryArray(buf, ArrayView{mesh.Indices});
+        WriteBinaryArray(buf, ArrayView{mesh.SubMeshes});
+        WriteBinary(buf, hierarchies.NodeHierarchyUUID);
+        WriteBinary(buf, hierarchies.MeshUUID);
+        WriteBinaryArray(buf, ArrayView{hierarchies.Hierarchies});
+        WriteBinaryArray(buf, ArrayView{hierarchies.LocalTransforms});
+        WriteBinaryArray(buf, ArrayView{hierarchies.GlobalTransforms});
 
         uint32_t name_count = static_cast<uint32_t>(hierarchies.Names.size());
-        WriteBinary(out, name_count);
+        WriteBinary(buf, name_count);
         for (const auto& name : hierarchies.Names)
-            WriteBinaryString(out, name);
+            WriteBinaryString(buf, name);
 
         uint32_t mat_name_count = static_cast<uint32_t>(hierarchies.MaterialNames.size());
-        WriteBinary(out, mat_name_count);
+        WriteBinary(buf, mat_name_count);
         for (const auto& name : hierarchies.MaterialNames)
-            WriteBinaryString(out, name);
+            WriteBinaryString(buf, name);
 
-        WriteBinaryHashMap(out, hierarchies.NodeNames);
-        WriteBinaryHashMap(out, hierarchies.NodeMeshes);
-        WriteBinaryHashMap(out, hierarchies.NodeMaterials);
-        out.close();
+        WriteBinaryHashMap(buf, hierarchies.NodeNames);
+        WriteBinaryHashMap(buf, hierarchies.NodeMeshes);
+        WriteBinaryHashMap(buf, hierarchies.NodeMaterials);
 
-        output = {.Type = AssetFileType::MESH, .Path = (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / config.OutputAssetFile.c_str()).CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
+        if (!WriteVFS(config.VFS, mesh_path, buf.str()))
+            return output;
+
+        output = {.Type = AssetFileType::MESH, .Path = mesh_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
         return output;
     }
 
     AssetImporterOutput SerializeMaterialAssetFile(Core::Memory::ArenaAllocator* /*arena*/, AssetMaterial& material, const ImportConfiguration& config)
     {
-        AssetImporterOutput output                             = {};
-        std::string         asset_mat_filename                 = fmt::format("{0}{1}", material.Name.c_str(), ".zematerial");
-        // Use dedicated material output dir if set, otherwise fall back to mesh output dir
-        const char*         mat_dir                            = !config.OutputMaterialPath.empty() ? config.OutputMaterialPath.c_str() : config.OutputAssetsPath.c_str();
-        char                fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(mat_dir).Value() / asset_mat_filename.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
+        AssetImporterOutput output             = {};
+        std::string         asset_mat_filename = fmt::format("{}{}", material.Name.c_str(), ".zematerial");
+        auto                mat_dir            = VFSPath::Parse(config.OutputMaterialPath.c_str()).Value();
+        config.VFS->CreateDir(mat_dir);
+        auto mat_path = mat_dir / asset_mat_filename.c_str();
 
-        auto tex_obj = [](const uuids::uuid& uuid, const Core::Containers::String& path) {
+        auto tex_obj  = [](const uuids::uuid& uuid, const Core::Containers::String& path) {
             nlohmann::json t;
             t["uuid"] = uuids::to_string(uuid);
             t["path"] = path.empty() ? "" : path.c_str();
@@ -97,42 +122,36 @@ namespace ZEngine::Importers::AssetCodec
         j["specular_color"]       = nlohmann::json::array({material.SpecularColor[0], material.SpecularColor[1], material.SpecularColor[2], material.SpecularColor[3]});
         j["factors"]              = nlohmann::json::array({material.Factors[0], material.Factors[1], material.Factors[2], material.Factors[3]});
 
-        std::ofstream out(fullname_path, std::ios::trunc);
-        if (!out.is_open())
+        if (!WriteVFS(config.VFS, mat_path, j.dump(4)))
             return output;
-        out << j.dump(4);
-        out.close();
 
-        output = {.Type = AssetFileType::MATERIAL, .Path = (VFSPath::Parse(mat_dir).Value() / asset_mat_filename.c_str()).CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
+        output = {.Type = AssetFileType::MATERIAL, .Path = mat_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
         return output;
     }
 
     AssetImporterOutput SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* arena, ArrayView<AssetTexture> textures, const ImportConfiguration& config)
     {
-        AssetImporterOutput output                             = {};
-        std::string         asset_tex_filename                 = fmt::format("{0}{1}", config.AssetName.c_str(), ".zetextures");
-        char                fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / asset_tex_filename.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
-        std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
-        if (!out.is_open())
-        {
-            out.close();
-            return output;
-        }
+        AssetImporterOutput output             = {};
+        std::string         asset_tex_filename = fmt::format("{}{}", config.AssetName.c_str(), ".zetextures");
+        auto                tex_dir            = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+        auto                tex_path           = tex_dir / asset_tex_filename.c_str();
+        config.VFS->CreateDir(tex_dir);
 
-        out.seekp(std::ios::beg);
-        WriteBinary(out, ZETEXTURES_MAGIC);
-        WriteBinary(out, ASSET_FILE_VERSION);
+        std::ostringstream buf(std::ios::binary);
+        WriteBinary(buf, ZETEXTURES_MAGIC);
+        WriteBinary(buf, ASSET_FILE_VERSION);
         uint32_t texture_count = static_cast<uint32_t>(textures.size());
-        WriteBinary(out, texture_count);
+        WriteBinary(buf, texture_count);
         for (uint32_t i = 0; i < texture_count; ++i)
         {
-            WriteBinary(out, textures[i].TextureUUID);
-            WriteBinaryString(out, textures[i].Path);
+            WriteBinary(buf, textures[i].TextureUUID);
+            WriteBinaryString(buf, textures[i].Path);
         }
-        out.close();
 
-        output = {.Type = AssetFileType::TEXTURES, .Path = (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / asset_tex_filename.c_str()).CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
+        if (!WriteVFS(config.VFS, tex_path, buf.str()))
+            return output;
+
+        output = {.Type = AssetFileType::TEXTURES, .Path = tex_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
         return output;
     }
 
@@ -303,40 +322,6 @@ namespace ZEngine::Importers::AssetCodec
         ReadBinary(in, header.Id);
         in.close();
         return true;
-    }
-
-    AssetImporterOutput SerializeEnvironmentMapFile(const Rendering::Buffers::Bitmap& cubemap, const ImportConfiguration& config)
-    {
-        AssetImporterOutput output = {};
-        if (config.OutputAssetFile.empty())
-            return output;
-
-        char dir_path[MAX_FILE_PATH_COUNT] = {};
-        VFSPath::Parse(config.OutputAssetsPath.c_str()).Value().ResolveNative(config.OutputWorkingSpacePath.c_str(), dir_path, sizeof(dir_path));
-        char fullname_path[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(config.OutputAssetsPath.c_str()).Value() / config.OutputAssetFile.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), fullname_path, sizeof(fullname_path));
-
-        std::error_code ec;
-        std::filesystem::create_directories(dir_path, ec);
-        std::ofstream out(fullname_path, std::ios::binary | std::ios::trunc);
-        if (!out.is_open())
-            return output;
-
-        EnvironmentMapFileHeader header{
-            .MagicNumber    = ZENVMAP_MAGIC,
-            .Version        = ASSET_FILE_VERSION,
-            .FaceWidth      = cubemap.Width,
-            .FaceHeight     = cubemap.Height,
-            .Channel        = cubemap.Channel,
-            .LayerCount     = cubemap.Depth,
-            .BufferByteSize = static_cast<uint64_t>(cubemap.Buffer.size()),
-        };
-        out.write(reinterpret_cast<const char*>(&header), sizeof(header));
-        out.write(reinterpret_cast<const char*>(cubemap.Buffer.data()), static_cast<std::streamsize>(cubemap.Buffer.size()));
-        out.close();
-
-        output = {.Type = AssetFileType::ENVIRONMENT_MAP, .Path = fullname_path, .RootPath = config.OutputWorkingSpacePath.c_str()};
-        return output;
     }
 
     bool DeserializeEnvironmentMapFile(const char* zenvmap_file, Rendering::Buffers::Bitmap& out_cubemap)

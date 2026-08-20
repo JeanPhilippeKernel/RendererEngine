@@ -105,9 +105,11 @@ namespace ZEngine::Importers
         config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
         config.OutputTextureFilesPath.init(arena, cfg.OutputTextureFilesPath.c_str());
         config.OutputAssetsPath.init(arena, cfg.OutputAssetsPath.c_str());
+        config.OutputMaterialPath.init(arena, cfg.OutputMaterialPath.c_str());
         config.AssetName.init(arena, cfg.AssetName.c_str());
         config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
         config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
+        config.VFS = cfg.VFS;
 
         Assimp::Importer importer{};
         importer.SetProgressHandler(&m_progress_handler);

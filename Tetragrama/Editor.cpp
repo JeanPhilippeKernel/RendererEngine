@@ -97,23 +97,36 @@ namespace Tetragrama
     void EditorConfiguration::ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file)
     {
         std::ifstream  f(file);
-        nlohmann::json config           = nlohmann::json::parse(f);
-        std::string    root_project_dir = std::filesystem::path(file).parent_path().string();
+        nlohmann::json config              = nlohmann::json::parse(f);
+        std::string    root_project_dir    = std::filesystem::path(file).parent_path().string();
 
-        // Helper: expand $(workingSpace) token in a json string field
-        auto           expand           = [&](nlohmann::json& node, std::string_view key) {
+        // Helper: expand $(workingSpace) token in a json string field.
+        // Result is a workspace-relative sub-path, e.g. "Assets/Meshes" (no leading slash).
+        auto           strip_leading_slash = [](std::string& s) {
+            if (!s.empty() && s[0] == '/')
+                s.erase(0, 1);
+        };
+        auto expand = [&](nlohmann::json& node, std::string_view key) {
             std::string_view lookup("$(workingSpace)");
             auto             s = node[key].get<std::string>();
             auto             p = s.find(lookup);
             if (p != std::string::npos)
-                node[key] = s.replace(p, lookup.size(), "");
+            {
+                s = s.replace(p, lookup.size(), "");
+                strip_leading_slash(s);
+                node[key] = s;
+            }
         };
         auto expand_nested = [&](nlohmann::json& node, std::string_view section, std::string_view key) {
             std::string_view lookup("$(workingSpace)");
             auto             s = node[section][key].get<std::string>();
             auto             p = s.find(lookup);
             if (p != std::string::npos)
-                node[section][key] = s.replace(p, lookup.size(), "");
+            {
+                s = s.replace(p, lookup.size(), "");
+                strip_leading_slash(s);
+                node[section][key] = s;
+            }
         };
 
         std::string working_space_path = config["workingSpace"];
