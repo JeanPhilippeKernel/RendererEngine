@@ -551,48 +551,35 @@ namespace ZEngine::Importers
                         ext = ".jpg";
                 };
 
-                std::visit(
-                    fastgltf::visitor{
-                    [&](const fastgltf::sources::Array& arr) {
-                        bytes  = reinterpret_cast<const uint8_t*>(arr.bytes.data());
-                        nbytes = arr.bytes.size();
-                        set_mime(arr.mimeType);
-                    },
-                    [&](const fastgltf::sources::Vector& vec) {
-                        // GLB binary chunk is loaded as sources::Vector by fastgltf
-                        bytes  = reinterpret_cast<const uint8_t*>(vec.bytes.data());
-                        nbytes = vec.bytes.size();
-                        set_mime(vec.mimeType);
-                    },
-                    [&](const fastgltf::sources::ByteView& bv_data) {
-                        bytes  = reinterpret_cast<const uint8_t*>(bv_data.bytes.data());
-                        nbytes = bv_data.bytes.size();
-                        set_mime(bv_data.mimeType);
-                    },
-                    [&](const fastgltf::sources::BufferView& bv_src) {
-                        const auto& bv = asset.bufferViews[bv_src.bufferViewIndex];
-                        std::visit(
-                            fastgltf::visitor{
-                            [&](const fastgltf::sources::Array& arr) {
-                                bytes  = reinterpret_cast<const uint8_t*>(arr.bytes.data()) + bv.byteOffset;
-                                nbytes = bv.byteLength;
-                                set_mime(bv_src.mimeType);
-                            },
-                            [&](const fastgltf::sources::Vector& vec) {
-                                bytes  = reinterpret_cast<const uint8_t*>(vec.bytes.data()) + bv.byteOffset;
-                                nbytes = bv.byteLength;
-                                set_mime(bv_src.mimeType);
-                            },
-                            [&](const fastgltf::sources::ByteView& bvd) {
-                                bytes  = reinterpret_cast<const uint8_t*>(bvd.bytes.data()) + bv.byteOffset;
-                                nbytes = bv.byteLength;
-                                set_mime(bv_src.mimeType);
-                            },
-                            [](auto&&) {}},
-                            asset.buffers[bv.bufferIndex].data);
-                    },
-                    [](auto&&) {}},
-                    img.data);
+                if (const auto* arr = std::get_if<fastgltf::sources::Array>(&img.data))
+                {
+                    bytes  = reinterpret_cast<const uint8_t*>(arr->bytes.data());
+                    nbytes = arr->bytes.size();
+                    set_mime(arr->mimeType);
+                }
+                else if (const auto* bv_data = std::get_if<fastgltf::sources::ByteView>(&img.data))
+                {
+                    bytes  = reinterpret_cast<const uint8_t*>(bv_data->bytes.data());
+                    nbytes = bv_data->bytes.size();
+                    set_mime(bv_data->mimeType);
+                }
+                else if (const auto* bv_src = std::get_if<fastgltf::sources::BufferView>(&img.data))
+                {
+                    const auto& bv  = asset.bufferViews[bv_src->bufferViewIndex];
+                    const auto& buf = asset.buffers[bv.bufferIndex].data;
+                    if (const auto* arr = std::get_if<fastgltf::sources::Array>(&buf))
+                    {
+                        bytes  = reinterpret_cast<const uint8_t*>(arr->bytes.data()) + bv.byteOffset;
+                        nbytes = bv.byteLength;
+                        set_mime(bv_src->mimeType);
+                    }
+                    else if (const auto* bvd = std::get_if<fastgltf::sources::ByteView>(&buf))
+                    {
+                        bytes  = reinterpret_cast<const uint8_t*>(bvd->bytes.data()) + bv.byteOffset;
+                        nbytes = bv.byteLength;
+                        set_mime(bv_src->mimeType);
+                    }
+                }
 
                 if (!bytes || nbytes == 0)
                 {
