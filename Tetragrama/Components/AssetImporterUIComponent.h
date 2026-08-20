@@ -1,7 +1,7 @@
 #pragma once
 #include <Tetragrama/Components/UIComponent.h>
 #include <ZEngine/Core/Containers/Array.h>
-#include <ZEngine/Core/Containers/String.h>
+#include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/AssimpImporter.h>
