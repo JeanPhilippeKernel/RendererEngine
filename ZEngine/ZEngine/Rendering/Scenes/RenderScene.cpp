@@ -1,3 +1,4 @@
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <cstring>
 
@@ -35,20 +36,40 @@ namespace ZEngine::Rendering::Scenes
         return id;
     }
 
-    void RenderScene::RemoveMeshInstance(uint32_t id)
+    void RenderScene::RemoveMeshInstance(uint32_t id, Rendering::RenderResourceManager* rrm)
     {
+        uuids::uuid freed_uuid;
+
         SeqBeginWrite();
 
         for (uint32_t i = 0; i < Instances.size(); ++i)
         {
             if (Instances[i].Id == id)
             {
+                freed_uuid = Instances[i].MeshUUID;
                 Instances.erase(i);
                 break;
             }
         }
 
         SeqEndWrite();
+
+        // Release geometry if no other instance references the same mesh UUID.
+        if (rrm && !freed_uuid.is_nil())
+        {
+            bool still_used = false;
+            for (uint32_t i = 0; i < Instances.size(); ++i)
+            {
+                if (Instances[i].MeshUUID == freed_uuid)
+                {
+                    still_used = true;
+                    break;
+                }
+            }
+            if (!still_used)
+                rrm->ReleaseMeshGeometry(freed_uuid);
+        }
+
         MarkInstancesDirty();
     }
 

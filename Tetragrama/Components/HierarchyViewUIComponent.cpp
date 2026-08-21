@@ -162,7 +162,7 @@ namespace Tetragrama::Components
                     {
                         auto* mc = actor->GetComponent<MeshComponent>();
                         if (mc && mc->RenderInstanceId != UINT32_MAX)
-                            current_scene->RemoveMeshInstance(mc->RenderInstanceId);
+                            current_scene->RemoveMeshInstance(mc->RenderInstanceId, ctx->RenderResourceManager);
                         if (selected)
                             current_scene->SelectedActorHandle = {};
                         pending_delete = h;

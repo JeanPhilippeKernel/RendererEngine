@@ -8,6 +8,11 @@
 #include <ZEngine/ZEngineDef.h>
 #include <uuid.h>
 
+namespace ZEngine::Rendering
+{
+    class RenderResourceManager;
+}
+
 namespace ZEngine::Rendering::Scenes
 {
     struct GridConfig
@@ -110,7 +115,7 @@ namespace ZEngine::Rendering::Scenes
 
         // --- Main-thread-only write operations ---
         uint32_t                              AddMeshInstance(const uuids::uuid& uuid, const char* name);
-        void                                  RemoveMeshInstance(uint32_t id);
+        void                                  RemoveMeshInstance(uint32_t id, ZEngine::Rendering::RenderResourceManager* rrm = nullptr);
         void                                  SetInstanceTransform(uint32_t id, const Core::Maths::Mat4f& t);
         void                                  MarkInstancesDirty();
 
